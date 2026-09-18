@@ -7,14 +7,27 @@
 
 use std::time::Duration;
 
-use shep_client::Lagged;
 use shep_client::testing::{fake_client_with_push, sample_info};
+use shep_client::{EventStream, Lagged};
 use shep_core::protocol::{BusEvent, ProcessEventKind, Response};
 
 /// Every `stream.next()` in this file is wrapped in this bound so a broken
 /// implementation fails with a named assertion instead of hanging the test
 /// run.
 const EVENT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The next event, or a named panic for each of the three ways there is
+/// not one: the stream hangs, it ends, or it reports a lag.
+///
+/// `want` says what the caller was waiting for, and all three panics carry
+/// it. The two bare `unwrap`s this replaces did not.
+async fn next_event(stream: &mut EventStream, want: &str) -> BusEvent {
+    tokio::time::timeout(EVENT_TIMEOUT, stream.next())
+        .await
+        .unwrap_or_else(|_| panic!("{want}: nothing arrived within {EVENT_TIMEOUT:?}"))
+        .unwrap_or_else(|| panic!("{want}: the stream ended first"))
+        .unwrap_or_else(|Lagged { count }| panic!("{want}: lagged by {count} instead"))
+}
 
 #[tokio::test]
 async fn subscribe_yields_events_the_daemon_pushes() {
@@ -33,11 +46,7 @@ async fn subscribe_yields_events_the_daemon_pushes() {
     }
 
     for i in 0..3u32 {
-        let event = tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("a pushed event must arrive, not hang")
-            .unwrap()
-            .unwrap();
+        let event = next_event(&mut stream, "a pushed event must arrive").await;
         assert_eq!(
             event,
             BusEvent::LogOut {
@@ -49,16 +58,13 @@ async fn subscribe_yields_events_the_daemon_pushes() {
     }
 }
 
-/// `Client::subscribe` installs the local receiver on the actor before sending
-/// the wire `Request::Subscribe` (`client.rs:234-244`). Catches an
-/// implementation that sends `Request::Subscribe` and only creates the local
-/// receiver once the reply comes back: against a daemon that writes its event
-/// immediately after replying (`server.rs:357`'s own ordering), that receiver
-/// would not exist yet when the event crosses the wire, so the event vanishes
-/// and this hangs on the `stream.next()` below instead of a named assertion
-/// failing. Does NOT pin reply-before-event ordering on the wire itself — only
-/// that the receiver is installed in time to catch whatever the daemon sends
-/// once the request goes out.
+/// `Client::subscribe` installs the local receiver before sending the
+/// wire `Request::Subscribe`. Catches an implementation that creates
+/// the receiver only after the reply. Against a daemon that writes its
+/// event right after replying, the event would vanish. This would
+/// hang instead of failing a named assertion. Does not pin
+/// reply-before-event ordering on the wire, only that the receiver is
+/// installed in time.
 #[tokio::test]
 async fn subscribing_installs_the_receiver_before_the_request_is_sent() {
     let dir = tempfile::tempdir().unwrap();
@@ -83,11 +89,11 @@ async fn subscribing_installs_the_receiver_before_the_request_is_sent() {
     .unwrap();
 
     assert!(matches!(
-        tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("the pre-installed receiver must observe the queued event")
-            .unwrap()
-            .unwrap(),
+        next_event(
+            &mut stream,
+            "the pre-installed receiver must observe the queued event"
+        )
+        .await,
         BusEvent::Process {
             event: ProcessEventKind::Online,
             ..
@@ -95,13 +101,11 @@ async fn subscribing_installs_the_receiver_before_the_request_is_sent() {
     ));
 }
 
-/// `RunningDaemon::run` sends `DaemonShutdown` on the bus (boot.rs:719) and
-/// only then closes the sockets. The consumer must see the event before the
-/// stream ends — an implementation that lets the connection closing race ahead
-/// of the already-broadcast event (or that treats the underlying
-/// `RecvError::Closed` as capable of pre-empting a buffered item) would report
-/// a clean end-of-stream for a daemon that actually went away without the
-/// caller ever seeing why.
+/// `RunningDaemon::run` sends `DaemonShutdown` on the bus before
+/// closing the sockets. The consumer must see the event before the
+/// stream ends. A bad implementation lets closing race the broadcast
+/// event, or lets `RecvError::Closed` pre-empt a buffered item.
+/// Either way the stream ends cleanly and the caller never sees why.
 #[tokio::test]
 async fn a_daemon_shutdown_event_ends_the_stream_cleanly() {
     let dir = tempfile::tempdir().unwrap();
@@ -113,11 +117,7 @@ async fn a_daemon_shutdown_event_ends_the_stream_cleanly() {
     daemon.close().await;
 
     assert_eq!(
-        tokio::time::timeout(EVENT_TIMEOUT, stream.next())
-            .await
-            .expect("the DaemonShutdown event must arrive, not hang")
-            .unwrap()
-            .unwrap(),
+        next_event(&mut stream, "the DaemonShutdown event must arrive").await,
         BusEvent::DaemonShutdown
     );
     assert!(
@@ -129,13 +129,11 @@ async fn a_daemon_shutdown_event_ends_the_stream_cleanly() {
     );
 }
 
-/// Overrun the local buffer and require a lag notice somewhere in what comes
-/// back. Deliberately NOT "the first item is `Lagged`": nothing synchronises
-/// the actor's reads against the consumer's first poll, so the actor may have
-/// re-broadcast only a few frames by then and the first item is a normal
-/// event. Asserting position would be a flake; asserting presence is the
-/// behaviour under test. An implementation that maps `RecvError::Lagged` to a
-/// silent skip — or to `Poll::Ready(None)` — never produces one and fails this.
+/// Requires a lag notice somewhere after an overrun, not necessarily
+/// first. Nothing synchronises the actor's reads against the
+/// consumer's poll, so asserting position would flake. One that maps
+/// `RecvError::Lagged` to a silent skip, or to `Poll::Ready(None)`,
+/// never produces a lag. It fails this test.
 #[tokio::test]
 async fn a_lagging_consumer_reports_the_lag_rather_than_silently_skipping() {
     let dir = tempfile::tempdir().unwrap();
@@ -144,9 +142,8 @@ async fn a_lagging_consumer_reports_the_lag_rather_than_silently_skipping() {
     let mut stream = client.subscribe(vec!["log.*".into()]).await.unwrap();
 
     // `overrun_by` pushes the actor's whole broadcast capacity plus this
-    // many. The capacity itself is `pub(crate)`, deliberately: a consumer of
-    // the published API has no business sizing a buffer against it, and the
-    // one caller that does need the figure is the fake, from inside the crate.
+    // many. The capacity is `pub(crate)`: the published API has no reason
+    // to size a buffer against it.
     daemon.overrun_by(8).await;
     daemon.close().await;
 

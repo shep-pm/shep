@@ -1,10 +1,10 @@
 //! The five tools that only read.
 //!
-//! Present whatever the gate says — always, in fact: read-only tools are
-//! not behind `[whistle] allow_control`, only the four control tools are.
-//! None of these five writes anything, anywhere: three send request frames
-//! the shepherd answers without touching the flock, and two open files
-//! read-only.
+//! Always present, regardless of `[whistle] allow_control`; only the four
+//! control tools are gated. `list_flock`, `describe_sheep`, `get_metrics`
+//! and `tail_bleats` each send a request frame the shepherd answers;
+//! `tail_bleats` also reads up to two log files by path, and `list_barks`
+//! reads its file with no shepherd contact at all.
 
 use std::io;
 use std::path::Path;
@@ -22,7 +22,7 @@ use super::facts::{
     BarkListing, BarkRow, BleatTail, FlockListing, HostRow, MetricsReading, SheepRow,
 };
 use super::shepherd;
-use crate::commands::bleats::read_tail;
+use crate::commands::bleats::{missing_log_note, read_tail};
 use crate::dog::metrics::sample_host;
 
 /// The argument every sheep-scoped tool takes.
@@ -56,20 +56,16 @@ pub struct BarksParams {
     pub tail: Option<u32>,
 }
 
-/// Default lines/alerts returned when the caller does not say — the same
-/// number `shep bleats --no-follow` and a fresh `shep barks` read use.
+/// Default lines/alerts returned when the caller does not say, matching
+/// `shep bleats --no-follow` and a fresh `shep barks` read.
 const DEFAULT_TAIL: u32 = 50;
 
 /// The clamp. A model's context is finite; `tail_bleats` and `list_barks`
 /// are the two tools that could otherwise hand it an unbounded reply.
 const MAX_TAIL: u32 = 200;
 
-// `vis = "pub(crate)"` is REQUIRED, not decoration. The macro emits
-// `#vis fn #router() -> ToolRouter<Self>` with `vis` defaulting to nothing
-// (rmcp-macros/tool_router.rs:25-27, 68-72), i.e. private to THIS module —
-// and `Whistle::new` (`whistle/mod.rs`) calls it from the PARENT module. A
-// private associated fn is visible in its defining module and that module's
-// descendants; a parent is neither, so without this the call is `E0624`.
+// vis = "pub(crate)" is required: the generated fn defaults to private to
+// this module, and `Whistle::new` calls it from the parent module.
 #[tool_router(router = read_only_router, vis = "pub(crate)")]
 impl Whistle {
     /// Every sheep and dog the shepherd has registered, with status, pid,
@@ -142,22 +138,20 @@ impl Whistle {
             Response::Described(flock) => flock,
             _ => return Err(unexpected_response()),
         };
-        // A selector matching zero sheep is a whole-request `NotFound` the
-        // daemon itself refuses with (`rpc.rs`) — already returned above via
-        // `?` — so `flock` is never empty here. `.first()` rather than
-        // indexing anyway: a defensive belt this module does not have to
-        // prove is load-bearing today to be worth wearing.
+        // `flock` is never empty: a selector matching zero sheep is refused
+        // NotFound above. `.first()` anyway, as a defensive belt.
         let Some(info) = flock.first() else {
             return Err(unexpected_response());
         };
-        let (out, out_truncated) = tail_stream(info.out_file.as_deref(), limit)?;
-        let (err, err_truncated) = tail_stream(info.err_file.as_deref(), limit)?;
+        let out = tail_stream(info.out_file.as_deref(), limit, "out")?;
+        let err = tail_stream(info.err_file.as_deref(), limit, "err")?;
         Ok(Json(BleatTail {
             name: info.name.clone(),
             id: info.id,
-            out,
-            err,
-            truncated: out_truncated || err_truncated,
+            truncated: out.truncated || err.truncated,
+            notes: [out.note, err.note].into_iter().flatten().collect(),
+            out: out.lines,
+            err: err.lines,
         }))
     }
 
@@ -182,21 +176,51 @@ impl Whistle {
     }
 }
 
-/// One sheep's log tail for one stream (`out` or `err`).
+/// What one stream's tail yielded.
 ///
-/// `None` path (the shepherd predates the field) and a missing file (the
-/// sheep has never run in this `$SHEP_HOME`) both read as "nothing yet" —
-/// an empty, non-truncated tail — the same tolerance
-/// `commands::bleats::tail_log_files` already extends the CLI. Any other
-/// I/O failure is a real in-band refusal naming the path, mirroring that
-/// module's own `log_unreadable` notice.
-fn tail_stream(path: Option<&str>, limit: usize) -> Result<(Vec<String>, bool), CallToolResult> {
+/// A struct rather than a tuple: two of the three are what a model reads to
+/// decide whether an empty `lines` means anything.
+struct StreamTail {
+    /// The lines that survived both of `read_tail`'s bounds, oldest first.
+    lines: Vec<String>,
+    /// Whether either bound cut them short.
+    truncated: bool,
+    /// Why there are no lines, when the file was not there.
+    note: Option<String>,
+}
+
+/// One sheep's log tail for one stream, `stream` being `"out"` or `"err"`.
+///
+/// A `None` path reads as an empty tail with nothing to say: the shepherd
+/// reported no path at all. A file that is not there carries a note naming
+/// the path this process tried. Any other I/O failure is a refusal.
+///
+/// # Errors
+/// The file could be named but not read: a permission refusal, a directory
+/// where a file was expected, an I/O fault mid-read.
+fn tail_stream(
+    path: Option<&str>,
+    limit: usize,
+    stream: &str,
+) -> Result<StreamTail, CallToolResult> {
     let Some(path) = path else {
-        return Ok((Vec::new(), false));
+        return Ok(StreamTail {
+            lines: Vec::new(),
+            truncated: false,
+            note: None,
+        });
     };
     match read_tail(Path::new(path), limit) {
-        Ok(result) => Ok(result),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok((Vec::new(), false)),
+        Ok((lines, truncated)) => Ok(StreamTail {
+            lines,
+            truncated,
+            note: None,
+        }),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(StreamTail {
+            lines: Vec::new(),
+            truncated: false,
+            note: Some(missing_log_note(stream, Path::new(path))),
+        }),
         Err(err) => Err(shepherd::own_refusal(
             "log_unreadable",
             format!("failed to read {path}: {err}"),
@@ -205,11 +229,8 @@ fn tail_stream(path: Option<&str>, limit: usize) -> Result<(Vec<String>, bool), 
 }
 
 /// A reply shape none of these five tools asked for. `Response` is
-/// `#[non_exhaustive]` (Global Constraints), so an answer this match does
-/// not recognise — a variant this client predates, or simply the wrong one
-/// for the request just sent — maps here rather than being guessed at, the
-/// same `request_and_render`/`describe_selector`/`flock` pattern
-/// `commands::query` already uses for the identical daemon-side case.
+/// `#[non_exhaustive]`, so a variant this client predates, or simply the
+/// wrong one for the request sent, maps here instead of being guessed at.
 fn unexpected_response() -> CallToolResult {
     CallToolResult::structured_error(serde_json::json!({
         "code": "internal",
@@ -227,32 +248,21 @@ mod tests {
 
     use super::*;
     use crate::whistle::gate;
+    use crate::whistle::matching_ack;
 
-    /// How long a test waits before deciding a tool call hung rather than
-    /// failed — IR-46: every await in a test needs a forcing mechanism.
+    /// How long a test waits for a tool call before treating it as hung.
     const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-    /// A [`shep_core::protocol::HelloAck`] this binary's own version guard
-    /// never refuses — `shep_client::testing::sample_ack`'s fixed `"9.9.9"`
-    /// always would, now that every tool call in this file goes through
-    /// `Shepherd::call_with_ack`'s guard.
-    fn matching_ack() -> shep_core::protocol::HelloAck {
-        shep_core::protocol::HelloAck {
-            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
-            ..shep_client::testing::sample_ack()
-        }
-    }
-
-    /// A `ShepPaths` naming only the two fields any test here reads — the
-    /// socket `Shepherd::call` dials and the file `list_barks` opens
-    /// directly. The rest are never touched (`Whistle::new` reaches
-    /// `paths.socket` alone to build its `Shepherd`), so they carry an
-    /// empty placeholder rather than a plausible-looking value nothing
-    /// checks.
+    /// A [`shep_core::protocol::HelloAck`] whose version matches this
+    /// binary, since `sample_ack`'s fixed `"9.9.9"` would be refused by
+    /// the guard in `Shepherd::call_with_ack`.
+    /// A `ShepPaths` naming only the two fields any test here reads: the
+    /// socket and the barks file. The rest carry an empty placeholder.
     fn test_paths(socket: std::path::PathBuf, barks: std::path::PathBuf) -> ShepPaths {
         ShepPaths {
             home: std::path::PathBuf::new(),
             daemon_config: std::path::PathBuf::new(),
+            dogs_config: std::path::PathBuf::new(),
             snapshot: std::path::PathBuf::new(),
             logs: std::path::PathBuf::new(),
             pids: std::path::PathBuf::new(),
@@ -260,6 +270,9 @@ mod tests {
             socket,
             barks,
             kv: std::path::PathBuf::new(),
+            overrides: std::path::PathBuf::new(),
+            secrets: std::path::PathBuf::new(),
+            secrets_cache: std::path::PathBuf::new(),
         }
     }
 
@@ -267,10 +280,8 @@ mod tests {
         Whistle::new(test_paths(socket, barks_path), gate::Control::ReadOnly)
     }
 
-    /// fails if `list_flock` stops returning every registered entry, or
-    /// starts filtering dogs out. `shep flock` prints dogs as their own
-    /// table (spec §8's amendment) and a model asking what is running gets
-    /// the same population.
+    /// `shep flock` prints dogs in the same table; a model asking what is
+    /// running must see the same population.
     #[tokio::test]
     async fn list_flock_returns_every_registered_entry_including_dogs() {
         let dir = tempfile::tempdir().unwrap();
@@ -307,12 +318,8 @@ mod tests {
         served.await.expect("the fake daemon task must not panic");
     }
 
-    /// fails if `describe_sheep` starts running the selector grammar. `all`
-    /// must mean an app literally named `all` — a model that writes a
-    /// selector by accident must not reach the whole flock.
-    ///
-    /// The assertion is on the REQUEST that reached the fake daemon, not on
-    /// the reply: `SelectorSpec::Name("all")`, never `SelectorSpec::All`.
+    /// Asserts on the request the fake daemon received, not the reply:
+    /// `SelectorSpec::Name("all")`, never `SelectorSpec::All`.
     #[tokio::test]
     async fn describe_sheep_never_builds_anything_but_a_name_selector() {
         let dir = tempfile::tempdir().unwrap();
@@ -347,10 +354,8 @@ mod tests {
         }
     }
 
-    /// fails if the line cap stops being enforced, or stops being reported.
-    /// A model handed 4000 log lines has no context left to reason with, and
-    /// one handed 50 without being told they are the last 50 will conclude
-    /// the app went quiet.
+    /// An uncapped reply exhausts a model's context; a capped one that does
+    /// not say so reads as a quiet app.
     #[tokio::test]
     async fn tail_bleats_caps_its_lines_and_says_when_it_did() {
         let dir = tempfile::tempdir().unwrap();
@@ -401,17 +406,72 @@ mod tests {
             result.0.err.is_empty(),
             "no err_file means an empty tail, not an error"
         );
+        // Both files read, so the key is still on the wire and still empty:
+        // a model told nothing and a model told nothing is wrong differ.
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([])
+        );
 
         served.await.expect("the fake daemon task must not panic");
     }
 
-    /// fails if `list_barks` starts needing a shepherd. The alert history is
-    /// on disk precisely so it survives the shepherd, and the case this tool
-    /// exists for is a model reading it after a crash — the same precedent
-    /// `shep barks` and `shep flush --daemon` already set.
+    /// A model reading `out: []` has to be able to tell a quiet sheep from
+    /// a path that resolves elsewhere under the shepherd than it does here.
+    #[tokio::test]
+    async fn tail_bleats_says_which_file_it_could_not_find() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+
+        let mut info = shep_client::testing::sample_info();
+        info.out_file = Some("logs/out.log".to_string());
+        info.err_file = None;
+
+        let served = shep_client::testing::serve_one_request(
+            &socket,
+            matching_ack(),
+            Response::Described(vec![info]),
+        )
+        .await;
+
+        let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.tail_bleats(Parameters(TailParams {
+                name: "web".to_string(),
+                lines: None,
+            })),
+        )
+        .await
+        .expect("tail_bleats must return within the test timeout")
+        .expect("a file that is not there is not a tool error");
+
+        assert!(result.0.out.is_empty());
+        assert_eq!(
+            result.0.notes.len(),
+            1,
+            "one note for the one stream with a path: {:?}",
+            result.0.notes
+        );
+        assert!(
+            result.0.notes[0].contains("out_file is relative"),
+            "the note must say why the shepherd's file is a different one: {:?}",
+            result.0.notes
+        );
+        assert_eq!(
+            serde_json::to_value(&result.0).unwrap()["notes"],
+            serde_json::json!([result.0.notes[0]]),
+            "the note has to reach `structuredContent`, not just the struct"
+        );
+
+        served.await.expect("the fake daemon task must not panic");
+    }
+
+    /// The alert history is on disk so it survives the shepherd; the case
+    /// this tool exists for is a model reading it after a crash.
     ///
-    /// The `Shepherd` handed in points at a path with nothing listening, so
-    /// a tool that connected would fail rather than pass quietly.
+    /// The `Shepherd` handed in points at nothing listening, so a tool that
+    /// connected would fail rather than pass quietly.
     #[tokio::test]
     async fn list_barks_reads_the_file_with_no_shepherd_anywhere_in_reach() {
         let dir = tempfile::tempdir().unwrap();
@@ -429,8 +489,7 @@ mod tests {
         )
         .unwrap();
 
-        // Nothing ever binds this socket — a `Shepherd` that connected would
-        // fail loudly rather than pass quietly.
+        // Nothing ever binds this socket.
         let unreachable_socket = shep_client::testing::control_address(dir.path());
         let whistle = whistle_at(unreachable_socket, barks_path);
 

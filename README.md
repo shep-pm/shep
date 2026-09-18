@@ -63,9 +63,11 @@ Notes worth having before you pick:
 
 ## Coming from pm2
 
-shep is a clean-room reimplementation of pm2's feature list, and `shep import`
-turns whatever `pm2 save` last wrote into a Flockfile. It reads `--from`, or
-`~/.pm2/dump.pm2`, and starts nothing.
+shep is a clean-room reimplementation of pm2's feature list, and
+`shep import pm2` turns whatever `pm2 save` last wrote into a Flockfile. It
+reads `--from`, or `~/.pm2/dump.pm2`, and starts nothing. A `.env` has its own
+verb: `shep import env` puts each key it holds, or the narrower set `--only`
+names, into one sheep's env, and the ones you name into the secrets store.
 
 The difference worth switching for is that shep tells you the truth about what
 it did. `shep reload` does not claim zero-downtime, because shep never binds
@@ -199,11 +201,11 @@ A dog is a plugin process the shepherd supervises alongside your flock.
 <summary>Every verb, grouped as <code>shep --help</code> groups them</summary>
 
 ```text
-Run things       start serve stop restart reload delete stock
+Run things       start add serve stop restart reload delete stock
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
-The shepherd     ping kill reopen flush set get unset
+The shepherd     ping kill reopen flush set get unset secret
 Dogs and agents  dogs enable disable adopt rehome whistle
 Foreground runs  runtime dev
 Coming from pm2  import
@@ -259,7 +261,11 @@ MSRV 1.88, edition 2024. `shep-core`, `shep-client` and `shep` are
 two files: `sys.rs`, for adopting a descriptor the daemon inherited, and
 `sys_windows.rs`, for the job object that holds a sheep and its lambs. That
 is eight sites on unix and ten on Windows, each with its own
-`// SAFETY:` note, and the whole of the workspace's unsafe surface.
+`// SAFETY:` note. `shep-channel` also denies it crate-wide and permits two
+sites, both in `endpoint.rs`: taking the descriptor the shepherd names in
+`SHEP_CHANNEL_FD`, which a process-global guard makes reachable at most once
+per process, and `PeekNamedPipe` on Windows. The workspace's unsafe surface
+is three files across two crates.
 
 ## License
 

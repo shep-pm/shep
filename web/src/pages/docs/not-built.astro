@@ -8,17 +8,16 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
+import CodeBlock from "../../components/docs/CodeBlock.astro";
 ---
 
 <DocsLayout
-  title="What's not built yet"
-  description="What the Windows tier does not do, plus a short list of deliberate cuts and open design questions: sourced from docs/specs/deferred.md."
-  crumb="Reference / What's not built"
   activeSlug="not-built"
 >
   <article>
-    <h1>What's not built yet</h1>
+    <h1>What's not built</h1>
     <ReferencePills slug="not-built" />
     <p class="lede">
       shep is feature-complete for v1 on macOS and Linux: every verb in the
@@ -26,11 +25,22 @@ import Callout from "../../components/docs/Callout.astro";
       serve/dev/runtime, and config and packaging. Windows runs the same
       build and the same day-to-day loop, minus a named handful of refusals
       it makes out loud. This page is the honest remainder: what the newest
-      platform does not do, and a short list of smaller cuts, each with the
-      reason it isn't here yet.
+      platform does not do.
     </p>
 
-    <h2>Windows: built, with named limits</h2>
+    <ShortVersion>
+      <p>
+        Windows ships today with three named limits: no graceful stop
+        signal unless the app opts into the shepherd channel, no{" "}
+        <code>user</code>/<code>group</code>, and no <code>shep startup</code>.
+        Five smaller cuts are deferred past v1 on purpose (whistle's HTTP
+        transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, VCS
+        metadata, a JSON status endpoint). One item, OTLP export for the
+        metrics dog, is scheduled rather than decided against.
+      </p>
+    </ShortVersion>
+
+    <h2 id="windows-built-with-named-limits">Windows: built, with named limits</h2>
     <p>
       <strong>This section used to say the opposite.</strong> Until
       2026-08-26 every command on Windows printed <code>shep does not yet
@@ -41,28 +51,28 @@ import Callout from "../../components/docs/Callout.astro";
       it got right is worth more than a tidy page.
     </p>
     <p>
-      The day-to-day loop works: <code>start</code>, <code>stop</code>,
-      <code>restart</code>, <code>reload</code>, <code>flock</code>,
-      <code>describe</code>, <code>bleats</code>, <code>delete</code>,
-      <code>save</code>/<code>muster</code>, <code>lookout</code>,
+      The day-to-day loop works: <code>start</code>, <code>stop</code>,{" "}
+      <code>restart</code>, <code>reload</code>, <code>flock</code>,{" "}
+      <code>describe</code>, <code>bleats</code>, <code>delete</code>,{" "}
+      <code>save</code>/<code>muster</code>, <code>lookout</code>,{" "}
       <code>whistle</code> and the dogs — over a named pipe instead of a unix
       socket, with each sheep contained in a job object instead of a process
       group.
     </p>
     <Callout variant="careful">
-      <strong>These limits are real and are not going to be papered over.</strong>
+      <strong>These limits are real and are not going to be papered over.</strong>{" "}
       Windows has nothing SIGTERM-shaped that can be delivered to an
-      arbitrary process, so <code>shep stop</code> waits out the app's whole
+      arbitrary process, so <code>shep stop</code> waits out the app's whole{" "}
       <code>kill_timeout</code> and then terminates it — unless the app opts
       into the shepherd channel with <code>shutdown_with_message</code>,
-      which is the supported graceful path there. And
+      which is the supported graceful path there. And{" "}
       <code>shep startup</code> is not built: boot-time supervision on
       Windows means a Service Control Manager service, a different program
       shape rather than a fifth unit template. Run <code>shep start</code> in
       your own session, or wrap <code>shep runtime</code> in NSSM or WinSW.
     </Callout>
     <p>
-      The estimate's own shape predictions all held. The 145
+      The estimate's own shape predictions all held. The 145{" "}
       <code>cfg(unix)</code> sites really were the cheap part — only ten
       files in the CLI contained a Unix API call at all, and four whole
       module trees contained none. The cost concentrated exactly where it
@@ -78,13 +88,13 @@ import Callout from "../../components/docs/Callout.astro";
       <li>
         <strong>The shepherd channel is not fd 3.</strong> It is a named pipe
         whose path arrives as <code>$SHEP_CHANNEL_PIPE</code>; the app opens
-        it itself. The wire format is untouched, so
-        <code>shep trigger</code>'s correlation id survives unchanged.
+        it itself. The wire format is untouched, so{" "}
+        <code>shep trigger</code>'s correlation id survives unchanged.{" "}
         <code>SHEP_CHANNEL_FD</code> is deliberately not set there, so an app
         can branch on which variable is present rather than on the platform.
       </li>
       <li>
-        <strong><code>user</code>/<code>group</code> refuse permanently.</strong>
+        <strong><code>user</code>/<code>group</code> refuse permanently.</strong>{" "}
         Dropping privilege on Windows needs a logon session or a
         primary-token privilege: a different feature, not a different call.
       </li>
@@ -92,13 +102,44 @@ import Callout from "../../components/docs/Callout.astro";
     <p class="fine">
       Two things the estimate did not anticipate, both found only by running
       the code: a Windows child started with a genuinely empty environment
-      fails before <code>main</code> (many Win32 APIs read
+      fails before <code>main</code> (many Win32 APIs read{" "}
       <code>%SystemRoot%</code>), and an append-mode handle cannot be
       truncated there, which broke <code>shep start</code>'s autostart
       outright. Neither is visible to a compiler.
     </p>
 
-    <h2>Five smaller cuts, argued for rather than just missing</h2>
+    <h3 id="a-python-app-can-crash-on-its-own-output">A Python app can crash on its own output</h3>
+    <p>
+      Not a shep bug, but a real operator report, so it's named here where a
+      search for the error will find it:
+    </p>
+    <CodeBlock>{`UnicodeEncodeError: 'charmap' codec can't encode characters in position 5-7: character maps to <undefined>`}</CodeBlock>
+    <p>
+      Up to CPython 3.14, Python on Windows picks its stdout/stderr encoding
+      by whether a real console is attached. A shepherd-managed process never
+      has one, since its output is a pipe, so CPython falls back to the legacy
+      code page (<code>cp1252</code> on a US/Western install) instead of
+      UTF-8. The app runs fine at a terminal and crashes the moment shep
+      supervises it, the first time it prints anything outside that code
+      page. CPython 3.15 turns UTF-8 mode on by default (<a
+      href="https://peps.python.org/pep-0686/">PEP 686</a>), so upgrading
+      fixes it too, unless something sets <code>PYTHONUTF8=0</code>.
+    </p>
+    <p>
+      Two environment variables fix it: <code>PYTHONUTF8=1</code> and{" "}
+      <code>PYTHONIOENCODING=utf-8</code>. Set them in the app's own{" "}
+      <code>env</code> to fix that one app. Or set them once in the
+      shepherd's own environment before <code>shep startup</code> or{" "}
+      <code>shep start</code>: they're now on the short list of variables
+      shep passes down to every child on Windows, same as{" "}
+      <code>TEMP</code> or <code>USERPROFILE</code>, so an operator running
+      several Python apps doesn't repeat them per app. Unix has{" "}
+      <code>LANG</code> in that role and shep passes it down, so a shepherd
+      whose own <code>LANG</code> names a UTF-8 locale gives its children
+      one. Windows has no equivalent to pass.
+    </p>
+
+    <h2 id="five-smaller-cuts-argued-for-rather-than-just-missing">Five smaller cuts, argued for rather than just missing</h2>
     <p>
       Spec §2 names these as deliberate v1.1+ scope, not oversights:
     </p>
@@ -131,7 +172,7 @@ import Callout from "../../components/docs/Callout.astro";
       </li>
     </ul>
 
-    <h2>Scheduled, not decided against</h2>
+    <h2 id="scheduled-not-decided-against">Scheduled, not decided against</h2>
     <p>
       Named as v1.0 scope in the spec and hasn't reached the front of the
       queue. Lookout's three items in this section shipped in Phase 16
@@ -145,67 +186,10 @@ import Callout from "../../components/docs/Callout.astro";
         exists yet.
       </li>
     </ul>
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/lookout" class="next-card">
-        <div class="next-title">Lookout →</div>
-        <div class="next-body">
-          See what the dashboard does today, including the filter, the
-          actions, and lambs in the detail pane.
-        </div>
-      </a>
-      <a href="/docs/from-pm2" class="next-card">
-        <div class="next-title">Coming from pm2 →</div>
-        <div class="next-body">
-          On Windows today? The migration guide's env rule and runbook still
-          apply once WSL2 is the host.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
   ul {
     margin: 0 0 24px;
     padding: 0;
@@ -228,41 +212,4 @@ import Callout from "../../components/docs/Callout.astro";
     color: var(--ink);
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
 </style>

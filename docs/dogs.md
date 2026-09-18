@@ -17,8 +17,13 @@ A dog is a process speaking the client wire protocol (spec
 [§6](specs/shep-v1.md#6-wire-protocol-v1--protocol-version-1)), connected
 to `$SHEP_HOME/run/shep.sock` and handshaking exactly as `shep flock` or
 `shep describe` would. `PROTOCOL_VERSION` covers a dog exactly as it
-covers every other client: a version mismatch is a typed error at
-handshake, not silence.
+covers every other client: shep accepts any peer at or above
+`MIN_SUPPORTED`, and `PROTOCOL_VERSION` only moves when a message shape
+changes in a way an older peer cannot read. Accepting an old peer is not
+the same as talking to it in an old shape; the daemon never converts
+down, only forward. Raising the floor still refuses every peer built
+below it, which is why that should now happen once or twice a year
+instead of every release.
 
 Two dogs ship inside the `shep` binary — `metrics` and `bark` — reached
 through the hidden `shep dog <name>` re-exec target, the same shape
@@ -56,8 +61,31 @@ starts a shepherd on your behalf to act on its own edit — that would be a
 bigger side effect than a config change should cause, and `shep muster` is
 the one verb in this CLI that autostarts anything.
 
+`enable` takes a built-in name or one `shep adopt` has already recorded,
+and refuses anything else before it writes:
+
+```
+$ shep enable pydog
+error[invalid_config]: `pydog` is not a dog; valid names are "metrics"
+and "bark" -- if you meant a third-party dog, run `shep adopt pydog` first
+```
+
+A refused `enable` writes nothing at all: a `$SHEP_HOME` that had no
+`shep.toml` still has none afterwards. The check reads `[daemon]
+adopted_dogs`, not the shepherd, so it holds with nothing listening.
+
+The guard is on the verb, not on the file. Write a name into `[daemon]
+enabled_dogs` by hand and the shepherd still reads it at boot, still
+treats anything outside `[daemon] adopted_dogs` as built-in, and spawns
+`shep dog <name>` for it once per restart until the budget is spent. What
+that looks like from `shep dogs` is a climbing restart count against a
+`SOURCE` of `built-in`, for a name that is not one; `shep bleats <name>`
+is where the refusal itself shows up.
+
 `shep disable <name>` is the mirror: it stops the dog if one is running,
-and removes it from the boot list either way.
+and removes it from the boot list either way. It carries no name check of
+its own, deliberately, so it is what takes a hand-written entry back out
+of `enabled_dogs`.
 
 Running two of these at once is safe. A provisioning script that
 backgrounds `shep adopt` and `shep enable` together has each of them take
@@ -65,28 +93,117 @@ an exclusive lock on `shep.toml` for its whole read-edit-write, so the
 second waits its turn instead of writing back a document it read before
 the first one's edit landed.
 
+`dogs.toml` has a lock of its own on the same terms, and it needs one for
+the same reason: both of its writers rewrite the whole file rather than a
+line of it. Those two are the once-per-home migration a boot runs, and the
+config pane's own edits, which reach `set_dog_section` over
+`Request::SetDogConfig`. Each holds the lock across its whole
+read-edit-write, so a boot and a pane edit at once cannot undo each other.
+A boot that holds both locks takes `shep.toml`'s first. `shep rehome` is
+not a writer: it reads this file and leaves it alone.
+
 ## Configuration
 
-A dog's settings live under `[dog.<name>]` in `shep.toml`, and they never
-travel through the dog's environment. Instead the dog connects to the
-socket and asks for its own section over the wire
-(`Request::DogConfig`) — the daemon reads the file fresh for every such
-request rather than serving a copy it cached at boot.
+A dog's settings live under `[<name>]` in `$SHEP_HOME/dogs.toml`, hand-editable
+and separate from `shep.toml`, and they never travel through the dog's
+environment. Instead the dog connects to the socket and asks for its own
+section over the wire (`Request::DogConfig`), the daemon reads the file
+fresh for every such request rather than serving a copy it cached at boot.
 
-**Editing `[dog.<name>]` in `shep.toml` does not reach a dog that is
-already running.** A running dog asked for its section once, at startup,
-and nothing pushes it a new one. `shep disable <name> && shep enable
-<name>` is what re-reads it: that stop/start cycle is a fresh process
-asking a fresh question, and the daemon answers off the file as it stands
-at that moment.
+**Editing `[<name>]` in `dogs.toml` does not reach a dog that is already
+running.** A running dog asked for its section once, at startup, and
+nothing pushes it a new one. `shep disable <name> && shep enable <name>`
+is what re-reads it: that stop/start cycle is a fresh process asking a
+fresh question, and the daemon answers off the file as it stands at that
+moment.
+
+**A dog can subscribe instead of waiting to be bounced.** Shep publishes on
+`config.dog.<name>` when it changes a dog's section itself. A dog holding a
+subscription re-asks with `Request::DogConfig` and decides what the change
+means: swap the values, rebind a listener, or ask for its own restart. The
+frame says that the section changed and nothing about what is in it. Bark
+subscribes and swaps in place, since sinks and rules are pure data with no
+OS resource attached. Two things publish today: the boot that moves a
+section out of `shep.toml`, and a write from lookout's own dog config pane,
+which is why an edit made there reaches a running bark without bouncing it.
+A hand edit still needs the stop/start above.
+
+**A dog that restarts itself on a config change has to say so in its own
+log.** Nothing else can tell that apart from a crash loop, and the restart
+count is the column an operator reads as instability.
 
 The reason the section rides the socket instead of the environment is the
 same reason it applies to every dog and not just the ones with obvious
 secrets: an environment variable is readable from the process table,
 inherited by every child the dog spawns, and captured into a crash dump.
-`[dog.bark.sinks]` routinely holds a webhook URL, and a webhook URL is a
-bearer credential — keeping the whole section off the environment means
+`[bark.sinks]` routinely holds a webhook URL, and a webhook URL is a
+bearer credential, keeping the whole section off the environment means
 nobody has to remember which dog's config is sensitive.
+
+**A section that used to live in `shep.toml` migrates to `dogs.toml`
+automatically.** The first boot of a shep carrying this move reads any
+`[dog.<name>]` sections still in `shep.toml`, writes them into `dogs.toml`
+under their bare name, strikes them from `shep.toml`, and prints which
+dogs moved. Every boot after that finds nothing to do. `shep runtime` and
+`shep dev` migrate too: any boot does. If a name carries values in both
+files, the daemon refuses to boot rather than guess which is right, and
+`shep daemon reload` refuses before it signals the shepherd it was going
+to replace. Delete one of the two sections. The likeliest way to hit that
+is hand-writing `[dog.metrics]` back into `shep.toml` after it already
+migrated, so check `dogs.toml` first. An empty `[dog.<name>]`, which
+`shep enable` scaffolded before this move, is not a value and refuses
+nothing. A dog present in only one file migrates or starts normally
+either way.
+
+**A dog can also push, not only be configured.** A provider dog sends
+`Request::PutSecrets` with its own registered name as the namespace,
+replacing whatever that namespace held for one environment rather than
+merging into it. Pushed values are cached to
+`$SHEP_HOME/secrets-cache.json` by default, so a reboot does not leave
+every sheep that reads them waiting on the dog and a network round trip;
+`persist = false` in the dog's own `[<name>]` section of `dogs.toml` turns
+that off. See `docs/brainstorming/specs/2026-09-06-secrets-store-design.md`
+for the design and `web/src/pages/docs/secrets.astro` for the operator
+account of what a namespace does and does not defend against.
+
+A namespace can legally contain a dot, and an unquoted section header does
+not mean what it looks like: `[vercel.prod]` in `dogs.toml` parses as a
+nested TOML table, key `prod` inside table `vercel`, not as one literal
+section named `vercel.prod`. A namespace with a dot in it needs a quoted
+header, `["vercel.prod"]`, or the section never matches and `persist`
+silently falls back to its default of `true`. Ordinary TOML, and the same
+trap catches any dog name with a dot in it, not only a provider's
+namespace.
+
+## When a dog starts
+
+Every dog starts after the flock by default, so a metrics dog does not answer
+for a flock that is not up yet. Some dogs need the opposite: a log-rotation
+dog has to be running before the first sheep writes a line.
+
+`[daemon] boot_first_dogs` names the dogs that start before the muster roll is
+restored rather than after it.
+
+```toml
+# $SHEP_HOME/shep.toml
+[daemon]
+enabled_dogs    = ["metrics", "bark", "log-rotate"]
+boot_first_dogs = ["log-rotate"]
+```
+
+A name here that is not in `enabled_dogs` is inert. The list says where an
+enabled dog goes, never whether it runs, so a typo or a dog you disabled later
+sits in the file doing nothing and the boot says nothing about it.
+
+The key lives in `shep.toml` and not in the dog's own `dogs.toml` section
+because that section belongs to the dog. Shep hands it over the wire without
+reading it, so a shep key inside it would arrive at a program that has never
+heard of the key, and a third-party dog with `deny_unknown_fields` would refuse
+its own config over it.
+
+Promotion covers the boot window only. A `shep start web` typed later, while
+`log-rotate` happens to be down, is a supervision problem that boot ordering
+does not solve.
 
 ## The metrics dog
 
@@ -94,7 +211,7 @@ nobody has to remember which dog's config is sensitive.
 bound to `127.0.0.1:9615` by default:
 
 ```toml
-[dog.metrics]
+[metrics]
 bind = "127.0.0.1:9615"
 ```
 
@@ -133,22 +250,28 @@ decision for you by shipping wide and asking you to lock it down.
 the things worth paging someone about, delivering to named webhook sinks:
 
 ```toml
-[dog.bark.sinks]
+[bark.sinks]
 oncall = { kind = "discord", url = "https://discord.com/api/webhooks/..." }
 audit = { kind = "json", url = "https://example.internal/hook" }
 
-[[dog.bark.rules]]
+[[bark.rules]]
 on = "gave_up"
 sinks = ["oncall", "audit"]
 
-[[dog.bark.rules]]
+[[bark.rules]]
 on = "restart_rate"
 restarts = 5
 within = "2m"
 sinks = ["oncall"]
 ```
 
-Leave `[dog.bark.rules]` out entirely and the bark dog does not stay
+A sink URL cannot carry credentials. `https://user:pass@hooks.example.com/`
+is refused when `dogs.toml` is read, not when a rule first fires: nothing
+here sends an `Authorization` header, so the pair could only be discarded
+or sent as part of a hostname. Discord and Slack put the secret in the path
+instead, which is why the whole URL is a credential.
+
+Leave `[[bark.rules]]` out entirely and the bark dog does not stay
 silent — one rule is built in by default, firing on every configured sink
 whenever a sheep reaches `Errored`. That is deliberate: it is the alert
 that must not be missed, keyed to the shepherd's own decision that it has
@@ -210,8 +333,10 @@ exist, is not a file, has no execute bit for anyone, or is world-writable
 that already belongs to a built-in verb or alias, since a dog by that
 name could never be reached. It warns rather than refuses on a merely
 group-writable path. Passing all of that, it actually spawns the binary
-with no arguments and kills it immediately, because the only honest way
-to know whether this kernel can exec a file is to ask this kernel. What
+and kills it immediately, because the only honest way to know whether this
+kernel can exec a file is to ask this kernel. The `--version` probe below
+is that spawn, so the exec proof and the version answer cost one child
+rather than two. What
 gets recorded in `shep.toml` is the canonicalized, absolute path — never
 whatever relative path you typed — because the daemon may resolve it
 again after a reboot from a different working directory than the one
@@ -231,18 +356,25 @@ started as `shep dog <name>` and read their own name from that argv, but
 neither is a dog anybody writes: they ship inside the binary.
 
 `rehome <name>` is `disable`'s counterpart for a third-party dog: it stops
-it if running and forgets the registration in `shep.toml` entirely, rather
-than leaving it disabled-but-known the way plain `disable` would.
+it if running and forgets where its binary lived, rather than leaving it
+disabled-but-known the way plain `disable` would. One file, the
+registration in `shep.toml`. The dog's own `[<name>]` section in
+`dogs.toml` stays where it is, webhook URLs and all, exactly as `disable`
+leaves it: those settings are yours rather than the adoption's, so
+adopting the same dog again finds them waiting. Delete that section by
+hand when you want them gone. The difference from `disable` is the
+adopted path, so bringing the dog back takes a fresh `shep adopt` and not
+an `enable`.
 
 The wire a third-party dog speaks is the same client protocol
 [§6](specs/shep-v1.md#6-wire-protocol-v1--protocol-version-1) pins for
 every other client of this daemon: connect to the Unix socket at
 `$SHEP_HOME/run/shep.sock`, send `Hello`, wait for `HelloAck`, then send
-`Request::DogConfig { name }` to fetch your own `[dog.<name>]` section as
+`Request::DogConfig { name }` to fetch your own `[<name>]` section as
 opaque text — parse it however your own config shape wants. Shep sets two
 variables of its own on a dog: `$SHEP_HOME`, which is how it finds that
 socket in the first place, and `$SHEP_DOG_NAME`, which is the `name` to put
-in that request. No `[dog.<name>]` value ever rides along beside them, for
+in that request. No `[<name>]` value ever rides along beside them, for
 the reason given above. A section's key is not one of its values.
 
 **Put that name in the `Hello` too, as `dog_name`.** Optional, and nothing
@@ -261,8 +393,10 @@ side says why.
 A dog written against `shep-client` gets both halves from
 `ReconnectingClient::connect_as_dog`, which fills the name in and also
 re-establishes the connection when the shepherd is replaced. `Client` does
-neither, deliberately: the CLI uses it, and a `shep stop` that silently
-retried could stop a sheep twice.
+neither on its own, deliberately: the CLI uses it, and a `shep stop` that
+silently retried could stop a sheep twice. It reconnects when asked,
+through `Client::reconnect`, which reports whether the daemon now answering
+is the one from before.
 
 That is what `shep daemon reload` asks of a dog. A dog is carried across the
 reload the way a sheep is: the process is a child of a shepherd whose pid
@@ -270,21 +404,24 @@ does not change, so it keeps its own pid and its restart count stays where it
 was. What does not survive is the accepted connection, which dies with the
 old image — so a dog that does not dial again is a live process holding a
 dead socket, alive on every column a listing has and answering nothing. The
-metrics dog is measured holding its pid and `restarts 0` across six reloads
-while still serving a scrape.
+built-in dogs are both measured holding their pid and `restarts 0` across
+ten reloads, the metrics dog still serving a scrape and the bark dog still
+delivering.
 
-The bark dog is the exception, and it is on the list to fix. Its subscription
-belongs to one connection, so the stream ends when that connection does and
-the dog exits; autorestart replaces it, which costs one restart per reload on
-a dog that is otherwise healthy. It comes back on its own every time, and its
-restart budget starts a fresh window with each shepherd, so this is a count
-that reads wrong rather than an outage.
+A subscription belongs to one connection too, so a dog that holds one asks
+for a new one after a handover and reconciles whatever it missed. See
+"When the shepherd goes away" below for what a dog does when no successor
+answers.
 
 Those two are what shep ADDS, not the whole environment. A dog is a
 supervised process like any other, so it also starts from the small base
 every sheep gets: `PATH`, plus whichever of `HOME`, `USER`, `LANG` and `TZ`
-the shepherd itself has, plus `SHEP_INSTANCE`. Nothing from `[dog.<name>]`
-is in there.
+the shepherd itself has, plus `SHEP_INSTANCE`, `SHEP_NAME` and
+`SHEP_ENVIRONMENT`. `SHEP_NAME` carries the same value `SHEP_DOG_NAME`
+does. `SHEP_ENVIRONMENT` is what a provider dog reads to decide which
+environment to fetch and push for: a dog has no `environment` field of its
+own, so it resolves the same way a sheep with none does, against
+`[daemon] environment`. Nothing from `[<name>]` is in there.
 
 **Read `$SHEP_DOG_NAME` rather than hardcoding a name.** It holds the name
 you are registered under, which is the operator's `--name` if they gave one
@@ -330,13 +467,13 @@ and they answer different questions:
 | what | answers | on a mismatch |
 |---|---|---|
 | the version on line 1 | which build of the dog this is | reported |
-| `shep-protocol` | whether this dog can handshake with this shepherd at all | it cannot connect until one side moves |
+| `shep-protocol` | whether this dog can handshake with this shepherd at all | below the floor, it cannot connect; above it, shep accepts it |
 
 The format is line-oriented text:
 
 ```
 shep-log-rotate 0.1.3
-shep-protocol: 2
+shep-protocol: 8
 ```
 
 - Line 1 is `<name> <version>`. Shep takes the last whitespace-separated
@@ -363,17 +500,17 @@ question costs one argument on a process that was going to start anyway.
 
 | what the candidate answers | what `adopt` does |
 |---|---|
-| a `shep-protocol` this shep does not speak | refuses, before `shep.toml` is touched |
-| a protocol this shep speaks | adopts, and reports the version it gave |
+| a `shep-protocol` below `MIN_SUPPORTED` | refuses, before `shep.toml` is touched |
+| a `shep-protocol` at or above `MIN_SUPPORTED` | adopts, and reports the version it gave |
 | a version and no protocol line | adopts, and says the protocol is unknown |
 | nothing, or a run that exits non-zero | adopts, protocol unknown, no notice |
 
 The refusal names both numbers and both ways out:
 
 ```
-/usr/local/bin/shep-otel: this dog was built for shep protocol 1, and this
-shep speaks 2; reinstall the dog without --locked so it builds against the
-current shep-core, or run a shep that speaks 1
+/usr/local/bin/shep-otel: this dog was built for shep protocol 6, and this
+shep needs 8 or newer; reinstall the dog without --locked so it builds
+against the current shep-core, or run a shep that accepts protocol 6
 ```
 
 Only a stated protocol can refuse an adopt. The version is never compared
@@ -383,10 +520,10 @@ the ordinary case, not a skew, and comparing the two would report every
 dog that exists.
 
 A candidate gets one second to exit and another to have its output read,
-so two seconds is the worst case rather than one. It is killed either way,
-so a dog
-that ignores `--version` and runs costs that second and is adopted with an
-unknown protocol. It cannot hang the `adopt` that is vetting it.
+and an adopt runs two probes, so roughly four seconds is the worst case. Its
+process group is killed either way, so a dog that ignores both flags and
+runs costs that time and is adopted with an unknown protocol. It cannot
+hang the `adopt` that is vetting it.
 
 None of the answer is written down. `[daemon] adopted_dogs` records the
 path and nothing else, and a protocol stored at adopt time would be a copy
@@ -394,16 +531,27 @@ of a number that can change on disk with nothing watching. That is G12's
 row 5, the one case where the stored copy would be wrong exactly when it
 mattered, so the binary is asked again rather than remembered.
 
-Emitting it needs four lines and no dependency a dog does not already
-have:
+A dog written against `shep-client` answers this probe and the schema one
+below with a single call, as the first line of `main`:
 
 ```rust
-if std::env::args().nth(1).as_deref() == Some("--version") {
-    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-    println!("shep-protocol: {}", shep_client::PROTOCOL_VERSION);
-    return;
+fn main() {
+    shep_client::dogs::probe::<MyDogConfig>(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    );
+    // ...normal startup, reached only when this run is not a probe.
 }
 ```
+
+It prints the answer and exits when shep asked a question, and returns when
+it did not, so nothing after it runs on a probe: put it before anything has
+been opened. The name and the version are arguments because `env!` expands
+where it is written, and they are the two facts only the dog knows. The flag
+names, the `shep-protocol` key and the number it carries all come from shep,
+which is the point of the call: they were hand-typed from this page until it
+existed, and a typo in any of them read as "protocol unknown" with nothing
+saying so.
 
 Lines rather than JSON, because a human runs `--version` far more often
 than shep does, and because a stranger writing a dog in a language shep
@@ -423,9 +571,9 @@ the upgrade.
 
 ```
 notice[dog_binary_skew]: `log-rotate`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 3, and this shep speaks 2; restarting it brings it
-back on that binary, unable to connect. Run a shep that speaks 3, or reinstall
-the dog against protocol 2, and restart it again
+was built for shep protocol 6, and this shep needs 8 or newer; restarting it
+brings it back on that binary, unable to connect. Run a shep that accepts
+protocol 6, or reinstall the dog against protocol 8, and restart it again
 ```
 
 Then it restarts the dog. This is a warning and never a refusal: the
@@ -435,8 +583,8 @@ the message names both and picks neither.
 
 | what the binary answers | what `restart` does |
 |---|---|
-| a `shep-protocol` this shep does not speak | warns, then restarts |
-| a protocol this shep speaks | restarts, silently |
+| a `shep-protocol` below `MIN_SUPPORTED` | warns, then restarts |
+| a `shep-protocol` at or above `MIN_SUPPORTED` | restarts, silently |
 | a version and no protocol line | restarts, silently |
 | nothing, or a run that exits non-zero | restarts, silently |
 
@@ -464,7 +612,7 @@ shep runs it with `--version`, and a dog that does not RECOGNISE that flag
 ignores it and starts doing its ordinary job instead, with `SHEP_HOME`
 pointing at the live shepherd. So a rotator can rotate once and a bark dog
 can open a second subscription, for up to the budget above, before the
-process is killed.
+process and everything it forked are killed.
 
 Only dogs that ignore the flag are affected. A dog that recognises
 `--version` and exits, even without naming a protocol, does no work: its
@@ -504,21 +652,23 @@ question here for a contract to answer:
 ```
 $ shep --version
 shep 0.1.24
+speaks protocol 9, accepts 8 and newer
 $ shep dog metrics --version
 shep-dog 0.1.24
+speaks protocol 9, accepts 8 and newer
 ```
 
-Neither prints a `shep-protocol` line, and that is not a gap to close.
-The protocol a built-in dog speaks is the shepherd's own, because it is
-the shepherd's binary.
+Neither prints the `shep-protocol:` line an external dog's probe answers
+with, and that is not a gap to close. The protocol a built-in dog speaks
+is the shepherd's own, because it is the shepherd's binary.
 
 ### What this does not catch
 
-Two dogs can agree on the protocol and still be different code.
+Two dogs can clear the protocol floor and still be different code.
 `RpcError` gained a public `daemon_version` field inside the 0.1.x range;
 its fields are public and it has no constructor, so every literal built
 outside `shep-client` stopped compiling while `PROTOCOL_VERSION` stood
-still. Protocol equality is necessary and not sufficient.
+still. Speaking a protocol shep accepts is necessary and not sufficient.
 
 Closing that is deferred, and the reason is that `--version` cannot close
 it. A break of that kind is source level: it lands when the dog is
@@ -528,6 +678,268 @@ which daemon, and a version comparison standing in for one would report
 dogs that are fine. What catches it is the dog's own CI building against
 a current `shep-core`, which is where both published dogs' breakage was
 already visible and unread.
+
+## Answering `--schema`
+
+`shep adopt` asks a second question straight after the first: `--schema`,
+answered on stdout with a JSON Schema for the dog's own `[<name>]` section.
+Same shape as `--version` and the same budget: spawn, read, kill.
+
+Asked of the binary rather than over the socket, because the dog most in
+need of configuring is the one that is disabled or has never started, and it
+has no connection to answer on. Configure then enable is the order an
+operator wants.
+
+`probe` answers this flag too, from its type parameter. Derive `JsonSchema`
+and `DogConfig` on the type the dog deserializes its config into, and mark
+every field holding a credential:
+
+```rust
+use shep_client::dogs::DogConfig;
+use shep_client::shep_core::values::{MemSize, UpDuration};
+
+#[derive(Default, serde::Deserialize, schemars::JsonSchema, DogConfig)]
+#[serde(deny_unknown_fields, default)]
+struct MyDogConfig {
+    /// Where to POST. Doc comments become the schema's descriptions.
+    #[shep(secret)]
+    webhook: String,
+    /// What to watch.
+    path: String,
+    /// How much to buffer before posting: `4M`, `512K`, or a byte count.
+    batch: Option<MemSize>,
+    /// How long to wait between posts: `30s`, `500ms`, `2h`.
+    every: Option<UpDuration>,
+}
+```
+
+`#[shep(secret)]` says the field is a bearer credential, and shep renders
+one as `<set>`: replaceable, never read back. The attribute exists rather
+than the schemars extension it expands to because that extension key is a
+string the author types, and a transposed letter in it compiles, validates,
+marks nothing, and paints the credential on screen. Marking a field the
+schema does not have, which is what a `#[serde(rename)]` on it produces, is
+a refusal rather than a silent pass.
+
+**A mark names a field of the type shep asked about.** A credential one type
+down, in a nested struct or in a map's values, is not covered by a mark down
+there: mark the field that holds them. Bark's own `sinks` map is marked
+whole for this reason, and every sink in it carries a webhook URL.
+
+**`MemSize` and `UpDuration` need no dependency of their own.** A dog
+configuring a size or a timer reads them out of
+`shep_client::shep_core::values`, and shep-client's `schema` feature turns on
+the shep-core feature those two `JsonSchema` impls sit behind. Neither type
+has a `Default`, so a field holding one is an `Option` or carries
+`#[serde(default = "...")]`.
+
+**Answering is optional, exactly as `--version` is.** A dog that says
+nothing is adopted, recorded as having no schema, and refused nothing, which
+is every dog written before this contract. What it gives up is the pane
+below: with no schema to render a form from, its section stays a file an
+operator hand-edits. Nothing else changes.
+
+## What a schema buys: the settings pane
+
+`s` in `shep lookout`, then `e` on the dog's row, opens a form over its
+`[<name>]` section. One row per property, the value the section sets beside
+it, `(unset)` where it sets none, and `<set>` where a field is marked as a
+credential. A property the schema gives a default still reads `(unset)`: the
+pane shows the file, not the dog's own fallback. It writes as well, behind
+`--allow-control`, and it writes the section whole, so the comments in
+`dogs.toml` survive an edit shep made.
+
+The pane is flat, with no section headers, and its cost column is empty on
+every row. shep does not know what a dog's field costs; the dog does. The
+foot of the pane says so once, naming the dog, rather than guessing per
+row:
+
+```
+shep publishes the change; bark decides what to reload
+```
+
+A dog that publishes no schema gets no pane, and a line saying where its
+settings do live:
+
+```
+pydog publishes no schema; edit dogs.toml with $EDITOR
+```
+
+The schema is asked for again when the pane opens rather than cached from
+adopt time, so the dog does not have to be running. Configure then enable is
+the order an operator wants, and it works.
+
+**Asking runs it.** Opening the pane on an adopted dog spawns that binary
+with `--schema`, waits a second for an answer, then kills its whole process
+group, on the same terms `shep adopt` asks on. The group is what catches a
+dog that forks a worker before answering. A descendant that calls `setsid`
+leaves the group and survives it, and on Windows there is no group, so only
+the probe itself is killed. That is a third party's code executing because
+somebody pressed a key, so it is worth knowing before browsing the config of
+a dog you did not write. A built-in dog is shep's own binary and is never
+spawned.
+
+A dog that answers something that is not JSON gets one line, and is adopted
+anyway:
+
+```
+notice[dog_schema_unreadable]: pydog answered `--schema` with something that
+is not JSON, so shep has no description of its settings and they stay a
+hand-edited section. The dog is adopted and runs normally; this is a bug to
+report to whoever wrote it
+```
+
+Silence earns no such line, for the reason an unstated protocol earns none:
+it is the ordinary case, and a notice for every dog is how an operator
+learns to skip the one that matters.
+
+**The answer is not written down**, on the same rule the protocol number
+follows. `cargo install` replaces a binary with nothing watching, and a
+stale schema is worse than a stale version number, because it mislabels
+which field is a credential. Shep asks the binary again when it needs one.
+
+## What shep writes into a dog's own log
+
+A dog's log is the first place anyone looks when a dog misbehaves, and
+until recently it held only what the dog itself said. Everything shep had
+to say about it — the spawn, the handshake, the verdict — went to
+`shepd.err.log`, which is not the file shep's own error messages tell you
+to open.
+
+Shep now writes its own account into the dog's log as well, marked
+`[shep]` so it cannot be mistaken for the dog's output:
+
+```
+2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `log-rotate`, on protocol 8
+2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)
+```
+
+Six things get written: the spawn and the resolved binary path, an
+accepted handshake (once, the first time this shepherd hears from the
+dog — not on every reconnect), a refused handshake with both protocol
+numbers, the warning when a dog has gone quiet, the verdict when shep
+gives up on it, and the exit code or signal when its process stops.
+
+`shep bleats <name> --follow` sees the same lines live, marked the same
+way, interleaved with the dog's own output in arrival order.
+
+## When the shepherd goes away
+
+A dog's process outlives the shepherd that spawned it, and that is
+deliberate. `shep daemon reload` execs a successor over the same process:
+the listening socket crosses that exec, every accepted connection dies
+with the old image, and a dog notices only that its connection has ended.
+
+**A dog waits a bounded time for a shepherd to answer again, then exits if
+none does.** For the metrics dog this replaces staying up indefinitely: it
+used to reconnect for as long as the machine ran, so anything watching for
+that process still being alive will see it exit now. The wait is five
+seconds, the same `DOG_SILENCE_BUDGET` the
+shepherd allows a dog before acting on its silence.
+
+Both halves of that are load-bearing:
+
+- A dog that exits the moment its connection drops restarts once per
+  reload. `restarts` is the column you read to judge whether a dog is
+  healthy, so twenty reloads leave a healthy dog reporting twenty
+  restarts, and it loses whatever per-subject state it was keeping.
+- A dog that waits indefinitely is still running when an unrelated
+  shepherd binds that socket later. It attaches itself to that one,
+  beside that shepherd's own dog of the same kind, and doubles its alerts
+  quietly.
+
+A handover never comes near the budget. Measured over ten `shep daemon
+reload` runs against a three-sheep flock, the socket turned away a full
+connect, handshake and request for 38ms at the shortest and 254ms at the
+longest.
+
+An operator sees the difference in the `EXIT` column, and there are three
+answers rather than two. A dog that gave up waiting exits `5`. One a
+shepherd refused on protocol-version skew exits `6` without waiting at
+all, since the shepherd that refused is the party that can fix it. And a
+dog whose shepherd answered and then refused the request it made exits on
+that refusal's own code, `13` for an unsupported request, the same code
+the dog would have exited had the refusal come at startup instead of
+after a handover. The one an operator must never see is `5` for a
+shepherd that is running and answering, which would send them looking for
+a daemon that is not missing.
+
+### Your own dog has to do this too
+
+`ReconnectingClient` reconnects for as long as it is alive, so the bound
+is yours to impose. Two calls do it:
+
+- `link_lost(budget)` resolves once the link has been down for a whole
+  budget without coming back. Its clock runs only while the link is down,
+  and it never resolves while the link is up, so it belongs in a
+  `select!` arm beside whatever your dog does normally. For a dog that
+  touches its client only when something asks it to, like the metrics
+  dog, this is the only thing that will ever tell it.
+- `connected_within(budget)` waits for the link to come back. Use it when
+  you have something to re-arm.
+
+A subscription belongs to one connection generation, so it does not
+survive a handover and nothing re-arms it for you. That is on purpose: a
+stream that quietly papered over the gap would be worse than one that
+ends, because you would have no way to know there was a gap. Subscribe
+again, and treat the gap as a gap. Whatever the bus carried while you had
+no subscription is gone, and the only way to learn what changed is to ask
+the shepherd.
+
+`connected_within` returning `Ok` tells you where to try, not that it will
+work. The supervisor learns a connection died a moment after the socket
+does, so its answer can still read as connected for that moment, and a
+live connection can drop again immediately. Ask for what you want, and
+come back while your budget lasts.
+
+**Bound that retry loop yourself.** `connected_within` answers `Ok` for a
+link that is already up without consulting the budget at all, which is
+what makes it cheap to call in a loop. It also means it cannot be the
+thing that ends one. A shepherd that answers the handshake and then fails
+whatever you ask it, which a shepherd slow enough to miss your request's
+deadline does, leaves a loop written this way running for as long as that
+shepherd stays up:
+
+```rust
+// Wrong. Nothing here stops while the link is up and the work keeps failing.
+loop {
+    let left = budget.saturating_sub(started.elapsed());
+    client.connected_within(left).await?;
+    match client.subscribe(topics.clone()).await {
+        Ok(stream) => return Ok(stream),
+        Err(_) => continue,
+    }
+}
+```
+
+Check the budget at the top of your own loop and return when it is spent.
+shep's bark dog had this exact bug during development, and a dog with it
+stays online on every column a listing has while doing nothing at all.
+
+## When a dog stops answering
+
+A dog that is running but never handshakes gets one restart from disk and
+then a verdict. That verdict now says what the shepherd actually watched
+happen, because the three cases it could not previously tell apart have
+opposite fixes:
+
+- **Nothing has ever connected from the dog's process.** The dog is not
+  reaching the socket. Rebuild or reinstall it.
+- **Its process has connected, and never named a dog in its handshake.**
+  The dog is talking to shep and may be serving every request it is
+  asked; what it does not do is say who it is. Reinstalling the same
+  build will not change that — it is built against shep-client older than
+  0.1.23, or it calls `Client::connect` where it should call
+  `ReconnectingClient::connect_as_dog`. Rebuild it against a current
+  shep-client.
+- **Shep could not tell which process opened the connections.** Windows
+  has no peer identity by design, and some unix platforms decline to
+  report a pid. Neither of the two above is ruled out, so shep names both
+  and tells you to read the dog's own log, where a dog that cannot reach
+  the socket says so and one that is merely anonymous does not.
+
+Every one of them ends with a command to run.
 
 ## When a dog dies
 

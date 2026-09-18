@@ -19,13 +19,41 @@ pub struct ProcessEntry {
     pub id: u32,
     /// Resolved application spec
     pub spec: ResolvedApp,
+    /// The config a file load left for this sheep's next spawn.
+    ///
+    /// `None` outside the window between a load and the respawn that
+    /// promotes it. `spec` still describes what the running child was
+    /// spawned from. A whole config, not the field-name list a load's
+    /// per-app report also calls `pending`.
+    pub pending: Option<ResolvedApp>,
+    /// Whether the config in [`Self::pending`] changes who this sheep runs
+    /// as, so promoting it must re-resolve [`Self::credentials`].
+    ///
+    /// Recorded when the load parks the config, against the spec held at
+    /// that moment; not recomputed later, since `spec` can be rewritten by
+    /// another instance's respawn before this one's own load lands. Stays
+    /// set until [`Self::pending`] is promoted. `false` whenever
+    /// [`Self::pending`] is `None`.
+    pub pending_reidentifies: bool,
+    /// The [`AppConfig`](shep_core::config::AppConfig) field names an
+    /// operator has set on this sheep that its current Flockfile does not
+    /// declare, in field-name order. Empty for a sheep no load has ever
+    /// touched.
+    ///
+    /// Cached rather than read from the override store at listing time,
+    /// since `to_info` runs far more often than the store changes. Kept in
+    /// sync by every path that registers or carries a sheep: a config load
+    /// writes it from the same ledger it persists to the store; a reload
+    /// carries it off the drainee; a fresh registration reads
+    /// `Actor::overridden_for`. Names only, never values.
+    pub overridden: Vec<String>,
     /// Instance number within the app (for clustered apps, 0..instances-1)
     pub instance: u32,
     /// Current lifecycle status
     pub status: ProcStatus,
     /// OS process ID (None if not running)
     pub pid: Option<u32>,
-    /// Count of respawns performed (initial spawn is NOT a restart)
+    /// Count of respawns performed (initial spawn is not a restart)
     pub restarts: u32,
     /// Time process started (None if not running; paused-clock-aware tokio::time::Instant)
     pub started_at: Option<tokio::time::Instant>,
@@ -33,71 +61,52 @@ pub struct ProcessEntry {
     pub budget: RestartBudget,
     /// Which half of a reload this entry is, if any.
     ///
-    /// `None` for an ordinary instance, which is every entry outside the few
-    /// seconds a reload of its app is in flight. The supervisor reads this on
-    /// two paths that would otherwise get a reload's entries badly wrong — a
-    /// readiness wait resolving, and an exit being decided — so the variant
-    /// docs below are what those paths are keying on.
+    /// `None` outside the few seconds its app's reload is in flight. Read by
+    /// the supervisor when a readiness wait resolves and when an exit is
+    /// decided; the variant docs below are what those reads key on.
     pub reload: ReloadState,
     /// The identity this entry's next spawn runs under.
     ///
-    /// Resolved once — at the initial `Start` for an entry that got one, at
-    /// the first spawn otherwise — and reused for every later respawn, so a
-    /// restart never re-touches the passwd database and never changes a
-    /// running app's identity underneath it (see
-    /// [`crate::privilege::resolve`]).
+    /// Resolved once, at the entry's first `Start` or spawn, and reused for
+    /// every later respawn, so a restart never re-touches the passwd
+    /// database or changes a running app's identity underneath it (see
+    /// [`crate::privilege::resolve`]). [`SpawnIdentity::Unresolved`] means
+    /// never looked up, not "no user configured": starting it as the
+    /// shepherd would be a silent privilege downgrade.
     ///
-    /// [`SpawnIdentity::Unresolved`] until that happens, and that is a
-    /// different fact from an app that asked for no user at all: an entry
-    /// registered at rest from the muster roll, or registered `Errored`
-    /// because its `user` could not be resolved, has never been looked up,
-    /// and starting it as the shepherd would be a silent privilege
-    /// downgrade rather than the configured behaviour.
+    /// The one exception: a parked `user`/`group` change
+    /// ([`Self::pending_reidentifies`]) resets this to `Unresolved` so the
+    /// promotion's spawn resolves the new identity.
     pub credentials: SpawnIdentity,
     /// Where this instance's stdout is appended, copied from the
     /// [`SpawnSpec`](crate::runner::SpawnSpec) that
     /// [`assemble`](crate::assemble::assemble) built.
     ///
-    /// Carried here so the wire-facing `ProcessInfo` can report it without
-    /// re-deriving it: only the assembler knows whether the app set an
-    /// explicit `out_file` or takes the `merge_logs`-dependent default, and
-    /// a second copy of that rule would be free to drift out of agreement
-    /// with the path the child is actually writing to. `spec` and
-    /// `instance` never change after registration, so neither does this.
+    /// Carried here so `ProcessInfo` can report it without re-deriving the
+    /// `merge_logs`-dependent default. Set at registration and refreshed by
+    /// every respawn, since `out_file` is `ApplyGroup::NeedsRespawn`: a
+    /// config load leaves this at the old value until the respawn that
+    /// promotes [`Self::pending`] moves the child onto the new one.
     pub out_file: PathBuf,
     /// Where this instance's stderr is appended, resolved exactly as
     /// [`Self::out_file`].
     pub err_file: PathBuf,
     /// Set when this entry is a dog, naming where the dog came from.
     ///
-    /// A MARKER, and deliberately not a second registry: reload, watch,
-    /// cron, the memory ceiling, the log plane and the muster roll all
-    /// supervise a dog exactly as they supervise a sheep, and a field is
-    /// what keeps that true. It is read where the question is *where did
-    /// this come from* (a listing's source column) or *who should see this*
-    /// (a wildcard selector, a flock table). It is never read to decide how
-    /// a process is supervised — a different kill ladder, backoff curve or
-    /// restart budget keyed on this field is the signal that the separate
-    /// registry should have been built instead.
+    /// A marker only: reload, watch, cron, the memory ceiling, the log
+    /// plane and the muster roll supervise a dog exactly as a sheep. Read
+    /// to answer where it came from or who should see it, never to decide
+    /// how it is supervised.
     pub dog: Option<DogSource>,
     /// How this instance's process most recently stopped existing.
     ///
-    /// Set unconditionally by `Actor::handle_exited` — the one place a
-    /// process under a registered id stops existing — for every exit,
-    /// including an operator's own `stop`/`delete`: the process still
-    /// genuinely stopped, and that stays true information regardless of who
-    /// asked for it. `None` for an entry that has never exited under this
-    /// daemon (a fresh [`Self::id`] from `Actor::spawn_fresh` or
-    /// `Actor::register_at_rest` — both private to this crate, so named in
-    /// code font rather than linked).
+    /// Set by `Actor::handle_exited` for every exit, including an
+    /// operator's own `stop`/`delete`. `None` for an entry that has never
+    /// exited under this daemon.
     ///
-    /// Survives a respawn on purpose: `Actor::respawn` mutates this same
-    /// entry in place and never touches this field, so it keeps answering
-    /// "why did this instance last stop" through the
-    /// instance's next run, not just while it is down. A reload's
-    /// replacement entry (`spawn_replacement`) copies it from the drainee it
-    /// replaces for the same reason `restarts` and `dog` do — the
-    /// replacement is the same instance continuing, not a new one.
+    /// Survives a respawn: `Actor::respawn` never touches this field, so it
+    /// keeps answering "why did this last stop" into the next run. A
+    /// reload's replacement entry copies it from the drainee it replaces.
     pub last_exit: Option<ExitInfo>,
 }
 
@@ -126,9 +135,19 @@ impl RestartBudget {
             self.unstable_count = 0;
             Stability::Stable
         } else {
-            self.unstable_count += 1;
+            self.note_failed_start();
             Stability::Unstable
         }
+    }
+
+    /// Record a spawn that never produced a process.
+    ///
+    /// Always unstable, since there is no uptime to classify: an app with
+    /// `min_uptime = 0` put through `note_exit` with a zero uptime would be
+    /// called stable, and a stable count buys an immediate retry, which for
+    /// a failure that repeats is a loop with nothing between its turns.
+    pub fn note_failed_start(&mut self) {
+        self.unstable_count += 1;
     }
 
     /// Get the current consecutive-unstable-exit count
@@ -136,11 +155,9 @@ impl RestartBudget {
         self.unstable_count
     }
 
-    /// Check if the restart budget is exhausted.
-    ///
-    /// Spec §4: the counter *reaching* `max_restarts` consecutive unstable
-    /// exits is what errors the process — i.e. exhausted on the Nth
-    /// unstable exit where N = `max_restarts` (N-1 restarts performed).
+    /// Whether the restart budget is exhausted: `unstable_count` reaching
+    /// `max_restarts` errors the process on the Nth unstable exit (N-1
+    /// restarts performed).
     pub fn exhausted(&self, max_restarts: u32) -> bool {
         self.unstable_count >= max_restarts
     }
@@ -151,61 +168,38 @@ impl RestartBudget {
     }
 }
 
-/// Which half of a reload's swap a [`ProcessEntry`] is, if either
+/// Which half of a reload's swap a [`ProcessEntry`] is, if either.
 ///
-/// A reload runs two entries at once — the drainee (old, going away) and the
-/// replacement (new) — and the two non-`None` variants split across them
-/// rather than sharing one: [`Self::Drainee`] lives on the drainee,
-/// [`Self::Replacement`] lives on the replacement. The variants are named for
-/// the ROLE they mark rather than for the phase the job was in when they were
-/// written, because they outlive that phase in both directions: a drainee
-/// carries its marker through the whole drain, and a replacement carries its
-/// own from the moment it is spawned. What the job is doing is `ReloadPhase`'s
-/// to say, in `supervisor`.
+/// [`Self::Drainee`] and [`Self::Replacement`] are named for the role they
+/// mark, not the phase the job was in when set, since each outlives that
+/// phase. Only the drainee holds a back-reference to its replacement's id;
+/// the reverse lives on the reload job itself.
 ///
-/// Getting from one half to the other belongs to the reload job, and only the
-/// drainee's direction is answered here at all: the replacement's
-/// back-reference lives on that job, in the entry ids the machinery around it
-/// navigates by.
-///
-/// Serialized because a handover carries it: a successor that installed a
-/// drainee or a replacement without this would route that instance's exit to
-/// `decide_on_exit` rather than to the reload machinery, which for an
-/// `autorestart` app respawns the old code into a slot the replacement owns.
-/// `snake_case` on the wire to match `ProcStatus`'s own spelling, the blob's
-/// nearest neighbour, since the blob is a JSON file an operator may read.
+/// Serialized: a handover successor that installed an entry without this
+/// would route its exit to `decide_on_exit` instead of the reload
+/// machinery. `snake_case` to match `ProcStatus`'s wire spelling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReloadState {
     /// Not half of any swap
     None,
-    /// This entry is the instance being replaced
+    /// This entry is the instance being replaced.
     ///
-    /// The instance being replaced is what names its replacement, not the
-    /// other way around. Sibling to [`ProcStatus::Stopping`] on this same
-    /// entry's `status`, which is what every guard that only reads `status`
-    /// sees; this variant is what says why, and who is coming to take its
-    /// place.
+    /// Pairs with `status ==` [`ProcStatus::Stopping`] on the same entry;
+    /// this variant says why, and names the replacement.
     Drainee {
-        /// [`ProcessEntry::id`] of the new replacement instance — an entry
-        /// ID, not an OS `pid`: the replacement is looked up by entry, and
-        /// only gains an OS pid once it is actually spawned.
+        /// [`ProcessEntry::id`] of the new replacement instance, not an OS
+        /// `pid`.
         ///
-        /// `None` for the whole of a SERIAL reload's drain, which is the one
-        /// arrangement in which this instance is being replaced by something
-        /// that does not exist yet: a serial reload empties the instance slot
-        /// before it spawns into it, so there is no replacement to name until
-        /// this instance's own exit is handled. It is `Some` from the moment
-        /// there is an id to put in it, in either mode.
+        /// `None` for the whole of a serial reload's drain, since that mode
+        /// empties the slot before spawning into it, so there is nothing to
+        /// name until this instance's exit is handled.
         new_id: Option<u32>,
     },
-    /// This entry is the replacement
+    /// This entry is the replacement.
     ///
-    /// Says only that: this record is the half that arrived. The drainee it
-    /// must outlive is a different record, carrying `status =
-    /// `[`ProcStatus::Stopping`]` and set in the same logical transition —
-    /// reachable from the reload job, which is what every caller that needs
-    /// it already holds.
+    /// The drainee it must outlive is a separate record, reachable from the
+    /// reload job rather than from here.
     Replacement,
 }
 

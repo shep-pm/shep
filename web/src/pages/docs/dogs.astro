@@ -1,25 +1,32 @@
 ---
 /*
- * Dogs (docs/dogs.md, 309 lines, ported for a reader who is not a
- * contributor). Every command and table below was run against
- * target/release/shep during page-writing — see the commit message for the
- * transcript. Quality bar: getting-started.astro.
+ * Dogs (docs/dogs.md, ported for a reader who is not a contributor).
+ * Every command and table below was run against target/release/shep during
+ * page-writing: the commit message carries the transcript. Quality bar:
+ * getting-started.astro.
+ *
+ * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
+ * Task 4: a short version up top; the log-format, connectivity-troubleshooting
+ * and dog-death sections moved behind <details>, plus the live-reload
+ * mechanics inside the config section.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 
 const barksDemo = `$ shep barks
 WHEN                 RULE    SUBJECT  MESSAGE                                                                     SINKS
 2026-08-29 21:06:35  daemon  flaky    dog flaky exhausted its restart budget: 15 restarts against a budget of 16  -`;
+
+const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; its process is pid 5512
+2026-09-02T14:22:31.480+02:00 [shep] shep accepted this dog's handshake; it is registered with this shepherd as \`log-rotate\`, on protocol 8
+2026-09-02T14:22:31.492+02:00 rotating web-0-out.log (12.4 MiB)`;
 ---
 
 <DocsLayout
-  title="Dogs"
-  description="The shepherd's own plugins: built-in metrics and alerting, and how to adopt a binary of your own."
-  crumb="Concepts / Dogs"
   activeSlug="dogs"
 >
   <article>
@@ -27,23 +34,27 @@ WHEN                 RULE    SUBJECT  MESSAGE                                   
     <ReferencePills slug="dogs" />
     <p class="lede">
       A dog is a process the shepherd runs for its own sake, not for yours.
-      It watches the flock instead of being part of it. Two ship inside the
+      It watches the flock instead of being part of it. Two ship inside the{" "}
       <code>shep</code> binary: <code>metrics</code>, a Prometheus endpoint,
-      and <code>bark</code>, webhook alerts. You can also point
+      and <code>bark</code>, webhook alerts. You can also point{" "}
       <code>shep adopt</code> at a binary of your own and the shepherd will
       supervise it the same way.
     </p>
+
+    <ShortVersion>
+      <CodeBlock>{`$ shep enable metrics`}</CodeBlock>
+    </ShortVersion>
 
     <Callout variant="note">
       A dog is not the same thing as a sheep with a shepherd channel: see{" "}
       <a href="/docs/shepherd-channel">the shepherd channel</a> for that.
       A sheep opens fd 3 and talks newline JSON to the daemon that already
-      owns it. A dog is a separate client: it connects to
+      owns it. A dog is a separate client: it connects to{" "}
       <code>shep.sock</code> and speaks the same wire protocol{" "}
       <code>shep flock</code> or <code>shep describe</code> would.
     </Callout>
 
-    <h2>What a dog actually is</h2>
+    <h2 id="what-a-dog-actually-is">What a dog actually is</h2>
     <p>
       Underneath, a dog is not a second kind of supervised process. It's an
       ordinary sheep with a marker on its entry saying where it came from
@@ -63,7 +74,7 @@ WHEN                 RULE    SUBJECT  MESSAGE                                   
       while a sweep of everything else leaves it running.
     </p>
 
-    <h2>Turning one on</h2>
+    <h2 id="turning-one-on">Turning one on</h2>
     <VerbSignature verb="enable" usage="shep enable <name>">
       <p>
         Writes <code>shep.toml</code> first, then starts the dog now if a
@@ -73,11 +84,20 @@ WHEN                 RULE    SUBJECT  MESSAGE                                   
         behalf. Two verbs do, and neither is a dog verb:{" "}
         <code>shep start</code> and <code>shep muster</code>.
       </p>
+      <p>
+        Takes a built-in name or one <code>shep adopt</code> has recorded,
+        and refuses anything else before it writes. A refused enable leaves{" "}
+        <code>shep.toml</code> untouched. The check reads{" "}
+        <code>[daemon] adopted_dogs</code> rather than the shepherd, so it
+        holds with nothing listening.
+      </p>
     </VerbSignature>
     <VerbSignature verb="disable" usage="shep disable <name>">
       <p>
         The mirror: stops the dog if one is running and removes it from the
-        boot list either way.
+        boot list either way. It carries no name check of its own,
+        deliberately, so it is what takes a hand-written{" "}
+        <code>enabled_dogs</code> entry back out.
       </p>
     </VerbSignature>
     <CodeBlock>{`$ shep enable metrics
@@ -89,8 +109,8 @@ ID  NAME     STATUS  PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE
 1   metrics  online  49313  0         -     -    10.9M  2s      built-in
 
 $ shep flock
-ID  NAME  STATUS  PID    RESTARTS  EXIT  CPU  MEM   UPTIME  FOLD  SMIT
-0   web   online  49290  0         -     -    3.0M  2s      -     -
+ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+0   web   online  49290  0         -     -    -    3.0M  2s      -     -
 
 Dogs
 ID  NAME     STATUS  PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE
@@ -98,17 +118,28 @@ ID  NAME     STATUS  PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE
 
 $ shep disable metrics`}</CodeBlock>
     <p class="fine">
+      The guard is on the verb, not on the file. Write a name into{" "}
+      <code>[daemon] enabled_dogs</code> by hand and the shepherd still
+      reads it at boot, still treats anything outside{" "}
+      <code>[daemon] adopted_dogs</code> as built-in, and spawns{" "}
+      <code>shep dog &lt;name&gt;</code> for it once per restart until the
+      budget is spent. From <code>shep dogs</code> that reads as a climbing
+      restart count against a <code>SOURCE</code> of <code>built-in</code>,
+      for a name that is not one; <code>shep bleats &lt;name&gt;</code> is
+      where the refusal itself shows up.
+    </p>
+    <p class="fine">
       The dogs table shares its column order with the sheep table above it,
       so a dog and a sheep read the same way. <code>SOURCE</code> is the one
-      column only dogs have, and <code>FOLD</code>/<code>SMIT</code> the two
-      only sheep have. See <a href="/docs/output#the-dogs-table">terminal
+      column only dogs have, and <code>CFG</code>, <code>FOLD</code> and{" "}
+      <code>SMIT</code> the three only sheep have. See <a href="/docs/output#the-dogs-table">terminal
       output</a>.
     </p>
     <p class="fine">
       A dog whose <code>STATUS</code> reads <code>silent</code> is running
-      but has never spoken to the shepherd, usually because a
+      but has never spoken to the shepherd, usually because a{" "}
       <code>cargo install</code> replaced its binary and the old process is
-      still up. <code>shep bleats &lt;dog&gt;</code> has the refusal;
+      still up. <code>shep bleats &lt;dog&gt;</code> has the refusal;{" "}
       <code>shep restart &lt;dog&gt;</code> is the fix. See <a
       href="/docs/output#a-dog-that-never-answers">terminal output</a>.
     </p>
@@ -116,12 +147,41 @@ $ shep disable metrics`}</CodeBlock>
       Running <code>enable</code> and <code>adopt</code> at once from a
       provisioning script is safe: each takes an exclusive lock on{" "}
       <code>shep.toml</code> for its whole read-edit-write, so the second
-      waits its turn.
+      waits its turn. <code>dogs.toml</code> has its own lock on the same
+      terms, held by both things that write it: the migration a boot runs
+      once, and the config pane's own edits. A boot holding both takes{" "}
+      <code>shep.toml</code>'s first.
     </p>
 
-    <h2>Configuration lives on the socket, not the environment</h2>
+    <h2 id="when-a-dog-starts">When a dog starts</h2>
     <p>
-      A dog's settings live under <code>[dog.&lt;name&gt;]</code> in{" "}
+      After the flock, by default. A metrics dog that came up first would
+      spend the boot answering for a flock that is not running yet.
+    </p>
+    <p>
+      A log-rotation dog is the other way round, since it has to be running
+      before a sheep starts writing. Put its name in{" "}
+      <code>[daemon] boot_first_dogs</code> and it runs ahead of every
+      sheep:
+    </p>
+    <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon]
+enabled_dogs    = ["metrics", "log-rotate"]
+boot_first_dogs = ["log-rotate"]`}</CodeBlock>
+    <p class="fine">
+      A name here that is not in <code>enabled_dogs</code> is inert:
+      promoting a dog does not enable it. This is <code>shep.toml</code>{" "}
+      rather than <code>dogs.toml</code> for the same reason{" "}
+      <code>adopted_dogs</code> is: the <code>[&lt;name&gt;]</code> table in{" "}
+      <code>dogs.toml</code> is passed through to the dog itself, and a
+      shep-owned key inside it would collide with a third-party dog's own
+      schema. See <a href="/docs/boot-order">boot order</a> for the stages
+      this positions a dog in.
+    </p>
+
+    <h2 id="configuration-lives-on-the-socket-not-the-environment">Configuration lives on the socket, not the environment</h2>
+    <p>
+      A dog's settings live under <code>[&lt;name&gt;]</code> in{" "}
+      <code>$SHEP_HOME/dogs.toml</code>, hand-editable and separate from{" "}
       <code>shep.toml</code>, and they never travel through the dog's
       environment. Instead the dog connects to the socket and asks for its
       own section over the wire. The daemon reads the file fresh for every
@@ -130,25 +190,87 @@ $ shep disable metrics`}</CodeBlock>
     <p>
       An environment variable is readable from the process table, inherited
       by every child the dog spawns, and captured into a crash dump.{" "}
-      <code>[dog.bark.sinks]</code> routinely holds a webhook URL, and a
+      <code>[bark.sinks]</code> routinely holds a webhook URL, and a
       webhook URL is a bearer credential. Keeping the whole section off the
       environment means nobody has to remember which dog's config is
       sensitive.
     </p>
     <Callout variant="careful">
-      Editing <code>[dog.&lt;name&gt;]</code> does not reach a dog that's
-      already running. It asked for its section once, at startup, and
-      nothing pushes it a new one. <code>shep disable &lt;name&gt; &amp;&amp;
-      shep enable &lt;name&gt;</code> is what re-reads it: a fresh process
-      asking a fresh question.
+      Editing <code>[&lt;name&gt;]</code> in <code>dogs.toml</code> does not
+      reach a dog that's already running. It asked for its section once, at
+      startup, and nothing pushes it a new one. <code>shep disable
+      &lt;name&gt; &amp;&amp; shep enable &lt;name&gt;</code> is what
+      re-reads it: a fresh process asking a fresh question.
     </Callout>
 
-    <h2>The metrics dog</h2>
+    <details>
+      <summary>Live updates without a restart</summary>
+    <p>
+      A dog can subscribe instead of waiting to be bounced. Shep publishes
+      on <code>config.dog.&lt;name&gt;</code> when it changes a dog's
+      section itself, and a dog holding a subscription re-asks for its
+      section and decides what the change means: swap the values, rebind a
+      listener, or ask for its own restart. The frame says that the section
+      changed and nothing about what is in it. Bark subscribes and swaps in
+      place, since sinks and rules are pure data with no OS resource
+      attached. Two things publish today: the boot that moves a section out
+      of <code>shep.toml</code>, and a write from{" "}
+      <a href="/docs/lookout">the dog config pane</a>, which is why an edit
+      made there reaches a running bark without bouncing it. A hand edit
+      still needs the stop and start above.
+    </p>
+    <Callout variant="careful">
+      A dog that restarts itself on a config change has to say so in its own
+      log. Nothing else can tell that apart from a crash loop, and the
+      restart count is the column an operator reads as instability.
+    </Callout>
+    <Callout variant="careful">
+      A section that used to live in <code>shep.toml</code> migrates to{" "}
+      <code>dogs.toml</code> once, on the first boot of a shep carrying this
+      move, and it prints which dogs moved. Any boot does it, including{" "}
+      <code>shep runtime</code> and <code>shep dev</code>. If a name carries
+      values in both files, the daemon refuses to boot until one of the two
+      sections is deleted, and <code>shep daemon reload</code> refuses before
+      it signals the shepherd it was going to replace. An empty{" "}
+      <code>[dog.&lt;name&gt;]</code> is not a value and refuses nothing. A
+      dog present in only one file migrates or starts normally.
+    </Callout>
+    </details>
+
+    <details>
+      <summary>What a provider dog pushes</summary>
+    <p>
+      A dog can also push, not only be configured. A provider dog sends{" "}
+      <code>Request::PutSecrets</code> with its own registered name as the
+      namespace, replacing whatever that namespace held for one environment
+      rather than merging into it. Pushed values are cached to{" "}
+      <code>$SHEP_HOME/secrets-cache.json</code> by default, so a reboot
+      does not leave every sheep that reads them waiting on the dog and a
+      network round trip; <code>persist = false</code> in the dog's own
+      section of <code>dogs.toml</code> turns that off. See{" "}
+      <a href="/docs/secrets">Secrets</a> for the token that reads a pushed
+      value, and for what a namespace does and does not defend against.
+    </p>
+    <Callout variant="careful">
+      A namespace can legally contain a dot, and an unquoted section header
+      does not mean what it looks like. <code>[vercel.prod]</code> in{" "}
+      <code>dogs.toml</code> parses as a nested TOML table, key{" "}
+      <code>prod</code> inside table <code>vercel</code>, not as one
+      literal section named <code>vercel.prod</code>. A namespace with a
+      dot in it needs a quoted header, <code>["vercel.prod"]</code>, or the
+      section never matches and <code>persist</code> silently falls back to
+      its default of <code>true</code>. This is ordinary TOML, and the same
+      trap catches any dog name with a dot in it, not only a provider's
+      namespace.
+    </Callout>
+    </details>
+
+    <h2 id="the-metrics-dog">The metrics dog</h2>
     <p>
       <code>shep enable metrics</code> serves Prometheus exposition text over
       plain HTTP, bound to <code>127.0.0.1:9615</code> by default:
     </p>
-    <CodeBlock label="shep.toml">{`[dog.metrics]
+    <CodeBlock label="dogs.toml">{`[metrics]
 bind = "127.0.0.1:9615"`}</CodeBlock>
     <p>
       Nothing accumulates between scrapes. Every request rebuilds the
@@ -163,24 +285,27 @@ shep_dog_up{dog="metrics",source="built-in"} 1
 shep_daemon_up{version="0.1.0"} 1
 shep_daemon_pid 39898
 shep_host_memory_total_bytes 51539607552`}</CodeBlock>
+    <details>
+      <summary>Full metric reference</summary>
     <div class="metrics-table">
       <div class="row header">
         <span>Metric</span>
         <span>Meaning</span>
       </div>
-      <div class="row"><span><code>shep_sheep_cpu_percent</code></span> <span>Tree CPU as a percentage of one core, over the last sampling window.</span></div>
-      <div class="row"><span><code>shep_sheep_memory_bytes</code></span> <span>Tree resident set size in bytes.</span></div>
-      <div class="row"><span><code>shep_sheep_restart_total</code></span> <span>Restart count since registration.</span></div>
-      <div class="row"><span><code>shep_sheep_uptime_seconds</code></span> <span>Seconds since this sheep's last successful start.</span></div>
-      <div class="row"><span><code>shep_sheep_status</code></span> <span>1 for the status this sheep is currently in, 0 for every other status.</span></div>
-      <div class="row"><span><code>shep_dog_up</code></span> <span>1 when this dog is online, 0 otherwise.</span></div>
-      <div class="row"><span><code>shep_daemon_up</code></span> <span>Always 1: the scrape reached the shepherd.</span></div>
-      <div class="row"><span><code>shep_daemon_pid</code></span> <span>The shepherd's own pid, so a restart is visible as a step change.</span></div>
-      <div class="row"><span><code>shep_host_memory_total_bytes</code></span> <span>Total physical memory on the host.</span></div>
-      <div class="row"><span><code>shep_host_memory_used_bytes</code></span> <span>Memory in use on the host, as the platform reports it.</span></div>
-      <div class="row"><span><code>shep_host_processes</code></span> <span>Number of processes running on the host, the flock included.</span></div>
-      <div class="row"><span><code>shep_host_uptime_seconds</code></span> <span>Seconds since the host booted.</span></div>
+      <div class="row"><span><code>shep_sheep_cpu_percent</code></span> <span data-label="Meaning">Tree CPU as a percentage of one core, over the last sampling window.</span></div>
+      <div class="row"><span><code>shep_sheep_memory_bytes</code></span> <span data-label="Meaning">Tree resident set size in bytes.</span></div>
+      <div class="row"><span><code>shep_sheep_restart_total</code></span> <span data-label="Meaning">Restart count since registration.</span></div>
+      <div class="row"><span><code>shep_sheep_uptime_seconds</code></span> <span data-label="Meaning">Seconds since this sheep's last successful start.</span></div>
+      <div class="row"><span><code>shep_sheep_status</code></span> <span data-label="Meaning">1 for the status this sheep is currently in, 0 for every other status.</span></div>
+      <div class="row"><span><code>shep_dog_up</code></span> <span data-label="Meaning">1 when this dog is online, 0 otherwise.</span></div>
+      <div class="row"><span><code>shep_daemon_up</code></span> <span data-label="Meaning">Always 1: the scrape reached the shepherd.</span></div>
+      <div class="row"><span><code>shep_daemon_pid</code></span> <span data-label="Meaning">The shepherd's own pid, so a restart is visible as a step change.</span></div>
+      <div class="row"><span><code>shep_host_memory_total_bytes</code></span> <span data-label="Meaning">Total physical memory on the host.</span></div>
+      <div class="row"><span><code>shep_host_memory_used_bytes</code></span> <span data-label="Meaning">Memory in use on the host, as the platform reports it.</span></div>
+      <div class="row"><span><code>shep_host_processes</code></span> <span data-label="Meaning">Number of processes running on the host, the flock included.</span></div>
+      <div class="row"><span><code>shep_host_uptime_seconds</code></span> <span data-label="Meaning">Seconds since the host booted.</span></div>
     </div>
+    </details>
     <p class="fine">
       A reference Grafana dashboard built against this exact metric set ships
       in <code>assets/grafana/</code>. The default bind is loopback on
@@ -191,26 +316,35 @@ shep_host_memory_total_bytes 51539607552`}</CodeBlock>
       to lock it down.
     </p>
 
-    <h2>The bark dog</h2>
+    <h2 id="the-bark-dog">The bark dog</h2>
     <p>
       <code>shep enable bark</code> subscribes to the shepherd's event bus
       and delivers to named webhook sinks:
     </p>
-    <CodeBlock label="shep.toml">{`[dog.bark.sinks]
+    <CodeBlock label="dogs.toml">{`[bark.sinks]
 oncall = { kind = "discord", url = "https://discord.com/api/webhooks/..." }
 audit = { kind = "json", url = "https://example.internal/hook" }
 
-[[dog.bark.rules]]
+[[bark.rules]]
 on = "gave_up"
 sinks = ["oncall", "audit"]
 
-[[dog.bark.rules]]
+[[bark.rules]]
 on = "restart_rate"
 restarts = 5
 within = "2m"
 sinks = ["oncall"]`}</CodeBlock>
+    <p class="fine">
+      A sink URL can't carry credentials.{" "}
+      <code>https://user:pass@hooks.example.com/</code> is refused when{" "}
+      <code>dogs.toml</code> is read, not when a rule first fires: nothing
+      here sends an <code>Authorization</code> header, so the pair could
+      only be discarded or sent as part of a hostname. Discord and Slack put
+      the secret in the path instead, which is why the whole URL is a
+      credential.
+    </p>
     <p>
-      Leave <code>[dog.bark.rules]</code> out and bark doesn't go quiet:
+      Leave <code>[[bark.rules]]</code> out and bark doesn't go quiet:
       one rule is built in by default, firing on every configured sink
       whenever a sheep reaches <code>Errored</code>. That's the alert that
       must not be missed, so it needs no opt-in. <code>restart_rate</code>{" "}
@@ -221,7 +355,7 @@ sinks = ["oncall"]`}</CodeBlock>
     </p>
     <Callout variant="careful">
       Verified directly: enable <code>bark</code> with{" "}
-      <code>[dog.bark.sinks]</code> absent entirely and it does not run
+      <code>[bark.sinks]</code> absent entirely and it does not run
       quietly with nowhere to send alerts: the default rule still exists
       with zero sinks to route to, bark logs{" "}
       <code>rule 0 routes to no sink at all</code> on every restart attempt,
@@ -249,16 +383,14 @@ sinks = ["oncall"]`}</CodeBlock>
       shepherd itself when an enabled dog exhausts its own restart budget.
     </p>
 
-    <h2>Reading the alert history</h2>
+    <h2 id="reading-the-alert-history">Reading the alert history</h2>
     <VerbSignature verb="barks" usage="shep barks [--tail N]">
       <p>
         Prints that file, newest last, with <code>--tail</code> to see only
         the last few. It reads <code>barks.jsonl</code> straight off disk and
         never connects to the shepherd, which is the whole point: the history
         is on disk precisely so it outlives the shepherd, and the moment this
-        verb exists for is an operator reading it after a crash. Same
-        precedent as <code>shep flush --daemon</code>, which also works on
-        files rather than through the socket.
+        verb exists for is an operator reading it after a crash.
       </p>
     </VerbSignature>
     <CodeBlock>{barksDemo}</CodeBlock>
@@ -280,396 +412,83 @@ sinks = ["oncall"]`}</CodeBlock>
       mode.
     </p>
 
-    <h2>Writing your own</h2>
-    <VerbSignature verb="adopt" usage="shep adopt <path> [--name <name>]">
-      <p>
-        Third-party extension. The path can be given as-is, with a leading{" "}
-        <code>~/</code>, or as a bare name already on <code>$PATH</code>{" "}
-        (where <code>cargo install</code> puts one). <code>--name</code> is
-        optional and defaults to the binary's file stem with a leading{" "}
-        <code>shep-</code> stripped, the way <code>cargo</code> strips{" "}
-        <code>cargo-</code> from its own external subcommands. Vets the
-        binary once, at adopt time: refusing a path that doesn't resolve to
-        anything that exists, isn't a file, has no execute bit, or is
-        world-writable, and refusing a name that already belongs to a
-        built-in verb or alias, since such a dog could never be reached.
-        Passing all of that, it actually spawns the binary with no
-        arguments and kills it immediately, because the only honest way to
-        know whether this kernel can exec a file is to ask this kernel.
-      </p>
-    </VerbSignature>
-    <VerbSignature verb="rehome" usage="shep rehome <name>">
-      <p>
-        <code>disable</code>'s counterpart for a third-party dog: stops it
-        if running and forgets the registration entirely, rather than
-        leaving it disabled-but-known.
-      </p>
-    </VerbSignature>
-    <CodeBlock>{`$ shep adopt ./bin/my-watchdog --name watchdog
-NAME      SOURCE   SHEPHERD  STATUS
-watchdog  adopted  true      online
+    <h2 id="writing-your-own">Writing your own</h2>
+    <p>
+      A dog is an ordinary binary that answers a few questions on stdout and
+      speaks the dog protocol on a socket the shepherd hands it. The whole
+      contract, including what <code>--version</code> and{" "}
+      <code>--schema</code> have to answer and why the binary is the only
+      thing that can answer them, is its own chapter:{" "}
+      <a href="/docs/writing-a-dog">Writing a dog</a>.
+    </p>
 
-$ shep rehome watchdog
-NAME      SOURCE   SHEPHERD  STATUS
-watchdog  adopted  true      stopped`}</CodeBlock>
-    <p>
-      Once adopted, <code>shep watchdog [args...]</code> runs it directly —
-      git and cargo's own precedent (<code>git foo</code> runs{" "}
-      <code>git-foo</code>), resolved against adopted dogs only, never a{" "}
-      <code>$PATH</code> scan. It's a second invocation mode, distinct from
-      the shepherd's own: an adopted dog the shepherd starts gets no argv
-      and two environment variables; a dog you name on the command line
-      gets whatever you typed after it, plus those same two. A built-in dog
-      is the exception, and not one you can write: the shepherd starts it
-      as <code>shep dog &lt;name&gt;</code>. A built-in verb or alias always
-      wins over a same-named dog.
+    <details>
+      <summary><h2 id="what-shep-writes-into-a-dog-s-own-log">What shep writes into a dog's own log</h2></summary>
+      <p>
+      A dog's log is the first place anyone looks when a dog misbehaves, and
+      it used to hold only what the dog itself said. Everything shep had to
+      say about it went to <code>shepd.err.log</code>, which is not the file
+      shep's own error messages tell you to open. Shep now writes its own
+      account into the dog's log too, marked <code>[shep]</code> so it can't
+      be mistaken for the dog's output.
     </p>
+    <CodeBlock>{dogLogDemo}</CodeBlock>
     <p>
-      What gets recorded in <code>shep.toml</code> is the canonicalized,
-      absolute path (never whatever relative path you typed) because the
-      daemon may resolve it again after a reboot from a different working
-      directory than the one <code>adopt</code> ran from.
+      Six things get written: the spawn and the resolved binary path, an
+      accepted handshake (once, the first time this shepherd hears from the
+      dog, not on every reconnect), a refused handshake with both
+      protocol numbers, the warning when a dog goes quiet, the verdict when
+      shep gives up on it, and the exit code or signal when its process
+      stops. <code>shep bleats &lt;name&gt; --follow</code> sees the same
+      lines live, marked the same way, interleaved with the dog's own output
+      in arrival order.
     </p>
-    <p>
-      The wire a third-party dog speaks is the client protocol every other
-      client uses: connect to the Unix socket at{" "}
-      <code>$SHEP_HOME/run/shep.sock</code>, send <code>Hello</code>, wait
-      for <code>HelloAck</code>, then send{" "}
-      <code>Request::DogConfig {"{"} name {"}"}</code> to fetch your own
-      section as opaque text. Shep sets two variables of its own on a dog:{" "}
-      <code>$SHEP_HOME</code>, which is how it finds that socket in the first
-      place, and <code>$SHEP_DOG_NAME</code>, which is the name to put in
-      that request. No <code>[dog.&lt;name&gt;]</code> value rides along
-      beside them.
+    </details>
+
+    <details>
+      <summary><h2 id="when-a-dog-stops-answering">When a dog stops answering</h2></summary>
+      <p>
+      A dog that is running but never handshakes gets one restart from disk
+      and then a verdict. That verdict says what the shepherd actually
+      watched happen, because the three cases it reports have opposite
+      fixes.
     </p>
-    <p>
-      Put that name in the <code>Hello</code> too, as{" "}
-      <code>dog_name</code>. It is optional, and nothing breaks without it
-      right up until the shepherd is replaced by one your binary is too old
-      to speak to. A refused handshake never reaches a request, so the name
-      in <code>DogConfig</code> is unreadable at exactly the moment it is
-      needed: which dog to restart. With it, the shepherd restarts you once
-      from the binary on disk, which fixes the ordinary case where the
-      package already replaced your file and the running process is merely
-      old, and reports you stale rather than looping if that restart is
-      refused too. <code>shep daemon reload</code> prints that report to the
-      operator, after your reconnect rather than before it: what the old
-      image knew about you described a process that was about to stop
-      existing. Without it you go quiet and nothing on either side says
-      why.
-    </p>
-    <p>
-      A dog written against <code>shep-client</code> gets both halves from{" "}
-      <code>ReconnectingClient::connect_as_dog</code>, which fills the name
-      in and also re-establishes the connection when the shepherd is
-      replaced. <code>Client</code> does neither, deliberately: the CLI uses
-      it, and a <code>shep stop</code> that silently retried could stop a
-      sheep twice.
-    </p>
-    <p>
-      That is what <code>shep daemon reload</code> asks of a dog. A dog is
-      carried across the reload the way a sheep is: the process is a child
-      of a shepherd whose pid does not change, so it keeps its own pid and
-      its restart count stays where it was. What does not survive is the
-      accepted connection, which dies with the old image — so a dog that
-      does not dial again is a live process holding a dead socket, alive on
-      every column a listing has and answering nothing. The metrics dog is
-      measured holding its pid and <code>restarts 0</code> across six
-      reloads while still serving a scrape.
-    </p>
+    <ul>
+      <li>
+        <strong>Nothing has ever connected from the dog's process.</strong>{" "}
+        The dog isn't reaching the socket. Rebuild or reinstall it.
+      </li>
+      <li>
+        <strong>
+          Its process has connected, and never named a dog in its handshake.
+        </strong>{" "}
+        The dog is talking to shep and may be serving every request it's
+        asked; what it doesn't do is say who it is. Reinstalling the same
+        build won't change that: it's built against shep-client older
+        than 0.1.23, or it calls <code>Client::connect</code> where it should
+        call <code>ReconnectingClient::connect_as_dog</code>. Rebuild it
+        against a current shep-client.
+      </li>
+      <li>
+        <strong>Shep couldn't tell which process opened the connections.</strong>{" "}
+        Windows has no peer identity by design, and some unix platforms
+        decline to report a pid. Neither of the two above is ruled out, so
+        shep names both and tells you to read the dog's own log: a dog that
+        can't reach the socket says so there, and one that's merely
+        anonymous doesn't.
+      </li>
+    </ul>
     <p class="fine">
-      The bark dog is the exception, and it is on the list to fix. Its
-      subscription belongs to one connection, so the stream ends when that
-      connection does and the dog exits; autorestart replaces it, which
-      costs one restart per reload on a dog that is otherwise healthy. It
-      comes back on its own every time, and its restart budget starts a
-      fresh window with each shepherd, so this is a count that reads wrong
-      rather than an outage.
+      Every one of them ends with a command to run. The one before them said{" "}
+      <em>the binary on disk cannot talk to this shep either</em> in all
+      three cases, which sent one operator through two days of reinstalling a
+      dog that was connected and serving requests the whole time.
     </p>
-    <p>
-      Those two are what shep adds, not the whole environment. A dog is a
-      supervised process like any other, so it also starts from the small
-      base every sheep gets: <code>PATH</code>, plus whichever of{" "}
-      <code>HOME</code>, <code>USER</code>, <code>LANG</code> and{" "}
-      <code>TZ</code> the shepherd itself has, plus{" "}
-      <code>SHEP_INSTANCE</code>. Nothing from{" "}
-      <code>[dog.&lt;name&gt;]</code> is in there.
-    </p>
-    <Callout variant="careful">
-      Read <code>$SHEP_DOG_NAME</code> rather than hardcoding a name. It
-      holds the name you are registered under, which is the operator's{" "}
-      <code>--name</code> if they gave one and otherwise your own file stem
-      with a leading <code>shep-</code> stripped. Shep sets it every way it
-      runs you: supervised, <code>shep &lt;name&gt;</code>, and the exec
-      probe during <code>adopt</code> itself. Getting the name wrong is silent, which is the whole reason
-      the variable exists: a <code>DogConfig</code> for a name nobody
-      adopted comes back empty, exactly what a registered dog with no
-      section gets, so a one-character mismatch discards the operator's
-      whole section, uses every default instead, and prints nothing on
-      either side. If the variable is absent you are not being run by a
-      shep that sets it, and the fallback is the pid: your process knows
-      its own, <code>ListFlock</code> reports one per entry, and the entry
-      marked as a dog carrying your pid is you.
-    </Callout>
-    <Callout variant="careful">
-      Never send <code>Request::Flush</code> as part of rotating anything.
-      Its name reads like settling a buffer and it does the opposite of
-      what a rotator wants: it flushes what is pending and then{" "}
-      <strong>truncates</strong> the recorded paths. That is{" "}
-      <code>shep flush</code>, an operator deliberately emptying logs.
-      Reaching for it before a rename deletes the lines you were about to
-      rotate. Rename, then <code>Reopen</code>: that shape has no such
-      hole.
-    </Callout>
-    <Callout variant="careful">
-      There is no sandbox, and it would be a mistake to assume one. An
-      adopted dog runs at the shepherd's own trust level, with no isolation
-      beyond it: the same trust an ordinary sheep in your Flockfile already
-      has. Adopting a dog does not grant anything beyond what any process
-      your own config already starts could do.
-    </Callout>
-    <p>
-      Somebody else has probably already written the dog you're about to
-      build; see <a href="/docs/community-dogs">the community list</a>{" "}
-      before you start, or run <code>shep dogs --available</code> to browse
-      the same index without leaving a terminal.
-    </p>
+    </details>
 
-    <h2>Answering <code>--version</code></h2>
-    <p>
-      A dog answers <code>--version</code> on stdout and exits 0. Two
-      numbers come back, and they answer different questions.
-    </p>
-    <div class="metrics-table">
-      <div class="row header">
-        <span>What</span>
-        <span>Answers</span>
-      </div>
-      <div class="row"><span>the version on line 1</span> <span>Which build of the dog this is. A difference is reported, never refused.</span></div>
-      <div class="row"><span><code>shep-protocol</code></span> <span>Whether this dog can handshake with this shepherd at all. A difference means it can't connect until one side moves.</span></div>
-    </div>
-    <CodeBlock>{`shep-log-rotate 0.1.3
-shep-protocol: 2`}</CodeBlock>
-    <p>
-      Line 1 is <code>&lt;name&gt; &lt;version&gt;</code>. Shep takes the
-      last whitespace-separated field as the version and ignores the name,
-      so a crate whose name differs from the dog's registered name is fine.
-      That's the line clap already prints for free. Every later line is{" "}
-      <code>&lt;key&gt;: &lt;value&gt;</code>, one pair to a line, and{" "}
-      <code>shep-protocol</code> carries in decimal the{" "}
-      <code>PROTOCOL_VERSION</code> the binary was compiled against.
-    </p>
-    <p>
-      Unknown keys, blank lines and the order of the key lines are all
-      ignored. Keys beginning <code>shep-</code> are reserved, so a third
-      number can get its own line later without breaking a parser that
-      predates it. Put keys of your own under a prefix of your own.
-    </p>
-    <p>
-      Lines rather than JSON, because a human runs <code>--version</code>{" "}
-      far more often than shep does, and because a stranger writing a dog in
-      a language shep has never seen gets two <code>printf</code> calls
-      right on the first try. Hand written JSON is where the quoting and the
-      trailing comma go wrong, and nothing here nests.
-    </p>
-    <p>Emitting it needs no dependency a dog doesn't already have:</p>
-    <CodeBlock label="main.rs">{`if std::env::args().nth(1).as_deref() == Some("--version") {
-    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-    println!("shep-protocol: {}", shep_client::PROTOCOL_VERSION);
-    return;
-}`}</CodeBlock>
-    <Callout variant="note">
-      Answering is optional and stays optional. Dogs predating the
-      convention are still adoptable, and a dog that doesn't answer is never
-      refused for it: its protocol is simply unknown.
-    </Callout>
-
-    <h3>What <code>shep adopt</code> does with the answer</h3>
-    <p>
-      <code>shep adopt</code> asks the candidate before it records anything.
-      The vet was already spawning the binary to prove this kernel can exec
-      it, so the question costs one argument on a process that was going to
-      start anyway.
-    </p>
-    <div class="metrics-table">
-      <div class="row header">
-        <span>What the candidate answers</span>
-        <span>What adopt does</span>
-      </div>
-      <div class="row"><span>a <code>shep-protocol</code> this shep doesn't speak</span> <span>Refuses, before <code>shep.toml</code> is touched.</span></div>
-      <div class="row"><span>a protocol this shep speaks</span> <span>Adopts, and reports the version it gave.</span></div>
-      <div class="row"><span>a version and no protocol line</span> <span>Adopts, and says the protocol is unknown.</span></div>
-      <div class="row"><span>nothing, or a run that exits non-zero</span> <span>Adopts, protocol unknown, no notice.</span></div>
-    </div>
-    <p>The refusal names both numbers and both ways out:</p>
-    <CodeBlock>{`/usr/local/bin/shep-otel: this dog was built for shep protocol 1, and this
-shep speaks 2; reinstall the dog without --locked so it builds against the
-current shep-core, or run a shep that speaks 1`}</CodeBlock>
-    <p>
-      Only a stated protocol can refuse an adopt. The version is never
-      compared with anything, because a third-party dog's crate version has
-      no relationship to shep's own: <code>shep-log-rotate</code> 0.1.3
-      against shep 0.1.24 is the ordinary case, not a skew, and comparing
-      the two would report every dog that exists.
-    </p>
-    <p>
-      A candidate gets one second to exit and another to have its output
-      read, so two seconds is the worst case rather than one. It is killed
-      either way, so a
-      dog that ignores <code>--version</code> and runs costs that second and
-      is adopted with an unknown protocol. It can't hang the{" "}
-      <code>adopt</code> that's vetting it.
-    </p>
-    <p>
-      None of the answer is written down. <code>[daemon] adopted_dogs</code>{" "}
-      records the path and nothing else, and a protocol stored at adopt time
-      would be a copy of a number that can change on disk with nothing
-      watching. Shep asks the binary again rather than remembering what it
-      said.
-    </p>
-
-    <h3>What <code>shep restart &lt;dog&gt;</code> does with the answer</h3>
-    <p>
-      <code>cargo install</code> replaces a file and never touches a
-      process, so a dog upgraded on disk leaves a working system: the dog
-      running now is the old binary, still connected, still doing its job.
-      The two only meet at the next restart, which may be days away and for
-      a reason that has nothing to do with the upgrade.
-    </p>
-    <p>
-      <code>shep restart &lt;name&gt;</code> is that restart, so it asks the
-      same question first:
-    </p>
-    <CodeBlock>{`notice[dog_binary_skew]: \`log-rotate\`'s binary at /usr/local/bin/shep-log-rotate
-was built for shep protocol 3, and this shep speaks 2; restarting it brings it
-back on that binary, unable to connect. Run a shep that speaks 3, or reinstall
-the dog against protocol 2, and restart it again`}</CodeBlock>
-    <p>
-      Then it restarts the dog. This is a warning and never a refusal: the
-      operator asked for the restart, the binary on disk may be exactly what
-      they just installed, and there are two ways out of the state rather
-      than one, so the message names both and picks neither.
-    </p>
-    <div class="metrics-table">
-      <div class="row header">
-        <span>What the binary answers</span>
-        <span>What restart does</span>
-      </div>
-      <div class="row"><span>a <code>shep-protocol</code> this shep doesn't speak</span> <span>Warns, then restarts.</span></div>
-      <div class="row"><span>a protocol this shep speaks</span> <span>Restarts, silently.</span></div>
-      <div class="row"><span>a version and no protocol line</span> <span>Restarts, silently.</span></div>
-      <div class="row"><span>nothing, or a run that exits non-zero</span> <span>Restarts, silently.</span></div>
-    </div>
-    <p>
-      Unknown is not stale. Every dog written before this contract is in the
-      last two rows, and a line on stderr for each of them is how an
-      operator learns to skip the one that matters.
-    </p>
-    <p>
-      Three things are never asked at all. A built-in dog has no binary of
-      its own, so there is nothing to be stale. A selector that sweeps
-      rather than names, <code>all</code> or a <code>/regex/</code>, doesn't
-      reach a dog in the first place. And a dog named by id rather than by
-      name is restarted without a check, because looking up its name would
-      cost a round trip before the restart the operator asked for.
-    </p>
-    <p>
-      The cost is the same second <code>adopt</code> spends, and it's paid
-      only by a restart that named an adopted dog. A binary that hangs is
-      killed when the second is up and the restart goes ahead unwarned, so
-      the slowest a dog can make <code>shep restart</code> is two seconds,
-      never indefinitely.
-    </p>
-
-    <Callout variant="note">
+    <details>
+      <summary><h2 id="when-a-dog-dies">When a dog dies</h2></summary>
       <p>
-        A named restart briefly runs your dog twice. To read the binary on
-        disk, shep runs it with <code>--version</code>, and a dog that does
-        not recognise that flag ignores it and starts doing its ordinary job
-        instead, with <code>SHEP_HOME</code> pointing at the live shepherd.
-        So a rotator can rotate once, and a bark dog can open a second
-        subscription, before the process is killed.
-      </p>
-      <p>
-        Only dogs that ignore the flag are affected. A dog that recognises
-        <code>--version</code> and exits, even without naming a protocol,
-        does no work: its protocol is unknown and nothing overlaps. The
-        trade is deliberate: the command is about to restart that dog anyway, so the
-        only question is whether it briefly overlaps itself, and the
-        alternative is not asking at all. Adding <code>--version</code> to
-        your dog removes the overlap, since a dog that answers exits
-        immediately.
-      </p>
-    </Callout>
-
-    <h3>Why the binary is the only thing that can answer</h3>
-    <p>
-      A dog's crate version doesn't imply its protocol, and neither does
-      knowing that somebody installed it. Which{" "}
-      <code>shep-core</code> a dog ends up carrying depends on how it was
-      built:
-    </p>
-    <div class="metrics-table">
-      <div class="row header">
-        <span>How it was built</span>
-        <span>Which protocol</span>
-      </div>
-      <div class="row"><span><code>cargo install &lt;dog&gt;</code></span> <span><code>shep-core</code> is re-resolved to the newest compatible release, so the protocol is current.</span></div>
-      <div class="row"><span><code>cargo install --locked</code>, and most CI</span> <span>The shipped lockfile is honoured, so the protocol is whatever was pinned on publish day.</span></div>
-    </div>
-    <p class="fine">
-      Measured 2026-08-31: <code>shep-log-rotate</code> 0.1.3 installed
-      plain compiled <code>shep-core</code> 0.1.24, ignoring the packaged
-      lockfile, while the same crate built <code>--locked</code> produced a
-      protocol 1 dog. Both published dogs were shipping a lockfile pinning a
-      protocol 1 <code>shep-core</code> that day, and both repositories' CI
-      had been red on it for two days. The crate version was identical
-      either way. That's the whole argument for asking the binary: nothing
-      outside it knows.
-    </p>
-
-    <h3>The built-in dogs are outside this</h3>
-    <p>
-      <code>metrics</code> and <code>bark</code> are not separate binaries.
-      The shepherd starts them as{" "}
-      <code>&lt;its own binary&gt; dog &lt;name&gt;</code>, so a built-in
-      dog <strong>is</strong> the shep binary that spawned it and cannot
-      skew from it on disk. There's no question here for a contract to
-      answer:
-    </p>
-    <CodeBlock>{`$ shep --version
-shep 0.1.24
-$ shep dog metrics --version
-shep-dog 0.1.24`}</CodeBlock>
-    <p>
-      Neither prints a <code>shep-protocol</code> line, and that isn't a gap
-      to close. The protocol a built-in dog speaks is the shepherd's own,
-      because it is the shepherd's binary.
-    </p>
-
-    <h3>What this doesn't catch</h3>
-    <p>
-      Two dogs can agree on the protocol and still be different code.{" "}
-      <code>RpcError</code> gained a public <code>daemon_version</code>{" "}
-      field inside the 0.1.x range; its fields are public and it has no
-      constructor, so every literal built outside <code>shep-client</code>{" "}
-      stopped compiling while <code>PROTOCOL_VERSION</code> stood still.
-      Protocol equality is necessary and not sufficient.
-    </p>
-    <p>
-      Closing that is deferred, and the reason is that{" "}
-      <code>--version</code> can't close it. A break of that kind is source
-      level: it lands when the dog is compiled, in the dog's own repository,
-      and a dog nobody rebuilt keeps running. Shep has no table of which{" "}
-      <code>shep-client</code> versions build against which daemon, and a
-      version comparison standing in for one would report dogs that are
-      fine. What catches it is the dog's own CI building against a current{" "}
-      <code>shep-core</code>, which is where both published dogs' breakage
-      was already visible and unread.
-    </p>
-
-    <h2>When a dog dies</h2>
-    <p>
       If an enabled dog exhausts its own restart budget and lands on{" "}
       <code>Errored</code>, the shepherd writes a record straight into{" "}
       <code>barks.jsonl</code> itself, independent of whether the bark dog is
@@ -688,141 +507,6 @@ shep-dog 0.1.24`}</CodeBlock>
       <code>shep barks</code> and the metrics endpoint are the two places
       that say a dog went down.
     </p>
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/shepherd-channel" class="next-card">
-        <div class="next-title">The shepherd channel →</div>
-        <div class="next-body">
-          The other way something plugs into shep: for your own app, not
-          for the shepherd's own plugins.
-        </div>
-      </a>
-      <a href="/docs/whistle" class="next-card">
-        <div class="next-title">whistle →</div>
-        <div class="next-body">
-          The flock over MCP: a third way to reach it, this time for an AI
-          agent.
-        </div>
-      </a>
-    </div>
-  </article>
+    </details>
+</article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: 0 0 22px;
-  }
-
-  .metrics-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-    margin: 0 0 20px;
-  }
-
-  .metrics-table .row {
-    display: grid;
-    grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    font-size: 14px;
-    line-height: 1.5;
-  }
-
-  .metrics-table .row:not(:last-child) {
-    border-bottom: 2px solid var(--hair);
-  }
-
-  .metrics-table .row.header {
-    background: var(--paper-2);
-    font-family: "Space Mono", monospace;
-    font-size: 11.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    font-weight: 700;
-  }
-
-  .metrics-table .row:not(.header) span:last-child {
-    color: var(--ink-2);
-  }
-
-  .metrics-table code {
-    font-family: "Space Mono", monospace;
-    font-size: 13px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 36px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

@@ -1,26 +1,18 @@
 //! Bus events broadcast to subscribed clients
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::channel::ChildMessage;
+use crate::protocol::ChildMessage;
 use crate::protocol::request::ProcessInfo;
 
 /// What happened to a sheep
 // wire format: changing existing variants is a breaking change
 //
-// A NEW variant is additive for Rust and for the protocol version, but it is
-// not free for a subscriber that predates it, and this enum is the one place
-// in the protocol where that is true. There is no `#[serde(other)]` fallback,
-// and every variant's topic is `process.<something>`, which the `process.*`
-// glob an existing subscriber already uses matches — so an older client is
-// sent a frame it cannot decode. It drops that frame; it is not sent
-// anything it asked for and lost. The same does not arise for `Request` or
-// `Response`, where an old client never sends the verb whose answer it could
-// not read. Weigh that cost against the alternative before adding one:
-// reusing an existing kind and leaving subscribers to infer the event is the
-// other option, and it was the losing one for reload only because a reload's
-// reply is an acceptance, which leaves the bus as the only place its outcome
-// is ever reported.
+// A new variant is free for a subscriber built from this point on: an
+// unrecognized string decodes as `Unrecognized` instead of failing the
+// whole frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -37,18 +29,16 @@ pub enum ProcessEventKind {
     /// into the same instance slot, and this one will be asked to go once
     /// that replacement is serving
     Reload,
-    /// This instance has replaced the one it was spawned to drain, and that
-    /// one is gone — the swap is over
+    /// This instance has replaced the one it was spawned to drain; that one
+    /// is gone.
     Reloaded,
     /// A reload gave up, so the instances it had not reached are left alone
     ///
-    /// The instance named is the one the abandonment left holding the slot,
-    /// and whether that one is serving depends on which abandonment it was.
-    /// Where the reload gave up on replacing an instance, that instance is
-    /// named and is still the app's live one. Where it gave up because the
-    /// replacement went down instead, the replacement is named. As with every
-    /// event here, `info` is that instance as it stood when the event was
-    /// raised, so read `info.status` rather than assuming a live one.
+    /// The instance named is whichever one the abandonment left holding the
+    /// slot: still the app's live instance if the reload gave up before
+    /// replacing it, or the replacement if that one went down instead.
+    /// `info` reflects that instance's state at event time; read
+    /// `info.status` rather than assume it is live.
     ReloadAbandoned,
     /// Stopped by request
     Stop,
@@ -56,21 +46,32 @@ pub enum ProcessEventKind {
     Delete,
     /// Restart budget exhausted
     Errored,
+    /// An event kind this build has not been taught.
+    ///
+    /// Only ever produced by decoding: an unrecognized string falls through
+    /// to this variant via `#[serde(other)]` instead of failing the whole
+    /// frame. Nothing constructs one to send, and `bark`'s `is_known_kind`
+    /// refuses the spelling before a rule can name it. That is a call-site
+    /// invariant rather than a type-level one: `#[serde(other)]` governs
+    /// decoding only, so serializing this would emit `"unrecognized"`.
+    #[serde(other)]
+    Unrecognized,
 }
 
 /// One event on the daemon bus
 ///
-/// Uses adjacently tagged serde format with `event` discriminator and `data` wrapper.
-/// Subscription TOPICS are the dotted strings from [`BusEvent::topic`]
-/// (`process.exit`, `log.out`, `daemon.*` — spec §6 grammar).
-/// The daemon's server-side filter globs against `topic()`.
+/// Adjacently tagged: `event` discriminator, `data` wrapper. Subscription
+/// topics are the dotted strings from [`BusEvent::topic`] (`process.exit`,
+/// `log.out`, `daemon.*`); the daemon's filter globs against them.
 // wire format: changing existing variants is a breaking change
+//
+// `large_enum_variant` allowed: boxing `Process` would break every match on
+// it, for no benefit since an event is serialized immediately.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-// Adjacent tagging chosen because internally-tagged form cannot compile:
-// the `Process` variant has its own `event: ProcessEventKind` field, which
-// collides with an internal tag named `event` (serde_derive rejects this).
-// Adjacently tagging (with `content = "data"`) avoids the collision while
-// matching `Response`'s serde convention. Wire shape pinned by snapshot.
+// Adjacently tagged, not internally: `Process`'s own `event` field would
+// collide with an internal tag named `event`, and serde_derive refuses
+// that.
 #[serde(tag = "event", content = "data", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum BusEvent {
@@ -101,26 +102,13 @@ pub enum BusEvent {
     },
     /// One message a sheep wrote on its shepherd channel (fd 3).
     ///
-    /// Child->shepherd only. The shepherd's own writes — the
-    /// `{"kind":"shutdown"}` of `shutdown_with_message`, and an `action` a
-    /// `Trigger` dispatched — are deliberately not here. Every one of them is
-    /// something an operator or the daemon just did and already has a
-    /// reporter: a shutdown message is followed by `process.stop`, and an
-    /// action is answered to the caller that sent it by
-    /// `Response::Triggered`. Putting them here as well would make this the
-    /// only event on the bus reporting a REQUEST rather than an outcome, and
-    /// would loop a dog that both subscribes and triggers back onto its own
-    /// dispatches. Adding the outbound half later stays additive — another
-    /// variant, more `channel.` topics, no version bump — so this is a
-    /// narrowing, not a door closed.
+    /// Child -> shepherd only: the shepherd's own writes (a shutdown
+    /// message, a dispatched action) are reported elsewhere, by
+    /// `process.stop` and `Response::Triggered`.
     ///
-    /// `message` is the app's own text, whole and unredacted, unlike the
-    /// `[dog.<name>]` config that travels as [`DogSectionToml`]. Nothing on
-    /// this wire is a credential: `Ready` is empty, `Metric` is a name and a
-    /// float, and an `ActionReply` body is text the app chose to publish to
-    /// whoever triggered it. That is what makes a derived `Debug` safe here.
-    ///
-    /// [`DogSectionToml`]: crate::protocol::DogSectionToml
+    /// `message` is the app's own text, whole and unredacted. The daemon
+    /// adds nothing of its own; app-provided text must be safe for every
+    /// subscriber, since it is broadcast verbatim.
     Channel {
         /// The sheep that wrote it.
         id: u32,
@@ -134,13 +122,35 @@ pub enum BusEvent {
     },
     /// Daemon is shutting down
     DaemonShutdown,
+    /// A dog's section in `dogs.toml` changed. Published under
+    /// `config.dog.<name>`, so a dog subscribes to its own name and hears
+    /// nobody else's.
+    ///
+    /// Carries only the dog's name, nothing else: the bus is a broadcast,
+    /// and a `[bark]` section can hold a webhook URL as a bearer credential
+    /// (why [`DogSectionToml`] redacts its own `Debug`). A dog that wants
+    /// the values re-asks with
+    /// [`Request::DogConfig`](crate::protocol::Request::DogConfig), which
+    /// answers only that dog's own section.
+    ///
+    /// [`DogSectionToml`]: crate::protocol::DogSectionToml
+    DogConfigChanged {
+        /// The dog whose section changed.
+        dog: String,
+    },
 }
 
 impl BusEvent {
     /// The dotted subscription topic for this event (spec §6 grammar)
+    ///
+    /// A [`Cow`] rather than a `&'static str`, because one topic is not
+    /// fixed: [`Self::DogConfigChanged`] names its dog in the topic
+    /// itself, which is what lets a dog subscribe to its own config and
+    /// hear nobody else's. Every other variant is still a borrowed
+    /// literal and allocates nothing.
     #[must_use]
-    pub fn topic(&self) -> &'static str {
-        match self {
+    pub fn topic(&self) -> Cow<'static, str> {
+        let fixed = match self {
             Self::Process { event, .. } => match event {
                 ProcessEventKind::Start => "process.start",
                 ProcessEventKind::Online => "process.online",
@@ -152,14 +162,17 @@ impl BusEvent {
                 ProcessEventKind::Stop => "process.stop",
                 ProcessEventKind::Delete => "process.delete",
                 ProcessEventKind::Errored => "process.errored",
+                // Decode-only, never emitted by this build. Given its own
+                // topic rather than acted on: a subscriber sees it pass
+                // through like any other kind it does not specifically
+                // filter for, instead of the daemon treating it as a real
+                // lifecycle transition.
+                ProcessEventKind::Unrecognized => "process.unrecognized",
             },
             Self::LogOut { .. } => "log.out",
             Self::LogErr { .. } => "log.err",
-            // Total over `ChildMessage`, with no wildcard, and that is the
-            // point of leaving that enum exhaustive (see its module doc): a
-            // fourth kind on fd 3 fails to compile here until someone decides
-            // what its topic is, rather than defaulting into a topic no
-            // subscriber ever asked for.
+            // Total match over `ChildMessage`: a fourth kind on fd 3 fails
+            // to compile here until its topic is decided.
             Self::Channel { message, .. } => match message {
                 ChildMessage::Ready => "channel.ready",
                 ChildMessage::Metric { .. } => "channel.metric",
@@ -167,7 +180,13 @@ impl BusEvent {
             },
             Self::Dropped { .. } => "daemon.dropped",
             Self::DaemonShutdown => "daemon.shutdown",
-        }
+            // The one topic built rather than named. `config.dog.` is the
+            // prefix a subscriber globs on; the dog's own name is the last
+            // segment, so `config.dog.bark` reaches one dog and `config.*`
+            // reaches all of them.
+            Self::DogConfigChanged { dog } => return Cow::Owned(format!("config.dog.{dog}")),
+        };
+        Cow::Borrowed(fixed)
     }
 }
 
@@ -176,6 +195,43 @@ mod tests {
     use super::*;
     use crate::protocol::request::{ExitInfo, ProcessInfo};
     use crate::status::ProcStatus;
+
+    /// The comment above this enum said a new variant is not free because
+    /// there is no fallback. This is the fallback.
+    #[test]
+    fn an_unknown_process_event_decodes_as_unrecognized() {
+        assert_eq!(
+            serde_json::from_str::<ProcessEventKind>(r#""invented_next_year""#).unwrap(),
+            ProcessEventKind::Unrecognized
+        );
+    }
+
+    #[test]
+    fn every_known_process_event_still_round_trips() {
+        for kind in [
+            ProcessEventKind::Start,
+            ProcessEventKind::Online,
+            ProcessEventKind::Exit,
+            ProcessEventKind::Restart,
+            ProcessEventKind::Reload,
+            ProcessEventKind::Reloaded,
+            ProcessEventKind::ReloadAbandoned,
+            ProcessEventKind::Stop,
+            ProcessEventKind::Delete,
+            ProcessEventKind::Errored,
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(
+                serde_json::from_str::<ProcessEventKind>(&json).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_string_process_event_is_still_an_error() {
+        assert!(serde_json::from_str::<ProcessEventKind>("42").is_err());
+    }
 
     #[test]
     fn bus_event_wire_snapshots() {
@@ -190,18 +246,19 @@ mod tests {
                     restarts: 2,
                     uptime_ms: 500,
                     fold: None,
+                    depends_on: Vec::new(),
                     out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
                     err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
                     // A bus event is built from the actor's own snapshot,
                     // which never carries a resource reading.
                     cpu_percent: None,
                     memory_bytes: None,
+                    cpu_ms: None,
                     dog: None,
                     lambs: None,
-                    // `restarts: 2` already says this is not this sheep's
-                    // first exit; `handle_exited` sets `last_exit` before it
-                    // decides what to do with the exit, so the `Exit` event
-                    // this row pins carries the very outcome it announces.
+                    // `handle_exited` sets `last_exit` before deciding what
+                    // to do with the exit, so this `Exit` row carries the
+                    // outcome it announces.
                     last_exit: Some(ExitInfo {
                         code: Some(1),
                         signal: None,
@@ -212,6 +269,12 @@ mod tests {
                     smit: Some("\u{25b2} main@a1b2c3".to_string()),
                     instance: None,
                     handshook: None,
+                    dog_stale: None,
+                    pending: None,
+                    overridden: None,
+                    max_memory: None,
+                    level_rules: Vec::new(),
+                    reload_deadline_ms: None,
                 },
                 manually: false,
                 at_ms: 1_700_000_000_000,
@@ -235,22 +298,16 @@ mod tests {
             },
         ];
 
-        // The lifecycle kinds exercised here (the reload trio has its own
-        // fixture), over one
-        // identical `info`, so the snapshot rows differ by their `event` tag
-        // and by nothing else. These are the ordinary events a real
-        // integration — a dashboard, a bark rule — depends on first, and a
-        // Rust-identifier rename on any of them would change the wire string
-        // mechanically, compile clean, and break that integration silently.
+        // One identical `info` reused below, so these rows differ only by
+        // their `event` tag: a variant rename changes the wire string
+        // silently otherwise.
         let sample = ProcessInfo::builder(3, "web", ProcStatus::WaitingRestart)
             .restarts(2)
             .uptime_ms(500)
             .out_file(Some("/home/ada/.shep/logs/web-0-out.log".to_string()))
             .err_file(Some("/home/ada/.shep/logs/web-0-err.log".to_string()))
-            // Reused below for `Stop` and `Delete` too — the two operator-
-            // caused endings, and proof that a `shep stop`/`shep delete`
-            // still carries the exit that produced them rather than losing
-            // it because an operator asked for it.
+            // Reused below for `Stop` and `Delete` too: both still carry the
+            // exit that produced them.
             .last_exit(Some(ExitInfo {
                 code: Some(1),
                 signal: None,
@@ -274,11 +331,8 @@ mod tests {
 
         events.extend(lifecycle);
 
-        // All three shepherd-channel topics, over one sheep id, because the
-        // adjacent-tagged shape puts the message's own `kind` INSIDE `data`
-        // next to `id` — a nesting that is easy to get wrong by hand and
-        // invisible in a round-trip test, which only proves this crate agrees
-        // with itself.
+        // The adjacent-tagged shape nests the message's own `kind` inside
+        // `data`, next to `id`: easy to get wrong by hand.
         events.extend([
             BusEvent::Channel {
                 id: 3,
@@ -301,7 +355,15 @@ mod tests {
             },
         ]);
 
-        insta::assert_json_snapshot!("bus_event_wire_v2", events);
+        // Last, so every row above keeps its index. The one topic that is
+        // not a fixed string, and the one frame a dog subscribes to on its
+        // own name: an operator's `dogs.toml` edit reaches a running dog
+        // through this shape or through nothing.
+        events.push(BusEvent::DogConfigChanged {
+            dog: "bark".to_string(),
+        });
+
+        insta::assert_json_snapshot!("bus_event_wire_v9", events);
     }
 
     #[test]
@@ -315,18 +377,9 @@ mod tests {
         assert_eq!(BusEvent::DaemonShutdown.topic(), "daemon.shutdown");
     }
 
-    /// The three kinds a reload reports itself with, pinned as topic strings
-    /// and as wire strings.
-    ///
-    /// Fails if [`BusEvent::topic`] maps any of them to the wrong dotted
-    /// string — a typo there is invisible to a `process.*` subscriber, which
-    /// matches anything under `process.`, and silently unreachable to one
-    /// that named the topic it wanted. Fails too if a variant's serde
-    /// spelling drifts from its snake_case default (a stray
-    /// `#[serde(rename)]`, or a variant renamed without its topic): a reload's
-    /// reply is an acceptance, so these frames are the whole of what a client
-    /// ever learns about how the reload went, and a client matching on the
-    /// wire string would stop recognising them.
+    /// The three kinds a reload reports itself with, pinned as topic
+    /// strings and wire strings: a reload's reply is an acceptance, so
+    /// these frames are the only place a client learns how it went.
     #[test]
     fn a_reload_reports_itself_under_three_topics() {
         for (kind, topic, wire) in [
@@ -344,25 +397,13 @@ mod tests {
         ] {
             let event = BusEvent::Process {
                 event: kind,
-                info: ProcessInfo {
-                    id: 3,
-                    name: "web".to_string(),
-                    status: ProcStatus::Stopping,
-                    pid: Some(4242),
-                    restarts: 0,
-                    uptime_ms: 0,
-                    fold: None,
-                    out_file: None,
-                    err_file: None,
-                    cpu_percent: None,
-                    memory_bytes: None,
-                    dog: None,
-                    lambs: None,
-                    last_exit: None,
-                    smit: None,
-                    instance: None,
-                    handshook: None,
-                },
+                // Scaffolding: `topic()` reads only `event`, and nothing
+                // here is asserted. The builder says so; the exhaustive
+                // literal in `bus_event_wire_snapshots` says the opposite
+                // about its own row, deliberately.
+                info: ProcessInfo::builder(3, "web", ProcStatus::Stopping)
+                    .pid(Some(4242))
+                    .build(),
                 manually: true,
                 at_ms: 0,
             };
@@ -373,16 +414,14 @@ mod tests {
 
     #[test]
     fn v1_bus_event_fixture_still_deserializes() {
-        // Adjacent-tagged shape pinned as a byte fixture (IR-35).
+        // Adjacent-tagged shape pinned as a byte fixture.
         let fixture = r#"{"event":"log_out","data":{"id":3,"line":"ready"}}"#;
         let ev: BusEvent = serde_json::from_str(fixture).unwrap();
         assert!(matches!(ev, BusEvent::LogOut { id: 3, .. }));
     }
 
-    /// fails if a shepherd-channel message maps to the wrong dotted topic. A
-    /// subscriber that asked for `channel.metric` and silently receives nothing
-    /// has no other way to find out, and `channel.*` matches whatever typo is
-    /// there — so the exact strings are the contract, not the prefix.
+    /// The exact topic strings are the contract, not just the `channel.*`
+    /// prefix.
     #[test]
     fn every_shepherd_channel_message_has_its_own_topic() {
         for (message, topic) in [
@@ -411,10 +450,8 @@ mod tests {
         }
     }
 
-    /// fails if `channel.*` stops reaching every one of the three. The glob a
-    /// dashboard writes is the prefix, so a topic that drifted out from under it
-    /// (`channel_ready`, say) would be unreachable by the only pattern anyone
-    /// actually subscribes with.
+    /// `channel.*` is the only pattern anyone subscribes with; a topic that
+    /// drifts out from under it becomes unreachable.
     #[test]
     fn the_channel_glob_reaches_all_three_topics() {
         for message in [
@@ -437,11 +474,7 @@ mod tests {
         }
     }
 
-    /// fails if the event stops carrying the message body. The whole argument for
-    /// putting the real message on the bus rather than a summary is that nothing
-    /// on this wire is a credential — a reply body that arrived truncated or
-    /// replaced would make the topic useless for the case it exists for, a
-    /// dashboard watching what apps actually say.
+    /// The message carries verbatim: nothing on this wire is a credential.
     #[test]
     fn a_channel_event_carries_the_message_verbatim() {
         let event = BusEvent::Channel {
@@ -454,6 +487,33 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("freed 12MB"), "{json}");
+        assert_eq!(serde_json::from_str::<BusEvent>(&json).unwrap(), event);
+    }
+
+    /// The topic is the whole of what a dog subscribes with; a name that
+    /// misses it leaves the dog listening to nothing.
+    #[test]
+    fn a_dog_config_event_names_the_dog_in_its_topic() {
+        for dog in ["bark", "metrics", "otel-shipper"] {
+            let event = BusEvent::DogConfigChanged {
+                dog: dog.to_string(),
+            };
+            assert_eq!(event.topic(), format!("config.dog.{dog}"));
+        }
+    }
+
+    /// A value here would put another dog's webhook credential in front of
+    /// every subscriber on `config.*`.
+    #[test]
+    fn a_dog_config_event_carries_the_name_and_nothing_else() {
+        let event = BusEvent::DogConfigChanged {
+            dog: "bark".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            json,
+            r#"{"event":"dog_config_changed","data":{"dog":"bark"}}"#
+        );
         assert_eq!(serde_json::from_str::<BusEvent>(&json).unwrap(), event);
     }
 }

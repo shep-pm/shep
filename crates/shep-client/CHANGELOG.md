@@ -10,6 +10,196 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Fixed
+
+- Repair what the split did to doc links and one module name
+
+
+## [0.8.1] - 2026-09-15
+
+
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Add Client::reconnect and reconnect_within
+- Let a dog wait a bounded time for its shepherd
+
+### Changed
+
+- Correct two doc claims about teardown, and fold eight test blocks into a helper
+- Share the reconnect ladder between both paths, and pin its shape
+
+### Fixed
+
+- Make next_delay total so the ladder cannot panic on overflow
+- Bound a dog's re-subscribe on its own budget, not on the link
+- Make LinkLost must_use, so a dog cannot drop the reason
+- Keep a dog's re-subscribe inside the budget it promises
+
+
+## [0.7.4] - 2026-09-12
+
+
+## [0.7.3] - 2026-09-08
+
+### Fixed
+
+- Forward the schema feature to shep-core
+
+
+## [0.7.2] - 2026-09-08
+
+
+## [0.7.1] - 2026-09-08
+
+
+## [0.7.0] - 2026-09-08
+
+
+## [0.6.5] - 2026-09-08
+
+
+## [0.6.4] - 2026-09-08
+
+
+## [0.6.3] - 2026-09-08
+
+
+## [0.6.2] - 2026-09-08
+
+
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Move reply-id decode into shep-core, drop shep-client's serde dep
+
+### Fixed
+
+- Fail a caller whose reply cannot be decoded instead of leaving it waiting
+
+
+## [0.5.1] - 2026-09-07
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
+## [0.4.6] - 2026-09-07
+
+
+## [0.4.5] - 2026-09-06
+
+
+## [0.4.4] - 2026-09-06
+
+
+## [0.4.3] - 2026-09-06
+
+
+## [0.4.2] - 2026-09-06
+
+
+## [0.4.1] - 2026-09-06
+
+### Fixed
+
+- Saturate the deadline grace instead of overflowing ([#146](https://github.com/shep-pm/shep/pull/146))
+
+
+## [0.4.0] - 2026-09-06
+
+
+## [0.3.0] - 2026-09-05
+
+
+## [0.2.5] - 2026-09-05
+
+
+## [0.2.4] - 2026-09-05
+
+
+## [0.2.3] - 2026-09-05
+
+
+## [0.2.2] - 2026-09-04
+
+### Fixed
+
+- Keep a secret mark on the type shep asked about
+- Gate the schema tests on the feature that supplies them
+
+
+## [0.2.1] - 2026-09-04
+
+### Fixed
+
+- Keep a secret mark on the type shep asked about
+- Gate the schema tests on the feature that supplies them
+
+
+## [0.2.0] - 2026-09-04
+
+
+## [0.1.34] - 2026-09-04
+
+
+## [0.1.33] - 2026-09-04
+
+
+## [0.1.32] - 2026-09-04
+
+
+## [0.1.31] - 2026-09-03
+
+
+## [0.1.30] - 2026-09-03
+
+
+## [0.1.29] - 2026-09-03
+
+
+## [0.1.28] - 2026-09-03
+
+### Fixed
+
+- Say what to do about a protocol mismatch
+
+
+### Changed
+
+- `ConnectError::ProtocolMismatch`'s `Display` says what to do about the
+  skew instead of stating it twice and stopping. A refused dog is refused
+  before it can issue a single request, so that one line is the entire
+  account of the failure that reaches its log; it now names both remedies
+  (rebuild this program against the daemon's version, or upgrade shep and
+  reload) because the type cannot tell which of the two builds is the older
+  one, and a line that guessed would send half its readers to reinstall the
+  wrong thing. `daemon_version` is rendered now — it was deliberately left
+  out while this was a bare statement of the skew, and a protocol number is
+  not something anyone can install.
+
+## [0.1.27] - 2026-09-02
+
+
+## [0.1.26] - 2026-09-01
+
+
 ## [0.1.25] - 2026-09-01
 
 ### Added

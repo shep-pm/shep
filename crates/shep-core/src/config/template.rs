@@ -1,35 +1,68 @@
-//! The `{{instance}}` grammar for Flockfile values.
+//! The `{{...}}` grammar for Flockfile values.
 //!
-//! Two tokens, `{{instance}}` and `{{name}}`, in env values, args, and the
-//! two log-path fields. Anything else between doubled braces is refused by
-//! name at config time, so a typo dies at `shep start` rather than reaching
-//! a child process as a literal string.
+//! Four tokens in env values, args, and the two log-path fields:
+//! `{{instance}}` and `{{name}}` substitute from the sheep's identity,
+//! `{{SHEP_HOME}}` from the directory the shepherd keeps its state in, and
+//! `{{secret:KEY}}` (or `{{secret:namespace/KEY}}`) reads
+//! [`crate::secrets`]. An unknown token between doubled braces is refused
+//! at config time rather than reaching a child process as literal text.
 //!
-//! # Why doubled braces
+//! # Casing
 //!
-//! Single braces are ordinary content in the values this runs over: JSON
-//! blobs, regex quantifiers such as `{2,3}`, and Go or Helm templates passed
-//! through as args. Under a single-brace grammar with an unknown token
-//! refused, `LOG_FORMAT = '{"ts":"%t"}'` would stop a working Flockfile from
-//! starting. Doubled braces almost never appear by accident.
+//! **An uppercase name is something from the environment; a lowercase one is
+//! something from the config.** `SHEP_HOME` is an environment variable, so
+//! it is `{{SHEP_HOME}}`. `name` and `instance` are fields of the app, so
+//! they stay lowercase. `{{secret:API_KEY}}` is both halves at once: a
+//! lowercase `secret:` names the mechanism, and the uppercase key is an
+//! environment-variable-shaped name.
 //!
-//! # Escaping
+//! The rule is convention rather than enforcement, since [`crate::secrets`]
+//! accepts a key in any case. It exists so a reader can predict what a token
+//! added later will look like.
 //!
-//! `{{{{` is a literal `{{` and `}}}}` is a literal `}}`, which is
-//! `format!`'s own doubling rule one level up. A lone `}}` is ordinary text,
-//! deliberately: `{"a":{"b":1}}` ends in one and must survive.
+//! Doubled braces avoid collision with single-brace content already in these
+//! values: JSON blobs, regex quantifiers, Go or Helm templates passed
+//! through as args.
+//!
+//! `{{{{` and `}}}}` escape to literal `{{` and `}}`. A lone `}}`, as in
+//! `{"a":{"b":1}}`, is ordinary text and passes through unchanged.
 
+use core::convert::Infallible;
 use core::fmt;
+use std::borrow::Cow;
+use std::path::Path;
 
-/// The tokens this grammar knows, in the order an error lists them.
-const TOKENS: &[&str] = &["instance", "name"];
+use crate::secrets::{Resolution, SecretRef, SecretView};
+
+/// The positional tokens this grammar knows, in the order an error lists
+/// them.
+const TOKENS: &[&str] = &["instance", "name", SHEP_HOME];
+
+/// The prefix marking a store lookup, as it appears inside the braces.
+const SECRET_PREFIX: &str = "secret:";
+
+/// The token naming the shepherd's own home directory.
+///
+/// Uppercase because it names an environment variable; see the casing rule
+/// in this module's own documentation.
+const SHEP_HOME: &str = "SHEP_HOME";
+
+/// The store reference `token` names, or `None` when it is not a well-formed
+/// `{{secret:...}}` body.
+///
+/// [`SecretRef::parse`] is the only grammar for a reference, so a token
+/// [`validate`] accepts is one [`render`] can parse.
+///
+/// `pub(crate)`: [`crate::secrets::references`] shares this rather than
+/// re-deriving what a `secret:` body is.
+pub(crate) fn secret_reference(token: &str) -> Option<SecretRef<'_>> {
+    token.strip_prefix(SECRET_PREFIX).and_then(SecretRef::parse)
+}
 
 /// A value that is not a valid template.
 ///
-/// `pub(crate)`, like [`validate`] that produces it: `normalize` is the only
-/// caller, and it renders this into its own
-/// [`NormalizeError::BadTemplate`](super::normalize::NormalizeError::BadTemplate)
-/// rather than handing it on. Nothing outside shep-core has ever named it.
+/// `pub(crate)`: `normalize` is the only caller, and wraps this in its own
+/// [`NormalizeError::BadTemplate`](super::normalize::NormalizeError::BadTemplate).
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TemplateError {
@@ -45,14 +78,21 @@ pub(crate) enum TemplateError {
 impl fmt::Display for TemplateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnknownToken { token } if token.starts_with(SECRET_PREFIX) => write!(
+                f,
+                "`{{{{{token}}}}}` is not a valid secret reference: write \
+                 `{{{{secret:KEY}}}}` or `{{{{secret:namespace/KEY}}}}`, where each part \
+                 holds only letters, digits, `.`, `_` or `-` and does not start with `.`"
+            ),
             Self::UnknownToken { token } => write!(
                 f,
                 "`{{{{{token}}}}}` is not a template token: valid tokens are {}",
                 TOKENS
                     .iter()
                     .map(|t| format!("`{{{{{t}}}}}`"))
+                    .chain(core::iter::once(format!("`{{{{{SECRET_PREFIX}...}}}}`")))
                     .collect::<Vec<_>>()
-                    .join(" and ")
+                    .join(", ")
             ),
             Self::Unclosed => f.write_str("a `{{` in this value is never closed by a `}}`"),
         }
@@ -61,23 +101,116 @@ impl fmt::Display for TemplateError {
 
 impl core::error::Error for TemplateError {}
 
+/// A value whose grammar is valid but whose `{{secret:...}}` cannot be
+/// resolved.
+///
+/// Redacted by construction (IR-41): a variant carries the reference as the
+/// operator wrote it, the namespace and the environment, and no field can
+/// hold a value.
+///
+/// `#[non_exhaustive]`: shep-core is published, so a new way for a
+/// reference to fail must not break an out-of-tree `match`. It costs
+/// in-tree callers nothing, since [`Self::is_retriable`] already gives them
+/// the one classification they act on.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderError {
+    /// The store holds no value for this reference in this environment
+    Unresolved {
+        /// The reference as it appears in the value, braces and all
+        reference: String,
+        /// The environment the lookup ran against
+        environment: String,
+    },
+    /// No provider dog has pushed the namespace this reference reads for
+    /// the environment it was resolved in
+    NamespaceUnready {
+        /// The namespace the reference names
+        namespace: String,
+        /// The reference as it appears in the value, braces and all
+        reference: String,
+        /// The environment the lookup ran against
+        environment: String,
+    },
+}
+
+impl RenderError {
+    /// Whether waiting could make this reference resolve.
+    ///
+    /// `true` for [`Self::NamespaceUnready`] alone: a provider dog that has
+    /// not pushed this environment yet is the one failure a later attempt
+    /// can clear. An [`Self::Unresolved`] waits on a person instead.
+    #[must_use]
+    pub fn is_retriable(&self) -> bool {
+        matches!(self, Self::NamespaceUnready { .. })
+    }
+}
+
+impl fmt::Display for RenderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unresolved {
+                reference,
+                environment,
+            } => write!(
+                f,
+                "`{reference}` has no value in the `{environment}` environment"
+            ),
+            Self::NamespaceUnready {
+                namespace,
+                reference,
+                environment,
+            } => write!(
+                f,
+                "`{reference}` reads the `{namespace}` namespace, which no provider dog \
+                 has pushed to for the `{environment}` environment yet"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for RenderError {}
+
 /// One piece of `value` as [`walk`] sees it: ordinary text, or a token name
 /// with the braces stripped.
-enum Segment<'a> {
+///
+/// `pub(crate)`: [`crate::secrets::references`] matches on this directly
+/// rather than [`walk`] growing a second, narrower traversal.
+pub(crate) enum Segment<'a> {
     /// A run of ordinary text, copied through unchanged.
     Literal(&'a str),
     /// The name between a `{{` and its `}}`, braces stripped.
     Token(&'a str),
 }
 
+/// How far [`walk`] got through a value.
+pub(crate) enum Completion {
+    /// Every `{{` was closed by a `}}`.
+    Complete,
+    /// A `{{` was never closed; the segments before it were still emitted.
+    Unclosed,
+}
+
 /// Walks `value`, calling `on_segment` for each literal run and each token.
 ///
-/// One walker, one closure, so [`validate`] and [`render`] can never
-/// disagree about what a token is.
-fn walk(
+/// One walker, one closure, so [`validate`], [`render`], [`render_positional`]
+/// and [`crate::secrets::references`] can never disagree about what a token
+/// is.
+///
+/// Generic over the closure's error so each caller keeps its own, with an
+/// unclosed `{{` reported through [`Completion`] rather than as an error
+/// every caller would have to be able to spell.
+///
+/// `pub(crate)`: [`crate::secrets::references`] walks a config's own values
+/// for `{{secret:...}}` tokens rather than parsing them a second way.
+///
+/// # Errors
+///
+/// Whatever `on_segment` returns, at the first segment it refuses.
+pub(crate) fn walk<E>(
     value: &str,
-    mut on_segment: impl FnMut(Segment<'_>) -> Result<(), TemplateError>,
-) -> Result<(), TemplateError> {
+    mut on_segment: impl FnMut(Segment<'_>) -> Result<(), E>,
+) -> Result<Completion, E> {
     let bytes = value.as_bytes();
     let mut at = 0;
     let mut literal_from = 0;
@@ -96,7 +229,7 @@ fn walk(
             on_segment(Segment::Literal(&value[literal_from..at]))?;
             let rest = &value[at + 2..];
             let Some(end) = rest.find("}}") else {
-                return Err(TemplateError::Unclosed);
+                return Ok(Completion::Unclosed);
             };
             on_segment(Segment::Token(&rest[..end]))?;
             at += 2 + end + 2;
@@ -106,52 +239,206 @@ fn walk(
         }
     }
     on_segment(Segment::Literal(&value[literal_from..]))?;
-    Ok(())
+    Ok(Completion::Complete)
+}
+
+/// Writes `token` back with its braces, for a token the caller leaves alone.
+fn push_token(out: &mut String, token: &str) {
+    out.push_str("{{");
+    out.push_str(token);
+    out.push_str("}}");
+}
+
+/// The value `reference` names in `secrets`.
+///
+/// # Errors
+///
+/// - [`RenderError::NamespaceUnready`]: the reference names a namespace no
+///   provider has pushed for this view's environment.
+/// - [`RenderError::Unresolved`]: every other miss.
+fn resolve_secret<'a>(
+    reference: &SecretRef<'_>,
+    secrets: &'a SecretView,
+) -> Result<&'a str, RenderError> {
+    match (secrets.resolve(reference), reference.namespace) {
+        (Resolution::Found(value), _) => Ok(value),
+        (Resolution::MissingNamespace, Some(namespace)) => Err(RenderError::NamespaceUnready {
+            namespace: namespace.to_string(),
+            reference: reference.to_string(),
+            environment: secrets.environment().to_string(),
+        }),
+        (Resolution::MissingKey | Resolution::MissingNamespace, _) => {
+            Err(RenderError::Unresolved {
+                reference: reference.to_string(),
+                environment: secrets.environment().to_string(),
+            })
+        }
+    }
+}
+
+/// Whether any token in `value` satisfies `wanted`.
+///
+/// Walks the same tokenizer the renderers resolve against, so a token this
+/// misses is one they would not have substituted either. An escaped
+/// `{{{{name}}}}` is a literal here, as it is there.
+fn holds_token(value: &str, wanted: impl Fn(&str) -> bool) -> bool {
+    let mut found = false;
+    let _ = walk::<Infallible>(value, |segment| {
+        if let Segment::Token(token) = segment
+            && wanted(token)
+        {
+            found = true;
+        }
+        Ok(())
+    });
+    found
+}
+
+/// Whether `value` carries a `{{secret:...}}` this grammar would resolve.
+///
+/// `pub(crate)`: `normalize` asks it of the two log-path fields, which may
+/// not hold a secret.
+pub(crate) fn holds_secret(value: &str) -> bool {
+    holds_token(value, |token| secret_reference(token).is_some())
+}
+
+/// Whether `value` carries a `{{SHEP_HOME}}`.
+///
+/// `pub(crate)`: `normalize` asks it of every templated field, to refuse a
+/// value nothing could expand rather than hand a child a path with braces
+/// in it.
+pub(crate) fn holds_shep_home(value: &str) -> bool {
+    holds_token(value, |token| token == SHEP_HOME)
 }
 
 /// Checks that every `{{...}}` in `value` names a token this grammar defines.
 ///
-/// `pub(crate)`: config time is the only moment this question is asked, and
-/// `normalize` is where config time happens. [`render`] stays public because
-/// shep-daemon's `assemble` substitutes on values `normalize` has already
-/// passed.
+/// `pub(crate)`: only `normalize` asks this, at config time. [`render`] stays
+/// public since shep-daemon's `assemble` runs it on already-validated values.
 ///
 /// # Errors
 ///
 /// - [`TemplateError::UnknownToken`]: a token this grammar does not define.
 /// - [`TemplateError::Unclosed`]: a `{{` with no closing `}}`.
 pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
-    walk(value, |segment| match segment {
+    let completion = walk(value, |segment| match segment {
         Segment::Literal(_) => Ok(()),
-        Segment::Token(token) if TOKENS.contains(&token) => Ok(()),
+        Segment::Token(token) if TOKENS.contains(&token) || secret_reference(token).is_some() => {
+            Ok(())
+        }
         Segment::Token(token) => Err(TemplateError::UnknownToken {
             token: token.to_string(),
         }),
-    })
+    })?;
+    match completion {
+        Completion::Complete => Ok(()),
+        Completion::Unclosed => Err(TemplateError::Unclosed),
+    }
 }
 
-/// Substitutes the tokens in `value`.
+/// The text a token that both renderers resolve identically expands to, or
+/// `None` for a token neither knows positionally.
 ///
-/// Call `validate` first: an unknown token here renders as nothing, because
-/// `normalize` is the seam that refuses one and a value reaching this
-/// function has already passed it. An unclosed `{{` is the other case
-/// `validate` exists to catch before this function ever sees the value: on
-/// one, `walk` stops with an error partway through, so this renders
-/// truncated at that point rather than including the rest of `value`.
+/// The positional tokens live here rather than in each renderer's match: one
+/// added to only one of them would make a value render one way under
+/// `render_positional` and another under `render`, which is not a difference
+/// either caller could see coming.
+///
+/// `{{SHEP_HOME}}` with no `shep_home` answers `None`, so it is written back
+/// with its braces the way an undefined token is. `normalize` refuses that
+/// value before either renderer sees it, so the arm is a degradation rather
+/// than a reachable spelling.
+fn positional<'a>(
+    token: &str,
+    name: &'a str,
+    slot: &'a str,
+    shep_home: Option<&'a Path>,
+) -> Option<Cow<'a, str>> {
+    match token {
+        "instance" => Some(Cow::Borrowed(slot)),
+        "name" => Some(Cow::Borrowed(name)),
+        SHEP_HOME => shep_home.map(|home| home.to_string_lossy()),
+        _ => None,
+    }
+}
+
+/// Substitutes `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` only, leaving
+/// every other token, `{{secret:...}}` included, exactly as written.
+///
+/// For callers that have no store to consult. `normalize` uses it to compare
+/// two instances' log paths, where a secret resolves to the same value for
+/// both instances and so cannot tell them apart anyway.
+///
+/// `shep_home` is the directory `$SHEP_HOME` names, from
+/// [`crate::paths::shep_home`]. `None` leaves `{{SHEP_HOME}}` written back
+/// with its braces; `normalize` refuses that value rather than letting one
+/// reach a child.
+///
+/// Call `validate` first: an unclosed `{{` renders truncated at that
+/// point.
 #[must_use]
-pub fn render(value: &str, name: &str, instance: u32) -> String {
+pub fn render_positional(
+    value: &str,
+    name: &str,
+    instance: u32,
+    shep_home: Option<&Path>,
+) -> String {
     let mut out = String::with_capacity(value.len());
     let slot = instance.to_string();
-    let _ = walk(value, |segment| {
+    let _: Result<Completion, Infallible> = walk(value, |segment| {
         match segment {
             Segment::Literal(literal) => out.push_str(literal),
-            Segment::Token("instance") => out.push_str(&slot),
-            Segment::Token("name") => out.push_str(name),
-            Segment::Token(_) => {}
+            Segment::Token(token) => match positional(token, name, &slot, shep_home) {
+                Some(text) => out.push_str(&text),
+                None => push_token(&mut out, token),
+            },
         }
         Ok(())
     });
     out
+}
+
+/// Substitutes every token in `value`, resolving `{{secret:...}}` against
+/// `secrets`.
+///
+/// `shep_home` is the directory `$SHEP_HOME` names, and carries the same
+/// meaning it does in [`render_positional`]: the two share one resolver, so
+/// a token cannot expand one way here and another way there.
+///
+/// Call `validate` first: this assumes the grammar already passed, so a
+/// token this grammar does not define is written back as it was, and an
+/// unclosed `{{` renders truncated at that point.
+///
+/// # Errors
+///
+/// - [`RenderError::Unresolved`]: a reference the store has no value for in
+///   this view's environment. Nothing but a person will supply it.
+/// - [`RenderError::NamespaceUnready`]: a namespace no provider dog has
+///   pushed to for this view's environment yet.
+///   [`RenderError::is_retriable`] is `true` for this one alone.
+pub fn render(
+    value: &str,
+    name: &str,
+    instance: u32,
+    shep_home: Option<&Path>,
+    secrets: &SecretView,
+) -> Result<String, RenderError> {
+    let mut out = String::with_capacity(value.len());
+    let slot = instance.to_string();
+    walk(value, |segment| {
+        match segment {
+            Segment::Literal(literal) => out.push_str(literal),
+            Segment::Token(token) => match positional(token, name, &slot, shep_home) {
+                Some(text) => out.push_str(&text),
+                None => match secret_reference(token) {
+                    Some(reference) => out.push_str(resolve_secret(&reference, secrets)?),
+                    None => push_token(&mut out, token),
+                },
+            },
+        }
+        Ok(())
+    })?;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -159,25 +446,154 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_two_tokens_render() {
-        assert_eq!(render("z-{{instance}}", "worker", 3), "z-3");
-        assert_eq!(render("{{name}}-{{instance}}d", "worker", 3), "worker-3d");
-        assert_eq!(render("91{{instance}}", "worker", 7), "917");
+    fn the_identity_tokens_render() {
+        assert_eq!(
+            render_positional("z-{{instance}}", "worker", 3, None),
+            "z-3"
+        );
+        assert_eq!(
+            render_positional("{{name}}-{{instance}}d", "worker", 3, None),
+            "worker-3d"
+        );
+        assert_eq!(
+            render_positional("91{{instance}}", "worker", 7, None),
+            "917"
+        );
     }
 
     #[test]
     fn a_value_with_no_token_is_returned_unchanged() {
         // The collision case the doubled braces exist for: single braces are
-        // ordinary content and must survive untouched.
+        // ordinary content and must survive untouched. Both renderers, since
+        // a JSON blob reaches a child through the fallible one.
+        let empty = SecretView::empty("production".to_string());
         for value in [
             r#"{"ts":"%t","level":"%l"}"#,
             r#"{"a":{"b":1}}"#,
             "^[a-z]{2,3}$",
             "plain",
         ] {
-            assert_eq!(render(value, "worker", 1), value, "unchanged: {value}");
+            assert_eq!(
+                render_positional(value, "worker", 1, None),
+                value,
+                "unchanged: {value}"
+            );
+            assert_eq!(
+                render(value, "worker", 1, None, &empty).unwrap(),
+                value,
+                "unchanged: {value}"
+            );
             assert!(validate(value).is_ok(), "and accepted: {value}");
         }
+    }
+
+    #[test]
+    fn shep_home_renders_from_the_directory_it_is_handed() {
+        let home = Path::new("/home/ada/.shep");
+        let empty = SecretView::empty("production".to_string());
+        for value in ["{{SHEP_HOME}}/logs/out.log", "{{SHEP_HOME}}"] {
+            let expected = value.replace("{{SHEP_HOME}}", "/home/ada/.shep");
+            assert_eq!(
+                render_positional(value, "worker", 0, Some(home)),
+                expected,
+                "positionally: {value}"
+            );
+            assert_eq!(
+                render(value, "worker", 0, Some(home), &empty).unwrap(),
+                expected,
+                "and through the store: {value}"
+            );
+        }
+    }
+
+    /// The invariant `positional` exists for: a token both renderers reach
+    /// through one resolver cannot expand one way here and another there.
+    /// This is the check that fails if a later token is wired into only one.
+    #[test]
+    fn every_positional_token_renders_alike_in_both_renderers() {
+        let home = Path::new("/home/ada/.shep");
+        let empty = SecretView::empty("production".to_string());
+        for token in TOKENS {
+            let value = format!("<{{{{{token}}}}}>");
+            assert_eq!(
+                render_positional(&value, "worker", 4, Some(home)),
+                render(&value, "worker", 4, Some(home), &empty).unwrap(),
+                "both renderers agree on {value}"
+            );
+        }
+    }
+
+    /// Instance-independent on purpose: it is the one positional token that
+    /// cannot tell two slots apart, which is what normalize's log-path
+    /// collision check reads it for.
+    #[test]
+    fn shep_home_renders_the_same_for_every_instance() {
+        let home = Path::new("/home/ada/.shep");
+        let value = "{{SHEP_HOME}}/logs/{{name}}.log";
+        assert_eq!(
+            render_positional(value, "worker", 0, Some(home)),
+            render_positional(value, "worker", 1, Some(home))
+        );
+    }
+
+    #[test]
+    fn shep_home_with_no_home_is_written_back_with_its_braces() {
+        // normalize refuses this value rather than letting it reach a child,
+        // so the arm is a degradation; what it must not do is drop the token.
+        assert_eq!(
+            render_positional("{{SHEP_HOME}}/logs/out.log", "worker", 0, None),
+            "{{SHEP_HOME}}/logs/out.log"
+        );
+    }
+
+    #[test]
+    fn doubling_escapes_shep_home_too() {
+        assert_eq!(
+            render_positional(
+                "{{{{SHEP_HOME}}}}",
+                "worker",
+                0,
+                Some(Path::new("/home/ada/.shep"))
+            ),
+            "{{SHEP_HOME}}"
+        );
+    }
+
+    /// Casing is the rule, not a spelling shep is relaxed about: a lowercase
+    /// name would read as a config field, and this grammar has none by that
+    /// name.
+    #[test]
+    fn a_lowercase_shep_home_is_not_the_token() {
+        let err = validate("{{shep_home}}/logs").unwrap_err();
+        assert!(matches!(&err, TemplateError::UnknownToken { token } if token == "shep_home"));
+        assert!(
+            err.to_string().contains("{{SHEP_HOME}}"),
+            "and the error shows the casing: {err}"
+        );
+    }
+
+    /// The sibling of the test below, and the one with teeth: `holds_secret`
+    /// is what `normalize` refuses a log path on, so a `secret_reference`
+    /// that started accepting an empty key would widen that refusal with
+    /// nothing to say so.
+    #[test]
+    fn holds_secret_sees_a_reference_and_not_its_escape() {
+        assert!(holds_secret("{{secret:DB_PASSWORD}}"));
+        assert!(holds_secret("postgres://u:{{secret:PW}}@db/app"));
+        assert!(holds_secret("{{secret:vercel/API_KEY}}"));
+        assert!(!holds_secret("{{{{secret:DB_PASSWORD}}}}"));
+        assert!(!holds_secret("{{secret:}}"), "not a well-formed reference");
+        assert!(!holds_secret("{{sekret:K}}"), "not this grammar's prefix");
+        assert!(!holds_secret("{{name}}-out.log"));
+        assert!(!holds_secret("/var/log/out.log"));
+    }
+
+    #[test]
+    fn holds_shep_home_sees_the_token_and_not_its_escape() {
+        assert!(holds_shep_home("{{SHEP_HOME}}/logs/out.log"));
+        assert!(!holds_shep_home("{{{{SHEP_HOME}}}}/logs/out.log"));
+        assert!(!holds_shep_home("/var/log/out.log"));
+        assert!(!holds_shep_home("{{name}}-out.log"));
     }
 
     #[test]
@@ -198,10 +614,13 @@ mod tests {
 
     #[test]
     fn doubling_escapes_a_literal_token() {
-        assert_eq!(render("{{{{instance}}}}", "worker", 3), "{{instance}}");
+        assert_eq!(
+            render_positional("{{{{instance}}}}", "worker", 3, None),
+            "{{instance}}"
+        );
         assert!(validate("{{{{ .Values.port }}}}").is_ok());
         assert_eq!(
-            render("{{{{ .Values.port }}}}", "worker", 3),
+            render_positional("{{{{ .Values.port }}}}", "worker", 3, None),
             "{{ .Values.port }}",
             "a Helm template passes through for the tool that consumes it"
         );
@@ -210,5 +629,197 @@ mod tests {
     #[test]
     fn an_unclosed_token_is_refused() {
         assert!(validate("z-{{instance").is_err());
+    }
+
+    fn view(environment: &str) -> SecretView {
+        use crate::secrets::ProviderCache;
+        use std::collections::{BTreeMap, BTreeSet};
+        let store = BTreeMap::from([(
+            "DB_PASSWORD".to_string(),
+            BTreeMap::from([("production".to_string(), "hunter2".to_string())]),
+        )]);
+        let providers = ProviderCache {
+            values: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeMap::from([(
+                    "API_KEY".to_string(),
+                    BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
+                )]),
+            )]),
+            pushed: BTreeMap::from([(
+                "vercel".to_string(),
+                BTreeSet::from(["production".to_string()]),
+            )]),
+        };
+        SecretView::new(environment.to_string(), store, providers)
+    }
+
+    #[test]
+    fn a_secret_token_validates_with_and_without_a_namespace() {
+        assert!(validate("{{secret:DB_PASSWORD}}").is_ok());
+        assert!(validate("{{secret:vercel/API_KEY}}").is_ok());
+        assert!(validate("postgres://u:{{secret:DB_PASSWORD}}@db/app").is_ok());
+    }
+
+    #[test]
+    fn a_malformed_reference_is_refused_at_config_time() {
+        for bad in [
+            "{{secret:}}",
+            "{{secret:/KEY}}",
+            "{{secret:ns/}}",
+            "{{secret:a/b/c}}",
+            "{{secret:has space}}",
+        ] {
+            let err = validate(bad).unwrap_err();
+            let rendered = err.to_string();
+            assert!(rendered.contains("secret"), "{bad}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_prefix_is_still_refused_by_name() {
+        // The closed token set is the whole reason the prefix exists.
+        let err = validate("{{sekret:K}}").unwrap_err();
+        assert!(matches!(&err, TemplateError::UnknownToken { token } if token == "sekret:K"));
+    }
+
+    #[test]
+    fn render_substitutes_a_resolved_secret() {
+        assert_eq!(
+            render(
+                "pw={{secret:DB_PASSWORD}}",
+                "web",
+                0,
+                None,
+                &view("production")
+            )
+            .unwrap(),
+            "pw=hunter2"
+        );
+        assert_eq!(
+            render(
+                "{{secret:vercel/API_KEY}}",
+                "web",
+                0,
+                None,
+                &view("production")
+            )
+            .unwrap(),
+            "sk_live"
+        );
+    }
+
+    #[test]
+    fn positional_tokens_still_render_beside_a_secret() {
+        assert_eq!(
+            render(
+                "{{name}}-{{instance}}-{{secret:DB_PASSWORD}}",
+                "web",
+                3,
+                None,
+                &view("production")
+            )
+            .unwrap(),
+            "web-3-hunter2"
+        );
+    }
+
+    #[test]
+    fn an_unresolvable_key_errors_naming_the_reference_and_the_environment() {
+        let err = render("{{secret:ABSENT}}", "web", 0, None, &view("production")).unwrap_err();
+        assert!(!err.is_retriable(), "a missing key is nobody's to retry");
+        let rendered = err.to_string();
+        assert!(rendered.contains("{{secret:ABSENT}}"), "{rendered}");
+        assert!(rendered.contains("production"), "{rendered}");
+    }
+
+    #[test]
+    fn a_secret_missing_only_in_this_environment_errors_rather_than_borrowing_another() {
+        let err = render("{{secret:DB_PASSWORD}}", "web", 0, None, &view("staging")).unwrap_err();
+        assert!(err.to_string().contains("staging"));
+    }
+
+    #[test]
+    fn an_unready_namespace_is_retriable_and_says_which_one() {
+        let err = render("{{secret:vault/ANY}}", "web", 0, None, &view("production")).unwrap_err();
+        assert!(err.is_retriable(), "no dog has pushed under this name yet");
+        let rendered = err.to_string();
+        assert!(rendered.contains("vault"), "{rendered}");
+    }
+
+    #[test]
+    fn a_namespace_that_is_up_and_lacks_the_key_is_not_retriable() {
+        let err = render(
+            "{{secret:vercel/ABSENT}}",
+            "web",
+            0,
+            None,
+            &view("production"),
+        )
+        .unwrap_err();
+        assert!(!err.is_retriable());
+    }
+
+    /// Every variant, both renderings, as exact strings (IR-41): a field
+    /// added later that captured a resolved value would leak through the
+    /// derived `Debug`, and a `contains` check cannot see a field it was
+    /// never told to look for.
+    #[test]
+    fn no_render_error_ever_prints_a_value() {
+        let unresolved =
+            render("{{secret:ABSENT}}", "web", 0, None, &view("production")).unwrap_err();
+        assert_eq!(
+            unresolved.to_string(),
+            "`{{secret:ABSENT}}` has no value in the `production` environment"
+        );
+        assert_eq!(
+            format!("{unresolved:?}"),
+            "Unresolved { reference: \"{{secret:ABSENT}}\", environment: \"production\" }"
+        );
+
+        let unready =
+            render("{{secret:vault/ANY}}", "web", 0, None, &view("production")).unwrap_err();
+        assert_eq!(
+            unready.to_string(),
+            "`{{secret:vault/ANY}}` reads the `vault` namespace, which no provider dog \
+             has pushed to for the `production` environment yet"
+        );
+        assert_eq!(
+            format!("{unready:?}"),
+            "NamespaceUnready { namespace: \"vault\", reference: \"{{secret:vault/ANY}}\", \
+             environment: \"production\" }"
+        );
+
+        for rendered in [unresolved.to_string(), unready.to_string()] {
+            assert!(
+                !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
+                "no em or en dash in copy a user reads: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn render_positional_leaves_a_secret_token_alone() {
+        // normalize's log-path collision check runs at config time with no
+        // store, and two instances share a secret's value anyway.
+        assert_eq!(
+            render_positional("{{secret:DB_PASSWORD}}-{{instance}}", "web", 2, None),
+            "{{secret:DB_PASSWORD}}-2"
+        );
+    }
+
+    #[test]
+    fn doubling_still_escapes_a_secret_token() {
+        assert_eq!(
+            render(
+                "{{{{secret:DB_PASSWORD}}}}",
+                "web",
+                0,
+                None,
+                &view("production")
+            )
+            .unwrap(),
+            "{{secret:DB_PASSWORD}}"
+        );
     }
 }

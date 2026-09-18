@@ -49,7 +49,8 @@ of them: it shipped, and its entry moved to "Not deferred" below.
 
 - HTTP/SSE MCP transport (whistle ships stdio-only first)
 - cgroup v2 enforcement (`enforce = "kernel"`) — `LimitEnforcer`'s polling
-  impl is the v1.0 tier
+  impl is the v1.0 tier. Sized 2026-09-06, together with the CPU half this
+  line never mentioned: see the subsection below.
 - `@shep/io` npm shim (built on demand)
 - vcs metadata (`vcs` feature, off by default)
 - `shep web` JSON status endpoint. Resolved, 2026-08-13: the metrics dog
@@ -57,6 +58,330 @@ of them: it shipped, and its entry moved to "Not deferred" below.
   scraper, and `shep web` was a hand-fetched JSON payload for a
   dashboard, an incompatible shape for an incompatible consumer. This
   stays its own deferred item rather than being folded into the dog.
+
+### Per-sheep resource limits, and where `enforce = "kernel"`'s cost sits, sized 2026-09-06
+
+Sized against the code, not built. The shape is two config fields carrying
+docker's semantics, chosen deliberately so nobody has to learn a shep-specific
+model:
+
+- **`max_cpu_cores`**, matching `docker --cpus=N`. The sheep's process tree
+  gets at most N cores' worth of CPU time per scheduling period, scheduled
+  wherever the kernel likes. Not affinity, and not core pinning.
+- **`max_memory` gaining an enforcement strategy**, matching
+  `docker --memory=2g`. The kernel caps the tree instead of shep sampling it
+  every `MEMORY_POLL_INTERVAL` and restarting it.
+
+**Affinity is the obvious first guess and it is the wrong one.** Pinning a
+sheep to a set of cores forces shep to choose *which* cores, and with several
+sheep that choice becomes a placement policy. Either every sheep stacks onto
+cores `0..N` and contends there while the rest of the machine idles, or shep
+becomes a scheduler making placement calls without being able to see anything
+else running on the host. A quota needs no placement decision at all: the
+kernel keeps scheduling the tree wherever it likes, and stops scheduling it
+once the slice is spent.
+
+#### The cost is one thing, and it is neither field
+
+Nothing in `crates/` creates, writes, or detects a cgroup. Grepping the
+workspace for `cgroup` returns three comments and no code
+(`crates/shep-daemon/src/runner.rs:900`,
+`crates/shep-daemon/src/limits/mod.rs:54`, and
+`crates/shep-cli/src/lookout/source.rs:353`). The work is the container
+itself: a per-sheep cgroup created at spawn with the child moved
+into it before it forks anything, v2 versus v1/hybrid detection, delegation
+detection, and a clean refusal rather than a silent no-op when none of that is
+available. Call it phase 0. Against it, each field is one file write:
+`cpu.max` and `memory.max`.
+
+Sizes below are relative to each other, not an estimate in days:
+
+| Work | Size |
+| --- | --- |
+| Phase 0, the per-sheep cgroup | L |
+| `max_cpu_cores`, writing `cpu.max` | S |
+| `max_memory` with `enforce = "kernel"`, writing `memory.max` | M |
+
+**Windows already does most of what phase 0 needs, which is the finding worth
+recording.** The spawn path calls `command.spawn()`
+(`crates/shep-daemon/src/tokio_runner.rs:705`), reads the pid, and immediately
+creates a job object and assigns the child to it (`tokio_runner.rs:716-738`).
+The unix arm of that same function has only `command.process_group(0)`
+(`tokio_runner.rs:571-572`) and no per-sheep resource container.
+
+**The analogy stops one step short, and the gap is a race.** Read the Windows
+comment exactly: "the child exists and everything it spawns **from here**
+inherits the job". From here, not from birth. `spawn()` returns a process that
+is already running, so anything it forks between that return and the
+containment call is outside. On Windows that costs little, because a job is
+about reachability for `kill_tree` and a stray early grandchild is rare. On
+Linux it costs correctness: writing a pid to `cgroup.procs` moves that thread
+group and **not** its existing descendants, so an early fork stays in the
+parent cgroup and its memory is never counted against `memory.max`. A shell
+wrapper that execs a real program is the ordinary case, not a corner one.
+
+So phase 0 cannot copy the Windows site verbatim. The child has to join the
+cgroup before it can fork, which on unix means either `pre_exec`, where the
+child writes its own pid to `cgroup.procs` after fork and before exec, or
+`clone3`'s `CLONE_INTO_CGROUP`, which is atomic and needs Linux 5.7. `pre_exec`
+is the portable one and runs in the narrow post-fork window where almost
+nothing is safe to call, which is its own cost. Sizing phase 0 as L already
+assumed a real spawn-path change; this is what that change is.
+
+#### `LimitEnforcer` cannot be the seam, and the reason is timing
+
+`arm()` fires at the transition to `Online`, not at the spawn, and
+`went_online`'s own rustdoc says so: "Arming happens at the transition, not the
+spawn: a liveness probe armed against an app that has not finished starting
+fails its threshold and restarts the app before it ever comes up"
+(`crates/shep-daemon/src/supervisor.rs:7565-7590`). For the polling enforcer
+that costs nothing, because it sums a tree from outside and needs no
+cooperation from the child. A cgroup only accounts for a process that was
+already inside it before it forked, so arming seconds late means arming
+against descendants that have already escaped.
+
+So create the cgroup unconditionally for every sheep at spawn on Linux,
+configured limit or not. Unconditionally means every sheep on a host that has
+the machinery, never every sheep everywhere: macOS has no cgroups and refuses
+both fields outright, so there is nothing to create there and a sheep starts
+exactly as it does today. Windows already builds its job for every sheep with
+no limit set, and `Job::create`'s own comment says why the zeroed limit block
+is written out explicitly, that doing so "makes adding a limit later a one-line
+edit at a site that already handles its own errors"
+(`crates/shep-daemon/src/sys_windows.rs:87-127`).
+
+`arm()` then reduces to writing a limit into a container that already exists,
+which preserves `max_memory`'s current `ApplyGroup::Live` classification
+(`crates/shep-core/src/config/apply.rs:48`): a config change still reaches a
+running sheep through a re-arm, with no respawn.
+
+#### The trait's own doc contains a claim this design breaks
+
+`LimitEnforcer`'s rustdoc says the cgroup implementation "must replace the
+polling one without the engine noticing"
+(`crates/shep-daemon/src/limits/mod.rs:54-56`). That is false on one axis, and
+the axis is the restart budget.
+
+A polling breach does not merely skip `max_restarts`, it **resets** it.
+`extra_restart` delegates to `begin_manual` rather than `respawn`, which
+"keeps the kill ladder and the budget reset" (`supervisor.rs:1131-1136` and
+`supervisor.rs:7092-7094`), and the module doc states the rule plainly: "its
+restart does not count against `max_restarts`" (`limits/mod.rs:11-12`). A
+cgroup OOM kill arrives instead as an ordinary `SIGKILL` crash through the
+normal exit path, entirely outside the trait, and so it consumes the budget.
+An app that leaks and today restarts indefinitely would instead burn its
+`max_restarts` and get parked.
+
+**That is the better case. The worse one is that nothing arrives at all.** The
+cgroup OOM killer picks one victim by its own heuristic, and it need not be the
+pid shep supervises: kill a lamb and the sheep stays up, over its ceiling, with
+no exit to classify and no breach to report. Today's polling enforcer has no
+such hole, because it sums the tree and restarts the root whatever died. So the
+design needs `memory.oom.group=1`, which makes the kernel kill every process in
+the cgroup together and turns an OOM into exactly the root-pid exit the engine
+already understands. Setting it is one more file write in phase 0 and it is not
+optional: without it, the whole feature silently degrades to "sometimes".
+
+Closing that means teaching the exit path to decide whether an exit was this
+sheep's own OOM, and that is harder than reading one number. `memory.events`
+is hierarchical, so its `oom_kill` counts kills anywhere at or below the
+cgroup, and an ancestor or a host-wide OOM can raise a sheep's counter without
+the sheep's own `memory.max` ever being reached. `memory.events.local` is the
+one that excludes descendants. Both are cumulative counters rather than events,
+so a non-zero value proves nothing on its own and even a matching delta across
+an exit is correlation: read the local counter before the spawn and again at
+the exit, treat only a rise in that window as this sheep's OOM, and decide in
+advance what an ambiguous exit counts as. Conservative is to charge it to the
+budget, since the alternative is a crash loop that never parks.
+
+None of that is a swap behind `LimitEnforcer`. It is new logic in the exit
+path, and it is the kind of thing found late and expensively.
+
+Separately, extending `arm(&self, id, root_pid, limit: MemSize)` is a
+**breaking change**. The trait is public specifically so
+`crates/shep-daemon/tests/external_impls.rs:28-36` can implement it from
+outside the crate, and that test's `impl` block is the compile-time proof. CPU
+should not go through the trait in any case, since docker's `--cpus` has no
+breach event to report.
+
+#### CPU never kills. Memory does
+
+`cpu.max` takes `$MAX $PERIOD`, both in microseconds, and the CFS bandwidth
+controller simply stops scheduling the cgroup's tasks until the next period
+begins. Nothing dies, the tree runs slower. runc computes the same value the
+same way: quota is cores times period.
+
+Note which way that scales, because Windows scales the other way and doing
+Linux first is how the wrong model gets carried across. On Linux more than one
+core is a quota **above** the period: two cores at the default 100000us period
+is `200000 100000`, and the number grows without a ceiling. On Windows the
+ceiling is the whole machine, so more than one core is a **larger fraction** of
+a fixed 10000. One conversion multiplies by the core count, the other divides by
+the host's.
+
+**Swap has to be named, because `memory.max` alone does not bound memory.**
+`memory.max` caps memory and says nothing about swap, so a sheep at its ceiling
+can keep going into `memory.swap.max`, which defaults to no limit. Docker does
+not leave this implicit either: `--memory=2g` with no `--memory-swap` allows
+2g of swap on top, for 4g of total footprint. Borrowing docker's flag without
+its swap default would give shep a ceiling that is not one. The recommendation
+is `memory.swap.max = 0`, so `max_memory` means what an operator reading the
+name expects and what today's polling enforcer already means, since that sums
+RSS and a swapped-out sheep looks under its limit either way. It diverges from
+docker's default deliberately, and the entry says so rather than inheriting a
+2x footprint by silence. Windows needs the same sentence for a different
+reason: `JOB_OBJECT_LIMIT_JOB_MEMORY` bounds committed virtual memory, not
+resident memory, so the same configured number does not mean the same thing on
+the two platforms and the docs page has to say which.
+
+`memory.max` is not the symmetric knob to `cpu.max`. Under Linux overcommit the
+kernel does not politely refuse the allocation that crosses the line. It
+reclaims, and when reclaim fails it invokes the cgroup-scoped OOM killer on a
+process it picks by its own heuristic, which need not be the one that
+allocated. Worth
+stating explicitly, because "cap it instead of restarting it" sounds like a
+graceful refusal and on Linux it is not. `memory.high` is the genuine
+throttle-without-killing knob, applying reclaim pressure and stalling the
+allocator rather than killing anything. It is a plausible later addition, not
+what `max_memory` should mean.
+
+#### Platforms, which decide the staging
+
+**Linux** gets real enforcement for both fields, entirely gated on phase 0.
+Delegation is the practical question of whether an ordinary user gets the
+feature at all:
+
+| shep runs as | cgroup write access |
+| --- | --- |
+| root | always works |
+| a systemd system unit | needs `Delegate=yes`, which the shipped unit does not set |
+| a user login session | whatever `user@.service` already delegated, which varies by systemd version |
+
+The shipped unit is rendered at
+`crates/shep-cli/src/commands/startup/unit.rs:57-71` and its `[Service]` block
+carries no `Delegate=`. Adding one also means updating the exact-string test
+at `unit.rs:393-407`, which pins the rendered unit verbatim.
+
+**Writable is not the same question as enabled, and the refusal has to ask
+both.** A directory shep can write does not mean `cpu.max` and `memory.max`
+will exist in the cgroups it creates under it. In cgroup v2 a controller
+appears in a child only when the parent lists it in `cgroup.subtree_control`,
+which the parent can only do for controllers it has in its own
+`cgroup.controllers`, and the top-down rule means enabling one can simply fail.
+So phase 0's probe is three checks and not one: the subtree is writable, the
+controller is present in `cgroup.controllers`, and it is enabled in
+`cgroup.subtree_control` or can be. A limit accepted without all three is a
+limit shep cannot enforce. Where any of them fails, refuse the configured limit
+at load with a message naming which one and why, and never accept the field
+while enforcing nothing.
+
+**Windows** gets real enforcement for both, and memory is the cheap half. It
+also matches the intent better than Linux does:
+`JOBOBJECT_EXTENDED_LIMIT_INFORMATION` is already allocated, zeroed and
+submitted in `Job::create`, and `JOB_OBJECT_LIMIT_JOB_MEMORY` makes the
+over-limit commit **fail** rather than terminating the process. CPU needs a
+second info class, `JobObjectCpuRateControlInformation`, with
+`ENABLE | HARD_CAP` rather than the weight-based mode, which expresses a
+relative priority and not a quota.
+
+`CpuRate` is the conversion worth writing down, because it reads backwards and
+a review on 2026-09-13 got it backwards. It is hundredths of a percent of the
+**whole machine**, capped at 10000, not of one core: 10000 means every cycle
+the host has. One core is therefore not a fixed number, and `max_cpu_cores`
+cannot be scaled without knowing how many processors the host has. The
+conversion is `cores * 10000 / processor_count`, which is what moby computes
+for `--cpus` on Windows, so `max_cpu_cores = 2` on an eight-processor host
+writes 2500 and not 20000. The cap is the tell: if the rate were per-core,
+expressing two cores would need a value above 10000, and the API refuses one.
+
+`CpuRate` is also an integer, and that bites at the small end rather than the
+large one. `cores * 10000 / processor_count` floors, so a genuinely configured
+fraction can land on zero on a big host: 0.05 cores on a 128-processor machine
+computes 3, and 0.01 computes 0, which Windows rejects outright. Docker's
+`--cpus` takes fractions, so `max_cpu_cores` has to as well. Clamp the result
+into `1..=10000` rather than passing it through: a floor of 1 gives the
+smallest limit the API can express, which is the honest answer to asking for
+less than that, and the ceiling keeps a `max_cpu_cores` above the host's
+processor count from being refused when it should simply mean "all of it".
+
+**macOS** has no mechanism for either, and this has to be a documented
+refusal. `RLIMIT_AS` is defeated by ordinary virtual-address reservations, so
+a runtime that reserves a large arena up front trips it while using almost
+none of it. `RLIMIT_RSS` is not enforced by XNU. Jetsam memory watermarks need
+an entitlement Apple does not grant to third parties. The refusal belongs at
+the call site with its reasoning attached, in the style shep already uses for
+the Windows signal refusal at `tokio_runner.rs:215-278`.
+
+**The macOS consequence is the largest cost here and the least obvious.**
+macOS is shep's primary development platform, so none of the enforcement code
+can ever be exercised in the ordinary local edit-and-test loop. Every change
+needs a Linux host or the Windows box. That is a permanent iteration tax for
+the life of the feature rather than a one-time port, and it should shape the
+staging more than any individual API's difficulty.
+
+#### Smaller decisions, recorded so they are not reopened
+
+- **`enforce` is the right field name.** It is already published in this
+  file's own v1.1 line above.
+- **It should be a sibling enum**, following the `ProbeKind` precedent at
+  `crates/shep-core/src/config/app.rs:18-25`. Not a bool, and not a variant
+  nested inside `max_memory`: `MemSize` is a plain validated newtype
+  (`crates/shep-core/src/values.rs:39`) and is not built to carry a strategy
+  tag.
+- **`max_cpu_cores` wants a validated newtype** of its own, following
+  `MemSize` and `UpDuration` (`values.rs:39`, `values.rs:204`), rather than a
+  bare `f64` that silently accepts zero, a negative, or a NaN. Fractions are
+  in, because `docker --cpus` takes them, so the type's job is to refuse
+  nonsense rather than to refuse non-integers. Refusing is not the whole
+  contract either: the per-platform conversions round, and the Windows one can
+  floor a valid fraction to a value the API rejects. The clamp belongs at the
+  conversion, not in the type.
+- **Both fields need a row in the `FIELDS` table** at
+  `crates/shep-core/src/config/apply.rs:35`, which `is_classified` reads as
+  the anti-drift gate.
+- **`SCHEMA_VERSION` does not move.** The rule at
+  `crates/shep-cli/src/output/mod.rs:58-59` is that it is "bumped only for a
+  breaking change to any command's `data` shape. Additive fields do not bump
+  it", and a new key in a rendered config view is additive.
+- **`PROTOCOL_VERSION` is not as clear-cut.** Its own subsection below.
+
+#### The `PROTOCOL_VERSION` answer is not automatic, and the maintainer owns it
+
+Two documents disagree, and the disagreement is worth settling before either
+field is written rather than during review.
+
+The rule at `crates/shep-core/src/protocol/mod.rs:50-54` says "Additive
+optional fields (new serde-defaulted `Option<T>` fields, new variants behind
+`#[non_exhaustive]`) keep the version". `AppConfig` is `#[serde(default)]` and
+carries no serde `deny_unknown_fields`, so by that rule neither field bumps
+anything.
+
+The tripwire test `a_new_app_config_field_forced_the_protocol_version_up`
+(`protocol/mod.rs:70-80`) says the opposite for `AppConfig` specifically, and
+names two precedents where it held: `depends_on` forced 5, `environment`
+forced 8.
+
+**That test's stated reason is stale.** It argues from `AppConfig` being
+`deny_unknown_fields`, and the serde attribute has since moved to
+`Flockfile::parse` (`crates/shep-core/src/config/app.rs:88-101`, which ends
+"Do not restore the serde attribute here"). The old failure mode, an older
+peer refusing the whole payload, is gone.
+
+What replaced it is worse for this particular field. An older daemon handed
+`max_cpu_cores` ignores the key and runs the sheep with no CPU limit at all,
+silently. A silently dropped resource limit is a better argument for a bump
+than the additive rule is against one. Decide it deliberately rather than
+letting the additive rule settle it by default.
+
+#### Recommended order
+
+Phase 0, then memory, then CPU.
+
+Memory second, because it finishes the v1.1 item already committed above. CPU
+third, because it is nearly free once phase 0 exists. Starting with CPU
+because it looks like the smaller of the two does not work: it needs the same
+foundation, and doing it first buys a field whose only working platform is
+Windows.
 
 ## Named as v1.0 in spec §2/§9, not yet built
 
@@ -240,9 +565,9 @@ job was to find the friction rather than resolve it.
 
 Raised 2026-08-20 while designing `shep-log-rotate`, the first fully external
 dog. `shep adopt <name> <path>` vets, registers, enables and starts in one
-command, and then the operator has an adopted dog with no `[dog.<name>]`
-section and nothing telling them what its knobs are. The README is the only
-answer today.
+command, and then the operator has an adopted dog with no `[<name>]`
+section in `dogs.toml` and nothing telling them what its knobs are. The
+README is the only answer today.
 
 The maintainer asked whether a dog's repo could ship a `Flockfile.toml` that `shep adopt`
 reads. It cannot: `RawFlockfile` is `deny_unknown_fields` over exactly
@@ -365,52 +690,6 @@ tell it apart from a shep bug.
 The full postmortem, including the wrong diagnosis it took to get here, is in
 [deferred-history.md](deferred-history.md).
 
-### A config edit reaches nothing, and the warning about it is wrong
-
-Found 2026-08-30, from the maintainer's question: an app running four
-instances, `instances = 5` edited into the Flockfile, and no way to get the
-fifth without restarting the other four.
-
-For `instances` alone there is a way. `shep stock web 5` fills the lowest free
-slot and leaves 0 through 3 running, writing the new count onto the stored
-spec and into the muster roll. For every other field there is nothing.
-`handle_reload` and the restart path both say so in as many words --
-*"Nothing here re-reads configuration."* The only route is `shep delete`
-followed by `shep start`, which restarts every instance.
-
-`Request::ConfigDrift` closed half of this: an edit that will not apply is
-reported rather than vanishing without a word. Applying it was left open
-deliberately, in the code -- *"Whether `start` should reconcile by default, or
-grow an `--update` flag, is the maintainer's call and neither is taken here."*
-
-**The fields split three ways, and the first group is larger than "a config
-change needs a restart" suggests.**
-
-- **Read at decision time, so nothing need be restarted.** `autorestart`,
-  `max_restarts`, `min_uptime`, `restart_delay`, `exp_backoff_restart_delay`
-  and `stop_exit_codes` are read by `brain::decide` when a sheep exits;
-  `kill_signal`, `kill_timeout` and `graceful_timeout` when a kill ladder
-  runs; `max_memory`, `cron_restart`, `cron_timezone`, `watch` and the
-  liveness probe when `extras` arms a worker, which it already does through
-  `arm_instance`/`disarm_instance`. A write-back takes effect at the next such
-  decision with no disruption at all.
-- **Consumed at spawn, so they reach the next process rather than the running
-  one.** `listen_timeout` and `readiness_probe`.
-- **Baked into the child, so one instance swap each.** `script`, `args`,
-  `cwd`, `interpreter`, `env`, `user`, `group`, `out_file`, `err_file`,
-  `merge_logs`, `channel`, `stdin`, `wait_ready`.
-
-**`shep stock` already proves every mechanism a wider verb needs**: normalize
-before write, write-back onto the stored spec, partial-failure handling, and
-muster-roll persistence. `AppConfig::drifted_fields` already computes which
-fields moved. What is missing is the routing between the three groups.
-
-**One part of this is a bug rather than a gap.** The drift warning tells the
-operator that "`shep start` adds instances to a sheep the flock already has".
-True of the daemon's `Request::Start`, false of the `shep start` an operator
-types: the CLI sorts apps into resumed and fresh, and only fresh ones reach
-that request. The sentence describes something no terminal can produce.
-
 ### The handover blob's compatibility tests never load an old blob
 
 Raised in review on #84, 2026-08-31, and agreed rather than argued away.
@@ -445,67 +724,101 @@ field would leave one case in a different style from seven siblings and barely
 reduce the risk, since the exposure is the whole blob rather than any one
 key.
 
-### The bark dog still restarts once per reload -- open, 2026-08-31
+### ~~The bark dog still restarts once per reload~~ -- done, 2026-09-13
 
-Phase 3 carries every dog across the handover with no restart, and the
-metrics dog is measured doing exactly that. **Bark is not**, and it is the
-one thing G7 asks for that phase 3 did not deliver.
+Bark now re-subscribes across a handover instead of exiting, and both dogs
+exit when their shepherd is genuinely gone. Measured on one machine with
+the same `dogs.toml` either way: the base binary took bark from `restarts
+0` to `restarts 3` across three `shep daemon reload` runs, moving its pid
+each time, while this change held bark at pid 26504 and `restarts 0` across
+ten. A `SIGKILL` to the shepherd then ended both dogs after 5.4 seconds
+rather than instantly or never.
 
-The mechanism, from task 1's measurement: bark's `EventStream` belongs to one
-connection generation, so when that connection dies the stream ends,
-`run_loop`'s `None` arm breaks the select loop, the dog exits 0, and
-`autorestart` replaces it. Measured across two reloads: pid moving each time,
-`restarts` 25 -> 26 -> 27, `online` after every one, while metrics held its
-pid at `restarts 0`.
+What unblocked it was the ruling this entry was waiting on, and it applies
+to every dog rather than to bark: **a dog that loses its shepherd waits a
+bounded time for a successor, then exits.** A reload is not losing your
+shepherd, so the wait is what separates the two. The budget is
+`DOG_SILENCE_BUDGET`, and `docs/dogs.md` carries the contract for
+third-party dogs. The reasoning is in `docs/decisions.md` under "A dog
+whose shepherd is gone exits".
 
-**What it costs, and what it does not.** The count is a false reading on the
-one column an operator uses to decide whether a dog is unhealthy: twenty
-reloads leave a perfectly healthy dog reporting `restarts 20`. It does NOT
-risk an outage -- `install_adopted` gives every adopted entry a fresh
-`RestartBudget`, so reloads cannot exhaust one -- and it is loud rather than
-silent, which is the whole difference from the defect this phase was built
-to fix. Bark also loses `rules::Rules`' per-subject debounce state across the
-restart, so a sheep already alerted on can be alerted on twice.
+The bound went into the dogs rather than into `ReconnectingClient`: the
+supervisor dies with the process, so once a dog exits there is nothing left
+reconnecting, and what lingers is the dog. shep-client gained only the two
+waits that let a dog impose it.
 
-**The fix is not "re-arm the stream inside the client".** Task 1 declined
-that and the argument still holds: `ReconnectingClient::subscribe` re-arming
-its own stream would silently swallow the gap between a connection dying and
-the successor accepting a fresh `Subscribe`, and an event stream that hides a
-gap is worse than one that ends.
+### `EXTEND_TIMEOUT_USEC` would remove an operator's readiness homework, open, 2026-09-06
 
-**The fix belongs in bark, where the gap already has an answer.**
-`run_loop`'s `Some(Err(dropped))` arm reconciles against `ListFlock` the
-moment the bus reports a lag, on the reasoning that a drop carries no
-information about what was lost and the only way to know is to ask the
-shepherd what things look like now. A handover gap is the same class of loss
-and deserves the same answer: re-subscribe, then reconcile. Nothing new is
-invented; the state-based rules and the per-subject debounce are already
-built for a subject seen twice by two routes.
+systemd's `sd_notify` protocol accepts `EXTEND_TIMEOUT_USEC=<n>`, which lets a
+`Type=notify` service push `TimeoutStartSec` out as it reports progress,
+rather than needing the whole boot to fit inside one fixed budget set in
+advance. The daemon already has a notify module and already emits one info
+line per boot stage, so the hook this would ride on already exists.
 
-**What stops it being small, and why it is its own task rather than a line
-in phase 3 task 4:**
+**Why this is the systemd-native answer, not a nice-to-have.** A staged boot
+with real dependencies takes an unbounded but progressing amount of time --
+more stages, more `depends_on` chains, more apps waiting out their own
+`listen_timeout` -- and the current answer is documentation telling an
+operator to size `TimeoutStartSec` generously. `EXTEND_TIMEOUT_USEC` lets the
+unit extend its own deadline as each stage lands, which removes that sizing
+guess entirely rather than asking the operator to guess better. Left for its
+own task because it is a new notify-protocol call, not a fix to anything
+built on this branch.
 
-- `EventSource` needs a `resubscribe`, which means a production adapter
-  holding the `ReconnectingClient` alongside the stream and its topics.
-  `run_bark` moves that client into `ClientFlockSource` today.
-- The adapter has to WAIT for the link to come back before it can subscribe:
-  a `Subscribe` issued against a dead generation fails immediately with
-  `Closed`. `ReconnectingClient` exposes `link()` as a reading, not a future
-  to await, so this needs an API the type does not have.
-- `LinkState::Refused` has to exit rather than retry, so G8's one restart
-  from disk still applies to a bark dog that cannot speak this protocol.
-- **And it needs a ruling on the ORPHANED dog, which is about every dog and
-  not about bark.** Today bark exits when its shepherd goes away for any
-  reason; a dog that re-subscribed instead would linger, and would attach
-  itself to whatever shepherd next binds that socket -- beside that
-  shepherd's
-  own bark dog, double-alerting quietly. The metrics dog already has that
-  hazard through `ReconnectingClient`'s own supervisor, which retries
-  forever, and nobody has ruled on it.
+### A promoted dog cannot handshake during the restore, open, 2026-09-06
 
-The last of those is the reason this is deferred rather than squeezed in: the
-question is what a dog does when its shepherd is gone, and answering it for
-bark alone would leave two dogs answering it differently for the third time.
+`[daemon] boot_first_dogs` spawns a dog ahead of the muster restore, so a
+log-rotation dog is running before a sheep starts writing. The spawn happens
+there, and the link does not. `boot` binds the control socket and hands back a
+`RunningDaemon` without serving it: `RpcServer::serve` runs inside
+`RunningDaemon::run`, after `boot` returns and so after the restore. A dog
+connecting during the restore sits in the listen backlog with nothing
+accepting behind it.
+
+`shep-client`'s `HANDSHAKE_TIMEOUT` is five seconds, and
+`ReconnectingClient`'s first connection is not supervised, on its own rule
+that a socket nobody answers is the caller's error rather than a handover.
+So `DogRuntime::start` returns `ConnectError::HandshakeTimeout`, the dog
+exits `daemon_unreachable`, and the shepherd restarts it. Driven against a
+live daemon, on the boot-order page's own worked example, a three-app
+unprobed chain that costs 6.17 seconds:
+
+```
+20:44:31.584 [shep] shep started this dog; its process is pid 43781
+20:44:36.594 shep dog metrics: no shepherd answered at the socket: the handshake did not complete within 5s
+20:44:36.595 [shep] this dog's process exited with code 5
+20:44:37.589 [shep] shep accepted this dog's handshake; it is registered with this shepherd as `metrics`, on protocol 6
+```
+
+The dog heals itself the moment serving starts, and `shep flock` then shows
+a restart it did not earn. What it does not do is rotate a log during the
+restore, which is the window the promotion exists to cover. A longer restore
+costs one more cycle every five seconds, and no cycle is ever fatal: a
+five-second run is a stable exit against the 1s `min_uptime` default, so the
+`max_restarts` budget resets each time and the dog never errors.
+
+It is not `DOG_SILENCE_BUDGET`, which is also five seconds and reads like the
+culprit. `spawn_silent_dog_watch` is spawned after the restore, and its
+`PeerContacts` starts warming there too, so its earliest verdict lands about
+ten seconds after the restore ends, by which time the dog has handshaken.
+The two budgets carry the same number and answer different questions.
+
+The options, none of them free:
+
+1. Retry the first connect inside `DogRuntime::start`. That reverses what
+   `ReconnectingClient::connect` documents, and it needs a bound, since a dog
+   retrying forever can no longer report a socket nothing is ever going to
+   answer. Any bound is a guess at the length of a restore nobody knows in
+   advance. Every third-party dog on the same SDK inherits whichever answer.
+2. Serve before the restore. `boot`'s rustdoc argues the current order one
+   invariant at a time: readiness reported after the restore is the honest
+   answer to `Type=notify`, and a client connecting during the restore waits
+   with it instead of reading a half-restored flock. Serving first gives up
+   both.
+3. Accept it, and say so where an operator reads it. Promotion buys a dog a
+   spawn that runs first, not a link that works first, and it only holds for
+   a flock that restores inside five seconds. `boot-order.astro` now says
+   that much either way.
 
 ## Ideas, recorded but not designed
 
@@ -695,11 +1008,12 @@ rather than a fix to apply on the way past.
 
 Everything this file used to carry that is now FIXED, STALE, resolved or
 rejected, plus the record of what shipped instead of being deferred, moved to
-[deferred-history.md](deferred-history.md) on 2026-08-29. That is 1191 lines
-against the 705 left here, and a reader had to get past all of it to reach
-the 12 entries under "Known debt" that are actually still open. All three
+[deferred-history.md](deferred-history.md) on 2026-08-29. That is 1303 lines
+against the 733 left here, and a reader had to get past all of it to reach
+the 13 entries under "Known debt" that are actually still open. All three
 numbers were stated once and then drifted, which is the failure this file
-warns about elsewhere; they are counted, not remembered.
+warns about elsewhere; they are counted, not remembered, and they were
+recounted on 2026-09-06 when the staged-reload JSON entry moved next door.
 
 This file answers "what is not built". That one answers "what was not built,
 and what happened to it".

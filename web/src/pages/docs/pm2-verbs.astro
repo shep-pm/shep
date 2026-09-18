@@ -1,0 +1,167 @@
+---
+/*
+ * The pm2 verb reference (chapter 3).
+ *
+ * It was a section on Coming from pm2 until 2026-09-14, sitting at heading
+ * 6 of 10 and then 3 of 10. A reader does one migration and then comes back
+ * to this table for months, so it is a chapter rather than a section of a
+ * page about a one-off task.
+ */
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import ReferencePills from "../../components/docs/ReferencePills.astro";
+
+const verbTable: { pm2: string; shep: string; note?: string }[] = [
+  { pm2: "pm2 start <script>", shep: "shep start <script>" },
+  {
+    pm2: "pm2 start ecosystem.config.js",
+    shep: "shep import pm2, then shep start Flockfile.toml",
+    note: "shep never reads a pm2 ecosystem file directly",
+  },
+  { pm2: "pm2 stop", shep: "shep stop" },
+  { pm2: "pm2 restart", shep: "shep restart" },
+  {
+    pm2: "pm2 reload",
+    shep: "shep reload",
+    note: "N instances on one port need the app to set SO_REUSEPORT: see below",
+  },
+  { pm2: "pm2 delete", shep: "shep delete" },
+  { pm2: "pm2 list / ls / status", shep: "shep flock", note: "alias: list, ls" },
+  { pm2: "pm2 describe", shep: "shep describe" },
+  { pm2: "pm2 logs", shep: "shep bleats", note: "alias: logs" },
+  {
+    pm2: "pm2 scale <name> <n>",
+    shep: "shep stock <name> <n>",
+    note: "alias: scale (always an absolute count in both)",
+  },
+  { pm2: "pm2 save", shep: "shep save" },
+  { pm2: "pm2 resurrect", shep: "shep muster", note: "hidden alias: resurrect" },
+  { pm2: "pm2 startup", shep: "shep startup" },
+  { pm2: "pm2 unstartup", shep: "shep unstartup" },
+  { pm2: "pm2 kill", shep: "shep kill" },
+  { pm2: "pm2 flush", shep: "shep flush" },
+  { pm2: "pm2 serve <dir>", shep: "shep serve <dir>", note: "three defaults flip: see below" },
+  { pm2: "pm2-runtime", shep: "shep runtime", note: "or the shep-runtime alias binary" },
+  { pm2: "pm2 sendSignal", shep: "shep signal" },
+  { pm2: "-", shep: "shep whisper", note: "no pm2 equivalent: writes a line to an app's stdin" },
+  {
+    pm2: "pm2 trigger",
+    shep: "shep trigger",
+    note: "different mechanism: pm2 calls a module method, shep sends over the app's own shepherd channel",
+  },
+  {
+    pm2: "pm2 monit",
+    shep: "shep lookout",
+    note: "alias: dash (a fuller dashboard, not a straight swap). shep flock --follow redraws the same table in place, if that is all you want",
+  },
+  {
+    pm2: "pm2-server-monit",
+    shep: "shep flock --follow",
+    note: "a separately installed pm2 module. In shep the host line comes with the followed listing",
+  },
+  { pm2: "-", shep: "shep enable / disable / adopt / rehome", note: "dogs have no pm2 analogue" },
+  { pm2: "-", shep: "shep set / get / unset", note: "the KV store; nothing in pm2 does this" },
+];
+---
+
+<DocsLayout
+  activeSlug="pm2-verbs"
+>
+  <article>
+    <h1>pm2 verb reference</h1>
+    <ReferencePills slug="pm2-verbs" />
+    <p class="lede">
+      Every pm2 verb and what to type instead. Where the two differ in
+      behaviour rather than in spelling, the note says so.
+    </p>
+
+    <h2 id="the-table">The table</h2>
+    <div class="verb-table">
+      <div class="row header">
+        <span>pm2</span>
+        <span>shep</span>
+        <span>note</span>
+      </div>
+      {
+        verbTable.map((row) => (
+          <div class="row">
+            <span class="pm2-cell"><code>{row.pm2}</code></span>
+            <span class="shep-cell" data-label="shep"><code>{row.shep}</code></span>
+            <span class="note-cell" data-label="note">{row.note ?? ""}</span>
+          </div>
+        ))
+      }
+    </div>
+</article>
+</DocsLayout>
+
+<style>
+  .verb-table {
+    border: 3px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 0 0 32px;
+  }
+
+  .verb-table .row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.2fr);
+    gap: 14px;
+    padding: 12px 18px;
+    align-items: start;
+    font-size: 13.5px;
+  }
+
+  .row.header {
+    background: var(--ink);
+    padding: 11px 18px;
+  }
+
+  .row.header span {
+    font-family: "Space Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--butter);
+  }
+
+  .row:not(.header) {
+    background: var(--paper-2);
+    border-bottom: 2px solid var(--hair);
+  }
+
+  .row:not(.header):last-child {
+    border-bottom: none;
+  }
+
+  .row:not(.header) span {
+    color: var(--ink-2);
+  }
+
+  .note-cell {
+    color: var(--ink-3) !important;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* This one never clipped. Every column is a `minmax(0, Nfr)`, so the
+     table squeezes rather than overflowing, and at 375px it squeezed to
+     77/77/103px: `pm2 start ecosystem.config.js` broke across three lines
+     inside a 77px column and one row ran 221px tall. Stacked, the tallest
+     row is 166px.
+
+     It also keeps the rule general. Every table on this site with a header
+     row now hides that header on a phone and labels its cells, and the
+     check in scripts/verify-stacked-table-labels.ts holds all of them to
+     it. Leaving this one out would have meant a table the check had to be
+     taught to skip. */
+  @media (max-width: 640px) {
+    .verb-table .row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .verb-table .row.header {
+      display: none;
+    }
+  }
+</style>

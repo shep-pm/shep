@@ -3,8 +3,8 @@
  * CLI reference (docs/shep-design/README.md, "Screens > 2. Docs >
  * Reference"). Every verb, its aliases, its usage line and its own
  * --help output — none of it hand-typed. The data comes from
- * web/src/data/cliReference.ts, which parses a checked-in dump of real
- * `shep --help` / `shep <verb> --help` output
+ * web/src/data/cli-reference.ts, which parses a checked-in dump of real
+ * `shep --help` output, one run per verb and per subcommand of a verb,
  * (web/src/data/cli-reference.generated.txt, produced by
  * web/scripts/generate-cli-reference.sh). Re-run that script and rebuild
  * whenever a verb, an alias, or a flag changes in
@@ -13,7 +13,7 @@
  *
  * The version in the lede is the one thing here that does NOT come from
  * that dump. It is read from Cargo.toml at build time through
- * web/src/data/workspaceVersion.ts, because it was the only line a release
+ * web/src/data/workspace-version.ts, because it was the only line a release
  * changed and so the only line that went stale on its own — see that
  * module's header for the four times it did.
  *
@@ -22,25 +22,30 @@
  * the content inside each VerbSignature is generated.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
-import { cliReference } from "../../data/cliReference";
-import { workspaceVersion } from "../../data/workspaceVersion";
+import { cliReference } from "../../data/cli-reference";
+import { workspaceVersion } from "../../data/workspace-version";
 
-const meta = {
-  title: "CLI reference",
-  crumb: "Reference / CLI",
-  blurb:
-    "Every verb, its aliases, its flags, and its exit codes: generated from the same clap tree the binary parses with.",
-};
 const byName = new Map(cliReference.verbs.map((v) => [v.name, v]));
 
 const groups = [
   {
     title: "Managing a sheep",
-    verbs: ["start", "serve", "stop", "restart", "reload", "delete", "stock"],
+    verbs: [
+      "start",
+      "add",
+      "serve",
+      "stop",
+      "restart",
+      "reload",
+      "delete",
+      "stock",
+    ],
   },
   {
     title: "Inspecting the flock",
@@ -63,6 +68,10 @@ const groups = [
     verbs: ["set", "get", "unset"],
   },
   {
+    title: "Secrets",
+    verbs: ["secret", "secret set", "secret get", "secret unset", "secret list"],
+  },
+  {
     title: "Interfaces",
     verbs: ["lookout", "whistle"],
   },
@@ -76,52 +85,98 @@ const groups = [
   },
   {
     title: "Migrating and deploying",
-    verbs: ["import", "startup", "unstartup"],
+    verbs: ["import", "import pm2", "import env", "startup", "unstartup"],
   },
   {
-    title: "Shell completions",
-    verbs: ["completions"],
+    title: "Getting oriented",
+    verbs: ["welcome", "init"],
+  },
+  {
+    title: "Your shell and terminal",
+    verbs: ["completions", "style"],
   },
 ];
 
-const coveredCount = groups.reduce((n, g) => n + g.verbs.length, 0);
-if (coveredCount !== cliReference.verbs.length) {
+// Every verb the reference carries is filed under exactly one heading, and
+// every name filed is a verb it carries. This was a count check, which a
+// name filed twice while another goes missing passes: the two errors cancel,
+// and the missing verb is one the page silently does not have.
+const grouped = groups.flatMap((g) => g.verbs);
+const documented = cliReference.verbs.map((v) => v.name);
+const missing = documented.filter((name) => !grouped.includes(name));
+const unknown = grouped.filter((name) => !documented.includes(name));
+const duplicated = grouped.filter((name, i) => grouped.indexOf(name) !== i);
+// A name the reference itself carries twice is in `grouped` once and in
+// `documented` twice, so the three lists above all come back empty while the
+// verb renders twice on the page. Only the generator can do that, by holding
+// the same entry twice in `VERBS`, and no Rust test looks for it either.
+const referencedTwice = documented.filter((name, i) => documented.indexOf(name) !== i);
+if (
+  missing.length > 0 ||
+  unknown.length > 0 ||
+  duplicated.length > 0 ||
+  referencedTwice.length > 0
+) {
   throw new Error(
-    `src/pages/docs/cli.astro: groups cover ${coveredCount} verbs but ` +
-      `cliReference has ${cliReference.verbs.length} — a verb was added, ` +
-      `removed, or renamed without updating this page's groups.`,
+    `src/pages/docs/cli.astro: this page's groups must name every verb in ` +
+      `the CLI reference exactly once. Missing: ${JSON.stringify(missing)}. ` +
+      `Not a verb: ${JSON.stringify(unknown)}. ` +
+      `Filed twice: ${JSON.stringify(duplicated)}. ` +
+      `Carried twice by the reference itself: ${JSON.stringify(referencedTwice)}.`,
   );
 }
 ---
 
 <DocsLayout
-  title={meta.title}
-  description={meta.blurb}
-  crumb={meta.crumb}
   activeSlug="cli"
 >
   <article>
     <h1>CLI reference</h1>
     <ReferencePills slug="cli" />
     <p class="lede">
-      Every verb <code>shep {workspaceVersion}</code>
+      Every verb <code>shep {workspaceVersion}</code>{" "}
       understands, generated from the binary's own <code>--help</code>. Nothing
       below is hand-typed.
     </p>
 
+    <ShortVersion>
+      <p>
+        Five aliases are permanent, not shorthand that might disappear:{" "}
+        <code>shep flock</code> (<code>list</code>, <code>ls</code>),{" "}
+        <code>shep bleats</code> (<code>logs</code>),{" "}
+        <code>shep lookout</code> (<code>dash</code>),{" "}
+        <code>shep stock</code> (<code>scale</code>),{" "}
+        <code>shep whisper</code> (<code>sendline</code>). Every verb takes{" "}
+        <code>--home</code>, <code>--format table|json</code> and{" "}
+        <code>-q</code>/<code>--quiet</code>.
+      </p>
+    </ShortVersion>
+
     <Callout variant="note">
-      <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>
+      <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>{" "}
       work on every verb on this page. They're global flags, flattened onto each
       subcommand rather than repeated in the prose below. See the full dump under
-      "Every verb, at a glance" for exactly how they render on each one.
+      "Every verb, at a glance" for exactly how they render on each one.{" "}
+      <code>--home</code> takes an absolute path, and so does{" "}
+      <code>$SHEP_HOME</code>. A relative one would mean a different flock from
+      every directory, so shep refuses it and prints the absolute form instead.
+      It also has to be valid UTF-8: shep carries the home path into the{" "}
+      <code>{'{{SHEP_HOME}}'}</code> template, the log paths it reports and the
+      control socket's own name, all of which are text, so a byte that is not
+      UTF-8 would be replaced and shep would use a directory you did not name.
+      That is refused too, rather than quietly substituted.
     </Callout>
 
-    <Callout variant="careful">
-      Windows isn't supported yet. Every verb here prints an error naming that
-      and exits 1 on that platform. There's no partial subset that works.
+    <Callout variant="note">
+      Windows runs every verb on this page, with two exceptions.{" "}
+      <code>shep startup</code> is not built there, and <code>shep stop</code>{" "}
+      has no graceful signal to send unless your app reads the shepherd
+      channel. Windows sets no <code>HOME</code>, so the default flock home
+      comes from <code>%USERPROFILE%</code>, then{" "}
+      <code>%HOMEDRIVE%%HOMEPATH%</code>.
     </Callout>
 
-    <h2>Aliases at a glance</h2>
+    <h2 id="aliases-at-a-glance">Aliases at a glance</h2>
     <p>
       Five aliases are permanent, not shorthand that might go away: the theme
       never costs a straight verb its plain name.
@@ -149,7 +204,7 @@ if (coveredCount !== cliReference.verbs.length) {
       </div>
     </div>
 
-    <h2>Every verb, at a glance</h2>
+    <h2 id="every-verb-at-a-glance">Every verb, at a glance</h2>
     <p>
       The exact output of <code>shep --help</code> against this build: the
       full command list, the global options, and their defaults.
@@ -159,7 +214,7 @@ if (coveredCount !== cliReference.verbs.length) {
     {
       groups.map((group) => (
         <>
-          <h2>{group.title}</h2>
+          <h2 id={slugify(group.title)}>{group.title}</h2>
           {group.verbs.map((name) => {
             const verb = byName.get(name);
             if (!verb) {
@@ -183,60 +238,10 @@ if (coveredCount !== cliReference.verbs.length) {
         </>
       ))
     }
-
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/from-pm2" class="next-card">
-        <div class="next-title">Coming from pm2 →</div>
-        <div class="next-body">
-          The verb-by-verb translation table, and what a dump.pm2 import
-          can't carry over.
-        </div>
-      </a>
-      <a href="/docs/terminology" class="next-card">
-        <div class="next-title">Terminology →</div>
-        <div class="next-body">
-          The words behind these verbs (fold, dog, sheep, bleat) and why
-          they were picked.
-        </div>
-      </a>
-      <a href="/docs/json-output" class="next-card">
-        <div class="next-title">JSON output →</div>
-        <div class="next-body">
-          What <code>--format json</code> promises across a schema_version
-          bump.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(34px, 4.4vw, 52px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 26px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 14px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 24px;
-    text-wrap: pretty;
-  }
-
   article > p {
     font-size: 16px;
     line-height: 1.6;
@@ -305,41 +310,4 @@ if (coveredCount !== cliReference.verbs.length) {
     margin-bottom: 0;
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-top: 20px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
 </style>

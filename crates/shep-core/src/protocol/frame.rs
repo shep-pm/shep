@@ -2,11 +2,11 @@
 //!
 //! The server sends two kinds of frames on one socket: [`Reply`] (answers to
 //! requests) and [`BusEvent`] (broadcast events). This type decodes either,
-//! untagged, because their JSON key sets are disjoint (`id`/`result` vs `event`).
-//! Untagged costs **zero wire bytes** and keeps fixtures backward-compatible.
+//! untagged, because their JSON key sets are disjoint (`id`/`result` vs
+//! `event`), at zero cost to the wire.
 //!
-//! Deserialization needs `serde/std` for buffered content semantics; this is
-//! available via `serde_json`'s `std` feature (already enabled workspace-wide).
+//! Deserialization needs `serde/std` for buffered content semantics, available
+//! via `serde_json`'s `std` feature (already enabled workspace-wide).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,15 +14,13 @@ use crate::protocol::{BusEvent, Reply};
 
 /// Anything the daemon writes to a connected client
 ///
-/// Untagged on purpose: `Reply` and `BusEvent` have disjoint key sets, so
-/// this decodes either without adding a byte to the wire. The daemon
-/// serializes `Reply`/`BusEvent` directly; a `ServerFrame` round-trips to
-/// byte-identical output (pinned by `server_frame_is_byte_identical`).
+/// Round-trips to byte-identical output, since the daemon serializes
+/// `Reply`/`BusEvent` directly (pinned by `server_frame_is_byte_identical`).
 // wire format: changing existing variants is a breaking change
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 // Growth is anticipated: a future frame kind (progress, flow control) is
-// additive here and stays additive on the wire (IR-20).
+// additive here and stays additive on the wire.
 #[non_exhaustive]
 pub enum ServerFrame {
     /// An answer to one request (from [`Envelope`](crate::protocol::Envelope))
@@ -58,16 +56,24 @@ mod tests {
                 restarts: 0,
                 uptime_ms: 0,
                 fold: None,
+                depends_on: Vec::new(),
                 out_file: Some("/home/ada/.shep/logs/web-0-out.log".to_string()),
                 err_file: Some("/home/ada/.shep/logs/web-0-err.log".to_string()),
                 cpu_percent: None,
                 memory_bytes: None,
+                cpu_ms: None,
                 dog: None,
                 lambs: None,
                 last_exit: None,
                 smit: None,
                 instance: None,
                 handshook: None,
+                dog_stale: None,
+                pending: None,
+                overridden: None,
+                max_memory: None,
+                level_rules: Vec::new(),
+                reload_deadline_ms: None,
             },
             manually: false,
             at_ms: 1_700_000_000_000,

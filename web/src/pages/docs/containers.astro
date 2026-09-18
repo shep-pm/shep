@@ -23,9 +23,6 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
 ---
 
 <DocsLayout
-  title="Containers"
-  description="shep runtime is the PID-1 entrypoint for a container. shep dev is the same idea for a laptop: an isolated session that tidies up after itself."
-  crumb="Deploying / Containers"
   activeSlug="containers"
 >
   <article>
@@ -33,40 +30,40 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
     <ReferencePills slug="containers" />
     <p class="lede">
       Two verbs, one shape: run one Flockfile's flock in the foreground, no
-      daemonization, exit when there's nothing left to supervise.
-      <code>shep runtime</code> is that shape for a container.
+      daemonization, exit when there's nothing left to supervise.{" "}
+      <code>shep runtime</code> is that shape for a container.{" "}
       <code>shep dev</code> is the same shape for a laptop, with isolation
       swapped in for the container's own kind of disposability.
     </p>
 
-    <h2>shep runtime: the container entrypoint</h2>
+    <h2 id="shep-runtime">shep runtime: the container entrypoint</h2>
     <p>
       <code>shep runtime</code> boots a shepherd in-process, runs one
-      Flockfile's flock, and exits once nothing is left online.
+      Flockfile's flock, and exits once nothing is left online.{" "}
       <code>--no-restore</code> is always on. A container starts fresh from
       its Flockfile every time, never from a muster roll left on the image by
-      a previous run. Bleats stream to this process's own stdout/stderr, so
+      a previous run. Bleats stream to this process's own stdout/stderr, so{" "}
       <code>docker logs</code> is the flock's log with no extra plumbing, and
-      the shepherd is still reachable over its own socket the whole time:
-      <code>shep flock</code> from a second terminal, or
+      the shepherd is still reachable over its own socket the whole time:{" "}
+      <code>shep flock</code> from a second terminal, or{" "}
       <code>docker exec</code>, works exactly as it would against a
       daemonized one.
     </p>
     <CodeBlock label="Dockerfile">{dockerfile}</CodeBlock>
     <p class="fine">
-      <code>shep-runtime</code> is a separate binary alias for
+      <code>shep-runtime</code> is a separate binary alias for{" "}
       <code>shep runtime</code>, built so <code>ENTRYPOINT</code> doesn't need
       to spell the subcommand out. <code>SHEP_HOME</code> is never defaulted
       for you inside a container. An unset one fails fast naming the flag,
       rather than inventing <code>/var/lib/shep</code> at 2am.
     </p>
 
-    <h3>Exit codes an orchestrator can act on</h3>
+    <h3 id="exit-codes">Exit codes an orchestrator can act on</h3>
     <p>
       <code>shep runtime</code> exits <strong>0</strong> once the flock has
-      been empty and clean (every sheep <code>stopped</code>, none
+      been empty and clean (every sheep <code>stopped</code>, none{" "}
       <code>errored</code>) for three consecutive two-second polls: a batch
-      job finishing its work. It exits <strong>11</strong>
+      job finishing its work. It exits <strong>11</strong>{" "}
       (<code>flock_empty</code>) instead when the flock emptied with at least
       one sheep <code>errored</code> (a restart budget exhausted, or a spawn
       that never came up), so an orchestrator reading the exit status can
@@ -74,26 +71,26 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       second.
     </p>
 
-    <h3>PID 1 without racing tokio's own reaper</h3>
+    <h3 id="pid-1">PID 1 without racing tokio's own reaper</h3>
     <p>
       When <code>shep runtime</code> genuinely is PID 1, it splits into a
       small init process first, rather than reaping orphans inside the
       supervisor's own process. An in-process subreaper loop would race
       tokio's own child reaping and corrupt the exact exit statuses shep
       promises elsewhere. The init instead relies on the kernel already
-      treating real PID 1 as the implicit subreaper (it never calls
-      <code>set_child_subreaper</code>), forwards
-      <code>SIGTERM</code>/<code>SIGINT</code>/<code>SIGHUP</code>/<code>SIGQUIT</code>
+      treating real PID 1 as the implicit subreaper (it never calls{" "}
+      <code>set_child_subreaper</code>), forwards{" "}
+      <code>SIGTERM</code>/<code>SIGINT</code>/<code>SIGHUP</code>/<code>SIGQUIT</code>{" "}
       to the supervisor it spawns, and reaps every orphan itself. A container
-      that skipped this step would accumulate zombies until
+      that skipped this step would accumulate zombies until{" "}
       <code>docker stop</code> waited out the full grace period before
       SIGKILLing everything mid-shutdown.
     </p>
 
-    <h2>shep dev: the same shape for a laptop</h2>
+    <h2 id="shep-dev">shep dev: the same shape for a laptop</h2>
     <p>
       <code>shep dev</code> runs one Flockfile's flock in an isolated,
-      throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default
+      throwaway foreground session: <code>$SHEP_DEV_HOME</code> (default{" "}
       <code>~/.shep-dev</code>), forced <code>watch = true</code> on every
       app regardless of what the Flockfile says, and a full stop-and-delete
       teardown the moment the flock empties or the process is signalled,
@@ -101,116 +98,18 @@ notice[watch_forced]: shep dev: forcing watch on devtest — each app's own \`wa
       shepherd behind; a <code>shep dev</code> that leaked a supervisor would
       stop being trusted.
     </p>
+    <p class="fine">
+      <code>$SHEP_DEV_HOME</code> takes an absolute path, and so does the{" "}
+      <code>$HOME</code> behind the default. A relative one is refused, with
+      the absolute form printed.
+    </p>
     <CodeBlock label="real output, 2026-08-16">{devNotices}</CodeBlock>
     <Callout variant="careful">
       <strong><code>--home</code> and <code>$SHEP_HOME</code> are
       ignored</strong>, on purpose. Isolation is the whole feature. Without
       this, an operator who exports <code>$SHEP_HOME</code> for their real
-      flock would get a "dev" session that shares it and silently forces
+      flock would get a "dev" session that shares it and silently forces{" "}
       <code>watch = true</code> onto production apps.
     </Callout>
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/serve" class="next-card">
-        <div class="next-title">Serve →</div>
-        <div class="next-body">
-          The third verb from the same phase: a static file server that
-          registers itself as a managed sheep.
-        </div>
-      </a>
-      <a href="/docs/startup" class="next-card">
-        <div class="next-title">Surviving reboots →</div>
-        <div class="next-body">
-          Not running in a container? <code>shep startup</code> is the
-          equivalent for a machine that reboots on its own schedule.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-size: 20px;
-    letter-spacing: -0.02em;
-    margin: 26px 0 8px;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

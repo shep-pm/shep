@@ -1,24 +1,13 @@
 //! The shapes whistle's tools return.
 //!
-//! Structural twins of `shep_core`'s own types, field for field and value for
-//! value, with `schemars::JsonSchema` derived on top so rmcp can declare each
-//! tool's output schema. [`SheepRow`] and `ProcessInfo` serialize to
-//! byte-identical JSON, pinned by this module's own equality tests.
+//! Structural twins of `shep_core`'s own types, with `schemars::JsonSchema`
+//! derived on top so rmcp can declare each tool's output schema; this
+//! module's equality tests keep a twin and its source serializing
+//! identically.
 //!
-//! **Why twins and not a `schemars` derive on `ProcessInfo` itself.** That
-//! would put a schema-generation dependency into shep-core — a wire-protocol
-//! crate — for a CLI concern, and shep-core's types are the wire contract for
-//! the daemon socket, not for MCP. A twin plus an equality test is the cheaper
-//! half of that trade, and the test is what stops the two drifting.
-//!
-//! **Why the vocabulary is reused when the envelope is not.** MCP carries its
-//! own envelope: `CallToolResult`, with `structuredContent` and a per-tool
-//! output schema. Nesting `output::OutputEnvelope` inside it would make the
-//! declared schema describe `schema_version` and `command`, two fields that
-//! mean everything to a shell script and nothing to an agent — and would
-//! couple `SCHEMA_VERSION`, which is a promise to people running `jq` over
-//! `shep flock --format json`, to whistle's contract. Different consumers,
-//! different envelopes, one vocabulary.
+//! MCP has its own envelope (`CallToolResult`, `structuredContent`), so
+//! these types never nest `output::OutputEnvelope`: its `schema_version`
+//! and `command` fields serve a shell script, not an agent.
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -71,6 +60,9 @@ pub struct SheepRow {
     pub uptime_ms: u64,
     /// Fold membership.
     pub fold: Option<String>,
+    /// Names this sheep waits for at a staged start. Empty both when the
+    /// sheep declares none and when the peer daemon predates the field.
+    pub depends_on: Vec<String>,
     /// Resolved stdout log path.
     pub out_file: Option<String>,
     /// Resolved stderr log path.
@@ -79,6 +71,14 @@ pub struct SheepRow {
     pub cpu_percent: Option<f32>,
     /// Tree resident set size in bytes.
     pub memory_bytes: Option<u64>,
+    /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+    /// is not sampling this sheep.
+    ///
+    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
+    /// since the last periodic tick has a counter already, but no baseline
+    /// to measure it against, so this is `Some` while the percent is still
+    /// `None`.
+    pub cpu_ms: Option<u64>,
     /// Present when this row is a dog rather than a sheep.
     pub dog: Option<DogRow>,
     /// Process-tree members, when the reply walked for them (`describe`
@@ -101,6 +101,39 @@ pub struct SheepRow {
     /// however healthy `status` looks. `status` still reads `online` there,
     /// truthfully — it describes the process, not the relationship.
     pub handshook: Option<bool>,
+    /// Whether the shepherd has GIVEN UP on this dog — restarted it once
+    /// for never answering, watched that not help, and stopped restarting
+    /// it; absent for a sheep, which is never given up on.
+    ///
+    /// Not derivable from `handshook`, and that is why it is here. A dog
+    /// spawned a moment ago and a dog the shepherd will never touch again
+    /// are both `handshook: false` with a live process. `true` here says
+    /// nothing more will happen on its own; the reason lives in that dog's
+    /// own log (`shep bleats <name>`), which is the only place the shepherd
+    /// recorded what it actually saw.
+    pub dog_stale: Option<bool>,
+    /// The `AppConfig` field names this sheep's spec differs from a load's
+    /// parked config for; absent when nothing is parked. Names only, never
+    /// values (IR-41), the same guarantee `ProcessInfo::pending` carries.
+    ///
+    /// `skip_serializing_if`, matching `ProcessInfo::pending` exactly: this
+    /// type's own doc promises byte-identical JSON, and `ProcessInfo`
+    /// carries this field the same way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending: Option<Vec<String>>,
+    /// The `AppConfig` field names an operator has overridden on this sheep
+    /// that its current Flockfile does not declare; absent when there is
+    /// nothing to report. Names only, never values (IR-41), the same
+    /// guarantee `ProcessInfo::overridden` carries.
+    ///
+    /// `skip_serializing_if`, for the same reason `Self::pending` carries it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overridden: Option<Vec<String>>,
+    /// The sheep's `max_memory` ceiling in bytes; `null` when it has none, or
+    /// when the peer daemon predates the field. No `skip_serializing_if`,
+    /// unlike the two fields above, because `ProcessInfo` carries it without
+    /// one and this type's doc promises byte-identical JSON.
+    pub max_memory: Option<u64>,
 }
 
 /// Where a dog came from. Mirrors `DogSource`'s tagged wire shape exactly.
@@ -154,10 +187,12 @@ impl From<&ProcessInfo> for SheepRow {
             restarts: info.restarts,
             uptime_ms: info.uptime_ms,
             fold: info.fold.clone(),
+            depends_on: info.depends_on.clone(),
             out_file: info.out_file.clone(),
             err_file: info.err_file.clone(),
             cpu_percent: info.cpu_percent,
             memory_bytes: info.memory_bytes,
+            cpu_ms: info.cpu_ms,
             dog: info.dog.as_ref().map(DogRow::from),
             lambs: info
                 .lambs
@@ -167,6 +202,10 @@ impl From<&ProcessInfo> for SheepRow {
             smit: info.smit.clone(),
             instance: info.instance,
             handshook: info.handshook,
+            dog_stale: info.dog_stale,
+            pending: info.pending.clone(),
+            overridden: info.overridden.clone(),
+            max_memory: info.max_memory,
         }
     }
 }
@@ -284,11 +323,8 @@ impl From<&HostReading> for HostRow {
         Self {
             memory_total_bytes: host.memory_total_bytes,
             memory_used_bytes: host.memory_used_bytes,
-            // `usize -> u64`: infallible on every target this workspace
-            // ships (macOS/Linux/Windows, all 64-bit) — a live process
-            // count is nowhere near either width's ceiling, so a
-            // `try_from` here would exist to handle a case that cannot
-            // occur on any target in `docs/idiomatic-rust.md`'s matrix.
+            // usize to u64 is infallible: every target this workspace
+            // ships is 64-bit.
             processes: host.processes as u64,
             uptime_seconds: host.uptime_seconds,
         }
@@ -312,6 +348,13 @@ pub struct BleatTail {
     /// A model that cannot tell "this is all of it" from "this is the last
     /// 50" will draw the wrong conclusion from a quiet log.
     pub truncated: bool,
+    /// One entry per stream whose file this process could not find, naming
+    /// the path it tried. Empty when both files were read.
+    ///
+    /// An empty `out` alone cannot tell a sheep that has written nothing
+    /// from a path that resolves to a different file here than it does
+    /// under the shepherd.
+    pub notes: Vec<String>,
 }
 
 #[cfg(test)]
@@ -320,19 +363,57 @@ mod tests {
     use shep_core::protocol::{DogSource, Lamb, ProcessInfo};
     use shep_core::status::ProcStatus;
 
-    /// fails the moment whistle's view of a sheep drifts from the CLI's.
+    /// Deep equality of the serialized values, not a key-set check: a field
+    /// that keeps its name but changes shape fails here too.
     ///
-    /// This is DEEP equality of the serialized values, not a key-set check:
-    /// a field that keeps its name and changes its shape (`status` becoming
-    /// a struct, `dog` losing its tag) fails here too. `shep describe
-    /// --format json` and `describe_sheep` describe the same sheep in the
-    /// same words, or this reddens and somebody decides which one is right.
-    ///
-    /// It also catches the additive case, which is the likely one: a
-    /// fourteenth field on `ProcessInfo` makes this fail with a missing key
-    /// until `SheepRow` carries it or a comment here says why it does not.
+    /// Most `Option` fields are `Some` here, so a mismatched `Some`
+    /// conversion fails; the all-`None` case is the next test's job.
     #[test]
     fn a_sheep_row_serializes_exactly_as_process_info_does() {
+        let info = ProcessInfo::builder(7, "api", ProcStatus::WaitingRestart)
+            .pid(Some(4242))
+            .restarts(3)
+            .uptime_ms(61_000)
+            .fold(Some("web".to_string()))
+            .out_file(Some("/tmp/api-out.log".to_string()))
+            .err_file(Some("/tmp/api-err.log".to_string()))
+            .cpu_percent(Some(12.5))
+            .memory_bytes(Some(1024 * 1024))
+            .max_memory(Some(64 * 1024 * 1024))
+            .cpu_ms(Some(5_678))
+            .dog(Some(DogSource::Adopted {
+                path: "/usr/local/bin/dog".to_string(),
+            }))
+            .lambs(Some(vec![Lamb::new(4243, "node")]))
+            .pending(Some(vec!["env".to_string()]))
+            .overridden(Some(vec!["cwd".to_string()]))
+            .build();
+
+        assert_eq!(
+            serde_json::to_value(SheepRow::from(&info)).unwrap(),
+            serde_json::to_value(&info).unwrap(),
+            "whistle and `--format json` must describe a sheep identically"
+        );
+    }
+
+    /// A stopped sheep has `None` in six places; catches a twin that
+    /// renders `null` for a different reason than `ProcessInfo` does.
+    #[test]
+    fn an_empty_sheep_row_serializes_exactly_as_process_info_does_too() {
+        let info = ProcessInfo::builder(1, "idle", ProcStatus::Stopped).build();
+        assert_eq!(
+            serde_json::to_value(SheepRow::from(&info)).unwrap(),
+            serde_json::to_value(&info).unwrap()
+        );
+    }
+
+    /// Fully populated, since a `skip_serializing_if` field is simply
+    /// absent from `emitted` when `None`, and an all-`None` fixture would
+    /// never test whether `pending`/`overridden` are in the schema.
+    #[test]
+    fn the_generated_schema_names_every_field_the_row_carries() {
+        let schema = serde_json::to_value(schemars::schema_for!(SheepRow)).unwrap();
+        let properties = schema["properties"].as_object().expect("an object schema");
         let info = ProcessInfo::builder(7, "api", ProcStatus::WaitingRestart)
             .pid(Some(4242))
             .restarts(3)
@@ -346,36 +427,9 @@ mod tests {
                 path: "/usr/local/bin/dog".to_string(),
             }))
             .lambs(Some(vec![Lamb::new(4243, "node")]))
+            .pending(Some(vec!["env".to_string()]))
+            .overridden(Some(vec!["cwd".to_string()]))
             .build();
-
-        assert_eq!(
-            serde_json::to_value(SheepRow::from(&info)).unwrap(),
-            serde_json::to_value(&info).unwrap(),
-            "whistle and `--format json` must describe a sheep identically"
-        );
-    }
-
-    /// fails if the every-field-populated case above is the only one that
-    /// holds. A stopped sheep has `None` in six places, and a twin that
-    /// rendered `null` where `ProcessInfo` renders `null` for a different
-    /// reason would pass the case above and fail here.
-    #[test]
-    fn an_empty_sheep_row_serializes_exactly_as_process_info_does_too() {
-        let info = ProcessInfo::builder(1, "idle", ProcStatus::Stopped).build();
-        assert_eq!(
-            serde_json::to_value(SheepRow::from(&info)).unwrap(),
-            serde_json::to_value(&info).unwrap()
-        );
-    }
-
-    /// fails if the schema stops describing what the struct emits. rmcp
-    /// hands this schema to the model as the tool's declared output shape;
-    /// a schema missing a field the tool returns teaches the model wrong.
-    #[test]
-    fn the_generated_schema_names_every_field_the_row_carries() {
-        let schema = serde_json::to_value(schemars::schema_for!(SheepRow)).unwrap();
-        let properties = schema["properties"].as_object().expect("an object schema");
-        let info = ProcessInfo::builder(1, "idle", ProcStatus::Stopped).build();
         let emitted = serde_json::to_value(&info).unwrap();
         for key in emitted.as_object().unwrap().keys() {
             assert!(
@@ -385,26 +439,12 @@ mod tests {
         }
     }
 
-    /// fails if a tool's declared shape stops being one MCP will accept.
+    /// `structuredContent` must be an object on the wire. `schema_for_output`
+    /// (rmcp 3.1.2) does not validate the root type, so a `Vec` here would
+    /// pass silently; this test is the only guard against it.
     ///
-    /// Two halves, and they are different rules in rmcp 3.1.2:
-    ///
-    /// - **Output.** `structuredContent` is an OBJECT on the wire (rmcp's
-    ///   own field doc, model.rs:3802-3803), and `Json<T>` puts `T` there
-    ///   verbatim via `CallToolResult::structured` (model.rs:3963-3971).
-    ///   rmcp will not stop a `Vec`: 3.1.2's `schema_for_output`
-    ///   deliberately does not validate the root type (common.rs:109-120,
-    ///   per SEP-2106), so the failure would be a wire-shape violation a
-    ///   strict client rejects and a lenient one silently takes — the worst
-    ///   kind. Hence the wrappers, and hence this test rather than a
-    ///   comment.
-    /// - **Input.** `schema_for_input` DOES validate (common.rs:77-96) and
-    ///   the `#[tool]` macro `panic!`s on the `Err` during router
-    ///   construction (rmcp-macros/tool.rs:200-208) — i.e. inside
-    ///   `Whistle::new`, on every startup and in the first line of every
-    ///   test in Tasks 6-10. Every argument type here is a plain struct so
-    ///   this holds by construction, which is exactly what was said about
-    ///   the output side before it turned out to be wrong.
+    /// Input schemas are validated by the `#[tool]` macro itself, at router
+    /// construction, so they need no equivalent test.
     #[test]
     fn every_declared_tool_shape_is_object_rooted() {
         for (label, schema) in [

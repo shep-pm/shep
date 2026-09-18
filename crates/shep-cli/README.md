@@ -34,7 +34,7 @@ who prefer the boring word. Every themed verb has a straight alias that works
 forever. Everything renders as `--format json` too, under a versioned
 envelope, so you can pipe it somewhere without scraping columns.
 
-`shep import` reads a real pm2 dump and writes a Flockfile out of it.
+`shep import pm2` reads a real pm2 dump and writes a Flockfile out of it.
 
 This crate builds three binaries, not one: `shep` itself, plus
 `shep-runtime` and `shep-dev` — thin wrappers that prepend `runtime` and

@@ -33,40 +33,25 @@ pub enum ProcessSelector {
 /// Checked after `all`, `fold:`, `/regex/` and the id form, so none of those
 /// can be shadowed by a name that happens to contain one of these.
 ///
-/// A name with no metacharacter stays an exact name -- `web.1` is the sheep
-/// called `web.1`, not a pattern where `.` means "any character". That is the
-/// whole reason globs are worth having over regex here: the punctuation in an
-/// ordinary name means nothing.
+/// A name with no metacharacter stays an exact name: `web.1` is the sheep
+/// called `web.1`, not a pattern where `.` means "any character". Ordinary
+/// punctuation in a name means nothing.
 fn is_glob(input: &str) -> bool {
     input.contains(['*', '?', '[', '{'])
 }
 
 /// Compiles a glob and hands back its regex source.
 ///
-/// `globset` owns glob semantics rather than this module hand-rolling them:
-/// `*`, `?`, character classes and `{a,b}` alternates all behave the way they
-/// do everywhere else, and escaping the rest is its problem. The pattern it
-/// produces is already anchored, so `zeus-*` matches `zeus-auth` and not
-/// `my-zeus-auth`.
-///
-/// The `(?-u)` prefix is stripped because `globset` compiles for BYTES, where
-/// `.` may match invalid UTF-8, and `regex::Regex` refuses that outright --
-/// a name is a `String`, so matching in char mode is both correct here and
-/// the only thing that compiles.
-///
-/// Deliberately turned into a [`ProcessSelector::Regex`] rather than a
-/// selector variant of its own: `SelectorSpec` is the wire, and a new variant
-/// there is a protocol change an older daemon could not deserialize. This
-/// way a glob works against a shepherd built before globs existed.
-///
-/// [`ProcessSelector::Instance`] takes the protocol change this trick avoids,
-/// because a slot is not part of a name and cannot be folded into a regex the
-/// way a glob's characters can. That tradeoff is knowing: an older daemon
-/// cannot deserialize `name:slot`, and there is no equivalent way around it.
+/// `globset`'s pattern is already anchored, so `web-*` matches `web-api`
+/// and not `my-web-api`. Strips the `(?-u)` prefix, since `globset`
+/// compiles for bytes and `regex::Regex` refuses that for a `String`.
+/// Returns [`ProcessSelector::Regex`] rather than its own variant: a new
+/// variant on `SelectorSpec` is a protocol change an older daemon could not
+/// deserialize.
 ///
 /// # Errors
 ///
-/// - [`SelectorError::BadGlob`] — the pattern is not a valid glob.
+/// - [`SelectorError::BadGlob`]: the pattern is not a valid glob.
 fn glob_to_regex(input: &str) -> Result<String, SelectorError> {
     let glob = globset::Glob::new(input).map_err(|e| SelectorError::BadGlob(e.to_string()))?;
     let source = glob.regex().to_string();
@@ -75,16 +60,30 @@ fn glob_to_regex(input: &str) -> Result<String, SelectorError> {
         .map_or(source.clone(), ToString::to_string))
 }
 
+/// `s` as a `u32`, if every byte of it is an ASCII digit.
+///
+/// The digit check is not redundant beside `parse`: `u32::from_str` accepts
+/// a leading `+`, so `"+5"` would otherwise be an id and `"web:+2"` an
+/// instance slot. Both of the places this grammar reads a number want the
+/// same answer, and `None` means "not a number here", which lets each caller
+/// fall through to the form it tries next.
+fn parse_u32_digits(s: &str) -> Option<u32> {
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
 impl ProcessSelector {
     /// Parses CLI selector syntax
     ///
     /// # Errors
     ///
-    /// - [`SelectorError::Empty`] — empty input.
-    /// - [`SelectorError::EmptyFold`] — `fold:` with no name.
-    /// - [`SelectorError::BadRegex`] — `/re/` body rejected by the regex
+    /// - [`SelectorError::Empty`]: empty input.
+    /// - [`SelectorError::EmptyFold`]: `fold:` with no name.
+    /// - [`SelectorError::BadRegex`]: `/re/` body rejected by the regex
     ///   crate (carries its message).
-    /// - [`SelectorError::BadGlob`] — a pattern carrying `*`, `?`, `[` or `{`
+    /// - [`SelectorError::BadGlob`]: a pattern carrying `*`, `?`, `[` or `{`
     ///   was rejected by `globset` (carries its message).
     pub fn parse(input: &str) -> Result<Self, SelectorError> {
         if input.is_empty() {
@@ -105,9 +104,7 @@ impl ProcessSelector {
                 .map(Self::Regex)
                 .map_err(|e| SelectorError::BadRegex(e.to_string()));
         }
-        if input.bytes().all(|b| b.is_ascii_digit())
-            && let Ok(id) = input.parse()
-        {
+        if let Some(id) = parse_u32_digits(input) {
             return Ok(Self::Id(id));
         }
         if is_glob(input) {
@@ -117,16 +114,12 @@ impl ProcessSelector {
                 })
                 .map(Self::Regex);
         }
-        // Last, so every earlier form wins: `fold:` is a prefix test above,
-        // a glob containing a colon was already turned into a regex, and an
-        // all-digit input was already an id. A name cannot contain a colon
-        // (`config::normalize` refuses one), so splitting on the last colon
+        // Last, so every earlier form wins. A name cannot contain a colon
+        // (`config::normalize` refuses one), so splitting on the last one
         // cannot cut a name in half.
         if let Some((name, slot)) = input.rsplit_once(':')
             && !name.is_empty()
-            && !slot.is_empty()
-            && slot.bytes().all(|b| b.is_ascii_digit())
-            && let Ok(slot) = slot.parse()
+            && let Some(slot) = parse_u32_digits(slot)
         {
             return Ok(Self::Instance {
                 name: name.to_string(),
@@ -143,9 +136,8 @@ impl ProcessSelector {
     /// The distinction a dog turns on: a dog is a process an operator
     /// installed, not a member of the flock `all` means, so a wildcard must
     /// pass it by while `shep restart metrics` still reaches it.
-    /// [`Self::Regex`] and [`Self::Fold`] are wildcards here even when they
-    /// happen to match one entry — what matters is that the operator did not
-    /// name it.
+    /// [`Self::Regex`] and [`Self::Fold`] are wildcards even when they
+    /// happen to match one entry: the operator did not name it.
     #[must_use]
     pub const fn is_exact(&self) -> bool {
         match self {
@@ -174,13 +166,11 @@ impl ProcessSelector {
 
 /// Error type returned from [`ProcessSelector::parse`]
 ///
-/// `#[non_exhaustive]`: only two of today's four selector kinds have a
-/// failure mode of their own (`fold:` with no name, `/regex/` that will not
-/// compile) — a future kind with its own malformed-value class, such as a
-/// `status:` filter rejecting a name that is not a known state, would need a
-/// new variant rather than stretching [`Self::BadRegex`] to mean something
-/// it does not, and shep-core is a published library an out-of-tree matcher
-/// should not break for (IR-20).
+/// `#[non_exhaustive]`: a future selector kind with its own malformed-value
+/// class, such as a `status:` filter rejecting an unknown state, needs a new
+/// variant rather than stretching [`Self::BadRegex`] to mean something it
+/// does not, and shep-core is a published library an out-of-tree matcher
+/// should not break for.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectorError {
@@ -214,7 +204,7 @@ impl std::convert::TryFrom<crate::protocol::SelectorSpec> for ProcessSelector {
     ///
     /// # Errors
     ///
-    /// - [`SelectorError::BadRegex`] — the peer-supplied pattern fails to
+    /// - [`SelectorError::BadRegex`]: the peer-supplied pattern fails to
     ///   compile or exceeds the 1 MiB compiled-size bound.
     fn try_from(spec: crate::protocol::SelectorSpec) -> Result<Self, Self::Error> {
         use crate::protocol::SelectorSpec;
@@ -256,11 +246,9 @@ impl From<&ProcessSelector> for crate::protocol::SelectorSpec {
 mod tests {
     use super::*;
 
-    /// The point of globs over regex: ordinary punctuation in a name means
-    /// nothing. `web.1` is the sheep called `web.1`, not a pattern.
     #[test]
     fn a_name_without_a_metacharacter_is_still_an_exact_name() {
-        for plain in ["zeus-auth", "web.1", "api_v2", "a-b-c"] {
+        for plain in ["api-auth", "web.1", "api_v2", "a-b-c"] {
             let parsed = ProcessSelector::parse(plain).unwrap();
             assert!(
                 matches!(&parsed, ProcessSelector::Name(name) if name == plain),
@@ -269,16 +257,14 @@ mod tests {
         }
     }
 
-    /// A glob is anchored, so it selects what it looks like it selects and
-    /// nothing that merely contains it.
     #[test]
     fn a_glob_matches_by_prefix_and_not_by_substring() {
-        let ProcessSelector::Regex(re) = ProcessSelector::parse("zeus-*").unwrap() else {
+        let ProcessSelector::Regex(re) = ProcessSelector::parse("api-*").unwrap() else {
             panic!("a pattern with `*` is compiled to a regex");
         };
-        assert!(re.is_match("zeus-auth"));
-        assert!(re.is_match("zeus-create"));
-        assert!(!re.is_match("my-zeus-auth"), "anchored: no substring match");
+        assert!(re.is_match("api-auth"));
+        assert!(re.is_match("api-create"));
+        assert!(!re.is_match("my-api-auth"), "anchored: no substring match");
         assert!(!re.is_match("reactmap"));
     }
 
@@ -288,8 +274,8 @@ mod tests {
     fn each_glob_metacharacter_compiles_and_matches() {
         let cases = [
             ("*api*", "my-api-thing", "web"),
-            ("zeus-?", "zeus-1", "zeus-auth"),
-            ("zeus-[ab]*", "zeus-auth", "zeus-create"),
+            ("api-?", "api-1", "api-auth"),
+            ("api-[ab]*", "api-auth", "api-create"),
             ("{web,api}", "api", "worker"),
         ];
         for (pattern, hit, miss) in cases {
@@ -301,8 +287,6 @@ mod tests {
         }
     }
 
-    /// `all`, `fold:` and `/regex/` are decided before the glob gate, so a
-    /// name that happens to carry a metacharacter cannot shadow them.
     #[test]
     fn the_earlier_forms_are_not_shadowed_by_the_glob_gate() {
         assert!(matches!(
@@ -314,17 +298,17 @@ mod tests {
             matches!(&fold, ProcessSelector::Fold(name) if name == "back*end"),
             "a fold name may contain a metacharacter and is still a fold, got {fold:?}"
         );
-        let ProcessSelector::Regex(re) = ProcessSelector::parse("/^zeus-/").unwrap() else {
+        let ProcessSelector::Regex(re) = ProcessSelector::parse("/^api-/").unwrap() else {
             panic!("an explicit regex stays a regex");
         };
-        assert!(re.is_match("zeus-auth"));
+        assert!(re.is_match("api-auth"));
     }
 
     /// A glob `globset` refuses is reported as such rather than silently
     /// becoming a name that can never match.
     #[test]
     fn an_unparseable_glob_is_refused() {
-        let err = ProcessSelector::parse("zeus-[").expect_err("an unclosed class is not a glob");
+        let err = ProcessSelector::parse("api-[").expect_err("an unclosed class is not a glob");
         assert!(
             matches!(err, SelectorError::BadGlob(_)),
             "expected BadGlob, got {err:?}"
@@ -398,10 +382,8 @@ mod tests {
         );
     }
 
-    /// fails if `Fold` or `Regex` is counted as exact. Either mistake makes
-    /// `shep reload /^web/` sweep up a dog, which is the failure the split
-    /// exists to prevent — and it is invisible until a flock happens to run
-    /// a dog whose name the pattern matches.
+    /// Either mistake makes `shep reload /^web/` sweep up a dog, invisible
+    /// until a flock happens to run one whose name the pattern matches.
     #[test]
     fn only_a_name_or_an_id_names_one_entry_the_caller_knew_of() {
         assert!(ProcessSelector::Name("bark".into()).is_exact());
@@ -420,6 +402,21 @@ mod tests {
         assert!(matches!(
             ProcessSelector::parse("42").unwrap(),
             ProcessSelector::Id(42)
+        ));
+    }
+
+    #[test]
+    fn a_signed_number_is_a_name_at_both_sites_that_read_one() {
+        // `u32::from_str` accepts a leading `+`, so without the digit check
+        // in `parse_u32_digits` these would be an id and an instance slot.
+        // Both readers share that check, so both stay names.
+        assert!(matches!(
+            ProcessSelector::parse("+5").unwrap(),
+            ProcessSelector::Name(name) if name == "+5"
+        ));
+        assert!(matches!(
+            ProcessSelector::parse("web:+2").unwrap(),
+            ProcessSelector::Name(name) if name == "web:+2"
         ));
     }
 

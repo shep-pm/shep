@@ -7,12 +7,12 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs",
+    "build": "node scripts/check-node.mjs && node --test scripts/verify-dogs-index.ts && node --test scripts/verify-heading-anchors.ts && node --test scripts/verify-prose-budget.ts && node --test scripts/verify-docs-nav.ts && astro build && pagefind --site dist && node scripts/verify-pagefind-index.mjs && node --test scripts/verify-fragment-targets.ts && node --test scripts/verify-stacked-table-labels.ts && node --test scripts/verify-callout-children.ts",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^7.2.2"
+    "astro": "^7.2.10"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",

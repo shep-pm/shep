@@ -1,0 +1,326 @@
+---
+source: crates/shep-core/src/protocol/events.rs
+expression: events
+---
+[
+  {
+    "event": "process",
+    "data": {
+      "event": "exit",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": "▲ main@a1b2c3",
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "log_out",
+    "data": {
+      "id": 3,
+      "line": "listening on :8080"
+    }
+  },
+  {
+    "event": "dropped",
+    "data": {
+      "count": 17
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "online",
+      "info": {
+        "id": 4,
+        "name": "web",
+        "status": "online",
+        "pid": 5150,
+        "restarts": 0,
+        "uptime_ms": 0,
+        "fold": null,
+        "depends_on": [],
+        "out_file": null,
+        "err_file": null,
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": null,
+        "smit": null,
+        "instance": 2,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "start",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "online",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "restart",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "stop",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "delete",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "process",
+    "data": {
+      "event": "errored",
+      "info": {
+        "id": 3,
+        "name": "web",
+        "status": "waiting-restart",
+        "pid": null,
+        "restarts": 2,
+        "uptime_ms": 500,
+        "fold": null,
+        "depends_on": [],
+        "out_file": "/home/ada/.shep/logs/web-0-out.log",
+        "err_file": "/home/ada/.shep/logs/web-0-err.log",
+        "cpu_percent": null,
+        "memory_bytes": null,
+        "cpu_ms": null,
+        "dog": null,
+        "lambs": null,
+        "last_exit": {
+          "code": 1,
+          "signal": null
+        },
+        "smit": null,
+        "instance": null,
+        "handshook": null,
+        "dog_stale": null,
+        "max_memory": null
+      },
+      "manually": false,
+      "at_ms": 1700000000000
+    }
+  },
+  {
+    "event": "channel",
+    "data": {
+      "id": 3,
+      "message": {
+        "kind": "ready"
+      }
+    }
+  },
+  {
+    "event": "channel",
+    "data": {
+      "id": 3,
+      "message": {
+        "kind": "metric",
+        "name": "rps",
+        "value": 42.0
+      }
+    }
+  },
+  {
+    "event": "channel",
+    "data": {
+      "id": 3,
+      "message": {
+        "kind": "action-reply",
+        "action": "gc",
+        "body": "freed 12MB",
+        "id": 7
+      }
+    }
+  },
+  {
+    "event": "dog_config_changed",
+    "data": {
+      "dog": "bark"
+    }
+  }
+]

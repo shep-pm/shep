@@ -10,6 +10,346 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+
+## [0.8.1] - 2026-09-15
+
+### Added
+
+- A HostUsage request and reply for the machine's own numbers
+
+
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Redraw the config pane and batch its writes ([#206](https://github.com/shep-pm/shep/pull/206))
+- Let an app declare what its log levels look like
+- Carry an app's level rules on ProcessInfo
+- Cap how many level rules one app may declare **(BREAKING)**
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+- Build three approved decisions that were never shipped ([#238](https://github.com/shep-pm/shep/pull/238)) **(BREAKING)**
+
+### Changed
+
+- Drop LevelMatcher::is_empty, and unrender two rationales
+- Drop the unreachable home fallback, and say env refuses a bad token
+
+### Fixed
+
+- Refuse a home directory that is not valid UTF-8 ([#244](https://github.com/shep-pm/shep/pull/244))
+
+
+## [0.7.4] - 2026-09-12
+
+### Added
+
+- Flexible flockfile env deserializing
+
+### Fixed
+
+- Preserve whole numbers beyond i64::MAX in env
+- Redact env values from Debug, never print them
+- Yaml bool and float parsing was dishonst
+
+
+## [0.7.3] - 2026-09-08
+
+
+## [0.7.2] - 2026-09-08
+
+### Added
+
+- Fold the durable-write sequence into shep-core
+
+### Changed
+
+- Drop a redundant test and a thrice-stated comment
+
+
+## [0.7.1] - 2026-09-08
+
+### Added
+
+- Resolve a user home from the platform's own variables
+
+
+## [0.7.0] - 2026-09-08
+
+### Added
+
+- Import a .env into the secret store and a sheep's env ([#187](https://github.com/shep-pm/shep/pull/187)) **(BREAKING)**
+
+
+## [0.6.5] - 2026-09-08
+
+
+## [0.6.4] - 2026-09-08
+
+### Changed
+
+- Fold five copies of the store lock into one file_lock ([#183](https://github.com/shep-pm/shep/pull/183))
+
+
+## [0.6.3] - 2026-09-08
+
+
+## [0.6.2] - 2026-09-08
+
+
+### Added
+
+- A third Flockfile template token, `{{secret:KEY}}` and
+  `{{secret:namespace/KEY}}`, resolved against the secret store. A malformed
+  reference is refused at config time, by the same grammar
+  `secrets::SecretRef::parse` enforces, so no second parser can drift from it.
+- `Request::PutSecrets` and `Response::SecretsPut`: a provider dog's values
+  for one namespace and one environment. The push replaces that pair rather
+  than merging into it, so a key deleted at the provider disappears on the
+  next push. `entries` carries `EnvValue`, so a `{:?}` of the request cannot
+  print a value.
+- `secrets::is_name` is public. The daemon checks a peer's namespace and
+  environment against the store's own grammar before storing anything under
+  either, and a second copy of that grammar is what would drift.
+- `secrets::ProviderCache`, with `secrets::NamespaceValues` and
+  `secrets::PushedPairs`: what provider dogs have pushed, both the values and
+  the `(namespace, environment)` pairs a push has landed for.
+  `secrets::provider_cache_on_disk` reads one back from `secrets-cache.json`,
+  and `secrets::SecretView::new` resolves against one. A namespaced reference
+  is retriable while no provider has pushed that namespace for the
+  environment being resolved, rather than while the namespace is absent
+  altogether: a push carries one pair, so a dog part way through `production`
+  then `staging` would otherwise leave a staging sheep `Errored` for good.
+
+### Changed
+
+- `PROTOCOL_VERSION` and `MIN_SUPPORTED` are 8. `AppConfig::environment` is
+  what moved them: that struct is `deny_unknown_fields`, so an older peer
+  refuses the whole payload rather than ignoring a key it does not know,
+  which is the same reason `depends_on` moved them to 5.
+  `Request::PutSecrets` and `Response::SecretsPut` rode in on the same
+  commit and moved nothing. They are additive, and a daemon that has never
+  heard of `put_secrets` now decodes `Request::Unrecognized` and answers
+  `unsupported` naming its own protocol, instead of dropping the connection
+  on an envelope it cannot read. That is the case this entry used to say
+  justified a bump for an addition; the tolerant decode removed it.
+  Run `shep daemon reload` after upgrading.
+- `config::template::render` now takes a `secrets::SecretView` and returns
+  `Result<String, RenderError>`, so a spawn can refuse on a secret it cannot
+  resolve. Callers that have no store use the new `render_positional`, which
+  substitutes `{{instance}}` and `{{name}}` and leaves `{{secret:...}}` alone.
+  `RenderError::is_retriable` separates a namespace no provider dog has pushed
+  to for that environment yet, which a later attempt can clear, from a value
+  only a person will supply.
+
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Decode an unknown error code or process event instead of failing
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- Deny unknown Flockfile keys at the parse site, not on the wire
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Drop hand-rolled Deserialize for RpcErrorCode and ProcessEventKind
+- Move reply-id decode into shep-core, drop shep-client's serde dep
+- Delegate parse_into to parse_into_ignoring
+
+### Fixed
+
+- Restore additionalProperties:false via schemars(deny_unknown_fields)
+- Stop reply_id from matching non-reply frames
+
+
+## [0.5.1] - 2026-09-07
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
+## [0.4.6] - 2026-09-07
+
+### Added
+
+- Redraw the landing pane ([#168](https://github.com/shep-pm/shep/pull/168))
+
+
+## [0.4.5] - 2026-09-06
+
+
+## [0.4.4] - 2026-09-06
+
+### Changed
+
+- Move the shepherd-channel wire into its own crate
+
+### Fixed
+
+- Keep a published path alive, and ship the licences
+- Drop the shim's `since`, which cannot be right until after the release
+
+
+## [0.4.3] - 2026-09-06
+
+
+## [0.4.2] - 2026-09-06
+
+
+## [0.4.1] - 2026-09-06
+
+
+## [0.4.0] - 2026-09-06
+
+
+## [0.3.0] - 2026-09-05
+
+
+## [0.2.5] - 2026-09-05
+
+
+## [0.2.4] - 2026-09-05
+
+
+## [0.2.3] - 2026-09-05
+
+
+## [0.2.2] - 2026-09-04
+
+
+## [0.2.1] - 2026-09-04
+
+
+## [0.2.0] - 2026-09-04
+
+### Changed
+
+- ResetDepth gains File and Env, Settings becomes Policy **(BREAKING)**
+
+### Fixed
+
+- Drop three em dashes from the PROTOCOL_VERSION bump prose
+- --reset=env touches env and no setting at all
+- ResetDepth's own rustdoc still described the wrong two discards
+- Two test docs asserted PROTOCOL_VERSION is 2, which it is not
+
+
+## [0.1.34] - 2026-09-04
+
+### Changed
+
+- Drop a redundant test and cut atomic_file's comments back
+- One staging-file helper for every $SHEP_HOME store ([#115](https://github.com/shep-pm/shep/pull/115))
+
+### Fixed
+
+- Create_staging_file refuses a path separator in its name parts
+
+
+## [0.1.33] - 2026-09-04
+
+### Fixed
+
+- Atomic file writers fsync the directory the rename lands in
+- Atomic file writers fsync the directory the rename lands in ([#116](https://github.com/shep-pm/shep/pull/116))
+
+
+## [0.1.32] - 2026-09-04
+
+### Added
+
+- Dogs.toml gets a type and a path
+
+### Fixed
+
+- DogsConfigError's Debug no longer prints dogs.toml
+
+
+## [0.1.31] - 2026-09-03
+
+### Added
+
+- A request that registers an app without starting it
+
+### Fixed
+
+- The skew guard already gates add, and say so accurately
+
+
+### Added
+
+- `Request::Add` and `Response::Added`: register apps as flock members
+  without starting any of them. Everything `Start` does to membership and
+  none of what it does to processes, so a Flockfile shipping empty `env`
+  keys can be registered and configured before anything spawns against
+  them. `PROTOCOL_VERSION` stays at 2, following the six additive
+  precedents below it: no existing variant moved, was renamed, or was
+  retyped. An older shepherd cannot decode the variant, and what an
+  operator meets depends on whether the crate version moved with it.
+  Across a release, `shep-cli`'s skew guard refuses first: it compares the
+  shepherd's reported version against the client's own and refuses every
+  verb but `kill`, `ping` and `daemon reload`, so `shep add` exits
+  `version_skew` naming `shep daemon reload` before the request is sent.
+  Within one version, a client built from this commit against a shepherd
+  built from an earlier one, the versions match, the guard passes, and the
+  shepherd ends the connection on an envelope it cannot decode. Restart the
+  shepherd either way.
+
+## [0.1.30] - 2026-09-03
+
+### Added
+
+- A Flockfile is a template, and a load applies it without killing anything ([#104](https://github.com/shep-pm/shep/pull/104))
+
+
+## [0.1.29] - 2026-09-03
+
+
+## [0.1.28] - 2026-09-03
+
+### Added
+
+- Put the shepherd's give-up on a dog on the wire
+
+### Fixed
+
+- Keep a log line meaning one thing on both of its paths
+- Track_caller on stamp_into, as its Panics section requires
+
+
+### Added
+
+- `ProcessInfo::dog_stale`: whether the shepherd has given up on a dog —
+  restarted it once for never answering, watched that not help, and stopped
+  restarting it. `None` for a sheep and for a peer daemon that predates the
+  field, the same additive-optional rule `handshook` follows, so
+  `PROTOCOL_VERSION` stays at 2. It is not derivable from `handshook`, which
+  is the point: a dog spawned a second ago and a dog the shepherd will never
+  touch again are both `handshook: Some(false)` with a live process, and the
+  give-up was a latch inside the daemon that nothing on the wire could see.
+- `logstamp`: the timestamp the daemon writes ahead of every line in a log
+  file, its fixed 30-byte width, and `strip`, which takes it back off. One
+  definition for the writer and every reader — the daemon stamps, and three
+  separate file readers in `shep-cli` strip — so the two cannot drift.
+
+## [0.1.27] - 2026-09-02
+
+
+## [0.1.26] - 2026-09-01
+
+
 ## [0.1.25] - 2026-09-01
 
 

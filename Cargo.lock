@@ -1868,9 +1868,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.43"
+version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
+checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "once_cell",
  "ring",
@@ -2015,6 +2015,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_ignored"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115dffd5f3853e06e746965a20dcbae6ee747ae30b543d91b0e089668bb07798"
+dependencies = [
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2058,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "shep"
-version = "0.1.25"
+version = "0.8.2"
 dependencies = [
  "anstyle",
  "assert_cmd",
@@ -2067,6 +2077,7 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "futures-util",
+ "globset",
  "insta",
  "instability",
  "lazy_static",
@@ -2074,6 +2085,7 @@ dependencies = [
  "predicates",
  "proptest",
  "ratatui",
+ "regex",
  "ring",
  "rmcp",
  "schemars",
@@ -2095,16 +2107,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "shep-channel"
+version = "0.8.2"
+dependencies = [
+ "command-fds",
+ "serde",
+ "serde_json",
+ "tokio",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "shep-cli"
-version = "0.1.25"
+version = "0.8.2"
 
 [[package]]
 name = "shep-client"
-version = "0.1.25"
+version = "0.8.2"
 dependencies = [
  "futures-util",
  "nix 0.29.0",
+ "schemars",
+ "serde_json",
  "shep-core",
+ "shep-macros",
  "tempfile",
  "tokio",
  "tokio-stream",
@@ -2113,7 +2139,7 @@ dependencies = [
 
 [[package]]
 name = "shep-core"
-version = "0.1.25"
+version = "0.8.2"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -2128,12 +2154,15 @@ dependencies = [
  "json5",
  "nix 0.29.0",
  "pest",
+ "proptest",
  "quote 0.3.15",
  "regex",
  "schemars",
  "serde",
  "serde-saphyr",
+ "serde_ignored",
  "serde_json",
+ "shep-channel",
  "syn 1.0.109",
  "tempfile",
  "tokio",
@@ -2143,7 +2172,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.1.25"
+version = "0.8.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -2164,6 +2193,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "toml_edit",
  "tracing",
  "tracing-core",
  "tracing-subscriber",
@@ -2172,9 +2202,21 @@ dependencies = [
 
 [[package]]
 name = "shep-examples"
-version = "0.1.25"
+version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
+]
+
+[[package]]
+name = "shep-macros"
+version = "0.8.2"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.47",
+ "schemars",
+ "serde",
+ "shep-client",
+ "syn 2.0.119",
 ]
 
 [[package]]

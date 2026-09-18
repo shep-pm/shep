@@ -1,0 +1,39 @@
+[package]
+name = "shep-macros"
+description = "The DogConfig derive for shep plugins: marks a config field as a credential so shep renders it redacted"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/shep-macros"
+keywords = ["shep", "process-manager", "derive", "macro", "schema"]
+categories = ["development-tools", "config"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { workspace = true, features = ["derive", "parsing", "printing", "clone-impls", "proc-macro"] }
+quote.workspace = true
+proc-macro2.workspace = true
+
+# A dependency cycle on paper and none in the build graph: `shep-client`
+# depends on this crate normally, and dev-dependencies sit outside the
+# library build, so cargo allows it. Lets the derive's doctest name
+# `shep_client::dogs::DogConfig`, what the expansion actually produces.
+[dev-dependencies]
+# Path-only, with no `version`, DELIBERATELY. `cargo publish` strips `path`
+# and keeps whatever `version` a dependency carries, so the workspace entry's
+# `version = "0.2.x"` would make packaging this crate require a shep-client
+# release that cannot exist yet: shep-client depends on this crate normally, so
+# it publishes AFTER it. A dev-dependency with no version is dropped from the
+# published manifest outright, which is what breaks the cycle. Keep it inline —
+# `workspace = true` pulls the version back in.
+shep-client = { path = "../shep-client" }
+schemars.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

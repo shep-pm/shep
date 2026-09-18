@@ -30,7 +30,7 @@
   "additionalProperties": false,
   "$defs": {
     "AppConfig": {
-      "description": "Per-app configuration — one sheep's entry in a Flockfile\n\nField names are the Flockfile contract (sheep-native; pm2 spellings are\nrejected — the importer translates them). Unknown fields are errors so\ntypos fail loudly at parse time.\n\n# Example\n```\nuse shep_core::config::AppConfig;\n\nlet app: AppConfig = toml::from_str(\"name = \\\"web\\\"\\nscript = \\\"./srv\\\"\").unwrap();\nassert!(app.autorestart); // spec default\n```",
+      "description": "Per-app configuration — one sheep's entry in a Flockfile\n\nField names are the Flockfile contract (sheep-native; pm2 spellings are\nrejected — the importer translates them). Deserializing this type\ndirectly tolerates an unknown field, since it also rides the wire; a\nFlockfile typo instead fails loudly at [`Flockfile::parse`](crate::config::Flockfile::parse),\nthe input that really is hand-written.\n\n# Example\n```\nuse shep_core::config::AppConfig;\n\nlet app: AppConfig = toml::from_str(\"name = \\\"web\\\"\\nscript = \\\"./srv\\\"\").unwrap();\nassert!(app.autorestart); // spec default\n```",
       "type": "object",
       "properties": {
         "action_timeout": {
@@ -39,7 +39,7 @@
           "default": "3s",
           "init": {
             "blurb": "How long a triggered action has to answer before shep gives up",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "args": {
@@ -47,8 +47,16 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of strings, one argument each",
+              "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand"
+            ],
             "blurb": "Arguments passed to the script, as a list",
-            "group": "inputs"
+            "group": "inputs",
+            "refuses": [
+              "an unclosed {{ token",
+              "a token shep does not define"
+            ]
           },
           "items": {
             "type": "string"
@@ -60,7 +68,7 @@
           "default": true,
           "init": {
             "blurb": "Restarts the process automatically when it exits unexpectedly",
-            "group": "control"
+            "group": "restart"
           }
         },
         "autostart": {
@@ -69,7 +77,7 @@
           "default": true,
           "init": {
             "blurb": "Start this app when the daemon starts, and on shep muster",
-            "group": "control"
+            "group": "restart"
           }
         },
         "channel": {
@@ -89,9 +97,30 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "five fields: minute hour day month weekday",
+              "a nickname like @daily or @hourly"
+            ],
             "blurb": "Restart on a schedule, written as a cron pattern",
             "example": "* * * * *",
-            "group": "cron"
+            "group": "cron",
+            "neighbours": [
+              {
+                "field": "cron_timezone",
+                "note": "sets which zone this pattern reads in"
+              }
+            ],
+            "refuses": [
+              "a field outside its valid range",
+              "a sixth seconds field, or L, W, # or ?",
+              "a pattern croner cannot parse"
+            ],
+            "suggest": [
+              "*/5 * * * *",
+              "0 * * * *",
+              "0 0 * * *",
+              "0 0 * * 0"
+            ]
           }
         },
         "cron_timezone": {
@@ -102,9 +131,21 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "an IANA zone name, like US/Eastern"
+            ],
             "blurb": "Which timezone cron_restart is read in, as an IANA name",
             "example": "US/Eastern",
-            "group": "cron"
+            "group": "cron",
+            "neighbours": [
+              {
+                "field": "cron_restart",
+                "note": "the pattern this zone is read against"
+              }
+            ],
+            "refuses": [
+              "a name outside the IANA database"
+            ]
           }
         },
         "cwd": {
@@ -115,35 +156,146 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "an absolute or relative path, expanded from cwd",
+              "~ expands, $VARS do not",
+              "a directory that does not exist yet: warned"
+            ],
             "blurb": "Where the process runs. Without it, the daemon's own directory",
             "example": "/srv/app",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "script",
+                "note": "resolved against this cwd"
+              },
+              {
+                "field": "out_file",
+                "note": "relative paths follow it too"
+              },
+              {
+                "field": "watch_options",
+                "note": "globs are rooted here"
+              }
+            ]
+          }
+        },
+        "depends_on": {
+          "description": "Sheep or dogs that must be up before this one starts\n\nNames, never `name:slot`: a dependency on one instance of a\nload-balanced app is not a claim about availability. A dependency on\na multi-instance app waits for every instance.\n\nRead once when a batch is ordered, at a boot, a muster, or a staged\nstart, so an edit reaches the next such operation rather than the\nrunning child.",
+          "type": "array",
+          "default": [],
+          "init": {
+            "accepts": [
+              "a list of sheep or dog names"
+            ],
+            "blurb": "Other sheep or dogs that must be up before this one starts",
+            "example": "[\"db\", \"cache\"]",
+            "group": "process",
+            "refuses": [
+              "this sheep's own name",
+              "a name:slot instance reference"
+            ]
+          },
+          "items": {
+            "type": "string"
           }
         },
         "env": {
-          "description": "Environment for the sheep (merged over the daemon's filtered env)",
+          "description": "Environment for the sheep (merged over the daemon's filtered env).\n\nA value may arrive as a string, a bare boolean, or a bare whole\nnumber (`SOME_BOOL = true`, `PORT = 8080`), and leaves as a string\neither way, so this field stays `BTreeMap<String, String>` and the\nwire always carries strings. A float is refused: `1.10` would reach\nthe process as `1.1`. YAML resolves an unquoted `yes` to `\"true\"`\nand `0x1F` to `\"31\"`, so quote a value whose text must survive.",
           "type": "object",
           "additionalProperties": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           },
           "default": {},
           "init": {
+            "accepts": [
+              "a table of KEY = value pairs",
+              "a bare true or 8080, which arrives as text",
+              "{{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:key}} expand in a value"
+            ],
             "blurb": "Environment variables for this app, layered over the daemon's own",
             "example": "{ NODE_ENV = 'production' }",
-            "group": "inputs"
+            "group": "inputs",
+            "neighbours": [
+              {
+                "field": "environment",
+                "note": "which environment {{secret:...}} reads from"
+              }
+            ],
+            "refuses": [
+              "a float, since 1.10 would arrive as 1.1",
+              "SHEP_INSTANCE, SHEP_NAME, or SHEP_ENVIRONMENT, which shep sets itself",
+              "an unclosed {{ token",
+              "a token shep does not define"
+            ]
           }
         },
-        "err_file": {
-          "description": "Stderr log file (default: `$SHEP_HOME/logs/<name>-<instance>-err.log`; `merge_logs` collapses to `<name>-err.log`)",
+        "environment": {
+          "description": "Which environment this sheep resolves `{{secret:...}}` in.\n\nAbsent falls back to `[daemon] environment` in `shep.toml`, which\nitself defaults to `production`. Never `all`: that is the store's\nevery-environment slot, and a sheep claiming it would read that slot\ntwice and never one of its own.",
           "type": [
             "string",
             "null"
           ],
           "default": null,
           "init": {
-            "blurb": "Where stderr goes. Defaults to a file under $SHEP_HOME/logs",
-            "example": "/var/log/my-first-sheep/err.log",
-            "group": "process"
+            "accepts": [
+              "a name from the secrets store"
+            ],
+            "blurb": "Which environment this app resolves secrets in",
+            "example": "staging",
+            "group": "inputs",
+            "neighbours": [
+              {
+                "field": "env",
+                "note": "sets which environment its {{secret:...}} reads from"
+              }
+            ],
+            "refuses": [
+              "all, the store's every-environment slot",
+              "a name outside letters, digits, dot, underscore, or dash"
+            ]
+          }
+        },
+        "err_file": {
+          "description": "Stderr log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log`; `merge_logs` collapses to `{{name}}-err.log`)",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "init": {
+            "accepts": [
+              "a path, relative paths follow cwd",
+              "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
+              "a parent that does not exist yet: warned"
+            ],
+            "blurb": "Where stderr goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
+            "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log",
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "out_file",
+                "note": "shares the same collision rule"
+              },
+              {
+                "field": "merge_logs",
+                "note": "shares one file, unless this path spells {{instance}} out"
+              }
+            ],
+            "refuses": [
+              "a {{secret:...}} token",
+              "one path for every instance, without merge_logs"
+            ]
           }
         },
         "exp_backoff_restart_delay": {
@@ -160,7 +312,7 @@
           "init": {
             "blurb": "Starting delay between restarts, growing each time it fails again",
             "example": "5s",
-            "group": "control"
+            "group": "restart"
           }
         },
         "fold": {
@@ -182,7 +334,7 @@
           "default": "8s",
           "init": {
             "blurb": "How long the old instance gets to drain during a reload",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "group": {
@@ -193,9 +345,22 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a unix group name"
+            ],
             "blurb": "Run as this group, on unix",
             "example": "www-data",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "user",
+                "note": "resolved together at spawn"
+              }
+            ],
+            "refuses": [
+              "a name with no group entry",
+              "another group, unless the shepherd runs as root"
+            ]
           }
         },
         "ignore_watch": {
@@ -203,8 +368,24 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of glob patterns"
+            ],
             "blurb": "Paths watch should skip, on top of dotfiles and node_modules",
-            "group": "control"
+            "group": "watch",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "globs are rooted here"
+              },
+              {
+                "field": "watch_options",
+                "note": "removed from what this matches"
+              }
+            ],
+            "refuses": [
+              "a pattern globset cannot compile"
+            ]
           },
           "items": {
             "type": "string"
@@ -229,6 +410,10 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a command name found on PATH",
+              "none, to exec the script directly"
+            ],
             "blurb": "What runs the script. Set it to none to exec the file directly",
             "example": "none",
             "group": "process"
@@ -242,9 +427,22 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "SIGTERM, SIGINT, SIGQUIT, or SIGUSR2",
+              "the SIG prefix and case are both optional"
+            ],
             "blurb": "Which signal shep sends first when stopping this app",
             "example": "SIGTERM",
-            "group": "process"
+            "group": "shutdown",
+            "refuses": [
+              "a signal outside that list"
+            ],
+            "suggest": [
+              "SIGTERM",
+              "SIGINT",
+              "SIGQUIT",
+              "SIGUSR2"
+            ]
           }
         },
         "kill_timeout": {
@@ -253,7 +451,35 @@
           "default": "1600",
           "init": {
             "blurb": "How long shep waits after the stop signal before SIGKILL",
-            "group": "control"
+            "group": "shutdown"
+          }
+        },
+        "level_rules": {
+          "description": "How this app's own lines announce their level, for a client that\nfilters by one.\n\nOrdered: rules are tried as written and the first match wins.\nDeclaring any replaces the reader's built-in guess for this app\nrather than adding to it, so a line matching no rule announces no\nlevel. Nothing here hides a line: an unclassified line survives\nevery level filter.",
+          "type": "array",
+          "default": [],
+          "init": {
+            "accepts": [
+              "a list of { pattern, level } rules, tried in order",
+              "a regex matched against the whole line, (?i) folds case",
+              "a level of trace, debug, info, warn, or error"
+            ],
+            "blurb": "What this app's own log levels look like, for filtering",
+            "example": "[{ pattern = '\\[ERROR\\]', level = 'error' }]",
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "out_file",
+                "note": "the lines these rules read"
+              }
+            ],
+            "refuses": [
+              "an empty pattern, which would claim every line",
+              "a pattern regex cannot compile"
+            ]
+          },
+          "items": {
+            "$ref": "#/$defs/LevelRule"
           }
         },
         "listen_timeout": {
@@ -262,7 +488,7 @@
           "default": "3s",
           "init": {
             "blurb": "How long to wait for readiness when nothing else reports it",
-            "group": "control"
+            "group": "readiness"
           }
         },
         "liveness_probe": {
@@ -277,12 +503,26 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "kind: http, tcp, or exec",
+              "a target matching the kind: a url, host:port, or command"
+            ],
             "blurb": "A health check that triggers a restart when it keeps failing",
             "example": {
               "kind": "http",
               "target": "http://127.0.0.1:8080/healthz"
             },
-            "group": "control"
+            "group": "readiness",
+            "neighbours": [
+              {
+                "field": "readiness_probe",
+                "note": "uses a different interval floor"
+              }
+            ],
+            "refuses": [
+              "a failure_threshold of 0",
+              "an interval below its own floor"
+            ]
           }
         },
         "max_memory": {
@@ -299,7 +539,7 @@
           "init": {
             "blurb": "Restart the app if it climbs above this much memory",
             "example": "512M",
-            "group": "control"
+            "group": "restart"
           }
         },
         "max_restarts": {
@@ -309,7 +549,7 @@
           "default": 16,
           "init": {
             "blurb": "How many unstable exits in a row before shep gives up",
-            "group": "control"
+            "group": "restart"
           },
           "minimum": 0
         },
@@ -319,7 +559,7 @@
           "default": false,
           "init": {
             "blurb": "Put every instance's output in one pair of files",
-            "group": "process"
+            "group": "logging"
           }
         },
         "min_uptime": {
@@ -328,7 +568,7 @@
           "default": "1s",
           "init": {
             "blurb": "An exit sooner than this counts as unstable",
-            "group": "control"
+            "group": "restart"
           }
         },
         "name": {
@@ -336,22 +576,48 @@
           "type": "string",
           "default": "",
           "init": {
+            "accepts": [
+              "letters, digits, and most punctuation"
+            ],
             "blurb": "A convenient and unique name for shep to display",
             "example": "my-first-sheep",
-            "group": "process"
+            "group": "process",
+            "refuses": [
+              "a path separator or a colon",
+              "a bare . or .."
+            ]
           }
         },
         "out_file": {
-          "description": "Stdout log file (default: `$SHEP_HOME/logs/<name>-<instance>-out.log`; `merge_logs` collapses to `<name>-out.log`)",
+          "description": "Stdout log file (default: `{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log`; `merge_logs` collapses to `{{name}}-out.log`)",
           "type": [
             "string",
             "null"
           ],
           "default": null,
           "init": {
-            "blurb": "Where stdout goes. Defaults to a file under $SHEP_HOME/logs",
-            "example": "/var/log/my-first-sheep/out.log",
-            "group": "process"
+            "accepts": [
+              "a path, relative paths follow cwd",
+              "{{instance}}, {{name}} and {{SHEP_HOME}} expand",
+              "a parent that does not exist yet: warned"
+            ],
+            "blurb": "Where stdout goes. Written out, the default is {{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
+            "example": "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log",
+            "group": "logging",
+            "neighbours": [
+              {
+                "field": "err_file",
+                "note": "shares the same collision rule"
+              },
+              {
+                "field": "merge_logs",
+                "note": "shares one file, unless this path spells {{instance}} out"
+              }
+            ],
+            "refuses": [
+              "a {{secret:...}} token",
+              "one path for every instance, without merge_logs"
+            ]
           }
         },
         "readiness_probe": {
@@ -366,12 +632,30 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "kind: http, tcp, or exec",
+              "a target matching the kind: a url, host:port, or command"
+            ],
             "blurb": "A health check shep waits on before it treats a reload as finished",
             "example": {
               "kind": "http",
               "target": "http://127.0.0.1:8080/ready"
             },
-            "group": "control"
+            "group": "readiness",
+            "neighbours": [
+              {
+                "field": "liveness_probe",
+                "note": "uses a different interval floor"
+              },
+              {
+                "field": "reuse_port",
+                "note": "governs whether reload overlaps it"
+              }
+            ],
+            "refuses": [
+              "a failure_threshold of 0",
+              "an interval below its own floor"
+            ]
           }
         },
         "restart_delay": {
@@ -388,7 +672,7 @@
           "init": {
             "blurb": "A fixed wait before every restart, instead of growing backoff",
             "example": "3s",
-            "group": "control"
+            "group": "restart"
           }
         },
         "reuse_port": {
@@ -405,9 +689,24 @@
           "type": "string",
           "default": "",
           "init": {
+            "accepts": [
+              "an absolute or relative path, expanded from cwd",
+              "~ expands, $VARS do not",
+              "a script shep cannot resolve yet: warned"
+            ],
             "blurb": "The script that shep should use to launch your app",
             "example": "./index.js",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "resolved against this cwd"
+              },
+              {
+                "field": "interpreter",
+                "note": "picks what runs this script"
+              }
+            ]
           }
         },
         "shutdown_with_message": {
@@ -416,7 +715,7 @@
           "default": false,
           "init": {
             "blurb": "Ask the app to stop over the channel instead of signalling it",
-            "group": "control"
+            "group": "shutdown"
           }
         },
         "stdin": {
@@ -433,8 +732,11 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of exit codes"
+            ],
             "blurb": "Exit codes that mean a clean stop, so shep will not restart",
-            "group": "control"
+            "group": "restart"
           },
           "items": {
             "type": "integer",
@@ -449,9 +751,22 @@
           ],
           "default": null,
           "init": {
+            "accepts": [
+              "a unix user name"
+            ],
             "blurb": "Run as this user, on unix",
             "example": "www-data",
-            "group": "process"
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "group",
+                "note": "resolved together at spawn"
+              }
+            ],
+            "refuses": [
+              "a name with no passwd entry",
+              "another user, unless the shepherd runs as root"
+            ]
           }
         },
         "wait_ready": {
@@ -460,7 +775,7 @@
           "default": false,
           "init": {
             "blurb": "Wait for the app to say it is ready on the channel",
-            "group": "control"
+            "group": "readiness"
           }
         },
         "watch": {
@@ -469,7 +784,7 @@
           "default": false,
           "init": {
             "blurb": "Restart when a file changes",
-            "group": "control"
+            "group": "watch"
           }
         },
         "watch_delay": {
@@ -486,7 +801,7 @@
           "init": {
             "blurb": "How long to wait after a change before restarting",
             "example": "500",
-            "group": "control"
+            "group": "watch"
           }
         },
         "watch_options": {
@@ -494,8 +809,29 @@
           "type": "array",
           "default": [],
           "init": {
+            "accepts": [
+              "a list of glob patterns",
+              "empty watches the whole cwd"
+            ],
             "blurb": "Which paths to watch. Empty means the working directory",
-            "group": "control"
+            "group": "watch",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "globs are rooted here"
+              },
+              {
+                "field": "watch",
+                "note": "has no effect unless watch is on"
+              },
+              {
+                "field": "ignore_watch",
+                "note": "skipped even when matched here"
+              }
+            ],
+            "refuses": [
+              "a pattern globset cannot compile"
+            ]
           },
           "items": {
             "type": "string"
@@ -503,6 +839,55 @@
         }
       },
       "additionalProperties": false
+    },
+    "LevelRule": {
+      "description": "One rule: the lines this pattern matches carry this level.\n\nThe pattern is a regex, matched against the whole line, exactly as\nwritten: `(?i)` makes one case-insensitive, and nothing is anchored for\nyou.",
+      "type": "object",
+      "properties": {
+        "level": {
+          "description": "The level a matching line is given.",
+          "$ref": "#/$defs/LineLevel"
+        },
+        "pattern": {
+          "description": "The regex a line must match for this rule to claim it.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pattern",
+        "level"
+      ]
+    },
+    "LineLevel": {
+      "description": "The level one log line announces.\n\nOrdered lowest first, so `level >= minimum` reads the way an operator\nsetting a floor expects. `Display` renders the spelling a Flockfile\nwrites.",
+      "oneOf": [
+        {
+          "description": "The lowest, and the only one an app has to opt into emitting.",
+          "type": "string",
+          "const": "trace"
+        },
+        {
+          "description": "Below `Info`, and the usual floor for an app's own noise.",
+          "type": "string",
+          "const": "debug"
+        },
+        {
+          "description": "The default an operator reads when nothing is filtered.",
+          "type": "string",
+          "const": "info"
+        },
+        {
+          "description": "Something an operator should look at, without the sheep being broken.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "The highest. A line saying it is fatal is not saying something milder\nthan one saying error.",
+          "type": "string",
+          "const": "error"
+        }
+      ]
     },
     "MemSize": {
       "description": "A byte quantity: digits, optionally suffixed G, M or K (binary units).",

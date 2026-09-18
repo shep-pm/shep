@@ -11,6 +11,13 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 const GIB: u64 = 1024 * MIB;
 
+// Milliseconds per unit of the Flockfile grammar `^\d+(ms|h|m|s)?$`, the
+// same way the binary units above are written: a definition each, so the
+// parser and the formatter cannot drift apart on one of them.
+const MS_PER_S: u64 = 1_000;
+const MS_PER_MIN: u64 = 60 * MS_PER_S;
+const MS_PER_H: u64 = 60 * MS_PER_MIN;
+
 /// A memory quantity in bytes, used for memory-limit thresholds
 ///
 /// Parses the Flockfile grammar `^\d+(G|M|K)?$` (binary units; plain digits
@@ -50,16 +57,16 @@ impl MemSize {
 impl FromStr for MemSize {
     type Err = ParseMemSizeError;
 
-    /// Parses `^\d+(G|M|K)?$` — binary units, plain digits = bytes
+    /// Parses `^\d+(G|M|K)?$`: binary units, plain digits = bytes
     ///
     /// # Errors
     ///
-    /// - [`ParseMemSizeError::Empty`] — empty input.
-    /// - [`ParseMemSizeError::MissingDigits`] — unit suffix with no digits.
-    /// - [`ParseMemSizeError::InvalidCharacter`] — anything outside ASCII
+    /// - [`ParseMemSizeError::Empty`]: empty input.
+    /// - [`ParseMemSizeError::MissingDigits`]: unit suffix with no digits.
+    /// - [`ParseMemSizeError::InvalidCharacter`]: anything outside ASCII
     ///   digits plus one trailing `G`/`M`/`K` (lowercase, whitespace,
     ///   fractions, multi-letter suffixes all land here).
-    /// - [`ParseMemSizeError::Overflow`] — byte count exceeds `u64::MAX`.
+    /// - [`ParseMemSizeError::Overflow`]: byte count exceeds `u64::MAX`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
             return Err(ParseMemSizeError::Empty);
@@ -114,12 +121,11 @@ impl<'de> Deserialize<'de> for MemSize {
 
 /// Failure to parse a [`MemSize`] from the grammar `^\d+(G|M|K)?$`
 ///
-/// `#[non_exhaustive]`: today's four variants exhaust one frozen grammar, but
-/// a future revision of it — fractional sizes (`1.5G`), or a binary-vs-decimal
-/// unit distinction — would want its own variant rather than folding into
-/// [`Self::InvalidCharacter`]'s catch-all, and shep-core is a published
-/// library an out-of-tree matcher should not break for the day that lands
-/// (IR-20).
+/// `#[non_exhaustive]`: a future grammar revision, such as fractional sizes
+/// (`1.5G`) or a binary-vs-decimal distinction, would want its own variant
+/// rather than folding into [`Self::InvalidCharacter`]'s catch-all, and
+/// shep-core is a published library an out-of-tree matcher should not
+/// break for.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseMemSizeError {
@@ -128,7 +134,7 @@ pub enum ParseMemSizeError {
     /// A unit suffix with no digits before it (`"M"`)
     MissingDigits,
     /// A character outside ASCII digits plus one optional trailing
-    /// `G`/`M`/`K` — covers lowercase units, whitespace, signs, fractions,
+    /// `G`/`M`/`K`: covers lowercase units, whitespace, signs, fractions,
     /// and multi-letter suffixes such as `"MB"`
     InvalidCharacter,
     /// The quantity in bytes does not fit in `u64`
@@ -156,7 +162,7 @@ impl core::error::Error for ParseMemSizeError {}
 /// exist.
 ///
 /// The pattern is `FromStr`'s own grammar, lifted from its doc comment
-/// above. If you change one, change the other — the paired test below is
+/// above. If you change one, change the other: the paired test below is
 /// what catches it.
 #[cfg(feature = "schema")]
 impl schemars::JsonSchema for MemSize {
@@ -180,7 +186,7 @@ impl schemars::JsonSchema for MemSize {
 /// `kill_timeout`, and the other lifecycle timers.
 ///
 /// `ms` is checked before the single-letter suffixes, so `m` still means
-/// minutes and only a trailing `ms` means milliseconds — `5m` and `5ms`
+/// minutes and only a trailing `ms` means milliseconds: `5m` and `5ms`
 /// differ by a factor of sixty thousand.
 ///
 /// # Example
@@ -217,10 +223,9 @@ impl UpDuration {
     #[must_use]
     pub const fn as_millis(self) -> u64 {
         // Sound: every constructor bounds millis to u64 (`from_millis`
-        // stores its u64 argument directly; `FromStr` reaches this type
-        // only through a `checked_mul` that already fits in u64). Revisit
-        // if a constructor from a raw `Duration` is ever added — that could
-        // carry more than u64::MAX milliseconds.
+        // stores its argument directly; `FromStr` reaches this type only
+        // via a `checked_mul` that already fits in u64). Revisit if a raw
+        // `Duration` constructor is ever added.
         self.0.as_millis() as u64
     }
 }
@@ -228,18 +233,18 @@ impl UpDuration {
 impl FromStr for UpDuration {
     type Err = ParseUpDurationError;
 
-    /// Parses `^\d+(ms|h|m|s)?$` — plain digits are milliseconds
+    /// Parses `^\d+(ms|h|m|s)?$`: plain digits are milliseconds
     ///
     /// `ms` is matched before the single-letter suffixes below, so a
     /// trailing `m` alone still means minutes.
     ///
     /// # Errors
     ///
-    /// - [`ParseUpDurationError::Empty`] — empty input.
-    /// - [`ParseUpDurationError::MissingDigits`] — unit with no digits.
-    /// - [`ParseUpDurationError::InvalidCharacter`] — anything outside ASCII
+    /// - [`ParseUpDurationError::Empty`]: empty input.
+    /// - [`ParseUpDurationError::MissingDigits`]: unit with no digits.
+    /// - [`ParseUpDurationError::InvalidCharacter`]: anything outside ASCII
     ///   digits plus one trailing lowercase `h`/`m`/`s`/`ms`.
-    /// - [`ParseUpDurationError::Overflow`] — milliseconds overflow `u64`.
+    /// - [`ParseUpDurationError::Overflow`]: milliseconds overflow `u64`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
             return Err(ParseUpDurationError::Empty);
@@ -252,9 +257,9 @@ impl FromStr for UpDuration {
             (rest, 1)
         } else {
             match s.as_bytes()[s.len() - 1] {
-                b'h' => (&s[..s.len() - 1], 3_600_000),
-                b'm' => (&s[..s.len() - 1], 60_000),
-                b's' => (&s[..s.len() - 1], 1_000),
+                b'h' => (&s[..s.len() - 1], MS_PER_H),
+                b'm' => (&s[..s.len() - 1], MS_PER_MIN),
+                b's' => (&s[..s.len() - 1], MS_PER_S),
                 _ => (s, 1),
             }
         };
@@ -278,9 +283,9 @@ impl fmt::Display for UpDuration {
         let ms = self.as_millis();
         match ms {
             0 => f.write_str("0"),
-            v if v % 3_600_000 == 0 => write!(f, "{}h", v / 3_600_000),
-            v if v % 60_000 == 0 => write!(f, "{}m", v / 60_000),
-            v if v % 1_000 == 0 => write!(f, "{}s", v / 1_000),
+            v if v % MS_PER_H == 0 => write!(f, "{}h", v / MS_PER_H),
+            v if v % MS_PER_MIN == 0 => write!(f, "{}m", v / MS_PER_MIN),
+            v if v % MS_PER_S == 0 => write!(f, "{}s", v / MS_PER_S),
             v => write!(f, "{v}"),
         }
     }
@@ -302,12 +307,10 @@ impl<'de> Deserialize<'de> for UpDuration {
 
 /// Failure to parse an [`UpDuration`] from the grammar `^\d+(ms|h|m|s)?$`
 ///
-/// `#[non_exhaustive]`, for the same reason as
-/// [`ParseMemSizeError`]: a future grammar
-/// revision — fractional durations, or a `d`/`w` unit — would want its own
-/// variant rather than folding into [`Self::InvalidCharacter`]'s catch-all,
-/// and shep-core is a published library an out-of-tree matcher should not
-/// break for the day that lands (IR-20).
+/// `#[non_exhaustive]`, for the same reason as [`ParseMemSizeError`]: a
+/// future grammar revision, such as fractional durations or a `d`/`w`
+/// unit, would want its own variant rather than folding into
+/// [`Self::InvalidCharacter`]'s catch-all.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseUpDurationError {
@@ -337,7 +340,7 @@ impl fmt::Display for ParseUpDurationError {
 
 impl core::error::Error for ParseUpDurationError {}
 
-/// String-shaped, matching this type's `Serialize`/`Deserialize` — see
+/// String-shaped, matching this type's `Serialize`/`Deserialize`: see
 /// [`MemSize`]'s own `JsonSchema` impl for the full reasoning, which applies
 /// here unchanged.
 #[cfg(feature = "schema")]
@@ -353,6 +356,30 @@ impl schemars::JsonSchema for UpDuration {
             "description": "A duration: digits, optionally suffixed ms, h, m or s. Plain digits are milliseconds.",
         })
     }
+}
+
+/// Tree CPU over a window, as a percentage of one core.
+///
+/// `cpu_ms` is the CPU-milliseconds the tree spent during `window`. A value
+/// over 100 is a tree using more than one core, not a bug.
+///
+/// `None` when `window` is zero: dividing by it produces a nonsense figure
+/// rather than a large one.
+///
+/// Shared by the shepherd, which measures against its own periodic
+/// baseline, and by `shep lookout`, which differences two readings of
+/// [`ProcessInfo::cpu_ms`](crate::protocol::ProcessInfo::cpu_ms) over its
+/// own poll. Both put a percentage on the same screen, so the conversion
+/// lives in one place.
+#[must_use]
+pub fn cpu_percent(cpu_ms: u64, window: core::time::Duration) -> Option<f32> {
+    if window.is_zero() {
+        return None;
+    }
+    // CPU-milliseconds over wall-seconds is per-mille of one core. Computed
+    // in f64 and narrowed once at the end, since f32 would lose milliseconds
+    // off a counter that has run for a month.
+    Some((cpu_ms as f64 / window.as_secs_f64() / 10.0) as f32)
 }
 
 #[cfg(test)]
@@ -412,12 +439,9 @@ mod mem_size_tests {
         assert!(serde_json::from_str::<MemSize>("\"512MB\"").is_err());
     }
 
-    /// fails if the schema pattern and `FromStr` disagree. A pattern that is
-    /// merely self-consistent is worthless; it has to agree with the parser
-    /// the schema claims to describe. The reject list carries `512T` and
-    /// `1P` for a specific reason: a widened suffix set is the way this
-    /// pattern most plausibly goes wrong, and a reject list without a
-    /// would-be-accepted suffix cannot catch it.
+    /// The pattern must agree with `FromStr`, not just be self-consistent.
+    /// `512T` and `1P` are in the reject list because a widened suffix set
+    /// is the way this pattern most plausibly drifts.
     #[cfg(feature = "schema")]
     #[test]
     fn the_schema_pattern_agrees_with_from_str() {
@@ -457,10 +481,9 @@ mod up_duration_tests {
         assert_eq!("2h".parse::<UpDuration>().unwrap().as_millis(), 7_200_000);
     }
 
-    /// The trap defect 1 was fixed for: `ms` and `m` share a trailing byte,
-    /// so a naive last-byte match would parse "5ms" as "5m" (a 60,000x
-    /// error) or reject it outright. Pinned adjacently so a regression here
-    /// shows up as a wrong multiplier, not just a rejected string.
+    /// `ms` and `m` share a trailing byte, so a naive last-byte match would
+    /// parse "5ms" as "5m" (a 60,000x error) or reject it. Pinned adjacently
+    /// so a regression shows as a wrong multiplier, not a rejected string.
     #[test]
     fn milliseconds_do_not_alias_minutes() {
         assert_eq!("500ms".parse::<UpDuration>().unwrap().as_millis(), 500);
@@ -507,9 +530,8 @@ mod up_duration_tests {
         assert_eq!(serde_json::to_string(&d).unwrap(), "\"30s\"");
     }
 
-    /// fails if the schema pattern and `FromStr` disagree — see the
-    /// `MemSize` version of this same test, above, for the full reasoning
-    /// behind the reject list's shape.
+    /// Same requirement as [`MemSize`]'s schema test: the pattern must
+    /// agree with `FromStr`, not just be self-consistent.
     #[cfg(feature = "schema")]
     #[test]
     fn the_schema_pattern_agrees_with_from_str() {
@@ -530,5 +552,34 @@ mod up_duration_tests {
                 "FromStr accepts {rejected}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod cpu_percent_tests {
+    use core::time::Duration;
+
+    use super::*;
+
+    /// Per-mille of one core: 1000 CPU-milliseconds over one wall second is
+    /// 100% of one core, and the daemon and lookout must agree on that or the
+    /// two numbers on screen disagree.
+    #[test]
+    fn a_full_core_for_the_whole_window_is_a_hundred_percent() {
+        assert_eq!(cpu_percent(1000, Duration::from_secs(1)), Some(100.0));
+        assert_eq!(cpu_percent(1000, Duration::from_secs(2)), Some(50.0));
+    }
+
+    /// Over one core is a tree spanning several, not a bug.
+    #[test]
+    fn a_tree_over_one_core_reports_over_a_hundred() {
+        assert_eq!(cpu_percent(4000, Duration::from_secs(1)), Some(400.0));
+    }
+
+    /// A zero window would divide a near-zero delta by a near-zero number and
+    /// report anything from 0% to thousands.
+    #[test]
+    fn a_zero_window_has_no_honest_answer() {
+        assert_eq!(cpu_percent(1000, Duration::ZERO), None);
     }
 }

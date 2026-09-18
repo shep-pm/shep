@@ -1,36 +1,25 @@
 //! `shep dog <name>`: the hidden re-exec target a built-in dog runs as, and
-//! [`DogRuntime`] — the connection and configuration every dog needs before
-//! it can do anything else.
+//! [`DogRuntime`], the connection and configuration every dog needs.
 //!
-//! `docs/shepherd-channel.md` and `shep-daemon/src/dogs.rs`'s own module doc
-//! are the rest of the dog contract; this module is the CLI side of it. A
-//! dog inherits `$SHEP_HOME` and nothing else it did not already need in
-//! order to exec — no `[dog.<name>]` value ever rides in the environment,
-//! since that is readable from the process table, inherited by every child
-//! a dog spawns, and captured into crash dumps. Instead [`DogRuntime::start`]
-//! connects to the socket `$SHEP_HOME` names and asks for the section over
-//! `Request::DogConfig`, the same reason
-//! [`DogSectionToml`](shep_core::protocol::DogSectionToml) exists one layer
-//! down the stack.
+//! A dog inherits `$SHEP_HOME` and nothing else: no `[dog.<name>]` value
+//! rides in the environment, since that is readable from the process
+//! table and captured into crash dumps. [`DogRuntime::start`] instead
+//! connects to the socket and asks for the section over
+//! `Request::DogConfig`.
 //!
-//! [`run_dog`] is `main`'s whole `Commands::Dog` arm: validate the name is
-//! one of the two built-ins, connect, and dispatch. `"metrics"` reaches
-//! [`metrics::run`]; `"bark"` reaches [`run_bark`] (Task 21), this module's
-//! own half of bark's wiring — parse `[dog.bark]`, build
-//! [`bark::rules::Rules`], subscribe to the shepherd's bus, and hand both
-//! to [`bark::run_loop`] alongside a [`ClientFlockSource`] wrapping the
-//! same connection. [`ClientFlockSource`] and the [`bark::EventSource`]
-//! impl for [`shep_client::EventStream`] both live here rather than in
-//! `bark::mod` itself, because both are thin adapters over
-//! [`shep_client::ReconnectingClient`], the type this module already owns
-//! through [`DogRuntime`].
+//! [`run_dog`] validates the name against [`BUILT_IN_DOGS`], connects, and
+//! dispatches: `"metrics"` to [`metrics::run`], `"bark"` to [`run_bark`].
 
 pub mod bark;
 pub mod metrics;
 
 use core::fmt;
+use std::sync::Arc;
+use std::time::Duration;
 
-use shep_client::{ConnectError, EventStream, ReconnectingClient, RequestError};
+use shep_client::{
+    ConnectError, EventStream, LinkLost, RECONNECT_MIN_DELAY, ReconnectingClient, RequestError,
+};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response, RpcError, RpcErrorCode};
 
@@ -38,37 +27,84 @@ use crate::exit::ExitCode;
 
 /// The dog names this binary can run built-in.
 ///
-/// `enabled_dogs` (`commands::shep_toml`) accepts any name at all — an
-/// adopted dog's name is an operator's own choice — but a re-exec through
-/// `shep dog <name>` only ever reaches one of these two. Anything else in
-/// the config did not come from `enable`/`adopt`, however it got there, and
-/// [`run_dog`] refuses it before touching the socket.
-const BUILT_IN_DOGS: [&str; 2] = ["metrics", "bark"];
+/// `enabled_dogs` accepts any name at all, an adopted dog's own choice, but
+/// a re-exec through `shep dog <name>` only ever reaches one of these two.
+/// [`run_dog`] refuses anything else before touching the socket.
+pub(crate) const BUILT_IN_DOGS: [&str; 2] = ["metrics", "bark"];
+
+/// How long a dog waits for a shepherd to answer again before it gives up
+/// and exits.
+///
+/// A shepherd that execs a successor has not gone away, and every dog is
+/// meant to cross that without restarting. A shepherd that stopped has
+/// gone away, and a dog that waits for it indefinitely is still running
+/// when an unrelated shepherd binds that socket later, at which point it
+/// attaches itself to that one beside that shepherd's own dog of the same
+/// kind and doubles its alerts quietly.
+///
+/// Measured on this machine over ten `shep daemon reload` runs against a
+/// three-sheep flock: the control socket turned away a full connect,
+/// handshake and request for 38ms at the shortest, 254ms at the longest,
+/// 80ms on average. A larger flock and a busier host both push that up.
+///
+/// [`DOG_SILENCE_BUDGET`](shep_daemon::dogs::DOG_SILENCE_BUDGET) is the
+/// number to reuse rather than a second one to invent: it is how long the
+/// shepherd lets a dog go quiet before acting on it, so a dog that waits
+/// exactly that long cannot outlive the budget it is judged by. It is also
+/// around twenty times the longest handover measured, which leaves room
+/// for a far slower one. Five seconds of waiting is not the lingering this
+/// guards against; that one is measured in however long it takes another
+/// shepherd to come along.
+const SHEPHERD_RETURN_BUDGET: Duration = shep_daemon::dogs::DOG_SILENCE_BUDGET;
+
+/// The exit code a dog reports when it gave up on its shepherd.
+///
+/// Not `Success`, because a dog that stopped because nothing answered has
+/// not finished its work, and an operator told a running shepherd was
+/// unreachable goes looking for the wrong thing. The wildcard is what
+/// [`LinkLost`]'s `non_exhaustive` asks for: until something says
+/// otherwise, a variant added later is one more way of not reaching a
+/// shepherd.
+fn exit_for(lost: &LinkLost) -> ExitCode {
+    match lost {
+        LinkLost::Refused { .. } => ExitCode::ProtocolMismatch,
+        _ => ExitCode::DaemonUnreachable,
+    }
+}
+
+/// The schema a built-in dog would print for the schema flag, without
+/// spawning anything: a built-in dog is this binary, so the answer is one
+/// call away rather than a subprocess and a timeout away.
+///
+/// [`None`] for a name that is not a built-in, which is how a caller tells
+/// an adopted dog (spawn its recorded path and ask) from a built-in
+/// (this). Also [`None`] when the schema could not be built at all:
+/// `config_schema` refusing a `#[shep(secret)]` mark that landed on no
+/// property is a bug in this binary, not a fact about the dog, and the
+/// caller has one way of saying "no schema" either way.
+pub(crate) fn builtin_schema(name: &str) -> Option<serde_json::Value> {
+    use shep_client::dogs::config_schema;
+
+    let schema = match name {
+        "metrics" => config_schema::<metrics::MetricsConfig>().ok()?,
+        "bark" => config_schema::<bark::BarkConfig>().ok()?,
+        _ => return None,
+    };
+    serde_json::to_value(schema).ok()
+}
 
 /// A dog's connection to the shepherd, and its own configuration.
 ///
-/// The whole of the dog contract from the dog's side: locate the socket
-/// from `$SHEP_HOME` (one of the two variables a dog inherits, the other
-/// being `$SHEP_DOG_NAME` — which a built-in dog does not need, since its
-/// own `dog <name>` argv already names it), connect, handshake, ask for
-/// `[dog.<name>]`, parse it. A dog has no useful work before this
-/// exists — metrics polls the shepherd, bark subscribes to it — so nothing
-/// here is deferred or made optional.
+/// Locate the socket from `$SHEP_HOME`, connect, handshake, ask for
+/// `[dog.<name>]`, parse it.
 pub struct DogRuntime {
     /// The connected client. A dog IS a client; there is no second protocol.
     ///
     /// A [`ReconnectingClient`] rather than a bare
-    /// [`Client`](shep_client::Client), and that is the difference between
-    /// a dog that crosses a daemon handover and one that does not. A dog's
-    /// process survives the shepherd's `execve` for free — it is a child of
-    /// a daemon whose pid does not change — but only the LISTENING socket
-    /// crosses that exec, so the accepted connection underneath this field
-    /// dies every time an operator reloads. Measured over six real reloads
-    /// before this was supervised: the metrics dog kept its pid, reported
-    /// zero restarts, stayed `online`, wrote nothing to stderr, and
-    /// answered HTTP 503 to every scrape. The CLI keeps the bare `Client`
-    /// deliberately; see `shep_client`'s own `reconnect` module docs for
-    /// why one-shot verbs must not gain this.
+    /// [`Client`](shep_client::Client): a dog's process survives the
+    /// shepherd's `execve` for free, but only the listening socket crosses
+    /// that exec, so the accepted connection underneath this field dies on
+    /// every reload.
     pub client: ReconnectingClient,
     /// This dog's `[dog.<name>]` section, exactly as the shepherd rendered
     /// it, for the dog to parse into its own shape. Empty when the file has
@@ -82,15 +118,10 @@ pub struct DogRuntime {
     name: String,
 }
 
-/// Manual, not derived — the literal interface this task was handed shows
-/// `#[derive(Debug)]`; this deviates from it, self-reported (see this
-/// task's own report). [`Self::section`] is a dog's raw `[dog.<name>]`
-/// config text, which routinely carries a webhook URL with a bearer token
-/// in its query string (`SECURITY.md`) — a derived `Debug` would print it
-/// in full the moment anything `{:?}`-logs a `DogRuntime`, exactly the leak
-/// [`shep_core::protocol::DogSectionToml`]'s own manual `Debug` exists to
-/// prevent one layer up the stack. `client` and `paths` carry nothing
-/// sensitive and print unchanged; `name` likewise.
+/// Manual: [`Self::section`] is a dog's raw `[dog.<name>]` config text,
+/// which routinely carries a webhook URL with a bearer token in its query
+/// string. A derived `Debug` would print it in full. `client` and `paths`
+/// carry nothing sensitive and print unchanged.
 impl fmt::Debug for DogRuntime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DogRuntime")
@@ -108,35 +139,26 @@ pub enum DogRunError {
     Connect(ConnectError),
     /// The shepherd refused the config request.
     Request(RequestError),
-    /// The shepherd answered `Request::DogConfig` with something other than
-    /// `Response::DogSection` — protocol drift this client does not
-    /// recognise, not a connection or config problem.
-    ///
-    /// Never returned by a daemon on the same protocol version:
-    /// `shep-daemon/src/rpc.rs`'s `DogConfig` arm has exactly one success
-    /// reply. Kept as a reportable error rather than `unreachable!()` or
-    /// `todo!()` — a dog is a process the shepherd restarts, and a clean
-    /// exit code beats a panic and a confusing log line.
+    /// The shepherd answered `Request::DogConfig` with something other
+    /// than `Response::DogSection`. Never returned by a daemon on the same
+    /// protocol version; kept reportable rather than `unreachable!()`, so
+    /// a dog exits cleanly instead of panicking.
     UnexpectedReply,
     /// The section does not fit the shape [`DogRuntime::config`] was asked
     /// to parse it as.
     Section {
         /// The dog's own name.
         name: String,
-        /// The parser's full complaint — can quote the offending line, and
-        /// that line can be a `[dog.<name>]` webhook URL (see this type's
-        /// `Debug`).
+        /// The parser's full complaint, which can quote the offending
+        /// line.
         message: String,
     },
 }
 
-/// Manual, not derived (IR-41): [`DogRunError::Section`]'s `message` is the
-/// TOML parser's own complaint, which quotes the offending line verbatim —
-/// and that line can be a `[dog.<name>]` webhook URL with a bearer token in
-/// its query string. Redacted to the dog's name and a fixed description.
-/// `Connect`/`Request` wrap types with their own non-leaking `Debug`
-/// already (neither one ever holds a parsed section), so they format
-/// unchanged, and `UnexpectedReply` carries no fields at all.
+/// Manual: [`DogRunError::Section`]'s `message` is the TOML parser's own
+/// complaint, which can quote a `[dog.<name>]` webhook URL verbatim.
+/// Redacted to the dog's name and a fixed description. `Connect`/`Request`
+/// wrap types with their own non-leaking `Debug` already.
 impl fmt::Debug for DogRunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -193,18 +215,15 @@ impl DogRuntime {
     /// Connects and fetches `name`'s section.
     ///
     /// Announces itself as the dog registered under `name`, so a daemon
-    /// that refuses this handshake on protocol skew knows which dog it just
-    /// refused and can restart it once from disk (the handover design's
-    /// G8). A refused handshake never reaches the `DogConfig` request
-    /// below, which is the only other place this name would have travelled.
+    /// that refuses this handshake on protocol skew knows which dog it
+    /// just refused and can restart it from disk.
     ///
     /// # Errors
-    /// - [`DogRunError::Connect`] — no shepherd answered at the socket.
-    /// - [`DogRunError::Request`] — the shepherd refused the config request.
-    /// - [`DogRunError::UnexpectedReply`] — the shepherd answered
+    /// - [`DogRunError::Connect`]: no shepherd answered at the socket.
+    /// - [`DogRunError::Request`]: the shepherd refused the config request.
+    /// - [`DogRunError::UnexpectedReply`]: the shepherd answered
     ///   `Request::DogConfig` with something other than
-    ///   `Response::DogSection`. Its own doc explains why a same-version
-    ///   shepherd never sends it.
+    ///   `Response::DogSection`.
     pub async fn start(name: &str, paths: ShepPaths) -> Result<Self, DogRunError> {
         let client = ReconnectingClient::connect_as_dog(&paths.socket, name).await?;
         let response = client
@@ -227,10 +246,8 @@ impl DogRuntime {
     /// shepherd had no section for it.
     ///
     /// # Errors
-    /// - [`DogRunError::Section`] — the section does not fit `T`, naming
-    ///   the dog and the parser's own message. A dog refuses to run on
-    ///   configuration it cannot read rather than silently falling back to
-    ///   defaults an operator did not ask for.
+    /// - [`DogRunError::Section`]: the section does not fit `T`, naming
+    ///   the dog and the parser's own message.
     pub fn config<T>(&self) -> Result<T, DogRunError>
     where
         T: serde::de::DeserializeOwned + Default,
@@ -247,14 +264,9 @@ impl DogRuntime {
 
 /// Maps a failed [`DogRuntime::start`] to the exit code that reports it.
 ///
-/// `Connect`/`Request` defer to the same `ExitCode` conversions every other
-/// verb's own client-connect/request failure already goes through
-/// (`exit.rs`), so a dog and an operator's own CLI invocation report the
-/// same cause the same way. `Section` is
-/// [`ExitCode::InvalidConfig`] — the shape spec §9 gives a Flockfile or
-/// daemon config that fails validation — and `UnexpectedReply` is
-/// [`ExitCode::Internal`], matching every other "the daemon answered with a
-/// response this client does not understand" call site in this crate.
+/// `Connect`/`Request` defer to the same `ExitCode` conversions every
+/// other verb's client-connect/request failure goes through. `Section` is
+/// [`ExitCode::InvalidConfig`]; `UnexpectedReply` is [`ExitCode::Internal`].
 fn exit_code_for(err: &DogRunError) -> ExitCode {
     match err {
         DogRunError::Connect(inner) => ExitCode::from(inner),
@@ -266,17 +278,12 @@ fn exit_code_for(err: &DogRunError) -> ExitCode {
 
 /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
 ///
-/// An unknown name is refused before the socket is ever touched
-/// ([`ExitCode::Usage`], not [`ExitCode::Internal`]) — `name` comes from
-/// `enabled_dogs`, which an operator typed, and naming the two built-ins in
-/// the refusal is what turns their typo into a fix rather than a daemon
-/// log line nobody reads.
+/// An unknown name is refused before the socket is touched
+/// ([`ExitCode::Usage`]), naming the two built-ins in the refusal.
 ///
-/// A dog's own diagnostics go to stderr, plain text — no `Streams`, no
-/// `--format json` envelope. That is deliberate: this is a supervised
-/// process, not an interactive one, and the daemon's log pump already
-/// captures its stderr into `$SHEP_HOME/logs/<name>-0-err.log` like any
-/// sheep's — `shep bleats <name>` is how an operator reads it.
+/// A dog's own diagnostics go to stderr, plain text: the daemon's log pump
+/// captures it into `$SHEP_HOME/logs/<name>-0-err.log` like any sheep's,
+/// read with `shep bleats <name>`.
 pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
     if !BUILT_IN_DOGS.contains(&name) {
         eprintln!("shep dog: unknown dog {name:?}; the built-in dogs are \"metrics\" and \"bark\"");
@@ -298,104 +305,237 @@ pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
 
 /// Runs the bark dog until it is signalled.
 ///
-/// Parses `[dog.bark]` (refusing a section that does not fit, the same
-/// posture [`metrics::run`] takes toward its own), builds
-/// [`bark::rules::Rules`] — [`bark::rules::Rules::default_rules`] when the
-/// operator configured none at all — subscribes to the shepherd's bus on
-/// `process.*` (the topic every [`bark::rules::Trigger`] variant reads:
-/// `GaveUp` and `Event` off the frames themselves, `RestartRate` and
-/// `MemoryAbove` off the reconciliation poll [`bark::run_loop`] drives
-/// independently of this subscription), and hands both to
-/// [`bark::run_loop`] alongside a [`ClientFlockSource`] wrapping this same
+/// Parses `[dog.bark]`, builds [`bark::rules::Rules`] (or
+/// [`bark::rules::Rules::default_rules`] when the operator configured
+/// none), subscribes to the shepherd's bus on `process.*`, and hands both
+/// to [`bark::run_loop`] alongside a [`ClientShepherd`] wrapping this same
 /// connection.
 ///
 /// A refused config or a rule set `Rules::new` rejects are both
-/// [`ExitCode::InvalidConfig`] — the same code [`DogRunError::Section`]
-/// reports for a section `DogRuntime::config` could not parse at all, since
-/// both are "this dog will not run on what it was given," just caught one
-/// step later. A failed subscribe defers to `RequestError`'s own
-/// conversion, the same one every other verb's failed request goes
-/// through.
+/// [`ExitCode::InvalidConfig`].
 async fn run_bark(runtime: DogRuntime) -> ExitCode {
     let config = match runtime.config::<bark::BarkConfig>() {
         Ok(config) => config,
         Err(_err) => {
-            // The fact, not the value: a `[dog.bark]` section routinely
-            // carries a webhook URL with a bearer token in its path, and
-            // `DogRunError::Section`'s own message can quote it — see that
-            // type's redacted `Debug`. `metrics::run`'s own diagnostic
-            // takes the same posture for the same reason.
-            eprintln!("shep dog bark: [dog.bark] does not parse; see `shep dogs`");
+            // The fact, not the value: a `[bark]` section can carry a
+            // webhook URL with a bearer token in its path.
+            eprintln!("shep dog bark: [bark] in dogs.toml does not parse; see `shep dogs`");
             return ExitCode::InvalidConfig;
         }
     };
-    let rule_list = if config.rules.is_empty() {
-        bark::rules::Rules::default_rules(&config.sinks)
-    } else {
-        config.rules.clone()
-    };
-    let rules = match bark::rules::Rules::new(rule_list, &config.sinks) {
+    let rules = match bark::rules_for(&config) {
         Ok(rules) => rules,
         Err(err) => {
             eprintln!("shep dog bark: {err}");
             return ExitCode::InvalidConfig;
         }
     };
-    let events = match runtime.client.subscribe(vec!["process.*".to_owned()]).await {
-        Ok(events) => events,
+    // Subscribes to this dog's own `config.dog.<name>` topic, not
+    // `config.*`, which would hand it every other dog's prompts too. `dog`
+    // is reused below for `ClientShepherd`'s re-read request, so the two
+    // cannot drift apart.
+    let dog = runtime.name.clone();
+    // Named once, because `ClientEvents` asks for the same list again on
+    // every handover and a second literal could drift from this one.
+    let topics = vec!["process.*".to_owned(), format!("config.dog.{dog}")];
+    let stream = match runtime.client.subscribe(topics.clone()).await {
+        Ok(stream) => stream,
         Err(err) => {
             eprintln!("shep dog bark: could not subscribe to the shepherd's bus: {err}");
             return ExitCode::from(&err);
         }
     };
     let barks_path = runtime.paths.barks.clone();
-    let flock = ClientFlockSource {
+    let shepherd = Arc::new(ClientShepherd {
         client: runtime.client,
+        dog,
+    });
+    let events = ClientEvents {
+        shepherd: Arc::clone(&shepherd),
+        topics,
+        stream,
     };
-    bark::run_loop(events, flock, rules, &config, &barks_path).await
+    bark::run_loop(
+        events,
+        Arc::clone(&shepherd),
+        rules,
+        &config,
+        &barks_path,
+        shepherd,
+    )
+    .await
 }
 
-/// Adapts [`EventStream`] to [`bark::EventSource`]: its own `next` already
-/// yields `Option<Result<BusEvent, shep_client::Lagged>>`, so this is a
-/// `map_err` over [`shep_client::Lagged::count`] — the count is the whole
-/// of what [`bark::EventSource::next`]'s own `Err` carries.
+/// Bark's subscription, and what arming a fresh one after a handover
+/// takes: the client to ask, and the topics the first one named.
 ///
-/// `self.next()` below resolves to [`EventStream`]'s own INHERENT method,
-/// not a recursive call into this trait impl: `EventStream::next`'s own doc
-/// is explicit that an inherent method wins name resolution over a trait
-/// method of the same name, which is exactly what makes that call safe to
-/// write here.
-impl bark::EventSource for EventStream {
+/// A subscription belongs to one connection generation, so the stream ends
+/// every time the shepherd execs a successor. Carrying the topics here is
+/// what keeps the second subscription asking for the same thing as the
+/// first.
+struct ClientEvents {
+    /// Reached through the same [`Arc`] the flock and config sources use,
+    /// so every role speaks to one client rather than to clients that
+    /// would reconnect independently.
+    shepherd: Arc<ClientShepherd>,
+    topics: Vec<String>,
+    stream: EventStream,
+}
+
+/// `self.stream.next()` resolves to [`EventStream`]'s own inherent method,
+/// not a recursive call into this trait impl.
+impl bark::EventSource for ClientEvents {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
-        self.next()
+        self.stream
+            .next()
             .await
             .map(|item| item.map_err(|lagged| lagged.count))
     }
+
+    async fn resubscribe(&mut self) -> Result<(), bark::Resubscribe> {
+        let started = tokio::time::Instant::now();
+        // Every wait below is taken from this rather than from a value
+        // computed earlier in the pass: `connected_within` and `subscribe`
+        // each consume time, so a `left` read before them is spent by the
+        // time the next one starts.
+        let remaining = |elapsed| SHEPHERD_RETURN_BUDGET.saturating_sub(elapsed);
+        loop {
+            let left = remaining(started.elapsed());
+            // Checked here rather than left to `connected_within`, which
+            // returns `Ok` on a live link without consulting the budget. A
+            // shepherd that answers the handshake and then fails every
+            // `Subscribe` would otherwise keep this loop going for as long
+            // as it stayed up.
+            if left.is_zero() {
+                return Err(bark::Resubscribe::Lost(LinkLost::Budget {
+                    waited: started.elapsed(),
+                }));
+            }
+            self.shepherd
+                .client
+                .connected_within(left)
+                .await
+                .map_err(bark::Resubscribe::Lost)?;
+
+            // Bounded by what is left rather than by the request's own
+            // deadline. `Client::subscribe` carries `DEFAULT_DEADLINE` plus
+            // `DEADLINE_GRACE`, seven seconds, which on its own outlasts
+            // the budget this whole function is meant to keep. Dropping the
+            // future is safe: the client actor expects a reply receiver to
+            // go away.
+            let left = remaining(started.elapsed());
+            if left.is_zero() {
+                return Err(bark::Resubscribe::Lost(LinkLost::Budget {
+                    waited: started.elapsed(),
+                }));
+            }
+            let asked =
+                tokio::time::timeout(left, self.shepherd.client.subscribe(self.topics.clone()));
+            match asked.await {
+                Ok(Ok(stream)) => {
+                    self.stream = stream;
+                    return Ok(());
+                }
+                // The generation it was issued on had already gone. The
+                // supervisor is about to say so, and the budget decides
+                // whether to keep asking.
+                Ok(Err(RequestError::Closed)) => {}
+                // The request reached a shepherd and did not succeed.
+                // Waiting cannot change that, and the error already decides
+                // the exit code the opening `Subscribe` would have used.
+                Ok(Err(other)) => return Err(bark::Resubscribe::Request(other)),
+                Err(_elapsed) => {
+                    return Err(bark::Resubscribe::Lost(LinkLost::Budget {
+                        waited: started.elapsed(),
+                    }));
+                }
+            }
+            // The supervisor reports a connection's death a moment after
+            // the socket does, so a bare retry would spin against a link
+            // still reading as connected. One rung of the supervisor's own
+            // ladder outlasts that and is short against the handover.
+            tokio::time::sleep(RECONNECT_MIN_DELAY.min(remaining(started.elapsed()))).await;
+        }
+    }
 }
 
-/// Wraps [`ReconnectingClient`] as [`bark::FlockSource`]: `Request::ListFlock`, mapped
-/// into the shape [`bark::run_loop`] can poll without a socket of its own —
-/// the same reason [`bark::EventSource`] exists for the subscription side.
-struct ClientFlockSource {
+/// The error for a reply that is not the variant the request names.
+///
+/// Never returned by a daemon on the same protocol version; kept
+/// reportable rather than `unreachable!()`. One function rather than the
+/// literal at each impl, so the two reports keep saying the same thing
+/// in the same shape.
+fn unexpected_reply(request: &str, expected: &str) -> RequestError {
+    RequestError::Rpc(RpcError {
+        code: RpcErrorCode::Internal,
+        message: format!("the shepherd answered {request} with something other than {expected}"),
+        daemon_version: None,
+    })
+}
+
+/// Wraps [`ReconnectingClient`] as both [`bark::FlockSource`] and
+/// [`bark::ConfigSource`]. [`ReconnectingClient`] is not `Clone`, so the
+/// two roles reach it through one [`Arc`] rather than through two clients
+/// that would reconnect independently.
+struct ClientShepherd {
     client: ReconnectingClient,
+    /// The dog whose section [`bark::ConfigSource`] re-asks for.
+    dog: String,
 }
 
-impl bark::FlockSource for ClientFlockSource {
+impl bark::FlockSource for ClientShepherd {
     async fn flock(&self) -> Result<Vec<ProcessInfo>, RequestError> {
         match self.client.request(Request::ListFlock).await? {
             Response::Flock(flock) => Ok(flock),
-            // Never returned by a daemon on the same protocol version —
-            // `ListFlock`'s only success reply is `Response::Flock` — kept
-            // reportable rather than `unreachable!()`, the same posture
-            // `DogRunError::UnexpectedReply`'s own doc explains.
-            _ => Err(RequestError::Rpc(RpcError {
-                code: RpcErrorCode::Internal,
-                message: "the shepherd answered ListFlock with something other than \
-                          Response::Flock"
-                    .to_owned(),
-                daemon_version: None,
-            })),
+            _ => Err(unexpected_reply("ListFlock", "Response::Flock")),
         }
+    }
+}
+
+impl bark::ConfigSource for ClientShepherd {
+    async fn section(&self) -> Result<String, RequestError> {
+        let response = self
+            .client
+            .request(Request::DogConfig {
+                name: self.dog.clone(),
+            })
+            .await?;
+        match response {
+            Response::DogSection { toml } => Ok(toml.as_str().to_string()),
+            _ => Err(unexpected_reply("DogConfig", "Response::DogSection")),
+        }
+    }
+}
+
+/// Forwarding impls, so nothing in `bark` has to know the production
+/// shepherd is shared through an [`Arc`].
+impl bark::FlockSource for Arc<ClientShepherd> {
+    async fn flock(&self) -> Result<Vec<ProcessInfo>, RequestError> {
+        bark::FlockSource::flock(&**self).await
+    }
+}
+
+impl bark::ConfigSource for Arc<ClientShepherd> {
+    async fn section(&self) -> Result<String, RequestError> {
+        bark::ConfigSource::section(&**self).await
+    }
+}
+
+#[cfg(test)]
+mod builtin_schema_tests {
+    use super::*;
+
+    /// The secret marker reaching the schema a pane reads is the one
+    /// thing standing between a webhook bearer token and the screen.
+    #[test]
+    fn both_built_ins_answer_and_a_stranger_does_not() {
+        assert!(builtin_schema("metrics").is_some());
+        let bark = builtin_schema("bark").expect("bark is a built-in");
+        assert_eq!(
+            bark["properties"]["sinks"][shep_core::dogs::SECRET_KEY],
+            true
+        );
+        assert!(builtin_schema("otel").is_none());
     }
 }
 
@@ -404,18 +544,244 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use shep_client::testing::{fake_reconnecting_client_on, sample_ack, serve_one_request};
+    use shep_client::testing::{
+        Handshake, fake_daemon_across_handovers, fake_reconnecting_client_on, sample_ack,
+        serve_one_request,
+    };
 
     use super::*;
 
+    /// fails if the production adapter cannot arm a second subscription
+    /// after a handover.
+    ///
+    /// `bark::run_loop` is driven by a fake in bark's own tests, so this is
+    /// the only thing that exercises `ClientEvents` itself: the client and
+    /// topics held beside the stream, the wait for the link, and the
+    /// re-subscribe. Ten real reloads showed it working, which is evidence
+    /// rather than a guard.
+    #[tokio::test]
+    async fn the_bark_adapter_arms_a_second_subscription_after_a_handover() {
+        use bark::EventSource as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+            .await
+            .unwrap();
+        let topics = vec!["process.*".to_owned(), "config.dog.bark".to_owned()];
+        let stream = client.subscribe(topics.clone()).await.unwrap();
+        let shepherd = Arc::new(ClientShepherd {
+            client,
+            dog: "bark".to_owned(),
+        });
+        let mut events = ClientEvents {
+            shepherd: Arc::clone(&shepherd),
+            topics,
+            stream,
+        };
+
+        // The handover, exactly: the accepted connection dies while the
+        // listener stays bound.
+        shepherds.cut().await;
+        let armed = tokio::time::timeout(Duration::from_secs(10), events.resubscribe())
+            .await
+            .expect("a re-subscribe must not outlive its own budget");
+        assert!(
+            armed.is_ok(),
+            "a successor was there to subscribe to: {armed:?}"
+        );
+
+        // `Ok` alone does not prove the adapter kept what it was handed. An
+        // adapter that answered `Ok` and left the dead stream in place
+        // satisfies every other assertion here, and a dead stream ends at
+        // once where a live one has nothing to say yet.
+        let ended = tokio::time::timeout(Duration::from_millis(250), events.next()).await;
+        assert!(
+            ended.is_err(),
+            "the armed stream ended straight away, so it is the dead one: {ended:?}"
+        );
+
+        assert_eq!(
+            shepherds.accepted(),
+            2,
+            "one connection before the handover and one after"
+        );
+        let asked: Vec<_> = shepherds
+            .hellos()
+            .iter()
+            .map(|hello| hello.dog_name.clone())
+            .collect();
+        assert_eq!(
+            asked,
+            vec![Some("bark".to_owned()), Some("bark".to_owned())],
+            "the second handshake must name the dog too, or a refusal is unactionable"
+        );
+    }
+
+    /// fails if the adapter treats a shepherd that answers and refuses as
+    /// one that never answered.
+    ///
+    /// The bark loop's own test drives a fake that hands it a
+    /// `Resubscribe::Request` ready-made. This is the other half: the
+    /// adapter producing one from a real shepherd that accepts the
+    /// handshake and then rejects the `Subscribe`. Conflating it with
+    /// `Closed` would retry until the budget was gone and then report an
+    /// unreachable shepherd for one that answered.
+    #[tokio::test]
+    async fn the_bark_adapter_keeps_a_refusal_rather_than_retrying_it() {
+        use bark::EventSource as _;
+        use shep_core::protocol::{RpcError, RpcErrorCode};
+
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let shepherds = fake_daemon_across_handovers(
+            &socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+            .await
+            .unwrap();
+        let topics = vec!["process.*".to_owned()];
+        let stream = client.subscribe(topics.clone()).await.unwrap();
+        let shepherd = Arc::new(ClientShepherd {
+            client,
+            dog: "bark".to_owned(),
+        });
+        let mut events = ClientEvents {
+            shepherd: Arc::clone(&shepherd),
+            topics,
+            stream,
+        };
+
+        // The successor accepts the handshake and refuses the one
+        // subscription that follows it.
+        shepherds.refuse_next_subscribe(RpcError {
+            code: RpcErrorCode::Unsupported,
+            message: "this shepherd does not serve that topic".into(),
+            daemon_version: None,
+        });
+        shepherds.cut().await;
+
+        let started = tokio::time::Instant::now();
+        let refused = tokio::time::timeout(SHEPHERD_RETURN_BUDGET * 2, events.resubscribe())
+            .await
+            .expect("a refusal must end the wait, not hang it");
+        let waited = started.elapsed();
+
+        let Err(bark::Resubscribe::Request(err)) = refused else {
+            panic!("expected a kept refusal, got {refused:?}");
+        };
+        assert!(
+            matches!(&err, RequestError::Rpc(rpc) if rpc.code == RpcErrorCode::Unsupported),
+            "the shepherd's own error must survive: {err:?}"
+        );
+        assert!(
+            waited < SHEPHERD_RETURN_BUDGET,
+            "spent {waited:?} of the {SHEPHERD_RETURN_BUDGET:?} budget, so it retried a \
+             refusal instead of keeping it"
+        );
+    }
+
+    /// Tests that wait out a real [`SHEPHERD_RETURN_BUDGET`]. Five seconds
+    /// of elapsed time is the point, so a paused clock would test nothing.
+    mod slow {
+        use super::*;
+
+        /// fails if the bark adapter waits for a shepherd that is never
+        /// coming back, or gives up before the budget it was given.
+        ///
+        /// The success path has its own test above. This is the other half:
+        /// the `?` that carries a spent budget out of `resubscribe` and
+        /// ends the dog, which is the whole point of the wait being bounded.
+        #[tokio::test]
+        async fn the_bark_adapter_gives_up_once_its_budget_is_spent() {
+            use bark::EventSource as _;
+
+            let dir = tempfile::tempdir().unwrap();
+            let socket = shep_client::testing::control_address(dir.path());
+            let shepherds =
+                fake_daemon_across_handovers(&socket, vec![Handshake::Accept(sample_ack())]);
+            let client = ReconnectingClient::connect_as_dog(&socket, "bark")
+                .await
+                .unwrap();
+            let topics = vec!["process.*".to_owned()];
+            let stream = client.subscribe(topics.clone()).await.unwrap();
+            let shepherd = Arc::new(ClientShepherd {
+                client,
+                dog: "bark".to_owned(),
+            });
+            let mut events = ClientEvents {
+                shepherd: Arc::clone(&shepherd),
+                topics,
+                stream,
+            };
+
+            // Gone for good, listener and all, which is what a stopped
+            // shepherd leaves behind. A handover leaves the listener bound.
+            drop(shepherds);
+            let started = tokio::time::Instant::now();
+
+            let gave_up = tokio::time::timeout(SHEPHERD_RETURN_BUDGET * 3, events.resubscribe())
+                .await
+                .expect("a spent budget must end the wait, not hang it");
+            let waited = started.elapsed();
+
+            assert!(
+                matches!(
+                    gave_up,
+                    Err(bark::Resubscribe::Lost(LinkLost::Budget { .. }))
+                ),
+                "expected a spent budget, got {gave_up:?}"
+            );
+            assert!(
+                waited >= SHEPHERD_RETURN_BUDGET,
+                "gave up after {waited:?}, inside the {SHEPHERD_RETURN_BUDGET:?} a handover \
+                 is allowed to take, which is the restart-per-reload this rule exists to avoid"
+            );
+        }
+    }
+
+    /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
+    /// names its value moving too.
+    ///
+    /// Three doc comments say "five seconds" in words: the constant's own,
+    /// and the two `mod slow` headers that explain why those tests take
+    /// that long. None of them can be checked by a reader, because the
+    /// value arrives from `shep_daemon` rather than from the line above
+    /// them, so a change there leaves all three quietly wrong while every
+    /// doc-link still resolves.
+    ///
+    /// Pinning it here rather than deleting the numbers: a budget a reader
+    /// has to go and look up is worse documentation, and this makes the
+    /// concrete version safe to keep.
+    #[test]
+    fn the_budget_is_the_five_seconds_the_docs_promise() {
+        assert_eq!(
+            SHEPHERD_RETURN_BUDGET,
+            Duration::from_secs(5),
+            "docs/dogs.md, the web dogs page and three doc comments all say five \
+             seconds; change them together or not at all"
+        );
+    }
+
     /// A [`ShepPaths`] rooted at `dir`, with `socket` pointed wherever the
-    /// caller's fake daemon actually bound — flat, not nested under `run/`,
-    /// so a test never has to create that directory just to bind a
-    /// listener.
-    fn test_paths(dir: &Path, socket: PathBuf) -> ShepPaths {
+    /// caller's fake daemon actually bound. Flat, not nested under `run/`,
+    /// so a test never has to create that directory.
+    pub(in crate::dog) fn test_paths(dir: &Path, socket: PathBuf) -> ShepPaths {
         let home = dir.to_path_buf();
         ShepPaths {
             daemon_config: home.join("shep.toml"),
+            dogs_config: home.join("dogs.toml"),
             snapshot: home.join("flock.json"),
             logs: home.join("logs"),
             pids: home.join("pids"),
@@ -423,17 +789,17 @@ mod tests {
             socket,
             barks: home.join("barks.jsonl"),
             kv: home.join("kv.json"),
+            overrides: home.join("overrides.json"),
+            secrets: home.join("secrets.json"),
+            secrets_cache: home.join("secrets-cache.json"),
             home,
         }
     }
 
     /// Builds a [`DogRuntime`] carrying `section`, backed by a real (if
-    /// otherwise unused) connection — [`DogRuntime::config`] never touches
-    /// `client`, but the field has to hold a real one, so this reaches for
-    /// the lightest fixture that produces one ([`fake_reconnecting_client_on`]) rather
-    /// than growing a second connection double. Bridges into its own fresh
-    /// Tokio runtime rather than being `async` itself, so call sites stay
-    /// plain `#[test]`s — matching `config`, which is sync.
+    /// otherwise unused) connection: the field has to hold one, even
+    /// though [`DogRuntime::config`] never touches it. Bridges into its
+    /// own fresh Tokio runtime, so call sites stay plain `#[test]`s.
     fn runtime_with_section(section: &str) -> DogRuntime {
         let dir = tempfile::tempdir().unwrap();
         let socket = shep_client::testing::control_address(dir.path());
@@ -448,10 +814,6 @@ mod tests {
         })
     }
 
-    /// fails if a dog is handed defaults for a section it could not parse.
-    /// A bark dog silently running with no rules because a `debounce` was
-    /// misspelled is precisely the outcome that makes an operator trust the
-    /// alerting they no longer have.
     #[test]
     fn a_section_that_does_not_fit_is_refused_rather_than_defaulted() {
         #[derive(Debug, Default, serde::Deserialize, PartialEq)]
@@ -468,9 +830,6 @@ mod tests {
         assert_eq!(empty.config::<Cfg>().unwrap(), Cfg::default());
     }
 
-    /// fails if the dog asks for someone else's section, or for none at
-    /// all. `Request::DogConfig` carries the name, and a dog that sent a
-    /// hardcoded one would read another dog's webhook URLs.
     #[tokio::test]
     async fn a_dog_asks_for_its_own_section_by_name() {
         let dir = tempfile::tempdir().unwrap();
@@ -501,17 +860,9 @@ mod tests {
         );
     }
 
-    /// fails if a dog connects anonymously. The name in the `Hello` is the
-    /// only thing a daemon that REFUSES this handshake has to work with —
-    /// the `DogConfig` request below never happens on that path — so a dog
-    /// that named itself in the request and not in the handshake would
-    /// leave the shepherd unable to say which dog went stale, or to restart
-    /// it from disk (the handover design's G8).
-    ///
     /// The fake closes right after acking, so the `DogConfig` request that
-    /// follows fails and `start` returns an error. That is not what this
-    /// asserts on: the handshake has already happened by then, and it is
-    /// the frame under test.
+    /// follows fails and `start` returns an error; the handshake has
+    /// already happened by then, and it is the frame under test.
     #[tokio::test]
     async fn a_dog_announces_its_own_name_at_the_handshake() {
         let dir = tempfile::tempdir().unwrap();
@@ -532,10 +883,9 @@ mod tests {
         );
     }
 
-    /// fails if `run_dog` ever reaches the socket for a name that never
-    /// came from `enable`/`adopt` — no listener is bound at this path at
-    /// all, so a connection attempt would report `DaemonUnreachable`, not
-    /// `Usage`, proving the name check runs first.
+    /// No listener is bound at this path: a connection attempt would
+    /// report `DaemonUnreachable`, not `Usage`, proving the name check
+    /// runs first.
     #[tokio::test]
     async fn an_unknown_dog_name_is_usage_without_touching_the_socket() {
         let dir = tempfile::tempdir().unwrap();
@@ -547,13 +897,9 @@ mod tests {
         assert_eq!(code, ExitCode::Usage);
     }
 
-    /// fails if `"bark"` stops reaching [`DogRuntime::start`] — the same
-    /// dispatch-reaches-it proof [`run_dog_reaches_metrics`] gives for its
-    /// own name. It cannot assert an exit code: [`run_bark`] subscribes to
-    /// the shepherd's bus once its config parses, and `serve_one_request`'s
-    /// fake daemon closes the connection right after this one `DogConfig`
-    /// reply — so this proves dispatch reaches the wire, nothing about
-    /// what `run_bark` does next.
+    /// Proves dispatch reaches [`DogRuntime::start`], nothing about what
+    /// `run_bark` does next: `serve_one_request`'s fake daemon closes the
+    /// connection right after this one `DogConfig` reply.
     #[tokio::test]
     async fn run_dog_reaches_bark() {
         let dir = tempfile::tempdir().unwrap();
@@ -580,15 +926,11 @@ mod tests {
         task.abort();
     }
 
-    /// fails if `"metrics"` stops reaching [`DogRuntime::start`] — proof
-    /// that dispatch still gets there, nothing more: [`metrics::run`]
-    /// blocks on a shutdown signal once it is up, so this spawns it,
-    /// waits only for the `DogConfig` request to land on the wire, then
-    /// aborts the task rather than awaiting a return that never comes on
-    /// its own. The section answers `bind = "127.0.0.1:0"` — an
-    /// OS-assigned port, never [`metrics::MetricsConfig::default`]'s fixed
-    /// `9615`, which a developer's own running shepherd (or a leftover
-    /// process from a prior hung run) could already hold.
+    /// [`metrics::run`] blocks on a shutdown signal once it is up, so this
+    /// spawns it, waits for the `DogConfig` request, then aborts rather
+    /// than awaiting a return that never comes. The section answers
+    /// `bind = "127.0.0.1:0"`, an OS-assigned port, never
+    /// [`metrics::MetricsConfig::default`]'s fixed `9615`.
     #[tokio::test]
     async fn run_dog_reaches_metrics() {
         let dir = tempfile::tempdir().unwrap();
@@ -615,9 +957,6 @@ mod tests {
         task.abort();
     }
 
-    /// fails if `run_dog` swallows a connect failure instead of reporting
-    /// it — a shepherd that is not up is `DaemonUnreachable`, the same code
-    /// every other verb's own failed connect reports.
     #[tokio::test]
     async fn run_dog_reports_daemon_unreachable_with_no_shepherd_running() {
         let dir = tempfile::tempdir().unwrap();
@@ -629,9 +968,9 @@ mod tests {
         assert_eq!(code, ExitCode::DaemonUnreachable);
     }
 
-    /// The redaction IR-41 requires: `Debug` on a section mismatch carries
-    /// the dog's name and a fixed description, never the parser's message —
-    /// which, for a real `[dog.<name>]` table, can quote a webhook URL.
+    /// `Debug` on a section mismatch carries the dog's name and a fixed
+    /// description, never the parser's message, which can quote a webhook
+    /// URL.
     #[test]
     fn dog_run_error_section_debug_never_prints_the_message() {
         let secret = "https://hooks.example.com/services/T00/B00/super-secret-token";
@@ -648,16 +987,9 @@ mod tests {
         );
     }
 
-    /// The `DogRuntime` sibling of the test above: a derived `Debug` here
-    /// would print [`DogRuntime::section`] in full, undoing the same
-    /// redaction one layer down.
-    ///
-    /// `client`'s own `Debug` embeds this test's tempdir socket path, so the
-    /// whole struct can't be one hardcoded exact string the way
-    /// `dog_run_error_section_debug_never_prints_the_message` is — the
-    /// redacted `section` field itself still gets an exact-string pin
-    /// (`section`'s byte count is fixed by the literal below), alongside the
-    /// never-contains checks that matter most.
+    /// `client`'s own `Debug` embeds this test's tempdir socket path, so
+    /// the whole struct cannot be one hardcoded exact string; the redacted
+    /// `section` field alone gets that pin.
     #[test]
     fn dog_runtime_debug_never_prints_the_section() {
         let secret = "https://hooks.example.com/services/T00/B00/super-secret-token";
@@ -671,5 +1003,57 @@ mod tests {
             debug.contains(&format!("section: \"<{byte_len} bytes>\"")),
             "{debug}"
         );
+    }
+
+    /// A handover fixture rather than `serve_one_request`: that one closes
+    /// after its single reply, so the `Subscribe` that follows a dog's
+    /// `DogConfig` is never read off the wire. This one keeps the
+    /// connection open and records every envelope.
+    #[tokio::test]
+    async fn bark_subscribes_to_its_own_config_topic() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let daemon = fake_daemon_across_handovers(&socket, vec![Handshake::Accept(sample_ack())]);
+        // A real sink: bark refuses to run without one. Port 1 is never
+        // dialled; no bark fires in this test.
+        daemon.reply_to_dog_config(
+            "[sinks.ops]\nkind = \"json\"\nurl = \"http://127.0.0.1:1/hook\"\n",
+        );
+        let paths = test_paths(dir.path(), socket);
+
+        let task = tokio::spawn(run_dog("bark", paths));
+
+        // Polled rather than slept on, and bounded: the fixture records
+        // envelopes as it reads them, so the test yields until the
+        // subscribe arrives and fails with its own message if it never
+        // does.
+        let topics =
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let subscribed = daemon.envelopes().into_iter().find_map(|(_, envelope)| {
+                        match envelope.body {
+                            Request::Subscribe { topics } => Some(topics),
+                            _ => None,
+                        }
+                    });
+                    if let Some(topics) = subscribed {
+                        break topics;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("bark must subscribe once its config parses");
+
+        assert!(
+            topics.iter().any(|topic| topic == "config.dog.bark"),
+            "bark must ask for its own config topic: {topics:?}"
+        );
+        assert!(
+            topics.iter().any(|topic| topic == "process.*"),
+            "the lifecycle topics every rule reads must survive: {topics:?}"
+        );
+
+        task.abort();
     }
 }

@@ -1,0 +1,30 @@
+---
+source: crates/shep-cli/src/lookout/frames/mod.rs
+expression: render_text(&buffer)
+---
+shep lookout   /h… 6 in the flock
+host  load  ██░░░░░░░░ 2.31 4.10…
+─────────────────────────────────
+  ID    NAME      STATUS         
+   ██ FLOCK                      
+  2     api       online         
+  3     billing…  online         
+  4     cron      online         
+  5     metrics   online         
+  0     web       online         
+  1     web       online         
+                                 
+                                 
+─────────────────────────────────
+ ██ SHEEP 2  api   online   pid …
+lambs  not read yet              
+out  …out.log   │   err  …err.log
+                                 
+─────────────────────────────────
+ ██ BLEATS api  … 1 earlier line…
+out  GET /healthz 200 3ms        
+out  GET /v1/orders 200 44ms     
+out  POST /v1/orders 201 88ms    
+out  GET /v1/orders/8821 200 9ms 
+out  connection pool: 14/50 in u…
+q quit   j/k sel… control enabled

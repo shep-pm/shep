@@ -1,59 +1,21 @@
 //! Bark's sinks: [`Sink`], the pure [`render_body`], and the async
 //! [`deliver`] that POSTs a rendered body to it.
 //!
-//! **The transport is hand-rolled HTTP/1.1 over `tokio-rustls`, not
-//! `reqwest`.** Discord and Slack webhooks are HTTPS-only, so this was
-//! originally the one place in the workspace that needed TLS, and the maintainer's
-//! ruling (2026-08-12) was to reach for `tokio-rustls` + `webpki-roots` (+10ish
-//! crates, no C build dependency) directly rather than `reqwest` (+76 to
-//! +93 crates depending on feature set, and a C toolchain — `aws-lc-sys` —
-//! under `reqwest`'s own default `rustls` feature). `rustls` does the part
-//! that must not be gotten wrong — the handshake and record layer; what
-//! this module owns is the same HTTP/1.1 request/response framing
-//! `crate::http`'s server side already hand-rolls, aimed the other
-//! way. See `crates/shep-cli/Cargo.toml` and this workspace's root
-//! `Cargo.toml` for the accounting behind the two new dependencies.
+//! Hand-rolled HTTP/1.1 over `tokio-rustls`, not `reqwest`: fewer
+//! transitive dependencies and no C toolchain. The connect-and-TLS setup
+//! lives in `crate::fetch`, shared with `shep dogs --available`.
 //!
-//! **The connect-and-TLS setup — [`crate::fetch::tls_connector`],
-//! [`crate::fetch::Target`] and [`crate::fetch::parse_url`] — now lives in
-//! `crate::fetch`,** carved out unchanged when `shep dogs --available`
-//! needed the identical setup for a plain GET. This module imports it
-//! rather than owning it a second time; everything below the connection —
-//! the POST framing, the status-line read, `SinkError` itself — stays
-//! here, since none of it is `fetch`'s concern.
-//!
-//! **`http://` is accepted, not rejected**, even though Discord and Slack
-//! are always `https://`: a [`Sink::Json`] can name any operator-configured
-//! endpoint, including an internal one with no TLS in front of it, and this
-//! module's own test suite exercises exactly that scheme — the plaintext
-//! local test server below is never a real webhook, and the TLS branch
-//! ([`crate::fetch::tls_connector`], `rustls`'s handshake, the root store
-//! built from `webpki-roots`) is consequently **not** exercised by any test
-//! in this module. That gap is real, not papered over: the request framing, the
-//! status-line read and every `SinkError` path are what this module writes
-//! itself, and they are covered; the handshake and record layer are
-//! `rustls`'s own tested surface, not bark's. Closing the remaining gap
-//! would mean the test harness terminating TLS itself — a second dependency
-//! shape for one module's tests — and is out of scope here.
-//!
-//! **No redirect is ever followed.** Webhooks do not redirect, bark's own
-//! needs are fire-and-forget with no connection pooling, and skipping
-//! redirect-following means a sink's credential (the webhook URL itself)
-//! never travels anywhere the sink's own config did not name.
-//!
-//! **A webhook URL is a bearer credential** — Discord and Slack embed the
-//! token in the path, so anyone holding one can post to that channel.
-//! [`Sink`]'s `Debug` is hand-written and redacted (IR-41): see its own doc.
-//! [`SinkError`] carries none of it — a failed delivery is reported by
-//! sink kind and failure kind, never by URL.
-//!
-//! [`super::run_loop`] (Task 21) is what actually calls [`deliver`], once
-//! per firing, off a spawned task rather than inline in its own loop.
+//! `http://` is accepted for a [`Sink::Json`] endpoint; only
+//! [`require_usable_url`] rejects it, for Discord and Slack. No
+//! redirect is ever followed. This module's own tests exercise only the
+//! plaintext path; the TLS handshake is `rustls`'s tested surface, not
+//! this module's.
 
 use core::fmt;
 use std::time::Duration;
 
 use serde::Deserialize;
+use shep_client::dogs::DogConfig;
 use shep_core::barks::Bark;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -67,22 +29,31 @@ use crate::fetch::{self, Target};
 /// Discord or Slack webhook URL is a bearer credential — anyone holding it
 /// can post to that channel. A sink printed into a log, a panic message or
 /// an error chain leaks it to whoever reads the log.
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+///
+/// `#[shep(secret)]` says the same thing to a schema that the `Debug` says
+/// to a log. It reaches a pane only for a dog whose whole config IS a sink,
+/// since the marks a schema carries are the ones the type shep asked about
+/// declared; bark's own section is asked as [`super::BarkConfig`], which
+/// marks the map instead and says why.
+#[derive(Clone, PartialEq, Eq, Deserialize, schemars::JsonSchema, DogConfig)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Sink {
     /// A Discord webhook: `{"content": "..."}`.
     Discord {
         /// The webhook URL.
+        #[shep(secret)]
         url: String,
     },
     /// A Slack incoming webhook: `{"text": "..."}`.
     Slack {
         /// The webhook URL.
+        #[shep(secret)]
         url: String,
     },
     /// A JSON POST with a body the operator templates.
     Json {
         /// Where to POST.
+        #[shep(secret)]
         url: String,
         /// The body, with `{subject}`, `{rule}`, `{message}` and `{at_ms}`
         /// substituted. Defaults to an object carrying all four.
@@ -90,11 +61,8 @@ pub enum Sink {
     },
 }
 
-/// Manual, never derived: a derived `Debug` would print `url` (and, for
-/// `Json`, an operator's own `body` template) in full, undoing the
-/// redaction this type exists to hold. Every variant collapses to the same
-/// shape — `Sink::<Variant> { url: <redacted> }` — so the variant name is
-/// the only thing this ever reveals about a sink.
+/// Manual: a derived `Debug` would print `url` in full. Every variant
+/// collapses to `Sink::<Variant> { url: <redacted> }`.
 impl fmt::Debug for Sink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let variant = match self {
@@ -109,19 +77,16 @@ impl fmt::Debug for Sink {
 impl Sink {
     /// This sink's webhook URL, whichever variant it is.
     ///
-    /// Not exposed past this module — a caller reaching for a sink's URL
-    /// directly is exactly the leak [`Sink`]'s own `Debug` guards against;
-    /// [`deliver`] (via [`crate::fetch::parse_url`]) and
-    /// [`require_secure_scheme`] are the only callers.
+    /// Not exposed past this module: [`deliver`] and
+    /// [`require_usable_url`] are the only callers.
     fn url(&self) -> &str {
         match self {
             Self::Discord { url } | Self::Slack { url } | Self::Json { url, .. } => url,
         }
     }
 
-    /// `"discord"`/`"slack"` for the two kinds that are HTTPS-only on the
-    /// real service, `None` for [`Sink::Json`] — an operator's own
-    /// endpoint, which may legitimately have no TLS in front of it.
+    /// `"discord"`/`"slack"` for the two HTTPS-only kinds, `None` for
+    /// [`Sink::Json`], an operator's own endpoint that may have no TLS.
     fn https_only_kind(&self) -> Option<&'static str> {
         match self {
             Self::Discord { .. } => Some("discord"),
@@ -133,27 +98,28 @@ impl Sink {
 
 /// Why a `[dog.bark.sinks]` entry was refused at config-load time.
 ///
-/// `Debug` needs no redaction, unlike [`Sink`]'s own: the only field this
-/// carries is the sink's config key, never its url.
+/// `Debug` needs no redaction, unlike [`Sink`]'s own: it carries only the
+/// sink's config key, never its url.
 ///
-/// Deliberately NOT `#[non_exhaustive]`, and this is the comment IR-20 asks
-/// for in the negative case. shep-cli is `[[bin]]`-only — no `lib.rs`, no
-/// published surface — so nothing outside this binary can match on this enum
-/// and there is no downstream `match` for the attribute to protect. Adding it
-/// would tax only this crate's own exhaustive matches, which are the ones we
-/// WANT the compiler to break when a new sink kind arrives. Same reasoning as
-/// [`CronScheduleError`](shep_core::config::CronScheduleError)'s own omission,
-/// for a different reason: that one is closed, this one is unexported.
+/// Not `#[non_exhaustive]`: shep-cli is `[[bin]]`-only with no published
+/// surface, so no downstream match needs protecting from a new variant.
 #[derive(Debug)]
 pub enum SinkConfigError {
-    /// Sink `name` is a [`Sink::Discord`] or [`Sink::Slack`] (`kind`)
-    /// configured with `http://`.
+    /// Sink `name` is a [`Sink::Discord`] or [`Sink::Slack`] (`kind`) not
+    /// configured with `https://`.
     InsecureScheme {
-        /// The sink's config key under `[dog.bark.sinks]` — never the url,
-        /// which is the credential this refusal exists to protect.
+        /// The sink's config key under `[dog.bark.sinks]`, never the url.
         name: String,
         /// `"discord"` or `"slack"`.
         kind: &'static str,
+    },
+    /// Sink `name`'s url carries a `user@` or `user:pass@` prefix, which
+    /// [`crate::fetch::parse_url`] refuses. Caught here so an operator
+    /// hears about it when the config is read, rather than when a rule
+    /// first fires and the delivery fails.
+    UrlCredentials {
+        /// The sink's config key under `[dog.bark.sinks]`, never the url.
+        name: String,
     },
 }
 
@@ -166,28 +132,40 @@ impl fmt::Display for SinkConfigError {
                  {kind} only serves https://, and a {kind} webhook url is a \
                  bearer credential that must not travel in cleartext"
             ),
+            Self::UrlCredentials { name } => {
+                write!(f, "sink \"{name}\": {}", crate::fetch::CREDENTIALS_REFUSAL)
+            }
         }
     }
 }
 
 impl core::error::Error for SinkConfigError {}
 
-/// Refuses a Discord or Slack sink configured with `http://`.
+/// Refuses a sink whose url cannot work: a Discord or Slack webhook over
+/// `http://`, or any sink carrying credentials before the host.
 ///
-/// A Discord or Slack webhook url IS the bearer credential — the token
-/// lives in the path — so an `http://` scheme lets anyone on the wire
-/// capture it and post as that integration forever. This removes no
-/// legitimate use: discord.com and slack.com serve `https://` only, so an
-/// `http://` url to either could never have worked anyway.
-/// [`Sink::Json`] is left permissive — an operator pointing bark at an
-/// internal endpoint over plain `http://` is a legitimate arrangement, and
-/// [`crate::fetch::parse_url`] still accepts it at delivery time.
+/// A Discord or Slack webhook url is the bearer credential; `http://`
+/// would let anyone on the wire capture it. discord.com and slack.com
+/// serve `https://` only, so no legitimate use is removed.
+/// [`Sink::Json`] is left permissive: an operator's own endpoint may
+/// legitimately have no TLS.
+///
+/// One function rather than two called in sequence: the caller asks
+/// whether this sink's url is usable, and the next rule to be added
+/// belongs here rather than in a line somebody has to remember to add at
+/// the call site.
 ///
 /// # Errors
-/// - [`SinkConfigError::InsecureScheme`] — `sink` is [`Sink::Discord`] or
-///   [`Sink::Slack`] and its configured url does not start with
-///   `https://`.
-pub fn require_secure_scheme(name: &str, sink: &Sink) -> Result<(), SinkConfigError> {
+/// - [`SinkConfigError::UrlCredentials`]: `sink`'s url carries a `user@`
+///   or `user:pass@` prefix, whichever kind it is.
+/// - [`SinkConfigError::InsecureScheme`]: `sink` is [`Sink::Discord`] or
+///   [`Sink::Slack`] with a url not starting `https://`.
+pub fn require_usable_url(name: &str, sink: &Sink) -> Result<(), SinkConfigError> {
+    if fetch::url_carries_credentials(sink.url()) {
+        return Err(SinkConfigError::UrlCredentials {
+            name: name.to_owned(),
+        });
+    }
     let Some(kind) = sink.https_only_kind() else {
         return Ok(());
     };
@@ -203,13 +181,12 @@ pub fn require_secure_scheme(name: &str, sink: &Sink) -> Result<(), SinkConfigEr
 
 /// Why [`render_body`] or [`deliver`] failed.
 ///
-/// `Debug` needs no redaction, unlike [`Sink`]'s own: every field here is
-/// an OS error, an HTTP status code, or the first line of a response body —
-/// never a sink's webhook URL. Hiding that is `Sink`'s job, not this type's.
+/// `Debug` needs no redaction, unlike [`Sink`]'s own: every field is an OS
+/// error, status code, or response line, never a webhook url.
 #[derive(Debug)]
 pub enum SinkError {
-    /// The rendered body is not valid JSON — a templated `body` can
-    /// produce this; the default (untemplated) body cannot.
+    /// The rendered body is not valid JSON: a templated `body` can
+    /// produce this, the default body cannot.
     Template {
         /// The JSON parser's complaint against the rendered body.
         message: String,
@@ -258,13 +235,12 @@ impl From<std::io::Error> for SinkError {
     }
 }
 
-/// The body `sink` sends for `bark` — pure, and the half worth testing
+/// The body `sink` sends for `bark`: pure, and the half worth testing
 /// exhaustively.
 ///
 /// # Errors
-/// - [`SinkError::Template`] — the rendered body is not valid JSON, which
-///   a templated `body` can produce and which every one of these endpoints
-///   refuses with a 400 an operator would otherwise have to guess at.
+/// - [`SinkError::Template`]: the rendered body is not valid JSON, which a
+///   templated `body` can produce.
 pub fn render_body(sink: &Sink, bark: &Bark) -> Result<String, SinkError> {
     let body = match sink {
         Sink::Discord { .. } => serde_json::json!({ "content": bark.message }).to_string(),
@@ -292,22 +268,15 @@ pub fn render_body(sink: &Sink, bark: &Bark) -> Result<String, SinkError> {
     Ok(body)
 }
 
-/// Substitutes `{subject}`, `{rule}`, `{message}` and `{at_ms}` in `template`
-/// with `bark`'s own fields — the three strings JSON-escaped (never quoted:
-/// the template's own literal quotes already surround the token, the same
-/// way an operator writes `"{message}"`, not `{message}`), `at_ms` as a bare
-/// number.
+/// Substitutes `{subject}`, `{rule}`, `{message}` and `{at_ms}` in
+/// `template` with `bark`'s own fields, JSON-escaped except `at_ms`, which
+/// is a bare number.
 ///
-/// A SINGLE forward pass over `template`, never four sequential
-/// whole-string `.replace()` calls: `rest` only ever shrinks from the
-/// front, and once a substituted value is pushed onto `out` it is never
-/// looked at again. A sheep named `{at_ms}` makes `bark.message` literally
-/// contain the text `{at_ms}` — sequential replaces would paste that in
-/// during the `{message}` pass and then rewrite it during the `{at_ms}`
-/// pass that follows, corrupting the sheep's name inside the rendered
-/// alert. This pass structurally cannot do that: `{at_ms}` only ever
-/// matches inside `rest`, which is what remains of the *template*, not
-/// what has already been written to `out`.
+/// A single forward pass, never sequential `.replace()` calls: a
+/// substituted value can itself contain another token's literal text (a
+/// sheep named `{at_ms}`), and a sequential replace would rewrite it on a
+/// later pass. `rest` only shrinks from the front, so a token can never
+/// match inside text already written to `out`.
 fn substitute(template: &str, bark: &Bark) -> String {
     let tokens: [(&str, String); 4] = [
         ("{subject}", json_escape(&bark.subject)),
@@ -335,33 +304,27 @@ fn substitute(template: &str, bark: &Bark) -> String {
     out
 }
 
-/// `s`, escaped for use inside a JSON string's quotes — not a JSON string
-/// literal itself, since [`substitute`]'s own template already supplies the
+/// `s`, escaped for use inside a JSON string's quotes, not a JSON string
+/// literal itself: [`substitute`]'s own template already supplies the
 /// surrounding quotes.
+///
+/// serde_json's own writer rather than an escape table of our own:
+/// [`substitute`] hands its output to [`render_body`], which parses the
+/// result with serde_json, so the escaping and the parsing have to agree
+/// on every character. Going through the writer makes them agree by
+/// construction instead of by maintenance.
 fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
+    let quoted = serde_json::to_string(s).expect("a str always serializes as a JSON string");
+    quoted[1..quoted.len() - 1].to_owned()
 }
 
 /// POSTs `bark` to `sink`, bounded by `timeout`.
 ///
 /// # Errors
-/// - [`SinkError::Template`] — as [`render_body`].
-/// - [`SinkError::Transport`] — the request failed or timed out.
-/// - [`SinkError::Status`] — the endpoint answered outside 2xx, carrying
-///   the status and the first line of the body. Discord's own rate-limit
-///   429 arrives this way and reads as one.
+/// - [`SinkError::Template`]: as [`render_body`].
+/// - [`SinkError::Transport`]: the request failed or timed out.
+/// - [`SinkError::Status`]: the endpoint answered outside 2xx, carrying
+///   the status and the first line of the body.
 pub async fn deliver(sink: &Sink, bark: &Bark, timeout: Duration) -> Result<(), SinkError> {
     let body = render_body(sink, bark)?;
     let target = fetch::parse_url(sink.url()).map_err(|source| SinkError::Transport {
@@ -380,9 +343,8 @@ pub async fn deliver(sink: &Sink, bark: &Bark, timeout: Duration) -> Result<(), 
 }
 
 /// The request line, headers and blank line [`deliver_inner`] sends ahead
-/// of `body` — `Host` names the port only when it is off the scheme's own
-/// default (443/80), matching every sink this module tests, which binds an
-/// ephemeral one.
+/// of `body`. `Host` names the port only when it is off the scheme's own
+/// default (443/80).
 fn build_request(target: &Target, body: &str) -> String {
     let default_port = if target.https { 443 } else { 80 };
     let host = if target.port == default_port {
@@ -418,11 +380,9 @@ async fn deliver_inner(target: &Target, body: &str) -> Result<(), SinkError> {
 /// non-2xx, one diagnostic line of body).
 ///
 /// The explicit `flush` matters on the TLS branch: `tokio-rustls` buffers
-/// writes in `rustls`'s own record layer, and its module doc says directly
-/// that `poll_flush` is what pushes them to the underlying stream — skip it
-/// and a request can sit in a buffer the peer never sees. The same flush on
-/// a plain `TcpStream` is redundant, not wrong, so one code path serves
-/// both rather than branching only to skip it on the plaintext side.
+/// writes in `rustls`'s own record layer, and skipping it can leave a
+/// request sitting in a buffer the peer never sees. The same flush on a
+/// plain `TcpStream` is redundant, not wrong.
 async fn write_and_read<S: AsyncRead + AsyncWrite + Unpin>(
     mut stream: S,
     request: &str,
@@ -432,12 +392,10 @@ async fn write_and_read<S: AsyncRead + AsyncWrite + Unpin>(
     read_response(stream).await
 }
 
-/// Reads the status line off `stream`; a 2xx reply is read no further —
-/// Discord's and Slack's own success bodies carry nothing this module acts
-/// on. A non-2xx reads past the remaining header lines to the blank line
-/// that ends them (or to EOF, gracefully — a peer that closes right after
-/// the status line has no headers to skip, not a fault), then takes one
-/// more line for [`SinkError::Status`]'s diagnostic.
+/// Reads the status line off `stream`; a 2xx reply is read no further. A
+/// non-2xx reads past the remaining header lines to the blank line that
+/// ends them, or to EOF, then takes one more line for
+/// [`SinkError::Status`]'s diagnostic.
 async fn read_response<S: AsyncRead + Unpin>(stream: S) -> Result<(), SinkError> {
     let mut reader = BufReader::new(stream);
     let mut status_line = String::new();
@@ -481,10 +439,36 @@ mod tests {
     use super::*;
     use crate::http::{HttpRequest, read_request, write_response};
 
-    /// A representative fired alert, tagged by `subject` and `message` — the
-    /// two fields these tests vary. `at_ms`/`rule` are fixed since no test
-    /// here exercises them directly except through the default body and
-    /// `{rule}`/`{at_ms}` substitution.
+    /// Every variant's `url` carries the credential marker; nothing else
+    /// does. The key is spelled out here, not read from
+    /// `shep_core::dogs::SECRET_KEY`, since the constant and the schema
+    /// agreeing is the thing under test.
+    #[test]
+    fn every_sink_variant_marks_its_url_and_leaves_the_rest_plain() {
+        let schema = shep_client::dogs::config_schema::<Sink>()
+            .expect("`url` is a property of all three variants");
+        let variants = schema
+            .as_value()
+            .get("oneOf")
+            .and_then(|it| it.as_array())
+            .expect("an internally tagged enum is a oneOf");
+        assert_eq!(variants.len(), 3);
+
+        for variant in variants {
+            assert_eq!(
+                variant.pointer("/properties/url/x-shep-secret"),
+                Some(&serde_json::Value::Bool(true)),
+                "a webhook URL is a bearer credential in every variant"
+            );
+            assert_eq!(
+                variant.pointer("/properties/kind/x-shep-secret"),
+                None,
+                "the tag names the variant and is not a credential"
+            );
+        }
+    }
+
+    /// A fired alert; only `subject` and `message` vary across these tests.
     fn bark_for(subject: &str, message: &str) -> Bark {
         Bark {
             at_ms: 1_700_000_000_000,
@@ -507,10 +491,9 @@ mod tests {
         }
     }
 
-    /// Binds an ephemeral port, accepts exactly one connection, answers
-    /// `status`/`body`, and hands the captured request back through the
-    /// returned receiver. Hand-rolled over `tokio::net::TcpListener`,
-    /// reading with Task 13's [`read_request`] — never a real webhook.
+    /// Binds an ephemeral port, accepts one connection, answers
+    /// `status`/`body`, and hands the captured request back. Never a real
+    /// webhook.
     async fn one_shot_sink(
         status: u16,
         body: &str,
@@ -532,10 +515,6 @@ mod tests {
         (addr, rx)
     }
 
-    /// fails if Discord's body is sent under Slack's key or vice versa.
-    /// Both are one-key JSON objects over the same transport, so a swap
-    /// compiles, delivers, and is answered with a 400 nobody sees until an
-    /// incident — the alert is simply never posted.
     #[test]
     fn each_webhook_gets_the_body_its_own_endpoint_expects() {
         let bark = bark_for("web", "the shepherd gave up on web");
@@ -550,10 +529,6 @@ mod tests {
         assert!(slack.get("content").is_none());
     }
 
-    /// fails if a templated body is sent without being checked. Every one
-    /// of these endpoints answers a malformed body with a 400, and an
-    /// operator reading "400" has no way to know their template lost a
-    /// brace — this is the one failure bark can name precisely.
     #[test]
     fn a_template_that_does_not_render_json_is_refused_before_it_is_sent() {
         let sink = Sink::Json {
@@ -566,10 +541,8 @@ mod tests {
         ));
     }
 
-    /// fails if a substituted value is interpolated raw. A sheep's name and
-    /// a bark's message are shep's own prose, but the message quotes an
-    /// app's name, and an app named `we"b` would break the template's JSON
-    /// the same way it would break a Prometheus label.
+    /// An app named `we"b` would break the template's JSON if its name
+    /// were interpolated raw.
     #[test]
     fn a_substituted_value_is_json_escaped_into_the_template() {
         let sink = Sink::Json {
@@ -582,15 +555,27 @@ mod tests {
         assert_eq!(value["text"], bark.message);
     }
 
-    /// fails if a placeholder token that ends up INSIDE an already
-    /// substituted field's own value gets rewritten by a later
-    /// substitution pass. Bark builds its "gave up" messages by
-    /// interpolating a sheep's own name, so a sheep literally named
-    /// `{at_ms}` makes `bark.message` contain that exact text; a naive
-    /// sequential `.replace()` per field pastes that text in during the
-    /// `{message}` pass and then rewrites it during the `{at_ms}` pass that
-    /// follows — silently corrupting the sheep's name inside an alert
-    /// someone is reading during an incident.
+    /// The control characters JSON refuses raw inside a string, including
+    /// the two a `\u00XX` escape and a short escape spell differently.
+    /// What matters is that the rendered body parses back to the message
+    /// it was built from, not which of the two spellings is used.
+    #[test]
+    fn control_characters_survive_the_round_trip() {
+        let sink = Sink::Json {
+            url: "http://127.0.0.1:1/".to_string(),
+            body: Some(r#"{"text": "{message}"}"#.to_string()),
+        };
+        let bark = bark_for(
+            "web",
+            "tab\there\nnewline\u{8}backspace\u{c}formfeed\u{1}one",
+        );
+        let rendered = render_body(&sink, &bark).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(value["text"], bark.message);
+    }
+
+    /// The literal token `{at_ms}` embedded in `bark.message` must not be
+    /// rewritten by a later per-field substitution pass.
     #[test]
     fn a_placeholder_inside_a_substituted_value_survives_later_passes() {
         let bark = Bark {
@@ -613,10 +598,7 @@ mod tests {
         assert_eq!(value["stamp"], 12_345);
     }
 
-    /// The delivery half, against a local server and never a real webhook.
-    /// fails if the POST goes out with the wrong method, path or
-    /// content-type — three things a receiving endpoint rejects and a unit
-    /// test over `render_body` alone can say nothing about.
+    /// Against a local server, never a real webhook.
     #[tokio::test]
     async fn a_delivery_posts_json_to_the_url_it_was_given() {
         let (addr, captured) = one_shot_sink(200, "").await;
@@ -643,9 +625,7 @@ mod tests {
         );
     }
 
-    /// fails if a non-2xx is treated as delivered. Discord's rate-limit 429
-    /// arrives exactly this way, and a bark counted as delivered when it
-    /// was refused is the failure mode alerting exists to not have.
+    /// Discord's rate-limit 429 arrives exactly this way.
     #[tokio::test]
     async fn a_refused_delivery_is_a_failure_carrying_the_status() {
         let (addr, _captured) = one_shot_sink(429, "rate limited").await;
@@ -662,8 +642,6 @@ mod tests {
         assert!(matches!(err, SinkError::Status { code: 429, .. }));
     }
 
-    /// fails if `Sink`'s Debug prints a URL. A webhook URL is a bearer
-    /// credential: whoever reads the log can post to that channel.
     #[test]
     fn a_sinks_debug_never_prints_its_webhook() {
         let rendered = format!("{:?}", discord_sink());
@@ -671,15 +649,12 @@ mod tests {
         assert!(!rendered.contains("discord.com"));
     }
 
-    /// fails if a Discord webhook over `http://` is accepted. The webhook
-    /// url IS the bearer credential, and discord.com serves `https://`
-    /// only, so no legitimate `http://` use is being removed.
     #[test]
     fn a_discord_sink_over_http_is_refused() {
         let sink = Sink::Discord {
             url: "http://discord.com/api/webhooks/1/super-secret-token".to_string(),
         };
-        let err = require_secure_scheme("ops", &sink).unwrap_err();
+        let err = require_usable_url("ops", &sink).unwrap_err();
         assert!(matches!(
             err,
             SinkConfigError::InsecureScheme {
@@ -690,14 +665,12 @@ mod tests {
         assert!(!err.to_string().contains("discord.com"));
     }
 
-    /// fails if a Slack webhook over `http://` is accepted — the same
-    /// credential-in-cleartext footgun as Discord's.
     #[test]
     fn a_slack_sink_over_http_is_refused() {
         let sink = Sink::Slack {
             url: "http://hooks.slack.com/services/T0/B0/super-secret-token".to_string(),
         };
-        let err = require_secure_scheme("ops", &sink).unwrap_err();
+        let err = require_usable_url("ops", &sink).unwrap_err();
         assert!(matches!(
             err,
             SinkConfigError::InsecureScheme { kind: "slack", .. }
@@ -705,31 +678,50 @@ mod tests {
         assert!(!err.to_string().contains("hooks.slack.com"));
     }
 
-    /// fails if a `Json` sink over `http://` is refused. Unlike Discord and
-    /// Slack, a `Json` sink's endpoint is the operator's own — pointing it
-    /// at an internal service with no TLS in front of it is a legitimate
-    /// arrangement, not a footgun.
+    /// Unlike Discord and Slack, a `Json` sink's endpoint is the
+    /// operator's own; plain `http://` is legitimate.
     #[test]
     fn a_json_sink_over_http_is_accepted() {
         let sink = Sink::Json {
             url: "http://127.0.0.1:8080/hook".to_string(),
             body: None,
         };
-        require_secure_scheme("ops", &sink).unwrap();
+        require_usable_url("ops", &sink).unwrap();
     }
 
-    // `Sink` is an internally tagged enum (`tag = "kind"`) with
-    // `deny_unknown_fields` and no `#[serde(flatten)]` anywhere near it —
-    // a different shape from `rules::Rule`'s, and one this fix's own audit
-    // confirmed parses correctly (`toml::from_str` was never broken here).
-    // These tests parse real TOML rather than building `Sink` in Rust, the
-    // same gap `rules::Rule`'s own tests closed, so a future change that
-    // reintroduces a flatten/deny_unknown_fields conflict here would be
-    // caught rather than shipped quietly a second time.
+    /// Refused whatever the kind. A `Json` sink's endpoint is the
+    /// operator's own and may be plain `http://`, but no kind can carry a
+    /// password, because nothing here sends an `Authorization` header.
+    #[test]
+    fn a_sink_url_carrying_credentials_is_refused_at_config_load() {
+        for sink in [
+            Sink::Json {
+                url: "http://user:hunter2@127.0.0.1:8080/hook".to_string(),
+                body: None,
+            },
+            Sink::Discord {
+                url: "https://user:hunter2@discord.com/api/webhooks/1/tok".to_string(),
+            },
+        ] {
+            let err = require_usable_url("ops", &sink).unwrap_err();
+            assert!(
+                matches!(err, SinkConfigError::UrlCredentials { .. }),
+                "{err:?}"
+            );
+            assert_eq!(
+                err.to_string(),
+                "sink \"ops\": credentials before the host (`user@` or `user:pass@`) are not \
+                 supported; the url is not echoed, since it carries one"
+            );
+            assert!(!format!("{err} {err:?}").contains("hunter2"));
+        }
+    }
 
-    /// fails if the docs' own Discord sink — the exact inline-table shape
-    /// `docs/dogs.md` and `web/src/pages/docs/dogs.astro` publish under
-    /// `[dog.bark.sinks]` — cannot be parsed from TOML.
+    // `Sink` has no `#[serde(flatten)]` near `deny_unknown_fields`, unlike
+    // `rules::Rule`. These tests parse real TOML rather than building
+    // `Sink` directly, so a future flatten conflict here would be caught.
+
+    /// The exact inline-table shape `docs/dogs.md` publishes.
     #[test]
     fn the_docs_discord_sink_parses_from_toml() {
         let sink: Sink = toml::from_str(
@@ -746,9 +738,7 @@ url = "https://discord.com/api/webhooks/..."
         );
     }
 
-    /// fails if a Slack sink cannot be parsed from TOML — not shown in the
-    /// published docs' worked example, but a real, documented `kind`
-    /// (`docs/dogs.md`'s reference table names all three).
+    /// Not in the docs' worked example, but a documented `kind`.
     #[test]
     fn a_slack_sink_parses_from_toml() {
         let sink: Sink = toml::from_str(
@@ -765,9 +755,7 @@ url = "https://hooks.slack.com/services/T0/B0/tok"
         );
     }
 
-    /// fails if the docs' own JSON sink cannot be parsed from TOML, with
-    /// `body` correctly left `None` when the operator does not template
-    /// one — the same fragment `docs/dogs.md` publishes for `audit`.
+    /// The `audit` fragment `docs/dogs.md` publishes; `body` stays `None`.
     #[test]
     fn the_docs_json_sink_parses_from_toml() {
         let sink: Sink = toml::from_str(
@@ -785,8 +773,6 @@ url = "https://example.internal/hook"
         );
     }
 
-    /// fails if a `Json` sink's own `body` template does not survive
-    /// parsing — `Json`'s one field the other two variants do not have.
     #[test]
     fn a_json_sink_s_body_template_parses_from_toml() {
         let sink: Sink = toml::from_str(
@@ -805,10 +791,6 @@ body = "{\"text\": \"{message}\"}"
         );
     }
 
-    /// fails if a misspelled field is silently accepted rather than
-    /// refused with the bad key named — `deny_unknown_fields` doing the
-    /// job it is declared for, on an internally tagged enum this fix's own
-    /// audit left untouched because it was never broken.
     #[test]
     fn a_misspelled_sink_field_is_refused_with_the_bad_key_named() {
         let err = toml::from_str::<Sink>(
@@ -823,8 +805,6 @@ urll = "https://discord.com/api/webhooks/..."
         );
     }
 
-    /// fails if an unknown `kind` is accepted rather than refused with the
-    /// bad value named.
     #[test]
     fn an_unknown_sink_kind_is_refused_with_the_bad_value_named() {
         let err = toml::from_str::<Sink>(

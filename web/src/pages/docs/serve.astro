@@ -7,6 +7,7 @@
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import NotBuilt from "../../components/docs/NotBuilt.astro";
@@ -27,9 +28,6 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
 ---
 
 <DocsLayout
-  title="Serve"
-  description="A static file server, hand-rolled and run as a managed sheep. Loopback by default, and every unsafe default is opt-in."
-  crumb="Deploying / Serve"
   activeSlug="serve"
 >
   <article>
@@ -37,35 +35,41 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     <ReferencePills slug="serve" />
     <p class="lede">
       <code>shep serve &lt;dir&gt;</code> registers a sheep whose command line
-      is this same invocation, canonicalized, with <code>--foreground</code>
+      is this same invocation, canonicalized, with <code>--foreground</code>{" "}
       appended: the worker answering every request <em>is</em> the
       registered sheep, so <code>shep describe</code> shows exactly what
       restarts if it dies. It's hand-rolled (six small modules over an HTTP
       layer shared with the metrics dog), not built on axum or tower-http.
     </p>
 
-    <h2>Try it</h2>
-    <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
+    <ShortVersion>
+      <CodeBlock>$ shep serve ./dist --port 8080</CodeBlock>
+      <p class="fine">
+        Binds loopback only, refuses traversal and dotfiles, and 404s any
+        symlink under the docroot: every wider behavior is a named flag, not
+        a default.
+      </p>
+    </ShortVersion>
+
+    <h2 id="try-it">Try it</h2>
     <p class="fine">
       Add <code>--foreground</code> to run the worker directly in this
       terminal instead of registering a sheep. Same worker either way, just
       without the supervision.
     </p>
 
-    <h2>The security posture, checked against real requests</h2>
+    <h2 id="the-security-posture-checked-against-real-requests">The security posture, checked against real requests</h2>
     <p>
-      Every default below is the safe one, and every unsafe one is a named
-      flag rather than a config file nobody reads. Binds loopback
-      (<code>127.0.0.1:8080</code>) unless you pass a wider
+      Binds loopback (<code>127.0.0.1:8080</code>) unless you pass a wider{" "}
       <code>--bind</code>, which prints a stderr notice naming what it just
-      exposed. These four requests were run against a real
-      <code>shep serve</code> process, docroot containing an
+      exposed. These four requests were run against a real{" "}
+      <code>shep serve</code> process, docroot containing an{" "}
       <code>index.html</code>, a <code>.env</code>, and a symlink:
     </p>
     <CodeBlock>{requestCodes}</CodeBlock>
     <p>
       Traversal is refused in every encoding it was tried in, not just the
-      literal one. Dotfiles 404: serving a repo checkout with
+      literal one. Dotfiles 404: serving a repo checkout with{" "}
       <code>shep serve .</code> would otherwise publish <code>.env</code> and
       the whole <code>.git</code> history. And <strong>any</strong> symlink
       under the docroot 404s by default, not only one that leaves it: an
@@ -87,15 +91,15 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     </Callout>
     <CodeBlock>{followSymlinksNotice}</CodeBlock>
 
-    <h2>The rest of the flags</h2>
+    <h2 id="the-rest-of-the-flags">The rest of the flags</h2>
     <p>
-      <code>--listing</code> turns on directory listings for a folder with no
+      <code>--listing</code> turns on directory listings for a folder with no{" "}
       <code>index.html</code>, off by default, since a listing publishes
       every filename under it. <code>--hidden</code> serves dotfiles, mainly
-      for <code>.well-known/acme-challenge</code>. <code>--spa</code> serves
+      for <code>.well-known/acme-challenge</code>. <code>--spa</code> serves{" "}
       <code>index.html</code> for a path that doesn't exist, only for
-      requests that accept HTML, so a missing script still 404s.
-      <code>--auth &lt;file&gt;</code> requires one <code>user:password</code>
+      requests that accept HTML, so a missing script still 404s.{" "}
+      <code>--auth &lt;file&gt;</code> requires one <code>user:password</code>{" "}
       line, mode <code>0600</code>, on every request. Sent as plain HTTP
       basic auth, base64 rather than encryption, so put a real proxy in front
       if that matters.
@@ -103,110 +107,12 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
     <p class="fine">
       What isn't here: range requests, conditional requests, ETags,
       compression, keep-alive, TLS, or HTTP/2
-      <NotBuilt note="range/conditional requests are v1.1 candidates" />.
+      <NotBuilt note="range/conditional requests are v1.1 candidates" />.{" "}
       <code>shep serve</code> takes no configuration from the environment:
-      pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,
+      pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,{" "}
       <code>--auth</code> and the flags above on the command line instead.
       The visible cost today is no video seeking and a full re-read per
       request.
     </p>
-
-    <h2>Where to go next</h2>
-
-    <div class="next-grid">
-      <a href="/docs/containers" class="next-card">
-        <div class="next-title">Containers →</div>
-        <div class="next-body">
-          <code>shep runtime</code> and <code>shep dev</code>: the other two
-          verbs that shipped alongside <code>serve</code> in the same phase.
-        </div>
-      </a>
-      <a href="/docs/from-pm2" class="next-card">
-        <div class="next-title">Coming from pm2 →</div>
-        <div class="next-body">
-          The full migration guide, including what doesn't survive the trip
-          from an <code>ecosystem.config.js</code> unchanged.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
-
-<style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 29px;
-    letter-spacing: -0.03em;
-    margin: 40px 0 8px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--ink-3);
-    margin: -8px 0 30px;
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-</style>

@@ -36,6 +36,38 @@ reviews:
   profile: assertive
 
   auto_review:
+    # Off by default, and a pull request opts in by carrying the `review
+    # please` label. That is as close as this file can get to "review our own
+    # branches, not a stranger's fork": CodeRabbit's schema has nine keys
+    # under auto_review and not one of them knows what a fork is.
+    #
+    # What it buys, on a plan that includes one review an hour: a drive-by
+    # pull request no longer spends the slot the branch behind it was waiting
+    # for. Three arrived on 2026-09-16, within three hours of the first
+    # `good first issue` labels going on, and October will bring more.
+    #
+    # What it costs: nothing is reviewed until someone labels it. That is one
+    # click on the pull request page, and `@coderabbitai review` still works
+    # on any pull request regardless of this flag. It also stops the release
+    # and dependabot pull requests, which nobody labels.
+    #
+    # ## Why a label and not the description keyword
+    #
+    # `description_keyword` was here first and did the same job through an
+    # HTML comment in the body. The label replaces it rather than joining it,
+    # because the schema does not say whether two positive gates OR together
+    # or AND, and guessing wrong fails silently in the direction that matters:
+    # our own pull requests would stop being reviewed and nothing would say
+    # so. One mechanism has no such question.
+    #
+    # The label also reaches a fork's pull request without editing prose
+    # someone else wrote, which is the case this whole setting exists for.
+    enabled: false
+
+    # Still a second gate under `enabled: false`: a negative label stays an
+    # exclusion filter, it just no longer carries the job alone. Kept because
+    # the two mechanisms ruled out below are the two anyone would try first.
+    #
     # release-plz opens these, and merging one IS the release. There is
     # nothing to review: the diff is a version bump plus a changelog section
     # that release-plz generated from commits already reviewed on their own
@@ -68,6 +100,7 @@ reviews:
     # checked per review instead of parsed once, so it survives the
     # force-push that defeated the keyword.
     labels:
+      - "review please"
       - "!release"
 
   # Excluded because a comment on any of these cannot be acted on without
@@ -105,7 +138,7 @@ reviews:
     - path: "crates/**/*.rs"
       instructions: >-
         This workspace has a written Rust style, docs/idiomatic-rust.md, with
-        46 numbered rules IR-1 through IR-46. Cite the rule number when a
+        47 numbered rules IR-1 through IR-47. Cite the rule number when a
         finding matches one.
 
         Load-bearing rules, in rough order of how often they drift: no

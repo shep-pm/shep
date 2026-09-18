@@ -212,6 +212,15 @@ In `design-files/`:
 
 Open any of the three HTML files directly in a browser to see the live design.
 
+`support.js` is vendored from the design tool, not built here. Its header
+names `cd dc-runtime && bun run build`, but that tree has never been in this
+repo, so nothing in shep can regenerate the file.
+
+An identical copy sits in `docs/lookout/design-files/`, deliberately. Each
+export is self-contained and pins the React and Babel versions it fetches at
+load, so re-exporting one design leaves the other alone. Git stores the two
+paths as one blob.
+
 In `screenshots/`:
 
 | File | Shows |

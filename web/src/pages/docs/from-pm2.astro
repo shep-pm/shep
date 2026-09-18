@@ -5,114 +5,359 @@
  * reader who has never opened this repo, not pasted verbatim — the field
  * table, the env rule, the runbook and the pm2-serve/pm2-runtime deltas all
  * come from that file. The import transcript below is real: run against
- * the test fixture crates/shep-cli/src/commands/import/testdata/dump.pm2.json,
+ * the test fixture crates/shep-cli/src/commands/import/pm2/testdata/dump.pm2.json,
  * which ships in the repo for exactly this kind of demonstration.
  *
- *   ./target/release/shep import \
- *     --from crates/shep-cli/src/commands/import/testdata/dump.pm2.json \
+ *   ./target/release/shep import pm2 \
+ *     --from crates/shep-cli/src/commands/import/pm2/testdata/dump.pm2.json \
  *     --dry-run
  *
  * Re-run that if the fixture or the importer's notices change, and paste
  * the fresh stdout/stderr in below.
+ *
+ * Reordered 2026-09-14 (docs/writing-plans/plans/2026-09-14-docs-part-one.md,
+ * Task 2): the runbook and the verb table now lead, because a pm2 user
+ * reaches for those two and met importer internals first. The side-by-side
+ * section is new; everything else is the same content, moved.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
 
-const meta = {
-  title: "Coming from pm2",
-  crumb: "Start here / Coming from pm2",
-  blurb:
-    "shep import reads a real dump.pm2 and writes a Flockfile. It starts nothing, and names on stderr everything that could not survive the trip unchanged.",
-};
-
 const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[] = [
-  { metric: "Idle daemon RSS, ten apps", shep: "13.90 MiB", pm2: "71.16 MiB", ratio: "5.1x" },
-  { metric: "Log-plane CPU per line", shep: "2.10 us", pm2: "4.03 us", ratio: "1.9x" },
-  { metric: "Start ten apps, cold daemon", shep: "0.158 s", pm2: "0.374 s", ratio: "2.4x" },
-  { metric: "Start ten apps, warm daemon", shep: "0.056 s", pm2: "0.197 s", ratio: "3.5x" },
-  { metric: "Install footprint", shep: "14.23 MiB", pm2: "23.10 MiB", ratio: "1.6x" },
-  { metric: "Idle daemon CPU", shep: "0.045%", pm2: "0.020%", ratio: "a tie" },
+  { metric: "Idle daemon RSS, ten apps", shep: "17.41 MiB", pm2: "65.88 MiB", ratio: "3.8x" },
+  { metric: "Log-plane CPU per line", shep: "2.27 us", pm2: "4.10 us", ratio: "1.8x" },
+  { metric: "Start ten apps, cold daemon", shep: "0.195 s", pm2: "0.366 s", ratio: "1.9x" },
+  { metric: "Start ten apps, warm daemon", shep: "0.095 s", pm2: "0.201 s", ratio: "2.1x" },
+  { metric: "Install footprint", shep: "53.85 MiB", pm2: "23.11 MiB", ratio: "pm2, by 2.3x" },
+  { metric: "Idle daemon CPU", shep: "0.138%", pm2: "0.065%", ratio: "a tie" },
 ];
 
-const verbTable: { pm2: string; shep: string; note?: string }[] = [
-  { pm2: "pm2 start <script>", shep: "shep start <script>" },
-  {
-    pm2: "pm2 start ecosystem.config.js",
-    shep: "shep import, then shep start Flockfile.toml",
-    note: "shep never reads a pm2 ecosystem file directly",
-  },
-  { pm2: "pm2 stop", shep: "shep stop" },
-  { pm2: "pm2 restart", shep: "shep restart" },
-  {
-    pm2: "pm2 reload",
-    shep: "shep reload",
-    note: "N instances on one port need the app to set SO_REUSEPORT: see below",
-  },
-  { pm2: "pm2 delete", shep: "shep delete" },
-  { pm2: "pm2 list / ls / status", shep: "shep flock", note: "alias: list, ls" },
-  { pm2: "pm2 describe", shep: "shep describe" },
-  { pm2: "pm2 logs", shep: "shep bleats", note: "alias: logs" },
-  {
-    pm2: "pm2 scale <name> <n>",
-    shep: "shep stock <name> <n>",
-    note: "alias: scale (always an absolute count in both)",
-  },
-  { pm2: "pm2 save", shep: "shep save" },
-  { pm2: "pm2 resurrect", shep: "shep muster", note: "hidden alias: resurrect" },
-  { pm2: "pm2 startup", shep: "shep startup" },
-  { pm2: "pm2 unstartup", shep: "shep unstartup" },
-  { pm2: "pm2 kill", shep: "shep kill" },
-  { pm2: "pm2 flush", shep: "shep flush" },
-  { pm2: "pm2 serve <dir>", shep: "shep serve <dir>", note: "three defaults flip: see below" },
-  { pm2: "pm2-runtime", shep: "shep runtime", note: "or the shep-runtime alias binary" },
-  { pm2: "pm2 sendSignal", shep: "shep signal" },
-  { pm2: "-", shep: "shep whisper", note: "no pm2 equivalent: writes a line to an app's stdin" },
-  {
-    pm2: "pm2 trigger",
-    shep: "shep trigger",
-    note: "different mechanism: pm2 calls a module method, shep sends over the app's own shepherd channel",
-  },
-  {
-    pm2: "pm2 monit",
-    shep: "shep lookout",
-    note: "alias: dash (a fuller dashboard, not a straight swap)",
-  },
-  { pm2: "-", shep: "shep enable / disable / adopt / rehome", note: "dogs have no pm2 analogue" },
-  { pm2: "-", shep: "shep set / get / unset", note: "the KV store; nothing in pm2 does this" },
-];
 ---
 
 <DocsLayout
-  title={meta.title}
-  description={meta.blurb}
-  crumb={meta.crumb}
   activeSlug="from-pm2"
 >
   <article>
     <h1>Coming from pm2</h1>
     <ReferencePills slug="from-pm2" />
     <p class="lede">
-      <code>shep import</code> reads a real <code>dump.pm2</code> and writes
+      <code>shep import pm2</code> reads a real <code>dump.pm2</code> and writes
       a Flockfile from it. It starts nothing: no daemon connection, no
       socket, just a file read and a file write.
     </p>
 
-    <Callout variant="careful">
-      Two things do not survive the trip, and neither is silently swallowed.
-      Both are named on stderr at import time, before you have started
-      anything: cluster-mode socket sharing, and most of the shell
-      environment pm2 flattened into the dump. Both are covered below.
-    </Callout>
+    <ShortVersion>
+      <CodeBlock>{`1. shep import pm2 --dry-run       # read the Flockfile before it is written
+2. shep import pm2                 # writes ./Flockfile.toml; starts nothing
+3. pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
+4. shep start ./Flockfile.toml     # the flock comes up under shep
+5. shep flock                      # every app online, CPU and MEM populated
+6. shep save                       # names the roll it wrote and the app count`}</CodeBlock>
+      <Callout variant="note">
+        The flock is running and its roll is saved, but nothing yet starts it
+        after a reboot. That is <code>pm2 startup</code>'s counterpart, and it
+        is its own chapter: <a href="/docs/startup">Surviving a reboot</a>.
+      </Callout>
+    </ShortVersion>
 
-    <h2>What it reads</h2>
+    <h2 id="verb-table">The verb-by-verb table</h2>
     <p>
-      Exactly one file: <code>~/.pm2/dump.pm2</code>, or whatever path
+      Every pm2 verb and the shep one to type instead is its own chapter,
+      because it is the part of this page a reader comes back to long after
+      the migration: <a href="/docs/pm2-verbs">pm2 verb reference</a>.
+    </p>
+
+    <h2 id="side-by-side">Side by side</h2>
+    <p>
+      The fixture every example on this page draws from: one clustered Node
+      API, one Bun worker with a declared env block, and one one-shot
+      migration script.
+    </p>
+    <div class="side-by-side-grid">
+      <CodeBlock label="ecosystem.config.js">{`module.exports = {
+  apps: [
+    {
+      name: "api",
+      script: "./dist/server.js",
+      args: "--port 8080",
+      cwd: "/srv/api",
+      interpreter: "node",
+      instances: 2,
+      exec_mode: "cluster",
+      max_memory_restart: "512M",
+      env: { NODE_ENV: "production" },
+    },
+    {
+      name: "worker",
+      script: "./index.ts",
+      cwd: "/srv/worker",
+      interpreter: "bun",
+      autorestart: false,
+      restart_delay: 5000,
+      merge_logs: true,
+      env: { QUEUE_URL: "redis://127.0.0.1:6379/2" },
+      env_staging: {
+        QUEUE_URL: "redis://127.0.0.1:6379/2",
+        QUEUE_CONCURRENCY: 4,
+      },
+    },
+    {
+      name: "migrate",
+      script: "./bin/migrate",
+      args: "--once",
+      cwd: "/srv/migrate",
+      interpreter: "none",
+    },
+  ],
+};`}</CodeBlock>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
+name = "api"
+script = "/srv/api/dist/server.js"
+args = ["--port", "8080"]
+cwd = "/srv/api"
+interpreter = "node"
+instances = 2
+max_memory = "512M"
+
+[app.env]
+NODE_APP_INSTANCE = "{{instance}}"
+NODE_ENV = "production"
+
+[[app]]
+name = "worker"
+script = "/srv/worker/index.ts"
+cwd = "/srv/worker"
+interpreter = "bun"
+autorestart = false
+restart_delay = "5s"
+merge_logs = true
+
+[app.env]
+QUEUE_CONCURRENCY = "4"
+QUEUE_URL = "redis://127.0.0.1:6379/2"
+
+[[app]]
+name = "migrate"
+script = "/srv/migrate/bin/migrate"
+args = ["--once"]
+cwd = "/srv/migrate"`}</CodeBlock>
+    </div>
+
+    <h2 id="what-doesnt-survive-the-trip">What doesn't survive the trip</h2>
+    <p>
+      Two things do not survive the trip, and neither is silently swallowed.
+    </p>
+
+    <h3 id="cluster-mode-socket-sharing">Cluster-mode socket sharing</h3>
+    <details class="survive-details">
+      <summary>Every instance past the first fails to bind unless the app shares the socket itself.</summary>
+      <p>
+        pm2's cluster master holds one listen socket and hands connections to
+        its workers. shep has no such master. Running N instances of an app on one port only works if the
+        app arranges the sharing itself, with <code>SO_REUSEPORT</code>{" "}
+        (Node's <code>reusePort: true</code> listen option, which needs
+        Node&nbsp;≥&nbsp;22.12). Without that, every instance past the first
+        hits <code>EADDRINUSE</code> the moment it starts.
+      </p>
+      <p>
+        <code>shep import pm2</code> names every app it found running in pm2
+        cluster mode on stderr, and writes nothing into the Flockfile for it.
+        Setting <code>reuse_port = true</code> does less than its name
+        suggests: it opts a <code>readiness_probe</code> app back into a
+        reload that overlaps its two instances. <code>import</code> still will not write it
+        for you, because only you know whether the app really does call{" "}
+        <code>reusePort: true</code>. If it was never written to share the
+        socket, cluster mode does not work under shep however the Flockfile
+        is written.
+      </p>
+    </details>
+
+    <h3 id="instances-vs-cluster-mode">shep's <code>instances</code> is pm2's fork mode, not its cluster mode</h3>
+    <details class="survive-details">
+      <summary>shep's instances runs N separate processes; nothing shares a port between them for you.</summary>
+      <p>
+        pm2 cluster mode works because Node's <code>cluster</code> module
+        intercepts <code>server.listen()</code>: the pm2 daemon binds the port
+        once and every worker gets handed connections through that one socket,
+        never binding anything itself. shep's <code>instances</code> is
+        pm2's other mode, fork, N separate processes with no socket sharing
+        between them. Set <code>instances = 3</code> on an app that hardcodes
+        one port and you get one process holding the port and two crash-looping
+        on <code>EADDRINUSE</code>, whatever language it's written in.
+      </p>
+      <h4>Option 1: a port per instance, with a load balancer in front</h4>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
+name = "web"
+script = "server.js"
+interpreter = "node"
+instances = 3
+args = ["--port", "300{{instance}}"]`}</CodeBlock>
+      <CodeBlock label="nginx.conf">{`upstream shep_web {
+    least_conn;
+    server 127.0.0.1:3000 max_fails=3 fail_timeout=10s;
+    server 127.0.0.1:3001 max_fails=3 fail_timeout=10s;
+    server 127.0.0.1:3002 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 80;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://shep_web;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}`}</CodeBlock>
+      <p>
+        <code>max_fails</code> and <code>fail_timeout</code> are what pull an
+        instance out of rotation while shep restarts it; without them nginx
+        keeps sending requests at a port nothing is listening on.
+      </p>
+      <Callout variant="careful">
+        <code>300{'{{instance}}'}</code> is string concatenation, not
+        arithmetic. Slots 0 through 9 give ports 3000 through 3009, which is
+        the point, but slot 10 gives <code>30010</code>, not 3010. The
+        shorthand only holds up to ten instances.
+      </Callout>
+      <p>
+        Past ten, pass a base and let the app add its own slot, since{" "}
+        <code>SHEP_INSTANCE</code> is always injected:
+      </p>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
+name = "web"
+script = "server.js"
+interpreter = "node"
+instances = 24
+
+[app.env]
+PORT_BASE = "3000"`}</CodeBlock>
+      <CodeBlock label="server.js">{`const port = Number(process.env.PORT_BASE) + Number(process.env.SHEP_INSTANCE);`}</CodeBlock>
+
+      <h4>Option 2: one shared port, no load balancer</h4>
+      <p>
+        If the app sets <code>SO_REUSEPORT</code> on its own listener, every
+        instance binds the same port and the kernel spreads connections between
+        them, no proxy required. Set <code>reuse_port = true</code> in the
+        Flockfile to tell shep the app does this, so a reload knows it's safe
+        to overlap the old and new instances rather than draining one before
+        starting the other. shep can't verify the app actually calls the
+        option: it's set inside the child, after the fork, on a socket shep
+        never sees. Claim it without doing it, and the failure shows up as{" "}
+        <code>EADDRINUSE</code> at runtime instead of a refusal at config
+        time.
+      </p>
+    </details>
+
+    <h3 id="inherited-shell-environment">An inherited shell environment</h3>
+    <details class="survive-details">
+      <summary>Most of pm2's shell environment doesn't come along. An undeclared variable gets named on stderr.</summary>
+      <p>
+        pm2 flattens whatever shell started <code>pm2 start</code> into every
+        app it runs: <code>PATH</code>, <code>JAVA_HOME</code>, whatever else
+        your login session happened to have set. <code>shep import pm2</code>{" "}
+        applies one rule per key:
+      </p>
+      <ul>
+        <li>
+          A key <strong>declared</strong> in the app's own <code>env_*</code>{" "}
+          block is always written.
+        </li>
+        <li>
+          A key that isn't declared, but matches a closed list of shell noise
+          (<code>PATH</code>, <code>SHLVL</code>, <code>SSH_TTY</code>, ...)
+          or pm2's own injected variables (<code>PM2_HOME</code>,{" "}
+          <code>pm_id</code>, ...), is dropped silently.
+        </li>
+        <li>
+          Everything else is <strong>named on stderr and left out</strong> of
+          the Flockfile. The importer doesn't guess whether a stray{" "}
+          <code>DATABASE_URL</code> is the app's real configuration or more
+          session noise the closed list doesn't happen to know.
+        </li>
+      </ul>
+      <p>
+        <code>PATH</code> specifically is never written into an app's{" "}
+        <code>env</code>, no matter how it got into the dump. Instead,{" "}
+        <code>shep startup</code> captures the <code>PATH</code> of the shell
+        that installed it straight into the systemd unit or launchd plist, so
+        an interpreter under <code>~/.bun/bin</code> or <code>~/.cargo/bin</code>{" "}
+        is still findable after a reboot with no login shell behind the daemon
+        at all.
+      </p>
+    </details>
+
+    <h2 id="field-by-field">Field by field</h2>
+    <div class="field-table">
+      <div class="row header">
+        <span>pm2</span>
+        <span>shep</span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>name</code></span>
+        <span data-label="shep"><code>name</code>: the grouping key</span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>pm_cwd</code></span>
+        <span data-label="shep"><code>cwd</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>pm_exec_path</code></span>
+        <span data-label="shep"><code>script</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>args</code></span>
+        <span data-label="shep"><code>args</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>exec_interpreter</code></span>
+        <span data-label="shep"><code>interpreter</code>: absent when it was <code>"none"</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>autorestart</code></span>
+        <span data-label="shep"><code>autorestart</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>restart_delay</code> (ms)</span>
+        <span data-label="shep"><code>restart_delay</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>merge_logs</code></span>
+        <span data-label="shep"><code>merge_logs</code></span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>max_memory_restart</code> (bytes)</span>
+        <span data-label="shep"><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
+      </div>
+      <div class="row">
+        <span data-label="pm2">rows sharing a <code>name</code></span>
+        <span data-label="shep"><code>instances</code>: the row count</span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>exec_mode == "cluster_mode"</code></span>
+        <span data-label="shep">a stderr notice, and nothing in the Flockfile</span>
+      </div>
+      <div class="row">
+        <span data-label="pm2"><code>NODE_APP_INSTANCE</code> in a row's env</span>
+        <span data-label="shep">an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
+      </div>
+    </div>
+
+    <h2 id="how-the-import-works">How the import works</h2>
+    <p>
+      Exactly one file: <code>~/.pm2/dump.pm2</code>, or whatever path{" "}
       <code>--from</code> names: whichever <code>pm2 save</code> last wrote.
       It does not read <code>ecosystem.config.js</code> or any other pm2
-      config format, and it never touches pm2's own state: nothing under
+      config format, and it never touches pm2's own state: nothing under{" "}
       <code>~/.pm2</code> is written or deleted by anything on this page.
     </p>
     <p>
@@ -123,25 +368,21 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
       three seconds into a sheep's life after a reboot.
     </p>
 
-    <VerbSignature verb="import" usage="shep import [OPTIONS]">
+    <VerbSignature verb="import pm2" usage="shep import pm2 [OPTIONS]">
       <p>
-        <code>--from &lt;path&gt;</code> to read a dump somewhere other than
+        <code>--from &lt;path&gt;</code> to read a dump somewhere other than{" "}
         <code>~/.pm2/dump.pm2</code>, <code>--out &lt;path&gt;</code> to
-        write somewhere other than <code>./Flockfile.toml</code>,
-        <code>--dry-run</code> to print and write nothing, and
-        <code>--force</code> to overwrite an existing Flockfile. Full flag
-        reference on the <a href="/docs/cli">CLI page</a>.
+        write somewhere other than <code>./Flockfile.toml</code>,{" "}
+        <code>--dry-run</code> to print and write nothing, and{" "}
+        <code>--force</code> to overwrite an existing Flockfile.
       </p>
     </VerbSignature>
 
-    <h2>Try it</h2>
     <p>
-      The repo ships a synthetic three-app dump for exactly this: one
-      clustered Node API, one Bun worker with a declared env block, and one
-      one-shot migration script. This is the real output of running
-      <code>shep import --dry-run</code> against it.
+      Running <code>shep import pm2 --dry-run</code> against that fixture
+      prints this:
     </p>
-    <CodeBlock label="$ shep import --from dump.pm2.json --dry-run">{`notice[read]: read 4 instance rows for 3 apps from dump.pm2.json
+    <CodeBlock label="$ shep import pm2 --from dump.pm2.json --dry-run">{`notice[read]: read 4 instance rows for 3 apps from dump.pm2.json
 notice[cluster_mode]: api ran 2 instances in pm2 cluster mode; shep binds nothing, so api must set SO_REUSEPORT itself (Node's reusePort: true, needing Node >= 22.12) or every instance past the first hits EADDRINUSE at start
 notice[instance_var]: api: reads its instance number from $NODE_APP_INSTANCE; imported as NODE_APP_INSTANCE = "{{instance}}" under [app.env] rather than copied as a value
 notice[inherited_env]: api: BUN_INSTALL was running but neither declared nor recognized session junk; decide whether it belongs in the Flockfile, the unit, or nowhere
@@ -179,238 +420,22 @@ script = "/srv/migrate/bin/migrate"
 args = ["--once"]
 cwd = "/srv/migrate"`}</CodeBlock>
     <p class="fine">
-      Every notice lands on stderr in both <code>--format table</code> and
+      Every notice lands on stderr in both <code>--format table</code> and{" "}
       <code>--format json</code>; stdout stays clean Flockfile TOML either
-      way, so <code>shep import --dry-run &gt; Flockfile.toml</code> is safe
-      to pipe. A normal run (no <code>--dry-run</code>) writes
+      way, so <code>shep import pm2 --dry-run &gt; Flockfile.toml</code> is safe
+      to pipe. A normal run (no <code>--dry-run</code>) writes{" "}
       <code>./Flockfile.toml</code>, or wherever <code>--out</code> names,
-      and refuses to overwrite an existing file unless you pass
+      and refuses to overwrite an existing file unless you pass{" "}
       <code>--force</code>.
     </p>
 
-    <h2>Field by field</h2>
-    <div class="field-table">
-      <div class="row header">
-        <span>pm2</span>
-        <span>shep</span>
-      </div>
-      <div class="row">
-        <span><code>name</code></span>
-        <span><code>name</code>: the grouping key</span>
-      </div>
-      <div class="row">
-        <span><code>pm_cwd</code></span>
-        <span><code>cwd</code></span>
-      </div>
-      <div class="row">
-        <span><code>pm_exec_path</code></span>
-        <span><code>script</code></span>
-      </div>
-      <div class="row">
-        <span><code>args</code></span>
-        <span><code>args</code></span>
-      </div>
-      <div class="row">
-        <span><code>exec_interpreter</code></span>
-        <span><code>interpreter</code>: absent when it was <code>"none"</code></span>
-      </div>
-      <div class="row">
-        <span><code>autorestart</code></span>
-        <span><code>autorestart</code></span>
-      </div>
-      <div class="row">
-        <span><code>restart_delay</code> (ms)</span>
-        <span><code>restart_delay</code></span>
-      </div>
-      <div class="row">
-        <span><code>merge_logs</code></span>
-        <span><code>merge_logs</code></span>
-      </div>
-      <div class="row">
-        <span><code>max_memory_restart</code> (bytes)</span>
-        <span><code>max_memory</code>: enforced against the whole process tree, not just the root pid</span>
-      </div>
-      <div class="row">
-        <span>rows sharing a <code>name</code></span>
-        <span><code>instances</code>: the row count</span>
-      </div>
-      <div class="row">
-        <span><code>exec_mode == "cluster_mode"</code></span>
-        <span>a stderr notice, and nothing in the Flockfile</span>
-      </div>
-      <div class="row">
-        <span><code>NODE_APP_INSTANCE</code> in a row's env</span>
-        <span>an <code>[app.env]</code> entry set to <code>{'"{{instance}}"'}</code>, plus a stderr notice</span>
-      </div>
-    </div>
-
-    <h2>What doesn't survive the trip</h2>
-
-    <h3>Cluster-mode socket sharing</h3>
+    <h2 id="what-it-costs-to-run">What it costs to run</h2>
     <p>
-      pm2's cluster master holds one listen socket and hands connections to
-      its workers. shep has no such master. It binds nothing on any app's
-      behalf. Running N instances of an app on one port only works if the
-      app arranges the sharing itself, with <code>SO_REUSEPORT</code>
-      (Node's <code>reusePort: true</code> listen option, which needs
-      Node&nbsp;≥&nbsp;22.12). Without that, every instance past the first
-      hits <code>EADDRINUSE</code> the moment it starts.
-    </p>
-    <p>
-      <code>shep import</code> names every app it found running in pm2
-      cluster mode on stderr, and writes nothing into the Flockfile for it.
-      It used to set <code>reuse_port = true</code>, which read like a
-      mitigation and was not one: no part of shep consulted that field at
-      the time, so the line did nothing while looking like it did something.
-      The field is live now, and what it does is narrower than its name
-      suggests: it opts a <code>readiness_probe</code> app back into a reload
-      that overlaps its two instances. An app with no probe already overlaps,
-      and so does one using <code>wait_ready</code>, neither of which needs
-      the field. <code>import</code> still will not write it for you, because
-      only you know whether the app really does call
-      <code>reusePort: true</code>. The work is the app&rsquo;s either way.
-      If it was never written to share the socket, cluster mode does not
-      work under shep however the Flockfile is written.
-    </p>
-
-    <h3>shep's <code>instances</code> is pm2's fork mode, not its cluster mode</h3>
-    <p>
-      pm2 cluster mode works because Node's <code>cluster</code> module
-      intercepts <code>server.listen()</code>: the pm2 daemon binds the port
-      once and every worker gets handed connections through that one socket,
-      never binding anything itself. That is a Node runtime feature, not
-      something a process supervisor does, and it can't be ported to a
-      supervisor that runs any executable. shep's <code>instances</code> is
-      pm2's other mode, fork, N separate processes with no socket sharing
-      between them. Set <code>instances = 3</code> on an app that hardcodes
-      one port and you get one process holding the port and two crash-looping
-      on <code>EADDRINUSE</code>, whatever language it's written in.
-    </p>
-    <p>There are exactly two ways to get N instances behind one address.</p>
-
-    <h4>Option 1: a port per instance, with a load balancer in front</h4>
-    <p>
-      Give each instance its own port with <code>{'{{instance}}'}</code>, and
-      point something at all of them:
-    </p>
-    <CodeBlock label="Flockfile.toml">{`[[app]]
-name = "web"
-script = "server.js"
-interpreter = "node"
-instances = 3
-args = ["--port", "300{{instance}}"]`}</CodeBlock>
-    <CodeBlock label="nginx.conf">{`upstream shep_web {
-    least_conn;
-    server 127.0.0.1:3000 max_fails=3 fail_timeout=10s;
-    server 127.0.0.1:3001 max_fails=3 fail_timeout=10s;
-    server 127.0.0.1:3002 max_fails=3 fail_timeout=10s;
-}
-
-server {
-    listen 80;
-    server_name example.com;
-
-    location / {
-        proxy_pass http://shep_web;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}`}</CodeBlock>
-    <p>
-      <code>max_fails</code> and <code>fail_timeout</code> are what pull an
-      instance out of rotation while shep restarts it; without them nginx
-      keeps sending requests at a port nothing is listening on. Open-source
-      nginx only does this passive kind of checking, watching real requests
-      fail, not active probing; that's an nginx Plus feature, so don't expect
-      more from the free build. <code>Upgrade</code> and
-      <code>Connection</code> are there for websockets, and cost nothing if
-      the app doesn't use them.
-    </p>
-    <Callout variant="careful">
-      <code>300{'{{instance}}'}</code> is string concatenation, not
-      arithmetic. Slots 0 through 9 give ports 3000 through 3009, which is
-      the point, but slot 10 gives <code>30010</code>, not 3010. The
-      shorthand only holds up to ten instances.
-    </Callout>
-    <p>
-      Past ten, pass a base and let the app add its own slot, since
-      <code>SHEP_INSTANCE</code> is always injected:
-    </p>
-    <CodeBlock label="Flockfile.toml">{`[[app]]
-name = "web"
-script = "server.js"
-interpreter = "node"
-instances = 24
-
-[app.env]
-PORT_BASE = "3000"`}</CodeBlock>
-    <CodeBlock label="server.js">{`const port = Number(process.env.PORT_BASE) + Number(process.env.SHEP_INSTANCE);`}</CodeBlock>
-
-    <h4>Option 2: one shared port, no load balancer</h4>
-    <p>
-      If the app sets <code>SO_REUSEPORT</code> on its own listener, every
-      instance binds the same port and the kernel spreads connections between
-      them, no proxy required. That's close to what Node's
-      <code>cluster</code> module does with its own shared-socket scheme,
-      except it runs in the OS and works for any language. Set
-      <code>reuse_port = true</code> in the Flockfile to tell shep the app
-      does this, so a reload knows it's safe to overlap the old and new
-      instances rather than draining one before starting the other. shep
-      can't verify the app actually calls the option: it's set inside the
-      child, after the fork, on a socket shep never sees. Claim it without
-      doing it, and the failure shows up as <code>EADDRINUSE</code> at
-      runtime instead of a refusal at config time.
-    </p>
-
-    <h3>An inherited shell environment</h3>
-    <p>
-      pm2 flattens whatever shell started <code>pm2 start</code> into every
-      app it runs: <code>PATH</code>, <code>JAVA_HOME</code>, whatever else
-      your login session happened to have set. None of that was ever the
-      app's own configuration, and a daemon started by systemd or launchd
-      has no login shell behind it to reproduce it. <code>shep import</code>
-      applies one rule per key:
-    </p>
-    <ul>
-      <li>
-        A key <strong>declared</strong> in the app's own <code>env_*</code>
-        block is always written.
-      </li>
-      <li>
-        A key that isn't declared, but matches a closed list of shell noise
-        (<code>PATH</code>, <code>SHLVL</code>, <code>SSH_TTY</code>, ...)
-        or pm2's own injected variables (<code>PM2_HOME</code>,
-        <code>pm_id</code>, ...), is dropped silently.
-      </li>
-      <li>
-        Everything else is <strong>named on stderr and left out</strong> of
-        the Flockfile. The importer doesn't guess whether a stray
-        <code>DATABASE_URL</code> is the app's real configuration or more
-        session noise the closed list doesn't happen to know. You decide
-        where it belongs.
-      </li>
-    </ul>
-    <p>
-      <code>PATH</code> specifically is never written into an app's
-      <code>env</code>, no matter how it got into the dump. Instead,
-      <code>shep startup</code> captures the <code>PATH</code> of the shell
-      that installed it straight into the systemd unit or launchd plist, so
-      an interpreter under <code>~/.bun/bin</code> or <code>~/.cargo/bin</code>
-      is still findable after a reboot with no login shell behind the daemon
-      at all.
-    </p>
-
-    <h2>What it costs to run</h2>
-    <p>
-      Measured on one machine on 2026-08-29: shep 0.1.12 against pm2 7.0.4 on
-      node v26.5.0. Both tools ran the same two shell scripts under the same
-      <code>/bin/sh</code>, with logs going to each tool's own default file
-      capture, and the daemon is what was sampled rather than the children.
+      Measured on one machine on 2026-09-14: shep 0.8.0 against pm2 7.0.4 on
+      node v26.8.1, an Apple M4 Pro. Both tools ran the same two shell
+      scripts under the same <code>/bin/sh</code>, with logs going to each
+      tool's own default file capture, and the daemon is what was sampled
+      rather than the children.
     </p>
     <div class="verb-table bench-table">
       <div class="row header">
@@ -423,56 +448,52 @@ PORT_BASE = "3000"`}</CodeBlock>
         benchTable.map((row) => (
           <div class="row">
             <span class="note-cell">{row.metric}</span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="note-cell">{row.ratio}</span>
+            <span class="shep-cell" data-label="shep"><code>{row.shep}</code></span>
+            <span class="pm2-cell" data-label="pm2"><code>{row.pm2}</code></span>
+            <span class="note-cell" data-label="ratio">{row.ratio}</span>
           </div>
         ))
       }
     </div>
+    <p class="fine">
+      Footprint is what lands on disk either way. Installing shep gives you
+      three binaries, <code>shep</code>, <code>shep-runtime</code> and{" "}
+      <code>shep-dev</code>, at 17.94 MiB each, against pm2's whole{" "}
+      <code>node_modules</code> tree. The download is 20.20 MiB compressed.
+      That tree does not run on its own: Node is another 72.73 MiB on the
+      machine this was measured on, which puts the totals at 53.85 against
+      95.84 and turns the row around. It stays out of the table because
+      most people running pm2 have Node already, and what a Node install
+      weighs varies by platform and packager.
+    </p>
+
     <Callout variant="careful">
-      Read the ratios, not the absolute figures. The box was not idle, and it
-      changed power state partway through the run. The order is shep, pm2,
-      shep, so a shift like that shows up as disagreement between the two
-      shep rounds: they agreed within 2.6%, which is why these numbers stand.
-      Idle CPU is printed as the instrument read it, and both figures are
-      hundredths of one percent of one core, so the difference there is not a
-      result.
+      Read the ratios, not the absolute figures. The order is shep, pm2,
+      shep, so a machine that shifts mid-run shows up as disagreement between
+      the two shep rounds: they agreed within 1.0% on log cost, 1.6% on cold
+      start and 2.7% on memory, which is why these numbers stand. Idle CPU is
+      printed as the instrument read it, and both figures are tenths of one
+      percent of one core, so the difference there is not a result.
     </Callout>
     <p>
-      The log-plane figure has only just gone this way. shep cost 32.8 us per
-      line until an audit on 2026-08-28 buffered the writes and stopped
-      encoding one bus event once per subscriber, so pm2 was ahead by 8x on
-      that measure the day before this was taken.
+      Four of these moved against shep since the same harness last ran, on
+      2026-08-29 against shep 0.1.12. pm2 is the same version and its figures
+      barely moved, so this is shep changing rather than the machine: idle
+      memory 13.90 MiB to 17.41, a warm start 0.056 s to 0.095, and the{" "}
+      <code>shep</code> binary 14.23 MiB to 17.94, one of the three the
+      footprint row counts. shep is still ahead on everything but footprint,
+      by smaller margins than it was, and it writes 88 bytes per line to
+      pm2's 58 while winning the log measure.
     </p>
+
     <p>
-      The RSS gap is structural rather than clever: pm2's daemon is a node
-      process and pays that runtime's floor whatever it does. Everything here
-      is reproducible from
-      <code>benches/versus-pm2/versus-pm2.sh</code> in the repository, which
-      drives the published npm package as a black box and keeps its raw
-      samples.
+      The memory gap is structural rather than clever: pm2's daemon is a node
+      process and pays that runtime's floor whatever it does. All of this is
+      reproducible from <code>benches/versus-pm2/versus-pm2.sh</code>, which
+      drives the published npm package as a black box and keeps its samples.
     </p>
 
-    <h2>The verb-by-verb table</h2>
-    <div class="verb-table">
-      <div class="row header">
-        <span>pm2</span>
-        <span>shep</span>
-        <span>note</span>
-      </div>
-      {
-        verbTable.map((row) => (
-          <div class="row">
-            <span class="pm2-cell"><code>{row.pm2}</code></span>
-            <span class="shep-cell"><code>{row.shep}</code></span>
-            <span class="note-cell">{row.note ?? ""}</span>
-          </div>
-        ))
-      }
-    </div>
-
-    <h2>shep serve vs. pm2 serve</h2>
+    <h2 id="shep-serve-vs-pm2-serve">shep serve vs. pm2 serve</h2>
     <p>
       <code>shep serve &lt;dir&gt;</code> is a hand-rolled static file server
       run as a managed sheep by default (<code>--foreground</code> runs it in
@@ -490,7 +511,7 @@ PORT_BASE = "3000"`}</CodeBlock>
         <strong>Dotfiles are refused by default.</strong> pm2's serve
         publishes them; shep 404s any path with a dotfile component unless
         you pass <code>--hidden</code>. <code>shep serve .</code> on a repo
-        checkout would otherwise publish <code>.env</code> and the whole
+        checkout would otherwise publish <code>.env</code> and the whole{" "}
         <code>.git</code> history.
       </li>
       <li>
@@ -501,119 +522,26 @@ PORT_BASE = "3000"`}</CodeBlock>
       </li>
     </ul>
     <p class="fine">
-      There's no <code>PM2_SERVE_*</code> environment compatibility: pass
-      <code>--port</code>, <code>--bind</code>, <code>--spa</code> and
+      There's no <code>PM2_SERVE_*</code> environment compatibility: pass{" "}
+      <code>--port</code>, <code>--bind</code>, <code>--spa</code> and{" "}
       <code>--auth &lt;file&gt;</code> on the command line instead.
     </p>
 
-    <h2>pm2-runtime vs. shep runtime</h2>
+    <h2 id="pm2-runtime-vs-shep-runtime">pm2-runtime vs. shep runtime</h2>
     <p>
-      <code>shep-runtime</code> is the container-entrypoint alias for
+      <code>shep-runtime</code> is the container-entrypoint alias for{" "}
       <code>shep runtime</code>: a foreground, no-daemon supervisor that
       reads a Flockfile, boots the flock in-process, and exits once it
-      empties: 0 if every sheep stopped clean, 11 if one ended
+      empties: 0 if every sheep stopped clean, 11 if one ended{" "}
       <code>errored</code>, so an orchestrator can tell "finished" from
       "died". At PID 1 it also reaps re-parented zombies and forwards
-      signals, which a container that skips this step accumulates until
+      signals, which a container that skips this step accumulates until{" "}
       <code>docker stop</code> waits out the full grace period.
     </p>
-
-    <h2>The runbook</h2>
-    <p>
-      Import, save, install the boot unit, then reboot and check the flock
-      came back: the sequence <code>docs/specs/shep-v1.md</code> describes
-      as the flagship migration scenario. Step 3 is the only step that
-      touches pm2, and the only irreversible one in the list.
-    </p>
-    <CodeBlock>{`1.  shep import --dry-run           # read the Flockfile before it is written
-2.  shep import                     # writes ./Flockfile.toml; starts nothing
-3.  pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
-4.  shep start ./Flockfile.toml     # the flock comes up under shep
-5.  shep flock                      # every app online, CPU and MEM populated
-6.  shep save                       # names the roll it wrote and the app count
-7.  sudo shep startup --user <you>  # writes and enables the unit
-8.  systemctl status shep-<you>     # active (running), and green
-9.  reboot
-10. systemctl status shep-<you>     # active (running) WITHOUT anyone logging in
-11. shep flock                      # the same apps, new pids, uptime near zero`}</CodeBlock>
-    <Callout variant="note">
-      Step 8 going <code>active (running)</code> means something specific:
-      the generated unit is <code>Type=notify</code>, so systemd doesn't
-      consider it started until the daemon itself says so: it only
-      sends that signal once step 6's muster restore has finished. A green
-      status at step 8 is already evidence the restore path works, before
-      the reboot ever happens.
-    </Callout>
-
-    <h2>Rolling back</h2>
-    <p>
-      <code>shep unstartup</code> disables and removes whatever unit
-      <code>startup</code> installed. Run unprivileged, it prints the same
-      kind of paste-able <code>sudo</code> command <code>startup</code> does.
-      A machine that never ran <code>startup</code> reports the unit
-      <code>absent</code> and exits successfully. Nothing left to guess at.
-      Nothing here is destructive to pm2 itself except the one step in the
-      runbook that says so.
-    </p>
-
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/cli" class="next-card">
-        <div class="next-title">CLI reference →</div>
-        <div class="next-body">
-          Every verb this page names, generated straight from the binary's
-          own --help.
-        </div>
-      </a>
-      <a href="/docs/getting-started" class="next-card">
-        <div class="next-title">Getting started →</div>
-        <div class="next-body">
-          Building shep from source and starting a flock for the first time.
-        </div>
-      </a>
-      <a href="/docs/terminology" class="next-card">
-        <div class="next-title">Terminology →</div>
-        <div class="next-body">
-          Flock, fold, dog, bark: the words this page uses without
-          stopping to define them.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(34px, 4.4vw, 52px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 42px 0 14px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-size: 19px;
-    letter-spacing: -0.02em;
-    margin: 26px 0 10px;
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 24px;
-    text-wrap: pretty;
-  }
-
   article > p,
   article > ul {
     font-size: 16px;
@@ -631,11 +559,6 @@ PORT_BASE = "3000"`}</CodeBlock>
     margin-bottom: 8px;
   }
 
-  .fine {
-    font-size: 14px;
-    color: var(--ink-3);
-  }
-
   article :global(code) {
     font-family: "Space Mono", monospace;
     font-size: 0.88em;
@@ -644,7 +567,6 @@ PORT_BASE = "3000"`}</CodeBlock>
     padding: 1px 6px;
   }
 
-  .field-table,
   .verb-table {
     border: 3px solid var(--line);
     border-radius: 16px;
@@ -652,13 +574,12 @@ PORT_BASE = "3000"`}</CodeBlock>
     margin: 0 0 32px;
   }
 
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 14px;
-    padding: 12px 18px;
-    align-items: start;
-    font-size: 14px;
+  /* Width and margin only. The rest is the shared `.field-table` block in
+     docs-page.css, which this page's own copy used to duplicate. Two
+     columns here, not the shared default of three. */
+  .field-table {
+    --field-cols: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    margin: 0 0 32px;
   }
 
   .verb-table .row {
@@ -706,55 +627,62 @@ PORT_BASE = "3000"`}</CodeBlock>
     grid-template-columns: 1.6fr 1fr 1fr 0.6fr;
   }
 
+  .side-by-side-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 0 0 32px;
+  }
+
+  .side-by-side-grid :global(.code-block) {
+    margin-bottom: 0;
+  }
+
+  .survive-details {
+    margin: 0 0 28px;
+  }
+
+  .survive-details summary {
+    cursor: pointer;
+    font-family: "Space Mono", monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--ink-3);
+    padding: 2px 0 10px;
+  }
+
+  .survive-details[open] summary {
+    color: var(--ink);
+  }
+
+  .survive-details :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
   @media (max-width: 640px) {
-    .field-table .row,
+    /* `.field-table` is not here: the shared block stacks it already. */
     .verb-table .row,
     .bench-table .row {
       grid-template-columns: 1fr;
       gap: 4px;
     }
 
-    .row.header {
+    /* Named through the table class, not as a bare `.row.header`. Astro
+       scopes both, so `.verb-table .row` is four class-weight selectors
+       against this rule's three, and the bare version lost: the bench
+       header stayed on screen and stacked into four lines nothing lined up
+       with. */
+    .verb-table .row.header,
+    .bench-table .row.header {
       display: none;
     }
   }
 
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-top: 24px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
+  @media (max-width: 560px) {
+    .side-by-side-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
 </style>

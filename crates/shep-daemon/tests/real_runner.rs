@@ -1,10 +1,8 @@
 //! Behavioral tests for [`shep_daemon::tokio_runner::TokioRunner`] against
 //! real `/bin/sh` child processes.
 //!
-// real time: integration tier exercises the actual OS; IR-38 deviation
-// deliberate: behavioral OS tests need a separate binary so unit tests stay
-// paused-clock-pure. Every `#[tokio::test]` here runs on the real (unpaused)
-// clock — there is no `start_paused = true`.
+//! Runs on the real, unpaused clock, in a separate binary from the
+//! paused-clock unit tests.
 
 #![cfg(unix)]
 
@@ -18,15 +16,12 @@ use shep_core::signals::OperatorSignal;
 use shep_daemon::channel::{ChildMessage, ShepherdMessage};
 use shep_daemon::privilege::Credentials;
 use shep_daemon::runner::{
-    AdoptSpec, AdoptedReaper, ProcIo, ProcessRunner, RunningProcess, SpawnSpec, StdinWrite,
-    StopSignal,
+    AdoptSpec, AdoptedReaper, LogLine, ProcIo, ProcessRunner, RunningProcess, SpawnSpec,
+    StdinWrite, StopSignal,
 };
 use shep_daemon::tokio_runner::TokioRunner;
 
 /// Builds a `/bin/sh -c <script>` spec writing logs into a fresh tempdir.
-///
-/// WHY a helper: every test needs the same boilerplate (shell program, fresh
-/// log paths) but its own script and channel flag (IR-34: unique scenario).
 fn sh_spec(script: &str, channel: bool, out_file: PathBuf, err_file: PathBuf) -> SpawnSpec {
     SpawnSpec {
         name: "real-runner-test".to_string(),
@@ -42,12 +37,8 @@ fn sh_spec(script: &str, channel: bool, out_file: PathBuf, err_file: PathBuf) ->
     }
 }
 
-/// Builds a `program args...` spec writing logs under `dir` — the general
-/// form `sh_spec` doesn't cover (an arbitrary program, not always `/bin/sh
-/// -c <one script string>`). Used by the uid/gid drop proof below, which
-/// needs to run `/bin/sh -c "id -u"` and separately by nothing else today,
-/// but is named/shaped for reuse (Task 8 brief: "this file's existing
-/// helper" — added here since it didn't exist before this task).
+/// Builds a spec running `program args...` with logs under `dir`, for an
+/// arbitrary program rather than `sh_spec`'s single shell script.
 fn spec_for(dir: &tempfile::TempDir, program: &str, args: &[&str]) -> SpawnSpec {
     SpawnSpec {
         name: "real-runner-test".to_string(),
@@ -64,19 +55,61 @@ fn spec_for(dir: &tempfile::TempDir, program: &str, args: &[&str]) -> SpawnSpec 
 }
 
 /// How long a log line gets to travel from the pump's `write_all` to the
-/// file. A write that is going to land lands in microseconds; this is slack
-/// for a loaded runner, not an expected duration.
+/// file: slack for a loaded runner, not an expected duration.
 const LOG_WRITE_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Twice the other budgets in this file, for the cases written with more
+/// slack.
+///
+/// Nothing distinguishes those cases. The literal arrived three separate
+/// times in three unrelated features, and one `proc.wait()` asserting
+/// "the adopted pid must be reaped within the budget" runs on
+/// [`REAP_DEADLINE`] while three others asserting the same thing run on
+/// this. Named so a slow-CI fix has one place to go, not because the
+/// difference means anything.
+const LONG_DEADLINE: Duration = Duration::from_secs(10);
+
+/// The child's next log line, or a named panic for either way there is not
+/// one: nothing arrives inside `deadline`, or the pump's channel closes.
+///
+/// `want` says what the caller was waiting for, and both panics carry it.
+/// The second `expect` this replaces had its own string at every site,
+/// seven distinct ones saying the log channel had closed.
+///
+/// # Panics
+///
+/// If no line arrives within `deadline`, or the log channel closes first.
+async fn recv_log(io: &mut ProcIo, deadline: Duration, want: &str) -> LogLine {
+    tokio::time::timeout(deadline, io.logs.recv())
+        .await
+        .unwrap_or_else(|_| panic!("{want}: nothing arrived within {deadline:?}"))
+        .unwrap_or_else(|| panic!("{want}: the log channel closed first"))
+}
+
+/// A log file's contents with the daemon's per-line timestamp stripped,
+/// so an assertion is about what the sheep wrote.
+///
+/// A missing or unreadable file reads as empty, which is what a poll on
+/// a file not yet created wants.
+fn unstamped_file(path: &Path) -> String {
+    let text = fs::read_to_string(path).unwrap_or_default();
+    let mut out = String::new();
+    for line in text.lines() {
+        out.push_str(shep_core::logstamp::strip(line));
+        out.push('\n');
+    }
+    out
+}
 
 /// Waits for `path` to hold exactly `expected`, failing at
 /// [`LOG_WRITE_DEADLINE`].
 ///
 /// Polls rather than sleeping a fixed guess, the same shape as
-/// [`assert_reaped`] below and for the same reason: the wait is bounded by
-/// what must eventually be true, not by a number someone picked.
+/// [`assert_reaped`]: bounded by what must eventually be true, not by a
+/// guessed number.
 async fn await_file_contents(path: &Path, expected: &str) {
     let settled = tokio::time::timeout(LOG_WRITE_DEADLINE, async {
-        while fs::read_to_string(path).unwrap_or_default() != expected {
+        while unstamped_file(path) != expected {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
@@ -125,44 +158,29 @@ async fn exit_code_and_logs_are_captured() {
     assert_eq!(outcome.code, Some(7));
     assert_eq!(outcome.signal, None);
 
-    // Observing a line on `logs` means the pump ISSUED that line's file
-    // write before forwarding it, not that the write landed: `tokio::fs`
-    // copies into its own buffer and dispatches the real `write(2)` to the
-    // blocking pool, so `write_all().await` returning means queued. It is
-    // reliable in practice — at most one write is ever in flight, and the
-    // next one awaits the previous operation — but that is an implementation
-    // detail rather than a contract, so these read the file back on a
-    // bounded poll instead of resting on it.
+    // A line on `logs` means the pump issued the write, not that it landed:
+    // `write_all().await` returning only means queued in `tokio::fs`'s
+    // buffer. Read the file back on a bounded poll instead of assuming it.
     await_file_contents(&out_file, "out-line\n").await;
     await_file_contents(&err_file, "err-line\n").await;
 }
 
 /// A shell fragment that blocks until `marker` exists, polling once a
-/// second. `sleep`'s only portable argument is a whole number of seconds
-/// (POSIX), so a finer poll would be a bet on a particular `sleep`.
+/// second: `sleep`'s only portable argument is a whole number of seconds.
 ///
-/// Used to put a real child's output either side of a reopen without
-/// guessing at timing: the test writes the marker exactly when it wants the
-/// next line, so "after" can only have been written after the swap.
+/// Lets the test control exactly when a child prints its next line,
+/// without guessing at timing.
 fn wait_for_marker(marker: &Path) -> String {
     format!("while [ ! -f {} ]; do sleep 1; done", marker.display())
 }
 
-/// Fails if a reopen leaves the pump writing into the renamed inode — which
-/// is `create`-mode rotation (rename, then ask) silently producing an empty
-/// live log forever, with `bleats --no-follow` printing nothing and exiting
-/// 0.
+/// Fails if a reopen leaves the pump writing into the renamed inode,
+/// silently producing an empty live log forever under `create`-mode
+/// rotation.
 ///
-/// Both halves are the assertion. A test that only checked the recreated
-/// path grows would also pass against a pump that opened a SECOND handle
-/// and kept the first: the new lines would land in both files. Checking
-/// that the archive stopped growing is what pins the old handle as closed.
-///
-/// The duplex-stream cases in `tokio_runner.rs` cover the same swap without
-/// a child. This one is the real article — a real fork, real pipes, a real
-/// inode under the rename — which is the only tier where the child's own
-/// view of its stdout could be disturbed by the swap, and the reason
-/// nothing child-side is asked for: it holds a pipe, never the file.
+/// Checks both halves: the archive must stop growing and the live path
+/// must get the new lines. A pump holding a second handle to the old file
+/// would still pass a check of only one side.
 #[tokio::test]
 async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -182,10 +200,12 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
     // it is written leaves a real process behind for the rest of the run.
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    let line = tokio::time::timeout(LOG_WRITE_DEADLINE, io.logs.recv())
-        .await
-        .expect("the child's first line must arrive")
-        .expect("logs closed before the first line");
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child's first line must arrive",
+    )
+    .await;
     assert_eq!(line.line, "before");
     await_file_contents(&out_file, "before\n").await;
 
@@ -212,19 +232,21 @@ async fn a_reopen_moves_a_real_childs_output_onto_the_recreated_path() {
 
     // No polling: the acknowledgement is a real barrier, since the reopen
     // flushes the old handle before dropping it.
-    assert_eq!(fs::read_to_string(&out_file).unwrap(), "");
-    assert_eq!(fs::read_to_string(&archive).unwrap(), "before\n");
+    assert_eq!(unstamped_file(&out_file), "");
+    assert_eq!(unstamped_file(&archive), "before\n");
 
     fs::write(&marker, "").unwrap();
-    let line = tokio::time::timeout(LOG_WRITE_DEADLINE, io.logs.recv())
-        .await
-        .expect("the child's second line must arrive")
-        .expect("logs closed before the second line");
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child's second line must arrive",
+    )
+    .await;
     assert_eq!(line.line, "after");
 
     await_file_contents(&out_file, "after\n").await;
     assert_eq!(
-        fs::read_to_string(&archive).unwrap(),
+        unstamped_file(&archive),
         "before\n",
         "the renamed file must stop growing the moment the handle is swapped"
     );
@@ -248,15 +270,13 @@ async fn signal_ignored_then_kill_tree_reaps() {
 
     let (mut proc, _io) = runner.spawn(&spec).unwrap();
 
-    // Real sleep: give the shell time to actually execute `trap "" TERM`
-    // before we signal it — without this grace period the signal can win a
-    // race against the shell's own startup and kill it via the default
-    // (untrapped) disposition.
+    // Gives the shell time to run `trap "" TERM` before we signal it, or
+    // the signal can win the race and kill it via the untrapped default.
     tokio::time::sleep(Duration::from_millis(100)).await;
     proc.signal(StopSignal::Term).unwrap();
 
-    // Real sleep: give the (TERM-ignoring) child a real window to have exited
-    // if our signal wrongly killed it.
+    // Gives the child a window to have exited if the signal wrongly
+    // killed it despite the trap.
     tokio::time::sleep(Duration::from_millis(300)).await;
     let still_running = tokio::time::timeout(Duration::from_millis(1), proc.wait()).await;
     assert!(
@@ -265,25 +285,23 @@ async fn signal_ignored_then_kill_tree_reaps() {
     );
 
     proc.kill_tree().unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("kill_tree should reap promptly");
     assert_eq!(outcome.signal, Some(9));
 }
 
 /// A real child, a real `kill(2)`, and the one assertion the scripted tier
-/// cannot make: the signal reached the sheep and NOT the lamb it forked.
+/// cannot make: the signal reached the sheep, not the lamb it forked.
 ///
-/// The wrapper traps SIGUSR1 and prints one word; the lamb traps it and prints
-/// another. A group delivery prints both. Bounded (IR-46): without the timeout
-/// a signal that reached nobody would hang the read rather than fail it.
+/// The wrapper traps SIGUSR1 and prints one word; the lamb traps it and
+/// prints another. A group delivery prints both. Bounded: a signal that
+/// reached nobody must fail the read rather than hang it.
 #[tokio::test]
 async fn a_process_signal_reaches_the_sheep_and_not_its_lamb() {
     let dir = tempfile::tempdir().unwrap();
-    // The lamb arms its trap and announces itself, so the test can wait for it
-    // to be READY rather than racing the fork. Without that line the signal can
-    // land before `trap` runs in the subshell and the assertion passes for the
-    // wrong reason.
+    // The lamb announces itself once its trap is armed, so the test waits
+    // for that instead of racing the fork.
     let script = r#"
         trap 'echo sheep-got-it' USR1
         ( trap 'echo lamb-got-it' USR1; echo lamb-ready; while :; do sleep 0.1; done ) &
@@ -299,19 +317,22 @@ async fn a_process_signal_reaches_the_sheep_and_not_its_lamb() {
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
     let _reaper = Reaper(vec![i32::try_from(proc.pid()).unwrap()]);
 
-    // Wait for the lamb's trap to be armed.
-    let ready = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("the lamb did not announce itself within 10s")
-        .expect("log channel closed");
+    let ready = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "the lamb did not announce itself within 10s",
+    )
+    .await;
     assert_eq!(ready.line, "lamb-ready");
 
     proc.signal_process(OperatorSignal::Usr1).unwrap();
 
-    let answer = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("nothing answered the signal within 10s")
-        .expect("log channel closed");
+    let answer = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "nothing answered the signal within 10s",
+    )
+    .await;
     assert_eq!(answer.line, "sheep-got-it");
 
     // And nothing else follows it. A group delivery would put `lamb-got-it` on
@@ -326,38 +347,25 @@ async fn a_process_signal_reaches_the_sheep_and_not_its_lamb() {
 }
 
 /// How long the forked grandchild in
-/// [`a_graceful_stop_reaches_a_forked_grandchild`] sleeps: comfortably longer
-/// than [`REAP_DEADLINE`], so a passing run proves the stop signal reached it
-/// rather than that it finished on its own; short enough that a run panicking
-/// before [`Reaper`] fires leaves nothing lingering for a whole CI job.
+/// [`a_graceful_stop_reaches_a_forked_grandchild`] sleeps: longer than
+/// [`REAP_DEADLINE`], so a pass proves the signal reached it rather than
+/// that it exited on its own.
 const ORPHAN_SLEEP_SECS: u32 = 30;
 
-/// How long [`assert_reaped`] waits for a pid to leave the process table. A
-/// signal that lands takes milliseconds; this is slack for a loaded runner,
-/// not an expected duration.
+/// How long [`assert_reaped`] waits for a pid to leave the process table:
+/// slack for a loaded runner, not an expected duration.
 const REAP_DEADLINE: Duration = Duration::from_secs(5);
 
-/// Last-resort net for a test that PANICS with real processes still alive, so
-/// a failing assertion never leaks a 30-second `sleep` into the rest of the
-/// run.
+/// Last-resort net: kills any process left alive when a test panics, so a
+/// failing assertion never leaks a real process into the rest of the run.
 ///
-/// Fires ONLY while panicking: on the success path the test has already
-/// proven these pids are gone, and signalling a pid the OS may since have
-/// recycled is a hazard rather than a safety net.
+/// Fires only while panicking. On the success path the test has already
+/// proven these pids are gone, and signalling one the OS may have recycled
+/// is a hazard rather than a safety net.
 ///
-/// SIGKILLs the whole process GROUP (`-pid`, not `pid`), modelled on
-/// `daemon_e2e.rs`'s `Fixture::drop`, which has done so all along and states
-/// the reason: `TokioRunner` spawns every child as its own group leader, so
-/// the group signal also reaches a forked `sleep` grandchild that a
-/// leader-only signal misses. A leader-only `Reaper` agreed with its sibling
-/// on the happy path of
-/// [`a_graceful_stop_reaches_a_forked_grandchild`] only because that test
-/// pushes its grandchild's pid explicitly — and a panic anywhere between the
-/// spawn and that push (the group-leader assertion and the five-second wait
-/// for the wrapper's `echo $!` both live in that window) left an untracked
-/// `sleep` behind with nothing tracking it. That same test asserts the
-/// leader property this signal depends on, so `-pid` is safe exactly where it
-/// is needed.
+/// SIGKILLs the whole process group (`-pid`, not `pid`): `TokioRunner`
+/// spawns every child as its own group leader, so a leader-only signal
+/// would miss a forked grandchild.
 struct Reaper(Vec<i32>);
 
 impl Drop for Reaper {
@@ -374,12 +382,9 @@ impl Drop for Reaper {
     }
 }
 
-/// Polls `kill(pid, None)` for `ESRCH` instead of sleeping a fixed guess —
-/// the same technique, for the same reason, as `daemon_e2e.rs`'s own
-/// `assert_reaped` (integration binaries are separate crates, so the helper
-/// is duplicated rather than shared). `kill(pid, None)` still returns `Ok`
-/// for a zombie, so only a transition all the way to `ESRCH` proves the
-/// process is really gone rather than exited-but-unreaped.
+/// Polls `kill(pid, None)` for `ESRCH` rather than sleeping a fixed guess.
+/// `kill(pid, None)` still returns `Ok` for a zombie, so only `ESRCH`
+/// proves the process is gone rather than exited-but-unreaped.
 async fn assert_reaped(pid: i32, what: &str) {
     let reaped = tokio::time::timeout(REAP_DEADLINE, async {
         loop {
@@ -393,20 +398,12 @@ async fn assert_reaped(pid: i32, what: &str) {
     assert!(reaped.is_ok(), "{what} (pid {pid}) is still alive");
 }
 
-/// The orphan regression: a graceful stop must reach a sheep's forked lambs,
-/// not just the sheep.
+/// The wrapper forks a long-lived child without `exec`, so a leader-only
+/// signal can let the wrapper exit clean while the fork runs on,
+/// reparented and untracked.
 ///
-/// The wrapper is the shape that used to leak — it forks a long-lived child
-/// and does NOT `exec` it, so the child is a separate process sitting in the
-/// sheep's own process group. `signal` targeted the leader alone, the wrapper
-/// died promptly out of its `wait`, `proc.wait()` returned `Ok` so the ladder
-/// never escalated to `kill_tree`, and the `sleep` ran on — reparented,
-/// untracked, invisible to `shep list` and to the next `shep kill` alike.
-///
-/// Only the grandchild tells the two behaviors apart: the wrapper exits on
-/// `SIGTERM` either way. Nothing here sleeps for a fixed guess — the fork is
-/// awaited via the pid the wrapper prints AFTER forking, and the grandchild's
-/// death via [`assert_reaped`]'s `ESRCH` poll.
+/// Only the grandchild's death tells the two behaviors apart: the wrapper
+/// exits on `SIGTERM` either way.
 #[tokio::test]
 async fn a_graceful_stop_reaches_a_forked_grandchild() {
     let dir = tempfile::tempdir().unwrap();
@@ -422,10 +419,8 @@ async fn a_graceful_stop_reaches_a_forked_grandchild() {
     let leader = i32::try_from(proc.pid()).unwrap();
     let mut reaper = Reaper(vec![leader]);
 
-    // Pins the property both stop rungs' negative-pid signal depends on
-    // (`tokio_runner.rs`'s `signal_group`): a runner that dropped
-    // `process_group(0)` would leave `-pid` naming no group at all, and every
-    // assertion below would fail for a reason this makes explicit.
+    // Pins the property `-pid` signals depend on: without `process_group(0)`
+    // the pid would lead no group at all.
     assert_eq!(
         nix::unistd::getpgid(Some(nix::unistd::Pid::from_raw(leader)))
             .unwrap()
@@ -434,19 +429,20 @@ async fn a_graceful_stop_reaches_a_forked_grandchild() {
         "a spawned sheep must lead its own process group"
     );
 
-    // The wrapper prints `$!` only after the fork has happened, so receiving
-    // this line is proof the grandchild exists — no grace-period sleep needed
-    // to close the race the other tests in this file have to.
-    let line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the wrapper must report its forked child's pid")
-        .expect("logs channel closed before the pid arrived");
+    // The wrapper prints `$!` only after forking, so receiving this line
+    // proves the grandchild already exists.
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the wrapper must report its forked child's pid",
+    )
+    .await;
     let grandchild: i32 = line.line.trim().parse().expect("`echo $!` prints a pid");
     reaper.0.push(grandchild);
     assert_ne!(grandchild, leader, "sanity: `&` really forked");
 
     proc.signal(StopSignal::Term).unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("the wrapper must exit on SIGTERM");
     assert_eq!(
@@ -455,7 +451,6 @@ async fn a_graceful_stop_reaches_a_forked_grandchild() {
         "the wrapper itself dies of the same signal either way"
     );
 
-    // The assertion the whole test exists for.
     assert_reaped(grandchild, "the wrapper's forked child").await;
 }
 
@@ -472,33 +467,28 @@ async fn shepherd_channel_delivers_ready() {
 
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
 
-    let msg = tokio::time::timeout(Duration::from_secs(5), io.from_child.recv())
+    let msg = tokio::time::timeout(CHANNEL_DEADLINE, io.from_child.recv())
         .await
         .expect("shepherd-channel Ready should arrive promptly")
         .expect("from_child closed before Ready arrived");
     assert_eq!(msg, ChildMessage::Ready);
 
-    // Real sleep: `printf ... >&3` is a shell builtin that returns (and lets
-    // us observe Ready) before the shell has necessarily forked its `sleep
-    // 5` child. Without this grace period, kill_tree's group-wide SIGKILL
-    // can win that race and leave `sleep 5` behind as an orphan (its fork
-    // simply hadn't happened yet when the kernel delivered the signal).
+    // Gives the shell time to fork its `sleep 5` child before kill_tree's
+    // SIGKILL, or the fork can miss the group signal entirely.
     tokio::time::sleep(Duration::from_millis(100)).await;
     proc.kill_tree().unwrap();
-    let outcome = tokio::time::timeout(Duration::from_secs(5), proc.wait())
+    let outcome = tokio::time::timeout(REAP_DEADLINE, proc.wait())
         .await
         .expect("kill_tree should reap promptly");
     assert_eq!(outcome.signal, Some(9));
 }
 
 /// fails if a real child with a channel does not see `SHEP_CHANNEL_VERSION`
-/// in its environment. The child prints the variable and the pump carries it
-/// to the log file, so this proves the whole path an app walks — env set on
-/// the `Command`, inherited across the exec, readable by a plain shell.
+/// in its environment, from the `Command` through the exec to a plain
+/// shell read.
 ///
-/// Bounded by `await_file_contents`'s own `LOG_WRITE_DEADLINE` rather than by
-/// an unbounded read: a version that never arrives has to fail here in
-/// seconds, not hang until the harness gives up on the whole binary.
+/// Bounded by `await_file_contents`'s `LOG_WRITE_DEADLINE`: a version that
+/// never arrives fails in seconds rather than hanging the whole binary.
 #[tokio::test]
 async fn a_child_with_a_channel_is_told_which_channel_it_is() {
     let dir = tempfile::tempdir().unwrap();
@@ -513,9 +503,8 @@ async fn a_child_with_a_channel_is_told_which_channel_it_is() {
     await_file_contents(&dir.path().join("out.log"), "1\n").await;
 }
 
-/// fails if `SHEP_CHANNEL_VERSION` leaks into a child that was given no
-/// channel. The pair matters: a variable set unconditionally would tell an
-/// app with no fd 3 that it has a channel to speak.
+/// fails if `SHEP_CHANNEL_VERSION` leaks into a child given no channel: an
+/// app with no fd 3 must not be told it has one.
 #[tokio::test]
 async fn a_child_without_a_channel_is_told_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -528,19 +517,15 @@ async fn a_child_without_a_channel_is_told_nothing() {
     await_file_contents(&dir.path().join("out.log"), "[]\n").await;
 }
 
-/// A `/bin/sh` child that answers exactly `rounds` shepherd-channel messages
-/// with a reply naming which round it is, then exits 0.
+/// A `/bin/sh` child that answers exactly `rounds` shepherd-channel
+/// messages with a reply naming which round it is, then exits 0.
 ///
-/// `read -r line <&3` is the plainest blocking read there is, which is the
-/// point: the app author who writes this is the one a non-blocking fd 3
-/// breaks. A read that fails takes the child out with a distinct status
-/// rather than looping, so a broken channel ends the case promptly instead
-/// of hanging until the deadline.
+/// `read -r line <&3` blocks; a failed read exits with a distinct status
+/// instead of looping, so a broken channel ends the case promptly.
 ///
 /// The round number is the child's own count of completed reads, not
-/// anything parsed out of the message — extracting a JSON field in POSIX sh
-/// would be its own source of failure. Since the shepherd sends in order,
-/// reply *n* is still proof that the child got through *n* reads.
+/// anything parsed from the message: the shepherd sends in order, so
+/// reply *n* still proves the child got through *n* reads.
 fn channel_echo_script(rounds: u32) -> String {
     format!(
         r#"n=0
@@ -552,22 +537,19 @@ done"#
     )
 }
 
-/// How long one shepherd-channel exchange gets. A channel that works
-/// answers in microseconds; this is slack for a loaded runner, not an
-/// expected duration.
+/// How long one shepherd-channel exchange gets: slack for a loaded
+/// runner, not an expected duration.
 const CHANNEL_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Sends one message and returns the child's reply.
 ///
-/// Panics with the child's stderr rather than a bare timeout, because that
-/// is where the diagnosis lives: a shell `read` that hits a non-blocking
-/// descriptor prints `read error: 0: Resource temporarily unavailable`
-/// there and nowhere else.
+/// Panics with the child's stderr rather than a bare timeout: a shell
+/// `read` on a non-blocking descriptor prints `read error: 0: Resource
+/// temporarily unavailable` there and nowhere else.
 ///
-/// A send that fails is folded into the same report instead of asserted on
-/// separately: it means the writer task already saw the child's end close,
-/// which is the same failure one moment earlier and deserves the same
-/// stderr.
+/// A send that fails is folded into the same report: it means the writer
+/// task already saw the child's end close, the same failure a moment
+/// earlier.
 async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> ChildMessage {
     let name = format!("round-{round}");
     let delivered = io
@@ -575,9 +557,8 @@ async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> Chi
         .send(ShepherdMessage::Action {
             name,
             params: None,
-            // Derived from `round`, not hardcoded: this helper is called once
-            // per round, and a distinct id per call is what keeps each
-            // round's dispatch its own rather than sharing a stamp.
+            // Derived from `round`: a distinct id per call keeps each
+            // round's dispatch its own.
             id: u64::from(round),
         })
         .await
@@ -598,25 +579,17 @@ async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> Chi
     })
 }
 
-/// Fails if fd 3 reaches the child non-blocking: a plain `read <&3` then
-/// gets `EAGAIN` — "Resource temporarily unavailable" — instead of parking,
-/// and a child that is waiting for the shepherd to say something never
+/// Fails if fd 3 reaches the child non-blocking: a plain `read <&3` gets
+/// `EAGAIN` instead of parking, so a child waiting for the shepherd never
 /// hears it.
 ///
-/// TWO round trips, and the second one is the whole test. The first is a
-/// spawn-timing race the child normally wins for the wrong reason: the
-/// shepherd's message is already sitting in the socket buffer by the time
-/// `/bin/sh` has exec'd and reached its first `read`, so that read finds
-/// bytes waiting and never has to block at all. Only the second round trip
-/// puts the child at the read FIRST — nothing is sent until the first reply
-/// proves it got through round one — and a descriptor that cannot block is
-/// obliged to fail there. Cutting this back to one exchange leaves a case
-/// that passes against a non-blocking fd 3.
+/// Two round trips: the first can pass even against a non-blocking fd 3,
+/// since the message is often already buffered before the child's first
+/// `read`. Only the second puts the child at the read first, since
+/// nothing is sent until the first reply arrives.
 ///
-/// `shutdown_with_message` is the shipped feature this protects. It sends
-/// `{"kind":"shutdown"}` to a child that has been running, and therefore
-/// waiting, since long before the message existed: always round two, never
-/// round one.
+/// `shutdown_with_message` depends on this: it always reaches a child
+/// already parked on a read, never one still starting up.
 #[tokio::test]
 async fn a_child_can_block_reading_the_shepherd_channel() {
     let dir = tempfile::tempdir().unwrap();
@@ -643,8 +616,6 @@ async fn a_child_can_block_reading_the_shepherd_channel() {
         }
     );
 
-    // Only now is the child parked on a read with an empty socket behind
-    // it, which is the state the whole case exists to exercise.
     let second = channel_round_trip(&mut io, 2, &err_file).await;
     assert_eq!(
         second,
@@ -665,57 +636,35 @@ async fn a_child_can_block_reading_the_shepherd_channel() {
     );
 }
 
-/// Proves `TokioRunner::spawn`'s `command.uid(creds.uid)` /
-/// `command.gid(gid)` lines (the ones a whole-branch review found a
-/// reviewer could delete with the full suite staying green — the only
-/// other coverage was the root-only, `#[ignore]`d test just below, plus
-/// `fake.rs:401` which hardcodes `credentials: None` and so never reaches
-/// this code at all) are ACTUALLY CALLED, without requiring root.
+/// Proves `TokioRunner::spawn`'s `command.uid`/`command.gid` calls are
+/// actually invoked, without requiring root.
 ///
-/// The obvious version of this test — spawn with your OWN uid/gid and
-/// assert the child reports them back — does NOT work as a regression
-/// gate: verified empirically against this toolchain's own
-/// `library/std/src/sys/process/unix/unix.rs::do_exec` (stable
-/// aarch64-apple-darwin, and confirmed with a standalone probe binary)
-/// that `setuid`/`setgid` to your OWN id is a permitted no-op with zero
-/// observable effect, AND std's own `setgroups(0, NULL)` privilege-drop
-/// call (triggered whenever `.uid()` is set without `.groups()`) silently
-/// swallows `EPERM` for a non-root caller — so a child spawned with the
-/// daemon's own uid/gid looks byte-for-byte identical to one spawned with
-/// `spec.credentials: None`, whether or not `command.uid`/`command.gid`
-/// were ever called. That version would pass unchanged even with both
-/// lines deleted.
+/// Spawning with your own uid/gid does not work as a regression gate:
+/// it is a permitted no-op, and std silently swallows the `EPERM` from
+/// its own privilege-drop `setgroups` call for a non-root caller. A
+/// child spawned this way looks the same whether or not the lines run.
 ///
-/// This version instead targets a uid/gid the test process does NOT own.
-/// A non-root `setuid`/`setgid` to any id other than your own real/
-/// effective/saved id fails `EPERM` (POSIX) — deterministically, on every
-/// unix — so if `command.uid`/`command.gid` are actually invoked inside
-/// `TokioRunner::spawn`'s child setup, `spawn()` itself returns `Err`
-/// (std pipes a pre-exec failure back to the parent before ever calling
-/// `execve`). If the two lines are deleted, `spec.credentials` is simply
-/// never applied to the `Command` and `spawn()` succeeds instead. That
-/// difference is exactly what each assertion below checks.
+/// This targets a uid/gid the test process does not own instead. A
+/// non-root `setuid`/`setgid` to any other id fails `EPERM`
+/// deterministically, so real calls make `spawn()` return `Err`; deleted
+/// lines let `spawn()` succeed instead.
 #[tokio::test]
 async fn credentials_are_actually_applied_a_foreign_id_is_refused_by_the_os() {
     if nix::unistd::geteuid().is_root() {
-        // As root, setuid/setgid to an arbitrary id typically succeeds
-        // instead of failing — this test's whole premise (a guaranteed
-        // EPERM) doesn't hold, and the root-only test below already
-        // covers the apply path under privilege. Nothing to assert here.
+        // As root, setuid/setgid to an arbitrary id typically succeeds, so
+        // this test's EPERM premise doesn't hold.
         return;
     }
     let own_uid = nix::unistd::geteuid().as_raw();
     let own_gid = nix::unistd::getegid().as_raw();
-    // Neither number needs to name a real passwd/group entry — a raw
-    // setuid(2)/setgid(2) EPERMs on an unowned id regardless of whether
-    // anything in /etc/passwd or /etc/group claims it.
+    // Neither id needs a real passwd/group entry: setuid(2)/setgid(2)
+    // EPERMs on any unowned id regardless.
     let foreign_uid = if own_uid == 1 { 2 } else { 1 };
     let foreign_gid = if own_gid == 1 { 2 } else { 1 };
     let runner = TokioRunner::new();
 
-    // Isolates `command.uid(creds.uid)`: `gid: None` means the
-    // `if let Some(gid) = creds.gid` line is never even reached, so a
-    // failure here can only come from the unconditional `.uid()` call.
+    // Isolates `command.uid`: `gid: None` means `command.gid` is never
+    // reached, so a failure here can only come from `.uid()`.
     let dir = tempfile::tempdir().unwrap();
     let mut uid_spec = spec_for(&dir, "id", &["-u"]);
     uid_spec.credentials = Some(Credentials {
@@ -729,9 +678,8 @@ async fn credentials_are_actually_applied_a_foreign_id_is_refused_by_the_os() {
          called; an `Ok` here means the credentials were silently dropped on the floor"
     );
 
-    // Isolates `command.gid(gid)`: `uid: own_uid` is a permitted no-op
-    // (see this fn's own doc), so a failure here can only come from the
-    // `if let Some(gid) = creds.gid { command.gid(gid); }` line.
+    // Isolates `command.gid`: `uid: own_uid` is a permitted no-op, so a
+    // failure here can only come from `.gid()`.
     let dir = tempfile::tempdir().unwrap();
     let mut gid_spec = spec_for(&dir, "id", &["-g"]);
     gid_spec.credentials = Some(Credentials {
@@ -749,7 +697,6 @@ async fn credentials_are_actually_applied_a_foreign_id_is_refused_by_the_os() {
 #[tokio::test]
 #[ignore = "needs root: run with `sudo -E cargo test -p shep-daemon --test real_runner -- --ignored`"]
 async fn a_dropped_child_runs_as_the_requested_user() {
-    // Real time: this file's whole tier is real OS behavior.
     assert!(
         nix::unistd::geteuid().is_root(),
         "this test only means anything as root"
@@ -759,11 +706,8 @@ async fn a_dropped_child_runs_as_the_requested_user() {
         .expect("every unix box has `nobody`");
 
     let dir = tempfile::tempdir().unwrap();
-    // `id -G` after `id -u`: proves not just the uid drop but that std's
-    // do_exec cleared root's supplementary groups (setgroups(0, NULL),
-    // called automatically whenever `.uid()` is set without `.groups()` —
-    // see tokio_runner.rs's comment) instead of leaking them into the
-    // dropped-privilege child.
+    // `id -G` after `id -u` proves the drop also cleared root's
+    // supplementary groups instead of leaking them into the child.
     let mut spec = spec_for(&dir, "/bin/sh", &["-c", "id -u; id -G"]);
     spec.credentials = Some(Credentials {
         uid: target.uid.as_raw(),
@@ -772,17 +716,16 @@ async fn a_dropped_child_runs_as_the_requested_user() {
 
     let runner = TokioRunner::new();
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
-    let uid_line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the child must print its uid")
-        .expect("the log pump must deliver the line");
+    let uid_line = recv_log(&mut io, LOG_WRITE_DEADLINE, "the child must print its uid").await;
     assert_eq!(uid_line.line.trim(), target.uid.as_raw().to_string());
     assert!(!uid_line.err);
 
-    let groups_line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the child must print its group list")
-        .expect("the log pump must deliver the line");
+    let groups_line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the child must print its group list",
+    )
+    .await;
     let groups: Vec<&str> = groups_line.line.split_whitespace().collect();
     assert_eq!(
         groups,
@@ -794,25 +737,15 @@ async fn a_dropped_child_runs_as_the_requested_user() {
     assert_eq!(proc.wait().await.code, Some(0));
 }
 
-/// RAII guard: sets `PATH` for the duration of a test and restores the
-/// original value on drop (including on panic, so a failing assertion never
-/// leaks a mutated `PATH` into whichever OTHER test the harness's default
-/// multi-threaded runner happens to run concurrently).
+/// RAII guard: sets `PATH` for a test and restores it on drop, including on
+/// panic, so a failing assertion never leaks a mutated `PATH` into another
+/// test running concurrently.
 ///
-/// # Why `unsafe` is contained to this file, not the `shep-daemon` crate
-///
-/// `std::env::set_var`/`remove_var` are `unsafe fn` (edition 2024): the
-/// hazard they document is an OS thread doing a raw, std-unsynchronized
-/// `getenv` at the same instant. `tests/real_runner.rs` is compiled as its
-/// own crate root (a `[[test]]` binary), not part of the `shep-daemon`
-/// library crate `lib.rs` gates with `#![deny(unsafe_code)]` — so this does
-/// NOT add a second unsafe site to that crate's documented one. Within this
-/// binary specifically: no other test here reads or writes `PATH`, and
-/// `std::process::Command::spawn` (used throughout this file) reads env
-/// through std's OWN `env_read_lock`/fork synchronization (see
-/// `library/std/src/sys/process/unix/unix.rs`), not a raw unsynchronized
-/// `getenv` — so the actual soundness hazard the `unsafe` marker exists for
-/// doesn't apply to anything this binary does.
+/// `set_var`/`remove_var` are `unsafe fn` in edition 2024: the hazard is
+/// unsynchronized env reads from another thread. This binary is its own
+/// crate root, separate from `shep-daemon`'s `#![deny(unsafe_code)]`; no
+/// other test here touches `PATH`, and `Command::spawn` reads env through
+/// std's own synchronized path, so nothing here can race it.
 struct PathGuard {
     original: Option<String>,
 }
@@ -820,7 +753,8 @@ struct PathGuard {
 impl PathGuard {
     fn set(new_path: &std::path::Path) -> Self {
         let original = std::env::var("PATH").ok();
-        // SAFETY: see struct doc.
+        // SAFETY: no other test writes `PATH`; `Command::spawn`'s concurrent
+        // reads go through std's synchronized path, not a raw `getenv`.
         unsafe { std::env::set_var("PATH", new_path) };
         Self { original }
     }
@@ -829,9 +763,11 @@ impl PathGuard {
 impl Drop for PathGuard {
     fn drop(&mut self) {
         match &self.original {
-            // SAFETY: see PathGuard's doc.
+            // SAFETY: no other test writes `PATH`; `Command::spawn`'s
+            // concurrent reads go through std's synchronized path.
             Some(value) => unsafe { std::env::set_var("PATH", value) },
-            // SAFETY: see PathGuard's doc.
+            // SAFETY: no other test writes `PATH`; `Command::spawn`'s
+            // concurrent reads go through std's synchronized path.
             None => unsafe { std::env::remove_var("PATH") },
         }
     }
@@ -839,28 +775,13 @@ impl Drop for PathGuard {
 
 #[tokio::test]
 async fn a_bare_interpreter_resolves_via_the_seeded_path() {
-    // `tests/daemon_e2e.rs`'s `a_bare_interpreter_resolves_via_the_inherited_path`
-    // proves the same thing through the full daemon RPC stack — Start over
-    // the real socket -> supervisor -> assemble() -> TokioRunner -> OS exec.
-    // Kept here too rather than deleted: this test isolates the
-    // assemble()+TokioRunner tier specifically (config -> assemble()'s
-    // base_env() PATH seed -> TokioRunner spawn -> OS exec), so a failure
-    // here versus one only in the e2e tier still tells you which layer
-    // regressed.
-    //
-    // WHY a hand-rolled shim instead of `sh`/`node`: `/bin/sh` is reachable
-    // even with a completely EMPTY child env, because glibc/libSystem's
-    // `execvp` falls back to the OS's compiled-in default search path
-    // (`_PATH_DEFPATH`, `/usr/bin:/bin` on macOS/BSD) whenever `PATH` is
-    // ABSENT from the env it's given — independent of anything assemble()
-    // does. Verified empirically: `subprocess.run(["sh", ...], env={})`
-    // (a fully empty env, no PATH key at all) still succeeds, and a bare
-    // "sh" here does NOT actually gate the fix (reverting `base_env()`
-    // leaves it passing). A shim living in a throwaway tempdir can NEVER be
-    // found by that OS-level fallback, so it can only resolve if
-    // assemble()'s seeded PATH genuinely reaches it.
+    // Isolates assemble()+TokioRunner from the full e2e stack. A shim, not
+    // `/bin/sh`: `/bin/sh` falls back to the OS's default PATH even with
+    // an empty env, so it would pass without a real seed. A shim in a
+    // tempdir can only resolve through the seed.
     use shep_core::config::{AppConfig, normalize};
     use shep_core::paths::ShepPaths;
+    use shep_core::secrets::SecretView;
     use shep_daemon::assemble::assemble;
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -873,15 +794,14 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
     perms.set_mode(0o755);
     fs::set_permissions(&shim_path, perms).unwrap();
 
-    // Points the DAEMON's (this test process's) own PATH at ONLY the shim's
-    // directory — no `/usr/bin:/bin`, nothing else — so base_env() has
-    // exactly one place to find "shep-test-interp" and no coincidental
-    // fallback can paper over a regression.
+    // Points this process's own PATH at only the shim's directory, so
+    // base_env() has exactly one place to find "shep-test-interp".
     let _path_guard = PathGuard::set(&shim_dir);
 
     let paths = ShepPaths {
         home: dir.path().to_path_buf(),
         daemon_config: dir.path().join("shep.toml"),
+        dogs_config: dir.path().join("dogs.toml"),
         snapshot: dir.path().join("flock.json"),
         logs: dir.path().join("logs"),
         pids: dir.path().join("pids"),
@@ -889,6 +809,9 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         socket: dir.path().join("run/shep.sock"),
         barks: dir.path().join("barks.jsonl"),
         kv: dir.path().join("kv.json"),
+        overrides: dir.path().join("overrides.json"),
+        secrets: dir.path().join("secrets.json"),
+        secrets_cache: dir.path().join("secrets-cache.json"),
     };
     let app_config = AppConfig {
         name: "bare".to_string(),
@@ -898,7 +821,14 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         ..Default::default()
     };
     let app = normalize(app_config).unwrap();
-    let spec = assemble(&app, 0, &paths, None);
+    let spec = assemble(
+        &app,
+        0,
+        &paths,
+        None,
+        &SecretView::empty("production".to_string()),
+    )
+    .expect("this fixture carries no secret to resolve");
     assert_eq!(
         spec.program, "shep-test-interp",
         "sanity: genuinely bare, not accidentally absolute"
@@ -906,21 +836,71 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
 
     let runner = TokioRunner::new();
     let (mut proc, mut io) = runner.spawn(&spec).unwrap();
-    let line = tokio::time::timeout(Duration::from_secs(5), io.logs.recv())
-        .await
-        .expect("the shim must resolve via the seeded PATH and produce output")
-        .expect("logs channel closed before the line arrived");
+    let line = recv_log(
+        &mut io,
+        LOG_WRITE_DEADLINE,
+        "the shim must resolve via the seeded PATH and produce output",
+    )
+    .await;
     assert_eq!(line.line, "shim-exec-ok");
     assert!(!line.err);
     let outcome = proc.wait().await;
     assert_eq!(outcome.code, Some(0));
 }
 
-/// A real pipe on a real fd 0. `cat` echoes whatever is written to it, so the
-/// line coming back on stdout is proof the whole path worked — the pipe was
-/// created, mapped to fd 0, written, flushed, and read by the child.
+/// The shepherd opens a sheep's log files itself, so a relative `out_file`
+/// has to be anchored at the sheep's `cwd` before that open.
 ///
-/// Bounded (IR-46): a line that never arrives must fail this test, not hang it.
+/// This test process stands somewhere else entirely, which is the case: an
+/// unanchored path would create the file under the test binary's own
+/// directory and leave the one asserted here missing.
+#[tokio::test]
+async fn a_relative_log_path_lands_under_the_sheep_cwd() {
+    use shep_core::config::{AppConfig, normalize};
+    use shep_core::paths::ShepPaths;
+    use shep_core::secrets::SecretView;
+    use shep_daemon::assemble::assemble;
+
+    let dir = tempfile::tempdir().unwrap();
+    let app_dir = dir.path().join("app");
+    fs::create_dir_all(&app_dir).unwrap();
+    let paths = ShepPaths::resolve(
+        &|key| (key == "SHEP_HOME").then(|| dir.path().to_string_lossy().into_owned()),
+        Path::new("/unused-by-this-fixture"),
+    );
+
+    let app_config = AppConfig {
+        name: "anchored".to_string(),
+        script: "/bin/sh".to_string(),
+        interpreter: Some("none".to_string()),
+        args: vec!["-c".to_string(), "echo anchored-ok".to_string()],
+        cwd: Some(app_dir.to_string_lossy().into_owned()),
+        out_file: Some("logs/out.log".to_string()),
+        err_file: Some("logs/err.log".to_string()),
+        ..Default::default()
+    };
+    let app = normalize(app_config).unwrap();
+    let spec = assemble(
+        &app,
+        0,
+        &paths,
+        None,
+        &SecretView::empty("production".to_string()),
+    )
+    .expect("this fixture carries no secret to resolve");
+    assert_eq!(spec.out_file, app_dir.join("logs").join("out.log"));
+
+    let runner = TokioRunner::new();
+    let (mut proc, _io) = runner.spawn(&spec).unwrap();
+    assert_eq!(proc.wait().await.code, Some(0));
+    await_file_contents(&app_dir.join("logs").join("out.log"), "anchored-ok\n").await;
+}
+
+/// A real pipe on a real fd 0. `cat` echoes what is written to it, so a
+/// line on stdout proves the whole path worked: created, mapped to fd 0,
+/// written, flushed, and read by the child.
+///
+/// Bounded: a line that never arrives must fail this test, not hang it.
 #[tokio::test]
 async fn a_real_child_reads_a_line_written_to_its_stdin() {
     let dir = tempfile::tempdir().unwrap();
@@ -939,17 +919,14 @@ async fn a_real_child_reads_a_line_written_to_its_stdin() {
         .unwrap();
     ack.await.unwrap().unwrap();
 
-    let line = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("no stdout line within 10s")
-        .expect("log channel closed");
+    let line = recv_log(&mut io, LONG_DEADLINE, "no stdout line within 10s").await;
     assert!(!line.err);
     assert_eq!(line.line, "hello sheep");
 }
 
-/// fails if a spec that did not ask for a pipe gets one anyway. `/dev/null` on
-/// fd 0 is what every sheep has had until now, and `cat` reading EOF
-/// immediately — exiting rather than waiting — is the observable difference.
+/// fails if a spec that did not ask for a pipe gets one anyway. `/dev/null`
+/// on fd 0 is the default; `cat` reading EOF immediately, rather than
+/// waiting, is the observable difference.
 #[tokio::test]
 async fn a_child_that_did_not_ask_for_stdin_gets_eof_at_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -959,21 +936,16 @@ async fn a_child_that_did_not_ask_for_stdin_gets_eof_at_once() {
     let (mut proc, io) = runner.spawn(&spec).unwrap();
 
     assert!(io.to_stdin.is_closed());
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("cat did not exit on EOF within 10s");
     assert_eq!(outcome.code, Some(0));
 }
 
-// ---------------------------------------------------------------------------
-// Adoption: the seam a successor reaches a still-running sheep through.
+// --- Adoption: the seam a successor reaches a still-running sheep through ---
 //
-// Every child below is spawned by `std::process::Command`, which is what
-// makes these cases about adoption at all: tokio holds no `Child` for such a
-// process, so its exit can only be collected by the targeted `waitpid` an
-// `AdoptedReaper` runs. A `tokio::process::Command` child would prove
-// nothing, because tokio would be waiting it.
-// ---------------------------------------------------------------------------
+// Spawned via `std::process::Command`, so tokio holds no `Child`; only
+// `AdoptedReaper`'s targeted `waitpid` collects the exit.
 
 /// A child the way an adopted sheep reaches a successor: no `tokio::Child`
 /// anywhere, so nothing but the reaper will ever wait on it.
@@ -1006,10 +978,9 @@ fn adopt_spec(dir: &tempfile::TempDir, pid: u32, reaper: &Arc<AdoptedReaper>) ->
 
 /// fails if an adopted sheep's real exit never reaches the supervisor.
 ///
-/// The whole point of the seam. Task 7 proved the reaper in isolation; this
-/// proves it is reachable through `RunningProcess`, the type the supervisor
-/// actually holds, so an adopted sheep's exit drives autorestart and the
-/// EXIT column exactly as a spawned one's does.
+/// Proves the reaper is reachable through `RunningProcess`, the type the
+/// supervisor actually holds, so an adopted sheep's exit drives
+/// autorestart and the EXIT column like a spawned one's does.
 #[tokio::test]
 #[expect(
     clippy::zombie_processes,
@@ -1030,18 +1001,17 @@ async fn an_adopted_proc_reports_its_real_exit() {
         "an adopted proc keeps the pid it was given"
     );
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!((outcome.code, outcome.signal), (Some(3), None));
     drop(io);
 }
 
-/// fails if the adopted arm disturbed the path every sheep takes today.
+/// fails if the adopted arm disturbed the path every sheep takes.
 ///
-/// Regression, and the reason it is worth a case of its own: `wait` now
-/// chooses between two sources of an exit, and the spawned one is the choice
-/// every running flock depends on.
+/// `wait` now chooses between two sources of an exit; the spawned one is
+/// the choice every running flock depends on.
 #[tokio::test]
 async fn a_spawned_proc_still_reports_its_real_exit() {
     let dir = tempfile::tempdir().unwrap();
@@ -1050,7 +1020,7 @@ async fn a_spawned_proc_still_reports_its_real_exit() {
         .spawn(&spec_for(&dir, "/bin/sh", &["-c", "exit 4"]))
         .unwrap();
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("a spawned child must be waited within the budget");
     assert_eq!((outcome.code, outcome.signal), (Some(4), None));
@@ -1075,17 +1045,13 @@ async fn an_adopted_proc_reports_a_signal_as_a_signal() {
     let (mut proc, io) = TokioRunner::new()
         .adopt(adopt_spec(&dir, pid, &reaper))
         .expect("the real runner must be able to adopt");
-    // Per-process rather than `kill_tree`, and the difference is about the
-    // fixture rather than about adoption: a real sheep is the leader of its
-    // own group because the predecessor spawned it that way, while a child
-    // spawned here is in the test binary's group, so the group-wide rung
-    // has no group of its own to address. `signal_process` addresses the
-    // pid, which is the number an adopted proc carries and the one thing it
-    // was never going to have to relearn.
+    // Per-process rather than `kill_tree`: a child spawned here is in the
+    // test binary's group, not its own, so there is no group to address.
+    // `signal_process` targets the pid instead.
     proc.signal_process(OperatorSignal::Kill)
         .expect("SIGKILL the adopted sheep");
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!((outcome.code, outcome.signal), (None, Some(9)));
@@ -1094,11 +1060,10 @@ async fn an_adopted_proc_reports_a_signal_as_a_signal() {
 
 /// fails if an adopted sheep's output stops reaching its log file.
 ///
-/// The other half of the seam, and the one a successor's operator notices
-/// first: the carried pipe read end has to feed the same pump a spawn feeds,
-/// and the carried log handle has to be written through rather than reopened.
-/// The line already in the file is what proves the second half, because a
-/// handle that lost `O_APPEND` would write over it.
+/// The carried pipe read end must feed the same pump a spawn feeds, and
+/// the carried log handle must be written through rather than reopened.
+/// The line already in the file proves the second half: a handle that
+/// lost `O_APPEND` would overwrite it.
 #[tokio::test]
 #[expect(
     clippy::zombie_processes,
@@ -1132,32 +1097,31 @@ async fn an_adopted_pump_appends_the_carried_pipes_lines_through_the_carried_han
         .adopt(spec)
         .expect("the real runner must be able to adopt");
 
-    let line = tokio::time::timeout(Duration::from_secs(10), io.logs.recv())
-        .await
-        .expect("the carried pipe must still be pumped")
-        .expect("the pump must forward the line");
+    let line = recv_log(
+        &mut io,
+        LONG_DEADLINE,
+        "the carried pipe must still be pumped",
+    )
+    .await;
     assert_eq!(line.line, "after-the-handover");
     await_file_contents(&out_file, "before-the-handover\nafter-the-handover\n").await;
 
-    let outcome = tokio::time::timeout(Duration::from_secs(10), proc.wait())
+    let outcome = tokio::time::timeout(LONG_DEADLINE, proc.wait())
         .await
         .expect("the adopted pid must be reaped within the budget");
     assert_eq!(outcome.code, Some(0));
 }
 
 /// A `/bin/sh` child that holds the far end of a socketpair on fd 3 and
-/// echoes each shepherd message back once, exactly as
-/// [`channel_echo_script`] does for a spawned sheep.
+/// echoes each shepherd message back once, like [`channel_echo_script`]
+/// for a spawned sheep.
 ///
-/// Spawned with `command-fds` rather than through `TokioRunner::spawn`,
-/// which is the whole point of the fixture: the case below is about the
-/// SUCCESSOR's half, so the socketpair has to be one this test owns the
-/// daemon side of. A child the runner spawned would keep its half inside the
-/// pumps the runner wired, where nothing here can reach it.
+/// Spawned with `command-fds`, not `TokioRunner::spawn`: the case below is
+/// about the successor's half, so the daemon side of the socketpair has
+/// to be one this test owns rather than one the runner's pumps hold.
 ///
-/// A `std::process::Command`, so tokio holds no `Child` and the reaper is
-/// the only thing that will ever wait it — the same reason
-/// [`adopted_child`] uses one.
+/// A `std::process::Command`, so tokio holds no `Child`; only the reaper
+/// ever waits it, the same reason [`adopted_child`] uses one.
 fn child_holding_a_channel(child_end: std::os::fd::OwnedFd, rounds: u32) -> std::process::Child {
     use command_fds::{CommandFdExt as _, FdMapping};
 
@@ -1172,17 +1136,14 @@ fn child_holding_a_channel(child_end: std::os::fd::OwnedFd, rounds: u32) -> std:
     command.spawn().expect("spawn a shell holding fd 3")
 }
 
-/// fails if an adopted shepherd channel does not reach a real app that is
-/// blocking on `read -r line <&3`.
+/// fails if an adopted shepherd channel does not reach a real app blocked
+/// on `read -r line <&3`.
 ///
-/// The successor's half of what 2b task 5 carries, against a real process
-/// rather than a socket pair with a test on both ends. Two things can only
-/// be checked here. The child is a separate open file description, so the
-/// `set_nonblocking(true)` the adoption puts on the daemon's end must not
-/// reach it: a plain shell `read` on a non-blocking fd 3 gets `EAGAIN` and
-/// the child dies with status 3 rather than waiting. And the reply has to
-/// come back up through the reader task the adoption rebuilt, which is what
-/// `{"kind":"ready"}` and every action reply ride.
+/// Two things only a real process, not a socket pair, can check. The
+/// child is a separate open file description, so `set_nonblocking(true)`
+/// on the daemon's end must not reach it, or the child's `read` would get
+/// `EAGAIN` and die with status 3. And the reply must come back through
+/// the reader task the adoption rebuilt.
 #[tokio::test]
 #[expect(
     clippy::zombie_processes,

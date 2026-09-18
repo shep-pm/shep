@@ -97,7 +97,7 @@ config), `flock.json` (state snapshot), `logs/`, `pids/`, `run/` (sockets,
 One spawn path: `tokio::process::Command`, own process group, optional
 uid/gid, piped stdio + one extra pipe fd (the shepherd channel). "Cluster"
 = N instances of the same app, each with `SHEP_INSTANCE` slot id (lowest free
-slot among same-name; `increment_var` supported). Processes a sheep spawns
+slot among same-name). Processes a sheep spawns
 are its **lambs** (the process-tree members): shown in `describe`'s tree
 view, killed with the sheep by the process-group/Job-Object tree kill.
 
@@ -457,12 +457,14 @@ reach processes the operator never named.
 | 3 | not found | A selector matched no registered sheep. |
 | 4 | invalid config | A Flockfile or daemon config failed validation. |
 | 5 | daemon unreachable | No daemon answered, and none could be started. |
-| 6 | protocol mismatch | Client and daemon speak different wire versions. |
+| 6 | protocol mismatch | The daemon refused this client's `Hello`: its protocol version is below the daemon's `MIN_SUPPORTED` floor. |
 | 7 | spawn failed | The daemon could not spawn a sheep. |
 | 8 | deadline exceeded | The request outlived its deadline. |
 | 9 | internal | An unexpected daemon-side failure. |
 | 10 | daemon already running | Another daemon already holds this `$SHEP_HOME`. |
 | 11 | flock empty | The foreground flock emptied with a sheep in `errored`. `runtime`'s fail-fast status. |
+| 12 | version skew | The handshake succeeded, but this binary and the running shepherd are different crate versions. Not returned for `kill`, `daemon reload` or `ping`. |
+| 13 | unsupported | The daemon understood the handshake but not the request itself; a newer shepherd is the remedy. |
 
 Code 10 is a contract across a process boundary, not merely a CLI detail: a
 CLI that loses the race to start a daemon learns it only from the exit

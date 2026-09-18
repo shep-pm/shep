@@ -13,6 +13,526 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Changed
+
+- Narrow what the split widened, and unstrand two comments
+- Name the sibling a comment is talking about
+- Restore a comment the split deleted, and name four siblings
+- Stop qualifying names that are not paths
+- Stop qualifying names that are not paths ([#279](https://github.com/shep-pm/shep/pull/279))
+
+
+## [0.8.1] - 2026-09-15
+
+### Added
+
+- Shep flock shows the host strip, one-shot and followed
+
+### Fixed
+
+- CodeRabbit's full review of 666d5974, all three actionable
+
+
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Draw frame 1l, the frozen lookout dashboard ([#197](https://github.com/shep-pm/shep/pull/197)) **(BREAKING)**
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Redraw the config pane and batch its writes ([#206](https://github.com/shep-pm/shep/pull/206))
+- Give shep flock a --follow that redraws the listing
+- A host line above a followed listing
+- Let an app declare what its log levels look like ([#218](https://github.com/shep-pm/shep/pull/218))
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+- Derive the keymap's rows from map_key
+- Bind ? to the keymap alongside h
+- Raise and dismiss the keymap overlay
+- Draw the keymap overlay over the dimmed body
+- Drop the keymap's columns and border as the terminal narrows
+
+### Changed
+
+- Qwen audit group E, dog and bark duplication ([#208](https://github.com/shep-pm/shep/pull/208))
+- Export the Flockfile discovery order ([#213](https://github.com/shep-pm/shep/pull/213))
+- One spelling per rule in the CLI runtime ([#210](https://github.com/shep-pm/shep/pull/210))
+- Name the --follow interval floor, per IR-26
+- Share the overlay box between 1g and 1k
+- Draw a field's help at every width, and retire h **(BREAKING)**
+- Add must_use to keymap::lines
+- Draw the keymap overlay from one place
+- Fold the settings Select arm into disarm_settings_candidate
+- IR-47, sweep the branch for the same three violations CodeRabbit found
+
+### Fixed
+
+- Reserve the truncation notice's real height, not one row
+- Say "1 more line", not "1 more lines"
+- Stop a follow whose terminal has gone, and clip its notice
+- Name the log file a read could not find ([#225](https://github.com/shep-pm/shep/pull/225))
+- Match a settings reply by its own ticket ([#228](https://github.com/shep-pm/shep/pull/228))
+- Floor the dog pane's blurb loop like the grouped pane's
+- Restore Confirm's glyph, tighten two vacuous keymap tests, close clippy
+- Cancel an armed settings candidate on Help instead of leaving it live
+- Drop the painted ground from the keymap's does text
+- Give the keymap overlay's interior its own paper-2 ground
+- Make the boxed-border check structural, and record the real reason the sheep is boxed-only
+- Style the keymap refusal with palette.refusal()
+- Name the keymap in the frozen hint that claims to refuse it
+- Indent the field blurb once, not twice
+- Put KeymapBorderlessWide on the boundary it claims
+- The frozen hint stops claiming a refusal that is not one
+- Factor the arrival pair, which clippy refused
+- A dog pane's footer no longer eats the cursor's own row
+- Name the keymap frames in the gallery preamble
+- The overlay loses the keyboard when a refused write reopens the editor
+- Round 11, five of six, and four were my own rules broken
+- A heredoc quote-escaping artifact from the last commit
+- Round 13, one duplication extracted, three claims settled by evidence
+- Round 15, three real fixes, one ninth-HIGH-wrong compile claim
+- Fold Settings/Escape's disarm copy into the helper
+- Round 18, three real fixes, a settled dismissal, two API/coverage cleanups
+- CodeRabbit's full review of be649226, all 6 actionable comments
+- Round 19, exhaustive keymap check, one more contains-collision guard
+- Gate the gallery-comparison test on cfg(unix)
+- Round 20's last two, a substring gap and a review post-mortem
+- CodeRabbit's full review of 9f0cf3c2, all 3 actionable comments
+- Round 21, a real keymap_open leak on two body-replacing replies
+- CodeRabbit's full review of 7d5aa5b1, all 6 actionable, plus round 23's two real
+
+### Performance
+
+- Hoist three per-row allocations, and derive four heading literals
+- Hoist rows() out of every_group_fits_its_column's loop
+
+
+## [0.7.4] - 2026-09-12
+
+
+## [0.7.3] - 2026-09-08
+
+
+## [0.7.2] - 2026-09-08
+
+### Added
+
+- Fold the durable-write sequence into shep-core
+- Read a level out of a logfmt key=value pair ([#194](https://github.com/shep-pm/shep/pull/194))
+
+
+## [0.7.1] - 2026-09-08
+
+### Added
+
+- Gather the flock table by fold on F
+- Act on a whole fold behind a confirm that names the count
+- Give the fold view its own columns and drop ladder
+- Wire the fold view's columns into the table render, collapse a fold with z
+- Describe a selected fold in the detail pane
+- Mark a fold header with a disclosure triangle
+- Gather the flock table by fold ([#188](https://github.com/shep-pm/shep/pull/188))
+
+### Changed
+
+- Share the name-run walk between the two grouped-row builders
+- Share the status rollup between folds and groups
+
+### Fixed
+
+- Reseat the selection when F folds it under a group
+- Name the fold keys, pin the fold selector, drop the dead flat arm
+- Report a fold action's refused members, and fit a long fold name
+- Fit a mixed status, and trim comments to IR-47
+
+
+## [0.7.0] - 2026-09-08
+
+### Added
+
+- Import a .env into the secret store and a sheep's env ([#187](https://github.com/shep-pm/shep/pull/187)) **(BREAKING)**
+
+
+## [0.6.5] - 2026-09-08
+
+### Added
+
+- Accept leading environment assignments on start and add
+- Refuse an assignment no single sheep can take
+
+
+## [0.6.4] - 2026-09-08
+
+
+## [0.6.3] - 2026-09-08
+
+
+## [0.6.2] - 2026-09-08
+
+
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Decode an unknown error code or process event instead of failing
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- Name the protocol floor in version output
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Changed
+
+- Stop leaking version_text on every call
+
+### Fixed
+
+- Exit non-zero and name the apps a restart went around
+- Judge a dog's protocol against the floor rather than exact equality
+
+
+## [0.5.1] - 2026-09-07
+
+### Changed
+
+- Merge settings/config_pane into one Body enum
+- Let the compiler catch a scene missing from Scene::ALL
+- Generate Scene::ALL from the same list as the enum
+
+### Fixed
+
+- Pin dashboard-not-settings on esc from a raced config pane
+- Ignore a settings read that lands after a config pane opened
+- Arm text mode only when the settings editor is really back up
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
+## [0.4.6] - 2026-09-07
+
+### Added
+
+- Give the palette a band, a ground and four roles
+- Add the shared gauge, sparkline, rule and band cells
+- Carry a sheep's memory ceiling on ProcessInfo
+- Retain per-sheep cpu samples across the poll
+- Add the cpu sparkline and memory gauge columns
+- Paint the selected row and its gutter edge
+- Draw the title and section bands
+- Give the host strip gauges and a flock summary
+- Merge the log paths into one row with its size
+- Give the bleats feed its chip
+- Paint the status bar and its control indicator
+- Render backgrounds and reverse video in the gallery
+- Cap the name column and give the table two rows of air
+- Group the host's two readings before the flock's numbers
+- Redraw the landing pane ([#168](https://github.com/shep-pm/shep/pull/168))
+
+### Fixed
+
+- State theme's ground rule without claiming its callers exist
+- Cover the max_memory byte conversion with a real ProcessEntry
+- Drop fabricated IR-24 citation and strengthen two cpu-history tests
+- Split the memory gauge into a styled fill and a muted tail
+- Correct stale caption text after gutter paint change
+- Give the dogs section band its own sky role
+- Gauge before value, summary ahead of host memory on strip
+- Add the detail band's cfg pending cell, drop a temp-dir width dependency, dedupe rule rendering
+- Move the detail pane's cfg cell into the truncatable rest, last
+- Reword palette-specific captions, add CFG/CPU-history gallery coverage
+- Reword the MemCeiling caption and render the log row's on-disk size
+- Scale the sparkline to a fixed ceiling, not its own peak
+- Draw the flock rules and detail divider in the line role
+- Use f32::clamp instead of chained max/min in sparkline
+- Scale the cpu sparkline to the flock, not to each row or a core
+- Declare the tempfile version the test fixtures actually need
+- Measure the detail pane's used width in columns, not chars
+- Require both log files' metadata before showing a size
+- Drop the redundant word from the bleats feed header
+- Measure the group row's used width in columns, not chars
+
+
+## [0.4.5] - 2026-09-06
+
+
+## [0.4.4] - 2026-09-06
+
+
+## [0.4.3] - 2026-09-06
+
+### Fixed
+
+- Kill the dog probe's process group, not just its leader ([#159](https://github.com/shep-pm/shep/pull/159))
+
+
+## [0.4.2] - 2026-09-06
+
+### Changed
+
+- Build the lookout redial sentence in one place
+
+
+## [0.4.1] - 2026-09-06
+
+### Fixed
+
+- Refuse a url carrying credentials, and keep a webhook token out of Debug ([#148](https://github.com/shep-pm/shep/pull/148))
+
+
+## [0.4.0] - 2026-09-06
+
+### Added
+
+- Dogs get their own section of the flock table
+- E opens a dog's pane from the dashboard
+- A field can offer suggestions without closing its grammar
+- An array field opens a list sub-screen
+- Control is on by default, and --read-only opts out **(BREAKING)**
+- Closing a pane with parked config offers to apply it
+
+### Changed
+
+- Eight field groups, so no group holds half the form
+
+### Fixed
+
+- Enter opens the editor on a suggested field
+- Redact the list pane's Debug, like every pane beside it
+- The read-only refusal names a flag that still exists
+- The apply menu refuses a dead link, like every action key
+- The apply menu expires, and reads the gate itself
+- Reattach four doc comments to the item they describe
+- Correct the comment on the text-only KeyPress arm
+- Mask a secret array field in the list sub-screen
+- Flip the lookout gallery's control mapping to match the new default
+
+
+## [0.3.0] - 2026-09-05
+
+
+## [0.2.5] - 2026-09-05
+
+### Fixed
+
+- Sanitize cells in the bare table renderer too
+
+
+## [0.2.4] - 2026-09-05
+
+### Fixed
+
+- A startup refusal no longer promises a verb will create a named home
+
+
+## [0.2.3] - 2026-09-05
+
+
+## [0.2.2] - 2026-09-04
+
+### Added
+
+- ShepToml can read and write shep.toml's six scalars
+- A settings snapshot that keeps absent apart from defaulted
+- S opens a settings screen, read-only for now
+- The settings screen renders, with a source per scalar
+- The four closed scalars arm, confirm and write
+- Socket and max_cron_sleep get an editor, and can be unset
+- Per-dog toggles, applying live through the shepherd
+
+### Changed
+
+- One name reaches both the topic and the re-read request
+- The text keymap is named for text, not for the filter
+- A dog toggle's config decision, apart from its reporting
+
+### Fixed
+
+- Silence ShepToml's dead-code lint and close two test gaps
+- Unix-only settings test, closed boolean grammar, dead reader
+- Close the settings/action race, thread the resolved style
+- Close the settings/filter race the same way as the confirm one
+- Reload the row after a landed write, and un-contradict the status bar
+- Name what the shepherd did on a landed dog reply, cover on_dog_reply
+- Move the settings confirm to the status bar
+- Make the control gate a property of every settings write
+- Re-read the file after a landed dog toggle
+- The style row says what the layer above the file will do
+- Pay the selection gutter in the dogs table's own budget
+- The scalar rows adapt to width instead of clipping
+- The settings key hint answers to the control gate
+- An adopted dog carries a path in the fixtures and the gallery
+- Fit the settings confirm and editor lines like every other row
+- WriteAuthority::granted reads the app's own gate, not a bare Control
+- Name q quit on the settings screen's status bar
+- A settings write no longer parks the loop it was moved off
+
+
+## [0.2.1] - 2026-09-04
+
+### Changed
+
+- One name reaches both the topic and the re-read request
+
+
+## [0.2.0] - 2026-09-04
+
+### Added
+
+- Replace --reset/--reset-all with --reset=<mode>
+
+### Changed
+
+- ResetDepth gains File and Env, Settings becomes Policy **(BREAKING)**
+
+### Fixed
+
+- Drive --reset through value_enum instead of a bespoke parser
+- A reset refusal echoes the mode the operator typed
+
+
+## [0.1.34] - 2026-09-04
+
+### Changed
+
+- One staging-file helper for every $SHEP_HOME store ([#115](https://github.com/shep-pm/shep/pull/115))
+
+
+## [0.1.33] - 2026-09-04
+
+### Fixed
+
+- Atomic file writers fsync the directory the rename lands in
+- Atomic file writers fsync the directory the rename lands in ([#116](https://github.com/shep-pm/shep/pull/116))
+
+
+## [0.1.32] - 2026-09-04
+
+### Added
+
+- Dogs.toml gets a type and a path
+- ShepToml can take the dog sections out
+- Dog config moves to dogs.toml, migrated on boot
+
+### Fixed
+
+- Take_dog_sections keeps nested tables, arrays and inline tables
+- Dogs.toml is written at 0600 through the same staged rename shep.toml uses
+- The migration refuses on a dog entry that would be dropped, by name
+- Dog help text stops naming shep.toml for a key that moved
+- Shep enable stops scaffolding a section the next boot refuses
+- Shep rehome forgets a dog in dogs.toml too, not just shep.toml
+- Dogs.toml gets the lock shep.toml has, across both its writers
+- The dog migration runs before a reload signals the predecessor
+- Shep runtime migrates dog config, like every other boot
+- DogsConfigError's Debug no longer prints dogs.toml
+- Both writers of dogs.toml keep an operator's comments
+- An empty [dog.<name>] is not a second value to refuse
+- The last string sending an operator to [dog.bark.sinks]
+- A header spelled with spaces stranded its dog section forever
+- A bare header in dogs.toml refused a section carrying values
+- The moved section was not appended, though the comment said it was
+
+
+## [0.1.31] - 2026-09-03
+
+### Added
+
+- Shep add, which registers a sheep and starts nothing
+
+### Fixed
+
+- The skew guard already gates add, and say so accurately
+
+
+## [0.1.30] - 2026-09-03
+
+### Added
+
+- The override store, locked and owner-only like the KV store
+- Shep start <file> applies a template additively; shep start <name> reads nothing
+- --reset and --reset-all on a Flockfile load
+- A CFG column and a describe section, so pending config is visible
+- A Flockfile is a template, and a load applies it without killing anything ([#104](https://github.com/shep-pm/shep/pull/104))
+
+### Fixed
+
+- Validate shep.toml before a daemon reload, not after the predecessor is gone
+- Make the reload pre-flight file-only, not env-layered
+- Move the env-layer pin from an unfalsifiable unit test to a real e2e case
+- A Flockfile load that refused an app exits non-zero
+- Keep the overridden cache correct across reload, scale-up and restore
+- The pending clause is a gerund, so it agrees with one field or many
+- A reset resolves an undeclared key to the file, not to the default
+- A Flockfile that names a dog is refused, not merged onto it
+- A fresh start establishes the keys its Flockfile declared
+- A reset flag on a bare script target is refused, not ignored
+- Describe prints a clustered app's config sections once
+
+
+## [0.1.29] - 2026-09-03
+
+
+## [0.1.28] - 2026-09-03
+
+### Added
+
+- Stamp every log line with the time it was written
+- Make `silent` lead somewhere
+
+### Fixed
+
+- Keep a log line meaning one thing on both of its paths
+- Flush a narration line, or it can be lost outright
+- Stop prescribing a reinstall for every dog shep gave up on
+- Give `counting_lines` back the cfg its neighbour took
+- Stop the given-up note naming a cause it cannot know
+
+
+### Added
+
+- `silent` leads somewhere. `shep flock` prints one line under the dogs table
+  naming every silent dog, and `shep describe <dog>` carries the long form:
+  whether the shepherd is still waiting on that dog or has given up on it,
+  and which command answers the rest. The give-up had no surface at all
+  before — an operator could watch a dog read `silent` forever with nothing
+  telling them shep had stopped trying. Neither addition touches a column:
+  the pointer is prose under the finished table. `--format json` carries
+  `dog_stale` on every dog row.
+
+### Fixed
+
+- `shep daemon reload`'s report about dogs that could not come back no longer
+  prescribes a reinstall. It is handed names and nothing else, and that
+  population includes dogs a reinstall cannot fix — one of them cost an
+  operator two days. It now says the shepherd gave up and sends the reader to
+  `shep bleats <dog>`, which is where the shepherd wrote what it actually
+  saw. The daemon's version is still named, as the thing a rebuild would
+  target rather than as an instruction to rebuild.
+
+- `shep bleats --no-follow` and `shep lookout`'s tail pane strip the daemon's
+  new per-line timestamp before rendering, so a line means the same thing
+  there as it does on the bus. Without this, `--follow` and `--no-follow`
+  would report a sheep as having said two different things, and
+  `--format json`'s `line` would have carried a prefix the sheep never wrote.
+
+## [0.1.27] - 2026-09-02
+
+### Fixed
+
+- Refuse `shep enable` of a name that is neither built-in nor adopted
+
+
+## [0.1.26] - 2026-09-01
+
+
 ## [0.1.25] - 2026-09-01
 
 ### Added

@@ -1,20 +1,21 @@
 //! The bleats feed: the selected sheep's newest output, re-read from its log
-//! files on every listing. See the phase plan's design decision 1 for why
-//! this reads files rather than subscribing to `log.*`.
+//! files on every listing rather than a live subscription to `log.*`.
 
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{App, RowKey};
 use super::super::tail::Stream;
+use super::super::theme::Palette;
+use super::detail::chip_text;
 use super::flock::fit;
 use crate::output::human_bytes;
+use crate::vocabulary::Role;
 
 /// The feed's lines: one header, then the newest lines that fit.
 ///
-/// `rows` is how many lines the pane has, excluding its rule. The header
-/// takes one of them, always — either the ordinary one naming the sheep and
-/// the cadence, or the gap notice, which REPLACES it rather than sitting
-/// beside it. Two header rows would cost a fifth of the pane.
+/// `rows` excludes the pane's rule. The header takes one line always: the
+/// gap notice replaces the ordinary header rather than sitting beside it.
 #[must_use]
 pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
     let palette = app.palette();
@@ -22,68 +23,64 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
     let feed = app.feed();
     let body = rows.saturating_sub(1);
 
-    // Lines go missing in three places and this is where two of them are
-    // added up: the ones the READER discarded (above the forty-line cap,
-    // plus the line the window boundary cut) and the ones this PANE holds
-    // and has no room for. Both exact. The third — bytes below the window —
-    // cannot be counted in lines at all and is reported separately, in
-    // bytes. See the phase plan's design decision 1.
+    // Two of three loss sources summed here: lines the reader discarded
+    // above the cap, and lines this pane has no room to show. Bytes below
+    // the window are reported separately, since they cannot be counted in
+    // lines.
     let lost_lines = feed.missed_lines + feed.lines.len().saturating_sub(body);
 
     let header = match app.selected() {
-        None => Line::from(Span::styled(
-            fit("bleats  no sheep is selected", width),
-            palette.muted(),
-        )),
-        // A group row is selected, but there is no single log to re-read for
-        // it -- the same reason `view::detail`'s own group pane has no lamb
-        // line -- so the header says as much rather than repeating "no
-        // sheep is selected" about a row that plainly is.
-        //
-        // And it RETURNS rather than falling through to the body, because
-        // `feed` still holds whatever the previously selected sheep wrote.
-        // Live that is invisible: moving onto a group raises a refresh and
-        // the coalesced read applies an empty `Tail` in the same iteration.
-        // Once the link is lost that repair stops -- `Msg::Bleats` returns
-        // early while frozen and the cursor still moves -- so a fall-through
-        // prints one sheep's lines, unattributed, under a header naming
-        // none.
+        None => header_line(palette, "no sheep is selected", palette.muted(), width),
+        // A group has no single log to re-read, so the header replaces "no
+        // sheep is selected" rather than falling through to stale lines
+        // from the previously selected sheep. Only visible while frozen,
+        // since selecting a group otherwise triggers a refresh.
         Some(RowKey::Group(name)) => {
-            out.push(Line::from(Span::styled(
-                fit(
-                    &format!("bleats  {name}  follows one instance; select one to see its log"),
-                    width,
-                ),
+            out.push(header_line(
+                palette,
+                &format!("{name}  follows one instance; select one to see its log"),
                 palette.muted(),
-            )));
+                width,
+            ));
             return out;
         }
+        // A fold has no single log either, same reasoning as a group above.
+        Some(RowKey::Fold(name)) => {
+            out.push(header_line(
+                palette,
+                &format!("{name}  follows one sheep; select one inside this fold to see its log"),
+                palette.muted(),
+                width,
+            ));
+            return out;
+        }
+        Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
         Some(RowKey::Sheep(_)) => {
             let row = app
                 .selected_row()
                 .expect("a selected sheep is in the flock");
             match gap_notice(lost_lines, feed.missed_bytes) {
-                Some(notice) => Line::from(Span::styled(
-                    fit(&format!("bleats  {}  {notice}", row.info.name), width),
+                Some(notice) => header_line(
+                    palette,
+                    &format!("{}  {notice}", row.info.name),
                     // Attention, not alarm: a sheep writing faster than a
                     // two-second poll is busy, not broken. `--bark` means
                     // errored, refused and destructive.
                     palette.attention(),
-                )),
-                // `out then err`, not `out+err`: `+` reads as one merged
-                // stream, and there is no merge — a log line carries no
-                // timestamp, so there is no key to interleave two files on.
-                // This header is the only place on screen that can say so.
-                None => Line::from(Span::styled(
-                    fit(
-                        &format!(
-                            "bleats  {}  out then err  from the log files, re-read with each listing",
-                            row.info.name
-                        ),
-                        width,
+                    width,
+                ),
+                // `out then err`, not `out+err`: a log line carries no
+                // timestamp, so there is no key to interleave the two files
+                // on.
+                None => header_line(
+                    palette,
+                    &format!(
+                        "{}  out then err  from the log files, re-read with each listing",
+                        row.info.name
                     ),
                     palette.muted(),
-                )),
+                    width,
+                ),
             }
         }
     };
@@ -95,10 +92,8 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
         }
         return out;
     }
-    // The LAST lines that fit: a feed that showed the beginning of a burst
-    // and hid its end is the opposite of what a dashboard is for. `err`
-    // comes after `out` in `Tail::lines`, so a crash on stderr survives a
-    // chatty stdout for free.
+    // The last lines that fit. `err` comes after `out` in `Tail::lines`, so
+    // a crash on stderr survives a chatty stdout.
     let skip = feed.lines.len().saturating_sub(body);
     for line in feed.lines.iter().skip(skip) {
         let tag = match line.stream {
@@ -115,16 +110,29 @@ pub fn feed_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
     out
 }
 
+/// The feed's header, with its `BLEATS` chip: butter, same as the design's
+/// other chips, ahead of `text` in `style`.
+///
+/// Shared by every branch [`feed_lines`] can take, so the chip is drawn
+/// once rather than at four call sites.
+fn header_line(palette: Palette, text: &str, style: Style, width: u16) -> Line<'static> {
+    let chip = chip_text("BLEATS");
+    let chip_width = u16::try_from(chip.chars().count() + 1).unwrap_or(width);
+    let budget = width.saturating_sub(chip_width);
+    Line::from(vec![
+        Span::styled(chip, palette.band(Role::Butter)),
+        Span::raw(" "),
+        Span::styled(fit(text, budget), style),
+    ])
+}
+
 /// What the header says about what is not on screen, or `None` when
 /// everything is.
 ///
-/// **Two quantities, because they are two different facts, and merging them
-/// would mean inventing one of them.** `lines` is exact — the reader counted
-/// what it discarded and the pane counts what it has no room for. `bytes` is
-/// exact as bytes and *unknowable as lines*: reading them is precisely what
-/// the 64 KiB window exists to avoid. So the wording for the byte half says
-/// what the reader DID — it never read them — rather than putting a line
-/// count on them that nothing measured.
+/// Two separate quantities, not one merged number: `lines` sums the reader's
+/// missed count, off by at most one at a boundary, with the pane's own
+/// hidden rows, which is exact. `bytes` is exact but unknowable as lines,
+/// since reading them is what the window exists to avoid.
 fn gap_notice(lines: usize, bytes: u64) -> Option<String> {
     match (lines, bytes) {
         (0, 0) => None,
@@ -160,20 +168,13 @@ mod tests {
     use super::super::super::app::{KeyPress, Msg, RowKey};
     use super::super::super::tail::{Stream, Tail};
     use super::super::fixtures::{
-        app_with, coloured, line, plain, render_all, with_feed, with_feed_and_palette,
+        app_fixture, app_with, coloured, line, plain, render_all, with_feed, with_feed_and_palette,
         with_feed_and_selection, with_no_selection,
     };
     use super::feed_lines;
 
-    /// fails if the pane prints one sheep's log lines underneath a group
-    /// header, attributed to nothing.
-    ///
-    /// Live this never shows: moving onto a group row raises a refresh and
-    /// the coalesced read applies an empty `Tail` in the same iteration.
-    /// Once the link is lost that repair stops -- `Msg::Bleats` returns
-    /// early while frozen -- and the cursor still moves, so the pane would
-    /// read "select one to see its log" with the previous sheep's lines
-    /// under it.
+    /// Needs `Msg::Frozen`: without it, selecting a group triggers a
+    /// refresh that clears the stale lines, so this stays invisible live.
     #[test]
     fn a_group_row_prints_no_body_lines_on_a_frozen_dashboard() {
         let flock: Vec<ProcessInfo> = (0..2)
@@ -198,6 +199,7 @@ mod tests {
         });
         app.update(Msg::Frozen {
             at_local: "12:00:00".to_string(),
+            why: super::super::fixtures::FROZEN_WHY.to_string(),
         });
         app.update(Msg::Key(KeyPress::SelectUp));
         assert_eq!(
@@ -217,14 +219,8 @@ mod tests {
         );
     }
 
-    /// fails if the BYTE half of the gap notice stops reaching the screen.
-    /// Task 5 makes the number exact; this is the half that makes it visible,
-    /// and without it the feed silently shows five lines of a four-megabyte
-    /// burst.
-    ///
-    /// "was never read", not "is not shown": the pane cannot say how many
-    /// lines are in those bytes — reading them is what the window exists to
-    /// avoid — so it says what the reader DID rather than inventing a count.
+    /// Without this, the feed would silently show five lines of a
+    /// four-megabyte burst with no notice.
     #[test]
     fn a_byte_gap_replaces_the_header_and_says_how_much_was_never_read() {
         let app = with_feed(Tail {
@@ -244,14 +240,8 @@ mod tests {
         assert!(!rendered.contains("re-read with each listing"));
     }
 
-    /// fails if the pane claims completeness in the ORDINARY case. **This is
-    /// the test the first draft of this plan did not have**, and its absence
-    /// was the phase's worst defect: thirty lines fit inside one 64 KiB
-    /// window with room to spare, so `missed_bytes` is zero and the byte
-    /// notice never fires — while twenty-five of those thirty lines are not
-    /// on screen. A feed that lies is worse than no feed, and it would have
-    /// lied exactly when the flock was busy, which is when someone is
-    /// watching it.
+    /// Thirty lines fit inside one window, so `missed_bytes` stays zero, but
+    /// only five fit on screen: the gap notice must still fire.
     #[test]
     fn a_pane_that_cannot_show_every_line_it_holds_says_how_many() {
         let app = with_feed(Tail {
@@ -274,12 +264,6 @@ mod tests {
         );
     }
 
-    /// fails if the two kinds of loss get merged into one number. They are
-    /// different facts: the reader COUNTED the lines it dropped, and it
-    /// never looked at the bytes below the window at all. Adding an invented
-    /// line count for the second, or dropping the first because the second
-    /// is bigger, would both be the pane claiming to know something it does
-    /// not.
     #[test]
     fn both_kinds_of_gap_are_named_separately_in_one_line() {
         let app = with_feed(Tail {
@@ -298,18 +282,8 @@ mod tests {
         );
     }
 
-    /// fails if the ordinary header stops naming the sheep, the streams, or
-    /// the fact that this is a re-read rather than a live stream. An
-    /// operator who reads this pane as `tail -f` will draw wrong conclusions
-    /// from a two-second gap in a log, and the pane is the only place that
-    /// can say so.
-    ///
-    /// `out then err`, not `out+err`. `+` reads as one merged stream, and
-    /// this is two files rendered end to end with no interleaving at all —
-    /// a log line carries no timestamp, so there is no key to merge on. A
-    /// sheep with forty stdout lines and one old stderr line shows the stale
-    /// stderr line UNDER the fresh stdout ones, and the header is the only
-    /// place on screen that can say why.
+    /// An operator reading this pane as `tail -f` would draw wrong
+    /// conclusions from the poll gap without this header.
     #[test]
     fn the_header_says_which_sheep_and_that_it_is_a_re_read() {
         let app = with_feed_and_selection(
@@ -323,7 +297,7 @@ mod tests {
             1,
         );
         let rendered = render_all(&feed_lines(&app, 120, 6));
-        assert!(rendered.contains("bleats  sheep-1"), "got {rendered:?}");
+        assert!(rendered.contains("sheep-1"), "got {rendered:?}");
         assert!(rendered.contains("out then err"), "got {rendered:?}");
         assert!(
             !rendered.contains("out+err"),
@@ -335,15 +309,8 @@ mod tests {
         );
     }
 
-    /// fails if the pane stops showing the NEWEST lines, **or stops saying
-    /// that the older ones went**. A feed that scrolled off the bottom
-    /// would show an operator the beginning of a burst and hide its end,
-    /// which is the opposite of what a dashboard is for; a feed that showed
-    /// the end and said nothing about the beginning would look complete,
-    /// which is worse.
-    ///
-    /// The first draft of this test asserted only the ordering, and so
-    /// certified the silence as correct.
+    /// Showing the end while saying nothing about the gap would look
+    /// complete, which is worse than showing neither.
     #[test]
     fn the_pane_shows_the_last_lines_that_fit_and_says_so() {
         let app = with_feed(Tail {
@@ -372,10 +339,7 @@ mod tests {
         );
     }
 
-    /// fails if `err` stops being distinguishable from `out` by TEXT, or
-    /// starts being `--bark` red. A sheep writing to stderr is not a sheep
-    /// in trouble — most runtimes log there by default — and `--bark` means
-    /// errored, refused and destructive and nothing else.
+    /// Most runtimes log to stderr by default, so it is not `--bark`.
     #[test]
     fn the_stream_tag_is_a_word_and_stderr_is_not_bark() {
         let palette = coloured();
@@ -404,10 +368,7 @@ mod tests {
         }
     }
 
-    /// fails if an empty feed stops saying why. Task 5 produces the
-    /// sentence; this asserts it survives to the screen instead of being
-    /// swallowed by a blank pane — the exact caption 12a got wrong, one
-    /// layer up.
+    /// Confirms the note reaches the screen rather than a blank pane.
     #[test]
     fn an_empty_feed_prints_the_reason_rather_than_nothing() {
         let app = with_feed(Tail {
@@ -420,13 +381,20 @@ mod tests {
         let rendered = render_all(&feed_lines(&app, 120, 6));
         assert!(rendered.contains("this sheep has written nothing yet"));
 
-        // No sheep selected at all is a fourth reason, and it is the pane's
-        // own to state — Task 5 never runs in that case.
+        // No sheep selected is a fourth reason, stated by the pane itself.
         let empty = with_no_selection();
         let rendered = render_all(&feed_lines(&empty, 120, 6));
         assert!(
             rendered.contains("no sheep is selected"),
             "got {rendered:?}"
         );
+    }
+
+    /// bleats.rs:93 argues a coloured `err` says a stderr line is damage.
+    /// The redesign colours gauges, not this.
+    #[test]
+    fn the_stream_tag_is_still_muted() {
+        let line = feed_lines(&app_fixture(), 80, 4).remove(1);
+        assert_eq!(line.spans[0].style, app_fixture().palette().muted());
     }
 }

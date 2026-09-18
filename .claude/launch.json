@@ -4,8 +4,8 @@
     {
       "name": "shep-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 4321,
+      "runtimeArgs": ["run", "dev", "--", "--port", "4421"],
+      "port": 4421,
       "cwd": "web",
       "autoPort": true
     }

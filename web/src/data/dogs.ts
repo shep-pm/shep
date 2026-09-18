@@ -36,6 +36,11 @@ import raw from "../../public/dogs.json" with { type: "json" };
  * way this file's own category and source-kind lists are pinned against
  * that crate.
  */
+// Explicit extension: this module is loaded directly by
+// scripts/verify-dogs-index.ts under Node's native TypeScript stripping,
+// which does not resolve extensionless specifiers the way Vite does.
+import { slugify } from "./slug.ts";
+
 export const SUPPORTED_INDEX_VERSION = 1;
 
 /** The six categories a dog can be filed under, in the order the page groups them. */
@@ -102,9 +107,9 @@ export interface Dog {
   /**
    * The name this dog expects to be adopted under. A dog is given no argv
    * and cannot be told its own adopted name, so `shep adopt <name> <path>`
-   * with the wrong `<name>` silently discards its whole `[dog.<name>]`
-   * configuration. This field exists so the page's adopt line is correct by
-   * construction instead of a guess.
+   * with the wrong `<name>` silently discards its whole `[<name>]`
+   * configuration in `dogs.toml`. This field exists so the page's adopt
+   * line is correct by construction instead of a guess.
    */
   adopt_as: string;
   /** One line describing what the dog does. */
@@ -154,10 +159,7 @@ function isSourceKind(value: string): value is DogSource["kind"] {
  * and one anchor, and the second would silently scroll to the first.
  */
 export function anchorOf(dog: Pick<Dog, "name">): string {
-  return dog.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return slugify(dog.name);
 }
 
 /**

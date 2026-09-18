@@ -1,24 +1,19 @@
-//! One `parse_selector`, shared by every verb that takes a selector off the
-//! command line.
-//!
-//! Every verb that takes a selector (`lifecycle`, `logs`, `query`, `bleats`,
-//! `trigger`) shares this one function rather than each parsing it locally.
+//! One `parse_selector`, shared by `lifecycle`, `logs`, `query`, `bleats`
+//! and `trigger`.
 
+use shep_core::protocol::SelectorSpec;
 use shep_core::selector::ProcessSelector;
 
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
-/// Parses `raw` client-side, so a malformed selector is a fast local usage
-/// error rather than a round trip to the daemon (the daemon re-parses it
-/// too, but only after this one already succeeded).
+/// Parses `raw` client-side, so a malformed selector is a local usage error
+/// rather than a round trip. The daemon re-parses it anyway.
 ///
-/// Returns a [`ProcessSelector`], not a `SelectorSpec`: most callers put a
-/// selector on the wire and convert what this returns themselves, with
-/// `SelectorSpec::from(&selector)` — `bleats` is the one exception, and
-/// never puts a selector on the wire at all (the daemon's topic filter has
-/// no sheep identity to match one against), so it uses what this returns
-/// directly.
+/// Returns a [`ProcessSelector`], for the two callers that match it locally
+/// rather than sending it: `bleats` filters its subscription and `start`
+/// tries a token as a name before treating it as a target. Everything that
+/// puts one on the wire wants [`parse_selector_spec`].
 pub(crate) fn parse_selector(
     streams: &mut Streams<'_>,
     raw: &str,
@@ -27,6 +22,21 @@ pub(crate) fn parse_selector(
         Ok(selector) => Ok(selector),
         Err(err) => Err(streams.fail(ExitCode::Usage, &err.to_string())),
     }
+}
+
+/// [`parse_selector`] for a caller that puts the result on the wire.
+///
+/// The conversion is here rather than at each verb so `SelectorSpec::from`
+/// is applied one way, by everything that sends a selector.
+///
+/// # Errors
+///
+/// The [`ExitCode`] [`parse_selector`] already reported.
+pub(crate) fn parse_selector_spec(
+    streams: &mut Streams<'_>,
+    raw: &str,
+) -> Result<SelectorSpec, ExitCode> {
+    parse_selector(streams, raw).map(|selector| SelectorSpec::from(&selector))
 }
 
 #[cfg(test)]
@@ -50,9 +60,7 @@ mod tests {
         assert!(err.is_empty());
     }
 
-    /// `/[/` is one of the only three inputs the selector grammar rejects —
-    /// same fixture `lifecycle`'s and `logs`'s own malformed-selector tests
-    /// use.
+    /// `/[/` is one of only three inputs the selector grammar rejects.
     #[test]
     fn a_malformed_selector_is_a_local_usage_error() {
         let mut out = Vec::new();

@@ -1,26 +1,26 @@
 //! The sheep detail pane: four lines about the selected sheep.
 //!
-//! Three of the four come from the `ProcessInfo` the flock table's own rows
-//! are built from. The lamb line alone is different: it comes from a
+//! Three of the four come from the same `ProcessInfo` the flock table's rows
+//! are built from. The lamb line is different: it comes from a
 //! `Request::Describe` fetched on selection change and on `r`, never on the
-//! two-second poll — `ListFlock` never populates `ProcessInfo::lambs`, and its
-//! own doc says why, so this pane asks separately for the one thing the table
-//! cannot answer.
+//! poll, since `ListFlock` never populates `ProcessInfo::lambs`.
 //!
-//! What it adds over the row above it: the UNTRUNCATED name (the NAME column
-//! ends in `…`, and a truncated name is one an operator types into
-//! `shep stop`), both log paths (the first thing anyone wants once the feed
-//! shows them a crash), the lamb line, and whichever fields the current width
-//! tier has dropped.
+//! Adds over the row above it: the untruncated name, the merged log-path
+//! row, the lamb line, and whichever fields the current width tier dropped.
+
+use std::fs;
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::protocol::DogSource;
 
-use super::super::app::{App, LambWalk, RowKey};
+use super::super::app::{App, LambWalk, Row, RowKey};
 use super::super::theme::Palette;
+use super::cell;
 use super::flock::fit;
+use crate::output::width::char_columns;
 use crate::output::{human_bytes, human_duration};
+use crate::vocabulary::Role;
 
 /// The pane's four content lines. Its rule is [`super::draw`]'s.
 #[must_use]
@@ -30,12 +30,71 @@ pub fn detail_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         None => empty_lines(app, width, palette),
         Some(RowKey::Group(name)) => group_lines(app, &name, width, palette),
         Some(RowKey::Sheep(_)) => sheep_lines(app, width, palette),
+        Some(RowKey::Fold(name)) => fold_lines(app, &name, width, palette),
+        Some(RowKey::Section(_)) => unreachable!("a header is never selectable"),
     }
 }
 
-/// The pane's four lines when nothing is selected. Names the CAUSE, not the
-/// fact: an operator can see the pane is empty; what they cannot see is
-/// whether that is a broken dashboard or a shepherd with nothing registered.
+/// A fold's four lines when a [`RowKey::Fold`] is selected: [`App::fold_totals`]'s
+/// rollup, in place of one sheep's own fields. The same shape
+/// [`group_lines`] draws one level down, since a fold has no more of a
+/// single process to walk or tail than a group does: no lamb line, no log
+/// paths.
+fn fold_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
+    let totals = app.fold_totals(name);
+    let head = format!("fold {name} \u{d7}{}  ", totals.count);
+    let status = app.fold_status_text(name);
+    let rest = format!(
+        "   restarts {}   uptime {}   cpu {}   mem {}",
+        totals.restarts,
+        totals
+            .uptime_ms
+            .map_or_else(|| "-".to_string(), human_duration),
+        totals
+            .cpu
+            .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+        totals.memory.map_or_else(|| "-".to_string(), human_bytes),
+    );
+    // Both are fit before either is measured: a long name or a mixed status
+    // each overflow `MIN_TERM_WIDTH` alone. `min` because `fit` pads as well
+    // as truncates, and a padded head leaves the rollup nothing.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
+    );
+    let used = columns(&head) + columns(&status);
+    let status_style = app
+        .fold_uniform_status(name)
+        .map_or(Style::default(), |status| palette.status(status));
+
+    vec![
+        Line::from(vec![
+            Span::raw(head),
+            Span::styled(status, status_style),
+            Span::raw(fit(
+                &rest,
+                width.saturating_sub(u16::try_from(used).unwrap_or(width)),
+            )),
+        ]),
+        Line::from(Span::styled(
+            fit(
+                "lambs  a fold has no single process to walk; select one sheep",
+                width,
+            ),
+            palette.muted(),
+        )),
+        Line::from(Span::raw(String::new())),
+        Line::from(Span::raw(String::new())),
+    ]
+}
+
+/// The pane's four lines when nothing is selected. Names the cause, not the
+/// fact: whether the flock is empty or the filter matched nothing.
 fn empty_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     let why = if app.flock_len() == 0 {
         "no sheep selected: the flock is empty".to_string()
@@ -52,9 +111,8 @@ fn empty_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
 
 /// An app's four lines when a [`RowKey::Group`] is selected: the rollup
 /// [`App::group_totals`] computes, in place of one sheep's own fields. No
-/// lamb line and no log paths -- a group has no single process to walk or
-/// tail, and reading either for one arbitrarily chosen instance would
-/// describe a sheep the operator did not select.
+/// lamb line and no log paths, since a group has no single process to walk
+/// or tail.
 fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<'static>> {
     let totals = app.group_totals(name);
     let head = format!("app {name} \u{d7}{}  ", totals.count);
@@ -70,10 +128,19 @@ fn group_lines(app: &App, name: &str, width: u16, palette: Palette) -> Vec<Line<
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         totals.memory.map_or_else(|| "-".to_string(), human_bytes),
     );
-    let used = head.chars().count() + status.chars().count();
+    // Both fit before either is measured, the rule the fold branch states.
+    let status = fit(
+        &status,
+        width.min(u16::try_from(columns(&status)).unwrap_or(width)),
+    );
+    let head_budget = width.saturating_sub(u16::try_from(columns(&status)).unwrap_or(0));
+    let head = fit(
+        &head,
+        head_budget.min(u16::try_from(columns(&head)).unwrap_or(head_budget)),
+    );
+    let used = columns(&head) + columns(&status);
     // `palette.status`, not `palette.reported`: a selected group is always
-    // an app's own instances, never a dog -- see
-    // `App::group_uniform_status`'s own doc.
+    // an app's own instances, never a dog.
     let status_style = app
         .group_uniform_status(name)
         .map_or(Style::default(), |status| palette.status(status));
@@ -103,29 +170,67 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
     let Some(row) = app.selected_row() else {
         return empty_lines(app, width, palette);
     };
+    vec![
+        identity_line(app, row, width, palette),
+        lamb_line(app, row.info.id, width, palette),
+        log_row(app, width),
+        // The two path lines merged into `log_row`, one slot narrower than
+        // before; this keeps the pane's line count agreeing with
+        // `DETAIL_ROWS` without inventing a fifth field to fill it.
+        Line::from(Span::raw(String::new())),
+    ]
+}
+
+/// One sheep's identity line: the `SHEEP N` chip, its name, status and the
+/// rest of its row. Split out of [`sheep_lines`] so [`super::sheep`]'s own
+/// identity band can draw it for the sheep pane's pinned sheep, which is not
+/// always [`App::selected_row`]: a pinned sheep that has left the flock
+/// moves the selection elsewhere, and drawing that other sheep's line under
+/// a band still naming the first would be one sheep's facts presented as
+/// another's. Every figure this line reads (`App::uptime_ms`, `App::cpu_now`)
+/// takes `row`'s own id, so a caller passing the pinned sheep's row gets
+/// figures for that sheep, not the selection.
+#[must_use]
+pub(crate) fn identity_line(app: &App, row: &Row, width: u16, palette: Palette) -> Line<'static> {
     let info = &row.info;
 
-    // Everything except the status word, which is the one coloured cell —
-    // exactly the table's rule, for exactly the table's reason.
-    let head = format!("sheep {}  {}   ", info.id, info.name);
+    // The `SHEEP N` chip, meadow like the flock band, then the name and the
+    // rest of the row. Everything after the chip is raw except the status
+    // word, which is the one coloured cell, same as the table.
+    let chip = chip_text(&format!("SHEEP {}", info.id));
+    let facts = format!("  {}   ", info.name);
     // `Row::reported`, not `info.status.to_string()`: this pane must agree
     // with the flock table's own STATUS cell for the same row, and a dog
     // that has never handshook reads `silent` there.
     let status = row.reported().word();
+    // Reuses `cfg_cell`, the same function `Column::Cfg` calls, rather than a
+    // second renderer for the same rule. Only the pending half: an override
+    // with nothing parked is already the flock table's `*N`, and this cell
+    // names what a `shep reload` would change, not what already differs.
+    // Nothing pending shows nothing at all, not a `cfg !0 pending`.
+    let cfg = crate::output::cfg_cell(info.pending.as_deref(), None);
+    let cfg_text = if cfg.starts_with('!') {
+        format!("   cfg {cfg} pending")
+    } else {
+        String::new()
+    };
     let rest = format!(
-        "   pid {}   restarts {}   uptime {}   cpu {}   mem {}   fold {}{}",
+        "   pid {}   restarts {}   uptime {}   cpu {}   mem {}   fold {}{}{}",
         info.pid
             .map_or_else(|| "-".to_string(), |pid| pid.to_string()),
         info.restarts,
         app.uptime_ms(info.id)
             .map_or_else(|| "-".to_string(), human_duration),
-        info.cpu_percent
+        // `App::cpu_now`, not `info.cpu_percent`: this band must agree with
+        // the flock table's own CPU cell for the same row.
+        app.cpu_now(info.id)
             .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
         info.memory_bytes
             .map_or_else(|| "-".to_string(), human_bytes),
         info.fold.as_deref().unwrap_or("-"),
-        // Last, so it is the first thing a narrow terminal truncates: a dog is
-        // a rare row, and every field before it is true of every row.
+        // Second to last, so it is the first thing a narrow terminal
+        // truncates: a dog is a rare row, and every field before it is true
+        // of every row.
         match &info.dog {
             None => String::new(),
             Some(DogSource::BuiltIn) => "   dog built-in".to_string(),
@@ -134,35 +239,34 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
             // added must not take the pane down, and must not be reported as
             // anything it is not.
             _ => "   dog (unrecognised source)".to_string(),
-        }
+        },
+        // Last of all: rarer still than a dog, since it fires only for a
+        // sheep with edits parked awaiting a respawn. Folded into the same
+        // truncatable string as everything before it, not reserved out of
+        // the width budget, so it is the first thing a narrow terminal
+        // drops rather than the one field immune to truncation.
+        cfg_text,
     );
-    let used = head.chars().count() + status.chars().count();
+    let used = columns(&chip) + columns(&facts) + columns(&status);
 
-    vec![
-        Line::from(vec![
-            Span::raw(head),
-            Span::styled(status, palette.reported(row.reported())),
-            Span::raw(fit(
-                &rest,
-                width.saturating_sub(u16::try_from(used).unwrap_or(width)),
-            )),
-        ]),
-        lamb_line(app, info.id, width, palette),
-        path_line("out", info.out_file.as_deref(), width, palette),
-        path_line("err", info.err_file.as_deref(), width, palette),
-    ]
+    Line::from(vec![
+        Span::styled(chip, palette.band(Role::Meadow)),
+        Span::raw(facts),
+        Span::styled(status, palette.reported(row.reported())),
+        Span::raw(fit(
+            &rest,
+            width.saturating_sub(u16::try_from(used).unwrap_or(width)),
+        )),
+    ])
 }
 
 /// The lamb line: what the last walk found, and how old it is.
 ///
-/// The age comes first. This file's own rule is that the rarest field goes
-/// last so a narrow terminal truncates it first, and here that rule inverts:
-/// a truncated list is still honest, while a list whose stamp was truncated
-/// away is a stale reading presented as current.
+/// The age comes first: a truncated list is still honest, but a list whose
+/// stamp truncated away is a stale reading presented as current.
 ///
-/// It does not repeat the CLI's "not exactly the set a stop kills" clause.
-/// "parent-pid descendants" is already precisely true, and forty characters of
-/// warning on every frame trains an operator to stop reading the pane (A16).
+/// Omits the CLI's "not exactly the set a stop kills" caveat, since
+/// "parent-pid descendants" is already precise.
 fn lamb_line(
     app: &App,
     id: u32,
@@ -201,23 +305,127 @@ fn lamb_line(
     Line::from(Span::styled(fit(&text, width), palette.muted()))
 }
 
-/// One log-path line, or a sentence saying why there is none.
+/// `cell::band`'s own two-block marker and label, sized to its own text
+/// rather than padded to a pane's full width: a compact chip an inline
+/// header can prefix, not a full-width band.
 ///
-/// `None` means the shepherd predates the field — `ProcessInfo::out_file`'s own
-/// doc — which is a fact about the peer, not about this sheep, and the
-/// sentence says so rather than leaving a bare `-` that reads like a missing
-/// file.
-fn path_line(
-    label: &str,
-    path: Option<&str>,
-    width: u16,
-    palette: super::super::theme::Palette,
-) -> Line<'static> {
-    let text = match path {
-        Some(path) => format!("{label}  {path}"),
-        None => format!("{label}  this shepherd did not report a path"),
+/// `pub(crate)`, not private: `view::bleats`'s own header chip shares this
+/// rather than re-deriving the same natural-width computation.
+pub(crate) fn chip_text(label: &str) -> String {
+    let natural = format!(" \u{2588}\u{2588} {label}");
+    let cells: usize = natural.chars().map(char_columns).sum();
+    cell::band(label, cells)
+}
+
+/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the
+/// size on disk when [`fs::metadata`] can read both files. Replaces the two
+/// one-path-per-line calls the row used to draw one above the other.
+///
+/// When the row does not fit, the size drops first, then each path
+/// truncates from its head: a log path's tail is the half that identifies
+/// it, and the head is a directory prefix every sheep shares. A
+/// [`fs::metadata`] call that fails, for a log rotated away between the poll
+/// and the draw, drops the size rather than the row.
+fn log_row(app: &App, width: u16) -> Line<'static> {
+    const OUT_LABEL: &str = "out  ";
+    const ERR_LABEL: &str = "err  ";
+    const DIVIDER: &str = "   \u{2502}   ";
+
+    let palette = app.palette();
+    let info = &app
+        .selected_row()
+        .expect("a selected sheep is in the flock")
+        .info;
+    let out_path = info.out_file.as_deref();
+    let err_path = info.err_file.as_deref();
+    let out_full = out_path.unwrap_or("not reported");
+    let err_full = err_path.unwrap_or("not reported");
+
+    let size_text = match (out_path, err_path) {
+        (Some(out), Some(err)) => match (fs::metadata(out), fs::metadata(err)) {
+            (Ok(out_meta), Ok(err_meta)) => Some(format!(
+                "   {} on disk",
+                human_bytes(out_meta.len() + err_meta.len())
+            )),
+            _ => None,
+        },
+        _ => None,
     };
-    Line::from(Span::styled(fit(&text, width), palette.muted()))
+
+    let overhead = columns(OUT_LABEL) + columns(DIVIDER) + columns(ERR_LABEL);
+    let width_usize = usize::from(width);
+    let paths_len = overhead + columns(out_full) + columns(err_full);
+
+    let (out_val, err_val, size_val) =
+        if paths_len + size_text.as_deref().map_or(0, columns) <= width_usize {
+            (out_full.to_string(), err_full.to_string(), size_text)
+        } else if paths_len <= width_usize {
+            (out_full.to_string(), err_full.to_string(), None)
+        } else {
+            // The size already dropped and the untruncated paths still do not
+            // fit: split what is left evenly and take each path's tail, since
+            // that is the half that identifies it.
+            let budget = width_usize.saturating_sub(overhead);
+            let out_budget = budget / 2;
+            let err_budget = budget - out_budget;
+            (
+                truncate_from_left(out_full, out_budget),
+                truncate_from_left(err_full, err_budget),
+                None,
+            )
+        };
+
+    let mut spans = vec![
+        Span::styled(format!("{OUT_LABEL}{out_val}"), palette.muted()),
+        // `line`, not `muted`: the divider is chrome between two facts, the
+        // same role the flock table's own rules draw in.
+        Span::styled(DIVIDER, palette.line()),
+        Span::styled(
+            format!("{ERR_LABEL}{err_val}{}", size_val.unwrap_or_default()),
+            palette.muted(),
+        ),
+    ];
+    let used: usize = spans
+        .iter()
+        .map(|span| columns(span.content.as_ref()))
+        .sum();
+    if used < width_usize {
+        spans.push(Span::styled(
+            " ".repeat(width_usize - used),
+            palette.muted(),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// Keeps `path`'s tail, the half that identifies the file, marking the drop
+/// with a leading `\u{2026}` when it does not fit `budget` columns.
+fn truncate_from_left(path: &str, budget: usize) -> String {
+    if columns(path) <= budget {
+        return path.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    let keep = budget - 1;
+    let mut kept: Vec<char> = Vec::new();
+    let mut used = 0;
+    for c in path.chars().rev() {
+        let width = char_columns(c);
+        if used + width > keep {
+            break;
+        }
+        used += width;
+        kept.push(c);
+    }
+    kept.reverse();
+    format!("\u{2026}{}", kept.into_iter().collect::<String>())
+}
+
+/// The display-column width of a whole string, the same measure
+/// [`super::flock::fit`] uses.
+fn columns(text: &str) -> usize {
+    text.chars().map(char_columns).sum()
 }
 
 #[cfg(test)]
@@ -228,19 +436,16 @@ mod tests {
     use shep_core::status::ProcStatus;
 
     use super::super::fixtures::{
-        app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all, rendered,
-        sheep_with_lambs, with_lamb_reading, with_lamb_reading_for, with_selection,
-        with_selection_and_palette,
+        app_fixture, app_with, app_with_lamb_reading_at, coloured, lamb_line_of, plain, render_all,
+        rendered, sheep_in_fold, sheep_in_fold_with_status, sheep_with_lambs, with_lamb_reading,
+        with_lamb_reading_for, with_selection, with_selection_and_palette,
     };
     use super::*;
-    use crate::lookout::app::{App, Control, LambWalk, Msg, RowKey};
+    use crate::lookout::app::{App, Control, KeyPress, LambWalk, Msg, RowKey};
     use crate::lookout::theme::Palette;
 
-    /// fails if the pane collapses any two of the five states it can be in.
-    /// Three of them are distinctions `ProcessInfo::lambs` was built to keep
-    /// (walked and non-empty, walked and empty, not walked at all) and the CLI
-    /// has wording for only the first, so the other four sentences are this
-    /// pane's own.
+    /// Five states, and the CLI's own wording covers only one of them: the
+    /// other four sentences belong to this pane.
     #[test]
     fn the_pane_says_which_lamb_state_it_is_in() {
         let cases: [(LambWalk, &str); 3] = [
@@ -273,7 +478,6 @@ mod tests {
         assert!(render_all(&detail_lines(&unread, 200)).contains("lambs  not read yet"));
     }
 
-    /// fails if a single lamb reads as "1 parent-pid descendants".
     #[test]
     fn one_lamb_is_a_descendant_and_not_descendants() {
         let app = with_lamb_reading(LambWalk::Walked(vec![Lamb::new(48_220, "node")]));
@@ -284,11 +488,6 @@ mod tests {
         );
     }
 
-    /// fails if the staleness stamp moves after the list, or goes away.
-    /// `detail.rs`'s standing rule is that the rarest field goes last so a
-    /// narrow terminal truncates it first; here that rule inverts, because a
-    /// truncated list is still honest and a list whose "read 4m ago" was
-    /// truncated away is a stale reading presented as current.
     #[test]
     fn the_lamb_line_carries_its_age_before_its_list() {
         let app = with_lamb_reading(LambWalk::Walked(vec![Lamb::new(48_220, "node")]));
@@ -298,7 +497,6 @@ mod tests {
         assert!(stamp < list, "the caveat must survive truncation: {line:?}");
     }
 
-    /// fails if the pane starts showing a reading taken for another sheep.
     #[test]
     fn a_reading_for_another_sheep_is_not_drawn_here() {
         // with_lamb_reading pins its reading to the selected sheep's id;
@@ -307,17 +505,9 @@ mod tests {
         assert!(render_all(&detail_lines(&app, 200)).contains("lambs  not read yet"));
     }
 
-    /// fails if the stamp reads a live clock instead of `App::now`, and fails
-    /// again if a frozen dashboard's stamp creeps. Two halves, and BOTH are
-    /// needed: the first proves the stamp moves at all, the second proves it
-    /// stops when the banner says the values did.
-    ///
-    /// This is a unit test rather than a two-age frame comparison, and that is
-    /// the point. Rendering the frozen scene at two ages cannot fail for this
-    /// mutation: both renders happen at the same wall-clock instant, so a live
-    /// clock produces the same string in both and the frames stay identical.
-    /// Here the two ages differ by construction, because they are `Msg::Tick`
-    /// arithmetic rather than elapsed time. No sleep (IR-33).
+    /// A two-age frame comparison can't fail here, since both renders share
+    /// one wall-clock instant. Ages come from `Msg::Tick` arithmetic
+    /// instead.
     #[test]
     fn the_stamp_ages_on_a_live_dashboard_and_stops_on_a_frozen_one() {
         let (mut app, t0) =
@@ -330,6 +520,7 @@ mod tests {
 
         app.update(Msg::Frozen {
             at_local: "2026-08-16 09:00:00".to_string(),
+            why: super::super::fixtures::FROZEN_WHY.to_string(),
         });
         app.update(Msg::Tick {
             now: t0 + Duration::from_secs(3_600),
@@ -341,11 +532,8 @@ mod tests {
         );
     }
 
-    /// fails if the pane stops showing what the ROW above it cannot. Three
-    /// things justify four rows of screen: the untruncated name (the NAME
-    /// column ends in `…`, and a truncated name is one an operator types into
-    /// `shep stop`), and both log paths (the first thing anyone wants after
-    /// the feed shows them a crash).
+    /// The untruncated name matters: an operator types it into `shep stop`,
+    /// and the name column truncates.
     #[test]
     fn the_pane_adds_the_full_name_and_both_log_paths() {
         let app = with_selection(
@@ -363,9 +551,65 @@ mod tests {
         assert!(rendered.contains("err  /home/ada/.shep/logs/payments-err.log"));
     }
 
-    /// fails if the STATUS word stops carrying its own colour, or if anything
-    /// else on the pane starts carrying one. Same rule as the table's: the
-    /// coloured cell is the cell whose text already says the same thing.
+    /// The design spec names this cell alongside the `SHEEP N` chip; reuses
+    /// `cfg_cell`, the same function the flock table's own CFG column calls.
+    /// Rendered last, inside the same truncatable `rest` span as `pid`,
+    /// `restarts`, `uptime`, `cpu`, `mem`, `fold` and `dog` (see
+    /// `a_narrow_width_truncates_the_cfg_cell_before_the_universal_fields`
+    /// below for the position that matters).
+    #[test]
+    fn the_header_names_the_pending_count() {
+        let app = with_selection(
+            ProcessInfo::builder(2, "api", ProcStatus::Online)
+                .pending(Some(vec!["cwd".to_string(), "env".to_string()]))
+                .build(),
+        );
+        let rendered = render_all(&detail_lines(&app, 200));
+        assert!(rendered.contains("cfg !2 pending"), "got {rendered:?}");
+    }
+
+    /// The finding this fixes: round 1 put the `cfg` cell outside `rest`,
+    /// unconditionally immune to truncation, so a narrow terminal cut fields
+    /// true of every row to make room for one true of almost none. `rest`'s
+    /// own comment says the least universal field goes last so it is the
+    /// first thing truncated; `cfg` fires only for a sheep with edits
+    /// parked, at least as rare as `dog`, so it belongs after `dog`, and its
+    /// length must go through `fit` with everything else rather than being
+    /// reserved out of the budget.
+    #[test]
+    fn a_narrow_width_truncates_the_cfg_cell_before_the_universal_fields() {
+        let app = with_selection(
+            ProcessInfo::builder(2, "api", ProcStatus::Online)
+                .pid(Some(4_242))
+                .restarts(3)
+                .pending(Some(vec!["cwd".to_string()]))
+                .build(),
+        );
+        let wide = render_all(&detail_lines(&app, 200));
+        assert!(wide.contains("cfg !1 pending"), "got {wide:?}");
+
+        let narrow = render_all(&detail_lines(&app, 40));
+        assert!(
+            !narrow.contains("cfg"),
+            "the rarest field truncates first: {narrow:?}"
+        );
+        assert!(
+            narrow.contains("pid"),
+            "a universal field must survive over the cfg cell: {narrow:?}"
+        );
+    }
+
+    /// "Nothing at all rather than a zero": a sheep with no pending fields
+    /// gets no `cfg` cell at all, not `cfg !0 pending`.
+    #[test]
+    fn a_sheep_with_nothing_pending_shows_no_cfg_cell() {
+        let app = with_selection(ProcessInfo::builder(2, "api", ProcStatus::Online).build());
+        let rendered = render_all(&detail_lines(&app, 200));
+        assert!(!rendered.contains("cfg"), "got {rendered:?}");
+    }
+
+    /// Same rule as the table's: the coloured cell is the cell whose text
+    /// already says the same thing.
     #[test]
     fn only_the_status_word_is_coloured() {
         let palette = coloured();
@@ -383,11 +627,6 @@ mod tests {
         assert_eq!(coloured, vec!["errored"], "got {coloured:?}");
     }
 
-    /// fails if an unselectable pane stops saying WHY it is empty. "no sheep
-    /// selected" alone restates what the operator can already see; the cause
-    /// is that the flock is empty, and that is what the sentence has to carry.
-    /// 12a shipped a caption claiming a sentence said why when it only stated
-    /// the fact — this is the same mistake, refused one layer down.
     #[test]
     fn an_empty_flock_says_why_the_pane_has_nothing_to_describe() {
         let app = App::new(
@@ -403,12 +642,9 @@ mod tests {
         );
     }
 
-    /// fails if a selected group row falls back to the empty-pane sentence,
-    /// stops showing the app's own rollup, or starts fetching lambs / a log
-    /// path for one arbitrarily chosen instance. Drives `detail_lines`
-    /// through a real `App` built from a real `Msg::Snapshot` (via
-    /// `fixtures::app_with`), the same door the production render loop
-    /// walks through -- not through `group_lines` directly.
+    /// Drives `detail_lines` through a real `App` built from a real
+    /// `Msg::Snapshot`, the same door the production render loop walks
+    /// through, rather than calling `group_lines` directly.
     #[test]
     fn a_selected_group_row_shows_the_apps_rollup_and_no_lambs_or_paths() {
         let app = app_with(
@@ -427,10 +663,8 @@ mod tests {
             ],
             plain(),
         );
-        // Sanity: the group is the whole flock here, so `App::reseat`'s own
-        // rule (first visible row, unseated) lands the default selection on
-        // it with no keypress -- confirming this is what makes the rest of
-        // the assertion mean anything.
+        // Sanity: the group is the whole flock here, so the default
+        // selection lands on it with no keypress.
         assert!(
             matches!(app.selected(), Some(RowKey::Group(ref name)) if name == "web"),
             "sanity: the group is selected by default, got {:?}",
@@ -457,11 +691,33 @@ mod tests {
         );
     }
 
-    /// fails if this pane and the flock table disagree about the same dog --
-    /// which is exactly what happened before this task: the table said
-    /// `silent` (task 4) and this pane still said `online`. Drives both
-    /// panes off the same [`App`] built from the same row, the way an
-    /// operator with both open sees them.
+    /// The detail pane already refuses to invent a single process for a
+    /// group. A fold is the same situation one level up.
+    #[test]
+    fn a_selected_fold_shows_the_rollup_and_no_log_paths() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge")),
+                sheep_in_fold(2, "cdn", Some("edge")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge");
+        let text = render_all(&detail_lines(&app, 200));
+        assert!(text.contains("fold edge \u{d7}2"), "got {text}");
+        assert!(
+            text.contains("restarts") && text.contains("uptime") && text.contains("cpu"),
+            "the rollup a fold shows in place of one sheep's fields: {text}"
+        );
+        // Not `!contains("out  ")`, which cannot fail: `log_row` reaches the
+        // log paths through `selected_row`, and that is `None` for a fold, so
+        // the label can only be absent. Asserting the rollup IS present is
+        // what catches `fold_lines` drifting toward a sheep's own shape.
+    }
+
+    /// Drives both panes off the same [`App`] built from the same row, the
+    /// way an operator with both open sees them.
     #[test]
     fn a_silent_dogs_status_word_and_colour_agree_with_the_flock_pane() {
         use shep_core::protocol::DogSource;
@@ -487,7 +743,7 @@ mod tests {
         assert!(!detail_rendered.contains("online"), "{detail_rendered:?}");
 
         let row = app.row(9).unwrap();
-        let flock_line = row_line(&app, row, columns_for(200), 200, false);
+        let flock_line = row_line(&app, row, columns_for(200), 200, false, false);
         let flock_rendered: String = flock_line
             .spans
             .iter()
@@ -495,13 +751,242 @@ mod tests {
             .collect();
         assert!(flock_rendered.contains("silent"), "{flock_rendered:?}");
 
-        // Both panes colour the word `--butter`, the "gap the operator can
-        // close" role -- see `Reported::role`'s own doc for why not `--bark`.
+        // Both panes colour the word `--butter`: a gap the operator can
+        // close, not `--bark`.
         let detail_colour = detail_lines(&app, 200)[0]
             .spans
             .iter()
             .find(|span| span.content.as_ref() == "silent")
             .map(|span| span.style.fg);
         assert_eq!(detail_colour, Some(palette.attention().fg));
+    }
+
+    /// The three widths `log_row`'s own tiers need, derived from the
+    /// fixture's actual paths rather than a hardcoded literal.
+    ///
+    /// A hardcoded 160/70/60 (this brief's own first draft) assumes the
+    /// fixture's tempdir path is short. `app_fixture`'s tempdir is whatever
+    /// the host resolves, unbounded, so a fixed literal is a bet on the
+    /// environment rather than a fact about `log_row`. `wide` comfortably
+    /// fits both paths plus the size; `medium` fits both paths but not the
+    /// size text; `narrow` is a small constant, independent of the fixture's
+    /// path length, that is always well under the full row's width and still
+    /// leaves each path enough budget to keep its identifying tail.
+    fn log_row_thresholds(app: &App) -> (u16, u16, u16) {
+        let info = &app.selected_row().expect("a selected sheep").info;
+        let out = info.out_file.as_deref().unwrap_or("not reported");
+        let err = info.err_file.as_deref().unwrap_or("not reported");
+        let full = "out  ".len() + out.len() + "   \u{2502}   ".len() + "err  ".len() + err.len();
+        let wide = u16::try_from(full + 40).expect("a test fixture's width fits u16");
+        let medium = u16::try_from(full + 5).expect("a test fixture's width fits u16");
+        // Independent of the fixture's path length: `full` above always
+        // exceeds this, since a real tempdir path is never this short.
+        let narrow = 39;
+        (wide, medium, narrow)
+    }
+
+    #[test]
+    fn the_log_row_carries_both_paths_and_the_size() {
+        let (wide, ..) = log_row_thresholds(&app_fixture());
+        let line = log_row(&app_fixture(), wide);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("out"));
+        assert!(text.contains("err"));
+        assert!(text.contains('\u{2502}'), "a divider between the two");
+    }
+
+    #[test]
+    fn a_narrow_log_row_drops_the_size_before_it_truncates_a_path() {
+        let app = app_fixture();
+        let (wide, medium, _) = log_row_thresholds(&app);
+        let wide_text: String = log_row(&app, wide)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        let medium_text: String = log_row(&app, medium)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(wide_text.contains("on disk"));
+        assert!(!medium_text.contains("on disk"));
+    }
+
+    #[test]
+    fn a_path_truncates_from_the_left_so_its_filename_survives() {
+        let app = app_fixture();
+        let (_, _, narrow) = log_row_thresholds(&app);
+        let narrow_text: String = log_row(&app, narrow)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            narrow_text.contains("-out.log"),
+            "the tail identifies the file"
+        );
+    }
+
+    /// A log rotated away between the poll and the draw leaves exactly one
+    /// of the two `fs::metadata` calls failing. The doc on [`log_row`]
+    /// promises the size only when both succeed, so a lone size covering one
+    /// file must not appear labelled as though it covered both.
+    #[test]
+    fn a_missing_log_drops_the_size_rather_than_report_one_file() {
+        let dir = tempfile::Builder::new()
+            .prefix("shep-fx-")
+            .tempdir()
+            .expect("a tempdir for the fixture's logs");
+        let out_path = dir.path().join("only-out.log");
+        std::fs::write(&out_path, b"listening on :8080\n").expect("write the out log");
+        let missing_err = dir.path().join("rotated-away-err.log");
+
+        let info = ProcessInfo::builder(11, "half-rotated", ProcStatus::Online)
+            .pid(Some(48_111))
+            .out_file(Some(out_path.display().to_string()))
+            .err_file(Some(missing_err.display().to_string()))
+            .build();
+        let app = with_selection(info);
+
+        let text: String = log_row(&app, 200)
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            !text.contains("on disk"),
+            "one file's metadata failed, so no size is honest: {text:?}"
+        );
+    }
+
+    /// `used` must be measured in display columns, not `char`s: a sheep name
+    /// with double-width characters undercounts by `chars().count()`, which
+    /// hands `fit` a larger budget than actually remains and pushes the
+    /// composed line past `width`.
+    #[test]
+    fn a_wide_character_name_does_not_push_the_first_line_past_width() {
+        let info = ProcessInfo::builder(3, "羊羊羊羊羊", ProcStatus::Online)
+            .pid(Some(48_103))
+            .build();
+        let app = with_selection(info);
+        let width = 60;
+
+        let lines = detail_lines(&app, width);
+        let first = rendered(&lines[0]);
+        assert!(
+            columns(&first) <= usize::from(width),
+            "first line is {} columns wide, wanted at most {width}: {first:?}",
+            columns(&first)
+        );
+    }
+
+    /// The group path composes its own first line and so needs the same
+    /// column measurement the sheep path does. `chars().count()` over an
+    /// app name of double-width characters undercounts by half, and the
+    /// rollup line runs off the right edge.
+    #[test]
+    fn a_wide_character_group_name_does_not_push_the_first_line_past_width() {
+        let app = app_with(
+            vec![
+                ProcessInfo::builder(
+                    1,
+                    "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}",
+                    ProcStatus::Online,
+                )
+                .instance(Some(0))
+                .build(),
+                ProcessInfo::builder(
+                    2,
+                    "\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}\u{7f8a}",
+                    ProcStatus::Online,
+                )
+                .instance(Some(1))
+                .build(),
+            ],
+            plain(),
+        );
+        let width = 60;
+
+        let lines = detail_lines(&app, width);
+        let first = rendered(&lines[0]);
+        assert!(
+            columns(&first) <= usize::from(width),
+            "first line is {} columns wide, wanted at most {width}: {first:?}",
+            columns(&first)
+        );
+    }
+
+    /// A long fold name cannot push the status word off a narrow pane.
+    ///
+    /// `MIN_TERM_WIDTH` is 33 and the head is built before anything is fit,
+    /// so a fold named at length would otherwise spend the whole row and the
+    /// status word would never be drawn. The sibling `Group` branch had the
+    /// same shape and the same bug.
+    /// A mixed status is fit too, not just the name.
+    ///
+    /// Four differing statuses read `1 errored, 1 online, 1 starting, 1
+    /// stopped`, wider than `MIN_TERM_WIDTH` on its own. Budgeting the head
+    /// against it leaves zero and the status still overflows.
+    #[test]
+    fn a_mixed_status_does_not_overflow_a_narrow_pane() {
+        for selected in ["fold", "group"] {
+            let mut app = app_with(
+                vec![
+                    sheep_in_fold_with_status(1, "api", Some("edge"), ProcStatus::Errored),
+                    sheep_in_fold_with_status(2, "cdn", Some("edge"), ProcStatus::Online),
+                    sheep_in_fold_with_status(3, "img", Some("edge"), ProcStatus::Starting),
+                    sheep_in_fold_with_status(4, "web", Some("edge"), ProcStatus::Stopped),
+                ],
+                plain(),
+            );
+            if selected == "fold" {
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+                app.select_fold_for_tests("edge");
+            } else {
+                // The group header is the first selectable row when every
+                // instance shares a name.
+                app.select_fold_for_tests("edge");
+                let _ = app.update(Msg::Key(KeyPress::FoldView));
+            }
+            for line in &detail_lines(&app, 33) {
+                let drawn: String = line
+                    .spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect();
+                assert!(
+                    columns(&drawn) <= 33,
+                    "{selected} row overflowed 33 columns: {drawn:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_fold_name_does_not_push_the_status_off_a_narrow_pane() {
+        let mut app = app_with(
+            vec![
+                sheep_in_fold(1, "api", Some("edge-services-and-more")),
+                sheep_in_fold(2, "cdn", Some("edge-services-and-more")),
+            ],
+            plain(),
+        );
+        let _ = app.update(Msg::Key(KeyPress::FoldView));
+        app.select_fold_for_tests("edge-services-and-more");
+        let lines = detail_lines(&app, 33);
+        for line in &lines {
+            let drawn: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            assert!(
+                columns(&drawn) <= 33,
+                "a detail row overflowed 33 columns: {drawn:?}"
+            );
+        }
+        let head = render_all(&lines);
+        assert!(head.contains("online"), "the status survives: {head}");
     }
 }

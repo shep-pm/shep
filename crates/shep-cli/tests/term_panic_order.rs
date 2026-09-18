@@ -1,57 +1,39 @@
-//! Bounded, headless proof of `lookout::term::install_panic_hook`'s
-//! ordering: `restore()` runs BEFORE the previous (default) hook prints its
-//! backtrace. That ordering is the module's entire reason to exist — a
-//! crash that leaves raw mode and the alternate screen active is, per
-//! `term.rs`'s own doc, the worst failure a TUI can have.
+//! Proves `lookout::term::install_panic_hook`'s ordering: `restore()`
+//! runs before the previous hook prints its backtrace. A crash leaving
+//! raw mode and the alternate screen active is a TUI's worst failure.
 //!
-//! This file is the permanent check that catches a future refactor swapping
-//! the two statements back.
+//! `restore()` writes to `io::stdout()`; the default hook writes to
+//! `io::stderr()`. Redirecting both to clones of one open file makes
+//! the OS serialize the writes. Same guarantee a shell's `2>&1` gives,
+//! without a pty.
 //!
-//! **How the ordering becomes observable without a real terminal or a
-//! pty.** `restore()` writes its `LeaveAlternateScreen`/`Show` escapes to
-//! `io::stdout()`; the default panic hook (chained after `restore()` by
-//! `install_panic_hook`) writes the backtrace to `io::stderr()`. Two
-//! separate pipes captured independently (`Command::output`'s ordinary
-//! behaviour) would not preserve which write happened first. Redirecting
-//! BOTH file descriptors to clones of the same open file makes the OS
-//! serialize every write to that file in true chronological order — the
-//! same guarantee a shell's `2>&1` gives on a real terminal, without a pty.
-//!
-//! `#![cfg(unix)]` for the same reason `cli_e2e.rs` carries it: this file
-//! is its own compilation unit, and without the guard `--all-targets` would
-//! build it (uselessly, since `lookout` itself is `#[cfg(unix)]`) on the
-//! Windows CI leg.
+//! `#![cfg(unix)]`: not a portability gate, since nothing here needs a Unix
+//! API and `lookout` builds on Windows. On Windows `execute!` emits the
+//! escape only when crossterm's ANSI probe says the terminal takes one, and
+//! otherwise calls a console API that writes no bytes for this to find.
 
 #![cfg(unix)]
 
 use std::fs::File;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use assert_cmd::cargo::CommandCargoExt as _;
 
-/// A deliberate panic in a process doing nothing but installing a hook has
-/// no legitimate reason to take more than a fraction of a second; five
-/// seconds is generous headroom, not a tight bound. Enforced by hand below
-/// (`wait_bounded`) rather than via `assert_cmd`'s own `.timeout()`, which
-/// only applies to its `.output()`/`.assert()` paths — this test needs
-/// `.status()` so the custom stdout/stderr redirection below survives
-/// unmolested (`Command::output` unconditionally overwrites both to fresh
-/// pipes before spawning).
+mod common;
+use common::wait_bounded;
+
+/// Five seconds: generous headroom for a hook install and panic, not a
+/// tight bound. Enforced by hand (`wait_bounded`) rather than
+/// `assert_cmd`'s `.timeout()`, which needs `.output()`/`.assert()`.
+/// That would overwrite the custom stdout/stderr redirection below.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// fails if `install_panic_hook`'s two statements — `restore()`, then the
-/// previous hook — are ever swapped back. Runs the real `shep` binary with
-/// `SHEP_TERM_PANIC_PROBE` set, which calls `install_panic_hook()` and
-/// panics on purpose (`lookout::term::probe_panic_for_test`); asserts the
-/// `LeaveAlternateScreen` escape (`\x1b[?1049l`) appears, byte-for-byte,
-/// before the panic backtrace text in the merged stdout+stderr stream.
-///
-/// Proven to actually catch the regression it names: swapping
-/// `install_panic_hook`'s two statements (restored via `cp` from a
-/// pre-mutation snapshot, never `git checkout`) reddened this exact
-/// assertion before the fix landed — see the task report for the byte
-/// offsets observed.
+/// Runs the real `shep` binary with `SHEP_TERM_PANIC_PROBE` set, which
+/// calls `install_panic_hook()` and panics
+/// (`lookout::term::probe_panic_for_test`). Asserts the
+/// `LeaveAlternateScreen` escape (`\x1b[?1049l`) appears before the
+/// panic backtrace in the merged stdout+stderr stream.
 #[test]
 fn the_restore_escape_lands_before_the_panic_backtrace() {
     let dir = tempfile::tempdir().expect("tempdir for the probe's merged output");
@@ -66,7 +48,8 @@ fn the_restore_escape_lands_before_the_panic_backtrace() {
         .stdout(Stdio::from(sink))
         .stderr(Stdio::from(sink_for_stderr));
 
-    let status = wait_bounded(cmd, PROBE_TIMEOUT);
+    let mut child = cmd.spawn().expect("spawn the probe subprocess");
+    let status = wait_bounded(&mut child, PROBE_TIMEOUT, "the probe subprocess");
     assert!(
         !status.success(),
         "the probe is supposed to panic, not exit cleanly"
@@ -82,27 +65,6 @@ fn the_restore_escape_lands_before_the_panic_backtrace() {
          {panic_at}; merged output:\n{}",
         String::from_utf8_lossy(&merged)
     );
-}
-
-/// Spawns `cmd` and polls for its exit rather than blocking on
-/// `Command::status()` directly, so a probe that somehow hangs fails this
-/// test with a named panic instead of relying on the harness's own process
-/// timeout (which fails the whole binary and names nothing — the same
-/// distinction IR-46 draws for `await`s).
-fn wait_bounded(mut cmd: Command, timeout: Duration) -> std::process::ExitStatus {
-    let mut child = cmd.spawn().expect("spawn the probe subprocess");
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait().expect("poll the probe subprocess") {
-            return status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("probe subprocess did not exit within {timeout:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {

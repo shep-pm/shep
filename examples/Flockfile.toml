@@ -131,3 +131,28 @@ max_restarts = 4
 name    = "noisy"
 script  = "../target/release/noisy"
 args    = ["5"]
+
+# --- 8. Load worth plotting -------------------------------------------------
+# The seven apps above sit near zero percent, which is fine for reading logs
+# and wrong for looking at anything that draws load over time: `shep lookout`'s
+# CPU column has nothing to plot but a flat line. These two rise and fall on
+# different periods, so the column draws a shape and the two rows look
+# different from each other.
+#
+# Each is one thread, so neither can exceed a single core whatever `peak`
+# says, and both stop with the rest of the flock on `shep kill`.
+#
+# `max_memory` here is generous rather than a limit worth tripping: it exists
+# so the MEM/CEIL gauge has a denominator to draw against. A sheep with no
+# ceiling renders an empty bar, correctly and uninformatively.
+[[app]]
+name        = "busy-wave"
+script      = "../target/release/busy"
+args        = ["70", "40"]
+max_memory  = "64M"
+
+[[app]]
+name        = "busy-quiet"
+script      = "../target/release/busy"
+args        = ["15", "17"]
+max_memory  = "64M"

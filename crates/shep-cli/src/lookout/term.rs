@@ -1,38 +1,15 @@
 //! Raw mode, the alternate screen, and getting out of both no matter how the
 //! process ends.
 //!
-//! **This is the worst failure a TUI can have**, because it outlives the
-//! process: a crash that leaves raw mode on and the alternate screen entered
-//! leaves the operator with no echo, no line editing, no visible cursor and
-//! often no scrollback, in a shell that looks broken and is.
+//! A crash that leaves raw mode on and the alternate screen entered leaves
+//! the operator with no echo, no line editing and no visible cursor.
 //!
-//! Two mechanisms, both, because neither covers the other's case:
-//!
-//! 1. **A panic hook** ([`install_panic_hook`]) that restores and *then* calls
-//!    the previous hook. Order matters: restoring first puts the default hook's
-//!    backtrace on a cooked terminal, on the main screen, where it can be read
-//!    and scrolled. A hook does not run on an ordinary early return.
-//! 2. **A [`RestoreGuard`]** whose `Drop` restores. `Drop` does not run under
-//!    `panic = "abort"` — which this workspace does not set — and covers every
-//!    `?` and early `return` the hook does not.
-//!
-//! [`restore`] is idempotent, because on a panic BOTH of them fire.
-//!
-//! Nothing that can panic is installed between the hook and raw mode: the hook
-//! goes on first, then raw mode, then the alternate screen.
-//!
-//! **ratatui 0.30's own `init()` would install a restoring hook too.** It is
-//! not used here for one reason: it picks the terminal, the backend and the
-//! hook as a bundle, and this phase needs the backend swappable for
-//! `TestBackend` so the UI loop itself is testable. The four lines below keep
-//! that seam and cost nothing.
-//!
-//! [`enter`] and [`RestoreGuard`]'s real caller is `super::mod`'s `lookout`.
-//! [`install_panic_hook`] has an additional, permanent caller —
-//! [`probe_panic_for_test`] calls it from behind an env-var gate in `main`,
-//! so its own ordering can be checked by a headless subprocess test instead
-//! of the by-hand `script` session Task 7's report describes doing once and
-//! deleting.
+//! Two mechanisms cover it: [`install_panic_hook`] restores before calling
+//! the previous hook, and [`RestoreGuard`]'s `Drop` covers every `?`, early
+//! return and a panic's own unwind, except under `panic = "abort"`, which
+//! this workspace does not set. [`restore`] is idempotent, since a panic
+//! fires both. Nothing that can panic runs between the hook and raw mode:
+//! hook, then raw mode, then the screen.
 
 use std::io::{self, Stdout, Write};
 
@@ -40,6 +17,8 @@ use crossterm::cursor::{Hide, Show};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+
+use crate::serve::auth::base64_encode;
 
 /// Puts the terminal back the way it was found.
 ///
@@ -66,21 +45,13 @@ pub fn install_panic_hook() {
 
 /// Installs the panic hook, then panics on purpose.
 ///
-/// Exists for exactly one caller: `main`, gated behind the
-/// `SHEP_TERM_PANIC_PROBE` environment variable so it can never fire by
-/// accident and never appears on the command surface — no clap variant, no
-/// `--help` entry, same reasoning as the hidden `daemon`/`dog` subcommands.
-///
-/// Confirms that [`install_panic_hook`] restores the terminal BEFORE the
-/// previous hook prints its backtrace, so a crash lands on a cooked
-/// main-screen terminal rather than a raw alternate one.
-/// `tests/term_panic_order.rs` drives this function through a real
-/// subprocess and checks the byte order of the two writes.
+/// Gated behind `SHEP_TERM_PANIC_PROBE` so it never fires by accident and
+/// never appears on the command surface. `tests/term_panic_order.rs` drives
+/// it through a subprocess to check that [`install_panic_hook`] restores the
+/// terminal before the previous hook prints its backtrace.
 ///
 /// # Panics
-/// Always — that is the entire point. The message names what is being
-/// tested so a stray run (there should never be one) is self-explanatory in
-/// a crash report.
+/// Always. The message names what is being tested.
 #[track_caller]
 pub fn probe_panic_for_test() -> ! {
     install_panic_hook();
@@ -89,15 +60,10 @@ pub fn probe_panic_for_test() -> ! {
 
 /// Enters raw mode and the alternate screen, and hides the cursor.
 ///
-/// **Fails clean.** Raw mode goes on first and the alternate screen second, so
-/// there is a window in which the first step has succeeded and the second has
-/// not — and a bare `?` there would return `Err` with raw mode still ON, to a
-/// caller that is about to return an exit code and never had a guard. The
-/// operator would be left with no echo and no line editing, which
-/// this module's own doc calls the worst failure a TUI can have. So
-/// the second step restores before it reports. The caller arms its
-/// [`RestoreGuard`] before calling this as well; both, not either, is the same
-/// argument the panic hook and the guard are two of.
+/// Raw mode goes on before the alternate screen, so a failure entering the
+/// alternate screen restores the terminal before returning the error rather
+/// than leaving raw mode on. The caller still arms its own [`RestoreGuard`]
+/// before calling this.
 ///
 /// # Errors
 /// Whatever `crossterm` could not do to the terminal.
@@ -113,11 +79,8 @@ pub fn enter() -> io::Result<Stdout> {
 
 /// Restores on drop.
 ///
-/// Holds a closure rather than calling [`restore`] directly so its own test can
-/// observe that dropping it acts, without a terminal to act on — the behaviour
-/// under test is "the guard runs its action exactly once when it goes out of
-/// scope", and that is what regresses if someone converts this to a plain
-/// struct with a manual teardown call.
+/// Holds a closure rather than calling [`restore`] directly, so its own test
+/// can observe the drop firing without a real terminal.
 pub struct RestoreGuard {
     action: Option<Box<dyn FnOnce()>>,
 }
@@ -149,9 +112,7 @@ impl RestoreGuard {
 impl Default for RestoreGuard {
     /// The same guard [`RestoreGuard::new`] builds.
     ///
-    /// Present because `clippy::new_without_default` is a default-on style
-    /// lint and `cargo clippy -- -D warnings` is in the task gate — an
-    /// argument-less `new` with no `Default` fails it.
+    /// Satisfies `clippy::new_without_default`.
     fn default() -> Self {
         Self::new()
     }
@@ -165,23 +126,57 @@ impl Drop for RestoreGuard {
     }
 }
 
+/// The OSC 52 sequence that offers `value` to the terminal's clipboard.
+///
+/// Write-only: the terminal sends nothing back, and many refuse the
+/// sequence by default, so no caller can report success. The pane's own
+/// wording says the copy was sent rather than that it arrived.
+fn osc52(value: &str) -> String {
+    format!("\x1b]52;c;{}\x07", base64_encode(value.as_bytes()))
+}
+
+/// Sends `value` to the terminal's clipboard over OSC 52.
+///
+/// Written straight to `io::stdout()`, the same handle [`enter`] and
+/// [`restore`] use, and never through `ratatui`'s `Terminal`: a test drives
+/// the dashboard with a `TestBackend` and no real terminal behind it, so a
+/// write routed through there would compile and verify nothing. Never
+/// through `tracing` either: the whole point of this function is that the
+/// value does not reach a log.
+///
+/// # Errors
+/// Whatever writing to stdout could not do.
+pub fn copy_to_clipboard(value: &str) -> io::Result<()> {
+    let mut out = io::stdout();
+    out.write_all(osc52(value).as_bytes())?;
+    out.flush()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// fails if `restore` stops being safe to call twice. Both the panic hook
-    /// and the guard's `Drop` fire on a panic, so the second call is not an
-    /// edge case — it is the ordinary path through a crash, and a `restore`
-    /// that panicked on its second call would abort the process inside the
-    /// panic handler and leave the terminal exactly as broken as doing nothing.
+    #[test]
+    fn the_osc_52_sequence_carries_the_encoded_value_and_nothing_else() {
+        let sequence = super::osc52("hunter2");
+
+        assert_eq!(sequence, "\x1b]52;c;aHVudGVyMg==\x07");
+        assert!(
+            !sequence.contains("hunter2"),
+            "the plaintext must not ride along"
+        );
+    }
+
+    /// Both the panic hook and the guard's `Drop` fire on a panic, so the
+    /// second call is the ordinary path through a crash, not an edge case.
     #[test]
     fn restore_is_idempotent_outside_raw_mode() {
         restore();
         restore();
     }
 
-    /// fails if the guard stops restoring on an ordinary drop. The panic hook
-    /// does not run on a `?` or an early `return`; this is the half that does.
+    /// The panic hook does not run on a `?` or an early return; this guard
+    /// does.
     #[test]
     fn the_guard_restores_when_it_is_dropped() {
         let restored = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

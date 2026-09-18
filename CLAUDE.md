@@ -28,170 +28,113 @@ pm2's artifacts. `~/GitHub/rand` is the style reference — read freely.
 
 ## Commands
 
-MSRV 1.88, edition 2024. The build cache works — a no-op rebuild is **0.35s**.
-Slow runs are never compilation; they are test execution, and almost all of it
-is one class of test.
+MSRV 1.88, edition 2024. A no-op rebuild is 0.35s, so a slow run is never
+compilation. It is test execution, and almost all of it is one class of test.
 
-### The inner loop — use this while iterating, including for every mutation
+**The numbers behind every choice here, and the reasoning that stops each one
+being "simplified" into something slower or less honest, are in
+[docs/testing.md](docs/testing.md). Read it before changing a command.**
+
+### The inner loop, while iterating
 
 ```bash
 cargo test -p shep-daemon --lib --all-features -- --skip ::slow::
 ```
 
-**~2.3s, 711 of 730 lib tests as of 2026-08-31** — the exact counts drift
-every time a task adds one, so treat them as a shape, not a checksum. Three
-briefs have now shipped a stale figure, this file carried "437 of 454"
-for long enough to be wrong by fifty, and it then carried "619 of 638" while
-the real number climbed by ninety-two. The 19 tests this skips live in a nested `mod slow`
-inside each file's `mod tests` — `extras.rs` has 9, `watch/source.rs` 7, and
-`watch/mod.rs`, `limits/sample.rs` and `handover/mod.rs` one each — and wait on real macOS
-FSEvents or real elapsed time; they are the reason the unfiltered lib run
-costs ~25s instead. A mutation in `supervisor.rs` does not need them — but a
-change to `watch/source.rs`'s watcher plumbing, or to timing-sensitive
-behavior in `extras.rs` or the sampler, does, so run the unfiltered lib suite
-when touching either.
+The skipped tests wait on real FSEvents or real elapsed time. Run the
+unfiltered lib suite when touching `watch/`, `extras.rs` or the sampler.
 
-CI runs that tier as its own serial `slow` job and skips it everywhere else,
-because a contended runner cannot hold a wall clock still: the debouncer
-tests were the whole of CI's red for four runs. `boot.rs`'s
-`two_concurrent_boots_on_a_stale_socket_exactly_one_wins` rides along in that
-job for the same reason without being in a `mod slow` — it is fast, but it
-races two threads and needs the machine quiet. Add a timing- or
-contention-sensitive test and it needs the same treatment; the workflow's
-skip list names both groups explicitly.
+shep-scoped work needs both halves, since Phase 15 made it a library with thin
+bins over it:
 
-From Phase 15 on, `shep` is a library with three thin `[[bin]]` targets
-over it (`shep`, `shep-runtime`, `shep-dev`) rather than one bare binary — the
-two container-entrypoint aliases spec §3 asks for cannot share a module tree
-without a library underneath them. A **shep-scoped** run therefore needs
-both halves: `cargo test -p shep --lib --bins --all-features`. `--bins`
-alone now runs almost nothing, since every unit test in the crate lives in the
-library.
+```bash
+cargo test -p shep --lib --bins --all-features -- --skip ::slow::
+```
 
-`shep` has a `mod slow` of its own as of 2026-08-28, seven tests as of
-2026-08-31, in `commands/lifecycle.rs`. It needs a real node to start and exit inside a
-budget, which is a claim about the machine's speed rather than about shep: at
-200ms it failed on four CI runners at once while passing every local run. Add
-`-- --skip ::slow::` to a shep-scoped run for the same reason the daemon one
-carries it. CI already covers it: the `slow` job runs `--workspace`, chosen so
-a `mod slow` outside shep-daemon could not end up skipped everywhere and run
-nowhere.
-
-### The task gate — run once, when the task is otherwise done
+### The task gate, once, when the task is otherwise done
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 ```
+```bash
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+```bash
+cargo test --workspace --all-features
+```
+```bash
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --document-private-items
+```
+
+**`--document-private-items`, and the flag is most of that step's value.**
+Most of shep-daemon and shep-cli is `pub(crate)`, so without it the gate reads
+a small fraction of the doc prose this repo writes, and an intra-doc link in a
+private module can point at nothing forever. Turning it on for the first time
+on 2026-09-15 found 74, 66 of them in shep-cli. Seven described something that
+has never existed: a `PanePending` type, `reveal_selected` and `visible`
+attributed to the wrong types, a `Display` variant on an enum that has a
+`Display` impl instead, and a link to `super::mod` three times, which is not
+an item name and so resolved in no build ever. Thirty-one were first written
+by one prose-only comment sweep, where nothing compiles a link and no reviewer
+follows one. The flag costs 0.4s on a cold `cargo doc`, 2.3s against 2.8s
+measured twice, and takes `target/doc` from 34 MB to 74 MB, which nothing
+publishes.
+
+**It does not reach `#[cfg(test)]` modules, and nothing else does either.**
+`cargo doc` never turns `cfg(test)` on, so a broken link inside a test module
+is reported zero times, flag or no flag. Measured 2026-09-15 with two canaries
+in one run: an unresolvable link in `supervisor/tests/flush.rs` drew nothing
+while one in `watch/mod.rs` drew its own warning. `RUSTDOCFLAGS="--cfg test"`
+does not rescue it, because dev-dependencies are not linked for `cargo doc`:
+the build fails with 20 errors before a link is checked. Clippy compiles test
+modules but will not help either, since `broken_intra_doc_links` is a rustdoc
+lint and rustc accepts `-W rustdoc::broken_intra_doc_links` while never running
+it. Both canaries went unreported there. Test-module doc links are unguarded by
+anything in this toolchain, so read them by hand when a split moves a test file.
+
+**To count them, drop `-D warnings` for that one run.** Deny makes the first
+offending crate a hard error and cargo cancels every job behind it, so a deny
+run reports one crate's worth and reads like the whole answer. Two sessions
+independently reported 34 that way on the morning the real number was 74.
+
+**Bare `cargo test --workspace`, deliberately, not `--lib --bins`.** The global
+rule preferring `--lib --bins` was measured on a project where doctests
+dominated and does not transfer: this workspace's cost is the integration tier,
+which `--lib --bins` skips rather than speeds up.
+
+One cargo command at a time (the workspace shares one target-dir build lock),
+each from its own command with `$?` captured directly, never through a pipe.
 
 **If the task changed anything an operator types or sees**, the gate has a
-fifth step in `web/` -- see the docs trigger below for what counts and why:
+fifth step in `web/`. See the docs trigger below.
 
-```bash
-cargo build --release
-```
-```bash
-./web/scripts/generate-cli-reference.sh
-```
-```bash
-cd web && npx astro build
-```
-
-Each from its own command with `$?` captured directly, never through a pipe —
-in zsh a pipeline's `$?` is the last command's and `${PIPESTATUS[0]}` is empty.
-**One cargo command at a time**: the workspace shares one target-dir build
-lock, so concurrent runs block rather than parallelise. (A separate worktree,
-or `benches/`, has its own lock and may run alongside.)
-
-### The two cross-checks — run once per phase, not per task
+### Per phase, not per task
 
 ```bash
 cargo check -p shep-daemon --all-targets --all-features --target x86_64-unknown-linux-gnu
+```
+```bash
 cargo check --workspace --all-targets --all-features --target x86_64-pc-windows-gnu
 ```
 
-One cargo command at a time, as everywhere else, and give them their own
-`CARGO_TARGET_DIR` if you want the host cache left alone.
+Linux reaches `notify.rs`'s abstract-namespace branch, which a macOS build never
+compiles. Windows needs `brew install mingw-w64` for `ring`'s build script.
+`cargo check`, not clippy: 51 dead-code warnings fall out of `cfg(unix)` code
+that is not dead anywhere we ship.
 
-**Linux.** `notify.rs`'s abstract-namespace branch and its test are both
-`#[cfg(target_os = "linux")]`, so a macOS `cargo test` compiles neither. That
-branch is what a systemd `Type=notify` unit — the unit `shep startup` installs
-— depends on for readiness reporting, and it went five phases without a
-compiler ever reading it (platform audit #3). `--all-targets` is what reaches
-the test. shep-daemon has no `ring` in its tree, so this needs no cross C
-toolchain; `-p shep` would, and is not in this gate — a macOS host has no
-`x86_64-linux-gnu-gcc` for `ring`'s build script to call, so `cargo check -p
-shep --target x86_64-unknown-linux-gnu` fails outright here, gcc or no.
+**The local gate does not cover Linux or Windows. Read the CI result before
+calling a branch green.**
 
-**shep carries its own `#[cfg(target_os = "linux")]` code now, and this
-gate does not reach it.** Phase 15 added
-`crates/shep-cli/tests/init.rs::a_reparented_orphan_is_reaped` and
-`reap.rs::drain_reaps_a_real_reparented_orphan`, both Linux-only, in the one
-crate this gate deliberately excludes. Local checks give no signal on either
-— not this gate (excludes `-p shep` for the reason above), not a bare
-macOS `cargo test` (never compiles a `target_os = "linux"` item at all). What
-DOES cover them: `.github/workflows/test.yml`'s `test` job, whose
-`ubuntu-latest`/`ubuntu-24.04-arm` legs run `cargo test --workspace --locked
---all-features` on real Linux. That workflow runs on every
-push and pull request, and has since 2026-08-16, so those two tests DO get
-executed on real Linux now. This paragraph previously said the workflow was
-`workflow_dispatch`-only "while the repository is private"; both halves were
-stale, and the staleness cost real time on 2026-08-19 when a Phase 17 task
-was written to "turn CI on" that was already on. The repository is public and
-standard runners are free.
+### On a dependency change
 
-Still don't assume the local gate covers Linux: it does not, and three
-separate breakages on 2026-08-19 were visible only to CI. `--all-features`
-hides a feature-matrix break, a macOS `cargo test` never compiles a
-`target_os = "windows"` arm, and the windows-gnu cross-check is `cargo check`,
-which does not run anything. Those are not gaps in the gate; they are what
-the gate is. **Read the CI result before claiming a branch is green.**
+```bash
+cargo deny check
+```
 
-**Windows.** Every plan through Phase 6 carried this one; Phases 7-9 dropped
-it without saying so, and it never reached this file, which is why nothing
-noticed for three phases. Restored in Phase 10 after being measured green
-(`EXIT=0`, 8.42s, 2026-08-13). It needs a C toolchain for the target —
-`brew install mingw-w64` — because `ring`'s build script runs `cc`; a host
-without `x86_64-w64-mingw32-gcc` cannot run it, and that is presumably how it
-came to be dropped.
-
-`cargo check`, deliberately, not `clippy -- -D warnings`: shep-daemon's
-`boot`/`sys`/`server`/`tokio_runner` are `cfg(unix)`-gated, so on Windows 51
-dead-code warnings fall out of code that is not dead anywhere we ship. The
-question this gate asks is whether the tree still compiles for a target nobody
-has implemented yet. Silencing those warnings would mean `#[allow(dead_code)]`
-on live code.
-
-### Doctests are not the cost here — do not split them out
-
-Measured 2026-08-12 on this machine: bare `cargo test --workspace
---all-features` **89.3s**; `--all-targets` (same minus doctests) **82.7s**;
-the three crates' doctests run alone **30.9s**. They overlap rather than add,
-so splitting them out of the task gate buys ~6.5s and costs a second command.
-
-The global rule to prefer `--lib --bins` over bare `--workspace` was measured
-on a project where doctests dominated. It does not transfer: this workspace's
-cost is the integration tier (`cli_e2e` ~47s, `daemon_e2e` ~22s), which
-`--lib --bins` would skip entirely rather than speed up. Keep the bare form.
-
-### The phase gate — run at a merge, not per task
+### At a merge
 
 The four above, plus `cargo test --workspace --all-features -- --test-threads=1`
-and both `benches/` gates. The serial run is not ceremony: it was red on `main`
-before Phase 5 and it caught a real regression in Phase 6.
-
-### Measuring a mutation's blast radius
-
-Use the inner loop. Escalate to `cargo test --workspace --all-features
---no-fail-fast` **only if the targeted run shows a radius above 1**, or if the
-change crosses a crate boundary. Without `--no-fail-fast` cargo stops at the
-first failing binary and a radius of 3 reads as 1.
-
-Bounded waits on real children produce **false radii under load** — an earlier
-task saw 9 failures that were all load artefacts. Confirm any radius above 1 by
-re-running that suite in isolation with the mutation still applied.
+and both `benches/` gates. The serial run has caught a real regression.
 
 ## Subagent dispatch
 
@@ -199,11 +142,56 @@ re-running that suite in isolation with the mutation still applied.
   plan spends its cost later, in review loops.
 - **Implementing a written plan:** Sonnet, high thinking. The design decisions
   are already made.
+- **Every brief says to use conventional commit subjects, and says it in the
+  brief rather than trusting it to be known.** `type(scope): summary`, with a
+  `!` on the commit that actually breaks something, in the crate that breaks.
+
+  This is a release-correctness rule, not a style one. release-plz walks the
+  INDIVIDUAL commits and `filter_unconventional = true` drops whatever does
+  not parse, so an unreadable subject contributes nothing to its crate's
+  changelog and nothing to the version bump. The `!` on a pull request title
+  is read by nobody: release-plz ignores merge commits, which is the opposite
+  of what a `merge_commit_title = PR_TITLE` setting suggests.
+
+  Measured 2026-09-04, and it is the reason this bullet exists. Of the 31
+  commits behind `shep-core` 0.2.1, 19 were unreadable, and the split was
+  exact: every readable one was written in the main thread, every unreadable
+  one by an implementer subagent. One of the 19 changed `BusEvent::topic`'s
+  signature, so a source break went to crates.io as a patch with an empty
+  changelog section. Nothing failed. `semver_check = true` did not catch it
+  either, having no lint for a changed inherent-method return type.
+
+  Nine types are accepted, and they are what `release-plz-changelog.toml`
+  handles rather than the conventional-commits list. `feat`, `fix`, `perf`
+  and `refactor` produce entries; `docs`, `test`, `ci`, `chore` and `style`
+  are `skip = true` and drop when not breaking, except
+  `chore: update Cargo.{toml,lock} dependencies`, which has its own parser
+  ahead of that skip. `revert` and `build` are refused, because they match no
+  parser and `filter_commits = true` discards them as silently as it discards
+  a sentence.
+
+  **A `!` is the second half of the rule, never a shortcut past the first.**
+  `protect_breaking_commits = true` outranks a `skip = true`, so `docs!:` and
+  `chore!:` are kept and arrive marked BREAKING. It does not outrank a miss,
+  so `revert!:` and `build!:` vanish, and neither does it rescue a subject
+  that never parsed: `Tell a running dog its config changed!` produces
+  nothing, measured. The commit that changed `BusEvent::topic` needed to be
+  `refactor(core)!:`, and no shorter fix would have saved 0.2.1. A conventional
+  type gets the commit seen; the `!` then decides the bump. All measured with
+  git-cliff 2.14.1 against the real config.
+
+  `.github/workflows/commits.yml` gates it now and `.githooks/commit-msg`
+  catches it earlier, so this bullet is the explanation rather than the
+  enforcement. It still belongs here, because a brief that omits the rule
+  produces a branch that fails CI at the end instead of a subagent that gets
+  it right at the start.
 
 ## Architecture
 
-Five workspace members, one distributed binary (`shep`): shep-core,
-shep-daemon, shep-client, shep-cli (published as `shep`), and
+Seven published workspace members, one distributed binary (`shep`):
+shep-core, shep-daemon, shep-client, shep-macros (the `DogConfig` derive,
+reached through shep-client's re-export), shep-cli (published as `shep`),
+shep-channel (the client an app links to speak the shepherd channel), and
 shep-cli-redirect, a placeholder holding the `shep-cli` name on crates.io.
 Each crate's Cargo.toml `description` states its role.
 
@@ -269,7 +257,7 @@ anywhere in this file until now.
 
 **Invoke the `shep-idiomatic-rust` skill before writing or reviewing ANY Rust
 in this repo.** It fronts [docs/idiomatic-rust.md](docs/idiomatic-rust.md) —
-46 numbered rules (IR-1..IR-46) distilled from rand 0.10.2. Cite rules as
+47 numbered rules (IR-1..IR-47) distilled from rand 0.10.2. Cite rules as
 `IR-<n>` in reviews. Evidence with file:line citations:
 [docs/idiomatic-rust/lenses/](docs/idiomatic-rust/lenses/).
 
@@ -295,194 +283,87 @@ never costs clarity.
 - Every new public item needs docs and a deliberate Debug decision (redacted
   for anything carrying env/secrets, with an exact-string test — IR-41).
 - `#![forbid(unsafe_code)]` is LIVE in core/client/cli, not planned. Unsafe
-  lives in exactly two files, both in shep-daemon and both carrying their own
-  `#![allow(unsafe_code)]` with per-block `// SAFETY:` (IR-22/23):
-  `sys.rs` (eight sites on unix) and `sys_windows.rs` (ten on Windows). This
-  line said "planned" and named only `sys.rs` for the whole of the Windows
-  port.
+  lives in three files across two crates, each carrying its own
+  `#![allow(unsafe_code)]` or `#[allow(unsafe_code)]` with per-block
+  `// SAFETY:` (IR-22/23): shep-daemon's `sys.rs` (eight sites on unix) and
+  `sys_windows.rs` (ten on Windows), and shep-channel's `endpoint.rs`
+  (three sites, two on unix and one on Windows: probing the descriptor the
+  shepherd names in `SHEP_CHANNEL_FD` under a `ManuallyDrop` that closes
+  nothing, then taking it, sound because a process-global guard makes that
+  reachable at most once per process, and `PeekNamedPipe` on Windows, which
+  `PipeReader`'s own doc comment exists to justify). This line said
+  "planned" and named only `sys.rs` for the whole of the Windows port, then
+  said "exactly two files" after shep-channel added a third, then said "one
+  site" in `endpoint.rs` after it had grown a second, then said "two sites,
+  one per platform" after unix grew the probe.
 - Open design decisions live at the bottom of map.md and in goals.md's open
   questions — check them before making architectural calls; if a decision is
   listed there, it is the maintainer's, not yours.
+- **A dev-dependency on another workspace crate names only a path**, never
+  `workspace = true` and never a version. `cargo publish` strips a path-only
+  dev-dependency and keeps a versioned one, and a versioned one has to
+  resolve on crates.io while the crate is being packaged. shep-macros'
+  dev-dependency on shep-client carried the workspace version, shep-client
+  depends on shep-macros so shep-macros publishes first, and every release
+  from 2026-09-04 18:24 stopped there with `failed to select a version for
+  the requirement shep-client = "^0.2.1"`: shep-core and shep-daemon reached
+  crates.io at 0.2.1 and 0.2.2 while shep-macros, shep-client and shep
+  stayed at 0.2.0 until #131 broke the cycle on 2026-09-05.
+  `scripts/check-dev-deps.py` now refuses a versioned one on every pull
+  request (`.github/workflows/manifests.yml`, no toolchain needed);
+  `cargo publish --dry-run -p <crate>` reproduces the failure in a second;
+  and `deny.toml` allows a path-only wildcard for exactly this shape. See
+  `docs/decisions.md`, "CI and releases".
 
-## Status / workflow
+## Status
 
-Phases 1–10 merged: shep-core, the daemon supervision engine, log plane, the
-CLI, watch/cron/memory-limit restarts, overlapping reload, custom
-actions over the shepherd channel (now with a correlation id), the pm2
-cutover, the dogs subsystem with working metrics and bark dogs, and an
-audit-debt phase.
+Phases 1 through 17 are merged, plus the pm2 cutover, the dogs subsystem,
+`shep lookout`, `shep whistle`, config and packaging, the last three v1 verbs,
+Windows, config overrides, boot ordering, and the lookout landing-pane redesign.
 
-**That reload is NOT "SO_REUSEPORT reload", which this line said until
-2026-08-28.** shep never binds an app's listening socket and never sets
-`SO_REUSEPORT` on one. The only socket it binds is its own control socket at
-`$SHEP_HOME/run/shep.sock`, which is a different thing entirely and does fail
-loudly when its path exceeds the platform limit. Whether a reload's overlap is
-zero-downtime depends on the app having set `SO_REUSEPORT` on its own
-listener; without it the second instance takes `EADDRINUSE`.
+**[docs/history.md](docs/history.md) is the phase-by-phase account: what
+shipped, when, and why each design call went the way it did.** Read it when you
+need to know why something is the way it is. Several of its paragraphs exist
+because this file once carried a claim that had quietly become false, so prefer
+it over your own recollection.
 
-**The overlap stopped being unconditional later the same day**, and this file
-carried the old claim for a few hours, which is worse than it sounds because
-this is the file every session reads first. `reuse_port` is no longer refused
-at parse time: it is the field that decides which of two reloads an app gets.
-An app with a `readiness_probe` and no `reuse_port` is reloaded SERIALLY
-(DrainOld, ReapOld, SpawnNew, AwaitReady), because a probe asks an address and
-an address cannot say which of two overlapping instances answered it. Anything
-else still overlaps (SpawnNew, AwaitReady, DrainOld, ReapOld): no probe,
-`wait_ready`, or `reuse_port = true`. See `ReloadMode` in `supervisor.rs`, and
-`docs/specs/deferred.md` for the three residuals that fix does not cover.
-Phase 11 merged too: the six remaining daemon-surface
-verbs — `shep stock` (alias `scale`), `shep signal`, `shep whisper` (alias
-`sendline`), the KV store's `set`/`get`/`unset`, lambs in `describe`, and
-the `channel.*` bus topic. Phase 12a merged: `shep lookout`'s shell and its
-flock table pane — dependency, terminal lifecycle, palette, event loop, link
-supervision, and a table that subscribes to the bus and polls every two
-seconds to repair drift. Phase 12b merged too: the table grows a selected
-row, and the three remaining panes go up around it — a host-usage strip, a
-sheep detail pane, and a bleats feed. The feed reads the selected sheep's
-log files from disk on every refresh rather than subscribing to `log.*`,
-deliberately — a busy flock costs one bounded read per pane instead of
-making the dashboard the highest-volume subscriber on the bus. Rendered
-frames for both phases are in `docs/lookout/frames.txt`. Phase 13 merged:
-`shep whistle`, the MCP server over stdio (`rmcp`) — nine tools, five
-read-only and always present, four
-that mutate and present only when `[whistle] allow_control = true` in
-`shep.toml`; `start_sheep` narrowed to already-registered sheep; every
-daemon refusal a control tool can meet reaches the model as an in-band tool
-result, not a protocol error. `docs/whistle/README.md` and the generated
-`docs/whistle/tools.md` are the operator contract. Phase 14 merged: config
-and packaging — `.js` Flockfiles behind `shep start --flockfile` (never by
-discovery, never by extension alone: `shep start server.js` still starts
-`server.js`), a schemars-exported Flockfile JSON Schema
-(`crates/shep-core/assets/flockfile.schema.json`, generated from the parser's
-own document type, printed by the hidden `shep schema`), a `file < env <
-flags` daemon-config layer (`shep daemon --log-json/--log-level/--socket/
---max-cron-sleep`), and openrc plus FreeBSD/OpenBSD `rc.d` renderers for
-`shep startup`/`unstartup` — the last two rendered and pinned by
-exact-string tests only, never executed on their own operating systems.
-Phase 15 merged: the last three v1 verbs — a hand-rolled `shep serve` (no
-axum, no tower-http; dotfiles, directory listing, and every in-docroot
-symlink all refused by default), `shep runtime` (foreground, no-daemon, PID-1
-via a separate init process that reaps orphans and forwards signals), and
-`shep dev` (isolated `$SHEP_DEV_HOME`, forced watch, auto-exit) — plus the
-`shep` library extraction the two container-entrypoint `[[bin]]` aliases
-needed underneath them. Phase 16 merged too: `shep lookout`'s last three
-pieces — a name filter that narrows the flock table in place, lambs in the
-sheep detail pane (fetched separately with `Request::Describe`, never on the
-two-second poll), and the three action keys (`x` stop, `R` restart, `L`
-reload) behind the `--allow-control` gate, each arming a confirm rather than
-acting on the keypress that pressed it. No wire change.
+What is not derivable from the code, and is worth knowing before you change
+anything:
 
-**After Phase 16** the CLI grew again, so "the v1.0 surface is closed" no
-longer holds and this file will not claim it. `feat/pretty-cli` merged the
-box-drawn table renderer with adaptive column dropping, colour and a sheep
-face in the STATUS column, a `full`/`plain`/`bare` style dial resolved at one
-seam, `shep style` persisting to `shep.toml`, and ASCII sheep in three
-moments. Then 2026-08-19 added `ProcessInfo::last_exit` and an EXIT column
-(a wire change), `shep bleats`' backlog and `--lines`, an opt-in
-`[interpreters]` mapping with `--interpreter`, `~/` expansion in every
-Flockfile path, a Flockfile app's `cwd` defaulting to its own directory, and
-`reuse_port` refused rather than silently ignored (which it no longer is; see
-the reload paragraph above). `shep init` shipped: it is in the CLI's `VERBS` array, has its own
-module at `crates/shep-cli/src/commands/init.rs`, and is documented on the
-Flockfile page.
+- **`PROTOCOL_VERSION`, `MIN_SUPPORTED` and `SCHEMA_VERSION` answer three
+  different questions** and it is easy to move the wrong one. The protocol is
+  what this build speaks; the floor is the oldest peer it still accepts; the
+  envelope's schema governs JSON output and moves only on a rename, removal or
+  retype. An additive `ProcessInfo` field moves none of them. Moving
+  `PROTOCOL_VERSION` refuses nobody by itself: only `MIN_SUPPORTED` rising
+  does, and it refuses every peer built below the new floor.
+- **A Flockfile is a project template, never written by shep.** Operator tuning
+  lives in `$SHEP_HOME/overrides.json`. There are three doors into that store
+  and they mean different things: a Flockfile load spends an override, a lookout
+  pane sets one.
+- **A reload's overlap is conditional**, on `reuse_port` and on whether the app
+  has a readiness probe. shep never binds an app's listening socket.
+- **Windows is built and runs**, so `cfg(unix)` is a design decision rather than
+  a shrug. The OS transport lives in one place, `shep_core::transport`.
+- **A dog's config lives in `$SHEP_HOME/dogs.toml`**, migrated once at boot from
+  the old `[dog.<name>]` sections in `shep.toml`.
+- **"How many verbs" is three questions, and the numbers differ.** `shep
+  --help` lists every visible one. The docs-site generator covers all of
+  those but `help`, which has no page. Its `VERBS` array is longer still,
+  because a subcommand's own flags need their own `--help` block, so every
+  subcommand takes an entry alongside the command hosting it. That is why
+  the script's closing `N verbs` line is the largest of the three and counts
+  array entries rather than verbs.
 
-**Phase 3b merged on 2026-08-31, and it is the one to read if a dog looks
-healthy and is not.** A dog that has never completed a handshake used to
-report `online` in `shep flock` and in `shep lookout`, with zero restarts,
-while retrying a handshake that could never succeed. `ProcessInfo` gained
-`handshook: Option<bool>` (additive, so neither `PROTOCOL_VERSION` nor
-`SCHEMA_VERSION` moved) and such a dog now reads `silent`. The daemon grew
-`DOG_SILENCE_BUDGET`, five seconds, so G8's one-restart ladder reaches a dog
-that cannot name itself: before that, the ladder was keyed on
-`Hello::dog_name`, which a client on an older protocol cannot send, so the
-dogs most likely to need the ladder were the ones structurally unable to
-reach it. `shep daemon reload`'s unsettled-dog report now points at `shep
-bleats <dog>`, and the version-skew refusal labels its remedy.
+  No count is written here on purpose. This bullet said "41 generated and 42
+  listed" until 2026-09-13, by which time both had moved and the script was
+  printing a third number neither described. Tests in
+  `crates/shep-cli/src/cli.rs` hold the relationships instead, and they are
+  the answer to ask: `every_visible_verb_appears_in_exactly_one_help_group`
+  pins the listing against clap's own subcommands, and
+  `every_visible_verb_reaches_the_docs_site_generator` pins the generator
+  against every visible command path at every depth, hidden subtrees and
+  `help` left out. A new verb or subcommand fails one of them rather than
+  going quietly undocumented.
 
-**The repository moved to the `shep-pm` org on 2026-08-31**, along with both
-dogs and the four `shep-deploy` testbeds, and the docs site moved to
-`shep-pm.com`. Two things that cost real time and will again: a GitHub App
-installation does NOT follow a transfer, so CodeRabbit stopped reviewing
-until it was installed on the org; and the Pages custom domain DOES follow,
-carrying the old value, so the site was unreachable while every setting
-looked populated and every workflow ran green. A `CNAME` file under
-`web/public` does not fix that second one, since Pages ignores it for an
-Actions-based deploy. See `.github/workflows/pages.yml`'s header.
-
-**Phase 4 merged on 2026-09-01.** A dog answers `--version` with the
-protocol it was compiled against, `shep adopt` refuses a mismatch, and
-`shep restart <dog>` warns before bringing a dog back on a binary that
-cannot connect. The contract is published in `docs/dogs.md`; answering is
-optional, and a dog that does not answer is adopted with its protocol
-unknown rather than refused, which is every dog written before it.
-
-Two things it deliberately does not do, both argued at their call sites. A
-DAEMON-initiated restart gets no warning, since the check is CLI-side, so a
-crash or an autorestart respawn still walks into G12 row 5 unannounced. And
-`Child::kill` does not reach descendants, so a probe's grandchild can
-outlive it; closing that needs a process group rather than a patch.
-
-**Verb count: 40 generated, 41 listed, and the difference is `help`.**
-`./web/scripts/generate-cli-reference.sh` prints its own number every time it
-runs, and its `VERBS` array holds 40 because it does not generate a page for
-`help`. `shep --help`'s grouped listing shows 41 because it does. Both are
-right about different questions, so neither is a bug to fix; check which one is
-being asked before changing either. README.md deliberately quotes the grouping
-without a count, so there is no third number to keep in step.
-
-What's built vs. deferred to v1.1+: [docs/specs/deferred.md](docs/specs/deferred.md).
-
-**Windows is built and runs.** This line said "0%, not partial — every verb
-prints 'not yet supported' and exits" for eighteen phases, and that is no
-longer true of anything. A Windows host became available, and
-[windows-estimate.md](docs/specs/windows-estimate.md)'s own first
-recommendation — dispatch the CI leg before scoping anything — was run: the
-tree was already compile-green on native MSVC. Tier A is now implemented and
-verified against a live flock on real Windows.
-
-What that means for anyone editing this workspace:
-
-- **`cfg(unix)` is no longer a free choice.** `shep-client`, `shep-daemon`'s
-  `boot`/`server`/`tokio_runner`, and every `shep-cli` module tree are
-  portable now. The OS transport lives in ONE place,
-  `shep_core::transport` — a unix socket or a Windows named pipe — and
-  everything above it (codec, handshake, actor, RPC dispatch) carries no
-  platform gate at all. Adding one back is a design decision, not a shrug.
-- **A per-sheep job object replaces the process group.** `sys_windows.rs` is
-  the crate's only unsafe on that platform, mirroring `sys.rs`'s rule. It is
-  stronger than the unix design: `kill.rs` documents an escaped-`setsid`
-  hole that a job simply does not have.
-- **Three refusals are permanent and deliberate**, each argued at its own
-  call site: no graceful signal outside the shepherd channel, no
-  `shep startup` (that is Tier B — an SCM service), and no `user`/`group`.
-- **The local gate does not run Windows tests.** `cargo test` on a Mac never
-  compiles a `cfg(windows)` item, and the `windows-gnu` cross-check is
-  `cargo check`, which executes nothing. `.github/workflows/test.yml`'s
-  `windows-latest` legs are what actually run this tier. Read the CI result.
-
-The instances redesign merged too: `increment_var` is removed, and refused
-with the replacement named rather than a bare serde error. Env values, args,
-`out_file` and `err_file` can now carry `{{instance}}` and `{{name}}`
-templates (doubled braces escape a literal brace), `SHEP_INSTANCE` and
-`SHEP_NAME` are always injected and can no longer be set by hand in
-`[app.env]`, and an explicit `out_file`/`err_file` on a multi-instance app is
-refused unless it carries `{{instance}}` or the app sets `merge_logs`. A
-sheep name can no longer contain a colon, since `name:slot` (for example
-`web:2`) is now a selector that reaches one instance of a multi-instance
-app. `PROTOCOL_VERSION` moved from 1 to 2, because `SelectorSpec` gained
-an `Instance` variant an older daemon cannot deserialize, so it refuses a
-newer client at the handshake and an operator restarts the daemon after
-upgrading. The output envelope's `SCHEMA_VERSION` did NOT move and is
-still 1: `ProcessInfo.instance` is purely additive, and the envelope's own
-rule is that only a rename, a removal or a retype bumps it. The two
-constants answer different questions and it is easy to move the wrong one. `shep flock` groups a multi-instance app under one rollup row
-(`web ×3`, with `↳ :0` marker rows beneath it) in `full` and `plain` style;
-`bare` and JSON still print one row per instance, with `bare` suffixing the
-name and JSON carrying the slot as its own field. `shep lookout`'s flock
-table gained the same group row, selectable like any other, and an action
-on it reaches every instance behind a confirm naming the count. `shep
-bleats` now reads a log file shared by several instances once instead of
-once per instance, and labels a multi-instance app's lines with their slot.
-
-Project memory (cross-session state) tracks decisions; docs above are the
-source of truth.
+What is built versus deferred: [docs/specs/deferred.md](docs/specs/deferred.md).

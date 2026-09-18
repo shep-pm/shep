@@ -1,37 +1,21 @@
 //! On-disk layout of `$SHEP_HOME`
 //!
-//! One resolver, no hidden `std::env` reads — the environment comes in as a
+//! One resolver, no hidden `std::env` reads: the environment comes in as a
 //! closure so tests and the daemon share one code path.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Drops the `\\?\` extended-length prefix Windows' `canonicalize` adds
 ///
-/// `std::fs::canonicalize` returns a verbatim path on Windows, so a binary at
-/// `C:\tools\dog.exe` comes back as `\\?\C:\tools\dog.exe`. That form is
-/// correct and every Win32 call accepts it, which is exactly why it leaks
-/// quietly: nothing inside shep breaks, and it surfaces only once the path
-/// reaches something that is not Win32. Two such places are already known.
-/// Node's `require` reads the leading `\\` as a UNC share and fails on `C:`.
-/// And `shep adopt` records the vetted binary in `shep.toml`, where the prefix
-/// is simply noise in a file an operator edits by hand.
+/// For paths leaving shep: written to config, shown to an operator, or
+/// handed to another program. Paths compared against each other internally,
+/// such as `serve`'s docroot containment check, must stay canonical on both
+/// sides and must not go through this.
 ///
-/// So this is for paths that LEAVE shep: written to config, shown to an
-/// operator, or handed to another program. Paths that stay inside and are
-/// compared against each other must not use it. `serve`'s docroot containment
-/// check is the case that matters, where both sides being canonical is the
-/// security property, and rewriting one side would weaken it.
-///
-/// Only `\\?\C:\` is unwrapped, because that is the one shape `canonicalize`
-/// produces for a local file. A verbatim UNC path (`\\?\UNC\server\share`)
-/// is left alone: no host here can mount a share to test that branch, and an
-/// unexercised guess is worth less than a documented gap.
-///
-/// **A path long enough to need the prefix is out of scope.** Above `MAX_PATH`
-/// the prefix is load-bearing rather than decorative, and stripping it can
-/// produce a path that no longer opens. Nothing in shep's own layout comes
-/// close, and the alternative is a conditional rule whose behavior changes at
-/// a length nobody can see, so the simple rule is the one kept.
+/// Only unwraps `\\?\C:\`; a verbatim UNC path (`\\?\UNC\server\share`)
+/// passes through unchanged. Not for paths above `MAX_PATH`, where the
+/// prefix is load-bearing rather than decorative.
 #[cfg(windows)]
 #[must_use]
 pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
@@ -59,6 +43,98 @@ pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
     std::borrow::Cow::Borrowed(path)
 }
 
+/// The user's home directory, read through `var` rather than the process
+/// environment
+///
+/// The base [`ShepPaths::resolve`] joins `.shep` onto when nothing names a
+/// `$SHEP_HOME`. A variable set to the empty string counts as unset.
+///
+/// # Platform
+///
+/// Unix reads `HOME` alone. Windows reads `HOME`, then `USERPROFILE`, then
+/// `HOMEDRIVE` and `HOMEPATH` concatenated. Windows sets none of the first:
+/// PowerShell's `$HOME` is a shell variable no child process inherits, and
+/// `cmd.exe` has no such variable at all, so a `HOME`-only lookup resolves
+/// nothing on a stock Windows session.
+#[must_use]
+pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let named = |key: &str| var(key).filter(|value| !value.is_empty());
+    #[cfg(not(windows))]
+    {
+        named("HOME").map(PathBuf::from)
+    }
+    #[cfg(windows)]
+    {
+        // `HOMEDRIVE` is `C:` and `HOMEPATH` is `\Users\name`: two halves of
+        // one string, not a directory and a child inside it.
+        let split = || {
+            let mut joined = named("HOMEDRIVE")?;
+            joined.push(named("HOMEPATH")?);
+            Some(joined)
+        };
+        named("HOME")
+            .or_else(|| named("USERPROFILE"))
+            .or_else(split)
+            .map(PathBuf::from)
+    }
+}
+
+/// How an operator on this platform spells the variable behind
+/// [`user_home`], for a refusal that has to say what to set.
+#[cfg(not(windows))]
+pub(crate) const HOME_DIR_VAR: &str = "$HOME";
+
+/// Names `%USERPROFILE%` rather than `HOME`: although [`user_home`] reads
+/// `HOME` first, a stock Windows session sets none, so `%USERPROFILE%` is
+/// the first of the three that answers.
+#[cfg(windows)]
+pub(crate) const HOME_DIR_VAR: &str = "%USERPROFILE%";
+
+/// How an operator on this platform spells `SHEP_HOME`, for a refusal that
+/// has to say what to set.
+#[cfg(not(windows))]
+pub(crate) const SHEP_HOME_VAR: &str = "$SHEP_HOME";
+
+/// How an operator on this platform spells `SHEP_HOME`, for a refusal that
+/// has to say what to set.
+#[cfg(windows)]
+pub(crate) const SHEP_HOME_VAR: &str = "%SHEP_HOME%";
+
+/// The directory a shep home defaults to, under the user's own home.
+const DEFAULT_HOME_DIR: &str = ".shep";
+
+/// The shep home directory `$SHEP_HOME` names, or the default under
+/// `home_dir`
+///
+/// `None` only when nothing names a `$SHEP_HOME` and `home_dir` is `None`
+/// too, which is the same condition that leaves a `~/` path unexpandable.
+///
+/// Unlike [`user_home`], an empty `$SHEP_HOME` is taken at its word rather
+/// than read as unset, which is what [`ShepPaths::resolve`] has always done.
+/// No operator reaches that: the CLI refuses an empty `--home` or
+/// `$SHEP_HOME` before either function runs. It matters to a library caller
+/// passing its own lookup, who gets one answer from here and from the
+/// layout rather than two.
+#[must_use]
+pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
+    match home_dir {
+        Some(dir) => Some(home_under(env, dir)),
+        None => env("SHEP_HOME").map(PathBuf::from),
+    }
+}
+
+/// [`shep_home`] for a caller that has a home directory, so the answer is
+/// total.
+///
+/// The rule lives here rather than in [`shep_home`] so that
+/// [`ShepPaths::resolve`], which always has one, reaches it without an
+/// `Option` it would have to unwrap through a branch that can never fire.
+fn home_under(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> PathBuf {
+    env("SHEP_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir.join(DEFAULT_HOME_DIR))
+}
+
 /// Resolved filesystem layout for one shep home
 ///
 /// All paths are derived from `$SHEP_HOME` (default `<home>/.shep`); nothing
@@ -72,6 +148,12 @@ pub struct ShepPaths {
     pub home: PathBuf,
     /// Daemon config: `shep.toml`
     pub daemon_config: PathBuf,
+    /// A dog's own settings: `dogs.toml`
+    ///
+    /// Separate from [`Self::daemon_config`] rather than a section inside
+    /// it, so lookout can write a dog's config without writing into the
+    /// daemon's own hand-authored file.
+    pub dogs_config: PathBuf,
     /// Flock snapshot (muster roll): `flock.json`
     pub snapshot: PathBuf,
     /// Log directory
@@ -82,30 +164,27 @@ pub struct ShepPaths {
     pub run: PathBuf,
     /// The control address the client dials and the daemon answers on.
     ///
-    /// **Two different kinds of thing behind one field, on purpose.** On
-    /// unix it is a filesystem path, `run/shep.sock`, and a real AF_UNIX
-    /// socket file lives there. On Windows it is [`Self::pipe_name`] — a
-    /// named pipe's `\\.\pipe\...` name, which is path-*shaped* but names an
-    /// object in the kernel's pipe namespace rather than a file on any
-    /// volume.
-    ///
-    /// One field rather than two because every consumer in the workspace
-    /// treats this as an opaque address it hands to `Client::connect`, and a
-    /// second field would make all of them choose. The one place the
-    /// difference is load-bearing is a caller that treats this as a *file* —
-    /// `shep-cli`'s `wait_for_socket_to_disappear` is the only one, and it
-    /// carries its own Windows arm because a pipe has no directory entry to
-    /// watch: it stops existing when its last handle closes, so "has the
-    /// daemon gone" is a connect attempt there, not a `Path::exists`.
-    ///
-    /// A corollary worth stating because it silently breaks otherwise:
-    /// `socket.parent()` is `$SHEP_HOME/run` on unix and the meaningless
-    /// `\\.\pipe` on Windows. Nothing may derive a directory from this field.
+    /// Unix: a filesystem path, `run/shep.sock`, naming a real AF_UNIX
+    /// socket file. Windows: [`Self::pipe_name`], path-shaped but naming an
+    /// object in the kernel's pipe namespace, not a file on any volume.
+    /// Never derive a directory from this field: `socket.parent()` is
+    /// meaningless on Windows. A pipe has no directory entry to watch, so
+    /// "has the daemon gone" needs a connect attempt there, not
+    /// `Path::exists`.
     pub socket: PathBuf,
     /// Bark history ring: `barks.jsonl`
     pub barks: PathBuf,
     /// Key/value store: `kv.json`
     pub kv: PathBuf,
+    /// Operator override store: `overrides.json`
+    pub overrides: PathBuf,
+    /// Secret store: `secrets.json`
+    pub secrets: PathBuf,
+    /// Cached provider values: `secrets-cache.json`
+    ///
+    /// Derived and safe to delete, unlike [`Self::secrets`]: a provider dog
+    /// rewrites it on its next push.
+    pub secrets_cache: PathBuf,
 }
 
 /// FNV-1a, 64-bit, over `bytes`
@@ -123,21 +202,15 @@ impl ShepPaths {
     /// Windows named-pipe identity for this home:
     /// `\\.\pipe\shep-<sanitized>-<digest>`
     ///
-    /// The readable half is the home path with every non-alphanumeric
-    /// character collapsed to `-`, capped, so an operator reading a pipe name
-    /// can tell which home it belongs to. **That half alone does not identify
-    /// a home**: `\`, `:`, `.`, `_` and a literal `-` all become `-`, so
-    /// `C:\a\b` and `C:\a-b` sanitize to one string. The pipe namespace is
-    /// machine-global and [`crate::transport::Listener::bind`] asks for
-    /// `first_pipe_instance`, so a collision does not surface as an error: the
-    /// second home's daemon is refused as already running, and that home's CLI
-    /// then drives the first home's flock. No handshake field carries a home,
-    /// so nothing downstream would catch it.
+    /// The sanitized stem is not unique alone: `\`, `:`, `.`, `_` and a
+    /// literal `-` all collapse to `-`, so `C:\a\b` and `C:\a-b` sanitize to
+    /// one string. The digest of the full home path is what keeps two homes
+    /// distinct; without it a collision would not error, it would refuse the
+    /// second daemon as already running and let its CLI drive the first
+    /// home's flock.
     ///
-    /// The appended digest of the full home path is what makes the name
-    /// distinct. Changing this derivation is a breaking change for any
-    /// already-running daemon: it stays bound under a name a client built
-    /// afterward would never dial.
+    /// Changing this derivation breaks any already-running daemon: it stays
+    /// bound under a name a client built afterward would never dial.
     #[must_use]
     pub fn pipe_name(&self) -> String {
         // Bounds the readable half; a pipe name may be 256 characters.
@@ -157,33 +230,47 @@ impl ShepPaths {
 
     /// Resolves the layout from an environment lookup and the user's home dir
     ///
-    /// [`Self::socket`] resolves per-platform — a socket file under `run/` on
-    /// unix, a `\\.\pipe\...` name on Windows — for the reason that field's
-    /// own doc gives. Everything else is identical on both.
+    /// [`Self::socket`] resolves per-platform: a socket file under `run/` on
+    /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
+    ///
+    /// # Why `String` and not `OsString`
+    ///
+    /// [`user_home`] takes an `OsString` lookup and this takes a `String`
+    /// one, which reads like an oversight and is not. A home path does not
+    /// stay a path: it reaches the `{{SHEP_HOME}}` template, [`Self::pipe_name`]
+    /// and every log path on the wire as text, and each of those conversions
+    /// is lossy. Widening this signature would move the loss rather than
+    /// remove it, and it would break every caller of a published crate to do
+    /// so.
+    ///
+    /// The CLI refuses a home that is not valid UTF-8 instead, at the one
+    /// door an operator can name one through, so nothing lossy reaches here.
+    /// A library caller supplying its own lookup has already chosen its
+    /// encoding by building a `String`.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
-        let home = env("SHEP_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir.join(".shep"));
+        let home = home_under(env, home_dir);
         let run = home.join("run");
         // `mut` is read only by the `cfg(windows)` block below; on unix the
         // value is returned exactly as built.
         #[cfg_attr(not(windows), allow(unused_mut))]
         let mut paths = Self {
             daemon_config: home.join("shep.toml"),
+            dogs_config: home.join("dogs.toml"),
             snapshot: home.join("flock.json"),
             logs: home.join("logs"),
             pids: home.join("pids"),
             socket: run.join("shep.sock"),
             barks: home.join("barks.jsonl"),
             kv: home.join("kv.json"),
+            overrides: home.join("overrides.json"),
+            secrets: home.join("secrets.json"),
+            secrets_cache: home.join("secrets-cache.json"),
             run,
             home,
         };
-        // Computed from the already-built value rather than inline above,
-        // because `pipe_name` reads `self.home` and the struct is what owns
-        // that derivation — duplicating the sanitizer here is exactly how
-        // the two would drift.
+        // Computed here, not inlined above: `pipe_name` reads `self.home`,
+        // and duplicating the sanitizer here would let the two drift.
         #[cfg(windows)]
         {
             paths.socket = PathBuf::from(paths.pipe_name());
@@ -194,11 +281,55 @@ impl ShepPaths {
 
 #[cfg(test)]
 mod tests {
-    /// Pins the strip directly, because no end-to-end case can. Node resolves
-    /// a `\\?\` path on some versions and not others, so the `.js` flockfile
-    /// cases passed on the development machine both before this existed and
-    /// after, while failing on the CI runner both times. Asserting on the
-    /// rewritten path is the part that holds either way.
+    /// The one rule `ShepPaths::resolve` and the `{{SHEP_HOME}}` token both
+    /// read, so a value rendered into a log path names the directory the
+    /// rest of the layout was built under.
+    #[test]
+    fn shep_home_prefers_the_variable_and_falls_back_to_the_default() {
+        use std::path::{Path, PathBuf};
+
+        let named = |_: &str| Some("/srv/shep".to_string());
+        let unset = |_: &str| None;
+        let ada = Path::new("/home/ada");
+
+        assert_eq!(
+            super::shep_home(&named, Some(ada)),
+            Some(PathBuf::from("/srv/shep")),
+            "the variable wins over the default"
+        );
+        assert_eq!(
+            super::shep_home(&named, None),
+            Some(PathBuf::from("/srv/shep")),
+            "and needs no home directory of its own"
+        );
+        assert_eq!(
+            super::shep_home(&unset, Some(ada)),
+            Some(ada.join(".shep")),
+            "the default hangs off the user's home"
+        );
+        assert_eq!(
+            super::shep_home(&unset, None),
+            None,
+            "with neither, there is nothing to name"
+        );
+        // The one behaviour that differs from `user_home`, which reads an
+        // empty value as unset. Untested, a regression that filtered
+        // `Some("")` the same way would leave the token and the layout
+        // pointing at different directories and nothing would say so.
+        assert_eq!(
+            super::shep_home(&|_| Some(String::new()), Some(ada)),
+            Some(PathBuf::new()),
+            "an empty value is taken at its word rather than read as unset"
+        );
+        assert_eq!(
+            super::ShepPaths::resolve(&named, ada).home,
+            super::shep_home(&named, Some(ada)).expect("a home directory was given"),
+            "and the layout is built from the same answer"
+        );
+    }
+
+    /// Unit-level because no end-to-end case can pin this reliably: Node's
+    /// handling of a `\\?\` path differs by version.
     #[cfg(windows)]
     #[test]
     fn a_verbatim_prefix_is_stripped() {
@@ -218,11 +349,9 @@ mod tests {
         );
     }
 
-    /// Guards the assumption the strip rests on: that `canonicalize` really
-    /// does hand back a prefixed path, and that the rewrite clears it without
-    /// breaking what it points at. If a future Windows or std stops adding
-    /// the prefix, this stays green and the strip becomes a no-op rather
-    /// than a wrong answer.
+    /// Guards the assumption that `canonicalize` really prefixes the path.
+    /// If a future Windows or std stops adding it, this stays green and the
+    /// strip becomes a no-op rather than a wrong answer.
     #[cfg(windows)]
     #[test]
     fn a_real_canonicalized_path_comes_back_free_of_the_prefix() {
@@ -244,8 +373,6 @@ mod tests {
         );
     }
 
-    /// The unix build has nothing to strip, and the helper exists there only
-    /// so call sites do not each carry a `cfg`. Pinned so it stays that way.
     #[cfg(not(windows))]
     #[test]
     fn a_unix_path_passes_through_untouched() {
@@ -269,20 +396,24 @@ mod tests {
         let p = ShepPaths::resolve(&no_env, Path::new("/home/ada"));
         assert_eq!(p.home, Path::new("/home/ada/.shep"));
         assert_eq!(p.daemon_config, Path::new("/home/ada/.shep/shep.toml"));
+        assert_eq!(p.dogs_config, Path::new("/home/ada/.shep/dogs.toml"));
         assert_eq!(p.snapshot, Path::new("/home/ada/.shep/flock.json"));
         assert_eq!(p.logs, Path::new("/home/ada/.shep/logs"));
         assert_eq!(p.pids, Path::new("/home/ada/.shep/pids"));
         assert_eq!(p.run, Path::new("/home/ada/.shep/run"));
         assert_eq!(p.barks, Path::new("/home/ada/.shep/barks.jsonl"));
         assert_eq!(p.kv, Path::new("/home/ada/.shep/kv.json"));
+        assert_eq!(p.overrides, Path::new("/home/ada/.shep/overrides.json"));
+        assert_eq!(p.secrets, Path::new("/home/ada/.shep/secrets.json"));
+        assert_eq!(
+            p.secrets_cache,
+            Path::new("/home/ada/.shep/secrets-cache.json")
+        );
     }
 
-    /// The one field that is not the same kind of thing on both platforms —
-    /// see [`ShepPaths::socket`]'s own doc. Asserted per-platform rather
-    /// than skipped on Windows, because "the socket resolves to the pipe
-    /// name" IS the Windows transport's identity and a silent fallback to
-    /// `run/shep.sock` there would produce a daemon that binds a pipe and a
-    /// client that dials a file that does not exist.
+    /// Asserted per-platform rather than skipped on Windows: a silent
+    /// fallback to `run/shep.sock` there would leave a daemon bound to a
+    /// pipe and a client dialing a file that does not exist.
     #[test]
     fn the_control_address_is_a_socket_file_on_unix_and_a_pipe_name_on_windows() {
         let p = ShepPaths::resolve(&no_env, Path::new("/home/ada"));
@@ -317,11 +448,9 @@ mod tests {
 
     #[test]
     fn pipe_name_is_per_home_and_sanitized() {
-        // Windows transport identity (spec §6): derived from SHEP_HOME so
-        // two homes never share a pipe; non-alphanumerics collapse to '-',
-        // then a digest of the whole home path. Both homes come from the env
-        // rather than the default join, whose separator is the host's and
-        // would give the digest a different value per platform.
+        // Both homes come from the env, not the default join: its separator
+        // is host-specific and would give the digest a different value per
+        // platform.
         let env = |key: &str| (key == "SHEP_HOME").then(|| "/home/ada/.shep".to_string());
         let p = ShepPaths::resolve(&env, Path::new("/home/ada"));
         assert_eq!(
@@ -333,10 +462,56 @@ mod tests {
         assert_eq!(q.pipe_name(), r"\\.\pipe\shep-srv-shep-23b467803966a71a");
     }
 
-    /// The sanitizer is not injective (`\`, `:` and a literal `-` all become
-    /// `-`), and a shared name is the one failure that reaches nobody: the
-    /// second daemon is refused as already running and its CLI then drives the
-    /// first home's flock in silence.
+    /// The truncation, and the trim that has to follow it.
+    ///
+    /// Both cases above use a home far under the 64-byte stem cap, so
+    /// nothing reached the slice or the second `trim_end_matches`. This home
+    /// is built so the cut lands exactly on a separator: without that second
+    /// trim the stem would end in a dash and the name would carry a double
+    /// one before its digest.
+    #[test]
+    fn a_stem_longer_than_the_cap_is_cut_and_retrimmed() {
+        let long = format!("/{}/bbbb", "a".repeat(63));
+        let env = |key: &str| (key == "SHEP_HOME").then(|| long.clone());
+        let name = ShepPaths::resolve(&env, Path::new("/home/ada")).pipe_name();
+
+        let stem = name
+            .strip_prefix(r"\\.\pipe\shep-")
+            .expect("the fixed prefix")
+            .rsplit_once('-')
+            .expect("a digest after the stem")
+            .0;
+        assert_eq!(
+            stem,
+            "a".repeat(63),
+            "cut at the cap, then the dash removed"
+        );
+        assert!(
+            !name.contains("--"),
+            "a dash left by the cut would double against the digest's own: {name}"
+        );
+    }
+
+    /// Two homes that differ only past the cut still get their own pipe.
+    ///
+    /// The stem cannot tell them apart by construction, so this is the
+    /// digest's job alone, and the digest is taken over the whole home
+    /// rather than the truncated stem.
+    #[test]
+    fn two_homes_differing_only_past_the_cap_stay_distinct() {
+        let base = "a".repeat(70);
+        let one = format!("/{base}/one");
+        let two = format!("/{base}/two");
+        let env_one = |key: &str| (key == "SHEP_HOME").then(|| one.clone());
+        let env_two = |key: &str| (key == "SHEP_HOME").then(|| two.clone());
+        let a = ShepPaths::resolve(&env_one, Path::new("/home/ada")).pipe_name();
+        let b = ShepPaths::resolve(&env_two, Path::new("/home/ada")).pipe_name();
+        assert_ne!(a, b, "two homes, two pipes, whatever the cut discarded");
+    }
+
+    /// The sanitizer is not injective: `\`, `:` and `-` all become `-`. A
+    /// collision would not error; it would refuse the second daemon as
+    /// already running.
     #[test]
     fn two_homes_that_sanitize_alike_get_distinct_pipe_names() {
         let nested = |key: &str| (key == "SHEP_HOME").then(|| r"C:\a\b".to_string());
@@ -354,6 +529,76 @@ mod tests {
             n.pipe_name(),
             d.pipe_name(),
             "only the digest keeps two homes that sanitize alike off one pipe"
+        );
+    }
+
+    /// A fake environment, so nothing here touches the process's own.
+    fn os_env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
+        let owned: Vec<(String, OsString)> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), OsString::from(*v)))
+            .collect();
+        move |key: &str| owned.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn home_is_read_first_on_every_platform() {
+        assert_eq!(
+            user_home(&os_env(&[
+                ("HOME", "/home/ada"),
+                ("USERPROFILE", r"C:\Users\Ada")
+            ])),
+            Some(PathBuf::from("/home/ada"))
+        );
+    }
+
+    #[test]
+    fn nothing_named_resolves_nothing() {
+        assert_eq!(user_home(&os_env(&[])), None);
+    }
+
+    /// An exported-but-empty `HOME` would otherwise resolve `.shep` relative
+    /// to the working directory, which is a different flock per `cd`.
+    #[test]
+    fn an_empty_value_counts_as_unset() {
+        assert_eq!(user_home(&os_env(&[("HOME", "")])), None);
+    }
+
+    /// The bug this fallback exists for: a stock Windows session exports
+    /// `USERPROFILE` and no `HOME` at all, so `shep` refused every command
+    /// with "none of --home, %SHEP_HOME%, or %USERPROFILE% resolves a root
+    /// directory" until 0.7.1.
+    #[cfg(windows)]
+    #[test]
+    fn windows_falls_back_to_userprofile_then_to_the_homedrive_pair() {
+        assert_eq!(
+            user_home(&os_env(&[("USERPROFILE", r"C:\Users\Ada")])),
+            Some(PathBuf::from(r"C:\Users\Ada"))
+        );
+        assert_eq!(
+            user_home(&os_env(&[("HOMEDRIVE", "C:"), ("HOMEPATH", r"\Users\Ada")])),
+            Some(PathBuf::from(r"C:\Users\Ada")),
+            "the two halves concatenate into one path, they do not nest"
+        );
+        assert_eq!(
+            user_home(&os_env(&[("HOMEDRIVE", "C:")])),
+            None,
+            "half the pair names no directory"
+        );
+    }
+
+    /// Unix reads `HOME` alone: a Windows-only fallback firing there would
+    /// resolve a home on a host that deliberately unset one.
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_ignores_the_windows_variables() {
+        assert_eq!(
+            user_home(&os_env(&[
+                ("USERPROFILE", r"C:\Users\Ada"),
+                ("HOMEDRIVE", "C:"),
+                ("HOMEPATH", r"\Users\Ada"),
+            ])),
+            None
         );
     }
 }

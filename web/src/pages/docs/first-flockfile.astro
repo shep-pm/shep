@@ -8,7 +8,9 @@
  * at crates/shep-core/assets/flockfile.schema.json.
  */
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import { slugify } from "../../data/slug";
 import ReferencePills from "../../components/docs/ReferencePills.astro";
+import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import VerbSignature from "../../components/docs/VerbSignature.astro";
@@ -27,26 +29,26 @@ const initScaffold = `# Manage your app in a Flockfile
 #cwd = "/srv/app"`;
 
 const stockDemo = `$ shep stock web 4
-ID  NAME    STATUS  PID    RESTARTS  EXIT  CPU  MEM     UPTIME  FOLD  SMIT
-0   web:0   online  62888  0         -     -    3.0M    0s      -     -
-1   web:1   online  62889  0         -     -    3.0M    0s      -     -
-3   web:2   online  62936  0         -     -    176.0K  0s      -     -
-4   web:3   online  62937  0         -     -    144.0K  0s      -     -
-2   worker  online  62890  0         -     -    3.0M    0s      -     -
+ID  NAME    STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM     UPTIME  FOLD  SMIT
+0   web:0   online  62888  0         -     -    -    3.0M    0s      -     -
+1   web:1   online  62889  0         -     -    -    3.0M    0s      -     -
+3   web:2   online  62936  0         -     -    -    176.0K  0s      -     -
+4   web:3   online  62937  0         -     -    -    144.0K  0s      -     -
+2   worker  online  62890  0         -     -    -    3.0M    0s      -     -
 
 $ shep stock web 2
-ID  NAME    STATUS  PID    RESTARTS  EXIT  CPU  MEM   UPTIME  FOLD  SMIT
-0   web:0   online  62888  0         -     -    3.0M  1s      -     -
-1   web:1   online  62889  0         -     -    3.0M  1s      -     -
-3   web:2   online  62936  0         -     -    0B    1s      -     -
-4   web:3   online  62937  0         -     -    0B    1s      -     -
-2   worker  online  62890  0         -     -    3.0M  1s      -     -
+ID  NAME    STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+0   web:0   online  62888  0         -     -    -    3.0M  1s      -     -
+1   web:1   online  62889  0         -     -    -    3.0M  1s      -     -
+3   web:2   online  62936  0         -     -    -    0B    1s      -     -
+4   web:3   online  62937  0         -     -    -    0B    1s      -     -
+2   worker  online  62890  0         -     -    -    3.0M  1s      -     -
 
 $ shep flock
-ID  NAME    STATUS  PID    RESTARTS  EXIT  CPU  MEM   UPTIME  FOLD  SMIT
-0   web:0   online  62888  0         -     -    3.0M  2s      -     -
-1   web:1   online  62889  0         -     -    3.0M  2s      -     -
-2   worker  online  62890  0         -     -    3.0M  2s      -     -`;
+ID  NAME    STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
+0   web:0   online  62888  0         -     -    -    3.0M  2s      -     -
+1   web:1   online  62889  0         -     -    -    3.0M  2s      -     -
+2   worker  online  62890  0         -     -    -    3.0M  2s      -     -`;
 
 const initJsonRefusal = `$ shep init deploy.json --all
 error[usage]: JSON has no comment syntax, so a full scaffold would pin every default instead of explaining it; write a .json5 Flockfile for the same syntax with comments, or drop --all`;
@@ -69,12 +71,12 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "name", type: "string", default: "required", does: "Unique sheep name. May not contain a path separator or a colon: a colon is the name:slot selector's own separator, and also illegal in a log filename on Windows." },
       { name: "script", type: "string", default: "required", does: "Executable or script path." },
-      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}} and {{name}}." },
+      { name: "args", type: "string[]", default: "[]", does: "Arguments passed to the script; supports {{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:...}}. A resolved secret in an argument is visible in ps; see Secrets." },
       { name: "cwd", type: "string?", default: "the Flockfile's own directory", does: "Working directory at spawn. Unset, an app in a Flockfile runs where that Flockfile lives, so a relative script resolves the way you would read it." },
       { name: "interpreter", type: "string?", default: "none", does: "Interpreter override; \"none\" runs the script directly." },
-      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}} and {{name}}. SHEP_INSTANCE and SHEP_NAME are always set and may not be set here." },
-      { name: "instances", type: "integer", default: "1", does: "How many separate copies of this app to run, each its own process; shep does not share a socket between them (see reuse_port if the app does that itself). SHEP_INSTANCE and SHEP_NAME are always set on every instance; other env values, args, out_file and err_file may use {{instance}} and {{name}} templates." },
-      { name: "increment_var", type: "string?", default: "removed", does: "Refused at normalize with the replacement named: set env.YOUR_VAR = \"{{instance}}\" instead." },
+      { name: "env", type: "map<string,string>", default: "{}", does: "Merged over the daemon's filtered environment; values support {{instance}}, {{name}}, {{SHEP_HOME}} and {{secret:...}}. A value may be a string, a bare boolean, or a bare whole number (SOME_BOOL = true, PORT = 8080), and is read as its string either way. A float is refused, since 1.10 would reach the process as 1.1. In YAML an unquoted yes reads as \"true\" and 0x1F as \"31\", so quote a value whose text must survive. SHEP_INSTANCE, SHEP_NAME and SHEP_ENVIRONMENT are always set and may not be set here." },
+      { name: "environment", type: "string?", default: "[daemon] environment, \"production\" by default", does: "Which environment a {{secret:...}} reference resolves against on this sheep. May not be \"all\", the secrets store's own every-environment slot; see Secrets." },
+      { name: "instances", type: "integer", default: "1", does: "How many separate copies of this app to run, each its own process; shep does not share a socket between them (see reuse_port if the app does that itself). SHEP_INSTANCE and SHEP_NAME are always set on every instance; other env values, args, out_file and err_file may use {{instance}}, {{name}} and {{SHEP_HOME}} templates." },
     ],
   },
   {
@@ -124,6 +126,7 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "max_memory", type: "size?", default: "none", does: "Memory ceiling: the polling enforcer restarts the sheep above it." },
       { name: "fold", type: "string?", default: "none", does: "Names the fold (group) this sheep belongs to." },
+      { name: "depends_on", type: "string[]", default: "[]", does: "Sheep to start before this one, when shep is starting more than one thing at once. Naming a dog only warns and this app starts anyway; [daemon] boot_first_dogs is the only lever that moves a dog. Ordering, not a guarantee: a dependency with no readiness signal is waited out rather than waited for, and one that is missing or sets autostart = false warns and lets this app start anyway. Names, never name:slot. Read once when a batch is ordered, so an edit reaches the next boot, muster, staged start, restart or reload rather than the running child." },
       { name: "user", type: "string?", default: "none", does: "Run as this user (unix)." },
       { name: "group", type: "string?", default: "none", does: "Run as this group (unix)." },
     ],
@@ -131,9 +134,10 @@ const fieldGroups: FieldGroup[] = [
   {
     title: "Logs",
     fields: [
-      { name: "out_file", type: "string?", default: "logs/<name>-<i>-out.log", does: "Stdout log file path override; supports {{instance}} and {{name}}. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
-      { name: "err_file", type: "string?", default: "logs/<name>-<i>-err.log", does: "Stderr log file path override; supports {{instance}} and {{name}}. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
+      { name: "out_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log", does: "Stdout log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
+      { name: "err_file", type: "string?", default: "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-err.log", does: "Stderr log file path override; supports {{instance}}, {{name}} and {{SHEP_HOME}}. A relative path lands under the app's cwd, and a {{SHEP_HOME}} one is absolute already. With instances > 1, an explicit path needs {{instance}} or merge_logs, or it's refused: {{name}} renders the same for every instance, so a path carrying only that one still collides." },
       { name: "merge_logs", type: "bool", default: "false", does: "Collapse every instance's logs into one file pair." },
+      { name: "level_rules", type: "{ pattern, level }[]", default: "[]", does: "How this app's own lines announce a level, for lookout's level filter. Each pattern is a regex and each level is one of trace, debug, info, warn, error; the first rule that matches a line wins, so order them. An invalid pattern is refused at load, and so is a list of more than 64 rules, since a client recompiles the whole list on every redraw. Declared rules replace shep's built-in reading for this app rather than adding to it, which is how an app whose lines it misreads turns the guessing off. A line no rule matches carries no level and passes every filter." },
     ],
   },
   {
@@ -148,35 +152,32 @@ const fieldGroups: FieldGroup[] = [
 ---
 
 <DocsLayout
-  title="Your first Flockfile"
-  description="Every field a Flockfile understands, the ten filenames config discovery searches, and the strict grammars that catch typos before they reach a running sheep."
-  crumb="Start here / Your first Flockfile"
   activeSlug="first-flockfile"
 >
   <article>
-    <h1>Your first Flockfile</h1>
+    <h1>Flockfile reference</h1>
     <ReferencePills slug="first-flockfile" />
     <p class="lede">
       <a href="/docs/getting-started">Getting started</a> showed a two-field
-      Flockfile and moved on. This page is what's underneath: every field
+      Flockfile and moved on. This page is what's underneath: every field{" "}
       <code>AppConfig</code> understands, the four formats and ten filenames
       config discovery will find on its own, and the grammar that turns a
       typo into a parse error instead of a surprise at 3am.
     </p>
 
-    <h2>Two fields is still a complete one</h2>
-    <p>
-      <code>name</code> and <code>script</code> are the only two fields with
-      no default. Everything else in the reference table below fills in on
-      its own. <code>autorestart</code> and <code>autostart</code> both
-      default to <code>true</code>, so a bare two-field entry is already a
-      supervised, auto-starting sheep.
-    </p>
-    <CodeBlock label="Flockfile.toml">{`[[app]]
+    <ShortVersion>
+      <CodeBlock label="Flockfile.toml">{`[[app]]
 name   = "web"
 script = "./server"`}</CodeBlock>
+      <p class="fine">
+        <code>name</code> and <code>script</code> are the only two fields
+        with no default. <code>autorestart</code> and <code>autostart</code>{" "}
+        both default to <code>true</code>, so this is already a supervised,
+        auto-starting sheep. Everything else is in the field reference below.
+      </p>
+    </ShortVersion>
 
-    <h2>Or start from a generated one</h2>
+    <h2 id="or-start-from-a-generated-one">Or start from a generated one</h2>
     <VerbSignature verb="init" usage="shep init [path] [--all] [--force]">
       <p>
         Writes a commented Flockfile to fill in. With no path that's{" "}
@@ -198,7 +199,7 @@ script = "./server"`}</CodeBlock>
     </p>
     <p>
       <code>--all</code> writes every field the grammar has instead of the
-      handful worth meeting on day one, which is 82 lines of TOML against
+      handful worth meeting on day one, which is 88 lines of TOML against
       the 12 above. <code>--force</code> replaces a Flockfile that is
       already there, keeping <em>that</em> file's format rather than the
       default one, so forcing over a <code>.yaml</code> writes YAML instead
@@ -223,14 +224,14 @@ script = "./server"`}</CodeBlock>
       naming both files when it spots that.
     </p>
 
-    <h2>Formats and discovery</h2>
+    <h2 id="formats-and-discovery">Formats and discovery</h2>
     <p>
       TOML, YAML, JSON, and JSON5 all parse the same document shape: a list
       of app tables under one <code>app</code> key (<code>[[app]]</code> in
-      TOML). <code>shep start</code> always takes an explicit
+      TOML). <code>shep start</code> always takes an explicit{" "}
       <code>&lt;TARGET&gt;</code>: clap refuses with "the following required
-      arguments were not provided" if you leave it off. Discovery belongs to
-      <code>shep runtime</code> and <code>shep dev</code>, whose
+      arguments were not provided" if you leave it off. Discovery belongs to{" "}
+      <code>shep runtime</code> and <code>shep dev</code>, whose{" "}
       <code>[TARGET]</code> is optional: run either with no argument and it
       searches the current directory for these ten names, in order, and
       stops at the first one it finds:
@@ -257,18 +258,18 @@ flockfile.json5`}</CodeBlock>
       shep gives <code>node</code> 30 seconds to hand the config back and
       exit, then kills it. Exporting the config is not enough by itself: a
       module that leaves a server listening or a timer armed keeps node's
-      event loop alive, so node never exits. An unattended
+      event loop alive, so node never exits. An unattended{" "}
       <code>shep start</code> ends in a refusal instead of waiting forever.
     </p>
     <p class="fine">
       A pm2 <code>ecosystem.config.js</code> is not a Flockfile shep can read
-      this way. shep never parses pm2's config format at all. That's what
-      <code>shep import</code> is for: it reads a real <code>dump.pm2</code>
-      and writes a Flockfile, once, rather than teaching <code>start</code>
+      this way. shep never parses pm2's config format at all. That's what{" "}
+      <code>shep import pm2</code> is for: it reads a real <code>dump.pm2</code>{" "}
+      and writes a Flockfile, once, rather than teaching <code>start</code>{" "}
       a second config dialect. See <a href="/docs/from-pm2">Coming from pm2</a>.
     </p>
     <Callout variant="careful">
-      Without <code>--flockfile</code>, <code>shep start server.js</code>
+      Without <code>--flockfile</code>, <code>shep start server.js</code>{" "}
       still means exactly what it always has: run <code>server.js</code> as
       a script, not as config. <code>cd</code>-ing into a cloned repository
       and running <code>shep runtime</code> or <code>shep dev</code> with no
@@ -277,7 +278,7 @@ flockfile.json5`}</CodeBlock>
       behind the ten-name list above stopping at JSON5.
     </Callout>
 
-    <h2>Strict grammars</h2>
+    <h2 id="strict-grammars">Strict grammars</h2>
     <p>
       Two field types are small parsers of their own rather than bare
       numbers, so a typo in either fails at parse time instead of silently
@@ -307,7 +308,7 @@ flockfile.json5`}</CodeBlock>
       </div>
     </div>
     <p>
-      <code>512M</code> and <code>30s</code> parse. <code>512MB</code>,
+      <code>512M</code> and <code>30s</code> parse. <code>512MB</code>,{" "}
       <code>1.5G</code>, and <code>30S</code> all fail: a fractional size,
       a two-letter unit, and an uppercase duration suffix, each rejected by
       the same strict grammar rather than rounded, guessed, or silently
@@ -320,28 +321,23 @@ error[invalid_config]: invalid TOML Flockfile: TOML parse error at line 4, colum
   |              ^^^^^^^
 memory size must be ASCII digits with an optional trailing G, M, or K`}</CodeBlock>
 
-    <h2>Unknown fields are a parse error, not a shrug</h2>
+    <h2 id="unknown-fields-are-a-parse-error-not-a-shrug">Unknown fields are a parse error, not a shrug</h2>
     <p>
       Every Flockfile field name is checked against the real set. A typo'd
-      key is rejected at load, not ignored. This is the same guarantee spec
-      writers get from <code>#[serde(deny_unknown_fields)]</code>, surfaced
-      as a message that names the exact key and lists what would have been
-      accepted:
+      key is rejected at load, not ignored, and the message names the exact
+      key including which app it sat under:
     </p>
     <CodeBlock label="max_memory_restart is not a real field">{`$ shep start Flockfile.toml
-error[invalid_config]: invalid TOML Flockfile: TOML parse error at line 4, column 1
-  |
-4 | max_memory_restart = "1G"
-  | ^^^^^^^^^^^^^^^^^^
-unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`args\`, \`cwd\`,
-\`interpreter\`, \`env\`, \`instances\`, \`autorestart\`, \`autostart\`, \`stop_exit_codes\`,
-\`min_uptime\`, \`max_restarts\`, \`restart_delay\`, \`exp_backoff_restart_delay\`, \`kill_signal\`,
-\`kill_timeout\`, \`shutdown_with_message\`, \`listen_timeout\`, \`graceful_timeout\`,
-\`action_timeout\`, \`max_memory\`, \`watch\`, \`ignore_watch\`, \`watch_delay\`, \`cron_restart\`,
-\`fold\`, \`user\`, \`group\`, \`out_file\`, \`err_file\`, \`merge_logs\`, \`channel\`, \`stdin\`,
-\`wait_ready\`, \`reuse_port\`, \`readiness_probe\`, \`liveness_probe\`, \`watch_options\`,
-\`cron_timezone\`, \`increment_var\`
+error[invalid_config]: Flockfile names unrecognized key: app.0.max_memory_restart
 `}</CodeBlock>
+    <p class="fine">
+      A key at the top level rather than inside an app is reported by the
+      parser itself, so that one does name the alternatives:{" "}
+      <code>unknown field \`apps\`, expected one of \`$schema\`, \`dog\`,
+      \`app\`</code>. The per-app set is large enough that listing it would
+      bury the key you actually mistyped, which is what the reference below
+      is for.
+    </p>
     <p class="fine">
       A parsed document with zero <code>[[app]]</code> entries is its own
       distinct error, <code>Flockfile declares no apps</code>: an empty
@@ -349,13 +345,13 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
       start almost always means the path was wrong.
     </p>
 
-    <h3>Paths</h3>
+    <h3 id="paths">Paths</h3>
     <p>
-      Four fields hold one: <code>script</code>, <code>cwd</code>,
+      Four fields hold one: <code>script</code>, <code>cwd</code>,{" "}
       <code>out_file</code> and <code>err_file</code>. All four expand a
       leading <code>~/</code> to your home directory, because a Flockfile is
       read from a file rather than typed at a shell, and nothing would
-      otherwise expand it: shep would look for a directory literally named
+      otherwise expand it: shep would look for a directory literally named{" "}
       <code>~</code>.
     </p>
     <p class="fine">
@@ -367,48 +363,91 @@ unknown field \`max_memory_restart\`, expected one of \`name\`, \`script\`, \`ar
       good answer to that.
     </p>
 
-    <h2>Templates: <code>{'{{instance}}'}</code> and <code>{'{{name}}'}</code></h2>
+    <h2 id="templates-and">Templates: <code>{'{{instance}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{SHEP_HOME}}'}</code> and <code>{'{{secret:...}}'}</code></h2>
     <p>
-      <code>env</code> values, <code>args</code>, <code>out_file</code> and
-      <code>err_file</code> all accept two tokens, doubled-brace, filled in
-      at spawn time with the app's own name and the instance's own slot:
+      <code>env</code> values, <code>args</code>, <code>out_file</code> and{" "}
+      <code>err_file</code> all accept doubled-brace tokens. Three are filled
+      in at spawn time: <code>{'{{instance}}'}</code> and{" "}
+      <code>{'{{name}}'}</code> from the sheep's own identity,{" "}
+      <code>{'{{SHEP_HOME}}'}</code> from the directory the shepherd keeps
+      its state in. Every one of the four fields takes all three:
     </p>
     <CodeBlock label="Flockfile.toml">{`[[app]]
 name = "z-worker"
 script = "./z-worker"
 instances = 4
 args = ["--metrics-port", "91{{instance}}"]
+out_file = "{{SHEP_HOME}}/logs/{{name}}-{{instance}}-out.log"
 
 [app.env]
 Z_WORKER_ID = "z-{{instance}}"
 Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     <p>
+      That <code>out_file</code> line is the default written out, so
+      uncommenting it changes nothing. Pair it with <code>merge_logs</code>{" "}
+      and it does: an explicit path spelling <code>{'{{instance}}'}</code>{" "}
+      keeps the instances in separate files anyway.{" "}
+      <code>shep init --all</code> scaffolds the line, and a path built on{" "}
+      <code>{'{{SHEP_HOME}}'}</code> moves with the shepherd rather than
+      pinning the Flockfile to one machine's layout.{" "}
+      <code>{'{{SHEP_HOME}}'}</code> is <code>$SHEP_HOME</code> when that is
+      set and <code>~/.shep</code> when it is not. It renders absolute, so
+      unlike a relative path it is never joined onto <code>cwd</code>, and it
+      renders the same for every instance, so a clustered app still needs{" "}
+      <code>{'{{instance}}'}</code> or <code>merge_logs</code> in its log
+      paths.
+    </p>
+    <h3 id="casing-says-where-a-token-reads-from">Casing says where a token reads from</h3>
+    <p>
+      An uppercase name is something from the environment, a lowercase one is
+      something from the config. <code>SHEP_HOME</code> is an environment
+      variable, so the token is <code>{'{{SHEP_HOME}}'}</code>;{" "}
+      <code>name</code> and <code>instance</code> are fields of the app, so
+      they stay lowercase. <code>{'{{secret:API_KEY}}'}</code> is both halves
+      at once: <code>secret:</code> names the mechanism, and the key beside it
+      is an environment-variable-shaped name. A secret key is matched as
+      written, so the uppercase there is a convention rather than a rule.
+    </p>
+    <p>
+      The fourth token reads a value rather than the app's own identity:{" "}
+      <code>{'{{secret:NAME}}'}</code> looks up <code>NAME</code> in the{" "}
+      <a href="/docs/secrets">secrets store</a> instead of putting a live
+      value in the Flockfile at all. This one is for <code>env</code> values
+      and <code>args</code> only: <code>out_file</code> and{" "}
+      <code>err_file</code> refuse it, because a resolved log path becomes a
+      filename on disk and is reported by <code>shep flock</code> and{" "}
+      <code>shep describe</code>.
+    </p>
+    <CodeBlock label="Flockfile.toml">{`[app.env]
+DB_PASSWORD = "{{secret:DB_PASSWORD}}"`}</CodeBlock>
+    <p>
       Any other <code>{'{{...}}'}</code> is refused at <code>shep start</code>,
       not left to reach the child as a literal string:
     </p>
-    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\` and \`{{name}}\``}</CodeBlock>
+    <CodeBlock label="a typo'd token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: \`{{instnace}}\` is not a template token: valid tokens are \`{{instance}}\`, \`{{name}}\`, \`{{SHEP_HOME}}\`, \`{{secret:...}}\``}</CodeBlock>
     <p>
       An opening <code>{'{{'}</code> that is never closed is refused the same
       way, rather than passed through as a literal:
     </p>
     <CodeBlock label="an unclosed token">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\`, env.WORKER: a \`{{\` in this value is never closed by a \`}}\``}</CodeBlock>
     <p>
-      Doubling the braces escapes them: <code>{'{{{{'}</code> and
-      <code>{'}}}}'}</code> render as one literal <code>{'{{'}</code> and
+      Doubling the braces escapes them: <code>{'{{{{'}</code> and{" "}
+      <code>{'}}}}'}</code> render as one literal <code>{'{{'}</code> and{" "}
       <code>{'}}'}</code>. Single braces are left alone and never need
-      escaping, so a JSON blob, a regex quantifier like
+      escaping, so a JSON blob, a regex quantifier like{" "}
       <code>{'{2,3}'}</code>, or a Go or Helm template passed through as an
       arg all survive untouched.
     </p>
     <p>
-      <code>SHEP_INSTANCE</code> and <code>SHEP_NAME</code> are set on every
-      sheep's environment automatically, whether or not the Flockfile uses
-      either template. Setting either one yourself under <code>env</code> is
-      refused rather than silently overwritten:
+      <code>SHEP_INSTANCE</code>, <code>SHEP_NAME</code> and{" "}
+      <code>SHEP_ENVIRONMENT</code> are set on every sheep's environment
+      automatically, whether or not the Flockfile uses any template at all.
+      Setting one yourself under <code>env</code> is refused rather than
+      silently overwritten:
     </p>
     <CodeBlock label="env sets a reserved variable">{`error[invalid_config]: the daemon reported InvalidConfig: sheep \`z-worker\` sets \`SHEP_INSTANCE\` in env, but shep injects it: use a different name, or \`{{instance}}\` in your own variable`}</CodeBlock>
 
-    <h2>Changing the count without editing the file</h2>
+    <h2 id="changing-the-count-without-editing-the-file">Changing the count without editing the file</h2>
     <VerbSignature verb="stock" aliases={["scale"]} usage="shep stock <name> <n>">
       <p>
         An absolute count, not a change: <code>shep stock web 4</code> means
@@ -435,19 +474,26 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       <a href="/docs/startup">a reboot</a> keeps it.
     </p>
 
-    <h2>The full field reference</h2>
+    <h2 id="the-full-field-reference">The full field reference</h2>
     <p>
-      Every field <code>AppConfig</code> accepts, grouped by what it's for.
+      Every field <code>AppConfig</code> accepts, grouped by what it's for.{" "}
       <code>readiness_probe</code> and <code>liveness_probe</code> each take
       a nested object: <code>kind</code> (<code>http</code>/<code
-      >tcp</code>/<code>exec</code>), <code>target</code>, and optional
-      <code>interval</code> (10s), <code>timeout</code> (5s), and
-      <code>failure_threshold</code> (3).
+      >tcp</code>/<code>exec</code>), <code>target</code>, and optional{" "}
+      <code>interval</code> (10s), <code>timeout</code> (5s), and{" "}
+      <code>failure_threshold</code> (3). <code>depends_on</code> has a page
+      of its own: see <a href="/docs/boot-order">boot order</a>.
+    </p>
+    <p class="fine">
+      Every field below is also editable from <a href="/docs/lookout">lookout</a>:
+      its config pane builds its form straight off this same Flockfile JSON
+      Schema, the way it builds one for a dog's own <code>--schema</code>{" "}
+      answer.
     </p>
     {
       fieldGroups.map((group) => (
         <div class="field-group">
-          <h3>{group.title}</h3>
+          <h3 id={slugify(group.title)}>{group.title}</h3>
           <div class="field-table">
             <div class="row header">
               <span class="col-name">Field</span>
@@ -460,8 +506,8 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
                   <code>{f.name}</code>
                   <span class="type">{f.type}</span>
                 </span>
-                <span class="col-default">{f.default}</span>
-                <span class="col-does">{f.does}</span>
+                <span class="col-default" data-label="Default">{f.default}</span>
+                <span class="col-does" data-label="What it does">{f.does}</span>
               </div>
             ))}
           </div>
@@ -472,23 +518,23 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     <Callout variant="note">
       A permanently broken app (bad config, missing dependency: it exits
       before <code>min_uptime</code> every time) still errors out once it
-      hits <code>max_restarts</code>, but the default
+      hits <code>max_restarts</code>, but the default{" "}
       <code>exp_backoff_restart_delay</code> of 100ms, growing ×1.5 each
-      attempt, changes how long that takes. At the default
+      attempt, changes how long that takes. At the default{" "}
       <code>max_restarts = 16</code>, reaching <code>Errored</code> now
-      takes roughly 50-70s instead of well under a second. Set
+      takes roughly 50-70s instead of well under a second. Set{" "}
       <code>exp_backoff_restart_delay = "0"</code> to go back to failing
-      fast, provided <code>restart_delay</code> is unset -- a fixed
+      fast, provided <code>restart_delay</code> is unset -- a fixed{" "}
       <code>restart_delay</code> takes precedence and still applies its
       own wait on every restart, even with the backoff disabled.
     </Callout>
 
-    <h2>Get the schema directly</h2>
+    <h2 id="get-the-schema-directly">Get the schema directly</h2>
     <p>
       Everything above is generated from the same source the parser uses,
-      so it can't drift from what <code>shep</code> actually accepts.
+      so it can't drift from what <code>shep</code> actually accepts.{" "}
       <code>shep schema</code> prints it as JSON Schema, and the same output
-      is committed at <code>crates/shep-core/assets/flockfile.schema.json</code>
+      is committed at <code>crates/shep-core/assets/flockfile.schema.json</code>{" "}
       for an editor to point at:
     </p>
     <CodeBlock>{`$ shep schema | head -20
@@ -498,7 +544,7 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     "type": "object",
     "properties": {
       "$schema": {
-        "description": "The editor's schema hint, read and discarded.\\n\\nThis is the \\"future schema key\\" the comment above anticipated, added\\nHERE explicitly rather than by relaxing \`deny_unknown_fields\`: a\\ntypo'd key must still fail loudly, and exactly one more key is now\\nlegal. shep does not validate against the named schema and makes no\\npromise about it — it is a hint for the operator's editor, which is\\nthe only consumer that ever reads it.\\n\\nTOML Flockfiles do not need it: taplo's \`#:schema <url>\` directive is\\na comment, invisible to serde. JSON and JSON5 have no comment an\\neditor agrees to look in, which is why this field exists at all.",
+        "description": "The editor's schema hint, read and discarded.\\n\\nThis is the \\"future schema key\\" the comment above anticipated, added\\nHERE explicitly rather than by relaxing \`deny_unknown_fields\`: a\\ntypo'd key must still fail loudly, and exactly one more key is now\\nlegal. shep does not validate against the named schema and makes no\\npromise about it, it is a hint for the operator's editor, which is\\nthe only consumer that ever reads it.\\n\\nTOML Flockfiles do not need it: taplo's \`#:schema <url>\` directive is\\na comment, invisible to serde. JSON and JSON5 have no comment an\\neditor agrees to look in, which is why this field exists at all.",
         "type": [
           "string",
           "null"
@@ -513,13 +559,13 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
         }
       },`}</CodeBlock>
     <p class="fine">
-      That's the real first twenty lines, unedited. <code>head -20</code>
-      stops just after <code>"app"</code> closes and before
-      <code>"dog"</code> begins, and the <code>"$schema"</code>
+      That's the real first twenty lines, unedited. <code>head -20</code>{" "}
+      stops just after <code>"app"</code> closes and before{" "}
+      <code>"dog"</code> begins, and the <code>"$schema"</code>{" "}
       key's own description is one long escaped line explaining itself,
-      not the tidied multi-line prose above. The full document closes
+      not the tidied multi-line prose above. The full document closes{" "}
       <code>"app"</code>, adds the <code>"dog"</code> key described below,
-      then <code>"additionalProperties": false</code> and a
+      then <code>"additionalProperties": false</code> and a{" "}
       <code>"$defs"</code> section with one entry per Flockfile field.
       Run the command yourself to see the rest.
     </p>
@@ -530,7 +576,7 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       the key existed, a Flockfile carrying any of it was refused outright, so
       an operator could not register their app at all. shep does not read what
       is under <code>dog</code>, does not validate it, and promises nothing
-      about it. The table itself is required, though: <code>dog = 5</code> and
+      about it. The table itself is required, though: <code>dog = 5</code> and{" "}
       <code>dog = ["a"]</code> are refused, because otherwise this would be
       the one key in the document where a typo does not fail loudly. What is
       inside it is the dog's: the dog that owns a key is the only thing that
@@ -548,81 +594,10 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
       all: a leading <code>#:schema &lt;path&gt;</code> comment (the taplo
       convention) does the same job, invisibly to the parser.
     </p>
-
-    <h2>Where to go next</h2>
-    <div class="next-grid">
-      <a href="/docs/folds" class="next-card">
-        <div class="next-title">Folds →</div>
-        <div class="next-body">
-          What the <code>fold</code> field is for, and how to select a whole
-          fold from any verb.
-        </div>
-      </a>
-      <a href="/docs/json-output" class="next-card">
-        <div class="next-title">JSON output →</div>
-        <div class="next-body">
-          How this same config surfaces back out through
-          <code>shep flock --format json</code>.
-        </div>
-      </a>
-      <a href="/docs/from-pm2" class="next-card">
-        <div class="next-title">Coming from pm2 →</div>
-        <div class="next-body">
-          Turn a real dump.pm2 into a Flockfile instead of writing one by
-          hand.
-        </div>
-      </a>
-    </div>
-  </article>
+</article>
 </DocsLayout>
 
 <style>
-  h1 {
-    font-size: clamp(36px, 4.6vw, 56px);
-    line-height: 1;
-    letter-spacing: -0.04em;
-    margin: 0 0 18px;
-  }
-
-  h2 {
-    font-size: 27px;
-    letter-spacing: -0.03em;
-    margin: 44px 0 12px;
-  }
-
-  h2:first-of-type {
-    margin-top: 0;
-  }
-
-  h3 {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 16.5px;
-    letter-spacing: -0.01em;
-    margin: 0 0 10px;
-    color: var(--ink-2);
-  }
-
-  .lede {
-    font-size: 19px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 0 0 30px;
-    text-wrap: pretty;
-  }
-
-  p {
-    font-size: 16.5px;
-    line-height: 1.65;
-    color: var(--ink-2);
-    margin: 0 0 18px;
-  }
-
-  .fine {
-    font-size: 14.5px;
-    color: var(--ink-3);
-  }
-
   code {
     font-family: "Space Mono", monospace;
     font-size: 0.88em;
@@ -672,44 +647,10 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     margin: 0 0 26px;
   }
 
+  /* Column widths only. Everything else is the shared `.field-table`
+     block in docs-page.css. */
   .field-table {
-    border: 3px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-
-  .field-table .row {
-    display: grid;
-    grid-template-columns: minmax(0, 210px) 130px minmax(0, 1fr);
-    gap: 14px;
-    padding: 11px 18px;
-    align-items: start;
-  }
-
-  .field-table .row.header {
-    background: var(--ink);
-    padding: 10px 18px;
-  }
-
-  .field-table .row:not(.header) {
-    border-bottom: 2px solid var(--hair);
-    background: var(--paper-2);
-  }
-
-  .field-table .row:last-child {
-    border-bottom: none;
-  }
-
-  .field-table .row.header span {
-    font-family: "Space Mono", monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-
-  .field-table .row.header .col-name {
-    color: var(--butter);
+    --field-cols: minmax(0, 210px) 130px minmax(0, 1fr);
   }
 
   .col-name code {
@@ -732,62 +673,4 @@ Z_DEVICE_ID = "z-{{instance}}d"`}</CodeBlock>
     line-height: 1.5;
   }
 
-  .col-does {
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .field-table .row {
-      grid-template-columns: 1fr;
-      gap: 5px;
-    }
-
-    .field-table .row.header {
-      display: none;
-    }
-  }
-
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .next-card {
-    text-align: left;
-    background: var(--paper-2);
-    border: 3px solid var(--line);
-    border-radius: 18px;
-    box-shadow: 5px 5px 0 var(--shadow);
-    padding: 20px;
-    color: var(--ink);
-    text-decoration: none;
-    display: block;
-  }
-
-  .next-card:hover {
-    transform: translate(2px, 2px);
-    box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--ink);
-  }
-
-  .next-title {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    margin-bottom: 7px;
-  }
-
-  .next-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-2);
-  }
-
-  .next-body code {
-    font-size: 0.85em;
-  }
 </style>

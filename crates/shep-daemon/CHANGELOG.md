@@ -10,6 +10,390 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Changed
+
+- Turn supervisor.rs into a module directory
+- Give the supervisor tests their own directory
+- Say where the actor impl went in the module doc
+- Rustfmt the signatures the visibility prefix lengthened
+- Gate the five test-only re-exports behind cfg(test)
+- Gate the unix-only parts of the module tree
+
+### Fixed
+
+- Carry the unix gates the runner and server splits dropped
+
+
+## [0.8.1] - 2026-09-15
+
+### Added
+
+- Read the host counters on a tick and serve the rates
+
+### Fixed
+
+- CodeRabbit's full review of 666d5974, all three actionable
+
+
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Open a pane on one sheep, and difference the CPU counter ([#202](https://github.com/shep-pm/shep/pull/202))
+- Warn when cwd/script/out_file/err_file look wrong on disk
+- Warn when cwd/script/out_file/err_file look wrong on disk ([#220](https://github.com/shep-pm/shep/pull/220))
+- Build three approved decisions that were never shipped ([#238](https://github.com/shep-pm/shep/pull/238)) **(BREAKING)**
+
+### Changed
+
+- Drop the unreachable home fallback, and say env refuses a bad token
+
+### Fixed
+
+- Find a reserved device name at the last dot, not the first
+- Count Windows' path limit in UTF-16 units, not bytes
+- Advise on a control character in a Windows path
+- Anchor a relative out_file/err_file at the app's cwd ([#224](https://github.com/shep-pm/shep/pull/224)) **(BREAKING)**
+
+
+## [0.7.4] - 2026-09-12
+
+
+## [0.7.3] - 2026-09-08
+
+
+## [0.7.2] - 2026-09-08
+
+### Added
+
+- Fold the durable-write sequence into shep-core
+
+
+## [0.7.1] - 2026-09-08
+
+
+## [0.7.0] - 2026-09-08
+
+### Added
+
+- Import a .env into the secret store and a sheep's env ([#187](https://github.com/shep-pm/shep/pull/187)) **(BREAKING)**
+
+
+## [0.6.5] - 2026-09-08
+
+
+## [0.6.4] - 2026-09-08
+
+
+## [0.6.3] - 2026-09-08
+
+### Changed
+
+- Build every SheepSlot from one constructor
+- Build the supervisor test actors from one fixture
+
+
+## [0.6.2] - 2026-09-08
+
+
+### Added
+
+- `Request::PutSecrets`: a provider dog pushes the values it fetched from
+  Vercel, Vault or anywhere else into a namespace, and
+  `{{secret:<namespace>/KEY}}` resolves against them. Push rather than pull,
+  because `assemble` is a synchronous pure function on the spawn path and a
+  pull would put a socket round trip and a timeout on every instance of every
+  sheep.
+- `$SHEP_HOME/secrets-cache.json`, owner-only, so a shepherd that restarts
+  resolves a namespace before its dog's next poll comes round. It carries the
+  `(namespace, environment)` pairs a provider has pushed beside the values, so
+  a restart still tells "the dog has not pushed staging" from "staging has no
+  such key". A dog's `persist` key in `dogs.toml` decides whether its
+  namespace may reach the file, defaulting to `true`, and only the namespaces
+  whose most recent push asked for it are ever written. The file is derived:
+  one that will not read is skipped rather than refused.
+
+### Changed
+
+- `assemble` takes a `shep_core::secrets::SecretView` and returns
+  `Result<SpawnSpec, AssembleError>`, so a spawn refuses on a
+  `{{secret:...}}` it cannot resolve rather than handing the child the
+  reference as literal text. A caller reading a spec it will not spawn wants
+  the crate-private `describe` instead, which leaves an unresolvable
+  reference as written.
+- `BootOptions` grows an `environment` field, the environment a sheep naming
+  none of its own resolves its references in. The struct is not
+  `#[non_exhaustive]`, so an out-of-tree literal that named every field no
+  longer compiles; `..Default::default()` is the shape that survives the
+  next one.
+
+## [0.6.1] - 2026-09-07
+
+
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- Name the apps a staged restart could not restart **(BREAKING)**
+- Refuse an unrecognized request by id instead of ending the connection
+- Accept any peer at or above a protocol floor **(BREAKING)**
+- A protocol floor, tolerant decode, and refusals a staged restart can name ([#173](https://github.com/shep-pm/shep/pull/173)) **(BREAKING)**
+
+### Fixed
+
+- Don't publish daemon_version on an Unsupported refusal
+
+
+## [0.5.1] - 2026-09-07
+
+
+## [0.5.0] - 2026-09-07
+
+### Added
+
+- Boot ordering with dependency trees ([#166](https://github.com/shep-pm/shep/pull/166)) **(BREAKING)**
+
+
+## [0.4.6] - 2026-09-07
+
+### Added
+
+- Redraw the landing pane ([#168](https://github.com/shep-pm/shep/pull/168))
+
+
+## [0.4.5] - 2026-09-06
+
+
+## [0.4.4] - 2026-09-06
+
+### Changed
+
+- Move the shepherd-channel wire into its own crate
+
+
+## [0.4.3] - 2026-09-06
+
+### Fixed
+
+- Sweep the exec probe's process group on every exit path ([#160](https://github.com/shep-pm/shep/pull/160))
+
+
+## [0.4.2] - 2026-09-06
+
+### Fixed
+
+- Write the muster roll when the registry records, not only on a bus event
+
+
+## [0.4.1] - 2026-09-06
+
+
+## [0.4.0] - 2026-09-06
+
+
+## [0.3.0] - 2026-09-05
+
+### Added
+
+- SheepConfig, SetSheepEnv and SetDogConfig on the wire
+- Handle SetSheepField, writing an override rather than a template
+- A dog's section can be written over the wire, and the dog is told
+
+### Fixed
+
+- A dog can no longer be given a sheep's env override **(BREAKING)**
+- SetSheepEnv records what every other config write records
+- A removed env key keeps being reported as an override
+- Box the sheep config on the wire, and fix a doc link
+- A dog that is not running can still be configured
+- Hand the pane the section an operator wrote, not a re-render
+- Carry a dog table's header decor across a pane write
+- The known-dog set grows when a dog is enabled
+- Drop Deref from EnvValue and DogSectionToml
+- A stopped engine answers a dog config write instead of panicking
+- A dog's section keeps its sub-tables on the way out
+
+
+## [0.2.5] - 2026-09-05
+
+
+## [0.2.4] - 2026-09-05
+
+
+## [0.2.3] - 2026-09-05
+
+
+## [0.2.2] - 2026-09-04
+
+### Fixed
+
+- A stop no longer discards the child's last line
+- Drain on every exit from the pump loop, not just one
+- Gate fill_pipe on unix, which is where its argument type exists
+- Put FINAL_DRAIN back to 100ms, and name what actually bounds it
+
+
+## [0.2.1] - 2026-09-04
+
+
+## [0.2.0] - 2026-09-04
+
+### Added
+
+- The four reset modes get their own arms
+
+### Changed
+
+- ResetDepth gains File and Env, Settings becomes Policy **(BREAKING)**
+
+### Fixed
+
+- --reset=env touches env and no setting at all
+- The instances refusal advises a mode, not a bare flag
+- Env never reaches handle_scale either, so name it
+- The instances refusal named a purpose, not a scope
+
+
+## [0.1.34] - 2026-09-04
+
+
+## [0.1.33] - 2026-09-04
+
+### Fixed
+
+- Atomic file writers fsync the directory the rename lands in
+- Atomic file writers fsync the directory the rename lands in ([#116](https://github.com/shep-pm/shep/pull/116))
+
+
+## [0.1.32] - 2026-09-04
+
+### Added
+
+- Dogs.toml gets a type and a path
+- Dog config moves to dogs.toml, migrated on boot
+
+
+## [0.1.31] - 2026-09-03
+
+### Added
+
+- A request that registers an app without starting it
+
+
+## [0.1.30] - 2026-09-03
+
+### Added
+
+- Rearm_name, a force-replacing sibling to arm for config changes
+- The override store, locked and owner-only like the KV store
+- Apply a Flockfile onto a running flock additively, without killing anything
+- Reload and restart promote pending config, re-resolving identity only when it changed
+- Request::ApplyConfig on the wire, answered by Response::Applied
+- A CFG column and a describe section, so pending config is visible
+- A Flockfile is a template, and a load applies it without killing anything ([#104](https://github.com/shep-pm/shep/pull/104))
+
+### Fixed
+
+- Redact SpawnSpec's Debug, the one env-carrying type without it
+- Pin rearm_name's multi-instance path, move dead_code note out of rustdoc
+- An epoch, so a replaced liveness probe cannot restart the sheep it left
+- Correct guard ordinal in ExtraRestart epoch doc
+- Drop a memory breach measured against a ceiling a load has since changed
+- Four ways a Flockfile load could touch what it must not
+- A load must tear a group down even when it can arm nothing
+- Report a parked rebuild that failed with no field to name, and stop establishing refused keys
+- Decide a promotion's identity reset when the config is parked, and let a reload read what it is owed without taking it
+- A scale-up carries the parked config onto the instances it creates
+- Carry a parked config and its reset decision across a handover
+- Keep the overridden cache correct across reload, scale-up and restore
+- A reset resolves an undeclared key to the file, not to the default
+- A Flockfile that names a dog is refused, not merged onto it
+- A load during a reload reads the replacement, not the drainee
+- A reset no longer establishes env keys it never merged
+- A scale brings the count forward in the config it has parked
+- The two parking keys travel as a pair in both directions
+
+
+## [0.1.29] - 2026-09-03
+
+### Fixed
+
+- Name --force in the reinstall advice, since plain install does nothing ([#107](https://github.com/shep-pm/shep/pull/107))
+
+
+## [0.1.28] - 2026-09-03
+
+### Added
+
+- Stamp every log line with the time it was written
+- Write shep's own account of a dog into that dog's log
+- Report the give-up beside the handshake in every listing
+
+### Fixed
+
+- Say what this shepherd saw, not what it inferred, about a silent dog
+- Keep a log line meaning one thing on both of its paths
+- Flush a narration line, or it can be lost outright
+- Write a stamped line in one call, so narration cannot tear it
+- Stop telling an operator an anonymous dog is doing its job
+- Stop linking public docs at private items
+- A map that just started watching must not say a pid never called
+- Serialize a whole record across both writers on a log path
+- Make the ladder wait for attribution instead of racing it
+- Take the record lock in reopen, and name the lossy key it cannot cover
+
+
+### Added
+
+- Shep writes its own account of a dog into that dog's log file, marked
+  `[shep]` so it cannot be read as the dog's own output: the spawn and the
+  resolved binary path, an accepted handshake (once per episode, not per
+  reconnect), a refused one with both protocol numbers, the silence warning,
+  the stale verdict, and the exit code or signal. Every one of those used to
+  go only to `shepd.err.log` — which is not the file shep's own error message
+  tells the operator to read. `shep bleats --follow` sees the same lines live.
+
+### Changed
+
+- `ListFlock` and `Describe` now report `ProcessInfo::dog_stale` beside
+  `handshook`, so a listing can tell a dog this shepherd is still waiting on
+  from one it has permanently stopped restarting. Both were
+  `handshook: false` with a live process before, and the give-up was visible
+  nowhere outside this daemon's own memory.
+
+### Fixed
+
+- The stale verdict for a silent dog no longer asserts a cause the shepherd
+  never observed. It now records which process each connection arrived from
+  and whether that connection named a dog, and says one of three things: the
+  dog has never reached the socket (rebuild or reinstall it), it reaches the
+  socket and never names itself (a build against shep-client older than
+  0.1.23, which reinstalling the same build will not fix), or the platform
+  would not name the peer's process and so neither can be ruled out. Every
+  one ends in a command to run. Previously all three got *the binary on disk
+  cannot talk to this shep either*, which cost one operator two days of
+  reinstalling a dog that was connected and serving requests the whole time.
+
+### Changed
+
+- Every line written to a sheep's or a dog's log file now starts with the
+  time shep wrote it, RFC 3339 in local time with the offset spelled out
+  (`2026-09-02T14:22:31.412+02:00 `). The stamp is a fixed 30 bytes
+  (`shep_core::logstamp::LOG_STAMP_BYTES`), so `tail`, `less` and `grep` show
+  the time and anything that wants the raw line strips a constant prefix.
+  What a sheep is REPORTED to have said does not change: the bus carries its
+  line verbatim, and `shep bleats` strips the stamp when it reads a file, so
+  `--follow` and `--no-follow` still agree and `--format json`'s `line` means
+  what it always did. That split is why this needs no opt-out.
+
+## [0.1.27] - 2026-09-02
+
+
+## [0.1.26] - 2026-09-01
+
+
 ## [0.1.25] - 2026-09-01
 
 ### Fixed

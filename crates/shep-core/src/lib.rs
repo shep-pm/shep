@@ -20,26 +20,41 @@
 #![doc(test(attr(deny(warnings))))]
 #![forbid(unsafe_code)]
 
+// Shared atomic-write primitive: barks, kv, overrides, shep.toml, dogs.toml
+// and the muster roll all write through it.
+pub mod atomic_file;
 pub mod barks;
 pub mod config;
+// The staging file `shep.toml` and `dogs.toml` are written through, and the
+// old name for the lock their writers hold. Lives here rather than in
+// shep-cli (where it was born) so shep-daemon can hold it too.
+pub mod config_lock;
+// The probe contract both sides of a dog's `--version`/`--schema` answer
+// parse: flag names, the answer grammar, the schema's secret marker key.
+pub mod dogs;
+// One advisory lock, keyed on the file it guards. Every store that
+// publishes a new value by `rename` holds it across the whole cycle.
+pub mod file_lock;
 pub mod kv;
+// One definition of the log-line timestamp for the writer and every reader:
+// the daemon stamps, and three different file readers in shep-cli strip.
+pub mod logstamp;
+pub mod overrides;
 pub mod paths;
 pub mod protocol;
+pub mod secrets;
 pub mod selector;
 pub mod signals;
 pub mod status;
-// Declared next to `protocol`, deliberately: that module owns what travels
-// over the control plane and this one owns what carries it. Keeping the two
-// in one crate is what lets every layer above them — the client's actor, the
-// daemon's connection state machine, every RPC verb — be written once with
-// no `cfg` in it at all.
+// OS-specific transport (unix socket or named pipe) lives here so nothing
+// above it needs a `cfg`.
 pub mod transport;
 pub mod values;
 
 /// One-import surface for downstream crates
 pub mod prelude {
     #[doc(no_inline)]
-    pub use crate::config::{AppConfig, Flockfile};
+    pub use crate::config::{AppConfig, DeclaredApp, Flockfile};
     #[doc(no_inline)]
     pub use crate::paths::ShepPaths;
     #[doc(no_inline)]
