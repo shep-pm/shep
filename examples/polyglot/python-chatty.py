@@ -115,14 +115,15 @@ def send(channel, message):
     """
     global _shepherd_gone
     try:
-        # Not bare json.dumps: its defaults put a space after every colon and
-        # comma and escape non-ASCII, so Python's line differed from the three
-        # other examples byte for byte while decoding to the same message.
-        # An unbuffered binary write is one write(2): it returns short
-        # rather than failing when the pipe fills, and the next frame would
-        # then start mid-line. The other three never see this, since Go,
-        # libuv and Rust all loop for you.
+        # wire(), not bare json.dumps: its defaults put a space after every
+        # colon and comma and escape non-ASCII, so Python's line differed
+        # from the three other examples byte for byte while decoding to the
+        # same message.
         rest = memoryview(wire(message).encode() + b"\n")
+        # An unbuffered binary write is one write(2): it returns short
+        # rather than failing, and the next frame would then start mid-line.
+        # The other three never see this, since Go, libuv and Rust all loop
+        # for you.
         while rest:
             written = channel.write(rest)
             if not written:
