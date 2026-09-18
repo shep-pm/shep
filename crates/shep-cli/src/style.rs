@@ -89,14 +89,23 @@ pub(crate) fn no_color_set(no_color: Option<&OsStr>) -> bool {
 
 /// Whether the terminal supports the 256-colour tier: `$COLORTERM`
 /// containing `truecolor`/`24bit`, or `$TERM` containing `256color`.
+/// The values are compared case-insensitively, because terminals do not
+/// promise a case: `COLORTERM=TrueColor` is common and an upper-case
+/// `$TERM` is still a match (#282).
+///
 /// Anything else gets the 16-colour fallback.
 ///
 /// Lives here for the same reason [`no_color_set`] does.
 pub(crate) fn deep_colour_terminal(term: Option<&OsStr>, colorterm: Option<&OsStr>) -> bool {
     colorterm.is_some_and(|value| {
-        let value = value.to_string_lossy();
+        let value = value.to_string_lossy().to_ascii_lowercase();
         value.contains("truecolor") || value.contains("24bit")
-    }) || term.is_some_and(|value| value.to_string_lossy().contains("256color"))
+    }) || term.is_some_and(|value| {
+        value
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("256color")
+    })
 }
 
 /// The level the operator chose, whether colour survived `NO_COLOR`, and
@@ -288,7 +297,8 @@ mod tests {
     /// The other rule moved out of `theme.rs`: a `COLORTERM` naming
     /// truecolor/24bit, or a `TERM` naming 256color, is the 256-colour
     /// tier; anything else, including nothing at all, is the 16-colour
-    /// fallback.
+    /// fallback. The values are compared case-insensitively (#282), since
+    /// `COLORTERM=TrueColor` and an upper-case `$TERM` are both out there.
     #[test]
     fn deep_colour_terminal_reads_colorterm_then_term() {
         assert!(!deep_colour_terminal(None, None));
@@ -301,6 +311,15 @@ mod tests {
         assert!(deep_colour_terminal(
             Some(OsStr::new("dumb")),
             Some(OsStr::new("24bit"))
+        ));
+        assert!(deep_colour_terminal(None, Some(OsStr::new("TrueColor"))));
+        assert!(deep_colour_terminal(
+            Some(OsStr::new("dumb")),
+            Some(OsStr::new("24BIT"))
+        ));
+        assert!(deep_colour_terminal(
+            Some(OsStr::new("XTERM-256COLOR")),
+            None
         ));
     }
 
