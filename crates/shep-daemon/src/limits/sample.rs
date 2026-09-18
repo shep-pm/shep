@@ -596,12 +596,26 @@ mod tests {
         // tests/real_runner_windows.rs covers real-child behavior at the
         // runner tier instead.
         #[cfg(unix)]
-        use std::process::Command;
+        use std::process::{Command, Stdio};
         #[cfg(unix)]
-        use std::time::Duration;
+        use std::time::{Duration, Instant};
 
         #[cfg(unix)]
         use super::*;
+
+        /// How long [`name_when`] keeps walking before giving up and
+        /// reporting whatever it last saw.
+        ///
+        /// Generous on purpose: a walk costs single-digit milliseconds on an
+        /// idle machine, so this is margin against a stalled CI runner, not
+        /// an estimate of the work. A real regression pays it twice and
+        /// still finishes well inside the harness timeout.
+        #[cfg(unix)]
+        const GIVE_UP_AFTER: Duration = Duration::from_secs(10);
+
+        /// The gap between walks in [`name_when`].
+        #[cfg(unix)]
+        const BETWEEN_WALKS: Duration = Duration::from_millis(10);
 
         /// The name `sampler` reports for `pid`, or `None` if the walk did
         /// not see it.
@@ -616,32 +630,81 @@ mod tests {
                 .map(|identity| identity.name)
         }
 
+        /// Walks until `accept` is happy with the name `pid` is reported
+        /// under, then returns that name.
+        ///
+        /// Returns the last name seen once [`GIVE_UP_AFTER`] elapses, so a
+        /// caller whose `accept` never fired asserts against a real
+        /// observation rather than against having run out of patience.
+        ///
+        /// `cfg(unix)` alongside its only callers, below.
+        #[cfg(unix)]
+        fn name_when(
+            sampler: &SysinfoSampler,
+            pid: u32,
+            accept: impl Fn(Option<&str>) -> bool,
+        ) -> Option<String> {
+            let deadline = Instant::now() + GIVE_UP_AFTER;
+            loop {
+                let seen = name_of(sampler, pid);
+                if accept(seen.as_deref()) || Instant::now() >= deadline {
+                    return seen;
+                }
+                std::thread::sleep(BETWEEN_WALKS);
+            }
+        }
+
         // Pins `identify` reading the post-exec name, not a stale one from
         // a retained table. unix only: Windows has no fork-then-exec
-        // equivalent, and real elapsed time is why this lives in `slow`.
+        // equivalent, and spawning a real process is why this lives in
+        // `slow`.
         #[cfg(unix)]
         #[test]
         fn identify_reports_the_name_a_lamb_execed_into_not_the_one_it_forked_with() {
             let mut child = Command::new("/bin/sh")
                 .arg("-c")
-                .arg("sleep 0.6; exec sleep 30")
+                // `read` rather than a `sleep` long enough to win the race:
+                // the child blocks here until this end of the pipe closes,
+                // so the walk below cannot arrive after the `exec` however
+                // slow the machine is. A head start measured on an idle
+                // machine is no head start on a loaded runner. The `read`
+                // ends on EOF as readily as on a line, so dropping the
+                // handle is the whole handshake.
+                .arg("read _; exec sleep 30")
+                .stdin(Stdio::piped())
                 .spawn()
                 .expect("/bin/sh is present on every platform this daemon supports");
             let pid = child.id();
             let sampler = SysinfoSampler::new();
 
-            let forked_as = name_of(&sampler, pid);
-            std::thread::sleep(Duration::from_millis(1_500));
-            let execed_into = name_of(&sampler, pid);
+            // Any name but `sleep`, rather than the shell's own name: this
+            // case pins that the second walk is fresh, and which shell the
+            // first walk caught is not its business. macOS `/bin/sh` is a
+            // shim that execs `/bin/bash`, so pinning `sh` pinned a window
+            // under a millisecond wide. Measured 2026-09-18, 200 walks
+            // against a child held at the `read` below: `bash` 199, `sh` 1,
+            // and the lone `sh` was the first walk. That is the race that
+            // failed `slow (macos-latest)` on shep-pm/shep#309, reported as
+            // `left: Some("bash")`.
+            let forked_as = name_when(&sampler, pid, |name| name.is_some());
+            // Releases the child into its `exec`. Before the assertions, so
+            // a failing one cannot leave a shell blocked on `read` forever.
+            drop(child.stdin.take());
+            let execed_into = name_when(&sampler, pid, |name| name == Some("sleep"));
 
             let _ = child.kill();
             let _ = child.wait();
 
-            assert_eq!(
+            assert!(
+                forked_as.is_some(),
+                "the first walk has to see pid {pid} at all, or the case says \
+                 nothing about what a later walk reports for it"
+            );
+            assert_ne!(
                 forked_as.as_deref(),
-                Some("sh"),
-                "the first walk has to land before the `execve` or the case \
-                 says nothing; it did not"
+                Some("sleep"),
+                "pid {pid} was still blocked on `read` here, so no walk could \
+                 yet have seen the `exec`; this one did"
             );
             assert_eq!(
                 execed_into.as_deref(),
