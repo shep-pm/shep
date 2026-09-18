@@ -97,14 +97,15 @@ jobs:
       # it ran.
       - run: npx astro check
         working-directory: web
-      # The whole `build` script, not `astro build` alone. It is
-      # `check-node.mjs && node --test verify-dogs-index.ts && astro build &&
-      # pagefind --site dist && verify-pagefind-index.mjs`, and it is exactly
-      # what pages.yml runs.
+      # The whole `build` script, not `astro build` alone. It is eleven steps
+      # now: a node-version check, four `verify-*` scripts, `astro build`,
+      # `pagefind --site dist`, and four more `verify-*` scripts after it. It
+      # is exactly what pages.yml runs. This comment listed five of them until
+      # 2026-09-18, naming a set that had not been current for several phases.
       #
       # Anything this job skips is a step whose first run is still the
       # production deploy, which is the hole this file exists to close. There
-      # is nothing to save by trimming it: all five are offline, and the whole
+      # is nothing to save by trimming it: every step is offline, and the whole
       # script runs in 2 seconds against 7 for the install. Two of them also
       # catch failures a build cannot see, since `pagefind` exits 0 after
       # indexing zero pages, which makes verify-pagefind-index.mjs the only

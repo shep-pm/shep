@@ -225,22 +225,44 @@ Two halves, and only one of them is automatic:
    and no generator touches them. Grep for the thing you changed before
    assuming they are fine.
 
-Then build the site, because it can fail on content the Rust gate never sees:
+Then run the site's own gate, because it fails on content the Rust gate never
+sees. Three commands from `web/`, in this order, which is what the `docs site`
+job in `.github/workflows/web.yml` runs:
 
 ```bash
-cd web && npx astro build
+cd web && npm ci
 ```
 ```bash
 cd web && npx astro check
 ```
+```bash
+cd web && npm run build
+```
 
-**Both, and `check` is the one that catches a wrong prop.** Astro does not
-typecheck during a build, so a page passing a component a prop it does not
-have builds clean and renders wrong. Measured 2026-08-20: `/docs/output`
-shipped two `<Callout kind="note">` against a component whose prop is
-`variant`, so `variant` was `undefined`, the rendered `div` lost its variant
-class and the label badge rendered empty. `astro build` was green the whole
-time. `astro check` reported both, at `ts(2322)`, the moment it was run.
+**`npm ci` first, or the command after it passes without checking anything.**
+A fresh worktree has no `@astrojs/check` installed, so `npx` offers to fetch
+one, and a cancelled prompt exits 0. That reads as a green typecheck over a
+page nothing typechecked. Measured 2026-09-18 in the worktree for #100.
+
+**`npm run build`, never `astro build` alone.** The `build` script wraps the
+Astro build in eight `verify-*` scripts, a node-version check and `pagefind`,
+and every one of them can fail on a page that builds clean.
+`verify-prose-budget.ts` holds a per-page word ceiling;
+`verify-pagefind-index.mjs` exists because `pagefind` exits 0 after indexing
+zero pages, which is the difference between working docs search and search
+that silently returns nothing. This paragraph named `astro build` until
+2026-09-18, when a merge into #100 put `getting-started` 146 words over its
+budget: the gate as written here was green and CI was red, and following this
+file exactly could not have caught it.
+
+**`astro check` is the separate half, and it is the one that catches a wrong
+prop.** Astro does not typecheck during a build, so `npm run build` does not
+cover it. A page passing a component a prop it does not have builds clean and
+renders wrong. Measured 2026-08-20: `/docs/output` shipped two
+`<Callout kind="note">` against a component whose prop is `variant`, so
+`variant` was `undefined`, the rendered `div` lost its variant class and the
+label badge rendered empty. `astro build` was green the whole time.
+`astro check` reported both, at `ts(2322)`, the moment it was run.
 
 **Why this is a hard trigger rather than a nicety.** On 2026-08-19 the
 generated reference was two days stale (919 lines of drift), and regenerating
