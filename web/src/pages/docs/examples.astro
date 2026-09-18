@@ -54,6 +54,16 @@ const rustRows: ExampleRow[] = [
     demonstrates: "The log plane.",
     watch: "shep bleats noisy -f, alternating stdout and stderr lines.",
   },
+  {
+    program: "busy",
+    demonstrates: "Load worth plotting, on two different periods.",
+    watch: "shep lookout's CPU column draws a shape instead of a flat line, and the two rows differ.",
+  },
+  {
+    program: "chatty",
+    demonstrates: "The shepherd channel: readiness, a metric, and custom actions.",
+    watch: "shep trigger chatty ping, then nonsense for the unknown-action reply. shep stop sends a JSON shutdown instead of a signal.",
+  },
 ];
 ---
 
@@ -65,7 +75,7 @@ const rustRows: ExampleRow[] = [
     <ReferencePills slug="examples" />
     <p class="lede">
       Every page in this section describes what shep does. This one is
-      seven tiny programs and a Flockfile that make it happen where you can
+      a set of tiny programs and a Flockfile that make it happen where you can
       watch: a probe waiting, a memory ceiling firing, a crash loop backing
       off. Everything lives under{" "}
       <code>examples/</code>, a workspace member built by{" "}
@@ -110,11 +120,11 @@ const rustRows: ExampleRow[] = [
     </ShortVersion>
 
     <Callout variant="careful">
-      Unix, not just cargo. Six of the seven build and run anywhere Rust
+      Unix, not just cargo. All but one build and run anywhere Rust
       does, but <code>stubborn</code> traps <code>SIGTERM</code> with a
       Unix signal mask: on any other platform it prints why and exits 1
       instead of running at all. That is an exit, not a refusal to spawn,
-      so the start succeeds and the other six come up. <code>stubborn</code>{" "}
+      so the start succeeds and the rest come up. <code>stubborn</code>{" "}
       then restarts into the same exit until <code>max_restarts</code> (16)
       is spent and it settles at <code>errored</code>. Comment out its{" "}
       <code>[[app]]</code> block to skip that. A missing runtime is harsher:
@@ -131,7 +141,7 @@ const rustRows: ExampleRow[] = [
 
     <h2 id="run-it">Run it</h2>
     <p>
-      Two of the seven — <code>leaky</code> and <code>crasher</code> — restart
+      Two of them — <code>leaky</code> and <code>crasher</code> — restart
       on purpose, and <code>shep start</code> registers into
       whatever <code>$SHEP_HOME</code> is already pointed at. The{" "}
       <code>export</code> below is not optional: skip it and this starts
@@ -174,11 +184,12 @@ const rustRows: ExampleRow[] = [
       <code>examples/Flockfile.polyglot.toml</code> needs, per app,{" "}
       <code>node</code>, <code>bun</code>, <code>python3</code>, or{" "}
       <code>go</code> — never all four to run any single one of them.
-      Two setup steps, once, before the runtimes that need them:
+      Three setup steps, once, before the runtimes that need them:
     </p>
     <div class="terminal">
       <div><span class="prompt">$</span> examples/polyglot/setup-venv.sh</div>
       <div><span class="prompt">$</span> examples/polyglot/go-http/build.sh</div>
+      <div><span class="prompt">$</span> examples/polyglot/go-chatty/build.sh</div>
       <div><span class="prompt">$</span> export SHEP_HOME="$(mktemp -d)"</div>
       <div><span class="prompt">$</span> ./target/release/shep start examples/Flockfile.polyglot.toml</div>
     </div>
@@ -282,6 +293,29 @@ args        = ["19096"]`}</CodeBlock>
       no <code>interpreter</code> field at all — a native executable
       already runs itself.
     </p>
+
+    <h2 id="channel">The shepherd channel, in four languages</h2>
+    <p>
+      <code>chatty</code> and the three <code>*-chatty</code> apps are one
+      program in four languages: Rust over <code>shep-channel</code>, the
+      rest by hand, all to <a href="/docs/shepherd-channel">one contract</a>.
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' ping</div>
+      <div>ID  NAME           OUTCOME  DETAIL</div>
+      <div>20  chatty         replied  pong from rust pid=40076, up 7.1s, level info</div>
+      <div>10  go-chatty      replied  pong from go pid=40075, up 7.1s, level info</div>
+      <div>8   node-chatty    replied  pong from node pid=40077, up 7.1s, level info</div>
+      <div>9   python-chatty  replied  pong from python pid=40078, up 7.1s, level info</div>
+    </div>
+    <div class="terminal">
+      <div><span class="prompt">$</span> ./target/release/shep trigger '*chatty' nonsense</div>
+      <div>ID  NAME           OUTCOME  DETAIL</div>
+      <div>20  chatty         replied  unknown action: nonsense</div>
+      <div>10  go-chatty      replied  unknown action: nonsense</div>
+      <div>8   node-chatty    replied  unknown action: nonsense</div>
+      <div>9   python-chatty  replied  unknown action: nonsense</div>
+    </div>
 
     <h2 id="shep-serve-not-an-app">shep serve, not an app</h2>
     <p>

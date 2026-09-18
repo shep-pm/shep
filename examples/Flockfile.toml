@@ -1,4 +1,5 @@
-# Seven small apps, each demonstrating one thing shep does. Build them, then
+# Each numbered section below demonstrates one thing shep does. Build them,
+# then
 # start this file to watch every behaviour happen instead of reading about it:
 #
 #   $ cargo build --release --workspace
@@ -156,3 +157,32 @@ name        = "busy-quiet"
 script      = "../target/release/busy"
 args        = ["15", "17"]
 max_memory  = "64M"
+
+# --- 9. The shepherd channel ------------------------------------------------
+# chatty is the only app here that talks back. The three fields below each
+# open a channel on their own, and this entry sets all three because it uses
+# all three: `wait_ready` makes shep hold the start until chatty writes
+# `{"kind":"ready"}`, and `shutdown_with_message` sends a JSON shutdown
+# instead of SIGTERM. `channel` asks for the descriptor and nothing else.
+# An app that wants to send metrics or answer a trigger, without a readiness
+# gate or a message shutdown, would set that one on its own.
+#
+# `action_timeout` is how long `shep trigger` waits for a reply. Left at its
+# 3s default here on purpose: chatty answers every action name it is sent,
+# including ones it does not recognise, so nothing below should ever reach
+# the timeout. If a trigger does time out, that is a bug and not a slow app.
+#
+#   $ shep trigger chatty ping
+#   $ shep trigger chatty metric queue-depth
+#   $ shep trigger chatty level "debug rate=0.5"
+#   $ shep trigger chatty nonsense      # replies "unknown action: nonsense"
+#
+# `shep stop chatty` to watch the shutdown message arrive instead of a
+# signal. See docs/shepherd-channel.md for the contract, and
+# examples/Flockfile.polyglot.toml for the same app in Go, Node and Python.
+[[app]]
+name                  = "chatty"
+script                = "../target/release/chatty"
+channel               = true
+wait_ready            = true
+shutdown_with_message = true

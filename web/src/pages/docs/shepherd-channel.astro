@@ -82,12 +82,20 @@ channel = true`}</CodeBlock>
       <code>read -r line &lt;&amp;3</code> works.
     </p>
     <p>
-      <strong>A Rust app does not have to speak this by hand.</strong> The{" "}
-      <code>shep-channel</code> crate implements everything on this page:
-      discovering the descriptor, framing the JSON, and answering messages
-      the app does not handle itself. Go, JavaScript and Python libraries
-      over the same contract are planned. Whatever language an app is
-      written in, this page is still the contract it has to hold to.
+      <strong>Rust and Go apps do not have to speak this by hand.</strong>{" "}
+      The <code>shep-channel</code> crate and{" "}
+      <code>github.com/shep-pm/shep-go/channel</code> each implement
+      everything on this page: discovering the descriptor, framing the
+      JSON, and answering messages the app does not handle itself.
+      JavaScript and Python libraries over the same contract are planned.
+      Whatever language an app is written in, this page is still the
+      contract it has to hold to.
+    </p>
+    <p>
+      <strong>Four working apps ship in the repository</strong>, one per
+      language: <code>chatty.rs</code> over the crate, and hand-rolled Go,
+      Node and Python under <code>examples/polyglot/</code>, each with both
+      platform arms. See <a href="/docs/examples#channel">Examples</a>.
     </p>
     <p>
       <strong>Go types are generated from the Rust enums, not typed by
@@ -211,6 +219,11 @@ ID  NAME    OUTCOME  DETAIL
 
 $ shep trigger chatty ping --format json
 {"schema_version":1,"command":"trigger","data":[{"id":5,"name":"chatty","outcome":{"kind":"replied","body":"handled ping params=None"}}]}`}</CodeBlock>
+    <p class="fine">
+      That sheep is the sample above. The shipped{" "}
+      <code>examples/src/bin/chatty.rs</code> knows three actions, so it
+      answers this one with <code>unknown action: reload-config</code>.
+    </p>
 
     <h2 id="custom-actions-the-part-most-worth-reading-closely">Custom actions: the part most worth reading closely</h2>
     <VerbSignature verb="trigger" usage="shep trigger <selector> <action> [params]">

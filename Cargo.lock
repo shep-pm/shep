@@ -2205,6 +2205,7 @@ name = "shep-examples"
 version = "0.8.2"
 dependencies = [
  "nix 0.29.0",
+ "shep-channel",
 ]
 
 [[package]]
