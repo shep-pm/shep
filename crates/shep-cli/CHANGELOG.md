@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-18
+
+### Fixed
+
+- Match COLORTERM and TERM case-insensitively
+- Refuse a hand-edited [daemon] key instead of panicking on it
+- Name the shape a refused key must be, not always "a table"
+
+
 ## [0.8.2] - 2026-09-16
 
 ### Changed
