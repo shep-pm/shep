@@ -60,6 +60,26 @@ pub struct FlockSnapshot {
     pub apps: Vec<SavedApp>,
 }
 
+impl FlockSnapshot {
+    /// A roll holding `apps`, under the schema version this build writes.
+    ///
+    /// `saved_at_ms` is left at zero, which is what a roll nothing has
+    /// written yet carries: `FlockRegistry::roll` is the path that stamps a
+    /// real clock reading, and `restorable` reads only `instances_running`.
+    /// The version constant is not public, so this is the only way a caller
+    /// outside this crate can build a roll the daemon will accept rather
+    /// than hard-coding a number that stops being true when the schema
+    /// moves.
+    #[must_use]
+    pub fn with_apps(apps: Vec<SavedApp>) -> Self {
+        Self {
+            version: SNAPSHOT_VERSION,
+            saved_at_ms: 0,
+            apps,
+        }
+    }
+}
+
 /// One sheep's entry in a [`FlockSnapshot`]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedApp {
