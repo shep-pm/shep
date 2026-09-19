@@ -234,16 +234,30 @@ impl App {
     /// title bar counts this, and a group header is not a sheep.
     #[must_use]
     pub fn rows(&self) -> Vec<&Row> {
-        let needle = self.filter.to_lowercase();
-        let mut visible: Vec<&Row> = self
-            .flock
-            .values()
-            .filter(|row| needle.is_empty() || row.info.name.to_lowercase().contains(&needle))
-            .collect();
+        let mut visible: Vec<&Row> = self.filtered_rows().collect();
         visible.sort_unstable_by(|a, b| {
             (a.info.name.as_str(), a.info.id).cmp(&(b.info.name.as_str(), b.info.id))
         });
         visible
+    }
+
+    /// How many sheep [`Self::rows`] would draw, without building or sorting
+    /// the list.
+    ///
+    /// The title band shows this beside [`Self::flock_len`] and has no use for
+    /// the order, which is the only thing `rows` does that costs anything.
+    #[must_use]
+    pub fn rows_len(&self) -> usize {
+        self.filtered_rows().count()
+    }
+
+    /// Every sheep the name filter keeps, in whatever order the map holds
+    /// them: the shared body of [`Self::rows`] and [`Self::rows_len`].
+    fn filtered_rows(&self) -> impl Iterator<Item = &Row> {
+        let needle = self.filter.to_lowercase();
+        self.flock
+            .values()
+            .filter(move |row| needle.is_empty() || row.info.name.to_lowercase().contains(&needle))
     }
 
     /// Every sheep the shepherd last reported, in id order, whatever the filter

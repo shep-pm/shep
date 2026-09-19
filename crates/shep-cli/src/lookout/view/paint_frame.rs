@@ -271,9 +271,13 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
         let line = Line::from(Span::styled(text, palette.muted()));
         buffer.set_line(area.x, y, &line, width);
     } else {
-        let offset =
-            super::flock::scroll_offset(app.selected_index().unwrap_or(0), viewport, keys.len());
         let selected = app.selected();
+        // `keys` rather than `App::selected_index`, which rebuilds this same
+        // sequence to read one position out of it.
+        let index = selected
+            .as_ref()
+            .and_then(|key| keys.iter().position(|row| row == key));
+        let offset = super::flock::scroll_offset(index.unwrap_or(0), viewport, keys.len());
         for (slot, key) in keys.iter().skip(offset).take(viewport).enumerate() {
             let slot = u16::try_from(slot).unwrap_or(0);
             let is_selected = selected.as_ref() == Some(key);
@@ -419,7 +423,7 @@ fn title_band(app: &App, width: u16) -> Line<'static> {
             Role::Bark,
         ),
         Link::Live | Link::Retrying { .. } => {
-            let visible = app.rows().len();
+            let visible = app.rows_len();
             let total = app.flock_len();
             let right = if app.filter().is_empty() {
                 format!(" {total} in the flock")
