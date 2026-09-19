@@ -7,8 +7,7 @@
 
 use crate::boot::*;
 use crate::fake::{ProcScript, ScriptedRunner};
-use crate::snapshot::{FlockSnapshot, SNAPSHOT_VERSION, SavedApp};
-use crate::testing::{AnnouncingRunner, test_paths};
+use crate::testing::{AnnouncingRunner, roll_of, test_paths};
 use shep_core::config::AppConfig;
 use std::time::Duration;
 
@@ -70,14 +69,7 @@ async fn readiness_is_reported_only_once_the_roll_is_restored() {
     init_dirs(&paths).unwrap();
     crate::snapshot::write_atomic(
         &paths.snapshot,
-        &FlockSnapshot {
-            version: SNAPSHOT_VERSION,
-            saved_at_ms: 0,
-            apps: vec![SavedApp {
-                app: AppConfig::minimal("web", "./srv"),
-                instances_running: 1,
-            }],
-        },
+        &roll_of(vec![AppConfig::minimal("web", "./srv")]),
     )
     .unwrap();
 

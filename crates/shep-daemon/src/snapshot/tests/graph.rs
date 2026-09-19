@@ -8,27 +8,12 @@ use super::super::*;
 
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::supervisor::spawn_supervisor;
-use crate::testing::{capture_logs, test_paths};
+use crate::testing::{capture_logs, roll_of, test_paths};
 use shep_core::config::graph::{BootNode, NodeKind, plan};
 use shep_core::config::{AppConfig, normalize};
 use shep_core::protocol::{BusEvent, DogSource, ProcessEventKind, ProcessInfo};
 use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
-
-/// A muster roll holding `apps`, every one of them recorded as running.
-fn roll_of(apps: Vec<AppConfig>) -> FlockSnapshot {
-    FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: apps
-            .into_iter()
-            .map(|app| SavedApp {
-                app,
-                instances_running: 1,
-            })
-            .collect(),
-    }
-}
 
 /// Every `process.start` name waiting on `rx`, in the order the bus
 /// carried them.
@@ -248,15 +233,7 @@ fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about
         std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
         let mut api = AppConfig::minimal("api", "./srv");
         api.depends_on = vec!["metrics".to_string()];
-        let roll = FlockSnapshot {
-            version: SNAPSHOT_VERSION,
-            saved_at_ms: 0,
-            apps: vec![SavedApp {
-                app: api,
-                instances_running: 1,
-            }],
-        };
-        write_atomic(&paths.snapshot, &roll).unwrap();
+        write_atomic(&paths.snapshot, &roll_of(vec![api])).unwrap();
 
         capture_logs(|| {
             rt.block_on(async {

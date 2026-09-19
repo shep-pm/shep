@@ -828,14 +828,10 @@ mod tests {
     /// So a later `restart` has something to find.
     #[test]
     fn a_sheep_saved_while_stopped_is_still_a_member() {
-        let roll = FlockSnapshot {
-            version: SNAPSHOT_VERSION,
-            saved_at_ms: 0,
-            apps: vec![SavedApp {
-                app: AppConfig::minimal("api-auth", "./api-auth"),
-                instances_running: 0,
-            }],
-        };
+        let roll = FlockSnapshot::with_apps(vec![SavedApp {
+            app: AppConfig::minimal("api-auth", "./api-auth"),
+            instances_running: 0,
+        }]);
         let restorable = restorable(roll);
         assert_eq!(restorable.members.len(), 1, "stopping is not forgetting");
         assert_eq!(restorable.members[0].config().name, "api-auth");

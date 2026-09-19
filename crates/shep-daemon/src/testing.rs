@@ -32,7 +32,7 @@ use crate::privilege::SpawnIdentity;
 use crate::probes::{ProbeFailure, Prober};
 use crate::rpc::RpcContext;
 use crate::runner::{ProcIo, ProcessRunner, RunnerError, SpawnSpec};
-use crate::snapshot::FlockRegistry;
+use crate::snapshot::{FlockRegistry, FlockSnapshot, SavedApp};
 use crate::supervisor::SupervisorBuilder;
 
 // A hand-rolled `MakeWriter` over one shared buffer, not
@@ -149,6 +149,21 @@ fn a_sibling_thread_reaching_a_callsite_first_cannot_empty_the_capture() {
         "a sibling thread registering first must not disable the callsite for \
          this capture: {rendered:?}"
     );
+}
+
+/// A muster roll holding `apps`, every one of them recorded as running.
+///
+/// The rolls whose instance counts a test is actually about build their own
+/// `SavedApp` entries and go through [`FlockSnapshot::with_apps`].
+pub(crate) fn roll_of(apps: Vec<AppConfig>) -> FlockSnapshot {
+    FlockSnapshot::with_apps(
+        apps.into_iter()
+            .map(|app| SavedApp {
+                app,
+                instances_running: 1,
+            })
+            .collect(),
+    )
 }
 
 // The tempdir root is `$SHEP_HOME` with no extra nesting: `sun_path` caps a

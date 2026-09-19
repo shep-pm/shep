@@ -7,7 +7,7 @@ use super::info;
 use shep_core::config::{AppConfig, normalize};
 use shep_core::status::ProcStatus;
 
-use crate::testing::test_paths;
+use crate::testing::{roll_of, test_paths};
 
 /// Spec decision 2's argument for shipping the store unencrypted is that
 /// a reference keeps plaintext in exactly two places: the store, and the
@@ -69,14 +69,7 @@ fn debug_does_not_leak_env_values() {
     let mut app = AppConfig::minimal("web", "./srv");
     app.env
         .insert("DATABASE_URL".to_string(), "postgres://secret".to_string());
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![SavedApp {
-            app,
-            instances_running: 1,
-        }],
-    };
+    let roll = roll_of(vec![app]);
     let rendered = format!("{roll:?}");
     assert!(!rendered.contains("postgres://secret"), "{rendered}");
     assert!(rendered.contains("<1 vars>"), "{rendered}");

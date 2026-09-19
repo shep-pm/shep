@@ -174,7 +174,7 @@ mod tests {
     use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot, init_dirs};
     use crate::dogs::DogSpec;
     use crate::fake::{ProcScript, ScriptedRunner};
-    use crate::snapshot::{FlockSnapshot, SNAPSHOT_VERSION, SavedApp};
+    use crate::snapshot::{FlockSnapshot, SavedApp};
     use crate::testing::test_paths;
     use shep_core::config::AppConfig;
     use shep_core::protocol::{DogSource, ProcessEventKind};
@@ -191,14 +191,10 @@ mod tests {
         // `app.instances`, not this count, so 99 changes nothing about the
         // boot and survives untouched if teardown's roll write is skipped. A
         // seeded 1 would have matched the right value by coincidence.
-        let roll = FlockSnapshot {
-            version: SNAPSHOT_VERSION,
-            saved_at_ms: 0,
-            apps: vec![SavedApp {
-                app: AppConfig::minimal("web", "./srv"),
-                instances_running: 99,
-            }],
-        };
+        let roll = FlockSnapshot::with_apps(vec![SavedApp {
+            app: AppConfig::minimal("web", "./srv"),
+            instances_running: 99,
+        }]);
         crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
         let daemon = boot(
