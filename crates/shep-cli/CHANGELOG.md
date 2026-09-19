@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-09-19
+
+### Fixed
+
+- Give lookout's log-size read the feed's cadence, not the lamb walk's
+
+### Performance
+
+- Stop rebuilding lookout's row list twice per frame
+- Hoist lookout's flock-wide values out of the per-row draw
+- Move lookout's two local reads onto the poll that needs them
+- Stop lookout allocating twice per table cell
+
+
 ## [0.8.3] - 2026-09-18
 
 ### Fixed
