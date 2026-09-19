@@ -47,17 +47,19 @@ Five deliberate scope cuts, not oversights — spec §2 carries the reasoning.
 There were six until 2026-08-26, when the Windows tier stopped being one
 of them: it shipped, and its entry moved to "Not deferred" below.
 
-- HTTP/SSE MCP transport (whistle ships stdio-only first)
+- HTTP/SSE MCP transport (whistle ships stdio-only first). Tracked as https://github.com/shep-pm/shep/issues/343
 - cgroup v2 enforcement (`enforce = "kernel"`) — `LimitEnforcer`'s polling
   impl is the v1.0 tier. Sized 2026-09-06, together with the CPU half this
-  line never mentioned: see the subsection below.
-- `@shep/io` npm shim (built on demand)
-- vcs metadata (`vcs` feature, off by default)
+  line never mentioned: see the subsection below. Tracked as https://github.com/shep-pm/shep/issues/344
+- `@shep/io` npm shim (built on demand). Tracked as https://github.com/shep-pm/shep/issues/362, with Python
+  alongside it at https://github.com/shep-pm/shep/issues/363
+- vcs metadata (`vcs` feature, off by default). Tracked as https://github.com/shep-pm/shep/issues/345
 - `shep web` JSON status endpoint. Resolved, 2026-08-13: the metrics dog
   does not cover this — it serves Prometheus exposition text for a
   scraper, and `shep web` was a hand-fetched JSON payload for a
   dashboard, an incompatible shape for an incompatible consumer. This
   stays its own deferred item rather than being folded into the dog.
+  Tracked as https://github.com/shep-pm/shep/issues/346
 
 ### Per-sheep resource limits, and where `enforce = "kernel"`'s cost sits, sized 2026-09-06
 
@@ -392,7 +394,7 @@ for what phase is next.
 
 **OTLP export (metrics dog)** (spec §8) — the metrics dog serves
 Prometheus exposition only; no `otel` cargo feature exists in
-`crates/shep-cli/Cargo.toml`.
+`crates/shep-cli/Cargo.toml`. Tracked as https://github.com/shep-pm/shep/issues/347.
 
 ## Known debt, recorded rather than built
 
@@ -435,6 +437,8 @@ this. It is written down because the docs used to imply a random name was a
 security boundary, and a false claim in published docs is worth correcting
 whatever the exploit likelihood. The claim is fixed. The DACL is a someday.
 
+Tracked as https://github.com/shep-pm/shep/issues/350.
+
 
 ### What the reload-readiness fix does NOT cover -- open, 2026-08-28
 
@@ -453,6 +457,9 @@ the probe response — the app naming which process it is — which is exactly w
 `wait_ready` already provides and is why the code points a clustered app at the
 channel instead of growing a second mechanism.
 
+Tracked as https://github.com/shep-pm/shep/issues/351.
+
+
 **A replacement that fails its readiness check keeps its process and loses its
 lifecycle extras.** It is left registered and `Starting` rather than killed,
 because with the drainee gone, killing it would empty the instance slot
@@ -462,6 +469,9 @@ to act on the `process.reload_abandoned` event. Arming a liveness loop against
 a process that is not `Online` is a wider change than this fix wanted —
 `handle_extra_restart` guards on that status for four separate callers.
 
+Tracked as https://github.com/shep-pm/shep/issues/289.
+
+
 **A deploy tool's patience is sized off `listen_timeout + graceful_timeout`,
 and a `reuse_port` reload now costs one more `listen_timeout` than that.**
 shep-deploy derives its verify budget that way (`deploy.rs::budget`), so for
@@ -469,6 +479,9 @@ the one combination of `reuse_port = true` AND a probe, the post-drain check
 can outlast the budget and roll back a healthy release. A false rollback rather
 than a false success, which is the right direction to fail, but it is a real
 interaction and the fix belongs on shep-deploy's side of the line.
+
+Tracked as https://github.com/shep-pm/shep-deploy/issues/20.
+
 
 ### `ProcessInfo` fuses four concerns behind one discriminator
 
@@ -482,6 +495,8 @@ What would force it is the `lambs` field — the moment a row carries a process
 tree, the question of what a `FlockMember` is stops being cosmetic. Phase 10
 made that field cheap to add (`ProcessInfo` is `#[non_exhaustive]` with a
 builder), which is deliberately the opposite of forcing the split early.
+
+Tracked as https://github.com/shep-pm/shep/issues/352.
 
 ### `check_log_ancestry`'s TOCTOU window, and the Linux syscall that would close it
 
@@ -512,6 +527,8 @@ complain about. What would force it: a Linux box in the regular test loop, or a
 threat model that includes an attacker with write access to a log directory's
 parent.
 
+Tracked as https://github.com/shep-pm/shep/issues/353.
+
 ### `shep signal` cannot reach a sheep's lambs, on purpose
 
 `signal` delivers to the sheep's own pid. An operator who wants a whole
@@ -524,6 +541,8 @@ one flag on `signal` (`--group`) would make the safe reading the non-default
 one. What would force it: an app class where the sheep is a supervisor that
 does not forward signals to its own workers, which is a real shape and simply
 has not come up here yet.
+
+Tracked as https://github.com/shep-pm/shep/issues/354.
 
 ### `UpDuration`'s grammar tops out at hours, which only bites outside shep
 
@@ -561,6 +580,8 @@ So parse-only is available cheaply and asymmetrically, if it is wanted. Not
 picked here: the grammar is the maintainer's, it is a wire decision, and the exercise's
 job was to find the friction rather than resolve it.
 
+Tracked as https://github.com/shep-pm/shep/issues/355.
+
 ### A third-party dog has no way to ship its own defaults
 
 Raised 2026-08-20 while designing `shep-log-rotate`, the first fully external
@@ -588,6 +609,8 @@ it into the operator's `shep.toml`. That is a larger step than "run this
 binary", and `adopt`'s existing vetting ritual exists because this boundary is
 taken seriously. Worth revisiting if a dog ecosystem appears; not worth
 pre-building for one dog.
+
+Tracked as https://github.com/shep-pm/shep/issues/356.
 
 ### `shep install` does not exist, and a scanner is not what would make it safe
 
@@ -671,6 +694,8 @@ tick or a cross, and it does not gate `shep install`, because gating on an
 undecidable question is how the false confidence gets manufactured in the
 first place.
 
+Tracked as https://github.com/shep-pm/shep/issues/357.
+
 
 ### `cmd` on Windows cannot carry a quoted argument, and shep cannot fix it
 
@@ -724,6 +749,8 @@ field would leave one case in a different style from seven siblings and barely
 reduce the risk, since the exposure is the whole blob rather than any one
 key.
 
+Tracked as https://github.com/shep-pm/shep/issues/358.
+
 ### ~~The bark dog still restarts once per reload~~ -- done, 2026-09-13
 
 Bark now re-subscribes across a handover instead of exiting, and both dogs
@@ -764,6 +791,8 @@ unit extend its own deadline as each stage lands, which removes that sizing
 guess entirely rather than asking the operator to guess better. Left for its
 own task because it is a new notify-protocol call, not a fix to anything
 built on this branch.
+
+Tracked as https://github.com/shep-pm/shep/issues/359.
 
 ### A promoted dog cannot handshake during the restore, open, 2026-09-06
 
@@ -819,6 +848,8 @@ The options, none of them free:
    spawn that runs first, not a link that works first, and it only holds for
    a flock that restores inside five seconds. `boot-order.astro` now says
    that much either way.
+
+Tracked as https://github.com/shep-pm/shep/issues/360.
 
 ## Ideas, recorded but not designed
 
@@ -895,6 +926,8 @@ the restart, and the ordering across a flock. A design that cannot point at
 something `just` plus three lines of shell does not already do should stop
 there.
 
+Tracked as https://github.com/shep-pm/shep/issues/361.
+
 
 ### Shepherd-channel libraries for the languages apps are written in
 
@@ -944,6 +977,8 @@ Both halves of that have moved. The examples exist, and two of the four
 languages have a library: `shep-channel` for Rust and
 `github.com/shep-pm/shep-go/channel` for Go. What is left of this entry is
 JavaScript and Python, where the examples are what an author copies today.
+
+Tracked as https://github.com/shep-pm/shep/issues/362 for JavaScript and https://github.com/shep-pm/shep/issues/363 for Python.
 
 ## A readiness probe cannot verify a reload's replacement
 
