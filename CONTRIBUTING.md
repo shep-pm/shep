@@ -148,6 +148,19 @@ and saves a reviewer guessing.
 CI runs the same gate as above plus Linux and Windows. A red check is not a
 reason to apologise; push a fix and carry on.
 
+## If an AI wrote part of it
+
+That is fine, and common. A lot of this repository was written that way.
+
+The one thing asked of you is that you can explain it. Review will ask why a
+line is there, and "the model wrote that part" is not an answer anyone can act
+on. If you cannot say why something is in the diff, cut it or go and find out
+before you open the pull request.
+
+Generated Rust arrives with its own habits worth a second look here: comments
+that restate the code rather than the reason for it, and tests that assert the
+implementation back to itself. Both pass CI.
+
 ## Filing an issue instead
 
 Use the forms. The one thing worth care in a code-quality issue is the site
