@@ -212,9 +212,8 @@ impl FlockRegistry {
             })
             .collect();
         FlockSnapshot {
-            version: SNAPSHOT_VERSION,
             saved_at_ms: now_ms,
-            apps: saved,
+            ..FlockSnapshot::with_apps(saved)
         }
     }
 }
