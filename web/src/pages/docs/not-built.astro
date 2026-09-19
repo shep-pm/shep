@@ -69,7 +69,8 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <code>shep startup</code> is not built: boot-time supervision on
       Windows means a Service Control Manager service, a different program
       shape rather than a fifth unit template. Run <code>shep start</code> in
-      your own session, or wrap <code>shep runtime</code> in NSSM or WinSW.
+      your own session, or wrap <code>shep runtime</code> in NSSM or WinSW,
+      tracked as <a href="https://github.com/shep-pm/shep/issues/348">issue 348</a>.
     </Callout>
     <p>
       The estimate's own shape predictions all held. The 145{" "}
@@ -147,20 +148,22 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <li>
         <strong>HTTP/SSE transport for whistle.</strong> Ships stdio-only
         first; an AI agent reaches it the way any MCP stdio server is
-        reached today.
+        reached today. Tracked as <a href="https://github.com/shep-pm/shep/issues/343">issue 343</a>.
       </li>
       <li>
         <strong>cgroup v2 enforcement</strong> (<code>enforce =
         "kernel"</code>). The polling <code>LimitEnforcer</code> is the v1
-        tier; a kernel-enforced ceiling is later work.
+        tier; a kernel-enforced ceiling is later work. Tracked as 
+        <a href="https://github.com/shep-pm/shep/issues/344">issue 344</a>.
       </li>
       <li>
         <strong>The <code>@shep/io</code> npm shim.</strong> Built on
-        demand, not before anyone's asked for it.
+        demand, not before anyone's asked for it. Tracked as <a href="https://github.com/shep-pm/shep/issues/362">issue 362</a>,
+        with Python alongside it at <a href="https://github.com/shep-pm/shep/issues/363">issue 363</a>.
       </li>
       <li>
         <strong>VCS metadata</strong> (the <code>vcs</code> feature). Off by
-        default, not wired into the build.
+        default, not wired into the build. Tracked as <a href="https://github.com/shep-pm/shep/issues/345">issue 345</a>.
       </li>
       <li>
         <strong>A JSON status endpoint.</strong> Resolved rather than just
@@ -168,7 +171,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         scraper, which turned out to be an incompatible shape for what would
         have been a hand-fetched dashboard payload. That's a different
         feature, not a narrower version of this one, so it stays its own
-        open item rather than folding into the dog.
+        open item rather than folding into the dog. Tracked as <a href="https://github.com/shep-pm/shep/issues/346">issue 346</a>.
       </li>
     </ul>
 
@@ -183,7 +186,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <li>
         <strong>OTLP export for the metrics dog.</strong> The dog serves
         Prometheus exposition only today; no <code>otel</code> cargo feature
-        exists yet.
+        exists yet. Tracked as <a href="https://github.com/shep-pm/shep/issues/347">issue 347</a>.
       </li>
     </ul>
 </article>
