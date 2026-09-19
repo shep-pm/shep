@@ -181,13 +181,23 @@ impl DogActionRow<'_> {
         &["NAME", "SOURCE", "SHEPHERD", "STATUS"]
     }
 
-    fn rows(&self) -> Vec<Vec<String>> {
+    /// The single row, in header order, from the four already-resolved
+    /// values.
+    ///
+    /// `enable`/`disable`/`adopt` call this directly, and `rehome` reaches it
+    /// through [`Self::rows`] after it resolves its `Option<DogSource>` to a
+    /// label.
+    fn build(name: &str, source: &str, shepherd_acted: bool, status: &str) -> Vec<Vec<String>> {
         vec![vec![
-            self.name.to_string(),
-            self.source.to_string(),
-            self.shepherd_acted.to_string(),
-            self.status.to_string(),
+            name.to_string(),
+            source.to_string(),
+            shepherd_acted.to_string(),
+            status.to_string(),
         ]]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        Self::build(self.name, self.source, self.shepherd_acted, self.status)
     }
 
     // The four dog-action rows' shared treatment; see `dog_action_paint`.
@@ -233,13 +243,12 @@ impl Render for DogEnabledRow {
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
+        DogActionRow::build(
+            &self.name,
+            dog_source_label(&self.source),
+            self.shepherd_acted,
+            &self.status,
+        )
     }
 
     /// Shared with the other three dog-action rows; see
@@ -282,13 +291,12 @@ impl Render for DogDisabledRow {
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
+        DogActionRow::build(
+            &self.name,
+            dog_source_label(&self.source),
+            self.shepherd_acted,
+            &self.status,
+        )
     }
 
     /// Same treatment as [`DogEnabledRow::rows_for`]; see
@@ -333,13 +341,12 @@ impl Render for DogAdoptedRow {
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
+        DogActionRow::build(
+            &self.name,
+            dog_source_label(&self.source),
+            self.shepherd_acted,
+            &self.status,
+        )
     }
 
     /// Same treatment as [`DogEnabledRow::rows_for`]; see
