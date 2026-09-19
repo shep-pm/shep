@@ -163,18 +163,15 @@ pub(crate) mod test_support {
     }
 
     pub(crate) fn write_roll(paths: &ShepPaths, apps: &[AppConfig]) {
-        let roll = FlockSnapshot {
-            version: 1,
-            saved_at_ms: 0,
-            apps: apps
-                .iter()
+        let roll = FlockSnapshot::with_apps(
+            apps.iter()
                 .cloned()
                 .map(|app| SavedApp {
                     app,
                     instances_running: 1,
                 })
                 .collect(),
-        };
+        );
         std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
     }
 

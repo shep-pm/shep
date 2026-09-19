@@ -381,14 +381,10 @@ mod tests {
         config
             .env
             .insert("B".into(), "{{secret:vercel/API_KEY}}".into());
-        let roll = FlockSnapshot {
-            version: 1,
-            saved_at_ms: 0,
-            apps: vec![shep_daemon::snapshot::SavedApp {
-                app: config,
-                instances_running: 1,
-            }],
-        };
+        let roll = FlockSnapshot::with_apps(vec![shep_daemon::snapshot::SavedApp {
+            app: config,
+            instances_running: 1,
+        }]);
         std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
         // The pair the dog has pushed is production; staging is still to come.
         std::fs::write(
@@ -448,14 +444,10 @@ mod tests {
         config
             .env
             .insert("A".into(), "{{secret:DB_PASSWORD}}".into());
-        let roll = FlockSnapshot {
-            version: 1,
-            saved_at_ms: 0,
-            apps: vec![shep_daemon::snapshot::SavedApp {
-                app: config,
-                instances_running: 1,
-            }],
-        };
+        let roll = FlockSnapshot::with_apps(vec![shep_daemon::snapshot::SavedApp {
+            app: config,
+            instances_running: 1,
+        }]);
         std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
         std::fs::write(&paths.secrets, b"{not json").unwrap();
 
