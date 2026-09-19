@@ -440,6 +440,7 @@ mod tests {
         rendered, sheep_in_fold, sheep_in_fold_with_status, sheep_with_lambs, with_lamb_reading,
         with_lamb_reading_for, with_selection, with_selection_and_palette,
     };
+    use super::super::flock::FrameFacts;
     use super::*;
     use crate::lookout::app::{App, Control, KeyPress, LambWalk, Msg, RowKey};
     use crate::lookout::theme::Palette;
@@ -743,7 +744,14 @@ mod tests {
         assert!(!detail_rendered.contains("online"), "{detail_rendered:?}");
 
         let row = app.row(9).unwrap();
-        let flock_line = row_line(&app, row, columns_for(200), 200, false, false);
+        let flock_line = row_line(
+            &app,
+            &FrameFacts::new(&app),
+            row,
+            columns_for(200),
+            200,
+            false,
+        );
         let flock_rendered: String = flock_line
             .spans
             .iter()

@@ -271,6 +271,9 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
         let line = Line::from(Span::styled(text, palette.muted()));
         buffer.set_line(area.x, y, &line, width);
     } else {
+        // Every flock-wide value the rows below share, read once here rather
+        // than once per row.
+        let facts = super::flock::FrameFacts::new(app);
         let selected = app.selected();
         // `keys` rather than `App::selected_index`, which rebuilds this same
         // sequence to read one position out of it.
@@ -319,11 +322,17 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
                 )
             } else {
                 match app.grouping() {
-                    Grouping::Flat => {
-                        super::flock::key_line(app, key, flat_columns, table_width, is_selected)
-                    }
+                    Grouping::Flat => super::flock::key_line(
+                        app,
+                        &facts,
+                        key,
+                        flat_columns,
+                        table_width,
+                        is_selected,
+                    ),
                     Grouping::ByFold => super::flock::fold_key_line(
                         app,
+                        &facts,
                         key,
                         fold_columns,
                         table_width,

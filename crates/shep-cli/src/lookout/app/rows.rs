@@ -332,7 +332,7 @@ pub struct DogProbe {
 /// instances.
 ///
 /// A name earns a [`Self::Group`] only with more than one instance, every one
-/// of them reporting its slot ([`App::is_grouped`]).
+/// of them reporting its slot ([`App::grouped_names`]).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RowKey {
     /// One app's group header, carrying its name.

@@ -14,6 +14,7 @@ use super::super::super::app::{App, GroupTotals, Row, RowKey};
 use super::super::super::theme::Palette;
 use super::super::cell;
 use super::columns::{Column, name_width};
+use super::facts::FrameFacts;
 use super::layout::{fit, pad_ground};
 use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 
@@ -26,7 +27,7 @@ use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 /// missing pid.
 ///
 /// A `Sheep` row under a group header draws as a slot rather than a
-/// standalone sheep ([`App::is_grouped`]), so a header reading `web ×3` is
+/// standalone sheep ([`FrameFacts::is_grouped`]), so a header reading `web ×3` is
 /// not followed by three rows each repeating `web`.
 ///
 /// `selected` paints the row's own ground ([`Palette::ground`]) rather than
@@ -35,6 +36,7 @@ use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 #[must_use]
 pub fn key_line(
     app: &App,
+    facts: &FrameFacts<'_>,
     key: &RowKey,
     columns: &[Column],
     width: u16,
@@ -43,16 +45,7 @@ pub fn key_line(
     match key {
         RowKey::Sheep(id) => app.row(*id).map_or_else(
             || Line::from(Span::raw(" ".repeat(usize::from(width)))),
-            |row| {
-                row_line(
-                    app,
-                    row,
-                    columns,
-                    width,
-                    app.is_grouped(&row.info.name),
-                    selected,
-                )
-            },
+            |row| row_line(app, facts, row, columns, width, selected),
         ),
         RowKey::Group(name) => group_line(app, name, columns, width, selected),
         RowKey::Section(label) => section_line(label, width, app.data_palette().muted()),
@@ -88,7 +81,18 @@ fn group_line(
     selected: bool,
 ) -> Line<'static> {
     let palette = app.data_palette();
-    let totals = app.group_totals(name);
+    // One `group_members` call for the whole row. Every rollup below reads
+    // this slice: asking `App` by name each time meant a whole-flock filter,
+    // collect and sort per cell, since `group_uniform_status` sits inside the
+    // column loop.
+    let members = app.group_members(name);
+    let totals = app.totals_for(&members);
+    // `palette.status`, not `palette.reported`: a group row is always an
+    // app's own instances, never a dog, so it has nothing to be silent
+    // about.
+    let status = App::uniform_status_for(&members);
+    let status_style = status.map_or(Style::default(), |status| palette.status(status));
+    let status_text = App::status_text_for(&members);
     let name_width = self::name_width(width, columns);
     let ground = if selected {
         palette.ground()
@@ -107,12 +111,10 @@ fn group_line(
         } else {
             column.width()
         };
-        let text = fit(&group_cell(app, name, *column, &totals), cell_width);
-        // `palette.status`, not `palette.reported`: a group row is always an
-        // app's own instances, never a dog, so it has nothing to be silent
-        // about.
-        let status = app.group_uniform_status(name);
-        let status_style = status.map_or(Style::default(), |status| palette.status(status));
+        let text = fit(
+            &group_cell(name, *column, &totals, &status_text, &members),
+            cell_width,
+        );
         let style = cell_style(palette, *column, status_style, status, None);
         // A group has no single history or ceiling ([`group_cell`]), so its
         // `MemCeil` text is always empty and there is nothing to fill.
@@ -139,7 +141,13 @@ fn group_line(
 /// for the same reason: a group has no single history and no single
 /// ceiling. FOLD and SMIT read the first member's, since both are per-app
 /// facts every instance shares.
-fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> String {
+fn group_cell(
+    name: &str,
+    column: Column,
+    totals: &GroupTotals,
+    status_text: &str,
+    members: &[&Row],
+) -> String {
     match column {
         Column::Id
         | Column::Pid
@@ -148,7 +156,7 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
         | Column::CpuSpark
         | Column::MemCeil => String::new(),
         Column::Name => format!("{name} \u{d7}{}", totals.count),
-        Column::Status => app.group_status_text(name),
+        Column::Status => status_text.to_string(),
         Column::Restarts => totals.restarts.to_string(),
         Column::Cpu => totals
             .cpu
@@ -157,13 +165,11 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
         Column::Uptime => totals
             .uptime_ms
             .map_or_else(|| "-".to_string(), human_duration),
-        Column::Fold => app
-            .group_members(name)
+        Column::Fold => members
             .first()
             .and_then(|row| row.info.fold.clone())
             .unwrap_or_else(|| "-".to_string()),
-        Column::Smit => app
-            .group_members(name)
+        Column::Smit => members
             .first()
             .and_then(|row| row.info.smit.clone())
             .unwrap_or_else(|| "-".to_string()),
@@ -178,18 +184,20 @@ fn group_cell(app: &App, name: &str, column: Column, totals: &GroupTotals) -> St
 /// column rather than stopping where the text does; the gutter marker
 /// ([`super::layout::gutter`]) is no longer the only tell.
 ///
-/// `grouped` says whether a group header sits above this row, which is the
-/// only thing that changes NAME, FOLD and SMIT. See [`cell()`].
+/// `facts` supplies the two things this row cannot answer for itself: whether
+/// a group header sits above it, which is the only thing that changes NAME,
+/// FOLD and SMIT (see [`cell()`]), and the CPU sparkline's flock-wide ceiling.
 #[must_use]
 pub fn row_line(
     app: &App,
+    facts: &FrameFacts<'_>,
     row: &Row,
     columns: &[Column],
     width: u16,
-    grouped: bool,
     selected: bool,
 ) -> Line<'static> {
     let palette = app.data_palette();
+    let grouped = facts.is_grouped(&row.info.name);
     let name = name_width(width, columns);
     let status_style = palette.reported(row.reported());
     let status = Some(row.info.status);
@@ -212,7 +220,10 @@ pub fn row_line(
         } else {
             column.width()
         };
-        let text = fit(&cell(app, row, *column, grouped), cell_width);
+        let text = fit(
+            &cell(app, row, *column, grouped, facts.cpu_ceiling),
+            cell_width,
+        );
         let style = cell_style(palette, *column, status_style, status, mem_ceil_ratio);
         let tail_style = mem_ceil_tail_style(palette, status, mem_ceil_ratio, style);
         push_row_cell(
@@ -239,7 +250,7 @@ pub fn row_line(
 /// becomes `↳ :2`, teaching the `web:2` selector by sitting under the name
 /// the header already printed; FOLD and SMIT go blank rather than `-`,
 /// since the group row above carries both.
-fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
+fn cell(app: &App, row: &Row, column: Column, grouped: bool, cpu_ceiling: f32) -> String {
     let info = &row.info;
     match column {
         Column::Id => info.id.to_string(),
@@ -261,7 +272,7 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
         // `crate::output::cfg_cell`, not a second implementation of the
         // pending-over-overridden precedence.
         Column::Cfg => cfg_cell(info.pending.as_deref(), info.overridden.as_deref()),
-        Column::CpuSpark => cpu_spark_cell(app, info),
+        Column::CpuSpark => cpu_spark_cell(app, info, cpu_ceiling),
         // `App::cpu_now`, the sparkline's own newest cell, not
         // `info.cpu_percent`: the shepherd's running mean, differently
         // windowed, would disagree with the shape beside it.
@@ -285,8 +296,12 @@ fn cell(app: &App, row: &Row, column: Column, grouped: bool) -> String {
 
 /// The `CPU 20s` cell: [`App::cpu_history`], rendered into ten cells by
 /// [`cell::sparkline`].
-fn cpu_spark_cell(app: &App, info: &ProcessInfo) -> String {
-    cell::sparkline(app.cpu_history(info.id), 10, app.cpu_ceiling())
+///
+/// `cpu_ceiling` arrives from [`FrameFacts`] rather than from
+/// [`App::cpu_ceiling`]: it is one number for the whole frame, and reading it
+/// here folded a max over every sheep's whole history once per row.
+fn cpu_spark_cell(app: &App, info: &ProcessInfo, cpu_ceiling: f32) -> String {
+    cell::sparkline(app.cpu_history(info.id), 10, cpu_ceiling)
 }
 
 /// The `MEM/CEIL` cell: [`ProcessInfo::memory_bytes`] against
@@ -450,7 +465,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let fill: Vec<&str> = line
             .spans
             .iter()
@@ -481,7 +496,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let mem_ceil_text: Vec<&str> = line
             .spans
             .iter()
@@ -525,7 +540,7 @@ mod tests {
         let app = fixtures::app_with(vec![info], palette);
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         assert!(
             !line
                 .spans
@@ -569,7 +584,7 @@ mod tests {
         let rows = app.rows();
         let cell_for = |id: u32| {
             let row = rows.iter().find(|row| row.info.id == id).unwrap();
-            cell(&app, row, Column::Exit, false)
+            cell(&app, row, Column::Exit, false, app.cpu_ceiling())
         };
 
         assert_eq!(cell_for(1), "1");
@@ -612,7 +627,14 @@ mod tests {
             fixtures::plain(),
         );
 
-        let line = key_line(&app, &RowKey::Group("web".to_string()), ALL, 200, false);
+        let line = key_line(
+            &app,
+            &FrameFacts::new(&app),
+            &RowKey::Group("web".to_string()),
+            ALL,
+            200,
+            false,
+        );
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         // The exact row, column by column: a substring check on a run of
@@ -672,7 +694,14 @@ mod tests {
         };
         let app = fixtures::app_with(vec![member(1, 0), member(2, 1)], fixtures::plain());
 
-        let line = key_line(&app, &RowKey::Sheep(2), ALL, 200, false);
+        let line = key_line(
+            &app,
+            &FrameFacts::new(&app),
+            &RowKey::Sheep(2),
+            ALL,
+            200,
+            false,
+        );
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         let name = name_width(200, ALL);
@@ -727,7 +756,14 @@ mod tests {
             fixtures::plain(),
         );
 
-        let line = key_line(&app, &RowKey::Sheep(7), ALL, 200, false);
+        let line = key_line(
+            &app,
+            &FrameFacts::new(&app),
+            &RowKey::Sheep(7),
+            ALL,
+            200,
+            false,
+        );
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
 
         assert!(rendered.contains("solo"), "got {rendered:?}");
@@ -751,7 +787,7 @@ mod tests {
         let app = fixtures::app_with(vec![dog], fixtures::plain());
         let row = app.row(9).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             rendered.contains("silent"),
@@ -779,7 +815,7 @@ mod tests {
         let app = fixtures::app_with(vec![dog], fixtures::plain());
         let row = app.row(9).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(rendered.contains("online"), "got {rendered:?}");
         assert!(!rendered.contains("silent"), "got {rendered:?}");
@@ -799,7 +835,7 @@ mod tests {
         let app = fixtures::app_with(vec![sheep], fixtures::plain());
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(rendered.contains("online"), "got {rendered:?}");
         assert!(!rendered.contains("silent"), "got {rendered:?}");
@@ -821,7 +857,7 @@ mod tests {
         let app = fixtures::app_with(vec![impossible], fixtures::plain());
         let row = app.row(1).unwrap();
 
-        let line = row_line(&app, row, ALL, 200, false, false);
+        let line = row_line(&app, &FrameFacts::new(&app), row, ALL, 200, false);
         let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             rendered.contains("online"),

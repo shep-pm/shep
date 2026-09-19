@@ -59,19 +59,22 @@ impl App {
         visible.sort_unstable_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
         let (dogs, sheep): (Vec<_>, Vec<_>) = visible.into_iter().partition(|entry| entry.3);
 
+        // Once, rather than per name run below: the rule reads the whole flock
+        // to answer for one name.
+        let grouped = self.grouped_names();
         let mut out = Vec::new();
         match self.grouping {
             Grouping::Flat => {
                 if !sheep.is_empty() {
                     out.push(RowKey::Section("Flock"));
-                    self.push_grouped_rows(&sheep, &mut out);
+                    self.push_grouped_rows(&sheep, &grouped, &mut out);
                 }
             }
-            Grouping::ByFold => self.push_fold_rows(&sheep, &mut out),
+            Grouping::ByFold => self.push_fold_rows(&sheep, &grouped, &mut out),
         }
         if !dogs.is_empty() {
             out.push(RowKey::Section("Dogs"));
-            self.push_grouped_rows(&dogs, &mut out);
+            self.push_grouped_rows(&dogs, &grouped, &mut out);
         }
         out
     }
@@ -90,7 +93,12 @@ impl App {
     /// A fold in [`Self::collapsed_folds`] still gets its own
     /// [`RowKey::Fold`] header; only [`Self::push_fold_group_rows`]'s call
     /// is skipped, so `z` hides the members and nothing else.
-    fn push_fold_rows(&self, sheep: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
+    fn push_fold_rows(
+        &self,
+        sheep: &[RowEntry<'_>],
+        grouped: &HashSet<&str>,
+        out: &mut Vec<RowKey>,
+    ) {
         let mut folds: BTreeMap<String, Vec<RowEntry<'_>>> = BTreeMap::new();
         let mut unfoldered: Vec<RowEntry<'_>> = Vec::new();
         for entry in sheep {
@@ -106,12 +114,12 @@ impl App {
         for (fold, members) in &folds {
             out.push(RowKey::Fold(fold.clone()));
             if !self.collapsed_folds.contains(fold) {
-                self.push_fold_group_rows(members, out);
+                self.push_fold_group_rows(members, grouped, out);
             }
         }
         if !unfoldered.is_empty() {
             out.push(RowKey::Section("no fold"));
-            self.push_fold_group_rows(&unfoldered, out);
+            self.push_fold_group_rows(&unfoldered, grouped, out);
         }
     }
 
@@ -120,10 +128,15 @@ impl App {
     /// [`RowKey::Sheep`] row following it, so a fold never nests three
     /// levels deep (fold, app, instance). An app with no group still gets
     /// its ordinary sheep row, exactly as the flat path would draw it.
-    fn push_fold_group_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
+    fn push_fold_group_rows(
+        &self,
+        entries: &[RowEntry<'_>],
+        grouped: &HashSet<&str>,
+        out: &mut Vec<RowKey>,
+    ) {
         for run in name_runs(entries) {
             let name = run[0].0;
-            if self.is_grouped(name) {
+            if grouped.contains(name) {
                 out.push(RowKey::Group(name.to_string()));
             } else {
                 out.extend(run.iter().map(|entry| RowKey::Sheep(entry.2)));
@@ -133,10 +146,15 @@ impl App {
 
     /// Appends `entries`' rows to `out`, splicing a [`RowKey::Group`] header
     /// before a grouped app's instances.
-    fn push_grouped_rows(&self, entries: &[RowEntry<'_>], out: &mut Vec<RowKey>) {
+    fn push_grouped_rows(
+        &self,
+        entries: &[RowEntry<'_>],
+        grouped: &HashSet<&str>,
+        out: &mut Vec<RowKey>,
+    ) {
         for run in name_runs(entries) {
             let name = run[0].0;
-            if self.is_grouped(name) {
+            if grouped.contains(name) {
                 out.push(RowKey::Group(name.to_string()));
             }
             out.extend(run.iter().map(|entry| RowKey::Sheep(entry.2)));
@@ -230,8 +248,11 @@ impl App {
     /// Every sheep the table's rows are drawn from, in name-then-id order: the
     /// whole flock, or whatever the filter leaves of it.
     ///
-    /// A flat sheep list, not [`Self::visible_rows`]'s [`RowKey`] sequence: the
-    /// title bar counts this, and a group header is not a sheep.
+    /// Tests only. The title band was the last thing that drew from it and now
+    /// counts [`Self::rows_len`] instead, but a test asserting on what the
+    /// filter keeps wants the rows themselves, in the order the table would put
+    /// them in.
+    #[cfg(test)]
     #[must_use]
     pub fn rows(&self) -> Vec<&Row> {
         let mut visible: Vec<&Row> = self.filtered_rows().collect();
@@ -241,18 +262,20 @@ impl App {
         visible
     }
 
-    /// How many sheep [`Self::rows`] would draw, without building or sorting
-    /// the list.
+    /// How many sheep the table would draw: the whole flock, or whatever the
+    /// name filter leaves of it.
     ///
-    /// The title band shows this beside [`Self::flock_len`] and has no use for
-    /// the order, which is the only thing `rows` does that costs anything.
+    /// A sheep count, not [`Self::visible_rows`]'s [`RowKey`] count: a group
+    /// header is not a sheep. The title band shows this beside
+    /// [`Self::flock_len`] and is the only caller, so nothing here builds or
+    /// orders a list.
     #[must_use]
     pub fn rows_len(&self) -> usize {
         self.filtered_rows().count()
     }
 
     /// Every sheep the name filter keeps, in whatever order the map holds
-    /// them: the shared body of [`Self::rows`] and [`Self::rows_len`].
+    /// them. [`Self::rows_len`] counts these.
     fn filtered_rows(&self) -> impl Iterator<Item = &Row> {
         let needle = self.filter.to_lowercase();
         self.flock
@@ -263,9 +286,9 @@ impl App {
     /// Every sheep the shepherd last reported, in id order, whatever the filter
     /// hides.
     ///
-    /// The host strip sums this rather than [`Self::rows`], so a name filter
-    /// cannot narrow what `flock cpu`/`flock mem` add up to while the label
-    /// still says `flock`.
+    /// The host strip sums this rather than [`Self::filtered_rows`], so a name
+    /// filter cannot narrow what `flock cpu`/`flock mem` add up to while the
+    /// label still says `flock`.
     #[must_use]
     pub fn all_rows(&self) -> Vec<&Row> {
         self.flock.values().collect()
@@ -335,22 +358,39 @@ impl App {
         members
     }
 
-    /// Whether `name`'s instances draw under a [`RowKey::Group`] header: more
+    /// Every name whose instances draw under a [`RowKey::Group`] header: more
     /// than one instance of the name, every one of them reporting a slot.
     ///
     /// Read over the whole flock rather than the filtered sequence, which a
     /// name query keeps whole either way.
+    ///
+    /// Every name at once, in one pass, rather than a `name -> bool` call: the
+    /// per-name form filtered the whole flock, collected and sorted for one
+    /// answer, and both callers ask for a row or a name run at a time.
+    /// [`Self::visible_rows`] reads this, and so does the draw loop through
+    /// `view::flock::FrameFacts`.
     #[must_use]
-    pub fn is_grouped(&self, name: &str) -> bool {
-        let members = self.group_members(name);
-        members.len() > 1 && members.iter().all(|row| row.info.instance.is_some())
+    pub fn grouped_names(&self) -> HashSet<&str> {
+        // `(instances, every one of them reports a slot)`, the pair the rule
+        // above decides on.
+        let mut tally: HashMap<&str, (usize, bool)> = HashMap::new();
+        for row in self.flock.values() {
+            let entry = tally.entry(row.info.name.as_str()).or_insert((0, true));
+            entry.0 += 1;
+            entry.1 &= row.info.instance.is_some();
+        }
+        tally
+            .into_iter()
+            .filter(|(_, (instances, all_slotted))| *instances > 1 && *all_slotted)
+            .map(|(name, _)| name)
+            .collect()
     }
 
     /// `name`'s rolled-up numbers. [`GroupTotals`] gives the rule each field
     /// follows.
     #[must_use]
     pub fn group_totals(&self, name: &str) -> GroupTotals {
-        self.totals_for(self.group_members(name))
+        self.totals_for(&self.group_members(name))
     }
 
     /// Every instance whose `fold` is `fold`: the members a [`RowKey::Fold`]
@@ -367,7 +407,7 @@ impl App {
     /// applies but over every instance in the fold rather than one app's own.
     #[must_use]
     pub fn fold_totals(&self, fold: &str) -> GroupTotals {
-        self.totals_for(self.fold_members(fold))
+        self.totals_for(&self.fold_members(fold))
     }
 
     /// `fold`'s STATUS text: [`Self::group_status_text`]'s own rule, applied
@@ -398,7 +438,13 @@ impl App {
 
     /// The shared rollup [`Self::group_totals`] and [`Self::fold_totals`]
     /// both compute, over whichever members each selects.
-    fn totals_for(&self, members: Vec<&Row>) -> GroupTotals {
+    ///
+    /// Public and slice-taking so a caller already holding the members can
+    /// roll them up without asking for them a second time: a group row draws
+    /// this alongside [`Self::status_text_for`] and
+    /// [`Self::uniform_status_for`] off one `group_members` call.
+    #[must_use]
+    pub fn totals_for(&self, members: &[&Row]) -> GroupTotals {
         GroupTotals {
             count: members.len(),
             restarts: members.iter().map(|row| row.info.restarts).sum(),
@@ -438,7 +484,8 @@ impl App {
     /// Shares its shape with [`Self::totals_for`] deliberately: these are the
     /// same rollup question asked of two different member sets, and a second
     /// copy of the walk is how the fourth one gets written.
-    fn status_text_for(members: &[&Row]) -> String {
+    #[must_use]
+    pub fn status_text_for(members: &[&Row]) -> String {
         let Some(first) = members.first().map(|row| row.info.status) else {
             return String::new();
         };
@@ -467,7 +514,8 @@ impl App {
     /// The one status every member agrees on, or `None` when they differ.
     /// [`Self::group_uniform_status`] and [`Self::fold_uniform_status`] both
     /// key their colouring off this.
-    fn uniform_status_for(members: &[&Row]) -> Option<ProcStatus> {
+    #[must_use]
+    pub fn uniform_status_for(members: &[&Row]) -> Option<ProcStatus> {
         let first = members.first()?.info.status;
         members
             .iter()
