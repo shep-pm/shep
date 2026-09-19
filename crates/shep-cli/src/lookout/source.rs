@@ -240,6 +240,14 @@ pub trait Local {
 
     /// The tail of one sheep's two log files. See [`super::tail`].
     fn tail(&mut self, out: Option<&Path>, err: Option<&Path>) -> super::tail::Tail;
+
+    /// How many bytes one sheep's two log files hold together.
+    ///
+    /// `None` unless both paths are reported and both files can be sized: half
+    /// a total would read as a smaller log rather than as a partial answer. A
+    /// log rotated away between the poll and the read is one of the cases that
+    /// lands here.
+    fn log_sizes(&mut self, out: Option<&Path>, err: Option<&Path>) -> Option<u64>;
 }
 
 /// The real one: a `sysinfo` handle and the tail reader's memory of each
@@ -247,17 +255,29 @@ pub trait Local {
 #[derive(Debug)]
 pub struct LocalReader {
     cores: Option<usize>,
+    /// Held across ticks rather than built per sample: constructing a
+    /// `System` sets up the platform state a refresh then updates in place,
+    /// and [`Local::host`] runs every second for the life of the session.
+    /// Memory only, which is what makes the refresh as narrow as the
+    /// construction.
+    system: System,
     seen: std::collections::BTreeMap<PathBuf, u64>,
 }
 
 impl LocalReader {
-    /// Reads the core count once and starts with no memory of any log file.
+    /// Reads the core count once, builds the one `sysinfo` handle every
+    /// sample refreshes, and starts with no memory of any log file.
     #[must_use]
     pub fn new() -> Self {
         Self {
             cores: std::thread::available_parallelism()
                 .ok()
                 .map(NonZeroUsize::get),
+            // Memory only. `.with_processes(..)` is what makes `dog::metrics`'
+            // own sampler a process-table walk.
+            system: System::new_with_specifics(
+                RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
+            ),
             seen: std::collections::BTreeMap::new(),
         }
     }
@@ -278,23 +298,26 @@ impl Local for LocalReader {
         if !sysinfo::IS_SUPPORTED_SYSTEM {
             return None;
         }
-        // Memory only. `.with_processes(..)` is what makes `dog::metrics`'
-        // own sampler a process-table walk, and this runs every second.
-        let system = System::new_with_specifics(
-            RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
-        );
+        self.system
+            .refresh_memory_specifics(MemoryRefreshKind::everything());
         let load = System::load_average();
         Some(HostSample {
             load: (load.one, load.five, load.fifteen),
             cores: self.cores,
-            memory_total_bytes: system.total_memory(),
-            memory_used_bytes: system.used_memory(),
+            memory_total_bytes: self.system.total_memory(),
+            memory_used_bytes: self.system.used_memory(),
             uptime_seconds: System::uptime(),
         })
     }
 
     fn tail(&mut self, out: Option<&Path>, err: Option<&Path>) -> super::tail::Tail {
         super::tail::read(&mut self.seen, out, err)
+    }
+
+    fn log_sizes(&mut self, out: Option<&Path>, err: Option<&Path>) -> Option<u64> {
+        let out = std::fs::metadata(out?).ok()?.len();
+        let err = std::fs::metadata(err?).ok()?.len();
+        Some(out.saturating_add(err))
     }
 }
 
@@ -308,8 +331,8 @@ mod tests {
     #[test]
     fn a_host_sample_is_cheap_enough_for_a_one_second_heartbeat() {
         let mut local = LocalReader::new();
-        // One warm sample first: the heartbeat runs in the steady state, not
-        // in the first `System` construction.
+        // One warm sample first: the heartbeat runs in the steady state, and
+        // a platform's own first read is not what it costs per second.
         let _ = local.host();
 
         let started = std::time::Instant::now();
@@ -419,5 +442,53 @@ mod tests {
             crate::version_guard::VersionGuard::Enforce,
         )
         .expect("a matching version is not a skew");
+    }
+
+    /// The two files together, since the detail pane's cell says "on disk"
+    /// about the pair.
+    #[test]
+    fn two_readable_logs_size_to_their_sum() {
+        let dir = tempfile::Builder::new()
+            .prefix("shep-logsize-")
+            .tempdir()
+            .expect("a tempdir for the logs");
+        let out = dir.path().join("web-out.log");
+        let err = dir.path().join("web-err.log");
+        std::fs::write(&out, b"listening on :8080\n").expect("write the out log");
+        std::fs::write(&err, b"warn\n").expect("write the err log");
+
+        let mut local = LocalReader::new();
+        assert_eq!(local.log_sizes(Some(&out), Some(&err)), Some(19 + 5));
+    }
+
+    /// A log rotated away between two polls leaves exactly one of the two
+    /// reads failing. Half a total would read as a smaller log rather than as
+    /// a partial answer, so the answer is no size at all. This is the rule
+    /// `view::detail::log_row` used to carry when it read the filesystem
+    /// itself.
+    #[test]
+    fn a_missing_log_sizes_to_nothing_rather_than_to_one_file() {
+        let dir = tempfile::Builder::new()
+            .prefix("shep-logsize-")
+            .tempdir()
+            .expect("a tempdir for the logs");
+        let out = dir.path().join("only-out.log");
+        std::fs::write(&out, b"listening on :8080\n").expect("write the out log");
+        let rotated_away = dir.path().join("rotated-away-err.log");
+
+        let mut local = LocalReader::new();
+        assert_eq!(local.log_sizes(Some(&out), Some(&rotated_away)), None);
+        assert_eq!(
+            local.log_sizes(Some(&rotated_away), Some(&out)),
+            None,
+            "either side missing is the same answer"
+        );
+    }
+
+    /// A shepherd predating the `out_file`/`err_file` fields reports neither.
+    #[test]
+    fn an_unreported_log_path_sizes_to_nothing() {
+        let mut local = LocalReader::new();
+        assert_eq!(local.log_sizes(None, None), None);
     }
 }

@@ -361,6 +361,100 @@ mod tests {
         );
     }
 
+    /// `Msg::Snapshot` answers every ordinary poll with `Effect::RefreshFeed`,
+    /// so the detail pane's log-size read has to hang off that rather than off
+    /// the lamb walk's `Effect::RefreshSelected`. Two snapshots with the
+    /// selection never moving between them: the second still has to read, or a
+    /// size freezes on screen while an operator watches one sheep write.
+    ///
+    /// Asserted on the reader's own counter, since `FakeLocal` answers `None`
+    /// and the pane would draw no size either way. A count of one is the
+    /// regression: the first snapshot seats the selection, which raises
+    /// `RefreshSelected` too, so hanging the read off the lamb walk still
+    /// reads exactly once.
+    ///
+    /// Not `start_paused`: both reads are gated on `may_draw`, which measures
+    /// real `std::time::Instant` against `MIN_REDRAW`, and a paused clock's
+    /// virtual sleeps resolve in microseconds of real time, so the second read
+    /// would never be allowed to run.
+    #[tokio::test]
+    async fn every_poll_re_reads_the_selected_sheeps_log_sizes() {
+        let (msg_tx, msg_rx) = mpsc::channel(64);
+        let (poll_tx, _poll_rx) = mpsc::channel(4);
+        let (request_tx, _request_rx) = mpsc::channel(8);
+        let local = FakeLocal::default();
+        let log_sizes = Arc::clone(&local.log_sizes);
+
+        let rows = vec![
+            ProcessInfo::builder(1, "api", ProcStatus::Online)
+                .pid(Some(4_001))
+                .out_file(Some("/tmp/shep-lookout-tests/api-out.log".to_string()))
+                .err_file(Some("/tmp/shep-lookout-tests/api-err.log".to_string()))
+                .build(),
+        ];
+
+        // Each snapshot needs its own serviced iteration, so each is followed
+        // by a wait past `MIN_REDRAW` and a `Msg::Resize` to wake the loop.
+        // `may_draw` is only re-checked at the top of the next iteration and
+        // the loop only wakes on a message, so two snapshots sent back to back
+        // coalesce into one read and the count cannot tell the wirings apart.
+        tokio::spawn(async move {
+            let _ = msg_tx
+                .send(Msg::Snapshot {
+                    rows: rows.clone(),
+                    at: Instant::now(),
+                })
+                .await;
+            tokio::time::sleep(MIN_REDRAW * 3).await;
+            let _ = msg_tx.send(Msg::Resize).await;
+            tokio::time::sleep(MIN_REDRAW * 3).await;
+            let _ = msg_tx
+                .send(Msg::Snapshot {
+                    rows,
+                    at: Instant::now(),
+                })
+                .await;
+            tokio::time::sleep(MIN_REDRAW * 3).await;
+            let _ = msg_tx.send(Msg::Resize).await;
+            tokio::time::sleep(MIN_REDRAW * 3).await;
+            let _ = msg_tx.send(Msg::Key(KeyPress::Quit)).await;
+        });
+
+        let app = App::new(
+            Palette::detect(None, None, None),
+            Control::ReadOnly,
+            "/tmp/shep".to_string(),
+            Instant::now(),
+        );
+        // Tall enough for `view::panes_for` to report a detail pane; a shorter
+        // terminal is meant to skip the read entirely.
+        let terminal = Terminal::new(TestBackend::new(120, 48)).unwrap();
+        let _ = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                test_paths(Path::new("/tmp/shep-lookout-tests")),
+                PathBuf::from("/tmp/shep-lookout-tests"),
+                PathBuf::from("/tmp/shep-lookout-tests/shep.toml"),
+                PathBuf::from("/tmp/shep-lookout-tests/run/shep.sock"),
+                local,
+            ),
+        )
+        .await
+        .expect("the loop left within ten seconds");
+
+        let reads = log_sizes.load(Ordering::Relaxed);
+        assert!(
+            reads >= 2,
+            "read {reads} times; an ordinary poll did not refresh the size"
+        );
+    }
+
     /// The end-to-end half of
     /// `the_heartbeat_asks_the_local_reader_for_a_host_sample`: a `source::Local` that
     /// reports a sample, one heartbeat, and the numbers on the rendered frame.

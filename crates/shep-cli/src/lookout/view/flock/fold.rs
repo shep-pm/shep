@@ -12,7 +12,8 @@ use super::super::super::app::{App, GroupTotals, Row, RowKey};
 use super::super::super::theme::Palette;
 use super::super::cell;
 use super::columns::{FoldColumn, fold_name_width};
-use super::layout::{fit, pad_ground};
+use super::facts::FrameFacts;
+use super::layout::{fit_owned, pad_ground};
 use super::row::section_line;
 use crate::output::{human_bytes, human_duration};
 
@@ -34,13 +35,14 @@ use crate::output::{human_bytes, human_duration};
 #[must_use]
 pub fn fold_key_line(
     app: &App,
+    facts: &FrameFacts<'_>,
     key: &RowKey,
     columns: &[FoldColumn],
     width: u16,
     selected: bool,
 ) -> Line<'static> {
     match key {
-        RowKey::Fold(name) => fold_header_line(app, name, columns, width, selected),
+        RowKey::Fold(name) => fold_header_line(app, facts, name, columns, width, selected),
         RowKey::Group(name) => fold_group_line(app, name, columns, width, selected),
         RowKey::Sheep(id) => app.row(*id).map_or_else(
             || Line::from(Span::raw(" ".repeat(usize::from(width)))),
@@ -59,6 +61,7 @@ pub fn fold_key_line(
 /// design's `edge ×4` header draws brighter than the members under it.
 fn fold_header_line(
     app: &App,
+    facts: &FrameFacts<'_>,
     name: &str,
     columns: &[FoldColumn],
     width: u16,
@@ -66,7 +69,10 @@ fn fold_header_line(
 ) -> Line<'static> {
     let palette = app.data_palette();
     let totals = app.fold_totals(name);
-    let total_memory = total_flock_memory(app);
+    // `FrameFacts`, not a sum of its own: every header in a frame divides by
+    // the same number, and computing it here walked the whole flock once per
+    // header row.
+    let total_memory = facts.flock_memory;
     let share_percent = fold_share_percent(totals.memory, total_memory);
     let share_fill = cell::gauge_fill(totals.memory.unwrap_or(0), total_memory, 20);
     let status = app.fold_uniform_status(name);
@@ -89,8 +95,8 @@ fn fold_header_line(
         } else {
             column.width()
         };
-        let text = fit(
-            &fold_header_cell(app, name, *column, &totals, total_memory, share_percent),
+        let text = fit_owned(
+            fold_header_cell(app, name, *column, &totals, total_memory, share_percent),
             cell_width,
         );
         match column {
@@ -168,17 +174,6 @@ fn push_fold_share_cell(
     spans.push(Span::styled(rest, palette.gauge_rest().patch(ground)));
 }
 
-/// The whole flock's own memory, summed the same way the host strip sums it
-/// (`view::host::strip_line`): every row [`App::all_rows`] returns, not the
-/// filtered [`App::rows`], so a name filter never changes what a share bar
-/// divides by. `None` only when nothing in the flock has reported a reading.
-fn total_flock_memory(app: &App) -> Option<u64> {
-    app.all_rows()
-        .iter()
-        .filter_map(|row| row.info.memory_bytes)
-        .fold(None, |sum, value| Some(sum.unwrap_or(0) + value))
-}
-
 /// A fold's share of `total_memory`, as a whole percentage. `None` when
 /// either side is unmeasured or `total_memory` is zero: the header's own
 /// `Notes` cell then draws nothing, matching [`fold_header_line`]'s empty
@@ -209,9 +204,12 @@ fn fold_group_line(
     selected: bool,
 ) -> Line<'static> {
     let palette = app.data_palette();
-    let totals = app.group_totals(name);
-    let status = app.group_uniform_status(name);
+    // One `group_members` call for the row, the same as `row::group_line`.
+    let members = app.group_members(name);
+    let totals = app.totals_for(&members);
+    let status = App::uniform_status_for(&members);
     let status_style = status.map_or(Style::default(), |status| palette.status(status));
+    let status_text = App::status_text_for(&members);
     let name_width = fold_name_width(width, columns);
     let ground = if selected {
         palette.ground()
@@ -231,7 +229,10 @@ fn fold_group_line(
         } else {
             column.width()
         };
-        let text = fit(&fold_group_cell(app, name, *column, &totals), cell_width);
+        let text = fit_owned(
+            fold_group_cell(name, *column, &totals, &status_text),
+            cell_width,
+        );
         let style = if *column == FoldColumn::Status {
             status_style
         } else {
@@ -245,10 +246,15 @@ fn fold_group_line(
 }
 
 /// One cell of a group row nested inside a fold.
-fn fold_group_cell(app: &App, name: &str, column: FoldColumn, totals: &GroupTotals) -> String {
+fn fold_group_cell(
+    name: &str,
+    column: FoldColumn,
+    totals: &GroupTotals,
+    status_text: &str,
+) -> String {
     match column {
         FoldColumn::Name => format!("{name} \u{d7}{}", totals.count),
-        FoldColumn::Status => app.group_status_text(name),
+        FoldColumn::Status => status_text.to_string(),
         FoldColumn::Share | FoldColumn::Notes => String::new(),
         FoldColumn::Mem => totals.memory.map_or_else(|| "-".to_string(), human_bytes),
         FoldColumn::Cpu => totals
@@ -293,7 +299,7 @@ fn fold_member_line(
         } else {
             column.width()
         };
-        let text = fit(&fold_member_cell(app, row, *column), cell_width);
+        let text = fit_owned(fold_member_cell(app, row, *column), cell_width);
         let style = if *column == FoldColumn::Status {
             status_style
         } else {
@@ -350,6 +356,7 @@ mod tests {
         );
         let line = fold_key_line(
             &app,
+            &FrameFacts::new(&app),
             &RowKey::Fold("edge".into()),
             fold_columns_for(160),
             160,

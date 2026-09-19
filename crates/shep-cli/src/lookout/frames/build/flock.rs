@@ -378,7 +378,7 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
             vec![row]
         }
         _ => {
-            let mut rows = vec![
+            let rows = vec![
                 sheep(
                     0,
                     "web",
@@ -440,39 +440,7 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
                     None,
                 ),
             ];
-            // `log_row`'s on-disk size had never rendered anywhere in the
-            // gallery, because every fixture's
-            // `out_file`/`err_file` name a path (`/home/ada/.shep/logs/...`)
-            // that never exists on the machine running the test, so
-            // `fs::metadata` always failed silently. `HealthyWide`'s
-            // selected sheep, `api`, points at two real files instead,
-            // committed under `crates/shep-cli/tests/fixtures/gallery-logs/`,
-            // fixed at 1024 bytes each so the rendered size (`2.0K`) is the
-            // same on every machine and every run.
-            //
-            // The path is relative rather than the fictional absolute shape
-            // every other fixture uses: cargo sets a test binary's cwd to
-            // its own crate's manifest directory on every platform, so
-            // `fs::metadata` resolves this same string against the same
-            // real file wherever the gallery is regenerated. An absolute
-            // path would either stay fictional (the `/home/ada/...` shape,
-            // never real) or, made real, would have to embed either a
-            // random tempdir name (breaking `write_the_gallery`'s
-            // idempotency: it must diff clean run twice) or the actual
-            // checkout's home directory, which must never land in a file
-            // this repository commits.
-            //
-            // Applied here, before `poll_twice` runs, rather than after: the
-            // two polls below are this scene's only delivery into
-            // `self.flock` now, so a patch applied afterward would never
-            // reach it.
-            if which == Scene::HealthyWide
-                && let Some(api) = rows.iter_mut().find(|sheep| sheep.id == 2)
-            {
-                api.out_file = Some("tests/fixtures/gallery-logs/api-out.log".to_string());
-                api.err_file = Some("tests/fixtures/gallery-logs/api-err.log".to_string());
-            }
-            poll_twice(
+            let frames = poll_twice(
                 app,
                 t0,
                 rows,
@@ -484,7 +452,26 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
                     (4, 5, 7),
                     (5, 10, 18),
                 ],
-            )
+            );
+            // `log_row`'s on-disk size, for `HealthyWide`'s selected sheep.
+            // Delivered rather than measured: the pane draws the last reading
+            // `run_ui` took, and the gallery runs no event loop, so without
+            // this the cell is blank in the one scene that shows it.
+            //
+            // This is why the fixture's `out_file`/`err_file` can stay on the
+            // fictional `/home/ada/.shep/logs/...` shape every other scene
+            // uses. `api` used to point at two committed 1024-byte files under
+            // a path relative to the crate's manifest directory, because
+            // `fs::metadata` ran inside the draw and had to find something
+            // real on every machine that regenerated the gallery. Nothing in
+            // the draw reads the filesystem now.
+            if which == Scene::HealthyWide {
+                app.update(Msg::LogSize {
+                    id: 2,
+                    total_bytes: Some(2 * 1024),
+                });
+            }
+            frames
         }
     }
 }

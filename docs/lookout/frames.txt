@@ -85,7 +85,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ██ SHEEP 2  api   online   pid 48219   restarts 1   uptime 1h 28m   cpu 7.1%   mem 241.0M   fold edge                  
 lambs  not read yet                                                                                                     
-out  tests/fixtures/gallery-logs/api-out.log   │   err  tests/fixtures/gallery-logs/api-err.log   2.0K on disk          
+out  /home/ada/.shep/logs/api-2-out.log   │   err  /home/ada/.shep/logs/api-2-err.log   2.0K on disk                    
                                                                                                                         
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ██ BLEATS api  … 1 earlier line not shown                                                                              

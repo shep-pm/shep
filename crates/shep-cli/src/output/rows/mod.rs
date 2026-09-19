@@ -442,7 +442,7 @@ pub(crate) mod tests {
 
         use crate::lookout::app::{App, Control, Msg, RowKey};
         use crate::lookout::theme::Palette;
-        use crate::lookout::view::flock::{Column, columns_for, key_line};
+        use crate::lookout::view::flock::{Column, FrameFacts, columns_for, key_line};
 
         // Every slot differs in every summed field, so a rollup reading one
         // member cannot coincide with the sum.
@@ -528,6 +528,7 @@ pub(crate) mod tests {
         let dashboard_columns = columns_for(200);
         let dashboard_line = key_line(
             &app,
+            &FrameFacts::new(&app),
             &RowKey::Group("web".to_string()),
             dashboard_columns,
             200,

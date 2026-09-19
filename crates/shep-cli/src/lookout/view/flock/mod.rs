@@ -8,10 +8,12 @@
 //! Column widths are fixed rather than measured from content: a live table
 //! whose columns resize as a pid gains a digit is a table that shivers.
 //!
-//! `columns` holds the two schemas, `layout` the measuring, and `row` and
-//! `fold` the two renderers over both.
+//! `columns` holds the two schemas, `layout` the measuring, `facts` the
+//! values a whole frame shares, and `row` and `fold` the two renderers over
+//! both.
 
 pub(super) mod columns;
+mod facts;
 mod fold;
 mod layout;
 mod row;
@@ -24,8 +26,9 @@ pub use columns::Column;
 #[cfg(test)]
 pub(super) use columns::cfg_tier_width;
 pub use columns::{columns_for, fold_columns_for, fold_columns_header_line, header_line};
+pub use facts::FrameFacts;
 pub use fold::fold_key_line;
-pub use layout::{GUTTER, MIN_HEIGHT, MIN_WIDTH, fit, gutter, mark, scroll_offset};
+pub use layout::{GUTTER, MIN_HEIGHT, MIN_WIDTH, fit, fit_owned, gutter, mark, scroll_offset};
 pub use row::key_line;
 #[cfg(test)]
 pub use row::row_line;

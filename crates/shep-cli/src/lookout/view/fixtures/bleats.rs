@@ -232,6 +232,13 @@ pub fn app_fixture() -> App {
             note: None,
         },
     });
+    // The size the poll would have read, not a literal: `log_row` draws this
+    // and the gallery snapshots it, so it has to be the two files' real length.
+    let total_bytes = std::fs::metadata(&out_path)
+        .ok()
+        .zip(std::fs::metadata(&err_path).ok())
+        .map(|(out, err)| out.len() + err.len());
+    app.update(Msg::LogSize { id: 7, total_bytes });
     app
 }
 

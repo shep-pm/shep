@@ -75,7 +75,7 @@ pub fn sheep_with(
 
 /// One instance of a grouped app, at `slot`, carrying `fold`: the same
 /// shape [`sheep_in_fold`] builds, with an instance slot set so
-/// [`crate::lookout::app::App::is_grouped`] gathers it under a
+/// [`crate::lookout::app::App::grouped_names`] gathers it under a
 /// [`RowKey::Group`] header.
 pub fn instance_in_fold(id: u32, name: &str, slot: u32, fold: Option<&str>) -> ProcessInfo {
     ProcessInfo::builder(id, name, ProcStatus::Online)

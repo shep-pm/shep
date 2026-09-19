@@ -332,7 +332,7 @@ pub struct DogProbe {
 /// instances.
 ///
 /// A name earns a [`Self::Group`] only with more than one instance, every one
-/// of them reporting its slot ([`App::is_grouped`]).
+/// of them reporting its slot ([`App::grouped_names`]).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RowKey {
     /// One app's group header, carrying its name.
@@ -373,6 +373,21 @@ pub enum LambWalk {
     /// The request did not come back, or came back as something this binary
     /// does not understand.
     Failed,
+}
+
+/// One reading of a sheep's two log files on disk, and which sheep it was
+/// taken for.
+///
+/// Keyed by id for [`LambReading`]'s reason: the detail pane must not print
+/// one sheep's byte count under another's paths, and a stale reading and a
+/// failed one both have to read as "not read".
+#[derive(Debug, Clone, Copy)]
+pub struct LogSize {
+    pub(super) id: u32,
+    /// `out` plus `err`, or `None` when either path is unreported or either
+    /// file could not be read. The pane then draws no size, which is what it
+    /// did for the same two cases before the read moved off the draw path.
+    pub(super) total_bytes: Option<u64>,
 }
 
 /// One lamb reading, and which sheep it was taken for.

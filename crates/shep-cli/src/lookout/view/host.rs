@@ -2,8 +2,8 @@
 //!
 //! Half is read from this machine ([`super::super::source::HostSample`])
 //! and half is summed from [`super::super::app::App::all_rows`], the whole
-//! flock, never the filtered [`super::super::app::App::rows`]: a name
-//! filter must not narrow what this strip claims. Every segment names its
+//! flock, never the name-filtered set [`super::super::app::App::rows_len`]
+//! counts: a name filter must not narrow what this strip claims. Every segment names its
 //! half, so a truncated strip never leaves a bare `mem 12.4G` beside a bare
 //! `mem 706.0M`.
 //!
