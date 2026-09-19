@@ -71,7 +71,7 @@ pub(super) fn rehydrate(carried: Successor, paths: &ShepPaths) -> Result<Rehydra
     let Successor { path, blob } = carried;
     let counters = blob.counters();
     let adopted = crate::handover::adopt::adopt(&blob)
-        .map_err(|source| BootError::Adopt(source.to_string()))?;
+        .map_err(|source| BootError::Adopt(Box::new(source)))?;
     crate::handover::adopt::discard_blob(&path);
     let _ = paths;
     let reloads = blob.reloads().to_vec();
