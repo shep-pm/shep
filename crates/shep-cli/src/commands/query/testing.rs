@@ -97,14 +97,10 @@ pub(super) async fn describe_with_a_seeded_web(
     config
         .env
         .insert("B".into(), "{{secret:vercel/API_KEY}}".into());
-    let roll = FlockSnapshot {
-        version: 1,
-        saved_at_ms: 0,
-        apps: vec![shep_daemon::snapshot::SavedApp {
-            app: config,
-            instances_running: 1,
-        }],
-    };
+    let roll = FlockSnapshot::with_apps(vec![shep_daemon::snapshot::SavedApp {
+        app: config,
+        instances_running: 1,
+    }]);
     std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
     secrets::set(&paths.secrets, "DB_PASSWORD", "production", "hunter2").unwrap();
     // No provider cache written: `vercel` has never pushed anything.

@@ -9,8 +9,7 @@
 use crate::boot::*;
 use crate::dogs::DogSpec;
 use crate::fake::{ProcScript, ScriptedRunner};
-use crate::snapshot::{FlockSnapshot, SNAPSHOT_VERSION, SavedApp};
-use crate::testing::{capture_logs, test_paths};
+use crate::testing::{capture_logs, roll_of, test_paths};
 use shep_core::config::AppConfig;
 use shep_core::protocol::DogSource;
 use shep_core::status::ProcStatus;
@@ -25,14 +24,7 @@ async fn boot_restores_the_flock_before_it_lets_the_dogs_out() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     init_dirs(&paths).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![SavedApp {
-            app: AppConfig::minimal("web", "./srv"),
-            instances_running: 1,
-        }],
-    };
+    let roll = roll_of(vec![AppConfig::minimal("web", "./srv")]);
     crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
     let daemon = boot(
@@ -157,14 +149,7 @@ fn a_dog_enabled_under_a_sheeps_name_does_not_start_and_does_not_fail_the_boot()
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     init_dirs(&paths).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![SavedApp {
-            app: AppConfig::minimal("metrics", "./srv"),
-            instances_running: 1,
-        }],
-    };
+    let roll = roll_of(vec![AppConfig::minimal("metrics", "./srv")]);
     crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -231,14 +216,7 @@ fn a_promoted_dog_that_takes_a_saved_sheeps_name_says_so() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     init_dirs(&paths).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![SavedApp {
-            app: AppConfig::minimal("metrics", "./srv"),
-            instances_running: 1,
-        }],
-    };
+    let roll = roll_of(vec![AppConfig::minimal("metrics", "./srv")]);
     crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
     let rt = tokio::runtime::Builder::new_current_thread()

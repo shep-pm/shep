@@ -15,7 +15,7 @@ use shep_core::status::ProcStatus;
 
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::supervisor::spawn_supervisor;
-use crate::testing::test_paths;
+use crate::testing::{roll_of, sorted_status, test_paths};
 
 /// Restoring only the running ones would make `shep stop` destructive
 /// across a daemon restart: the sheep would leave the flock entirely.
@@ -26,24 +26,20 @@ fn restorable_keeps_every_member_and_starts_only_what_was_up() {
     let mut opted_out = AppConfig::minimal("manual", "./m");
     opted_out.autostart = false;
 
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![
-            SavedApp {
-                app: AppConfig::minimal("web", "./srv"),
-                instances_running: 2,
-            },
-            SavedApp {
-                app: stopped,
-                instances_running: 0,
-            },
-            SavedApp {
-                app: opted_out,
-                instances_running: 1,
-            },
-        ],
-    };
+    let roll = FlockSnapshot::with_apps(vec![
+        SavedApp {
+            app: AppConfig::minimal("web", "./srv"),
+            instances_running: 2,
+        },
+        SavedApp {
+            app: stopped,
+            instances_running: 0,
+        },
+        SavedApp {
+            app: opted_out,
+            instances_running: 1,
+        },
+    ]);
     let restorable = restorable(roll);
 
     let members: Vec<&str> = restorable
@@ -74,20 +70,7 @@ fn restorable_keeps_every_member_and_starts_only_what_was_up() {
 fn restorable_reports_a_hand_edited_invalid_app_instead_of_aborting() {
     let mut broken = AppConfig::minimal("broken", "./b");
     broken.instances = 0; // someone edited the roll
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![
-            SavedApp {
-                app: broken,
-                instances_running: 1,
-            },
-            SavedApp {
-                app: AppConfig::minimal("web", "./srv"),
-                instances_running: 1,
-            },
-        ],
-    };
+    let roll = roll_of(vec![broken, AppConfig::minimal("web", "./srv")]);
     let restorable = restorable(roll);
     assert_eq!(
         restorable.members.len(),
@@ -111,20 +94,16 @@ async fn muster_restores_both_and_starts_only_the_one_that_was_up() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![
-            SavedApp {
-                app: AppConfig::minimal("up", "./srv"),
-                instances_running: 1,
-            },
-            SavedApp {
-                app: AppConfig::minimal("down", "./srv"),
-                instances_running: 0,
-            },
-        ],
-    };
+    let roll = FlockSnapshot::with_apps(vec![
+        SavedApp {
+            app: AppConfig::minimal("up", "./srv"),
+            instances_running: 1,
+        },
+        SavedApp {
+            app: AppConfig::minimal("down", "./srv"),
+            instances_running: 0,
+        },
+    ]);
     write_atomic(&paths.snapshot, &roll).unwrap();
 
     let (events, _rx) = crate::bus::test_bus(64);
@@ -144,13 +123,12 @@ async fn muster_restores_both_and_starts_only_the_one_that_was_up() {
         "both are restored to the flock; only one of them runs"
     );
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![("down", ProcStatus::Stopped), ("up", ProcStatus::Online)],
+        sorted_status(&handle).await,
+        [
+            ("down".to_string(), ProcStatus::Stopped),
+            ("up".to_string(), ProcStatus::Online)
+        ],
         "the sheep that was down is listed and stopped, not missing"
     );
     handle.shutdown().await;
@@ -171,15 +149,8 @@ async fn a_bad_saved_app_does_not_take_the_apps_after_it_down() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
-    let saved = |name: &str| SavedApp {
-        app: AppConfig::minimal(name, "./srv"),
-        instances_running: 1,
-    };
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![saved("a-good"), saved("b-bad"), saved("c-good")],
-    };
+    let app = |name: &str| AppConfig::minimal(name, "./srv");
+    let roll = roll_of(vec![app("a-good"), app("b-bad"), app("c-good")]);
     write_atomic(&paths.snapshot, &roll).unwrap();
 
     let (events, _rx) = crate::bus::test_bus(64);
@@ -205,16 +176,12 @@ async fn a_bad_saved_app_does_not_take_the_apps_after_it_down() {
         ]
     );
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![
-            ("a-good", ProcStatus::Online),
-            ("b-bad", ProcStatus::Errored),
-            ("c-good", ProcStatus::Online),
+        sorted_status(&handle).await,
+        [
+            ("a-good".to_string(), ProcStatus::Online),
+            ("b-bad".to_string(), ProcStatus::Errored),
+            ("c-good".to_string(), ProcStatus::Online),
         ],
         "every app after the broken one must still get its turn, and the \
          broken one must be visible rather than absent"
@@ -242,20 +209,10 @@ async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![
-            SavedApp {
-                app: AppConfig::minimal("good", "./srv"),
-                instances_running: 1,
-            },
-            SavedApp {
-                app: AppConfig::minimal("gone", "./deleted-by-a-rebuild"),
-                instances_running: 1,
-            },
-        ],
-    };
+    let roll = roll_of(vec![
+        AppConfig::minimal("good", "./srv"),
+        AppConfig::minimal("gone", "./deleted-by-a-rebuild"),
+    ]);
     write_atomic(&paths.snapshot, &roll).unwrap();
 
     let (events, _rx) = crate::bus::test_bus(64);
@@ -273,13 +230,12 @@ async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
         .unwrap();
     assert_eq!(restored, vec!["good".to_string(), "gone".to_string()]);
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![("gone", ProcStatus::Errored), ("good", ProcStatus::Online)],
+        sorted_status(&handle).await,
+        [
+            ("gone".to_string(), ProcStatus::Errored),
+            ("good".to_string(), ProcStatus::Online)
+        ],
         "the app that could still run must come up, and the one that \
          could not must be visible rather than absent"
     );
@@ -297,14 +253,7 @@ async fn muster_leaves_an_app_the_flock_already_has_where_it_stands() {
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
     std::fs::create_dir_all(paths.snapshot.parent().unwrap()).unwrap();
-    let roll = FlockSnapshot {
-        version: SNAPSHOT_VERSION,
-        saved_at_ms: 0,
-        apps: vec![SavedApp {
-            app: AppConfig::minimal("web", "./srv"),
-            instances_running: 1,
-        }],
-    };
+    let roll = roll_of(vec![AppConfig::minimal("web", "./srv")]);
     write_atomic(&paths.snapshot, &roll).unwrap();
 
     let (events, _rx) = crate::bus::test_bus(64);
