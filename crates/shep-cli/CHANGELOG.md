@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-19
+
+### Changed
+
+- Cli/help.rs: two allocation findings ([#530](https://github.com/shep-pm/shep/pull/530))
+
+
 ## [0.8.4] - 2026-09-19
 
 ### Fixed
