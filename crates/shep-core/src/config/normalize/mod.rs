@@ -9,11 +9,6 @@
 //! renders the templates a log path may carry. `error` is what any of them
 //! refuses with.
 
-//! Validation and normalization: `AppConfig` -> `ResolvedApp`
-//!
-//! `ResolvedApp` is a proof token: constructing one is only possible through
-//! [`normalize`], so daemon code can require it and skip re-validation.
-
 #[cfg(test)]
 use std::path::Path;
 

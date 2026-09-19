@@ -147,10 +147,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dogs.toml");
         let first = FileLock::acquire(&path).unwrap();
-        let path2 = path.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         let t = std::thread::spawn(move || {
-            let _second = FileLock::acquire(&path2).unwrap();
+            let _second = FileLock::acquire(&path).unwrap();
             tx.send(()).unwrap();
         });
         assert!(

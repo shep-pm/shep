@@ -17,7 +17,7 @@ pub struct DaemonSection {
     /// somebody says otherwise.
     pub environment: String,
     /// Control-socket path override (default: `$SHEP_HOME/run/shep.sock`)
-    pub socket: Option<std::path::PathBuf>,
+    pub socket: Option<PathBuf>,
     /// Dogs to autostart with the daemon (`shep enable` writes this)
     pub enabled_dogs: Vec<String>,
     /// Where an adopted dog's binary lives, keyed by dog name
