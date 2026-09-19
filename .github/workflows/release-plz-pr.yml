@@ -1,6 +1,12 @@
 name: Release PR
-# Maintains the pull request that bumps the version and writes the changelog,
-# then queues it to merge itself.
+# Maintains the pull request that bumps the version and writes the changelog.
+# Merging it is a hand decision: several changes to main stack into one
+# release that way, rather than every merge cutting its own.
+#
+# Squash that merge, never a merge commit. release-plz substitutes a merge
+# commit for its pull request's head before packaging, so `cargo publish`
+# would ship a tree that never landed on main. A squash leaves nothing for
+# that lookup to find. docs/releasing.md carries the full reasoning.
 
 permissions:
   contents: write
@@ -19,8 +25,8 @@ jobs:
   release-plz-pr:
     name: Update release PR
     runs-on: ubuntu-latest
-    # Skips release-plz's own merge landing on main: the auto-merge step
-    # below pushes with a PAT, which (unlike GITHUB_TOKEN) retriggers this
+    # Skips the release PR's own merge landing on main. A human merging it
+    # pushes as themselves, which (unlike GITHUB_TOKEN) retriggers this
     # workflow, so without this guard the merge would open a new release PR
     # in a cycle.
     #
@@ -68,11 +74,11 @@ jobs:
           # the registry to work out which versions are already published.
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # Blocks the MERGE rather than closing the PR: a changelog-only release
+      # Fails the run rather than closing the PR: a changelog-only release
       # PR also happens legitimately, when a hand-edited version leaves
       # release-plz nothing to bump. Left open and red, a human decides
-      # which case it is.
-      - name: Refuse to auto-merge a release PR with nothing in it
+      # which case it is before merging.
+      - name: Fail if the release PR has nothing in it
         id: noop-guard
         if: ${{ steps.release-plz.outputs.prs_created == 'true' }}
         env:
@@ -102,7 +108,7 @@ jobs:
             exit 1
           fi
           if [ "$base_version" = "$head_version" ]; then
-            echo "::error::release PR #$PR_NUMBER changes no version in Cargo.toml, so it will not be auto-merged."
+            echo "::error::release PR #$PR_NUMBER changes no version in Cargo.toml."
             echo "::error::That is the no-op shape that looped on zendriver-rs on 2026-08-08, and also"
             echo "::error::what a hand-edited version leaves behind. Left open for a human: merge it if"
             echo "::error::the changelog entry is wanted, close it if this is a loop."
@@ -133,51 +139,8 @@ jobs:
                 under_new && /^\+[[:space:]]*[-*][[:space:]]/ { found = 1 }
                 END                            { exit !found }
               '; then
-            echo "::error::release PR #$PR_NUMBER bumps a version but its new changelog section is empty, so it will not be auto-merged."
+            echo "::error::release PR #$PR_NUMBER bumps a version but its new changelog section is empty."
             echo "::error::Every commit since the last release was filtered out by release-plz-changelog.toml."
             echo "::error::Left open for a human: close it, or land something worth releasing first."
             exit 1
           fi
-
-          # Handed to the merge step, which binds to this exact head rather
-          # than the PR number alone.
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-
-      # Auto-merge so publishing stays hands-off: the merge pushes
-      # "chore: release ..." to main, which triggers release-plz-release.yml.
-      #
-      # GH_TOKEN is the PAT: a GITHUB_TOKEN-authored push would not trigger
-      # release-plz-release.yml (GitHub's anti-recursion rule), and a
-      # GITHUB_TOKEN-authored PR would never start its own checks for
-      # `--auto` to wait on.
-      #
-      # `--auto` queues behind main's required status checks (the `main`
-      # ruleset); the `|| gh pr merge` fallback covers the ruleset being
-      # absent.
-      #
-      # Required checks answer whether the branch is broken, never whether
-      # the release should exist: an empty release passes every check, so
-      # that question belongs to the job-level `if:` and the no-op guard
-      # above.
-      #
-      # Squash, not --merge: release-plz can resolve a merge commit to its
-      # PR's last commit via `git branch --contains` and check that out
-      # before packaging, so a merge commit here risks releasing the PR head
-      # instead of what landed on main. Squashing leaves no branch for that
-      # lookup to find.
-      #
-      # `--match-head-commit` binds the merge to the exact commit the guard
-      # above inspected. The PR number alone leaves a window: release-plz
-      # could push again before `--auto` merges, so the thing merged might
-      # never have been checked. A moved head refuses instead with the SHA
-      # pinned.
-      - name: Auto-merge the release PR
-        if: ${{ steps.release-plz.outputs.prs_created == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-          PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
-          HEAD_SHA: ${{ steps.noop-guard.outputs.head_sha }}
-        run: |
-          set -euo pipefail
-          gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_NUMBER" \
-            || gh pr merge --squash --match-head-commit "$HEAD_SHA" "$PR_NUMBER"
