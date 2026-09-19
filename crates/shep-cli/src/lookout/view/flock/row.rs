@@ -27,8 +27,8 @@ use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 /// missing pid.
 ///
 /// A `Sheep` row under a group header draws as a slot rather than a
-/// standalone sheep ([`FrameFacts::is_grouped`]), so a header reading `web ×3` is
-/// not followed by three rows each repeating `web`.
+/// standalone sheep ([`FrameFacts::is_grouped`]), so a header reading
+/// `web ×3` is not followed by three rows each repeating `web`.
 ///
 /// `selected` paints the row's own ground ([`Palette::ground`]) rather than
 /// relying on the gutter marker alone; a section header ignores it, since

@@ -25,10 +25,10 @@ pub struct FrameFacts<'a> {
     pub grouped: HashSet<&'a str>,
     /// The whole flock's memory, the denominator of a fold's share bar.
     ///
-    /// Summed over [`App::all_rows`] rather than the name-filtered
-    /// [`App::rows_len`]'s set, the same way `view::host::strip_line` sums it, so a name filter never
-    /// changes what a share bar divides by. `None` only when nothing in the
-    /// flock has reported a reading.
+    /// Summed over [`App::all_rows`] rather than the set [`App::rows_len`]
+    /// counts, the same way `view::host::strip_line` sums it, so a name filter
+    /// never changes what a share bar divides by. `None` only when nothing in
+    /// the flock has reported a reading.
     pub flock_memory: Option<u64>,
 }
 
