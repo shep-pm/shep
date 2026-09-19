@@ -178,7 +178,7 @@ mod tests {
         let reload = daemon
             .find_subcommand("reload")
             .expect("shep daemon reload exists");
-        let nested = reload.clone().render_long_version().to_string();
+        let nested = reload.render_long_version().to_string();
         assert!(
             nested.contains(&format!("speaks protocol {PROTOCOL_VERSION}")),
             "shep daemon reload --version lost the protocol line: {nested}"
