@@ -8,8 +8,6 @@
 //! Adds over the row above it: the untruncated name, the merged log-path
 //! row, the lamb line, and whichever fields the current width tier dropped.
 
-use std::fs;
-
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use shep_core::protocol::DogSource;
@@ -317,15 +315,15 @@ pub(crate) fn chip_text(label: &str) -> String {
     cell::band(label, cells)
 }
 
-/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the
-/// size on disk when [`fs::metadata`] can read both files. Replaces the two
+/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the size
+/// on disk as of the last poll ([`App::log_size_for`]). Replaces the two
 /// one-path-per-line calls the row used to draw one above the other.
 ///
 /// When the row does not fit, the size drops first, then each path
 /// truncates from its head: a log path's tail is the half that identifies
-/// it, and the head is a directory prefix every sheep shares. A
-/// [`fs::metadata`] call that fails, for a log rotated away between the poll
-/// and the draw, drops the size rather than the row.
+/// it, and the head is a directory prefix every sheep shares. No reading yet,
+/// a reading taken for another sheep, and a log rotated away between two polls
+/// all drop the size rather than the row.
 fn log_row(app: &App, width: u16) -> Line<'static> {
     const OUT_LABEL: &str = "out  ";
     const ERR_LABEL: &str = "err  ";
@@ -341,16 +339,12 @@ fn log_row(app: &App, width: u16) -> Line<'static> {
     let out_full = out_path.unwrap_or("not reported");
     let err_full = err_path.unwrap_or("not reported");
 
-    let size_text = match (out_path, err_path) {
-        (Some(out), Some(err)) => match (fs::metadata(out), fs::metadata(err)) {
-            (Ok(out_meta), Ok(err_meta)) => Some(format!(
-                "   {} on disk",
-                human_bytes(out_meta.len() + err_meta.len())
-            )),
-            _ => None,
-        },
-        _ => None,
-    };
+    // Read on the poll rather than here: `App::log_size_for` is the last
+    // reading for this sheep, and a `stat` inside a 30 fps draw stops being
+    // free the moment the log directory is a network mount.
+    let size_text = app
+        .log_size_for(info.id)
+        .map(|bytes| format!("   {} on disk", human_bytes(bytes)));
 
     let overhead = columns(OUT_LABEL) + columns(DIVIDER) + columns(ERR_LABEL);
     let width_usize = usize::from(width);
@@ -836,35 +830,26 @@ mod tests {
         );
     }
 
-    /// A log rotated away between the poll and the draw leaves exactly one
-    /// of the two `fs::metadata` calls failing. The doc on [`log_row`]
-    /// promises the size only when both succeed, so a lone size covering one
-    /// file must not appear labelled as though it covered both.
+    /// The reading is keyed by id, so one taken for another sheep draws
+    /// nothing rather than label that sheep's bytes as this one's. The pane no
+    /// longer reads the filesystem, which is what makes this possible to get
+    /// wrong: the rule that both files must be sized moved to
+    /// `source::LocalReader::log_sizes` and is tested there.
     #[test]
-    fn a_missing_log_drops_the_size_rather_than_report_one_file() {
-        let dir = tempfile::Builder::new()
-            .prefix("shep-fx-")
-            .tempdir()
-            .expect("a tempdir for the fixture's logs");
-        let out_path = dir.path().join("only-out.log");
-        std::fs::write(&out_path, b"listening on :8080\n").expect("write the out log");
-        let missing_err = dir.path().join("rotated-away-err.log");
+    fn a_reading_taken_for_another_sheep_draws_no_size() {
+        let mut app = app_fixture();
+        let (wide, ..) = log_row_thresholds(&app);
+        let before = rendered(&log_row(&app, wide));
+        assert!(before.contains("on disk"), "the fixture polled: {before:?}");
 
-        let info = ProcessInfo::builder(11, "half-rotated", ProcStatus::Online)
-            .pid(Some(48_111))
-            .out_file(Some(out_path.display().to_string()))
-            .err_file(Some(missing_err.display().to_string()))
-            .build();
-        let app = with_selection(info);
-
-        let text: String = log_row(&app, 200)
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
+        app.update(Msg::LogSize {
+            id: 999,
+            total_bytes: Some(4_096),
+        });
+        let after = rendered(&log_row(&app, wide));
         assert!(
-            !text.contains("on disk"),
-            "one file's metadata failed, so no size is honest: {text:?}"
+            !after.contains("on disk"),
+            "the reading names sheep 999, not the selected 7: {after:?}"
         );
     }
 

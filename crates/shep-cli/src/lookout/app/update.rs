@@ -23,6 +23,7 @@ impl App {
             host: None,
             host_unsupported: false,
             feed: crate::lookout::tail::Tail::default(),
+            log_size: None,
             lambs: None,
             action: None,
             body: Body::FlockTable,
@@ -203,6 +204,12 @@ impl App {
                 }
                 self.host_unsupported = sample.is_none();
                 self.host = sample;
+                Effect::None
+            }
+            // `Effect::None` for `Msg::Bleats`' reason: answering a local read
+            // with another refresh would spin the UI task.
+            Msg::LogSize { id, total_bytes } => {
+                self.log_size = Some(LogSize { id, total_bytes });
                 Effect::None
             }
             // Always `Effect::None`: answering a feed update with another

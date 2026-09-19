@@ -179,6 +179,9 @@ pub struct App {
     /// id it was taken for, so a stale reading and a dropped request both read
     /// as "not read yet".
     lambs: Option<LambReading>,
+    /// The last reading of the selected sheep's log files on disk, keyed the
+    /// same way and taken on the same cadence as [`Self::lambs`].
+    log_size: Option<LogSize>,
     /// The one action this dashboard is in the middle of, or `None`.
     action: Option<Action>,
     /// What the body between the title band and the status bar is showing.

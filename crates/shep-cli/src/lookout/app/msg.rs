@@ -233,6 +233,14 @@ pub enum Msg {
         /// What the sampler saw, or `None` on an unsupported platform.
         sample: Option<crate::lookout::source::HostSample>,
     },
+    /// How big the selected sheep's two log files are on disk, read on the
+    /// same cadence as the lamb walk. Always yields [`Effect::None`].
+    LogSize {
+        /// The sheep the read was taken for.
+        id: u32,
+        /// `out` plus `err`, or `None` when either could not be read.
+        total_bytes: Option<u64>,
+    },
     /// One refresh of the selected sheep's log files, answering an
     /// [`Effect::RefreshFeed`]. Always yields [`Effect::None`].
     Bleats {

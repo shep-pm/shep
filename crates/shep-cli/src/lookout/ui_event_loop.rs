@@ -117,6 +117,25 @@ where
                 // means a request is already queued, and a dropped lamb fetch
                 // reads as "not read yet".
                 let _ = requests.try_send(Sent::Lambs { id });
+                // The detail pane's log size, read here for the same two
+                // reasons as the walk above: `run_ui` owns the reader, and a
+                // terminal too short for the pane must not pay for it. It used
+                // to be two `fs::metadata` calls inside the draw, so up to
+                // sixty a second for a number that moves when the sheep writes
+                // a line.
+                //
+                // Paths cloned out before `app` is borrowed mutably, the same
+                // as the feed read above.
+                let paths = app
+                    .row(id)
+                    .map(|row| (row.info.out_file.clone(), row.info.err_file.clone()));
+                if let Some((out, err)) = paths {
+                    let total_bytes = local
+                        .log_sizes(out.as_deref().map(Path::new), err.as_deref().map(Path::new));
+                    // `let _`: `Msg::LogSize` returns `Effect::None` by
+                    // construction.
+                    let _ = app.update(Msg::LogSize { id, total_bytes });
+                }
             }
             lambs_dirty = false;
         }

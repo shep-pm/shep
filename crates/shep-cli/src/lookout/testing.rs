@@ -22,6 +22,7 @@ pub(super) struct FakeLocal {
     pub(super) sample: Option<HostSample>,
     pub(super) hosts: Arc<AtomicUsize>,
     pub(super) tails: Arc<AtomicUsize>,
+    pub(super) log_sizes: Arc<AtomicUsize>,
 }
 
 impl Local for FakeLocal {
@@ -33,5 +34,10 @@ impl Local for FakeLocal {
     fn tail(&mut self, _out: Option<&Path>, _err: Option<&Path>) -> Tail {
         self.tails.fetch_add(1, Ordering::Relaxed);
         Tail::default()
+    }
+
+    fn log_sizes(&mut self, _out: Option<&Path>, _err: Option<&Path>) -> Option<u64> {
+        self.log_sizes.fetch_add(1, Ordering::Relaxed);
+        None
     }
 }

@@ -168,6 +168,19 @@ impl App {
         self.flock_cpu.as_slices().0
     }
 
+    /// How many bytes sheep `id`'s two log files hold, as of the last poll.
+    ///
+    /// `None` when there is no reading, when the one there is was taken for a
+    /// different sheep, or when the read itself could not size both files. The
+    /// detail pane draws no size for all three, which is what it drew for the
+    /// last two before the read moved off the draw path.
+    #[must_use]
+    pub fn log_size_for(&self, id: u32) -> Option<u64> {
+        self.log_size
+            .filter(|reading| reading.id == id)?
+            .total_bytes
+    }
+
     /// The ceiling every row's CPU sparkline scales against: the busiest
     /// sample any sheep has recorded in the retained window.
     ///
