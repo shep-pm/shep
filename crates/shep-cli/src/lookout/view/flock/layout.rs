@@ -71,6 +71,27 @@ pub fn gutter(selected: bool, palette: Palette) -> (&'static str, Style) {
 /// An ANSI escape counts as the literal text a `Span` draws it as, unlike
 /// [`crate::output::width::visible_width`], since nothing here writes to a
 /// real terminal that would interpret it.
+/// [`fit`] for a caller that already owns its text.
+///
+/// The common case is a cell whose text already fits its column, and there
+/// `fit` copies the whole string into a second one just to pad it. Every table
+/// cell arrives here as a fresh `String` from its own `*_cell` function, so a
+/// wide flock table was allocating twice per cell, rows times columns times
+/// thirty a second.
+///
+/// Truncation falls through to [`fit`], which builds a shorter string either
+/// way, so the rule stays in one place.
+#[must_use]
+pub fn fit_owned(mut text: String, width: u16) -> String {
+    let columns: usize = text.chars().map(char_columns).sum();
+    let width = usize::from(width);
+    if columns <= width {
+        text.extend(core::iter::repeat_n(' ', width - columns));
+        return text;
+    }
+    fit(&text, u16::try_from(width).unwrap_or(u16::MAX))
+}
+
 #[must_use]
 pub fn fit(text: &str, width: u16) -> String {
     let width = usize::from(width);

@@ -1,7 +1,7 @@
 use super::super::super::app::{REVEAL_HOLDS, Reveal, SecretsPane, TypingWhat};
 use super::super::super::secrets::SecretRow;
 use super::super::super::theme::Palette;
-use super::super::flock::fit;
+use super::super::flock::{fit, fit_owned};
 use super::column_tiers::Column;
 use crate::output::width::char_columns;
 use ratatui::style::Style;
@@ -203,8 +203,8 @@ pub(super) fn row_line(
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
-        let text = fit(
-            &row_cell(row, *column, revealed, typing, environment_count, now),
+        let text = fit_owned(
+            row_cell(row, *column, revealed, typing, environment_count, now),
             column.width(),
         );
         spans.push(Span::styled(text, ground));

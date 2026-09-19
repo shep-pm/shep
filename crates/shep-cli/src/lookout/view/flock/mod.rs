@@ -28,7 +28,7 @@ pub(super) use columns::cfg_tier_width;
 pub use columns::{columns_for, fold_columns_for, fold_columns_header_line, header_line};
 pub use facts::FrameFacts;
 pub use fold::fold_key_line;
-pub use layout::{GUTTER, MIN_HEIGHT, MIN_WIDTH, fit, gutter, mark, scroll_offset};
+pub use layout::{GUTTER, MIN_HEIGHT, MIN_WIDTH, fit, fit_owned, gutter, mark, scroll_offset};
 pub use row::key_line;
 #[cfg(test)]
 pub use row::row_line;

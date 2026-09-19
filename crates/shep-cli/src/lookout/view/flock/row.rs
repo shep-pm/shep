@@ -15,7 +15,7 @@ use super::super::super::theme::Palette;
 use super::super::cell;
 use super::columns::{Column, name_width};
 use super::facts::FrameFacts;
-use super::layout::{fit, pad_ground};
+use super::layout::{fit_owned, pad_ground};
 use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 
 /// One line for a row the table draws: a real sheep, the header above an
@@ -111,8 +111,8 @@ fn group_line(
         } else {
             column.width()
         };
-        let text = fit(
-            &group_cell(name, *column, &totals, &status_text, &members),
+        let text = fit_owned(
+            group_cell(name, *column, &totals, &status_text, &members),
             cell_width,
         );
         let style = cell_style(palette, *column, status_style, status, None);
@@ -220,8 +220,8 @@ pub fn row_line(
         } else {
             column.width()
         };
-        let text = fit(
-            &cell(app, row, *column, grouped, facts.cpu_ceiling),
+        let text = fit_owned(
+            cell(app, row, *column, grouped, facts.cpu_ceiling),
             cell_width,
         );
         let style = cell_style(palette, *column, status_style, status, mem_ceil_ratio);
@@ -417,6 +417,7 @@ fn push_row_cell(
 mod tests {
     use super::super::super::fixtures;
     use super::super::columns::ALL;
+    use super::super::layout::fit;
     use super::*;
 
     /// Not a "-": the column is a bar, and an all-tail bar reads as

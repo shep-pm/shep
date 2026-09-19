@@ -13,7 +13,7 @@ use super::super::super::theme::Palette;
 use super::super::cell;
 use super::columns::{FoldColumn, fold_name_width};
 use super::facts::FrameFacts;
-use super::layout::{fit, pad_ground};
+use super::layout::{fit_owned, pad_ground};
 use super::row::section_line;
 use crate::output::{human_bytes, human_duration};
 
@@ -95,8 +95,8 @@ fn fold_header_line(
         } else {
             column.width()
         };
-        let text = fit(
-            &fold_header_cell(app, name, *column, &totals, total_memory, share_percent),
+        let text = fit_owned(
+            fold_header_cell(app, name, *column, &totals, total_memory, share_percent),
             cell_width,
         );
         match column {
@@ -229,8 +229,8 @@ fn fold_group_line(
         } else {
             column.width()
         };
-        let text = fit(
-            &fold_group_cell(name, *column, &totals, &status_text),
+        let text = fit_owned(
+            fold_group_cell(name, *column, &totals, &status_text),
             cell_width,
         );
         let style = if *column == FoldColumn::Status {
@@ -299,7 +299,7 @@ fn fold_member_line(
         } else {
             column.width()
         };
-        let text = fit(&fold_member_cell(app, row, *column), cell_width);
+        let text = fit_owned(fold_member_cell(app, row, *column), cell_width);
         let style = if *column == FoldColumn::Status {
             status_style
         } else {

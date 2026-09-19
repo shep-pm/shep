@@ -8,7 +8,6 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
 
 use crate::lookout::app::{App, HISTORY};
 use crate::lookout::theme::Palette;
@@ -249,9 +248,12 @@ pub(super) fn draw_sparkline_row(
 /// top. Callers only reach here once [`draw`](super::draw) has already
 /// checked `area`
 /// is tall enough for `row`.
+///
+/// `set_stringn`, not a `Line` of one `Span`: the `Span` needs an owned
+/// `String` and this runs ten to fifteen times a frame, where the borrowed
+/// `&str` is all the buffer ever needed.
 fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style) {
-    let line = Line::from(Span::styled(text.to_string(), style));
-    buffer.set_line(area.x, area.y + row, &line, area.width);
+    buffer.set_stringn(area.x, area.y + row, text, usize::from(area.width), style);
 }
 
 /// The chart body's width in cells: `area`'s own `width` less [`GUTTER`]

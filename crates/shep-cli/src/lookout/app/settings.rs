@@ -258,6 +258,20 @@ impl Settings {
         rows
     }
 
+    /// How many rows [`Self::rows`] would build, without building them.
+    ///
+    /// Every cursor move asks for this and nothing else, and `rows` allocates a
+    /// `Vec` to answer it.
+    #[must_use]
+    pub fn rows_len(&self) -> usize {
+        self.fields
+            .fields()
+            .iter()
+            .filter(|f| SettingField::from_key(&f.key).is_some())
+            .count()
+            + self.snapshot.dogs.len()
+    }
+
     /// The field model behind the scalar rows.
     #[must_use]
     pub fn fields(&self) -> &FieldSet {
@@ -276,17 +290,17 @@ impl Settings {
     /// Moves the cursor by `delta` rows, clamped to [`Self::rows`], never
     /// wrapping.
     pub(super) fn move_by(&mut self, delta: isize) {
-        let len = self.rows().len();
+        let len = self.rows_len();
         self.view.move_by(delta, len);
     }
 
     pub(super) fn move_to_first(&mut self) {
-        let len = self.rows().len();
+        let len = self.rows_len();
         self.view.move_to(0, len);
     }
 
     pub(super) fn move_to_last(&mut self) {
-        let len = self.rows().len();
+        let len = self.rows_len();
         self.view.move_to(len.saturating_sub(1), len);
     }
 
@@ -298,7 +312,7 @@ impl Settings {
 
     /// Records the terminal's height.
     pub fn set_rows(&mut self, rows: usize) {
-        let len = self.rows().len();
+        let len = self.rows_len();
         self.view.set_rows(rows, len);
     }
 }
