@@ -273,7 +273,7 @@ pub async fn boot<R: ProcessRunner>(
             carried_apps.extend(apps_for_the_roll(&flock));
             builder
                 .spawn_adopted(flock, counters, reloads)
-                .map_err(|source| BootError::Adopt(source.to_string()))?
+                .map_err(|source| BootError::Adopt(Box::new(source)))?
         }
         None => builder.spawn(),
     };

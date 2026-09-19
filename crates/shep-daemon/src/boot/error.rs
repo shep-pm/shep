@@ -24,10 +24,9 @@ use crate::snapshot::SnapshotError;
 pub enum BootError {
     /// A flock this image inherited across a handover could not be installed.
     ///
-    /// A `String` because the two underlying sources are private types in
-    /// different modules; what a caller needs is the sentence naming which
-    /// sheep is now unsupervised.
-    Adopt(String),
+    /// Boxed rather than named: the two steps that fail here report different
+    /// types, and one of them is `pub(crate)`, so naming it would widen it.
+    Adopt(Box<dyn core::error::Error + Send + Sync>),
     /// A filesystem step failed (carries the path and the OS error)
     ///
     /// No `From<std::io::Error>`, here or on any sibling: `ReadyWrite` wraps
@@ -87,9 +86,9 @@ impl fmt::Display for BootError {
                 path.display()
             ),
             Self::ReadyWrite(err) => write!(f, "writing the readiness line failed: {err}"),
-            Self::Adopt(reason) => write!(
+            Self::Adopt(source) => write!(
                 f,
-                "this shepherd was handed a flock it could not take over: {reason}. The flock is \
+                "this shepherd was handed a flock it could not take over: {source}. The flock is \
                  still running and nothing is supervising it. `shep daemon reload` is not the \
                  way back: it needs a live shepherd to ask and to signal, and this process is \
                  about to exit without ever serving. It holds the pidfile until it does, so the \
@@ -109,8 +108,7 @@ impl core::error::Error for BootError {
             Self::SocketPathTooLong { .. } => None,
             Self::Snapshot(err) => Some(err),
             Self::ReadyWrite(err) => Some(err),
-            // Both underlying types are module-private.
-            Self::Adopt(_) => None,
+            Self::Adopt(source) => Some(source.as_ref()),
         }
     }
 }
@@ -118,5 +116,28 @@ impl core::error::Error for BootError {
 impl From<SnapshotError> for BootError {
     fn from(source: SnapshotError) -> Self {
         Self::Snapshot(source)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::error::Error as _;
+
+    // The point of the boxed payload: whatever the adoption step said is still
+    // reachable by anything walking the chain.
+    #[test]
+    fn an_adopt_failure_reports_the_underlying_error_as_its_source() {
+        let err = BootError::Adopt(Box::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fd 7 names no open descriptor",
+        )));
+
+        let source = err.source().expect("Adopt must report a source");
+        assert_eq!(source.to_string(), "fd 7 names no open descriptor");
+        assert!(
+            err.to_string().contains("fd 7 names no open descriptor"),
+            "the message must still name what failed: {err}"
+        );
     }
 }
