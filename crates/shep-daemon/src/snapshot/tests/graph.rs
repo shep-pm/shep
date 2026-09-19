@@ -8,7 +8,7 @@ use super::super::*;
 
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::supervisor::spawn_supervisor;
-use crate::testing::{capture_logs, roll_of, test_paths};
+use crate::testing::{capture_logs, roll_of, sorted_status, test_paths};
 use shep_core::config::graph::{BootNode, NodeKind, plan};
 use shep_core::config::{AppConfig, normalize};
 use shep_core::protocol::{BusEvent, DogSource, ProcessEventKind, ProcessInfo};
@@ -93,15 +93,12 @@ async fn a_cyclic_roll_still_brings_the_flock_up() {
         .expect("a cycle must not refuse the restore");
 
     assert_eq!(restored, vec!["a".to_string(), "b".to_string()]);
-    let mut listed = handle.list().await;
-    listed.sort_by(|left, right| left.name.cmp(&right.name));
-    let seen: Vec<(&str, ProcStatus)> = listed
-        .iter()
-        .map(|info| (info.name.as_str(), info.status))
-        .collect();
     assert_eq!(
-        seen,
-        vec![("a", ProcStatus::Online), ("b", ProcStatus::Online)],
+        sorted_status(&handle).await,
+        [
+            ("a".to_string(), ProcStatus::Online),
+            ("b".to_string(), ProcStatus::Online)
+        ],
         "both members of the knot run; neither waits for the other"
     );
     handle.shutdown().await;

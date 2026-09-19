@@ -15,7 +15,7 @@ use shep_core::status::ProcStatus;
 
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::supervisor::spawn_supervisor;
-use crate::testing::{roll_of, test_paths};
+use crate::testing::{roll_of, sorted_status, test_paths};
 
 /// Restoring only the running ones would make `shep stop` destructive
 /// across a daemon restart: the sheep would leave the flock entirely.
@@ -123,13 +123,12 @@ async fn muster_restores_both_and_starts_only_the_one_that_was_up() {
         "both are restored to the flock; only one of them runs"
     );
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![("down", ProcStatus::Stopped), ("up", ProcStatus::Online)],
+        sorted_status(&handle).await,
+        [
+            ("down".to_string(), ProcStatus::Stopped),
+            ("up".to_string(), ProcStatus::Online)
+        ],
         "the sheep that was down is listed and stopped, not missing"
     );
     handle.shutdown().await;
@@ -177,16 +176,12 @@ async fn a_bad_saved_app_does_not_take_the_apps_after_it_down() {
         ]
     );
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![
-            ("a-good", ProcStatus::Online),
-            ("b-bad", ProcStatus::Errored),
-            ("c-good", ProcStatus::Online),
+        sorted_status(&handle).await,
+        [
+            ("a-good".to_string(), ProcStatus::Online),
+            ("b-bad".to_string(), ProcStatus::Errored),
+            ("c-good".to_string(), ProcStatus::Online),
         ],
         "every app after the broken one must still get its turn, and the \
          broken one must be visible rather than absent"
@@ -235,13 +230,12 @@ async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
         .unwrap();
     assert_eq!(restored, vec!["good".to_string(), "gone".to_string()]);
 
-    let mut listed = handle.list().await;
-    listed.sort_by(|a, b| a.name.cmp(&b.name));
-    let seen: Vec<(&str, ProcStatus)> =
-        listed.iter().map(|i| (i.name.as_str(), i.status)).collect();
     assert_eq!(
-        seen,
-        vec![("gone", ProcStatus::Errored), ("good", ProcStatus::Online)],
+        sorted_status(&handle).await,
+        [
+            ("gone".to_string(), ProcStatus::Errored),
+            ("good".to_string(), ProcStatus::Online)
+        ],
         "the app that could still run must come up, and the one that \
          could not must be visible rather than absent"
     );

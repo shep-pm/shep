@@ -33,7 +33,7 @@ use crate::probes::{ProbeFailure, Prober};
 use crate::rpc::RpcContext;
 use crate::runner::{ProcIo, ProcessRunner, RunnerError, SpawnSpec};
 use crate::snapshot::{FlockRegistry, FlockSnapshot, SavedApp};
-use crate::supervisor::SupervisorBuilder;
+use crate::supervisor::{SupervisorBuilder, SupervisorHandle};
 
 // A hand-rolled `MakeWriter` over one shared buffer, not
 // `fmt::layer().with_test_writer()`: the test writer hands its output to
@@ -149,6 +149,19 @@ fn a_sibling_thread_reaching_a_callsite_first_cannot_empty_the_capture() {
         "a sibling thread registering first must not disable the callsite for \
          this capture: {rendered:?}"
     );
+}
+
+/// Every sheep the supervisor holds, by name and status, in name order.
+///
+/// A listing is only assertable once it is sorted, and the flock a restore
+/// installs is not in the order the roll named.
+pub(crate) async fn sorted_status(handle: &SupervisorHandle) -> Vec<(String, ProcStatus)> {
+    let mut listed = handle.list().await;
+    listed.sort_by(|left, right| left.name.cmp(&right.name));
+    listed
+        .into_iter()
+        .map(|info| (info.name, info.status))
+        .collect()
 }
 
 /// A muster roll holding `apps`, every one of them recorded as running.
