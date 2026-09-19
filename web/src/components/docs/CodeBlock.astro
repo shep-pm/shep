@@ -79,6 +79,22 @@ const headerCopy = Boolean(label) && iconCopy;
             >
               <path d="M20 6 9 17l-5-5" />
             </svg>
+            <svg
+              data-copy-error-icon
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              style="display:none"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4m0 4h.01" />
+            </svg>
           </button>
         )}
       </div>
@@ -170,42 +186,16 @@ const headerCopy = Boolean(label) && iconCopy;
     padding: 0;
     cursor: pointer;
   }
+
+  .code-copy[data-copy-failed="true"],
+  .code-copy-icon[data-copy-failed="true"] {
+    color: #b42318;
+    border-color: currentColor;
+  }
 </style>
 
 <script>
-  const REVERT_DELAY_MS = 1800;
+  import { bindCodeCopyButtons } from "../../scripts/code-copy.ts";
 
-  document
-    .querySelectorAll<HTMLButtonElement>("[data-code-copy]")
-    .forEach((button) => {
-      const label = button.querySelector<HTMLSpanElement>("[data-copy-label]");
-      const copyIcon = button.querySelector<SVGElement>("[data-copy-icon]");
-      const copiedIcon = button.querySelector<SVGElement>("[data-copied-icon]");
-      const pre = button
-        .closest(".code-block")
-        ?.querySelector<HTMLPreElement>(".code-block-pre");
-      let revertTimer: ReturnType<typeof setTimeout> | undefined;
-
-      const setCopied = (copied: boolean) => {
-        if (label) label.textContent = copied ? "copied" : "copy";
-        if (copyIcon) copyIcon.style.display = copied ? "none" : "";
-        if (copiedIcon) copiedIcon.style.display = copied ? "" : "none";
-        if (copyIcon || copiedIcon) {
-          button.setAttribute("aria-label", copied ? "Copied" : "Copy command");
-        }
-      };
-
-      button.addEventListener("click", async () => {
-        const text = pre?.textContent ?? "";
-        if (!navigator.clipboard) return;
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          return;
-        }
-        setCopied(true);
-        clearTimeout(revertTimer);
-        revertTimer = setTimeout(() => setCopied(false), REVERT_DELAY_MS);
-      });
-    });
+  bindCodeCopyButtons(document);
 </script>
