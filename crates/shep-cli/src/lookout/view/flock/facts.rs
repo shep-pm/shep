@@ -16,6 +16,10 @@ use super::super::super::app::App;
 /// snapshot, a sample pass and a filter edit, and a cache that misses one of
 /// those draws a stale table. Three passes over the flock per frame is already
 /// the whole of the win.
+///
+/// Derived `Debug` rather than a redacted one (IR-41): three numbers and a set
+/// of app names, none of which carries an env value or a secret.
+#[derive(Debug)]
 pub struct FrameFacts<'a> {
     /// The ceiling every CPU sparkline scales against, so the column stays
     /// comparable down the table. [`App::cpu_ceiling`] explains the floor.

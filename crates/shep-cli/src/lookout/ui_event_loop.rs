@@ -66,6 +66,15 @@ where
     // Set by `Effect::RefreshSelected` and by `Effect::PollNow`, cleared once
     // the coalesced request below has gone out.
     let mut lambs_dirty = false;
+    // Set wherever `feed_dirty` is, cleared once the read below has run.
+    //
+    // The feed's cadence, not the lamb walk's: `Msg::Snapshot` answers every
+    // ordinary poll with `Effect::RefreshFeed`, and its own comment gives the
+    // reason this flag needs the same trigger, that "the selected row's log
+    // paths can change even when the selection does not". Hung off
+    // `lambs_dirty` this refreshed on a selection change and then never again
+    // while an operator sat on one sheep watching it write.
+    let mut log_size_dirty = false;
     // The settings screen's file I/O, in flight. Each entry resolves to the
     // `Msg` its result belongs in. A set, not a slot: a second write can be
     // raised while the first still runs. Dropping the set cancels nothing, so
@@ -117,13 +126,20 @@ where
                 // means a request is already queued, and a dropped lamb fetch
                 // reads as "not read yet".
                 let _ = requests.try_send(Sent::Lambs { id });
-                // The detail pane's log size, read here for the same two
-                // reasons as the walk above: `run_ui` owns the reader, and a
-                // terminal too short for the pane must not pay for it. It used
-                // to be two `fs::metadata` calls inside the draw, so up to
-                // sixty a second for a number that moves when the sheep writes
-                // a line.
-                //
+            }
+            lambs_dirty = false;
+        }
+        if log_size_dirty && may_draw {
+            // The detail pane's log size. Read here for the same two reasons as
+            // the walk above: `run_ui` owns the reader, and a terminal too
+            // short to draw the pane must not pay for a read it cannot show.
+            // It used to be two `fs::metadata` calls inside the draw, so up to
+            // sixty a second for a number that moves when the sheep writes a
+            // line.
+            let height = terminal.size().map_or(0, |size| size.height);
+            if super::view::panes_for(height).detail
+                && let Some(RowKey::Sheep(id)) = app.selected()
+            {
                 // Paths cloned out before `app` is borrowed mutably, the same
                 // as the feed read above.
                 let paths = app
@@ -137,7 +153,7 @@ where
                     let _ = app.update(Msg::LogSize { id, total_bytes });
                 }
             }
-            lambs_dirty = false;
+            log_size_dirty = false;
         }
         if dirty && may_draw {
             // Told before the draw it is about to feed, not after: a
@@ -224,11 +240,13 @@ where
             // that also owns the redraw. Coalesced onto `MIN_REDRAW` instead.
             Effect::RefreshFeed => {
                 feed_dirty = true;
+                log_size_dirty = true;
                 dirty = true;
             }
             Effect::RefreshSelected => {
                 feed_dirty = true;
                 lambs_dirty = true;
+                log_size_dirty = true;
                 dirty = true;
             }
             Effect::Send(sent) => {
