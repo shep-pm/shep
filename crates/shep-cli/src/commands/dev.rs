@@ -335,7 +335,7 @@ mod tests {
 
         let rendered = refusal.to_string();
         assert!(
-                rendered.contains(shep_core::paths::HOME_DIR_VAR),
+            rendered.contains(shep_core::paths::HOME_DIR_VAR),
             "an operator cannot fix $SHEP_DEV_HOME when they never set it: {rendered}"
         );
         assert!(
