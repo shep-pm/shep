@@ -142,7 +142,7 @@ fn dev_home(
         Some(dir) => require_absolute(DEV_HOME_VAR, PathBuf::from(dir))?,
         None => {
             let dir = home_dir.ok_or(DevHomeRefusal::Unresolved)?;
-            require_absolute(crate::home::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
+            require_absolute(shep_core::paths::HOME_DIR_VAR, dir.to_path_buf())?.join(".shep-dev")
         }
     };
     let inject = |key: &str| (key == "SHEP_HOME").then(|| home.to_string_lossy().into_owned());
@@ -329,13 +329,13 @@ mod tests {
         };
         assert!(
             matches!(&refusal, DevHomeRefusal::Relative { knob, given, .. }
-                if *knob == crate::home::HOME_DIR_VAR && given == Path::new("ada")),
+                if *knob == shep_core::paths::HOME_DIR_VAR && given == Path::new("ada")),
             "the refusal must carry the home directory as supplied, not the joined `.shep-dev`"
         );
 
         let rendered = refusal.to_string();
         assert!(
-            rendered.contains(crate::home::HOME_DIR_VAR),
+            rendered.contains(shep_core::paths::HOME_DIR_VAR),
             "an operator cannot fix $SHEP_DEV_HOME when they never set it: {rendered}"
         );
         assert!(
