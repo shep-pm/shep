@@ -68,12 +68,13 @@ impl ReplyRows {
     const PRIORITIES: &'static [u8] = &[0, 0, 0, 6];
 }
 
-// One JSON key rule for the three per-sheep reply tables; the panic names the
-// concrete type. A macro, not a shared fn: rustc's dead-code pass cannot see
-// a use that occurs only inside another trait impl's body.
+// One JSON key rule for the three per-sheep reply tables. A macro, not a
+// shared fn: rustc's dead-code pass cannot see a use that occurs only inside
+// another trait impl's body. The panic names `Self` so a rename cannot
+// leave a stale literal in an unreachable arm.
 macro_rules! reply_rows_json_key {
-    ($caller:expr, $header:expr) => {{
-        let caller: &'static str = $caller;
+    ($header:expr) => {{
+        let caller: &'static str = core::any::type_name::<Self>();
         let header: &str = $header;
         match header {
             "ID" => "id",
@@ -116,7 +117,7 @@ impl Render for TriggeredRows {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        reply_rows_json_key!("TriggeredRows", header)
+        reply_rows_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
@@ -209,7 +210,7 @@ impl Render for SignalledRows {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        reply_rows_json_key!("SignalledRows", header)
+        reply_rows_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
@@ -263,7 +264,7 @@ impl Render for SentLineRows {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        reply_rows_json_key!("SentLineRows", header)
+        reply_rows_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
