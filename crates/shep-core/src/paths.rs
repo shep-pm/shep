@@ -84,9 +84,9 @@ pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
 #[cfg(not(windows))]
 pub const HOME_DIR_VAR: &str = "$HOME";
 
-/// Names `%USERPROFILE%` rather than `HOME`: a stock Windows session sets
-/// none of the first, so `%USERPROFILE%` is the first home variable that
-/// answers.
+/// Names `%USERPROFILE%` rather than `HOME`: although [`user_home`] reads
+/// `HOME` first, a stock Windows session sets none, so `%USERPROFILE%` is
+/// the first of the three that answers.
 #[cfg(windows)]
 pub const HOME_DIR_VAR: &str = "%USERPROFILE%";
 
