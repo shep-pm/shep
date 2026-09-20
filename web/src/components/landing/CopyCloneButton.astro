@@ -2,7 +2,8 @@
 /*
  * Hero copy-to-clipboard button (docs/shep-design/README.md,
  * "Interactions > Copy button"). Writes the install command, flips its label
- * copy -> copied, and reverts after 1800ms.
+ * copy -> copied and reverts after 1800ms; a failed write shows "failed"
+ * until the next attempt.
  */
 const INSTALL_COMMAND = "cargo install shep";
 ---
@@ -73,8 +74,18 @@ const INSTALL_COMMAND = "cargo install shep";
       const command = button.dataset.cloneCommand ?? "";
       let revertTimer: ReturnType<typeof setTimeout> | undefined;
 
-      button.addEventListener("click", () => {
-        navigator.clipboard?.writeText(command);
+      button.addEventListener("click", async () => {
+        // writeText must be awaited before claiming success: a denied
+        // permission or a missing clipboard API throws here and must not
+        // read as "copied". A failed attempt leaves the label at "failed"
+        // until the next try, mirroring the docs CodeBlock button.
+        try {
+          await navigator.clipboard.writeText(command);
+        } catch {
+          if (label) label.textContent = "failed";
+          clearTimeout(revertTimer);
+          return;
+        }
         if (label) label.textContent = "copied";
         clearTimeout(revertTimer);
         revertTimer = setTimeout(() => {
