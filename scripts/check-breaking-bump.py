@@ -141,6 +141,23 @@ def main() -> int:
     parser.add_argument("--head-version", required=True)
     args = parser.parse_args()
 
+    # A shallow clone answers `git log` without error and simply stops at the
+    # graft, so a truncated range is indistinguishable from a complete one.
+    # `release-plz-pr.yml` fetches at depth 0, and on this history every depth
+    # shallow enough to cut the range also leaves `git describe` with no tag
+    # to find, which refuses below. Neither of those is a property of the
+    # script, so it checks rather than relying on them: a merge's second
+    # parent is exactly what a graft drops, and the commits this exists to
+    # catch live there.
+    if git("rev-parse", "--is-shallow-repository").strip() == "true":
+        print(
+            "This is a shallow clone, where git log stops at the graft and says\n"
+            "nothing, so a breaking commit below it would read as absent. Refusing\n"
+            "rather than classifying a range that may be cut. Fetch at depth 0.",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         tag = git(
             "describe", "--tags", "--abbrev=0", f"--match={TAG_GLOB}", args.base_sha
