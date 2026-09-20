@@ -210,12 +210,13 @@ impl DogActionRow<'_> {
     const PRIORITIES: &'static [u8] = &[0, 7, 6, 0];
 }
 
-// One JSON key rule for the four dog-action tables; the panic names the
-// concrete type. A macro, not a shared fn: rustc's dead-code pass cannot see
-// a use that occurs only inside another trait impl's body.
+// One JSON key rule for the four dog-action tables. A macro, not a shared
+// fn: rustc's dead-code pass cannot see a use that occurs only inside
+// another trait impl's body. The panic names `Self` so a rename cannot
+// leave a stale literal in an unreachable arm.
 macro_rules! dog_action_json_key {
-    ($caller:expr, $header:expr) => {{
-        let caller: &'static str = $caller;
+    ($header:expr) => {{
+        let caller: &'static str = core::any::type_name::<Self>();
         let header: &str = $header;
         match header {
             "NAME" => "name",
@@ -250,7 +251,7 @@ impl Render for DogEnabledRow {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!("DogEnabledRow", header)
+        dog_action_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
@@ -299,7 +300,7 @@ impl Render for DogDisabledRow {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!("DogDisabledRow", header)
+        dog_action_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
@@ -350,7 +351,7 @@ impl Render for DogAdoptedRow {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!("DogAdoptedRow", header)
+        dog_action_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
@@ -404,7 +405,7 @@ impl Render for DogRehomedRow {
 
     #[track_caller]
     fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!("DogRehomedRow", header)
+        dog_action_json_key!(header)
     }
 
     const JSON_ONLY: &'static [&'static str] = &[];
