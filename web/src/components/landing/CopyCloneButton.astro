@@ -8,7 +8,7 @@ const INSTALL_COMMAND = "cargo install shep";
 ---
 
 <button type="button" class="copy-clone press" style="--shadow-offset:6px; --press-offset:3px;" data-copy-clone data-clone-command={INSTALL_COMMAND}>
-  <span class="prompt">$</span> cargo install shep
+  <span class="prompt">$</span> {INSTALL_COMMAND}
   <span class="label" data-copy-label>copy</span>
 </button>
 
@@ -73,13 +73,17 @@ const INSTALL_COMMAND = "cargo install shep";
       const command = button.dataset.cloneCommand ?? "";
       let revertTimer: ReturnType<typeof setTimeout> | undefined;
 
-      button.addEventListener("click", () => {
-        navigator.clipboard?.writeText(command);
-        if (label) label.textContent = "copied";
-        clearTimeout(revertTimer);
-        revertTimer = setTimeout(() => {
-          if (label) label.textContent = "copy";
-        }, REVERT_DELAY_MS);
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard?.writeText(command);
+          if (label) label.textContent = "copied";
+          clearTimeout(revertTimer);
+          revertTimer = setTimeout(() => {
+            if (label) label.textContent = "copy";
+          }, REVERT_DELAY_MS);
+        } catch {
+          // Clipboard write failed — don't show "copied"
+        }
       });
     });
 </script>
