@@ -148,6 +148,50 @@ does, produces four tags that can only ever hold the same number.
 Keep the `v` prefix, in either shape. It is what GitHub's release UI and most
 changelog tooling expect.
 
+## A breaking commit can go missing from the bump
+
+**release-plz does not read one `git log`.** It walks each package's history a
+commit at a time, checking each one out and asking the commit it is standing
+on for its own next ancestor:
+
+```bash
+git log --format=%H -n 2 -- crates/shep-daemon
+```
+
+That walk is sound on a line of history and unsound on a diamond. Two pull
+requests cut from the same base and merged one after the other make one: the
+walk enters at the second merge, follows whichever leg it steps onto first,
+and never crosses to the other. Every commit on the far leg is invisible to
+the version bump and to the changelog alike.
+
+Measured 2026-09-20 against release-plz 0.3.160.
+[535](https://github.com/shep-pm/shep/pull/535) and
+[536](https://github.com/shep-pm/shep/pull/536) were both cut from `12ddcdc2`
+and merged in turn. `ed89a01b`, `refactor(daemon)!: carry the real error in
+BootError::Adopt`, sat on 535's leg, and the release pull request came out as
+0.8.5 with no changelog line for it. cargo-semver-checks passed, having no
+lint for a changed variant payload under `#[non_exhaustive]`, so nothing else
+objected either. The same commits rebased into a line produced 0.9.0 with the
+entry present, which is what pins the cause on the topology rather than on
+`release-plz-changelog.toml`.
+
+`git log --full-history` prunes neither leg.
+`scripts/check-breaking-bump.py` uses it to list the breaking commits since
+the last `shep-v*` tag, and refuses a release pull request whose bump is too
+small to carry them. `release-plz-pr.yml` runs it as the second of that step's
+three guards, before the empty-changelog one, so a lost commit reports itself
+instead of arriving as an empty section with a misleading explanation.
+
+Two things it does not do. It does not catch two breaking commits where
+release-plz saw one and missed the other, since the version is then right and
+only the changelog is a line short. It does not fix the walk, so an ordinary
+`feat` or `fix` line can still go missing the same way.
+
+The structural fix is a history with no diamonds in it. Requiring branches to
+be up to date before merging would deliver that, at the cost of re-running
+sixteen required checks on every open pull request each time anything merges.
+Whether that trade is worth it is the maintainer's call.
+
 ## The sequence
 
 **Every release after the first happens on its own.** release-plz opens the

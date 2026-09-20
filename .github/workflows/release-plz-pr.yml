@@ -78,7 +78,7 @@ jobs:
       # PR also happens legitimately, when a hand-edited version leaves
       # release-plz nothing to bump. Left open and red, a human decides
       # which case it is before merging.
-      - name: Fail if the release PR has nothing in it
+      - name: Guard the release PR's version and changelog
         id: noop-guard
         if: ${{ steps.release-plz.outputs.prs_created == 'true' }}
         env:
@@ -112,6 +112,32 @@ jobs:
             echo "::error::That is the no-op shape that looped on zendriver-rs on 2026-08-08, and also"
             echo "::error::what a hand-edited version leaves behind. Left open for a human: merge it if"
             echo "::error::the changelog entry is wanted, close it if this is a loop."
+            exit 1
+          fi
+
+          # A bump can also be real and still be too small. release-plz walks
+          # each package's history one commit at a time, asking the commit it
+          # is standing on for its own next ancestor, so on a diamond (two
+          # branches cut from one base, merged in turn) it goes down one leg
+          # and never crosses to the other. Measured 2026-09-20 against
+          # release-plz 0.3.160: it lost `refactor(daemon)!: carry the real
+          # error in BootError::Adopt` that way and proposed 0.8.5 for a break
+          # that needed 0.9.0. cargo-semver-checks passed, having no lint for
+          # a changed variant payload under `#[non_exhaustive]`, so nothing
+          # else would have caught it either. The same commits rebased
+          # into a line produced 0.9.0 correctly.
+          #
+          # The script reads git and two manifests, so it wants the tags and
+          # the full history that `fetch-depth: 0` above fetches, and no
+          # toolchain. `manifest_version` returns the line with its spaces
+          # gone, so the quotes come off here.
+          if ! python3 scripts/check-breaking-bump.py \
+              --base-sha "$base_sha" \
+              --base-version "$(printf '%s' "${base_version#version=}" | tr -d '"')" \
+              --head-version "$(printf '%s' "${head_version#version=}" | tr -d '"')"; then
+            echo "::error::release PR #$PR_NUMBER publishes a breaking change as a compatible release."
+            echo "::error::Left open for a human: set the version by hand on the release branch, or"
+            echo "::error::rebase the pull request that carried the break into one line of history."
             exit 1
           fi
 
