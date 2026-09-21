@@ -22,9 +22,9 @@ shep lookout   /home/ada/.shep                                                  
     max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
                                                                                           █ 512M, 2G                                                            
   env                                                                                     █ a bare number is bytes                                              
-   DATABASE_URL               (set)                                                                                                                             
-   NODE_ENV                   (set)                                                                                                                             
-   + add a key                                                                                                                                                  
+   DATABASE_URL               (set)                                                       █ refused: a two-letter unit                                          
+   NODE_ENV                   (set)                                                       █ refused: a lowercase unit                                           
+   + add a key                                                                            █ refused: a fraction                                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 

@@ -1437,9 +1437,9 @@ The same pane with two edits filed: cwd, which needs a respawn, and max_memory, 
 [0m[38;5;221m    max_memory  (unset) -> 256 B                                                      [0m  [0m[38;5;245m  VALIDATION[0m                                                            [0m
                                                                                         [0m[7m[38;5;29m  █ [0m512M, 2G                                                            [0m
 [0m[38;5;245m  env[0m                                                                                   [0m[7m[38;5;29m  █ [0ma bare number is bytes                                              [0m
-   DATABASE_URL               (set)                                                                                                                             [0m
-   NODE_ENV                   (set)                                                                                                                             [0m
- [0m[38;5;245m  + add a key              [0m                                                                                                                                    [0m
+   DATABASE_URL               (set)                                                     [0m[7m[38;5;166m  █ [0mrefused: a two-letter unit                                          [0m
+   NODE_ENV                   (set)                                                     [0m[7m[38;5;166m  █ [0mrefused: a lowercase unit                                           [0m
+ [0m[38;5;245m  + add a key              [0m                                                            [0m[7m[38;5;166m  █ [0mrefused: a fraction                                                 [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m

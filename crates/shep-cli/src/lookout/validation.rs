@@ -68,6 +68,28 @@ pub const MEMORY_FORMS: &[Form] = &[
     },
 ];
 
+/// The forms a [`ValueKind::MemSize`] field refuses.
+///
+/// shep's grammar is `^\d+(G|M|K)?$`, so all three are spellings somebody
+/// writes who knows the size they mean. A negative is left out, unlike
+/// [`DURATION_REFUSALS`]: a duration refuses a sign by its own rule after
+/// parsing, where `-1` is only one more character the size grammar has no
+/// place for.
+pub const MEMORY_REFUSALS: &[Form] = &[
+    Form {
+        text: "a two-letter unit",
+        examples: &["10MB", "2GB"],
+    },
+    Form {
+        text: "a lowercase unit",
+        examples: &["512m", "2g"],
+    },
+    Form {
+        text: "a fraction",
+        examples: &["1.5G"],
+    },
+];
+
 /// The forms a [`FieldKind::Bool`] field accepts.
 ///
 /// This table is not parser-backed: there is no `shep_core` grammar for a
@@ -111,7 +133,7 @@ impl Bullets {
 fn table_for(field: &Field) -> (&'static [Form], &'static [Form]) {
     match field.value_kind {
         Some(ValueKind::UpDuration) => return (DURATION_FORMS, DURATION_REFUSALS),
-        Some(ValueKind::MemSize) => return (MEMORY_FORMS, &[]),
+        Some(ValueKind::MemSize) => return (MEMORY_FORMS, MEMORY_REFUSALS),
         None => {}
     }
     match field.kind {
@@ -374,6 +396,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_refused_memory_form_fails_to_parse() {
+        for form in MEMORY_REFUSALS {
+            for example in form.examples {
+                assert!(
+                    example.parse::<MemSize>().is_err(),
+                    "{} is listed as refused but parses",
+                    example
+                );
+            }
+        }
+    }
+
     /// How many forms a `text` names.
     ///
     /// Commas and the word "or", because `BOOL_FORMS` separates with the
@@ -429,6 +464,42 @@ mod tests {
     fn a_plain_text_field_with_no_annotation_has_no_bullets() {
         let bullets = bullets(&text_field("fold"));
         assert!(bullets.is_empty());
+    }
+
+    /// The three arms of `table_for` that no other test reached: a bool
+    /// and an integer are keyed on `Field::kind` rather than on a
+    /// `value_kind`, and the size table's refusals are new. Every one of
+    /// them could have been swapped for the empty pair without failing
+    /// anything.
+    #[test]
+    fn every_type_table_reaches_the_panel() {
+        let cases = [
+            (FieldKind::Bool, None, BOOL_FORMS, &[] as &[Form]),
+            (FieldKind::Integer, None, INTEGER_FORMS, &[]),
+            (
+                FieldKind::Text,
+                Some(ValueKind::MemSize),
+                MEMORY_FORMS,
+                MEMORY_REFUSALS,
+            ),
+            (
+                FieldKind::Text,
+                Some(ValueKind::UpDuration),
+                DURATION_FORMS,
+                DURATION_REFUSALS,
+            ),
+        ];
+        for (kind, value_kind, accepts, refuses) in cases {
+            let mut field = text_field("max_memory");
+            field.kind = kind.clone();
+            field.value_kind = value_kind;
+            let bullets = bullets(&field);
+            let texts = |forms: &[Form]| -> Vec<String> {
+                forms.iter().map(|form| form.text.to_owned()).collect()
+            };
+            assert_eq!(bullets.accepts, texts(accepts), "{kind:?} accepts");
+            assert_eq!(bullets.refuses, texts(refuses), "{kind:?} refuses");
+        }
     }
 
     /// The one rule both refusal doors share. `ConfigPane::apply_typing`
