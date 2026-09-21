@@ -156,9 +156,13 @@ and both `benches/` gates. The serial run has caught a real regression.
 
   This paragraph said "the `!` on a pull request title is read by nobody:
   release-plz ignores merge commits" until 2026-09-21. It reads them.
-  `48905707` has two parents, and its subject is the top entry of
-  `crates/shep-daemon/CHANGELOG.md`, rendered from the pull request title that
-  `merge_commit_title = PR_TITLE` handed the merge commit.
+  `48905707` has two parents, and its subject is the
+  `Two of the three duplicated patterns in the snapshot tests` line under
+  shep-daemon 0.9.0, rendered from the pull request title that
+  `merge_commit_title = PR_TITLE` handed the merge commit. It is named
+  rather than placed, because an entry's position moves with every release:
+  this sentence said "the top entry" and was third by the time 0.9.0 shipped,
+  hours later.
 
   Measured 2026-09-04, and it is the reason this bullet exists. Of the 31
   commits behind `shep-core` 0.2.1, 19 were unreadable, and the split was
