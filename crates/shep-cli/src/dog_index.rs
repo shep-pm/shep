@@ -30,9 +30,28 @@ pub const DEFAULT_INDEX_URL: &str = "https://shep-pm.com/dogs.json";
 pub const INDEX_URL_ENV: &str = "SHEP_DOG_INDEX";
 
 /// The six categories a dog can be filed under, in the docs site's order.
-/// Mirrors `web/src/data/dogs.ts`'s `CATEGORIES`; an entry naming anything
-/// else is skipped.
+/// `the_categories_match_the_docs_site_list` and
+/// `the_schema_agrees_with_the_categories_and_source_kinds` hold this list,
+/// `web/src/data/dogs.ts`'s `CATEGORIES` and `web/public/dogs.schema.json`
+/// to the same contents, so a category joins all three at once or none.
+///
+/// What no test can pin is the binary an operator already has. This list is
+/// compiled in and the index is served live, so the two part company every
+/// time a category is added, which is what [`UNKNOWN_CATEGORY_FALLBACK`]
+/// is for.
 const CATEGORIES: [&str; 6] = ["logs", "metrics", "alerts", "health", "deploy", "other"];
+
+/// Where an entry naming a category this build has never heard of is filed.
+///
+/// An unknown category means the index is newer than the binary, not that
+/// the entry is bad, so the dog is still listed and still adoptable. Every
+/// other refusal in this module drops the entry it is about. This one does
+/// not, because the operator loses a real dog and is told only that a count
+/// went up.
+///
+/// Itself one of [`CATEGORIES`], which
+/// `the_unknown_category_fallback_is_itself_a_known_category` holds it to.
+const UNKNOWN_CATEGORY_FALLBACK: &str = "other";
 
 /// The only `version` this build's [`parse_index`] accepts. Bump this and
 /// the published `dogs.json` together when the wrapper's shape changes. An
@@ -73,7 +92,8 @@ pub struct AvailableDog {
     pub repo: String,
     /// SPDX license string.
     pub license: String,
-    /// One of [`CATEGORIES`].
+    /// Always one of [`CATEGORIES`]: an entry naming anything else is
+    /// filed under [`UNKNOWN_CATEGORY_FALLBACK`] rather than dropped.
     pub category: String,
     /// How the dog is built.
     pub source: DogSourceKind,
@@ -330,9 +350,15 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
     let repo = field(entry, "repo", sanitised)?;
     let license = field(entry, "license", sanitised)?;
     let category = field(entry, "category", sanitised)?;
-    if !CATEGORIES.contains(&category.as_str()) {
-        return None;
-    }
+    // Normalised, not refused: see `UNKNOWN_CATEGORY_FALLBACK`. A category
+    // is only a grouping heading, so an unrecognised one costs the entry its
+    // shelf and nothing else. `repo` below is the opposite case, where a
+    // scheme this build will not accept is the entry being untrustworthy.
+    let category = if CATEGORIES.contains(&category.as_str()) {
+        category
+    } else {
+        UNKNOWN_CATEGORY_FALLBACK.to_owned()
+    };
     if !is_https(&repo) {
         return None;
     }
@@ -566,11 +592,44 @@ mod tests {
         assert_eq!(index.skipped, 1);
     }
 
+    /// The index can add a category at any time, and `CATEGORIES` is
+    /// whatever was compiled in. Dropping the entry would hide a real,
+    /// adoptable dog from an operator on a version-old shep, and the skipped
+    /// count would be the only hint: a number naming neither the dog nor
+    /// the reason.
     #[test]
-    fn an_unknown_category_is_skipped_rather_than_shown() {
+    fn an_unknown_category_is_filed_under_the_fallback_rather_than_dropped() {
         let index = parse_index(one_entry_with_category("logz").as_bytes()).expect("parses");
-        assert_eq!(index.dogs.len(), 0);
-        assert_eq!(index.skipped, 1);
+        assert_eq!(
+            index.dogs.len(),
+            1,
+            "an unknown category must not drop the entry"
+        );
+        assert_eq!(index.dogs[0].category, UNKNOWN_CATEGORY_FALLBACK);
+        assert_eq!(
+            index.skipped, 0,
+            "a listed entry is never also counted skipped"
+        );
+    }
+
+    /// The passing case for the fallback above. Without it, a build that
+    /// filed every entry under `other` would pass that test too.
+    #[test]
+    fn a_known_category_survives_unchanged() {
+        let index = parse_index(one_entry_with_category("logs").as_bytes()).expect("parses");
+        assert_eq!(index.dogs[0].category, "logs");
+        assert_eq!(index.skipped, 0);
+    }
+
+    /// A fallback outside `CATEGORIES` would file the entry under a heading
+    /// the docs site never renders, which is the disappearance this exists
+    /// to prevent, reached the long way round.
+    #[test]
+    fn the_unknown_category_fallback_is_itself_a_known_category() {
+        assert!(
+            CATEGORIES.contains(&UNKNOWN_CATEGORY_FALLBACK),
+            "the fallback must be a category the index groups under"
+        );
     }
 
     #[test]
@@ -683,11 +742,16 @@ mod tests {
         assert_eq!(index.skipped, 1);
     }
 
+    /// The skip is triggered by a `repo` this build refuses, not by an
+    /// unrecognised category, which is normalised rather than dropped now
+    /// and so skips nothing. `description` is sanitised before `repo` is
+    /// checked, so the entry really does reach the skip with the sanitised
+    /// flag already set, which is the case worth pinning.
     #[test]
     fn a_skipped_entry_is_not_also_counted_as_sanitised() {
         let mut entry = valid_entry();
         entry["description"] = serde_json::Value::String("hostile\u{1b}[2J".to_string());
-        entry["category"] = serde_json::Value::String("logz".to_string());
+        entry["repo"] = serde_json::Value::String("http://example.com/x".to_string());
         let document = wrap_index(vec![entry]);
 
         let index = parse_index(document.as_bytes()).expect("parses");
