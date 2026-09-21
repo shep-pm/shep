@@ -449,10 +449,9 @@ impl ConfigPane {
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
-                    let text =
-                        format!("{key} is \"{text}\", which is not a whole number shep accepts");
+                    let refused = validation::not_a_whole_number(&key, text);
                     self.typing = Some(PaneTyping { key, buffer });
-                    return Some(Refusal { text });
+                    return Some(refused);
                 }
             },
             (_, text) => Value::String(text.to_owned()),

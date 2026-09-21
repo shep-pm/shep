@@ -204,7 +204,7 @@ pub fn refusal(field: &Field, typed: &str) -> Option<Refusal> {
 /// schema's own floor and ceiling.
 fn integer_refusal(field: &Field, typed: &str) -> Option<Refusal> {
     let Ok(number) = typed.parse::<i64>() else {
-        return Some(refuse(&field.key, typed, "a whole number", INTEGER_FORMS));
+        return Some(not_a_whole_number(&field.key, typed));
     };
     let key = &field.key;
     match (field.bounds.minimum, field.bounds.maximum) {
@@ -243,6 +243,21 @@ fn pattern_refusal(field: &Field, typed: &str) -> Option<Refusal> {
             field.key
         ),
     })
+}
+
+/// The refusal for a [`FieldKind::Integer`] buffer that is not a number.
+///
+/// Not built from [`INTEGER_FORMS`] through [`refuse`], which would append
+/// "try a whole number" to a sentence that has just said "is not a whole
+/// number". The table's own text still draws the panel, where "a whole
+/// number" is the whole answer and reads correctly.
+///
+/// `pub(super)`: `ConfigPane::apply_typing`'s own integer arm answers with
+/// this, so the one sentence has one spelling.
+pub(super) fn not_a_whole_number(key: &str, typed: &str) -> Refusal {
+    Refusal {
+        text: format!("{key} is \"{typed}\", which is not a whole number shep accepts"),
+    }
 }
 
 /// One refusal sentence, with what the field takes read off the same table
@@ -486,8 +501,12 @@ mod tests {
         let mut field = text_field("max_restarts");
         field.kind = FieldKind::Integer;
         let refused = refusal(&field, "lots").expect("lots is not a number");
-        assert!(refused.text.contains("max_restarts"), "{}", refused.text);
-        assert!(refused.text.contains("whole number"), "{}", refused.text);
+        // The whole sentence, because a `contains("whole number")` passed
+        // one that went on to say "try a whole number".
+        assert_eq!(
+            refused.text,
+            "max_restarts is \"lots\", which is not a whole number shep accepts"
+        );
     }
 
     /// Most fields are a plain string their schema says nothing about, and
