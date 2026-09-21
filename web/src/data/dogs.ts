@@ -43,23 +43,7 @@ import { slugify } from "./slug.ts";
 
 export const SUPPORTED_INDEX_VERSION = 1;
 
-/**
- * The seven categories a dog can be filed under, in the order the page
- * groups them. An unknown one is a typo in a pull request against this
- * file, so `validate()` refuses it; `crates/shep-cli/src/dog_index.rs`
- * reads the same list off a live index and files an unknown one under
- * `other` instead.
- */
-export type DogCategory =
-  | "logs"
-  | "metrics"
-  | "alerts"
-  | "health"
-  | "deploy"
-  | "interactive"
-  | "other";
-
-export const CATEGORIES: readonly DogCategory[] = [
+export const CATEGORIES = [
   "logs",
   "metrics",
   "alerts",
@@ -67,7 +51,16 @@ export const CATEGORIES: readonly DogCategory[] = [
   "deploy",
   "interactive",
   "other",
-];
+] as const;
+
+/**
+ * The seven categories a dog can be filed under, in the order the page
+ * groups them. An unknown one is a typo in a pull request against this
+ * file, so `validate()` refuses it; `crates/shep-cli/src/dog_index.rs`
+ * reads the same list off a live index and files an unknown one under
+ * `other` instead.
+ */
+export type DogCategory = typeof CATEGORIES[number]
 
 /**
  * Installable with `cargo install <package>` from crates.io. Carries no

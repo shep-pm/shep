@@ -1,5 +1,5 @@
 {
-  "$schema": "https://shep-pm.com/dogs.schema.json",
+  "$schema": "./dogs.schema.json",
   "version": 1,
   "dogs": [
     {

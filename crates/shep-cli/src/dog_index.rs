@@ -29,6 +29,13 @@ pub const DEFAULT_INDEX_URL: &str = "https://shep-pm.com/dogs.json";
 /// set it can already run `shep`.
 pub const INDEX_URL_ENV: &str = "SHEP_DOG_INDEX";
 
+/// Where an entry naming a category this build does not know is filed.
+///
+/// A category is a grouping heading, so an unknown one means the index is
+/// ahead of this binary rather than that the entry is bad. Filing it keeps
+/// the dog listed and adoptable. Itself one of [`CATEGORIES`].
+const UNKNOWN_CATEGORY_FALLBACK: &str = "other";
+
 /// The seven categories a dog can be filed under, in the docs site's order.
 ///
 /// `the_categories_match_the_docs_site_list` and
@@ -43,15 +50,8 @@ const CATEGORIES: [&str; 7] = [
     "health",
     "deploy",
     "interactive",
-    "other",
+    UNKNOWN_CATEGORY_FALLBACK,
 ];
-
-/// Where an entry naming a category this build does not know is filed.
-///
-/// A category is a grouping heading, so an unknown one means the index is
-/// ahead of this binary rather than that the entry is bad. Filing it keeps
-/// the dog listed and adoptable. Itself one of [`CATEGORIES`].
-const UNKNOWN_CATEGORY_FALLBACK: &str = "other";
 
 /// The only `version` this build's [`parse_index`] accepts. Bump this and
 /// the published `dogs.json` together when the wrapper's shape changes. An
