@@ -8,12 +8,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use shep_core::config::AppConfig;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::ProcessInfo;
 use shep_core::secrets;
 use shep_core::status::ProcStatus;
+use shep_daemon::snapshot::FlockSnapshot;
 
-use crate::commands::query::read_roll;
 use crate::commands::secret::daemon_config;
 
 /// One app from the roll that names at least one secret.
@@ -42,23 +43,34 @@ pub(crate) struct SecretNamer {
 /// Best-effort by construction. An app missing from the roll contributes
 /// nothing, which is what a sheep registered since the last roll write
 /// looks like.
-pub(crate) fn namers(paths: &ShepPaths, procs: &[ProcessInfo]) -> Vec<SecretNamer> {
-    let Some(roll) = read_roll(paths) else {
+///
+/// The roll arrives already parsed — the pane reads it once for this and
+/// for [`roll_age`] — and is indexed into a map here rather than scanned
+/// per name: `find` inside the loop is processes times apps with a string
+/// comparison each step, where the map is one pass over the roll plus a
+/// lookup per name.
+pub(crate) fn namers(
+    paths: &ShepPaths,
+    roll: Option<&FlockSnapshot>,
+    procs: &[ProcessInfo],
+) -> Vec<SecretNamer> {
+    let Some(roll) = roll else {
         return Vec::new();
     };
     let host_environment = daemon_config(paths).daemon.environment;
+    // First entry wins on a duplicate name, which is the match `find`
+    // would have taken.
+    let mut configs: BTreeMap<&str, &AppConfig> = BTreeMap::new();
+    for app in &roll.apps {
+        configs.entry(app.app.name.as_str()).or_insert(&app.app);
+    }
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut found = Vec::new();
     for proc in procs {
         if !seen.insert(proc.name.as_str()) {
             continue;
         }
-        let Some(config) = roll
-            .apps
-            .iter()
-            .find(|app| app.app.name == proc.name)
-            .map(|app| &app.app)
-        else {
+        let Some(config) = configs.get(proc.name.as_str()).copied() else {
             continue;
         };
         let references = secrets::references(config);
@@ -103,6 +115,7 @@ pub(crate) struct Reader {
 /// provider row.
 pub(crate) fn by_reference(
     paths: &ShepPaths,
+    roll: Option<&FlockSnapshot>,
     procs: &[ProcessInfo],
 ) -> BTreeMap<String, Vec<Reader>> {
     let online: BTreeSet<&str> = procs
@@ -111,7 +124,7 @@ pub(crate) fn by_reference(
         .map(|proc| proc.name.as_str())
         .collect();
     let mut map: BTreeMap<String, Vec<Reader>> = BTreeMap::new();
-    for namer in namers(paths, procs) {
+    for namer in namers(paths, roll, procs) {
         for reference in &namer.references {
             map.entry(reference.clone()).or_default().push(Reader {
                 name: namer.name.clone(),
@@ -126,19 +139,20 @@ pub(crate) fn by_reference(
     map
 }
 
-/// How long ago the muster roll was written, or `None` when it is missing
-/// or unreadable.
+/// How long ago the muster roll was written.
 ///
 /// The pane states this because a failed roll write only warns, so a stale
 /// roll is otherwise silent. A roll from the future reads as zero rather
 /// than as an error: a clock that moved is not the operator's problem to
 /// solve from this screen.
-pub(crate) fn roll_age(paths: &ShepPaths) -> Option<Duration> {
-    let roll = read_roll(paths)?;
+///
+/// Takes the roll the pane already parsed for the readers: this used to
+/// read and deserialise the whole snapshot a second time for one number.
+pub(crate) fn roll_age(roll: &FlockSnapshot) -> Duration {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis().try_into().unwrap_or(u64::MAX));
-    Some(Duration::from_millis(now.saturating_sub(roll.saved_at_ms)))
+    Duration::from_millis(now.saturating_sub(roll.saved_at_ms))
 }
 
 /// Test-only fixtures other `shep-cli` modules' tests reuse, so a roll and a
@@ -186,6 +200,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::query::read_roll;
     use shep_core::config::AppConfig;
 
     use super::test_support::{online, paths_under, stopped, write_roll};
@@ -203,7 +218,12 @@ mod tests {
             .insert("PW".into(), "{{secret:DB_PASSWORD}}".into());
         write_roll(&paths, &[plain, secretive]);
 
-        let found = namers(&paths, &[online("plain"), online("secretive")]);
+        let roll = read_roll(&paths);
+        let found = namers(
+            &paths,
+            roll.as_ref(),
+            &[online("plain"), online("secretive")],
+        );
 
         assert_eq!(found.len(), 1, "only the app with a reference: {found:?}");
         assert_eq!(found[0].name, "secretive");
@@ -221,7 +241,12 @@ mod tests {
         floating.env.insert("PW".into(), "{{secret:K}}".into());
         write_roll(&paths, &[pinned, floating]);
 
-        let found = namers(&paths, &[online("pinned"), online("floating")]);
+        let roll = read_roll(&paths);
+        let found = namers(
+            &paths,
+            roll.as_ref(),
+            &[online("pinned"), online("floating")],
+        );
 
         let pinned = found.iter().find(|n| n.name == "pinned").unwrap();
         let floating = found.iter().find(|n| n.name == "floating").unwrap();
@@ -241,7 +266,12 @@ mod tests {
         web.env.insert("PW".into(), "{{secret:K}}".into());
         write_roll(&paths, &[web]);
 
-        let found = namers(&paths, &[online("web"), online("web"), online("web")]);
+        let roll = read_roll(&paths);
+        let found = namers(
+            &paths,
+            roll.as_ref(),
+            &[online("web"), online("web"), online("web")],
+        );
 
         assert_eq!(found.len(), 1, "three instances, one config: {found:?}");
     }
@@ -258,7 +288,8 @@ mod tests {
         web.env.insert("B".into(), "{{secret:SENTRY_DSN}}".into());
         write_roll(&paths, &[catcher, web]);
 
-        let map = by_reference(&paths, &[online("catcher"), stopped("web")]);
+        let roll = read_roll(&paths);
+        let map = by_reference(&paths, roll.as_ref(), &[online("catcher"), stopped("web")]);
 
         let readers = map.get("SENTRY_DSN").expect("the key has readers");
         assert_eq!(readers.len(), 2);
@@ -276,7 +307,8 @@ mod tests {
         alpha.env.insert("A".into(), "{{secret:K}}".into());
         write_roll(&paths, &[zeta, alpha]);
 
-        let map = by_reference(&paths, &[online("zeta"), online("alpha")]);
+        let roll = read_roll(&paths);
+        let map = by_reference(&paths, roll.as_ref(), &[online("zeta"), online("alpha")]);
 
         let names: Vec<&str> = map["K"].iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["alpha", "zeta"]);
@@ -293,7 +325,12 @@ mod tests {
         floating.env.insert("A".into(), "{{secret:K}}".into());
         write_roll(&paths, &[pinned, floating]);
 
-        let map = by_reference(&paths, &[online("pinned"), online("floating")]);
+        let roll = read_roll(&paths);
+        let map = by_reference(
+            &paths,
+            roll.as_ref(),
+            &[online("pinned"), online("floating")],
+        );
 
         let readers = &map["K"];
         let pinned = readers.iter().find(|r| r.name == "pinned").unwrap();

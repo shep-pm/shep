@@ -1,4 +1,5 @@
 use crate::cli::SelectorArgs;
+use crate::commands::query::read_roll;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
@@ -121,7 +122,7 @@ pub(super) fn gather_secrets(
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
 
     let mut json = Vec::new();
-    for namer in crate::secret_readers::namers(paths, procs) {
+    for namer in crate::secret_readers::namers(paths, read_roll(paths).as_ref(), procs) {
         let view = SecretView::new(namer.environment.clone(), store.clone(), providers.clone());
         for reference in &namer.references {
             let Some(parsed) = SecretRef::parse(reference) else {
