@@ -606,9 +606,13 @@ mod tests {
             url: format!("http://{addr}/hook"),
             body: None,
         };
-        deliver(&sink, &bark_for("web", "x"), Duration::from_secs(5))
-            .await
-            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            deliver(&sink, &bark_for("web", "x"), Duration::from_secs(5)),
+        )
+        .await
+        .expect("the delivery outlived its own sink timeout")
+        .unwrap();
         let req = tokio::time::timeout(Duration::from_secs(5), captured)
             .await
             .expect("the sink server must receive a request")
@@ -629,15 +633,19 @@ mod tests {
     #[tokio::test]
     async fn a_refused_delivery_is_a_failure_carrying_the_status() {
         let (addr, _captured) = one_shot_sink(429, "rate limited").await;
-        let err = deliver(
-            &Sink::Json {
-                url: format!("http://{addr}/"),
-                body: None,
-            },
-            &bark_for("web", "x"),
-            Duration::from_secs(5),
+        let err = tokio::time::timeout(
+            Duration::from_secs(30),
+            deliver(
+                &Sink::Json {
+                    url: format!("http://{addr}/"),
+                    body: None,
+                },
+                &bark_for("web", "x"),
+                Duration::from_secs(5),
+            ),
         )
         .await
+        .expect("the delivery outlived its own sink timeout")
         .unwrap_err();
         assert!(matches!(err, SinkError::Status { code: 429, .. }));
     }
