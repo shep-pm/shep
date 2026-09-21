@@ -243,7 +243,7 @@ mod tests {
             .await
             .expect(
                 "the live sink must hear about the alert while the dead one still hangs; \
-                 in turn it is not contacted until the dead sink's timeout has passed",
+                 driven in turn it would have waited out the dead sink's timeout first",
             )
             .expect("the live sink must have captured its request");
 
