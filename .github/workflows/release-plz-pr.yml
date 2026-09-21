@@ -11,6 +11,13 @@ name: Release PR
 permissions:
   contents: write
   pull-requests: write
+  # The breaking-bump guard writes its verdict as a commit status on the
+  # release pull request's head. This workflow runs on a push to main rather
+  # than on the pull request, so a failing step here is a red run in the
+  # Actions tab and nothing at all on the pull request itself. Measured
+  # 2026-09-21: the guard failed on `aee84c99` while #531 read
+  # `MERGEABLE / CLEAN` with 31 green checks and no way to see the refusal.
+  statuses: write
 
 on:
   push:
@@ -131,10 +138,27 @@ jobs:
           # the full history that `fetch-depth: 0` above fetches, and no
           # toolchain. `manifest_version` returns the line with its spaces
           # gone, so the quotes come off here.
+          head_number="$(printf '%s' "${head_version#version=}" | tr -d '"')"
+          bump_state=success
           if ! python3 scripts/check-breaking-bump.py \
               --base-sha "$base_sha" \
               --base-version "$(printf '%s' "${base_version#version=}" | tr -d '"')" \
-              --head-version "$(printf '%s' "${head_version#version=}" | tr -d '"')"; then
+              --head-version "$head_number"; then
+            bump_state=failure
+          fi
+
+          # Written on both outcomes, and written before the exit below. A
+          # status only ever attaches to the sha it names, so a force-push
+          # leaves the new head with none, which reads as unverified rather
+          # than as inherited approval. Add `release bump` to main's ruleset
+          # to make this block the merge as well as report it.
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            -f state="$bump_state" \
+            -f context='release bump' \
+            -f description="$head_number against the breaking commits since the last release" \
+            --silent
+
+          if [ "$bump_state" = failure ]; then
             echo "::error::release PR #$PR_NUMBER publishes a breaking change as a compatible release."
             echo "::error::Left open for a human: set the version by hand on the release branch, or"
             echo "::error::rebase the pull request that carried the break into one line of history."
