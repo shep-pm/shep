@@ -2,9 +2,13 @@
 /*
  * Community dogs (web/src/data/dogs.ts, backed by web/public/dogs.json).
  * The two built-in dogs, metrics and bark, live at /docs/dogs. This page is
- * the third source: dogs other people wrote, adopted with `shep adopt`
- * instead of shipped inside the binary. `dogs.ts` already validated the
- * index at import time, so every field read below is trusted.
+ * the third source: dogs adopted with `shep adopt` instead of shipped
+ * inside the binary. `dogs.ts` already validated the index at import time,
+ * so every field read below is trusted.
+ *
+ * Not a third-party page, despite the name: every entry so far is a shep-pm
+ * repository, so the lede and the callout leave authorship to each entry's
+ * repository link.
  *
  * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
  * Task 4: a short version up top; the naming gotcha moved behind
@@ -68,10 +72,9 @@ function adoptLine(dog: Dog): string {
     <ReferencePills slug="community-dogs" />
     <p class="lede">
       <code>metrics</code> and <code>bark</code> ship inside the{" "}
-      <code>shep</code> binary. Everything below is a dog someone outside
-      this project wrote and adopted the same way, with{" "}
-      <code>shep adopt &lt;path&gt;</code>, pointed at a binary you didn't
-      have to write yourself.
+      <code>shep</code> binary. Everything below is a separate binary you
+      install yourself and hand to <code>shep adopt &lt;path&gt;</code>.
+      Some are ours and some are not; the repository link says which.
     </p>
 
     <ShortVersion>
@@ -84,11 +87,13 @@ function adoptLine(dog: Dog): string {
     </p>
 
     <Callout variant="careful">
-      Being listed here means three things and nothing more: the repository
-      is real, the license is open, and the thing is genuinely a dog. Nobody
-      on this project reviewed the code, audited it, or is vouching for it.
-      Adopting one runs it at the shepherd's own trust level, the same as
-      anything else your Flockfile already starts.
+      Being listed here checks two fields and nothing else: that{" "}
+      <code>repo</code> is an https URL shaped like a repository, and that{" "}
+      <code>license</code> is not empty. The repository is never fetched and
+      the binary is never run. It is not a review. For a dog we did not
+      write, nobody here has read the code. Adopting one runs it at the
+      shepherd's own trust level, the same as anything else your Flockfile
+      already starts.
     </Callout>
 
     <details>

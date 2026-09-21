@@ -29,10 +29,29 @@ pub const DEFAULT_INDEX_URL: &str = "https://shep-pm.com/dogs.json";
 /// set it can already run `shep`.
 pub const INDEX_URL_ENV: &str = "SHEP_DOG_INDEX";
 
-/// The six categories a dog can be filed under, in the docs site's order.
-/// Mirrors `web/src/data/dogs.ts`'s `CATEGORIES`; an entry naming anything
-/// else is skipped.
-const CATEGORIES: [&str; 6] = ["logs", "metrics", "alerts", "health", "deploy", "other"];
+/// Where an entry naming a category this build does not know is filed.
+///
+/// A category is a grouping heading, so an unknown one means the index is
+/// ahead of this binary rather than that the entry is bad. Filing it keeps
+/// the dog listed and adoptable. Itself one of [`CATEGORIES`].
+const UNKNOWN_CATEGORY_FALLBACK: &str = "other";
+
+/// The seven categories a dog can be filed under, in the docs site's order.
+///
+/// `the_categories_match_the_docs_site_list` and
+/// `the_schema_agrees_with_the_categories_and_source_kinds` hold this equal
+/// to `web/src/data/dogs.ts` and `web/public/dogs.schema.json`. This list is
+/// compiled in while the index is served live, so an installed binary can be
+/// older than the index it reads: see [`UNKNOWN_CATEGORY_FALLBACK`].
+const CATEGORIES: [&str; 7] = [
+    "logs",
+    "metrics",
+    "alerts",
+    "health",
+    "deploy",
+    "interactive",
+    UNKNOWN_CATEGORY_FALLBACK,
+];
 
 /// The only `version` this build's [`parse_index`] accepts. Bump this and
 /// the published `dogs.json` together when the wrapper's shape changes. An
@@ -73,7 +92,8 @@ pub struct AvailableDog {
     pub repo: String,
     /// SPDX license string.
     pub license: String,
-    /// One of [`CATEGORIES`].
+    /// Always one of [`CATEGORIES`]: an entry naming anything else is
+    /// filed under [`UNKNOWN_CATEGORY_FALLBACK`] rather than dropped.
     pub category: String,
     /// How the dog is built.
     pub source: DogSourceKind,
@@ -330,9 +350,13 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
     let repo = field(entry, "repo", sanitised)?;
     let license = field(entry, "license", sanitised)?;
     let category = field(entry, "category", sanitised)?;
-    if !CATEGORIES.contains(&category.as_str()) {
-        return None;
-    }
+    // Normalised, not refused: an unknown heading costs the entry its shelf
+    // and nothing else, unlike the `repo` check below.
+    let category = if CATEGORIES.contains(&category.as_str()) {
+        category
+    } else {
+        UNKNOWN_CATEGORY_FALLBACK.to_owned()
+    };
     if !is_https(&repo) {
         return None;
     }
@@ -438,6 +462,36 @@ mod tests {
                 panic!("web/{relative} exists in the workspace but could not be read: {err}")
             }),
         )
+    }
+
+    /// The string literals of the array `declaration` names in `dogs.ts`.
+    ///
+    /// Stops at the array's closing `]` rather than at `];`. A declaration
+    /// may close with `] as const;`, and a parser looking for `];` then runs
+    /// on into the rest of the file and collects every string it finds
+    /// there.
+    ///
+    /// Splits past the `=` first, because a declaration's own type can carry
+    /// a string: `SOURCE_KINDS` is written
+    /// `readonly DogSource["kind"][] = [...]`.
+    ///
+    /// # Panics
+    /// If `declaration` is absent, or has no initialiser, or its array is
+    /// never closed. All three are drift these guards exist to catch.
+    #[track_caller]
+    fn docs_site_array<'a>(dogs_ts: &'a str, declaration: &str) -> Vec<&'a str> {
+        let after = dogs_ts
+            .split_once(declaration)
+            .unwrap_or_else(|| panic!("web/src/data/dogs.ts declares {declaration}"))
+            .1
+            .split_once('=')
+            .unwrap_or_else(|| panic!("the {declaration} declaration has an initialiser"))
+            .1;
+        let literal = after
+            .split_once(']')
+            .unwrap_or_else(|| panic!("the {declaration} array is closed"))
+            .0;
+        literal.split('"').skip(1).step_by(2).collect()
     }
 
     /// The live index's own single entry, verbatim from
@@ -567,10 +621,33 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_category_is_skipped_rather_than_shown() {
+    fn an_unknown_category_is_filed_under_the_fallback_rather_than_dropped() {
         let index = parse_index(one_entry_with_category("logz").as_bytes()).expect("parses");
-        assert_eq!(index.dogs.len(), 0);
-        assert_eq!(index.skipped, 1);
+        assert_eq!(
+            index.dogs.len(),
+            1,
+            "an unknown category must not drop the entry"
+        );
+        assert_eq!(index.dogs[0].category, UNKNOWN_CATEGORY_FALLBACK);
+        assert_eq!(
+            index.skipped, 0,
+            "a listed entry is never also counted skipped"
+        );
+    }
+
+    #[test]
+    fn a_known_category_survives_unchanged() {
+        let index = parse_index(one_entry_with_category("logs").as_bytes()).expect("parses");
+        assert_eq!(index.dogs[0].category, "logs");
+        assert_eq!(index.skipped, 0);
+    }
+
+    #[test]
+    fn the_unknown_category_fallback_is_itself_a_known_category() {
+        assert!(
+            CATEGORIES.contains(&UNKNOWN_CATEGORY_FALLBACK),
+            "the fallback must be a category the index groups under"
+        );
     }
 
     #[test]
@@ -687,7 +764,7 @@ mod tests {
     fn a_skipped_entry_is_not_also_counted_as_sanitised() {
         let mut entry = valid_entry();
         entry["description"] = serde_json::Value::String("hostile\u{1b}[2J".to_string());
-        entry["category"] = serde_json::Value::String("logz".to_string());
+        entry["repo"] = serde_json::Value::String("http://example.com/x".to_string());
         let document = wrap_index(vec![entry]);
 
         let index = parse_index(document.as_bytes()).expect("parses");
@@ -815,21 +892,7 @@ mod tests {
             return;
         };
 
-        // Past the `=` before splitting on quotes: the declaration reads
-        // `const SOURCE_KINDS: readonly DogSource["kind"][] = [...]`, and
-        // that `"kind"` in the type sits before the array.
-        let after = dogs_ts
-            .split_once("const SOURCE_KINDS")
-            .expect("web/src/data/dogs.ts declares SOURCE_KINDS")
-            .1
-            .split_once('=')
-            .expect("the SOURCE_KINDS declaration has an initialiser")
-            .1;
-        let literal = after
-            .split_once("];")
-            .expect("the SOURCE_KINDS array is closed")
-            .0;
-        let site: Vec<&str> = literal.split('"').skip(1).step_by(2).collect();
+        let site = docs_site_array(&dogs_ts, "SOURCE_KINDS");
 
         let ours: Vec<&str> = SOURCE_KINDS.iter().map(|(kind, _)| *kind).collect();
         assert_eq!(
@@ -838,7 +901,7 @@ mod tests {
         );
     }
 
-    /// Two independent six-string lists in two languages, and nothing but
+    /// Two independent lists in two languages, and nothing but
     /// this test holds them equal. Only the runtime array is read: the
     /// `DogCategory` union above it is what the array is typed against, so
     /// TypeScript fails the site's own build if those two disagree.
@@ -851,15 +914,7 @@ mod tests {
             return;
         };
 
-        let after = dogs_ts
-            .split_once("export const CATEGORIES")
-            .expect("web/src/data/dogs.ts declares CATEGORIES")
-            .1;
-        let literal = after
-            .split_once("];")
-            .expect("the CATEGORIES array is closed")
-            .0;
-        let site: Vec<&str> = literal.split('"').skip(1).step_by(2).collect();
+        let site = docs_site_array(&dogs_ts, "CATEGORIES");
 
         assert_eq!(
             site,
