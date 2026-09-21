@@ -125,6 +125,25 @@ pub(crate) fn sample_host() -> Option<HostReading> {
     })
 }
 
+/// [`sample_host`] on the blocking pool, awaited.
+///
+/// The walk is one long blocking sweep of the process table. Run inline
+/// inside an `async fn` it stalls every other task on that tokio worker
+/// for the length of the walk — the dog's own shepherd channel, or a
+/// model's next tool call, included — so both async callers (this dog's
+/// `handle_connection` and the whistle's `get_metrics`) come here
+/// instead. The function borrows nothing from the async context, so it
+/// moves as it stands.
+///
+/// A panic inside the pool reads as `None`: `sample_host` is sysinfo
+/// calls that do not panic, so this cannot happen, and answering without
+/// the host block beats taking the caller down with it.
+pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
+    tokio::task::spawn_blocking(sample_host)
+        .await
+        .unwrap_or_default()
+}
+
 /// Runs the metrics dog until it is signalled.
 ///
 /// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`,
@@ -245,12 +264,16 @@ async fn handle_connection(mut stream: TcpStream, client: Arc<ReconnectingClient
     // `ReconnectingClient::daemon` reports the daemon answering now, so two
     // reads either side of a handover could publish one daemon's version
     // beside another's pid.
+    //
+    // The host sample is the one blocking step between two awaits here, so
+    // it goes to the blocking pool rather than stalling this worker for
+    // the length of the process-table walk.
     let ack = client.daemon();
     let reading = Reading {
         flock,
         daemon_version: ack.daemon_version,
         daemon_pid: ack.pid,
-        host: sample_host(),
+        host: sample_host_off_worker().await,
     };
     let body = exposition::render(&reading);
     let _: Result<(), HttpError> = http::write_response(
@@ -580,5 +603,35 @@ mod tests {
 
         let metrics = scrape(dog.addr(), "/metrics").await;
         assert!(metrics.starts_with("HTTP/1.1 200 "), "{metrics}");
+    }
+
+    /// The host sample is the one blocking step on the scrape path and it
+    /// crosses a `spawn_blocking` boundary to get into the response: a
+    /// scrape must still carry it. Without this, a plumbing mistake — an
+    /// unawaited handle, an error arm that drops the sample — would leave
+    /// every other assertion above green and the host series silently
+    /// gone.
+    #[tokio::test]
+    async fn a_scrape_carries_the_host_sample() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_reconnecting_client_on(&socket).await;
+        daemon.reply_to_list_sequence(vec![vec![sample_info("web")]]);
+        let dog = serve_on_free_port(client, MetricsConfig::default_on_port(0)).await;
+
+        let body = scrape(dog.addr(), "/metrics").await;
+        assert!(
+            body.contains("shep_host_memory_total_bytes"),
+            "the host sample must survive the trip to the blocking pool: {body}"
+        );
+        assert!(
+            body.contains("shep_host_uptime_seconds"),
+            "uptime is part of the same sample: {body}"
+        );
+        assert_eq!(
+            daemon.list_flock_count(),
+            1,
+            "one ListFlock for the one scrape"
+        );
     }
 }
