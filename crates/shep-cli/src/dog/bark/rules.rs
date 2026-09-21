@@ -119,15 +119,32 @@ fn trigger_name(when: &Trigger) -> &'static str {
     }
 }
 
-/// `kind`'s wire spelling, the string `kinds` in a rule names it by. Reads
-/// `ProcessEventKind`'s own `Serialize` rather than hand-listing variants,
-/// falling back to an empty string, which matches nothing, if that ever
-/// fails.
-fn wire_spelling(kind: ProcessEventKind) -> String {
-    serde_json::to_value(kind)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_default()
+/// `kind`'s wire spelling, the string `kinds` in a rule names it by.
+///
+/// Hand-listed rather than read from `ProcessEventKind`'s own `Serialize`,
+/// because this runs once per bus event and the serde round-trip allocated a
+/// `Value` to answer a question fixed at compile time.
+///
+/// `ProcessEventKind` is `#[non_exhaustive]`, so the last arm is the one that
+/// catches a variant this build has not been taught. It is also the spelling
+/// `#[serde(other)]` gives `Unrecognized`, which is what the round-trip this
+/// replaced returned for it. A variant added upstream therefore needs an arm
+/// here as soon as `is_known_kind` starts accepting its name, or a rule naming
+/// it would compare against `"unrecognized"` and never fire.
+fn wire_spelling(kind: ProcessEventKind) -> &'static str {
+    match kind {
+        ProcessEventKind::Start => "start",
+        ProcessEventKind::Online => "online",
+        ProcessEventKind::Exit => "exit",
+        ProcessEventKind::Restart => "restart",
+        ProcessEventKind::Reload => "reload",
+        ProcessEventKind::Reloaded => "reloaded",
+        ProcessEventKind::ReloadAbandoned => "reload_abandoned",
+        ProcessEventKind::Stop => "stop",
+        ProcessEventKind::Delete => "delete",
+        ProcessEventKind::Errored => "errored",
+        _ => "unrecognized",
+    }
 }
 
 /// Whether `kind` is a spelling [`ProcessEventKind`] actually has, the same
@@ -222,6 +239,27 @@ struct SubjectState {
     restart_windows: BTreeMap<usize, (u32, u64)>,
 }
 
+/// The subject's entry in `subjects`, created on first sight.
+///
+/// Looks before inserting: on a steady flock every event's subject is already
+/// in the map, and `entry` takes its key by value, so it would allocate a
+/// `String` on every call only to drop it when the key is already there. The
+/// owned key is built only on a miss, which is once per subject per bark run.
+///
+/// `contains_key` first rather than a `get_mut` match, because a reference
+/// returned from the lookup has to outlive the insert that follows it.
+fn subject_state<'a>(
+    subjects: &'a mut BTreeMap<String, SubjectState>,
+    subject: &str,
+) -> &'a mut SubjectState {
+    if !subjects.contains_key(subject) {
+        subjects.insert(subject.to_owned(), SubjectState::default());
+    }
+    subjects
+        .get_mut(subject)
+        .expect("subject key is present: either it was, or the insert above added it")
+}
+
 /// Bark's whole state: the rules, and what each subject last looked like to
 /// each rule.
 #[derive(Debug)]
@@ -296,7 +334,7 @@ impl Rules {
     /// both routes.
     fn fire(&mut self, idx: usize, subject: &str, now_ms: u64, message: String) -> Option<Firing> {
         let debounce = self.rules[idx].debounce;
-        let state = self.subjects.entry(subject.to_owned()).or_default();
+        let state = subject_state(&mut self.subjects, subject);
         let ready = state
             .last_fired
             .get(&idx)
@@ -334,7 +372,7 @@ impl Rules {
         within: UpDuration,
         now_ms: u64,
     ) -> bool {
-        let state = self.subjects.entry(subject.to_owned()).or_default();
+        let state = subject_state(&mut self.subjects, subject);
         let window = state.restart_windows.entry(idx).or_insert((0, now_ms));
         if now_ms.saturating_sub(window.1) > within.as_millis() {
             *window = (current_restarts, now_ms);
@@ -357,7 +395,7 @@ impl Rules {
         for idx in 0..self.rules.len() {
             let trigger = self.rules[idx].when.clone();
             let message = match &trigger {
-                Trigger::Event { kinds } if kinds.iter().any(|k| k == &kind_wire) => {
+                Trigger::Event { kinds } if kinds.iter().any(|k| k == kind_wire) => {
                     Some(format!("{} {kind_wire}", info.name))
                 }
                 Trigger::GaveUp {} if kind == ProcessEventKind::Errored => {
@@ -953,5 +991,89 @@ sinks = ["oncall"]
             message.contains("gave_up"),
             "the error must also name a real variant, so a typo suggests its own fix: {message}"
         );
+    }
+
+    /// [`wire_spelling`] hand-lists the spellings instead of reading
+    /// `ProcessEventKind`'s own `Serialize`, which is what makes it free of
+    /// an allocation on the bus route. This pins every arm back against what
+    /// serde actually emits, so a typo in an arm fails here rather than as a
+    /// rule that silently stops firing days later.
+    ///
+    /// The enum is `#[non_exhaustive]`, so this list is the only thing that
+    /// would notice a variant being added: a new one needs a line here as well
+    /// as an arm in `wire_spelling`.
+    #[test]
+    fn every_wire_spelling_matches_what_serde_emits() {
+        let kinds = [
+            ProcessEventKind::Start,
+            ProcessEventKind::Online,
+            ProcessEventKind::Exit,
+            ProcessEventKind::Restart,
+            ProcessEventKind::Reload,
+            ProcessEventKind::Reloaded,
+            ProcessEventKind::ReloadAbandoned,
+            ProcessEventKind::Stop,
+            ProcessEventKind::Delete,
+            ProcessEventKind::Errored,
+            ProcessEventKind::Unrecognized,
+        ];
+        for kind in kinds {
+            let from_serde = serde_json::to_value(kind)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            assert_eq!(
+                wire_spelling(kind),
+                from_serde,
+                "{kind:?} must spell itself the way its own Serialize does"
+            );
+        }
+    }
+
+    /// A subject bark has not seen yet still gets its state, which is what
+    /// keeps the debounce honest for a first firing: `subject_state` inserts
+    /// on a miss rather than assuming the key is there.
+    #[test]
+    fn a_subject_seen_for_the_first_time_gets_its_debounce_state() {
+        let sinks = one_sink("ops");
+        let mut rules = Rules::new(
+            vec![Rule {
+                when: Trigger::Event {
+                    kinds: vec!["exit".to_owned()],
+                },
+                sinks: vec!["ops".to_owned()],
+                debounce: default_debounce(),
+            }],
+            &sinks,
+        )
+        .unwrap();
+        // Two different sheep, neither in the map yet: both must be recorded
+        // independently, and neither may fire twice inside the debounce.
+        for name in ["web", "worker"] {
+            assert_eq!(
+                rules
+                    .on_event(&process_event(name, ProcessEventKind::Exit), 1_000)
+                    .len(),
+                1,
+                "{name} had never been seen and should fire once"
+            );
+            assert!(
+                rules
+                    .on_event(&process_event(name, ProcessEventKind::Exit), 1_100)
+                    .is_empty(),
+                "{name} is inside its own debounce now"
+            );
+        }
+        // Past the debounce each fires again, which is only true if the state
+        // the insert created is the state being read back.
+        for name in ["web", "worker"] {
+            assert_eq!(
+                rules
+                    .on_event(&process_event(name, ProcessEventKind::Exit), 900_000)
+                    .len(),
+                1,
+                "{name} is past its debounce and should fire again"
+            );
+        }
     }
 }
