@@ -12,11 +12,8 @@
 //!
 //! [`refusal`] is the other half, and it is here rather than in the pane so
 //! that the sentence an operator reads and the check that stops the write
-//! are built from one table. They were not, until 2026-09-21: this panel
-//! printed `500ms, 2s, 5m, 1h` beside a dog's `max_age` while the pane
-//! filed `1d`, and only the dog's own log said so afterwards. A dog's
-//! section is written by the shepherd without being read, so there is no
-//! second gate behind this one.
+//! are built from one table. A dog's section is written by the shepherd
+//! without being read, so there is no second gate behind this one.
 
 use shep_core::values::{MemSize, UpDuration};
 
@@ -367,16 +364,14 @@ mod tests {
         assert!(bullets.is_empty());
     }
 
-    /// The incident this gate exists for, driven through the same schema
-    /// shape a real dog publishes: `shep-log-rotate` spells `max_age` as
-    /// `Option<UpDuration>`, so the grammar sits two hops from the
-    /// property, behind an `anyOf` and a `$ref`.
+    /// Driven through the same schema shape a real dog publishes:
+    /// `shep-log-rotate` spells `max_age` as `Option<UpDuration>`, so the
+    /// grammar sits two hops from the property, behind an `anyOf` and a
+    /// `$ref`.
     ///
     /// `1d` is the natural spelling of a retention window and shep's
-    /// grammar tops out at hours (`docs/specs/deferred.md`). Before this,
-    /// lookout printed `500ms, 2s, 5m, 1h` beside the field and wrote
-    /// `1d` anyway; the dog then failed every tick, went on reporting
-    /// online, and said so only in its own log.
+    /// grammar tops out at hours (`docs/specs/deferred.md`), so the panel
+    /// must not offer it and the gate must refuse it.
     #[test]
     fn a_dogs_nullable_duration_refuses_a_day() {
         let field = duration_field();
@@ -485,8 +480,7 @@ mod tests {
     }
 
     /// An integer with no bounds still has to be an integer, and the
-    /// sentence says so rather than leaving the editor open in silence,
-    /// which is what it used to do.
+    /// sentence says so rather than leaving the editor open in silence.
     #[test]
     fn an_integer_field_refuses_text_out_loud() {
         let mut field = text_field("max_restarts");

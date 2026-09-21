@@ -440,16 +440,19 @@ impl ConfigPane {
             (_, "") => field
                 .as_ref()
                 .map_or(Value::Null, |field| self.default_for(field)),
-            // Already parsed once by `validation::refusal`, which is what
-            // refused every text an `i64` cannot hold. The second parse is
-            // the conversion, and its `Err` arm is unreachable rather than
-            // a second opinion: filing the string instead would send the
-            // daemon a value it refuses for a field the gate just passed.
+            // Already parsed once by `validation::refusal`, which refused
+            // every text an `i64` cannot hold, so this second parse is the
+            // conversion rather than a second opinion. Its `Err` arm answers
+            // a refusal because `None` is this function's word for filed:
+            // returning it here would restore the editor, file nothing, and
+            // say nothing, which is the shape the gate above exists to stop.
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
+                    let text =
+                        format!("{key} is \"{text}\", which is not a whole number shep accepts");
                     self.typing = Some(PaneTyping { key, buffer });
-                    return None;
+                    return Some(Refusal { text });
                 }
             },
             (_, text) => Value::String(text.to_owned()),
@@ -714,9 +717,9 @@ mod tests {
         }
     }
 
-    /// The other half of the test above, which used to prove this same
-    /// field filed `banana`. It did, all the way to the daemon, which was
-    /// the backstop for a sheep and does not exist for a dog.
+    /// The other half of the test above. The daemon is the backstop for a
+    /// sheep's own write and does not exist for a dog, so this gate is the
+    /// only thing between the buffer and `dogs.toml`.
     #[test]
     fn a_unit_field_refuses_a_buffer_its_own_grammar_does_not_take() {
         let mut pane = ConfigPane::sheep(web());
