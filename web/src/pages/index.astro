@@ -19,13 +19,53 @@ import Lexicon from "../components/landing/Lexicon.astro";
 import Features from "../components/landing/Features.astro";
 import Chalkboard from "../components/landing/Chalkboard.astro";
 import CtaFooter from "../components/landing/CtaFooter.astro";
+import { REPO } from "../data/repo";
+
+const description =
+  "A process manager written in Rust. One binary runs a daemon called the shepherd, which keeps a flock of your long-running processes alive. It restarts them when they die, captures what they print, and says plainly when something is wrong.";
+
+/*
+ * One schema.org block, on this route only. It describes shep the program,
+ * not this page, so a second copy on a docs page would be a second claim
+ * about the same thing rather than more coverage.
+ *
+ * Nothing here is a number that moves. There is deliberately no
+ * `softwareVersion`: it would be a copy of the workspace version living in
+ * a file no release touches, and a stale one is worse than none. Windows is
+ * named because shep ships it -- release-artifacts.yml builds and uploads
+ * shep-x86_64-pc-windows-msvc.zip -- with the limits /docs/not-built lists.
+ * The licence is both halves of the dual licence, not the first one.
+ */
+const softwareSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "shep",
+  description,
+  url: "https://shep-pm.com",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS, Linux, Windows",
+  programmingLanguage: "Rust",
+  codeRepository: REPO,
+  license: [
+    "https://opensource.org/license/mit",
+    "https://opensource.org/license/apache-2-0",
+  ],
+  isAccessibleForFree: true,
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
 ---
 
 <Base
   title="shep · a process manager for your flock"
-  description="A process manager written in Rust. One binary runs a daemon called the shepherd, which keeps a flock of your long-running processes alive. It restarts them when they die, captures what they print, and says plainly when something is wrong."
+  description={description}
   theme="light"
 >
+  <script
+    slot="head"
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(softwareSchema)}
+  />
   <Nav />
   {/*
     Features, Chalkboard and CtaFooter live INSIDE the stage since the

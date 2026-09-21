@@ -32,6 +32,15 @@ Node version is pinned in `.nvmrc` (`nvm use` picks it up automatically).
   (`src/pages/design-language.astro`).
 - `src/layouts/Base.astro` — fonts, the no-flash theme script
   (`localStorage['shep-theme']`, falls back to `prefers-color-scheme`).
+- `public/og-card.svg` + `public/og-card.png` — the 1200x630 social card
+  behind `og:image` and `twitter:image`. The SVG is the source and the PNG is
+  what crawlers read; `scripts/render-og-card.sh` rasterises one into the
+  other and fetches the three webfonts it needs, since a renderer that cannot
+  find them draws the card with no text and reports success.
+- `src/components/SocialMeta.astro` — that card's meta tags, plus
+  `rel="canonical"`. Used by `Base.astro` and, separately, by
+  `src/pages/docs/index.astro`, which is a redirect and does not go through
+  Base.
 - `src/data/*.ts` — everything on the site that could go stale (the
   lexicon table, the "not built yet" chalkboard, terminology) is read from
   `../docs/` or `../README.md` at build time rather than typed inline, so a

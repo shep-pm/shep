@@ -44,7 +44,17 @@ if (!found) {
     `activeSlug "${activeSlug}" is not in docs-nav.ts. Add the page to the nav, or fix the slug.`,
   );
 }
-const title = found.chapter.item.label;
+/*
+ * The <title> gets the plain-English half wherever docs-nav.ts supplies one,
+ * so this page reads "shep docs \u00b7 The lookout (TUI dashboard)". The shep
+ * word stays first and the crumb, the sidebar and the prose keep it alone:
+ * the vocabulary in docs/terminology.md is deliberate, and this is additive
+ * rather than a rename. Nobody searching for a process manager types
+ * "lookout", which is why thirty pages were titled in words that only mean
+ * something once you already use shep.
+ */
+const { label, plain } = found.chapter.item;
+const title = plain ? `${label} (${plain})` : label;
 const description = found.chapter.item.summary;
 const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
 ---

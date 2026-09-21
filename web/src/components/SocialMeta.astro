@@ -1,0 +1,56 @@
+---
+/*
+ * The Open Graph and Twitter card block, for every page that has a <head>.
+ *
+ * It lives in its own component rather than in Base.astro because /docs does
+ * not go through Base: src/pages/docs/index.astro is a bare meta-refresh
+ * redirect with no stylesheet and no fonts, and it is also one of the most
+ * paste-able URLs on the site. Both need the same card, and the two facts
+ * worth keeping in one place are the image's path and its dimensions, which
+ * a crawler reads literally and which drift the moment there are two copies.
+ *
+ * Every URL here is absolute. A crawler unfurling a link has no page to
+ * resolve a relative path against, so `/og-card.png` reaches nothing and the
+ * card renders blank. `Astro.site` is the apex domain from astro.config.mjs.
+ */
+interface Props {
+  /** The page's own <title>, reused verbatim as og:title. */
+  title: string;
+  /** One sentence. The same text the page gives <meta name="description">. */
+  description: string;
+  /**
+   * Root-relative path to point rel="canonical" at, where that is not this
+   * page. Only /docs passes one: it is a redirect, so the page a search
+   * engine should keep is the one it redirects to.
+   */
+  canonical?: string;
+}
+
+const { title, description, canonical } = Astro.props;
+
+const pageUrl = new URL(Astro.url.pathname, Astro.site);
+const canonicalUrl = canonical ? new URL(canonical, Astro.site) : pageUrl;
+const cardImage = new URL("/og-card.png", Astro.site);
+
+/* What the card actually draws, for a reader whose client reads alt text. */
+const cardAlt =
+  "A sheep and a sheepdog on a hill at sunrise, beside the words: shep keeps your flock alive.";
+---
+
+<link rel="canonical" href={canonicalUrl.href} />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="shep" />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={pageUrl.href} />
+<meta property="og:image" content={cardImage.href} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={cardAlt} />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={cardImage.href} />
+<meta name="twitter:image:alt" content={cardAlt} />

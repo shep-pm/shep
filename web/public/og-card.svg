@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="shep — a process manager written in Rust">
+  <!-- The social card behind og:image and twitter:image, at the 1200x630 both
+       read. og-card.png is rasterised from this file by
+       web/scripts/render-og-card.sh; run it after any edit here, because the
+       PNG is what every crawler reads and nothing rebuilds it.
+
+       Everything here is the landing page's own scene, not a second style:
+       the sky stops are SkyStage.astro's first six (night through dawn), the
+       palette is tokens.css, the headline is Scene1Hero.astro's verbatim, and
+       the dog is favicon.svg scaled up. The hard offset shadows and 3px ink
+       outlines are the landing page's, so a card in a timeline reads as the
+       same site a click lands on. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e1730"/>
+      <stop offset="0.20" stop-color="#26386a"/>
+      <stop offset="0.42" stop-color="#4c4a83"/>
+      <stop offset="0.62" stop-color="#8c5f84"/>
+      <stop offset="0.82" stop-color="#c97a5a"/>
+      <stop offset="1" stop-color="#e7a468"/>
+    </linearGradient>
+    <linearGradient id="pasture" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fcb6b"/>
+      <stop offset="1" stop-color="#2a7444"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#sky)"/>
+
+  <!-- Stars, thinning out as the sky warms, the way SkyStage's do. -->
+  <g fill="#fffdf5">
+    <circle cx="112" cy="54" r="2.6" opacity="0.9"/>
+    <circle cx="268" cy="96" r="1.8" opacity="0.7"/>
+    <circle cx="418" cy="44" r="2.2" opacity="0.85"/>
+    <circle cx="640" cy="82" r="1.6" opacity="0.6"/>
+    <circle cx="856" cy="52" r="2.4" opacity="0.8"/>
+    <circle cx="1052" cy="104" r="1.7" opacity="0.55"/>
+    <circle cx="1148" cy="40" r="2.1" opacity="0.7"/>
+    <circle cx="520" cy="150" r="1.4" opacity="0.4"/>
+    <circle cx="960" cy="168" r="1.5" opacity="0.35"/>
+  </g>
+
+  <!-- The sun, just up, sitting behind the hill. -->
+  <circle cx="762" cy="446" r="112" fill="#f3c44c" opacity="0.5"/>
+  <circle cx="762" cy="446" r="66" fill="#f3c44c"/>
+
+  <!-- The pasture: one hill, hard ink edge, exactly the landing page's. -->
+  <path d="M0 468 C 190 430, 360 452, 560 444 C 790 435, 980 462, 1200 436 L1200 630 L0 630 Z"
+        fill="url(#pasture)" stroke="#17251c" stroke-width="4"/>
+
+  <!-- The dog, from web/public/favicon.svg (viewBox 104x78), scaled 3.1x and
+       stood on the hill. -->
+  <g transform="translate(818 212) scale(3.1)">
+    <g fill="#17251C">
+      <rect x="40" y="52" width="8" height="21" rx="4"/>
+      <rect x="66" y="52" width="8" height="21" rx="4"/>
+    </g>
+    <path d="M40 20c6-9 22-10 28-2 10-3 19 4 18 13 7 4 7 15-1 19-2 8-12 11-19 8-8 5-21 4-26-3-10 1-17-7-15-16-4-8 4-18 15-19Z" fill="#FFFDF5" stroke="#17251C" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="26" cy="34" rx="9" ry="7" transform="rotate(-28 26 34)" fill="#17251C"/>
+    <ellipse cx="27" cy="48" rx="15" ry="14" fill="#17251C"/>
+    <circle cx="22" cy="45" r="3" fill="#FFFDF5"/>
+    <circle cx="21.4" cy="45.6" r="1.4" fill="#17251C"/>
+  </g>
+
+  <!-- The eyebrow pill, Scene1Hero.astro's copy and its butter/ink/offset. -->
+  <g>
+    <rect x="76" y="78" width="470" height="54" rx="27" fill="#17251c"/>
+    <rect x="72" y="74" width="470" height="54" rx="27" fill="#f3c44c" stroke="#17251c" stroke-width="3"/>
+    <text x="307" y="108" text-anchor="middle" font-family="Space Mono" font-weight="700"
+          font-size="19" letter-spacing="2.3" fill="#17251c">A PROCESS MANAGER IN RUST</text>
+  </g>
+
+  <!-- The headline, Scene1Hero.astro's verbatim. The shadow is a second copy
+       offset by 6, not a filter: the landing page's shadows have no blur. -->
+  <g font-family="Bricolage Grotesque" font-weight="800" font-size="92" letter-spacing="-5">
+    <g fill="#0e1730" opacity="0.45" transform="translate(6 6)">
+      <text x="72" y="248">shep keeps</text>
+      <text x="72" y="328">your flock</text>
+      <text x="72" y="408">alive.</text>
+    </g>
+    <g fill="#fffdf5">
+      <text x="72" y="248">shep keeps</text>
+      <text x="72" y="328">your flock</text>
+      <text x="72" y="408">alive.</text>
+    </g>
+  </g>
+
+  <!-- The lede card, the landing page's fleece panel with its 3px ink border. -->
+  <g>
+    <rect x="77" y="453" width="600" height="104" rx="18" fill="#17251c"/>
+    <rect x="72" y="448" width="600" height="104" rx="18" fill="#fffdf5" stroke="#17251c" stroke-width="3"/>
+    <g font-family="Space Grotesk" font-weight="500" font-size="21" fill="#17251c">
+      <text x="96" y="487">One daemon keeps your long-running processes</text>
+      <text x="96" y="515">alive, with logs, watch restarts and alerts.</text>
+    </g>
+  </g>
+
+  <text x="72" y="597" font-family="Space Mono" font-weight="700" font-size="20"
+        letter-spacing="1.6" fill="#fffdf5">shep-pm.com</text>
+</svg>

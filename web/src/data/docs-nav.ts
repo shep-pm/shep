@@ -45,6 +45,21 @@ export interface DocsNavItem {
   /** Route is always `/docs/${slug}`. */
   label: string;
   /**
+   * The ordinary word for the same thing, appended to the <title> in
+   * brackets and used nowhere else.
+   *
+   * docs/terminology.md's vocabulary is deliberate and the sidebar, the
+   * crumb and the prose all keep it. But nobody searching for a process
+   * manager types "lookout" or "dogs", so thirty pages were titled in
+   * words that only make sense once you already use shep. This is the
+   * additive half: "The lookout (TUI dashboard)" keeps the shep term
+   * first and gives a search engine something to match.
+   *
+   * Left off wherever the label is already plain English, which is about
+   * half of them, and off `whistle` because its label already carries one.
+   */
+  plain?: string;
+  /**
    * One line for /llms.txt and for the page's own meta description.
    *
    * Lives here rather than on the page for the same reason the label does:
@@ -104,6 +119,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "startup",
         label: "Surviving a reboot",
+        plain: "startup on boot",
         summary:
           "shep startup installs the init unit that brings the shepherd, and the flock it last saved, back after a reboot.",
         built: true,
@@ -122,6 +138,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "terminology",
         label: "The words",
+        plain: "glossary",
         summary:
           "The full shep lexicon: what each themed word means, where you meet it, and whether it's built yet.",
         built: true,
@@ -147,6 +164,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "overrides",
         label: "Changing a setting",
+        plain: "config overrides",
         summary:
           "A Flockfile is a template your app's repository owns. What you tune on a running flock lives somewhere shep owns, and a load appends rather than overwrites.",
         built: true,
@@ -163,6 +181,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "lifecycle",
         label: "Stopping and replacing",
+        plain: "stop, restart, reload, delete",
         summary:
           "What shep stop, restart, reload and delete each do to a running sheep and to the muster roll: one kill ladder shared by three of them, two different orders a reload can run, and the one difference between stop and delete that decides what comes back after a restart.",
         built: true,
@@ -176,6 +195,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "talking-to-a-sheep",
         label: "Talking to a sheep",
+        plain: "signals, stdin and IPC",
         summary:
           "Reaching an app that is already running: a unix signal, a line on its stdin, or a named action over the shepherd channel. None of the three restarts it, though a signal it does not handle can still kill it.",
         built: true,
@@ -201,6 +221,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "lookout",
         label: "The lookout",
+        plain: "TUI dashboard",
         summary:
           "A terminal dashboard over the shepherd: the flock table, a host-usage strip, and a selected sheep's detail pane and bleats feed.",
         built: true,
@@ -210,6 +231,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "lookout-config",
         label: "Editing config in lookout",
+        plain: "TUI config editor",
         summary:
           "The four panes lookout edits through: the shepherd's settings, secrets, a sheep's Flockfile fields, and a dog's own schema.",
         built: true,
@@ -232,6 +254,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "folds",
         label: "Folds",
+        plain: "namespaces",
         summary:
           "A fold is a namespace: fold = in a Flockfile puts a sheep in one, and fold:<name> reaches it from any verb.",
         built: true,
@@ -282,6 +305,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "dogs",
         label: "Dogs",
+        plain: "plugins",
         summary:
           "The shepherd's own plugins: built-in metrics and alerting, and how to adopt a binary of your own.",
         built: true,
@@ -291,6 +315,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "writing-a-dog",
         label: "Writing a dog",
+        plain: "writing a plugin",
         summary:
           "A dog is an ordinary binary that answers --version and --schema on stdout and speaks the dog protocol on a socket the shepherd hands it.",
         built: true,
@@ -299,6 +324,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "community-dogs",
         label: "Community dogs",
+        plain: "community plugins",
         summary:
           "Dogs other people wrote and adopted with shep adopt, listed for anyone who doesn't want to write their own.",
         built: true,
@@ -334,6 +360,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "shepherd-channel",
         label: "The shepherd channel",
+        plain: "app IPC",
         summary:
           "A plain file descriptor carrying newline JSON: readiness, custom metrics, and answering shep trigger.",
         built: true,
@@ -352,6 +379,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "containers",
         label: "Containers",
+        plain: "Docker and PID 1",
         summary:
           "shep runtime is the PID-1 entrypoint for a container. shep dev is the same idea for a laptop: an isolated session that tidies up after itself.",
         built: true,
@@ -361,6 +389,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "serve",
         label: "Serve",
+        plain: "static file server",
         summary:
           "A static file server, hand-rolled and run as a managed sheep. Loopback by default, and every unsafe default is opt-in.",
         built: true,
@@ -384,6 +413,7 @@ export const docsNav: DocsNavGroup[] = [
       {
         slug: "first-flockfile",
         label: "Flockfile reference",
+        plain: "config file format",
         summary:
           "Every field a Flockfile understands, the ten filenames config discovery searches, and the strict grammars that catch typos before they reach a running sheep.",
         built: true,

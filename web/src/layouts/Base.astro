@@ -1,9 +1,17 @@
 ---
 import "../styles/global.css";
+import SocialMeta from "../components/SocialMeta.astro";
 
 interface Props {
   title: string;
-  description?: string;
+  /**
+   * One sentence, for <meta name="description"> and for the social card.
+   *
+   * Required, not optional: it was optional, and the one page that skipped
+   * it shipped to a search engine with nothing to show under its title.
+   * `astro check` now refuses a page that leaves it out.
+   */
+  description: string;
   /**
    * "auto" (default) — respect localStorage's `shep-theme`, falling back to
    * `prefers-color-scheme`. Used by docs, the only section that carries a
@@ -66,7 +74,8 @@ const { title, description, theme = "auto" } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
-    {description && <meta name="description" content={description} />}
+    <meta name="description" content={description} />
+    <SocialMeta title={title} description={description} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -75,6 +84,13 @@ const { title, description, theme = "auto" } = Astro.props;
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
+
+    {/*
+      Anything a page needs in <head> and no other page has. Today that is
+      the landing page's one JSON-LD block, which describes the software
+      rather than the page and so belongs on exactly one route.
+    */}
+    <slot name="head" />
   </head>
   <body>
     <slot />

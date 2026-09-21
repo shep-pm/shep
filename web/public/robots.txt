@@ -1,0 +1,8 @@
+# Everything here is public documentation for a public project, so there is
+# nothing to hold back. The Sitemap line is the point of the file: it is what
+# points a crawler at dist/sitemap-index.xml, which @astrojs/sitemap generates
+# from every built page (see astro.config.mjs).
+User-agent: *
+Allow: /
+
+Sitemap: https://shep-pm.com/sitemap-index.xml
