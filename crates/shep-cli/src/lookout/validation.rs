@@ -209,10 +209,10 @@ fn integer_refusal(field: &Field, typed: &str) -> Option<Refusal> {
     let key = &field.key;
     match (field.bounds.minimum, field.bounds.maximum) {
         (Some(min), _) if number < min => Some(Refusal {
-            text: format!("{key} is {typed}; {key} starts at {min}"),
+            text: format!("{key} is \"{typed}\"; {key} starts at {min}"),
         }),
         (_, Some(max)) if number > max => Some(Refusal {
-            text: format!("{key} is {typed}; {key} stops at {max}"),
+            text: format!("{key} is \"{typed}\"; {key} stops at {max}"),
         }),
         _ => None,
     }
@@ -400,9 +400,11 @@ mod tests {
             "1d must be outside the grammar or there is nothing to refuse"
         );
         let refused = refusal(&field, "1d").expect("1d is not a duration shep parses");
-        assert!(refused.text.contains("max_age"), "{}", refused.text);
-        assert!(refused.text.contains("1d"), "{}", refused.text);
-        assert!(refused.text.contains("1h"), "{}", refused.text);
+        assert_eq!(
+            refused.text,
+            "max_age is \"1d\", which is not a duration shep accepts; \
+             try 500ms, 2s, 5m, 1h, a bare number is milliseconds"
+        );
     }
 
     /// The passing case, which is what tells this gate apart from one that
@@ -421,6 +423,35 @@ mod tests {
             assert!(
                 refusal(&field, refused).is_some(),
                 "{refused} is printed as refused and must not be filed"
+            );
+        }
+    }
+
+    /// The size half, which had no test of its own here: it was reached
+    /// only through `pane/edit.rs`'s `max_memory` case, so a change to
+    /// that test's field would have taken this arm's coverage with it
+    /// without failing anything.
+    ///
+    /// `10MB` is the spelling to refuse rather than a nonsense word.
+    /// shep's grammar is `10M`, so `10MB` is what somebody writes who
+    /// knows what they mean, and the sentence has to be the one that tells
+    /// them the unit is a single letter.
+    #[test]
+    fn a_size_field_refuses_a_spelling_shep_does_not_take() {
+        let mut field = text_field("max_size");
+        field.value_kind = Some(ValueKind::MemSize);
+        assert_eq!(
+            refusal(&field, "10MB")
+                .expect("10MB is not shep's spelling")
+                .text,
+            "max_size is \"10MB\", which is not a size shep accepts; \
+             try 512M, 2G, a bare number is bytes"
+        );
+        for accepted in MEMORY_FORMS.iter().flat_map(|form| form.examples) {
+            assert_eq!(
+                refusal(&field, accepted),
+                None,
+                "{accepted} is printed as accepted and must be filed"
             );
         }
     }
@@ -445,15 +476,17 @@ mod tests {
             "the pattern's own shape"
         );
         let refused = refusal(&field, "Europe").expect("Europe does not match");
-        assert!(refused.text.contains("region"), "{}", refused.text);
-        assert!(refused.text.contains("^[a-z]{2}"), "{}", refused.text);
+        assert_eq!(
+            refused.text,
+            "region is \"Europe\", which it does not take; try it matches ^[a-z]{2}-[a-z]+-[0-9]$"
+        );
 
         field.accepts = vec!["a region like eu-west-1".to_owned()];
         let refused = refusal(&field, "Europe").expect("still refused");
-        assert!(
-            refused.text.contains("a region like eu-west-1"),
-            "the author's own words win over the regex: {}",
-            refused.text
+        assert_eq!(
+            refused.text,
+            "region is \"Europe\", which it does not take; try a region like eu-west-1",
+            "the author's own words win over the regex"
         );
     }
 
@@ -488,10 +521,12 @@ mod tests {
         field.bounds.maximum = Some(64);
         assert_eq!(refusal(&field, "1"), None, "the floor itself is allowed");
         assert_eq!(refusal(&field, "64"), None, "the ceiling itself is allowed");
+        // Whole sentences, because a fragment cannot see that the value
+        // beside it was rendered bare while every other refusal quoted it.
         let refused = refusal(&field, "0").expect("0 is below the floor");
-        assert!(refused.text.contains("starts at 1"), "{}", refused.text);
+        assert_eq!(refused.text, "keep is \"0\"; keep starts at 1");
         let refused = refusal(&field, "65").expect("65 is above the ceiling");
-        assert!(refused.text.contains("stops at 64"), "{}", refused.text);
+        assert_eq!(refused.text, "keep is \"65\"; keep stops at 64");
     }
 
     /// An integer with no bounds still has to be an integer, and the

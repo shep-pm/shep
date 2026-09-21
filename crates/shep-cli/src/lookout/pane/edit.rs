@@ -728,9 +728,11 @@ mod tests {
             pane.type_char(c);
         }
         let refused = pane.apply_typing().expect("a size shep cannot read");
-        assert!(refused.text.contains("max_memory"), "{}", refused.text);
-        assert!(refused.text.contains("banana"), "{}", refused.text);
-        assert!(refused.text.contains("512M, 2G"), "{}", refused.text);
+        assert_eq!(
+            refused.text,
+            "max_memory is \"banana\", which is not a size shep accepts; \
+             try 512M, 2G, a bare number is bytes"
+        );
         assert_eq!(filed(&pane, "max_memory"), None, "nothing was filed");
         assert!(
             pane.typing().is_some(),
