@@ -1,0 +1,59 @@
+# HELP shep_sheep_cpu_percent Tree CPU as a percentage of one core, over the last sampling window.
+# TYPE shep_sheep_cpu_percent gauge
+shep_sheep_cpu_percent{sheep="web",id="3",fold="backend"} 1.5
+shep_sheep_cpu_percent{sheep="we\"b\\x",id="3",fold="backend"} 1.5
+# HELP shep_sheep_memory_bytes Tree resident set size in bytes.
+# TYPE shep_sheep_memory_bytes gauge
+shep_sheep_memory_bytes{sheep="web",id="3",fold="backend"} 2048
+shep_sheep_memory_bytes{sheep="we\"b\\x",id="3",fold="backend"} 2048
+# HELP shep_sheep_restart_total Restart count since registration.
+# TYPE shep_sheep_restart_total counter
+shep_sheep_restart_total{sheep="web",id="3",fold="backend"} 2
+shep_sheep_restart_total{sheep="worker",id="3",fold="backend"} 2
+shep_sheep_restart_total{sheep="we\"b\\x",id="3",fold="backend"} 2
+# HELP shep_sheep_uptime_seconds Seconds since this sheep's last successful start.
+# TYPE shep_sheep_uptime_seconds gauge
+shep_sheep_uptime_seconds{sheep="web",id="3",fold="backend"} 65
+shep_sheep_uptime_seconds{sheep="worker",id="3",fold="backend"} 65
+shep_sheep_uptime_seconds{sheep="we\"b\\x",id="3",fold="backend"} 65
+# HELP shep_sheep_status 1 for the status this sheep is currently in, 0 for every other status.
+# TYPE shep_sheep_status gauge
+shep_sheep_status{sheep="web",id="3",fold="backend",status="starting"} 0
+shep_sheep_status{sheep="web",id="3",fold="backend",status="online"} 1
+shep_sheep_status{sheep="web",id="3",fold="backend",status="stopping"} 0
+shep_sheep_status{sheep="web",id="3",fold="backend",status="stopped"} 0
+shep_sheep_status{sheep="web",id="3",fold="backend",status="errored"} 0
+shep_sheep_status{sheep="web",id="3",fold="backend",status="waiting-restart"} 0
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="starting"} 0
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="online"} 1
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="stopping"} 0
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="stopped"} 0
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="errored"} 0
+shep_sheep_status{sheep="worker",id="3",fold="backend",status="waiting-restart"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="starting"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="online"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="stopping"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="stopped"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="errored"} 0
+shep_sheep_status{sheep="we\"b\\x",id="3",fold="backend",status="waiting-restart"} 1
+# HELP shep_dog_up 1 when this dog is online, 0 otherwise.
+# TYPE shep_dog_up gauge
+shep_dog_up{dog="bark",source="built-in"} 1
+# HELP shep_daemon_up Always 1: the scrape reached the shepherd.
+# TYPE shep_daemon_up gauge
+shep_daemon_up{version="9.9.9"} 1
+# HELP shep_daemon_pid The shepherd's own pid, so a restart is visible as a step change.
+# TYPE shep_daemon_pid gauge
+shep_daemon_pid 12345
+# HELP shep_host_memory_total_bytes Total physical memory on the host.
+# TYPE shep_host_memory_total_bytes gauge
+shep_host_memory_total_bytes 16000000000
+# HELP shep_host_memory_used_bytes Memory in use on the host, as the platform reports it.
+# TYPE shep_host_memory_used_bytes gauge
+shep_host_memory_used_bytes 8000000000
+# HELP shep_host_processes Number of processes running on the host, the flock included.
+# TYPE shep_host_processes gauge
+shep_host_processes 200
+# HELP shep_host_uptime_seconds Seconds since the host booted.
+# TYPE shep_host_uptime_seconds gauge
+shep_host_uptime_seconds 3600
