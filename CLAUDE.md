@@ -149,9 +149,16 @@ and both `benches/` gates. The serial run has caught a real regression.
   This is a release-correctness rule, not a style one. release-plz walks the
   INDIVIDUAL commits and `filter_unconventional = true` drops whatever does
   not parse, so an unreadable subject contributes nothing to its crate's
-  changelog and nothing to the version bump. The `!` on a pull request title
-  is read by nobody: release-plz ignores merge commits, which is the opposite
-  of what a `merge_commit_title = PR_TITLE` setting suggests.
+  changelog and nothing to the version bump. Put the `!` on the commit that
+  carries the break rather than on the pull request title alone: the
+  individual commit names one crate, where a merge commit for a cross-crate
+  pull request lands in every touched crate's history.
+
+  This paragraph said "the `!` on a pull request title is read by nobody:
+  release-plz ignores merge commits" until 2026-09-21. It reads them.
+  `48905707` has two parents, and its subject is the top entry of
+  `crates/shep-daemon/CHANGELOG.md`, rendered from the pull request title that
+  `merge_commit_title = PR_TITLE` handed the merge commit.
 
   Measured 2026-09-04, and it is the reason this bullet exists. Of the 31
   commits behind `shep-core` 0.2.1, 19 were unreadable, and the split was
