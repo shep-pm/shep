@@ -464,6 +464,36 @@ mod tests {
         )
     }
 
+    /// The string literals of the array `declaration` names in `dogs.ts`.
+    ///
+    /// Stops at the array's closing `]` rather than at `];`. A declaration
+    /// may close with `] as const;`, and a parser looking for `];` then runs
+    /// on into the rest of the file and collects every string it finds
+    /// there.
+    ///
+    /// Splits past the `=` first, because a declaration's own type can carry
+    /// a string: `SOURCE_KINDS` is written
+    /// `readonly DogSource["kind"][] = [...]`.
+    ///
+    /// # Panics
+    /// If `declaration` is absent, or has no initialiser, or its array is
+    /// never closed. All three are drift these guards exist to catch.
+    #[track_caller]
+    fn docs_site_array<'a>(dogs_ts: &'a str, declaration: &str) -> Vec<&'a str> {
+        let after = dogs_ts
+            .split_once(declaration)
+            .unwrap_or_else(|| panic!("web/src/data/dogs.ts declares {declaration}"))
+            .1
+            .split_once('=')
+            .unwrap_or_else(|| panic!("the {declaration} declaration has an initialiser"))
+            .1;
+        let literal = after
+            .split_once(']')
+            .unwrap_or_else(|| panic!("the {declaration} array is closed"))
+            .0;
+        literal.split('"').skip(1).step_by(2).collect()
+    }
+
     /// The live index's own single entry, verbatim from
     /// `web/public/dogs.json`.
     fn valid_entry() -> serde_json::Value {
@@ -862,21 +892,7 @@ mod tests {
             return;
         };
 
-        // Past the `=` before splitting on quotes: the declaration reads
-        // `const SOURCE_KINDS: readonly DogSource["kind"][] = [...]`, and
-        // that `"kind"` in the type sits before the array.
-        let after = dogs_ts
-            .split_once("const SOURCE_KINDS")
-            .expect("web/src/data/dogs.ts declares SOURCE_KINDS")
-            .1
-            .split_once('=')
-            .expect("the SOURCE_KINDS declaration has an initialiser")
-            .1;
-        let literal = after
-            .split_once("];")
-            .expect("the SOURCE_KINDS array is closed")
-            .0;
-        let site: Vec<&str> = literal.split('"').skip(1).step_by(2).collect();
+        let site = docs_site_array(&dogs_ts, "SOURCE_KINDS");
 
         let ours: Vec<&str> = SOURCE_KINDS.iter().map(|(kind, _)| *kind).collect();
         assert_eq!(
@@ -885,7 +901,7 @@ mod tests {
         );
     }
 
-    /// Two independent six-string lists in two languages, and nothing but
+    /// Two independent lists in two languages, and nothing but
     /// this test holds them equal. Only the runtime array is read: the
     /// `DogCategory` union above it is what the array is typed against, so
     /// TypeScript fails the site's own build if those two disagree.
@@ -898,15 +914,7 @@ mod tests {
             return;
         };
 
-        let after = dogs_ts
-            .split_once("export const CATEGORIES")
-            .expect("web/src/data/dogs.ts declares CATEGORIES")
-            .1;
-        let literal = after
-            .split_once("];")
-            .expect("the CATEGORIES array is closed")
-            .0;
-        let site: Vec<&str> = literal.split('"').skip(1).step_by(2).collect();
+        let site = docs_site_array(&dogs_ts, "CATEGORIES");
 
         assert_eq!(
             site,
