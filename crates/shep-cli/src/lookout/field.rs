@@ -712,6 +712,94 @@ mod tests {
         );
     }
 
+    /// Every hop [`resolved`] follows, because a reader that followed one
+    /// and not the other reports a nullable field's bounds as absent, and
+    /// nothing downstream can tell that from a schema that published none.
+    ///
+    /// Three spellings of the same `pattern`: inline on the property, one
+    /// `$ref` away, and behind the `anyOf: [{$ref}, {type: null}]` that a
+    /// dog writes for an `Option<UpDuration>`. That third one is the shape
+    /// `shep-log-rotate` publishes, so it is the shape the gate in
+    /// [`super::validation::refusal`] actually meets.
+    #[test]
+    fn a_pattern_is_read_through_every_hop_a_schema_can_put_it_behind() {
+        let defs = props(json!({
+            "UpDuration": { "type": "string", "pattern": r"^\d+(ms|h|m|s)?$" },
+        }));
+        let p = props(json!({
+            "inline": { "type": "string", "pattern": r"^\d+(ms|h|m|s)?$" },
+            "one_hop": { "$ref": "#/$defs/UpDuration" },
+            "two_hops": { "anyOf": [{ "$ref": "#/$defs/UpDuration" }, { "type": "null" }] },
+            "plain": { "type": "string" },
+        }));
+        let set = FieldSet::from_properties(&p, &defs, &[]);
+        for key in ["inline", "one_hop", "two_hops"] {
+            assert_eq!(
+                set.by_key(key).unwrap().bounds.pattern.as_deref(),
+                Some(r"^\d+(ms|h|m|s)?$"),
+                "{key}"
+            );
+        }
+        // The negative control: bounds that came back non-empty for a
+        // schema publishing none would pass every assertion above.
+        assert_eq!(set.by_key("plain").unwrap().bounds, Bounds::default());
+    }
+
+    /// The numeric half, and the reason it is here rather than only in the
+    /// gate's own tests: `shep-log-rotate` publishes `minimum: 1` on
+    /// `keep`, so the floor an operator is held to is one this reader has
+    /// to lift off somebody else's schema.
+    ///
+    /// A fractional bound is dropped rather than rounded. This pane's only
+    /// numeric widget is [`FieldKind::Integer`], so there is no keystroke
+    /// for it to refuse and naming it would mislead.
+    #[test]
+    fn integer_bounds_are_read_and_a_fractional_one_is_dropped() {
+        let p = props(json!({
+            "keep": { "type": "integer", "minimum": 1 },
+            "ratio": { "type": "integer", "minimum": 0.5, "maximum": 2.5 },
+            "both": { "type": "integer", "minimum": -3, "maximum": 64 },
+            "plain": { "type": "integer" },
+        }));
+        let set = FieldSet::from_properties(&p, &Default::default(), &[]);
+        assert_eq!(set.by_key("keep").unwrap().bounds.minimum, Some(1));
+        assert_eq!(set.by_key("both").unwrap().bounds.minimum, Some(-3));
+        assert_eq!(set.by_key("both").unwrap().bounds.maximum, Some(64));
+        assert_eq!(set.by_key("ratio").unwrap().bounds, Bounds::default());
+        assert_eq!(set.by_key("plain").unwrap().bounds, Bounds::default());
+    }
+
+    /// The bounds the real Flockfile schema publishes, so a change to it
+    /// that moved one lands here rather than on an operator.
+    ///
+    /// `max_memory` and `kill_timeout` carry their grammars through
+    /// `$defs`, and `max_restarts` a floor of its own. The two string
+    /// grammars go through their own `FromStr` in the gate rather than
+    /// through these patterns, so this test is about the reader reaching
+    /// them at all.
+    #[test]
+    fn the_real_schema_publishes_the_bounds_the_gate_reads() {
+        let set = real_field_set();
+        assert_eq!(
+            set.by_key("max_memory").unwrap().bounds.pattern.as_deref(),
+            Some(r"^\d+(G|M|K)?$")
+        );
+        assert_eq!(
+            set.by_key("kill_timeout")
+                .unwrap()
+                .bounds
+                .pattern
+                .as_deref(),
+            Some(r"^\d+(ms|h|m|s)?$")
+        );
+        assert_eq!(set.by_key("max_restarts").unwrap().bounds.minimum, Some(0));
+        assert_eq!(
+            set.by_key("cwd").unwrap().bounds,
+            Bounds::default(),
+            "a plain path field is held to nothing"
+        );
+    }
+
     #[test]
     fn the_secret_marker_is_read_off_the_extension_key() {
         let p = props(json!({
