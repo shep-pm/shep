@@ -58,6 +58,36 @@ pub enum ValueKind {
     UpDuration,
 }
 
+/// The bounds a property's schema publishes beyond its type, for the two
+/// keywords this pane can actually check a keystroke against.
+///
+/// Read off the resolved schema, so a `$ref` into `$defs` and an
+/// `anyOf: [T, null]` are both followed first: `max_age` on a dog that
+/// spells it `Option<UpDuration>` carries its pattern two hops away from
+/// the property itself.
+///
+/// Empty for a field whose schema says nothing machine-checkable, which is
+/// most of them. A bound this type does not carry is a bound
+/// [`super::validation::refusal`] cannot enforce, and the pane files the
+/// value: shep is not the authority on a dog's own config.
+///
+/// `Debug` is derived (IR-41): a schema's bounds describe a value without
+/// carrying one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Bounds {
+    /// `pattern`, as the schema wrote it. A dog's own grammar reaches the
+    /// pane only through this, since shep has no `FromStr` for a type it
+    /// has never heard of.
+    pub pattern: Option<String>,
+    /// `minimum`, for a [`FieldKind::Integer`] field. shep-log-rotate's
+    /// `keep` publishes one for exactly this reason: without it the pane
+    /// offers a `keep = 0` the dog refuses on its next tick, in a file the
+    /// operator has already saved and moved on from.
+    pub minimum: Option<i64>,
+    /// `maximum`, for a [`FieldKind::Integer`] field.
+    pub maximum: Option<i64>,
+}
+
 /// One field of a form.
 ///
 /// `Debug` is derived rather than redacted (IR-41): this is a schema, and a
@@ -116,6 +146,10 @@ pub struct Field {
     /// `init.neighbours`, the fields this one interacts with. Empty is the
     /// common case, and an entry missing either half is dropped.
     pub neighbours: Vec<Neighbour>,
+    /// What the schema says the value must satisfy, beyond its type.
+    /// Checked on the keystroke that applies an edit, by
+    /// [`super::validation::refusal`].
+    pub bounds: Bounds,
 }
 
 /// One field this field interacts with, and how.
@@ -280,6 +314,34 @@ fn strip_nullable<'a>(schema: &'a Value, defs: &'a Map<String, Value>) -> &'a Va
     }
 }
 
+/// The schema a property actually describes: a `$ref` followed into `defs`,
+/// and an `anyOf: [T, null]` reduced to `T`.
+///
+/// One spelling of the two hops, shared by [`kind_of`] and [`bounds_of`],
+/// because a reader that followed only one of them would report a
+/// nullable field's bounds as absent.
+fn resolved<'a>(schema: &'a Value, defs: &'a Map<String, Value>) -> &'a Value {
+    strip_nullable(resolve(schema, defs), defs)
+}
+
+/// The [`Bounds`] the resolved schema publishes.
+///
+/// `minimum` and `maximum` are read as integers and dropped when they are
+/// not: this pane's only numeric widget is [`FieldKind::Integer`], so a
+/// fractional bound has no keystroke to refuse and naming it would only
+/// mislead.
+fn bounds_of(schema: &Value, defs: &Map<String, Value>) -> Bounds {
+    let schema = resolved(schema, defs);
+    Bounds {
+        pattern: schema
+            .get("pattern")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        minimum: schema.get("minimum").and_then(Value::as_i64),
+        maximum: schema.get("maximum").and_then(Value::as_i64),
+    }
+}
+
 /// An array's `items` schema, or `Value::Null` when it declares none.
 fn items(schema: &Value) -> &Value {
     schema.get("items").unwrap_or(&Value::Null)
@@ -295,7 +357,7 @@ fn type_of(schema: &Value) -> Option<&str> {
 }
 
 fn kind_of(schema: &Value, defs: &Map<String, Value>) -> FieldKind {
-    let schema = strip_nullable(resolve(schema, defs), defs);
+    let schema = resolved(schema, defs);
     if let Some(consts) = schema.get("oneOf").and_then(Value::as_array) {
         let names: Vec<String> = consts
             .iter()
@@ -443,6 +505,7 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         accepts: strings(init, "accepts"),
         refuses: strings(init, "refuses"),
         neighbours: neighbours(init),
+        bounds: bounds_of(schema, defs),
     }
 }
 

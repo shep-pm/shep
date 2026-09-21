@@ -573,6 +573,7 @@ mod tests {
             accepts: Vec::new(),
             refuses: Vec::new(),
             neighbours: Vec::new(),
+            bounds: crate::lookout::field::Bounds::default(),
         };
         let fields = FieldSet::from_fields(vec![field.clone()], &[]);
         let mut values = Map::new();

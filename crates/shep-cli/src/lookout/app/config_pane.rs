@@ -429,12 +429,21 @@ impl App {
             KeyPress::TextChar(typed) => pane.type_char(typed),
             KeyPress::TextBackspace => pane.type_backspace(),
             KeyPress::TextApply => {
-                pane.apply_typing();
-                // `apply_typing` keeps the editor open on an integer buffer
-                // that does not parse, so the mode follows what the pane
-                // actually did rather than what the key asked for.
+                let refused = pane.apply_typing();
+                // `apply_typing` keeps the editor open on a buffer the
+                // field's own schema refuses, so the mode follows what the
+                // pane actually did rather than what the key asked for.
                 if pane.typing().is_none() {
                     self.mode = InputMode::Normal;
+                }
+                // The sentence is the whole point of refusing here: a dog's
+                // section is written unread, so an operator who is not told
+                // now finds out from the dog's own log, or never.
+                if let Some(refused) = refused {
+                    self.notice = Some(Notice {
+                        text: refused.text,
+                        grave: true,
+                    });
                 }
             }
             KeyPress::TextAbandon => {

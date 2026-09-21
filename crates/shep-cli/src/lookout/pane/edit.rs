@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use super::super::edits::{EditKey, Edits};
 use super::super::field::{Field, FieldKind};
+use super::super::validation::{self, Refusal};
 use super::{ConfigPane, PaneEdit, PaneRow, PaneTarget};
 
 // Link-only (IR-32): the env editor this one is never open beside, and
@@ -390,40 +391,71 @@ impl ConfigPane {
         }
     }
 
-    /// Files the buffer as an edit, typed to the field's kind.
+    /// Files the buffer as an edit, typed to the field's kind, or hands
+    /// back the reason it did not.
     ///
     /// An empty buffer restores the field's default, through
     /// [`Self::default_for`] — the same value `d` files, and the same
     /// reasoning: `Enter` is an explicit apply, not an ambient one, so a
     /// buffer the operator has cleared all the way and then committed reads
     /// as "put this back," not as a typo. That is a different keypress from
-    /// the one below it: an integer field whose buffer does not parse keeps
-    /// the editor open rather than filing a string the daemon would refuse,
-    /// because *non-empty, unparseable* text is the operator still mid-word.
-    /// An empty buffer has nothing left to finish typing, so there is no
-    /// "mid-word" reading available for it, only "unset" or "wrong sheep"
-    /// — and `Enter` picks unset. Validation runs here, on the way in, so
-    /// every entry in the set is one the pane is willing to send.
-    pub fn apply_typing(&mut self) {
-        let Some(PaneTyping { key, buffer }) = self.typing.take() else {
-            return;
-        };
+    /// the one below it: a buffer the field's own schema refuses keeps the
+    /// editor open rather than filing a value the operator will find out
+    /// about later, because *non-empty and wrong* is either a typo or an
+    /// operator still mid-word. An empty buffer has nothing left to finish
+    /// typing, so there is no "mid-word" reading available for it, only
+    /// "unset" or "wrong sheep" — and `Enter` picks unset. Validation runs
+    /// here, on the way in, so every entry in the set is one the pane is
+    /// willing to send.
+    ///
+    /// The check is [`super::super::validation::refusal`], which reads the
+    /// grammar off the field rather than off the key: shep's own two string
+    /// types go through their `FromStr`, a dog's own `pattern` through the
+    /// regex it published, and an integer through its schema's `minimum`
+    /// and `maximum`.
+    ///
+    /// This is the only gate a dog's section has. `Request::SetDogConfig`
+    /// checks that the table is TOML and writes it, because the dog is the
+    /// authority on its own config, so a value filed here is a value that
+    /// reaches `dogs.toml` unread. A sheep's write is re-validated against
+    /// `AppConfig` by the daemon, so for one of those this is the earlier
+    /// of two refusals rather than the only one.
+    ///
+    /// `#[must_use]`: the returned refusal is what puts the sentence in
+    /// the status bar. Dropping it leaves the editor open with nothing
+    /// saying why, which is the shape of the bug this gate closed.
+    #[must_use]
+    pub fn apply_typing(&mut self) -> Option<Refusal> {
+        let PaneTyping { key, buffer } = self.typing.take()?;
         let field = self.fields.by_key(&key).cloned();
+        if let Some(refused) = field
+            .as_ref()
+            .and_then(|field| validation::refusal(field, &buffer))
+        {
+            self.typing = Some(PaneTyping { key, buffer });
+            return Some(refused);
+        }
         let kind = field.as_ref().map(|field| field.kind.clone());
         let value = match (kind, buffer.as_str()) {
             (_, "") => field
                 .as_ref()
                 .map_or(Value::Null, |field| self.default_for(field)),
+            // Already parsed once by `validation::refusal`, which is what
+            // refused every text an `i64` cannot hold. The second parse is
+            // the conversion, and its `Err` arm is unreachable rather than
+            // a second opinion: filing the string instead would send the
+            // daemon a value it refuses for a field the gate just passed.
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
                     self.typing = Some(PaneTyping { key, buffer });
-                    return;
+                    return None;
                 }
             },
             (_, text) => Value::String(text.to_owned()),
         };
         self.file_field(key, value);
+        None
     }
 
     /// Drops an editor under construction, leaving the pane open.
@@ -513,7 +545,7 @@ mod tests {
         for typed in "8192".chars() {
             pane.type_char(typed);
         }
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         assert_eq!(filed(&pane, "history_bytes"), Some(serde_json::json!(8192)));
         assert_eq!(filed_impact(&pane, "history_bytes"), None);
     }
@@ -544,7 +576,7 @@ mod tests {
             pane.cycle();
             pane.begin_typing();
             pane.type_char('x');
-            pane.apply_typing();
+            assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
             assert!(pane.edits().is_empty(), "{key} reached the set");
         }
     }
@@ -562,7 +594,7 @@ mod tests {
         for c in "40".chars() {
             pane.type_char(c);
         }
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(40)));
     }
 
@@ -581,7 +613,7 @@ mod tests {
             pane.type_backspace();
         }
         assert_eq!(pane.typing().expect("still open").buffer, "");
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         assert_eq!(filed(&pane, "max_restarts"), Some(serde_json::json!(16)));
     }
 
@@ -607,7 +639,7 @@ mod tests {
         for _ in 0..8 {
             pane.type_backspace();
         }
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         assert_eq!(filed(&pane, "cwd"), Some(serde_json::Value::Null));
     }
 
@@ -624,7 +656,7 @@ mod tests {
         for c in "40".chars() {
             pane.type_char(c);
         }
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         let writes = pane.close().into_writes();
         let [PaneEdit::Set { key, value }] = writes.as_slice() else {
             panic!("{writes:?}");
@@ -666,20 +698,42 @@ mod tests {
     /// else.
     #[test]
     fn a_unit_field_files_the_buffer_and_never_a_resolved_form() {
-        for typed in ["64", "banana"] {
+        for typed in ["64", "512M"] {
             let mut pane = ConfigPane::sheep(web());
             pane.move_to_key("max_memory");
             pane.begin_typing();
             for c in typed.chars() {
                 pane.type_char(c);
             }
-            pane.apply_typing();
+            assert_eq!(pane.apply_typing(), None, "{typed} is a size shep takes");
             assert_eq!(
                 filed(&pane, "max_memory"),
                 Some(serde_json::json!(typed)),
                 "{typed}"
             );
         }
+    }
+
+    /// The other half of the test above, which used to prove this same
+    /// field filed `banana`. It did, all the way to the daemon, which was
+    /// the backstop for a sheep and does not exist for a dog.
+    #[test]
+    fn a_unit_field_refuses_a_buffer_its_own_grammar_does_not_take() {
+        let mut pane = ConfigPane::sheep(web());
+        pane.move_to_key("max_memory");
+        pane.begin_typing();
+        for c in "banana".chars() {
+            pane.type_char(c);
+        }
+        let refused = pane.apply_typing().expect("a size shep cannot read");
+        assert!(refused.text.contains("max_memory"), "{}", refused.text);
+        assert!(refused.text.contains("banana"), "{}", refused.text);
+        assert!(refused.text.contains("512M, 2G"), "{}", refused.text);
+        assert_eq!(filed(&pane, "max_memory"), None, "nothing was filed");
+        assert!(
+            pane.typing().is_some(),
+            "the editor stays open on what was typed"
+        );
     }
 
     /// The one editor a secret can be typed into, and `secret_dog_pane` is
@@ -699,7 +753,7 @@ mod tests {
         for typed in "https://hook/NEW".chars() {
             pane.type_char(typed);
         }
-        pane.apply_typing();
+        assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
         assert_eq!(
             filed(&pane, "webhook"),
             Some(serde_json::json!("https://hook/NEW"))

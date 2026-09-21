@@ -80,7 +80,10 @@ pub(super) fn secret_dog_pane_with_an_edit() -> ConfigPane {
     for c in "ef56gh78".chars() {
         pane.type_char(c);
     }
-    pane.apply_typing();
+    assert!(
+        pane.apply_typing().is_none(),
+        "the fixture must type a value the field takes"
+    );
     pane
 }
 
