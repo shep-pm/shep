@@ -84,6 +84,13 @@ const { title, description, theme = "auto" } = Astro.props;
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
+
+    {/*
+      Anything a page needs in <head> and no other page has. Today that is
+      the landing page's one JSON-LD block, which describes the software
+      rather than the page and so belongs on exactly one route.
+    */}
+    <slot name="head" />
   </head>
   <body>
     <slot />
