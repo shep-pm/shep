@@ -7,7 +7,7 @@
 use core::future::Future;
 use core::time::Duration;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use shep_core::config::{NormalizeError, ResolvedApp, normalize_all};
 use shep_core::protocol::{
@@ -331,17 +331,23 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                     message: err.to_string(),
                     daemon_version: None,
                 })),
-                Ok(names) => match ctx.supervisor.list_checked().await {
-                    Err(err) => reply(Err(rpc_error(&err))),
-                    // Every sheep of every app the roll restored, not only
-                    // the ones this call spawned (`Response::Mustered`).
-                    Ok(infos) => reply(Ok(Response::Mustered(
-                        infos
-                            .into_iter()
-                            .filter(|info| names.contains(&info.name))
-                            .collect(),
-                    ))),
-                },
+                Ok(names) => {
+                    // One pass to build the set, one lookup per row:
+                    // `contains` on the vec is flock times restored
+                    // string comparisons on every Muster.
+                    let restored: HashSet<&str> = names.iter().map(String::as_str).collect();
+                    match ctx.supervisor.list_checked().await {
+                        Err(err) => reply(Err(rpc_error(&err))),
+                        // Every sheep of every app the roll restored, not only
+                        // the ones this call spawned (`Response::Mustered`).
+                        Ok(infos) => reply(Ok(Response::Mustered(
+                            infos
+                                .into_iter()
+                                .filter(|info| restored.contains(info.name.as_str()))
+                                .collect(),
+                        ))),
+                    }
+                }
             }
         }
         // Re-read per request, never cached: `shep disable X && shep enable
@@ -692,9 +698,12 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                     daemon_version: None,
                 }));
             }
+            // The entries arrive owned, so the values map takes the
+            // `String` out of each rather than copying what `as_str`
+            // borrows.
             let values = entries
                 .into_iter()
-                .map(|(key, value)| (key, value.as_str().to_owned()))
+                .map(|(key, value)| (key, value.into_string()))
                 .collect();
             match ctx.provider_secrets.put(
                 &namespace,
