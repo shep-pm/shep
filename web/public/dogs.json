@@ -25,6 +25,18 @@
       "source": {
         "kind": "cargo"
       }
+    },
+    {
+      "name": "Wumpus",
+      "package": "shep-discord",
+      "adopt_as": "discord",
+      "description": "Streams a sheep's output into Discord channels, keeps a live embed for each one, and drives the flock from slash commands.",
+      "repo": "https://github.com/shep-pm/shep-discord",
+      "license": "MIT OR Apache-2.0",
+      "category": "interactive",
+      "source": {
+        "kind": "cargo"
+      }
     }
   ]
 }
