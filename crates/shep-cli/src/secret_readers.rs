@@ -44,11 +44,8 @@ pub(crate) struct SecretNamer {
 /// nothing, which is what a sheep registered since the last roll write
 /// looks like.
 ///
-/// The roll arrives already parsed — the pane reads it once for this and
-/// for [`roll_age`] — and is indexed into a map here rather than scanned
-/// per name: `find` inside the loop is processes times apps with a string
-/// comparison each step, where the map is one pass over the roll plus a
-/// lookup per name.
+/// Takes the roll already parsed: the pane reads it once for this and for
+/// [`roll_age`].
 pub(crate) fn namers(
     paths: &ShepPaths,
     roll: Option<&FlockSnapshot>,
@@ -146,8 +143,7 @@ pub(crate) fn by_reference(
 /// than as an error: a clock that moved is not the operator's problem to
 /// solve from this screen.
 ///
-/// Takes the roll the pane already parsed for the readers: this used to
-/// read and deserialise the whole snapshot a second time for one number.
+/// Takes the roll the pane already parsed for the readers.
 pub(crate) fn roll_age(roll: &FlockSnapshot) -> Duration {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
