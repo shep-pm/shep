@@ -338,4 +338,26 @@ mod tests {
             "each reader keeps its own environment, not its neighbor's"
         );
     }
+
+    /// A roll stamped ahead of the clock reads as fresh, not as an age
+    /// near `u64::MAX`. `saturating_sub` is what holds that, and the pane
+    /// prints this number straight to an operator.
+    #[test]
+    fn a_roll_stamped_in_the_future_is_zero_old() {
+        let mut roll = FlockSnapshot::with_apps(Vec::new());
+        roll.saved_at_ms = u64::MAX;
+        assert_eq!(roll_age(&roll), Duration::ZERO);
+    }
+
+    /// The other end: an unwritten roll carries `saved_at_ms` of zero, and
+    /// its age is the whole time since the epoch rather than nothing.
+    #[test]
+    fn a_roll_nothing_has_written_is_as_old_as_the_clock() {
+        let roll = FlockSnapshot::with_apps(Vec::new());
+        assert_eq!(roll.saved_at_ms, 0, "with_apps leaves it unwritten");
+        assert!(
+            roll_age(&roll) > Duration::from_secs(50 * 365 * 24 * 60 * 60),
+            "an epoch-stamped roll is decades old, not moments"
+        );
+    }
 }
