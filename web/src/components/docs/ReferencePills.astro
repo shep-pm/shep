@@ -1,23 +1,20 @@
 ---
 import { REPO } from "../../data/repo";
 /*
- * Reference pills — Source / API / Spec links under a docs page's <h1>.
- * One shared component reading web/src/data/
- * docs-nav.ts's per-item source/spec/api fields, so a page's pills can't
- * drift from its own metadata and a new page can't ship without at least
- * a Source pill — that field has no `?`, so leaving it off is a type error,
- * not a silent gap.
+ * Reference pills: Source / API / Spec links under a docs page's <h1>.
+ * One shared component reading web/src/data/docs-nav.ts's per-item
+ * source/spec/api fields, so a page's pills cannot drift from its own
+ * metadata and a new page cannot ship without at least a Source pill:
+ * that field has no `?`, so leaving it off is a type error rather than a
+ * silent gap.
  *
- * Source and Spec both point into the GitHub repo, which went public on
- * 2026-08-16; API points at docs.rs, which has had shep-core since its
- * first publish. Every pill resolves, so every pill is a plain `<a>`.
+ * Source and Spec both point into the GitHub repo, which is public; API
+ * points at docs.rs, which has had shep-core since its first publish.
+ * Every pill resolves, so every pill is a plain `<a>`.
  *
- * Until 2026-09-21 a `pillTargetsLive` flag let a kind render dimmed and
- * inert with a tooltip saying why, for the months when a GitHub link 404'd
- * and docs.rs had nothing. Both flags had been true since the launch they
- * were waiting on, so the dimmed branch was unreachable and its two tooltips
- * still read "the repo is private until launch". Bring the flag back if a
- * fourth pill kind ever points somewhere that does not exist yet.
+ * A kind pointing somewhere not yet live would need a dimmed, inert
+ * variant carrying a tooltip that says why. No kind does, so no such
+ * branch exists to go stale behind a flag nobody reads.
  */
 import { docsNav } from "../../data/docs-nav";
 
