@@ -43,8 +43,25 @@ import { slugify } from "./slug.ts";
 
 export const SUPPORTED_INDEX_VERSION = 1;
 
-/** The six categories a dog can be filed under, in the order the page groups them. */
-export type DogCategory = "logs" | "metrics" | "alerts" | "health" | "deploy" | "other";
+/**
+ * The seven categories a dog can be filed under, in the order the page
+ * groups them. Observability first, then the ones that act, with `other`
+ * last so a dog that fits nowhere does not land mid-page.
+ *
+ * `crates/shep-cli/src/dog_index.rs` keeps its own copy, and the two
+ * disagree on purpose about an unknown category. Here it is a typo in a
+ * pull request against this file, so `validate()` refuses it. There it is
+ * an index newer than the installed binary, which nothing at this end can
+ * prevent, so it files the entry under `other` and lists it anyway.
+ */
+export type DogCategory =
+  | "logs"
+  | "metrics"
+  | "alerts"
+  | "health"
+  | "deploy"
+  | "interactive"
+  | "other";
 
 export const CATEGORIES: readonly DogCategory[] = [
   "logs",
@@ -52,6 +69,7 @@ export const CATEGORIES: readonly DogCategory[] = [
   "alerts",
   "health",
   "deploy",
+  "interactive",
   "other",
 ];
 

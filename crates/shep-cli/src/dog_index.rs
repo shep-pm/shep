@@ -29,7 +29,7 @@ pub const DEFAULT_INDEX_URL: &str = "https://shep-pm.com/dogs.json";
 /// set it can already run `shep`.
 pub const INDEX_URL_ENV: &str = "SHEP_DOG_INDEX";
 
-/// The six categories a dog can be filed under, in the docs site's order.
+/// The seven categories a dog can be filed under, in the docs site's order.
 /// `the_categories_match_the_docs_site_list` and
 /// `the_schema_agrees_with_the_categories_and_source_kinds` hold this list,
 /// `web/src/data/dogs.ts`'s `CATEGORIES` and `web/public/dogs.schema.json`
@@ -39,7 +39,15 @@ pub const INDEX_URL_ENV: &str = "SHEP_DOG_INDEX";
 /// compiled in and the index is served live, so the two part company every
 /// time a category is added, which is what [`UNKNOWN_CATEGORY_FALLBACK`]
 /// is for.
-const CATEGORIES: [&str; 6] = ["logs", "metrics", "alerts", "health", "deploy", "other"];
+const CATEGORIES: [&str; 7] = [
+    "logs",
+    "metrics",
+    "alerts",
+    "health",
+    "deploy",
+    "interactive",
+    "other",
+];
 
 /// Where an entry naming a category this build has never heard of is filed.
 ///

@@ -62,7 +62,7 @@
           },
           "category": {
             "type": "string",
-            "enum": ["logs", "metrics", "alerts", "health", "deploy", "other"]
+            "enum": ["logs", "metrics", "alerts", "health", "deploy", "interactive", "other"]
           },
           "source": {
             "oneOf": [
