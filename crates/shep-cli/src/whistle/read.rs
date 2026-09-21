@@ -23,7 +23,7 @@ use super::facts::{
 };
 use super::shepherd;
 use crate::commands::bleats::{missing_log_note, read_tail};
-use crate::dog::metrics::sample_host;
+use crate::dog::metrics::sample_host_off_worker;
 
 /// The argument every sheep-scoped tool takes.
 ///
@@ -118,7 +118,10 @@ impl Whistle {
             daemon_version: ack.daemon_version,
             daemon_pid: ack.pid,
             flock: flock.iter().map(SheepRow::from).collect(),
-            host: sample_host().as_ref().map(HostRow::from),
+            // The host sample is this tool's one blocking step between
+            // two awaits: the blocking pool, for the same reason as the
+            // metrics dog's scrape path.
+            host: sample_host_off_worker().await.as_ref().map(HostRow::from),
         }))
     }
 
@@ -503,5 +506,35 @@ mod tests {
 
         assert_eq!(result.0.barks.len(), 1);
         assert_eq!(result.0.barks[0].subject, "web");
+    }
+
+    /// `get_metrics` is the whistle's other caller of the host sample, and
+    /// it crosses the same `spawn_blocking` boundary as the metrics dog's
+    /// scrape path. Every other tool here has a test; this is the one
+    /// whose host half was unpinned.
+    #[tokio::test]
+    async fn get_metrics_carries_the_host_sample() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let served = shep_client::testing::serve_one_request(
+            &socket,
+            matching_ack(),
+            Response::Flock(vec![shep_client::testing::sample_info()]),
+        )
+        .await;
+
+        let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
+        let result = tokio::time::timeout(TEST_TIMEOUT, whistle.get_metrics())
+            .await
+            .expect("get_metrics must return within the test timeout")
+            .expect("a scripted daemon must not produce a tool error");
+
+        assert!(
+            result.0.host.is_some(),
+            "the host sample must survive the trip to the blocking pool"
+        );
+        assert_eq!(result.0.flock.len(), 1);
+
+        served.await.expect("the fake daemon task must not panic");
     }
 }
