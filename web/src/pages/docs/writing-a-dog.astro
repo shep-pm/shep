@@ -592,6 +592,13 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>Default</code>, so a field holding one is an{" "}
       <code>Option</code> or carries <code>#[serde(default = "...")]</code>.
     </p>
+    <p>
+      A schema's own bounds are checked in the editor rather than after the
+      write: a <code>pattern</code>, a <code>minimum</code> or a{" "}
+      <code>maximum</code> refuses the value there and says what the field
+      does take. Another reason to publish the narrow thing over a bare{" "}
+      <code>string</code>, since shep writes the section without reading it.
+    </p>
     <Callout variant="note">
       Answering is optional, exactly as <code>--version</code> is. A dog
       that says nothing is adopted, recorded as having no schema, and
