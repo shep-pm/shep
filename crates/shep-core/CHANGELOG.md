@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-21
+
+### Changed
+
+- Centralize home directory variable
+- Centralize home directory variable ([#304](https://github.com/shep-pm/shep/pull/304))
+
+### Fixed
+
+- Remove duplicate home variable
+
+
 ## [0.8.4] - 2026-09-19
 
 ### Changed

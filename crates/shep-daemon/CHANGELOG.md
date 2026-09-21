@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-21
+
+### Added
+
+- Add FlockSnapshot::with_apps
+
+### Changed
+
+- Route FlockRegistry::roll through with_apps
+- Two of the three duplicated patterns in the snapshot tests ([#536](https://github.com/shep-pm/shep/pull/536))
+
+
 ## [0.8.4] - 2026-09-19
 
 
