@@ -158,17 +158,21 @@ mod tests {
             sinks: vec!["ops".to_owned()],
         };
 
-        deliver_and_record(
-            firing,
-            &Delivery {
-                sinks: Arc::new(sinks),
-                append_lock: Arc::new(Mutex::new(())),
-                barks_path: Arc::new(barks_path.clone()),
-                sink_timeout: Duration::from_secs(5),
-                max_bytes: barks::DEFAULT_MAX_BYTES,
-            },
+        let delivery = Delivery {
+            sinks: Arc::new(sinks),
+            append_lock: Arc::new(Mutex::new(())),
+            barks_path: Arc::new(barks_path.clone()),
+            sink_timeout: Duration::from_secs(5),
+            max_bytes: barks::DEFAULT_MAX_BYTES,
+        };
+        // Wider than `sink_timeout` by a margin a refusal from localhost
+        // never needs, so only a regression into a hang reaches it.
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            deliver_and_record(firing, &delivery),
         )
-        .await;
+        .await
+        .expect("the delivery outlived its own sink timeout");
 
         let recorded = shep_core::barks::read(&barks_path).unwrap();
         assert_eq!(
