@@ -139,16 +139,25 @@ pub fn bullets(field: &Field) -> Bullets {
     }
 }
 
+/// What a refusal prints in place of a secret's value.
+///
+/// The same marker the pane already draws for a secret it holds, so an
+/// operator reads one word for one idea rather than learning a second.
+pub const REDACTED: &str = "<set>";
+
 /// Why a typed buffer was not filed, in the operator's words.
 ///
 /// One sentence, ready for the status bar: it names the key, quotes what
 /// was typed, and says what the field does take. The house shape every
 /// other refusal in the pane follows.
 ///
-/// `Debug` is derived (IR-41): the value quoted in `text` is one the
-/// operator just typed into a config field, which is the same value the
-/// row beside it is already drawing. A secret never reaches here, because
-/// a secret field carries neither grammar nor pattern to refuse it with.
+/// `Debug` is derived (IR-41), which is safe only because [`refusal`]
+/// redacts before it builds one: a secret's value never reaches `text`,
+/// so there is nothing here for a hand-written impl to hide. Both halves
+/// are pinned by exact-string tests below.
+///
+/// The value quoted for a field that is not secret is one the operator
+/// just typed, and the row beside it is already drawing the same thing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     /// The sentence to print.
@@ -184,35 +193,56 @@ pub fn refusal(field: &Field, typed: &str) -> Option<Refusal> {
     if typed.is_empty() {
         return None;
     }
+    // Every path below quotes `typed` back at the operator, and
+    // `App::on_pane_text_key` paints the sentence in the status bar. For a
+    // secret that is the one place in this pane the value would appear:
+    // `ConfigPane::begin_typing` seeds a secret's editor empty and the row
+    // renders `<set>`, both so the value is never drawn. A schema decides
+    // this, not shep, so it is reachable rather than theoretical: a dog
+    // publishing `pattern` or a `$ref` grammar on a field it also marks
+    // `x-shep-secret` sends a credential straight through `pattern_refusal`.
+    let shown = if field.secret { REDACTED } else { typed };
     if field.kind == FieldKind::Integer {
-        return integer_refusal(field, typed);
+        return integer_refusal(field, typed, shown);
     }
     match field.value_kind {
         Some(ValueKind::UpDuration) => typed
             .parse::<UpDuration>()
             .is_err()
-            .then(|| refuse(&field.key, typed, "a duration", DURATION_FORMS)),
+            .then(|| refuse(&field.key, shown, "a duration", DURATION_FORMS)),
         Some(ValueKind::MemSize) => typed
             .parse::<MemSize>()
             .is_err()
-            .then(|| refuse(&field.key, typed, "a size", MEMORY_FORMS)),
-        None => pattern_refusal(field, typed),
+            .then(|| refuse(&field.key, shown, "a size", MEMORY_FORMS)),
+        None => pattern_refusal(field, typed, shown),
     }
 }
 
-/// [`refusal`] for a [`FieldKind::Integer`] field: the parse, then the
-/// schema's own floor and ceiling.
-fn integer_refusal(field: &Field, typed: &str) -> Option<Refusal> {
-    let Ok(number) = typed.parse::<i64>() else {
-        return Some(not_a_whole_number(&field.key, typed));
-    };
+/// [`refusal`] for a [`FieldKind::Integer`] field: the empty range, the
+/// parse, then the schema's own floor and ceiling.
+///
+/// `shown` is what may be printed, which is `typed` for an ordinary field
+/// and [`REDACTED`] for a secret one. `typed` is still what gets parsed.
+fn integer_refusal(field: &Field, typed: &str, shown: &str) -> Option<Refusal> {
     let key = &field.key;
+    // Ahead of the parse, because it is true of every value: a field whose
+    // schema admits no integer cannot be answered, and saying "starts at 3"
+    // to somebody who then types 3 and is told it "stops at 1" explains
+    // nothing.
+    if field.bounds.unsatisfiable {
+        return Some(Refusal {
+            text: format!("{key} takes no value: its schema asks for a range with nothing in it"),
+        });
+    }
+    let Ok(number) = typed.parse::<i64>() else {
+        return Some(not_a_whole_number(key, shown));
+    };
     match (field.bounds.minimum, field.bounds.maximum) {
         (Some(min), _) if number < min => Some(Refusal {
-            text: format!("{key} is \"{typed}\"; {key} starts at {min}"),
+            text: format!("{key} is \"{shown}\"; {key} starts at {min}"),
         }),
         (_, Some(max)) if number > max => Some(Refusal {
-            text: format!("{key} is \"{typed}\"; {key} stops at {max}"),
+            text: format!("{key} is \"{shown}\"; {key} stops at {max}"),
         }),
         _ => None,
     }
@@ -226,7 +256,7 @@ fn integer_refusal(field: &Field, typed: &str) -> Option<Refusal> {
 /// since that is the spelling its author wrote for an operator. The raw
 /// pattern is the fallback, which is worse copy than a sentence and better
 /// than the silence it replaced.
-fn pattern_refusal(field: &Field, typed: &str) -> Option<Refusal> {
+fn pattern_refusal(field: &Field, typed: &str, shown: &str) -> Option<Refusal> {
     let pattern = field.bounds.pattern.as_deref()?;
     let compiled = regex::Regex::new(pattern).ok()?;
     if compiled.is_match(typed) {
@@ -239,7 +269,7 @@ fn pattern_refusal(field: &Field, typed: &str) -> Option<Refusal> {
     };
     Some(Refusal {
         text: format!(
-            "{} is \"{typed}\", which it does not take; try {takes}",
+            "{} is \"{shown}\", which it does not take; try {takes}",
             field.key
         ),
     })
@@ -254,9 +284,12 @@ fn pattern_refusal(field: &Field, typed: &str) -> Option<Refusal> {
 ///
 /// `pub(super)`: `ConfigPane::apply_typing`'s own integer arm answers with
 /// this, so the one sentence has one spelling.
-pub(super) fn not_a_whole_number(key: &str, typed: &str) -> Refusal {
+///
+/// `shown` is what may be printed: [`REDACTED`] rather than the value when
+/// the field is a credential. Callers pass what [`refusal`] resolved.
+pub(super) fn not_a_whole_number(key: &str, shown: &str) -> Refusal {
     Refusal {
-        text: format!("{key} is \"{typed}\", which is not a whole number shep accepts"),
+        text: format!("{key} is \"{shown}\", which is not a whole number shep accepts"),
     }
 }
 
@@ -452,6 +485,89 @@ mod tests {
                 refusal(&field, accepted),
                 None,
                 "{accepted} is printed as accepted and must be filed"
+            );
+        }
+    }
+
+    /// A secret's value must not reach the status bar, and both doors a
+    /// schema opens onto this gate have to be shut: a `pattern`, and a
+    /// `$ref` grammar. `ConfigPane::begin_typing` seeds a secret's editor
+    /// empty and its row draws `<set>`, so a refusal echoing the buffer
+    /// would be the one place in the pane a credential appears.
+    ///
+    /// Exact strings, both for the sentence and for the `Debug`, which is
+    /// what IR-41 asks for on anything that can carry one.
+    #[test]
+    fn a_secrets_value_never_reaches_the_sentence_or_the_debug() {
+        const CREDENTIAL: &str = "sk_live_HUNTER2";
+
+        let mut pattern_door = text_field("token");
+        pattern_door.secret = true;
+        pattern_door.bounds.pattern = Some("^sk-".to_owned());
+        let refused = refusal(&pattern_door, CREDENTIAL).expect("the pattern refuses it");
+        assert_eq!(
+            refused.text,
+            "token is \"<set>\", which it does not take; try it matches ^sk-"
+        );
+        assert_eq!(
+            format!("{refused:?}"),
+            "Refusal { text: \"token is \\\"<set>\\\", which it does not take; try it matches ^sk-\" }"
+        );
+
+        let mut grammar_door = text_field("api_key");
+        grammar_door.secret = true;
+        grammar_door.value_kind = Some(ValueKind::UpDuration);
+        let refused = refusal(&grammar_door, CREDENTIAL).expect("not a duration");
+        assert!(!refused.text.contains(CREDENTIAL), "{}", refused.text);
+        assert!(refused.text.contains("<set>"), "{}", refused.text);
+
+        let mut integer_door = text_field("pin");
+        integer_door.secret = true;
+        integer_door.kind = FieldKind::Integer;
+        let refused = refusal(&integer_door, CREDENTIAL).expect("not a number");
+        assert_eq!(
+            refused.text,
+            "pin is \"<set>\", which is not a whole number shep accepts"
+        );
+
+        let mut bounded = text_field("pin");
+        bounded.secret = true;
+        bounded.kind = FieldKind::Integer;
+        bounded.bounds.minimum = Some(1000);
+        let refused = refusal(&bounded, "7").expect("below the floor");
+        assert_eq!(refused.text, "pin is \"<set>\"; pin starts at 1000");
+    }
+
+    /// The control: a field that is not a credential still quotes what was
+    /// typed, since redacting everything would pass the test above while
+    /// making every refusal useless.
+    #[test]
+    fn an_ordinary_field_still_quotes_what_was_typed() {
+        let mut field = text_field("region");
+        field.bounds.pattern = Some("^eu-".to_owned());
+        assert!(
+            refusal(&field, "Europe")
+                .expect("refused")
+                .text
+                .contains("Europe"),
+        );
+    }
+
+    /// A range with nothing in it is said once, rather than as a floor and
+    /// a ceiling the operator is bounced between. A dog writing
+    /// `range(min = 3, max = 1)` is the realistic way to get one.
+    #[test]
+    fn a_range_with_nothing_in_it_says_so() {
+        let mut field = text_field("workers");
+        field.kind = FieldKind::Integer;
+        field.bounds.minimum = Some(3);
+        field.bounds.maximum = Some(1);
+        field.bounds.unsatisfiable = true;
+        for typed in ["1", "2", "3", "not a number"] {
+            assert_eq!(
+                refusal(&field, typed).expect("nothing is acceptable").text,
+                "workers takes no value: its schema asks for a range with nothing in it",
+                "{typed}"
             );
         }
     }
