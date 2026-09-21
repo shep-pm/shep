@@ -6,7 +6,18 @@
  * since the prototype only had client-side page state, no real routes.
  * A tiny inline script picks the target before paint; no client JS
  * framework needed for one redirect.
+ *
+ * It does not go through Base.astro, and should not: a page that redirects
+ * before paint has no use for a stylesheet or three webfonts. What it does
+ * need is the head metadata, because /docs is a URL people paste. It shipped
+ * with no description at all and a two-word title, so a search result for it
+ * read "shep docs" and nothing else.
  */
+import SocialMeta from "../../components/SocialMeta.astro";
+
+const title = "shep docs · a process manager written in Rust";
+const description =
+  "Documentation for shep: installing it, writing a Flockfile, reading logs, and every verb the CLI understands.";
 ---
 
 <!doctype html>
@@ -21,7 +32,9 @@
           : "/docs/getting-started",
       );
     </script>
-    <title>shep docs</title>
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <SocialMeta title={title} description={description} />
   </head>
   <body>
     <p>
