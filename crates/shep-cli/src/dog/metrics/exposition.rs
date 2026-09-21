@@ -235,13 +235,12 @@ pub fn render(reading: &Reading) -> String {
             ("id", id_string.as_str()),
             ("fold", fold),
         ];
-        let sheep_labels = labels(&sheep_pairs);
-        // The open form of the same three labels, escaped once here rather
-        // than once per status below: `labels` escapes and formats all of
-        // them, but only `status` differs between the six candidates, so
-        // the closed form would pay six escapes of the sheep name, six of
-        // the id and six of the fold per sheep on every scrape.
+        // The open form first, because the closed one is it plus a brace.
+        // Only `status` differs between the six candidates below, so
+        // building them separately would escape this sheep's name, id and
+        // fold twice here and six times more per status, every scrape.
         let sheep_prefix = label_prefix(&sheep_pairs);
+        let sheep_labels = format!("{sheep_prefix}}}");
 
         if let Some(cpu_percent) = info.cpu_percent {
             cpu.push(&sheep_labels, cpu_percent);
