@@ -81,6 +81,20 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
       redistributable: <code>scoop bucket add extras</code>, then
       <code>scoop install extras/vcredist2022</code>.
     </p>
+    <p>Prebuilt binaries:</p>
+    <ul>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-aarch64-apple-darwin.tar.gz">macOS, Apple silicon</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-x86_64-apple-darwin.tar.gz">macOS, Intel</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-x86_64-unknown-linux-gnu.tar.gz">Linux x86-64</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-x86_64-unknown-linux-musl.tar.gz">Linux x86-64, static</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-aarch64-unknown-linux-gnu.tar.gz">Linux arm64</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-aarch64-unknown-linux-musl.tar.gz">Linux arm64, static</a></li>
+      <li><a href="https://github.com/shep-pm/shep/releases/latest/download/shep-x86_64-pc-windows-msvc.zip">Windows x86-64</a></li>
+    </ul>
+    <p class="fine">
+      Each link redirects to the newest release. Checksums are in{" "}
+      <a href="https://github.com/shep-pm/shep/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
+    </p>
     <p>Or build it yourself:</p>
     <div class="terminal">
       <div><span class="prompt">$</span> git clone https://github.com/shep-pm/shep.git</div>
