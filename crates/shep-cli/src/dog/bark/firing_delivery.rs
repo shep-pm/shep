@@ -249,7 +249,10 @@ mod tests {
 
         // The delivery then finishes on the dead sink's own timeout, with
         // both outcomes in the firing's order.
-        recorded.await.expect("the delivery task must not panic");
+        tokio::time::timeout(Duration::from_secs(5), recorded)
+            .await
+            .expect("the delivery must end on the dead sink's own timeout, not outlive it")
+            .expect("the delivery task must not panic");
         let barks = shep_core::barks::read(&barks_path).unwrap();
         assert_eq!(barks.len(), 1);
         let outcomes = &barks[0].sinks;
