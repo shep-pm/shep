@@ -145,6 +145,21 @@ pub fn bullets(field: &Field) -> Bullets {
 /// operator reads one word for one idea rather than learning a second.
 pub const REDACTED: &str = "<set>";
 
+/// What may be printed for `typed`: [`REDACTED`] when the field carries a
+/// credential, the value itself otherwise.
+///
+/// Every sentence this module builds resolves its value here, so a refusal
+/// added later cannot echo a secret by forgetting to ask. The rule is one
+/// line and the reason it is a function is that it has two callers.
+///
+/// `pub(super)`: `ConfigPane::apply_typing` builds one refusal of its own
+/// through [`not_a_whole_number`], and has to resolve the value the same
+/// way.
+#[must_use]
+pub(super) fn shown_value<'a>(field: &Field, typed: &'a str) -> &'a str {
+    if field.secret { REDACTED } else { typed }
+}
+
 /// Why a typed buffer was not filed, in the operator's words.
 ///
 /// One sentence, ready for the status bar: it names the key, quotes what
@@ -201,7 +216,7 @@ pub fn refusal(field: &Field, typed: &str) -> Option<Refusal> {
     // this, not shep, so it is reachable rather than theoretical: a dog
     // publishing `pattern` or a `$ref` grammar on a field it also marks
     // `x-shep-secret` sends a credential straight through `pattern_refusal`.
-    let shown = if field.secret { REDACTED } else { typed };
+    let shown = shown_value(field, typed);
     if field.kind == FieldKind::Integer {
         return integer_refusal(field, typed, shown);
     }
@@ -297,11 +312,15 @@ pub(super) fn not_a_whole_number(key: &str, shown: &str) -> Refusal {
 /// the explanation panel prints. Sharing the table is the point: a form
 /// added to one is added to the other, and neither can name a spelling the
 /// parser has stopped taking.
-fn refuse(key: &str, typed: &str, what: &str, forms: &[Form]) -> Refusal {
+///
+/// `shown` is what may be printed, which [`shown_value`] has already
+/// resolved. Naming the parameter for the raw buffer invited a caller to
+/// pass one.
+fn refuse(key: &str, shown: &str, what: &str, forms: &[Form]) -> Refusal {
     let takes: Vec<&str> = forms.iter().map(|form| form.text).collect();
     Refusal {
         text: format!(
-            "{key} is \"{typed}\", which is not {what} shep accepts; try {}",
+            "{key} is \"{shown}\", which is not {what} shep accepts; try {}",
             takes.join(", ")
         ),
     }
@@ -410,6 +429,22 @@ mod tests {
     fn a_plain_text_field_with_no_annotation_has_no_bullets() {
         let bullets = bullets(&text_field("fold"));
         assert!(bullets.is_empty());
+    }
+
+    /// The one rule both refusal doors share. `ConfigPane::apply_typing`
+    /// builds its own sentence for an integer it cannot convert, so the
+    /// redaction cannot live inside [`refusal`] alone.
+    #[test]
+    fn the_shown_value_of_a_secret_is_the_marker_and_never_the_buffer() {
+        let mut field = text_field("token");
+        assert_eq!(shown_value(&field, "sk_live_HUNTER2"), "sk_live_HUNTER2");
+        field.secret = true;
+        assert_eq!(shown_value(&field, "sk_live_HUNTER2"), REDACTED);
+        assert!(
+            !not_a_whole_number(&field.key, shown_value(&field, "sk_live_HUNTER2"))
+                .text
+                .contains("HUNTER2")
+        );
     }
 
     /// Driven through the same schema shape a real dog publishes:

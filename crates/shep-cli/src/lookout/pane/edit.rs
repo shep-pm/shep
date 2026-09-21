@@ -449,7 +449,10 @@ impl ConfigPane {
             (Some(FieldKind::Integer), text) => match text.parse::<i64>() {
                 Ok(number) => Value::from(number),
                 Err(_) => {
-                    let refused = validation::not_a_whole_number(&key, text);
+                    let shown = field
+                        .as_ref()
+                        .map_or(text, |field| validation::shown_value(field, text));
+                    let refused = validation::not_a_whole_number(&key, shown);
                     self.typing = Some(PaneTyping { key, buffer });
                     return Some(refused);
                 }
