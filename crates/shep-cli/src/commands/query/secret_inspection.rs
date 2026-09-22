@@ -111,6 +111,12 @@ pub(super) fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) 
 /// send the operator to `shep secret set` for values the store may already
 /// hold. Rows are still produced, so a sheep needing nothing still
 /// describes; the caller has the [`Streams`] to say so on.
+///
+/// One [`SecretView`] per distinct environment across `procs`, not one per
+/// name: a view owns its copy of both maps, and neither map varies by name,
+/// so a flock sharing one environment copies them once. Not one view for
+/// the whole flock either, because an app's Flockfile can pin an
+/// `environment` of its own and each has to resolve against that one.
 pub(super) fn gather_secrets(
     paths: &ShepPaths,
     procs: &[ProcessInfo],
@@ -121,9 +127,13 @@ pub(super) fn gather_secrets(
     };
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
 
+    let namers = crate::secret_readers::namers(paths, read_roll(paths).as_ref(), procs);
+    let mut views: BTreeMap<&str, SecretView> = BTreeMap::new();
     let mut json = Vec::new();
-    for namer in crate::secret_readers::namers(paths, read_roll(paths).as_ref(), procs) {
-        let view = SecretView::new(namer.environment.clone(), store.clone(), providers.clone());
+    for namer in &namers {
+        let view = views.entry(&namer.environment).or_insert_with(|| {
+            SecretView::new(namer.environment.clone(), store.clone(), providers.clone())
+        });
         for reference in &namer.references {
             let Some(parsed) = SecretRef::parse(reference) else {
                 continue;
@@ -421,6 +431,83 @@ mod tests {
         assert_eq!(entries[0]["environment"], "staging");
         assert_eq!(entries[0]["status"], "uncached", "{entries:?}");
         assert!(!out_contains(&json, "sk_live"), "never a value");
+    }
+
+    /// `gather_secrets` builds one view per environment and shares it
+    /// between the apps naming that environment. Two apps naming two
+    /// environments must still each read their own: `K` has a value for
+    /// `staging` alone, so one view across both would resolve `floating`
+    /// against staging's value and call a production key it has no slot
+    /// for `resolved`.
+    #[tokio::test]
+    async fn two_apps_in_two_environments_each_resolve_against_their_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, daemon) = fake_client_with_ack(&path, sample_ack()).await;
+        daemon.reply_to_describe(vec![
+            ProcessInfo::builder(1, "pinned", ProcStatus::Online).build(),
+            ProcessInfo::builder(2, "floating", ProcStatus::Online).build(),
+        ]);
+        let home = dir.path().display().to_string();
+        let paths = ShepPaths::resolve(
+            &move |key| (key == "SHEP_HOME").then(|| home.clone()),
+            dir.path(),
+        );
+
+        let mut pinned = shep_core::config::AppConfig::minimal("pinned", "./srv");
+        pinned.environment = Some("staging".into());
+        pinned.env.insert("A".into(), "{{secret:K}}".into());
+        let mut floating = shep_core::config::AppConfig::minimal("floating", "./srv");
+        floating.env.insert("A".into(), "{{secret:K}}".into());
+        let roll = FlockSnapshot::with_apps(
+            [pinned, floating]
+                .into_iter()
+                .map(|app| shep_daemon::snapshot::SavedApp {
+                    app,
+                    instances_running: 1,
+                })
+                .collect(),
+        );
+        std::fs::write(&paths.snapshot, serde_json::to_vec(&roll).unwrap()).unwrap();
+        // Staging and no `all` slot, so the daemon's own `production` has
+        // nothing to fall back to.
+        secrets::set(&paths.secrets, "K", "staging", "sk_staging").unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = Streams {
+                out: &mut out,
+                err: &mut err,
+                style: crate::style::Presentation::BARE,
+                fmt: Format::Json,
+            };
+            describe(
+                &client,
+                &mut streams,
+                &paths,
+                &SelectorArgs {
+                    selectors: vec!["all".into()],
+                },
+            )
+            .await
+        };
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let entries = json["secrets"].as_array().unwrap();
+        assert_eq!(entries.len(), 2, "{entries:?}");
+        let row = |name: &str| {
+            entries
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap_or_else(|| panic!("{name} has a row: {entries:?}"))
+        };
+        assert_eq!(row("pinned")["environment"], "staging");
+        assert_eq!(row("pinned")["status"], "resolved", "{entries:?}");
+        assert_eq!(row("floating")["environment"], "production");
+        assert_eq!(row("floating")["status"], "missing", "{entries:?}");
+        assert!(!out_contains(&json, "sk_staging"), "never a value");
     }
 
     /// A store that will not parse is not a store with nothing in it. The
