@@ -160,9 +160,9 @@ mod tests {
     }
 
     /// `shepherd_acted` is the one field telling a `--format json` consumer
-    /// whether a shepherd was reached or only the config changed, and the two
-    /// branches here differ in nothing else a test was reading. It shipped as
-    /// `false` on both, so this pins the reached branch.
+    /// whether a shepherd was reached or only the config changed. This
+    /// function's two branches differ in nothing else a test reads, so
+    /// nothing else catches the flag being wrong on one of them.
     #[tokio::test]
     async fn disable_reports_that_the_shepherd_acted_when_one_answered() {
         let dir = tempfile::tempdir().unwrap();
