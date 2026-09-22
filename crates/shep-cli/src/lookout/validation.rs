@@ -426,6 +426,7 @@ mod tests {
             ("DURATION_FORMS", DURATION_FORMS),
             ("DURATION_REFUSALS", DURATION_REFUSALS),
             ("MEMORY_FORMS", MEMORY_FORMS),
+            ("MEMORY_REFUSALS", MEMORY_REFUSALS),
             ("BOOL_FORMS", BOOL_FORMS),
             ("INTEGER_FORMS", INTEGER_FORMS),
         ] {
