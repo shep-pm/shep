@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-22
+
+### Changed
+
+- Name DogSource's and ProcStatus's labels once
+
+
 ## [0.10.0] - 2026-09-22
 
 ### Fixed
