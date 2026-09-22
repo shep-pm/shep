@@ -189,6 +189,29 @@ mod tests {
         assert_eq!(json["data"]["status"], DISABLED_STATUS);
     }
 
+    /// The other half of the pair above. Pinning only the reached branch
+    /// leaves this one free to drift to `true`, which would tell a consumer
+    /// a shepherd stopped the dog when none was running.
+    #[tokio::test]
+    async fn disable_reports_that_no_shepherd_acted_when_none_answered() {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut streams = streams(&mut out, &mut err);
+        streams.fmt = Format::Json;
+
+        let code = disable_after_config(&mut streams, "bark", &DogSource::BuiltIn, None).await;
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            json["data"]["shepherd_acted"],
+            serde_json::json!(false),
+            "no shepherd answered, so none acted: {}",
+            String::from_utf8_lossy(&out)
+        );
+        assert_eq!(json["data"]["status"], NO_SHEPHERD_DISABLE_STATUS);
+    }
+
     #[tokio::test]
     async fn disable_asks_the_shepherd_to_stop_that_dog() {
         let dir = tempfile::tempdir().unwrap();
