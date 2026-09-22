@@ -195,12 +195,35 @@ const headerCopy = Boolean(label) && iconCopy;
         }
       };
 
+      // A denied permission or a missing clipboard API would otherwise leave
+      // the button claiming nothing went wrong. Unlike the copied state this
+      // does not auto-revert: the failure stays visible until the next try.
+      const setFailed = () => {
+        // A successful copy moments ago may still have its revert timer
+        // pending, and that timer's whole job is to wipe the button back to
+        // its resting state: left alone it fires straight over the top of
+        // the failure, so "failed" flashes away unread. Clearing it here is
+        // what makes the no-auto-revert promise above true.
+        clearTimeout(revertTimer);
+        revertTimer = undefined;
+        if (label) label.textContent = "failed";
+        if (copyIcon) copyIcon.style.display = "";
+        if (copiedIcon) copiedIcon.style.display = "none";
+        if (copyIcon || copiedIcon) {
+          button.setAttribute("aria-label", "Copy failed");
+        }
+      };
+
       button.addEventListener("click", async () => {
         const text = pre?.textContent ?? "";
-        if (!navigator.clipboard) return;
+        if (!navigator.clipboard) {
+          setFailed();
+          return;
+        }
         try {
           await navigator.clipboard.writeText(text);
         } catch {
+          setFailed();
           return;
         }
         setCopied(true);
