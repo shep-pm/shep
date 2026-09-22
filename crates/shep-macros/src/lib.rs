@@ -119,20 +119,28 @@ const JSON_SCHEMA: &str = "JsonSchema";
 /// holds no credential still wants the impl.
 #[proc_macro_attribute]
 pub fn dog_config(args: TokenStream, input: TokenStream) -> TokenStream {
-    if !args.is_empty() {
-        let args = TokenStream2::from(args);
-        return syn::Error::new_spanned(
-            args,
-            "`#[dog_config]` takes no arguments: the marking goes on the \
-             fields, as `#[shep(secret)]`",
-        )
-        .into_compile_error()
-        .into();
-    }
+    let args = TokenStream2::from(args);
     let mut input = parse_macro_input!(input as DeriveInput);
-    expand(&mut input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    match expand(&args, &mut input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => {
+            // The type is emitted even on the error path, stripped of the
+            // attributes only this macro knows. A refusal that dropped it
+            // would leave every derive above this one holding an impl for a
+            // type that no longer exists, and the author would read
+            // `cannot find type` ahead of the message that explains the
+            // problem. One error, not a cascade.
+            strip_shep_attributes(&mut input);
+            let refusal = err.into_compile_error();
+            let carry_on = dog_config_impl(&input);
+            quote! {
+                #input
+                #carry_on
+                #refusal
+            }
+            .into()
+        }
+    }
 }
 
 /// The macro's whole body, in a form that can return an error instead of
@@ -141,7 +149,15 @@ pub fn dog_config(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Mutates `input`: a marked field loses its `#[shep(secret)]` and gains the
 /// `schemars` extension. The attribute has to go, since nothing downstream
 /// registers it and rustc refuses an attribute no macro claims.
-fn expand(input: &mut DeriveInput) -> syn::Result<TokenStream2> {
+fn expand(args: &TokenStream2, input: &mut DeriveInput) -> syn::Result<TokenStream2> {
+    if !args.is_empty() {
+        return Err(syn::Error::new_spanned(
+            args,
+            "`#[dog_config]` takes no arguments: the marking goes on the \
+             fields, as `#[shep(secret)]`",
+        ));
+    }
+
     if let Some(attr) = find_shep_attribute(&input.attrs) {
         return Err(syn::Error::new_spanned(
             attr,
@@ -150,8 +166,12 @@ fn expand(input: &mut DeriveInput) -> syn::Result<TokenStream2> {
         ));
     }
 
+    // Every refusal is decided before a single extension goes on, because
+    // the error path emits the type: a half-marked one would carry a
+    // `schemars` attribute with no derive left to claim it, and rustc would
+    // report that ahead of the refusal that explains it.
     let derives_json_schema = derives_json_schema(&input.attrs);
-    let mut marked = false;
+    let mut marked: Vec<&mut Field> = Vec::new();
     for field in fields_of_mut(input)? {
         if !take_secret(field)? {
             continue;
@@ -164,11 +184,10 @@ fn expand(input: &mut DeriveInput) -> syn::Result<TokenStream2> {
                  properties by name has nothing to find. Name the field.",
             ));
         }
-        marked = true;
-        field.attrs.push(secret_extension());
+        marked.push(field);
     }
 
-    if marked && !derives_json_schema {
+    if !marked.is_empty() && !derives_json_schema {
         return Err(syn::Error::new_spanned(
             &input.ident,
             "a `#[shep(secret)]` field needs `#[derive(schemars::JsonSchema)]` \
@@ -180,14 +199,55 @@ fn expand(input: &mut DeriveInput) -> syn::Result<TokenStream2> {
         ));
     }
 
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    for field in marked {
+        field.attrs.push(secret_extension());
+    }
+
+    let carry_on = dog_config_impl(input);
     Ok(quote! {
         #input
 
+        #carry_on
+    })
+}
+
+/// The impl the attribute exists to write.
+///
+/// Emitted on the error path too, so a refusal does not also break every
+/// `probe::<T>` and `config_schema::<T>` the dog calls. The build still
+/// fails on the refusal; what this buys is that it fails once, naming the
+/// real problem.
+fn dog_config_impl(input: &DeriveInput) -> TokenStream2 {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    quote! {
         impl #impl_generics ::shep_client::dogs::DogConfig
             for #name #ty_generics #where_clause {}
-    })
+    }
+}
+
+/// Removes every `#[shep(...)]` from the type, its variants and its fields.
+///
+/// Nothing downstream registers the attribute, so one left behind is an
+/// error of its own on top of whatever refusal is being reported.
+fn strip_shep_attributes(input: &mut DeriveInput) {
+    let is_shep = |attr: &Attribute| attr.path().is_ident(ATTR);
+    input.attrs.retain(|attr| !is_shep(attr));
+    let fields: Vec<&mut Field> = match &mut input.data {
+        Data::Struct(data) => data.fields.iter_mut().collect(),
+        Data::Enum(data) => data
+            .variants
+            .iter_mut()
+            .flat_map(|variant| {
+                variant.attrs.retain(|attr| !is_shep(attr));
+                variant.fields.iter_mut()
+            })
+            .collect(),
+        Data::Union(data) => data.fields.named.iter_mut().collect(),
+    };
+    for field in fields {
+        field.attrs.retain(|attr| !is_shep(attr));
+    }
 }
 
 /// Whether the type still has a `derive` naming `JsonSchema` for the
