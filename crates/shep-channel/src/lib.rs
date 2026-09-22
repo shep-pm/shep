@@ -16,12 +16,18 @@
 //! assert!(!shepherd.is_active());
 //! shepherd.metric("rps", 4200.0);
 //! shepherd.ready().unwrap();
+//!
+//! // Before the app exits, so a queued reply is not lost with it.
+//! shepherd.flush(std::time::Duration::from_secs(2)).unwrap();
 //! ```
 //!
 //! - A slow handler delays the next message: the reader thread runs
 //!   handlers itself. `action_timeout` (default 3s) sets the budget.
 //! - `metric` drops a sample under backpressure. `ready` and a reply block
 //!   for room instead, since losing either is worse.
+//! - Sending queues; a writer thread does the writing. An app that ends
+//!   itself, typically from `on_shutdown`, calls `flush` first or loses
+//!   whatever had not been written yet.
 //! - An unhandled shutdown warns on stderr. This crate never stops a
 //!   process on its own.
 

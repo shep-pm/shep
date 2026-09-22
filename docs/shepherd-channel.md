@@ -267,6 +267,21 @@ there is currently no shep-level convention for how a multi-value `params`
 string should be split — that is a decision your app makes for its own
 actions, documented wherever you document them.
 
+## Finish writing before you exit
+
+`shutdown` is the one message that asks you to end the process, which makes
+it the one place a reply you have already written can still be lost. If a
+library writes for you on another thread, or your app buffers its own
+output, exiting from the shutdown path drops whatever had not reached the
+descriptor yet. The operator sees a timeout instead of your answer.
+
+An app that writes straight to the descriptor has nothing to do here: a
+`write` that returned means the bytes are with the kernel, and shep gets
+them whether or not your process is still alive. `shep-channel` queues
+instead, so it has `Shepherd::flush`, which takes the time you are willing
+to give it. Keep that well inside `kill_timeout`, which shep is counting
+down while you wait.
+
 ## Everything you write here is also public on the bus
 
 Every message you send on fd 3 — `ready`, `metric`, `action-reply` — is

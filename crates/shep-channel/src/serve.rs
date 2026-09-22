@@ -1,9 +1,10 @@
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Duration;
 
 use crate::dispatch::{Dispatch, Outcome, run};
-use crate::outbox::{DEFAULT_CAPACITY, Outbox};
+use crate::outbox::{DEFAULT_CAPACITY, Drain, Outbox};
 use crate::{CHANNEL_VERSION, Channel, ChannelError, ChildMessage, VERSION_VAR, session};
 
 /// What to tell an author running under shep with no channel.
@@ -147,6 +148,56 @@ impl Shepherd {
         }
     }
 
+    /// Waits for everything already queued to reach the shepherd.
+    ///
+    /// [`Shepherd::ready`], [`Shepherd::metric`] and an action reply all
+    /// hand their message to a writer thread and return. A process that
+    /// ends before that thread catches up loses them, and an
+    /// `on_shutdown` handler that exits is the usual way to find that
+    /// out. Call this first and the queued replies reach the operator.
+    ///
+    /// Safe to call from a handler: the writer is a separate thread, so
+    /// this waits on nothing the caller owes. An action's own reply is
+    /// queued after its handler returns, so flushing inside one does not
+    /// wait for it.
+    ///
+    /// Returns as soon as the outbox is empty, so another thread still
+    /// emitting metrics can hold it open. `timeout` bounds the wait
+    /// either way: keep it well inside the app's `kill_timeout`, since
+    /// the shepherd is counting that down while this waits.
+    ///
+    /// Without a channel there is nothing queued and this returns
+    /// `Ok(())` at once.
+    ///
+    /// # Errors
+    ///
+    /// - [`ChannelError::TimedOut`] when `timeout` ran out with messages
+    ///   still waiting. The writer may yet get to them;
+    ///   [`Shepherd::pending`] says how many are left.
+    /// - [`ChannelError::Closed`] when the writer stopped before it wrote
+    ///   them, which is the shepherd having gone away. Those messages
+    ///   are lost.
+    pub fn flush(&self, timeout: Duration) -> Result<(), ChannelError> {
+        let Some(outbox) = &self.0.outbox else {
+            return Ok(());
+        };
+        match outbox.drain(timeout) {
+            Drain::Empty => Ok(()),
+            Drain::Stopped => Err(ChannelError::Closed),
+            Drain::TimedOut => Err(ChannelError::TimedOut),
+        }
+    }
+
+    /// How many messages are still waiting to reach the shepherd.
+    ///
+    /// A snapshot, since the writer thread is draining while you read
+    /// it. After [`Shepherd::flush`] returns [`ChannelError::Closed`] it
+    /// is exact and is what the app lost. Always 0 without a channel.
+    #[must_use]
+    pub fn pending(&self) -> usize {
+        self.0.outbox.as_ref().map_or(0, |outbox| outbox.pending())
+    }
+
     /// Records one metric sample. Never blocks and never fails.
     ///
     /// A sample may be dropped if the shepherd stops reading; see
@@ -199,8 +250,11 @@ pub(crate) fn writer_loop<W: Write>(writer: &mut W, outbox: &Outbox) {
         if session::write_message(writer, &message).is_err() {
             break;
         }
+        outbox.wrote();
     }
-    outbox.close();
+    // `stop`, not `close`: a failed write leaves its message unwritten,
+    // and a `flush` waiting on it has to hear that rather than time out.
+    outbox.stop();
 }
 
 /// Drives the reader side: reads one message, resolves it against
@@ -285,12 +339,18 @@ fn start() -> Shepherd {
     if let Err(error) = writer_spawn {
         // Without this thread, nothing drains the outbox.
         // `ready()` would queue silently and `wait_ready` would hang.
-        // Close the outbox first so `ready()`/`metric()` fail honestly.
+        // So the handle below is inert instead, holding no outbox at
+        // all: `ready()` and `flush()` answer `Ok(())` and `metric()`
+        // does nothing, none of them reaching the one stopped here.
+        // That stop is bookkeeping on an outbox nothing else holds,
+        // which drops on the next line. It is kept so this arm cannot
+        // leave a live outbox behind if the code above it grows a
+        // second holder.
         // The handle still carries the version stamp, since the channel opened.
         warn(&format!(
             "failed to spawn the shep-channel writer thread: {error}; continuing without a channel"
         ));
-        outbox.close();
+        outbox.stop();
         return Shepherd::inert(version);
     }
 
@@ -322,7 +382,7 @@ fn start() -> Shepherd {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-    use std::sync::mpsc;
+    use std::sync::{PoisonError, mpsc};
     use std::time::Duration;
 
     use super::*;
@@ -332,6 +392,35 @@ mod tests {
     /// for a loaded runner, not an expected duration.
     const DEADLINE: Duration = Duration::from_secs(5);
 
+    /// A handle over `outbox`, the shape `serve()` builds once a channel
+    /// opens. `Shepherd::inert` is the other one.
+    fn shepherd_over(outbox: &Arc<Outbox>) -> Shepherd {
+        Shepherd(Arc::new(Inner {
+            outbox: Some(Arc::clone(outbox)),
+            dispatch: Arc::new(RwLock::new(Dispatch::default())),
+            version: None,
+        }))
+    }
+
+    /// Runs `flush(timeout)` on its own thread, bounded from outside the
+    /// call.
+    ///
+    /// `timeout` is the input to the call under test, so it cannot also
+    /// be this test's forcing mechanism (IR-46). `DEADLINE` is, and it
+    /// is held on this side, so a flush that never returns fails here
+    /// rather than parking the binary.
+    #[track_caller]
+    fn flush_bounded(shepherd: &Shepherd, timeout: Duration) -> Result<(), ChannelError> {
+        let (tx, rx) = mpsc::channel();
+        let flushing = shepherd.clone();
+        // Never joined, for the reason `outbox::tests::drain_bounded`
+        // gives: joining a parked flush puts the hang back.
+        std::thread::spawn(move || {
+            let _ = tx.send(flushing.flush(timeout));
+        });
+        rx.recv_timeout(DEADLINE).expect("flush never returned")
+    }
+
     #[test]
     fn an_inert_handle_accepts_everything_and_does_nothing() {
         let shepherd = Shepherd::inert(None);
@@ -340,6 +429,10 @@ mod tests {
         shepherd.on_shutdown(|| {});
         shepherd.metric("rps", 42.0);
         shepherd.ready().expect("an inert ready is not an error");
+        shepherd
+            .flush(Duration::ZERO)
+            .expect("an inert flush is not an error");
+        assert_eq!(shepherd.pending(), 0);
         assert_eq!(shepherd.dropped_metrics(), 0);
         assert_eq!(shepherd.version(), None);
     }
@@ -347,11 +440,7 @@ mod tests {
     #[test]
     fn a_handle_stops_being_active_once_the_channel_closes() {
         let outbox = Arc::new(Outbox::new(4));
-        let shepherd = Shepherd(Arc::new(Inner {
-            outbox: Some(Arc::clone(&outbox)),
-            dispatch: Arc::new(RwLock::new(Dispatch::default())),
-            version: None,
-        }));
+        let shepherd = shepherd_over(&outbox);
         assert!(shepherd.is_active(), "a fresh channel should read as live");
 
         outbox.close();
@@ -525,6 +614,149 @@ mod tests {
         );
         assert!(lines[0].contains("\"kind\":\"ready\""));
         assert!(lines[1].contains("\"kind\":\"metric\""));
+    }
+
+    /// The issue this API exists for. The sink is held shut until the
+    /// test opens it, so a handler that did not wait would read an empty
+    /// wire every run rather than losing the race sometimes.
+    ///
+    /// Also the deadlock check: the shutdown handler runs on the reader
+    /// thread, and a flush that waited on anything the reader still owes
+    /// would never return. `DEADLINE` bounds that.
+    #[test]
+    fn a_shutdown_handler_can_flush_a_reply_that_was_still_queued() {
+        let outbox = Arc::new(Outbox::new(4));
+        let shepherd = shepherd_over(&outbox);
+        outbox
+            .push_blocking(ChildMessage::ActionReply {
+                action: "gc".to_string(),
+                body: "collected".to_string(),
+                id: Some(7),
+            })
+            .expect("room for the reply");
+
+        let wire = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (open, gate) = mpsc::channel();
+        let mut sink = GatedSink {
+            wire: Arc::clone(&wire),
+            gate: Some(gate),
+        };
+        let writing = Arc::clone(&outbox);
+        let writer = std::thread::spawn(move || writer_loop(&mut sink, &writing));
+
+        // What the handler saw at the moment its flush returned.
+        let (report, handled) = mpsc::channel();
+        let flushing = shepherd.clone();
+        let seen = Arc::clone(&wire);
+        shepherd.on_shutdown(move || {
+            let flushed = flushing.flush(DEADLINE).is_ok();
+            let bytes = seen.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            report
+                .send((flushed, String::from_utf8(bytes).expect("valid utf8")))
+                .expect("report");
+        });
+
+        let dispatch = Arc::clone(&shepherd.0.dispatch);
+        let reader = std::thread::spawn(move || {
+            let mut input = Cursor::new(b"{\"kind\":\"shutdown\"}\n".to_vec());
+            reader_loop(&mut input, &outbox, &dispatch, &|_: &str| {});
+        });
+
+        assert!(
+            handled.recv_timeout(Duration::from_millis(200)).is_err(),
+            "the shutdown handler returned before the queued reply was written"
+        );
+        open.send(()).expect("open the sink");
+
+        let (flushed, written) = handled
+            .recv_timeout(DEADLINE)
+            .expect("the shutdown handler never returned");
+        assert!(flushed, "flush did not report the reply delivered");
+        assert!(
+            written.contains("\"body\":\"collected\""),
+            "the handler resumed before its queued reply reached the wire: {written:?}"
+        );
+
+        reader.join().expect("reader panicked");
+        writer.join().expect("writer panicked");
+    }
+
+    /// A failed write loses the message it was carrying. Reporting that
+    /// as a clean drain is the one answer `flush` must never give.
+    #[test]
+    fn a_flush_reports_closed_when_the_writer_failed_mid_message() {
+        let outbox = Arc::new(Outbox::new(4));
+        let shepherd = shepherd_over(&outbox);
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+
+        writer_loop(&mut FailingSink, &outbox);
+
+        assert!(matches!(
+            flush_bounded(&shepherd, DEADLINE),
+            Err(ChannelError::Closed)
+        ));
+        assert_eq!(shepherd.pending(), 1, "the lost message is still counted");
+    }
+
+    /// A slow shepherd is not a gone one, and an app that gives up early
+    /// should be told which it hit. The 50ms is this test's own bound:
+    /// nothing drains this outbox, so a regression fails rather than
+    /// parks.
+    #[test]
+    fn a_flush_reports_a_timeout_rather_than_a_closed_channel() {
+        let outbox = Arc::new(Outbox::new(4));
+        let shepherd = shepherd_over(&outbox);
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+
+        assert!(matches!(
+            flush_bounded(&shepherd, Duration::from_millis(50)),
+            Err(ChannelError::TimedOut)
+        ));
+        assert_eq!(shepherd.pending(), 1);
+    }
+
+    /// A `Write` the test holds shut. The writer thread parks on its
+    /// first write until [`GatedSink::gate`] is sent, which is what puts
+    /// the flush under test in a window it cannot win by luck.
+    #[derive(Debug)]
+    struct GatedSink {
+        wire: Arc<std::sync::Mutex<Vec<u8>>>,
+        gate: Option<mpsc::Receiver<()>>,
+    }
+
+    impl Write for GatedSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if let Some(gate) = self.gate.take() {
+                gate.recv().expect("the test never opened the sink");
+            }
+            self.wire
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A transport that has gone away under the writer.
+    #[derive(Debug)]
+    struct FailingSink;
+
+    impl Write for FailingSink {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("the shepherd went away"))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     /// Runs on its own thread with a deadline. A real deadlock would hang

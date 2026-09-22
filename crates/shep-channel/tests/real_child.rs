@@ -27,20 +27,32 @@ const TEST_NAME: &str = "a_real_child_finds_its_channel_and_answers";
 /// instead of hanging the suite.
 const DEADLINE: Duration = Duration::from_secs(10);
 
+/// What the child's shutdown handler gives the writer thread. Shorter
+/// than [`DEADLINE`], so a flush that never returns fails as a hung
+/// child rather than as a hung parent.
+const DRAIN_BUDGET: Duration = Duration::from_secs(2);
+
 /// A substring of `serve.rs`'s private no-channel advice. The full string
 /// is not exported from the crate. This is just enough to prove the
 /// warning did not fire.
 const NO_CHANNEL_SNIPPET: &str = "no channel on this process";
 
 /// Registers the same handlers `examples/answers.rs` does, then parks.
-/// Never returns: the parent kills this process once its assertions are
-/// done. There is nothing to fall through to.
+/// Never returns: the shutdown handler ends this process, and the parent
+/// kills it if its assertions fail first. There is nothing to fall
+/// through to.
 fn run_as_child() -> ! {
     let shepherd = shep_channel::serve();
     shepherd.on_action("gc", |params, _name| {
         format!("collected, params={params:?}")
     });
-    shepherd.on_shutdown(|| std::process::exit(0));
+    let exiting = shepherd.clone();
+    shepherd.on_shutdown(move || {
+        if let Err(error) = exiting.flush(DRAIN_BUDGET) {
+            eprintln!("{} replies never reached shep: {error}", exiting.pending());
+        }
+        std::process::exit(0);
+    });
     shepherd.ready().expect("say ready");
     shepherd.metric("rps", 42.0);
 
@@ -85,12 +97,25 @@ fn a_real_child_finds_its_channel_and_answers() {
         "{\"kind\":\"action-reply\",\"action\":\"typo\",\"body\":\"unknown action: typo\",\"id\":8}"
     );
 
-    let mut child = child.take();
-    child.kill().expect("kill");
+    // The shutdown path, against a real process. The handler flushes
+    // before it exits, and a flush that deadlocked against the reader
+    // thread running it would leave the channel open: the EOF below is
+    // what proves it returned. `DEADLINE` bounds that wait.
+    shepherd.write_line("{\"kind\":\"shutdown\"}");
+    shepherd.expect_eof();
+
+    // Already exited, so this returns as soon as the OS reaps it.
     // `wait_with_output`, not a bare `wait`, because it also collects the
-    // piped stderr without a manual read. The process is already dead, so
-    // this returns as soon as the OS reaps it.
-    let output = child.wait_with_output().expect("reap and collect stderr");
+    // piped stderr without a manual read.
+    let output = child
+        .take()
+        .wait_with_output()
+        .expect("reap and collect stderr");
+    assert!(
+        output.status.success(),
+        "the child did not exit cleanly on shutdown: {:?}",
+        output.status
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !stderr.contains(NO_CHANNEL_SNIPPET),
@@ -182,6 +207,24 @@ impl ShepherdSide {
         self.writer
             .write_all(format!("{line}\n").as_bytes())
             .expect("write to the socket");
+    }
+
+    /// Waits for the child to close its end, which it does by exiting.
+    ///
+    /// # Panics
+    ///
+    /// If the child sends another line, or is still holding the channel
+    /// open after [`DEADLINE`].
+    #[track_caller]
+    fn expect_eof(&mut self) {
+        use std::io::BufRead as _;
+
+        let mut line = String::new();
+        let read = self
+            .reader
+            .read_line(&mut line)
+            .expect("the child still held the channel open at the deadline");
+        assert_eq!(read, 0, "the child sent {line:?} instead of exiting");
     }
 }
 
@@ -283,6 +326,25 @@ impl ShepherdSide {
                 pipe.flush().await
             })
             .expect("write to the pipe");
+    }
+
+    /// Waits for the child to close its end, which it does by exiting.
+    ///
+    /// # Panics
+    ///
+    /// If the child sends another line, or is still holding the channel
+    /// open after [`DEADLINE`].
+    #[track_caller]
+    fn expect_eof(&mut self) {
+        use tokio::io::AsyncBufReadExt as _;
+
+        let Self { runtime, pipe } = self;
+        let mut line = String::new();
+        let read = runtime
+            .block_on(async { tokio::time::timeout(DEADLINE, pipe.read_line(&mut line)).await })
+            .expect("the child still held the channel open at the deadline")
+            .expect("read from the pipe");
+        assert_eq!(read, 0, "the child sent {line:?} instead of exiting");
     }
 }
 
