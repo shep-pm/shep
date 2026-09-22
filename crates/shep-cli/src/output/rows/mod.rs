@@ -223,7 +223,7 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<FlockRows>(&["ID", "NAME", "STATUS"]);
         assert_priorities_match_headers::<DogRows>(&["ID", "NAME", "STATUS"]);
         assert_priorities_match_headers::<LambRows>(&["PID", "NAME"]);
-        assert_priorities_match_headers::<DogRow>(&["NAME", "STATUS"]);
+        assert_priorities_match_headers::<DogsRow>(&["NAME", "STATUS"]);
         assert_priorities_match_headers::<FlushedRows>(&["ID", "NAME"]);
         assert_priorities_match_headers::<EmptiedFiles>(&["STREAM", "RESULT"]);
         assert_priorities_match_headers::<DeletedIds>(&["ID"]);
@@ -366,7 +366,7 @@ pub(crate) mod tests {
             |headers: &[&'static str], name: &str| headers.iter().position(|h| *h == name).unwrap();
 
         // --- the four dog-action rows, through `dog_action_paint` ---------
-        let adopted = DogRow::new(
+        let adopted = DogsRow::new(
             "log-rotate",
             DogSource::Adopted {
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
@@ -374,8 +374,8 @@ pub(crate) mod tests {
             "online",
             true,
         );
-        let cells = reversed::<DogRow>(adopted.rows().remove(0), dog_action_paint);
-        let h = DogRow::headers();
+        let cells = reversed::<DogsRow>(adopted.rows().remove(0), dog_action_paint);
+        let h = DogsRow::headers();
         assert_eq!(
             cells[at(h, "SOURCE")],
             painted("adopted", Role::Butter),

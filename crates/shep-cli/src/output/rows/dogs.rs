@@ -147,14 +147,14 @@ impl Render for DogRows {
 /// column has room for. `None` is `rehome`'s case alone: it reads the source
 /// before the edit forgets it, and a dog that was never adopted has none.
 #[derive(Debug, Serialize)]
-pub struct DogRow {
+pub struct DogsRow {
     name: String,
     source: Option<DogSource>,
     shepherd_acted: bool,
     status: &'static str,
 }
 
-impl DogRow {
+impl DogsRow {
     /// `source` takes a [`DogSource`] or an [`Option`] of one; `status` takes
     /// a [`ProcStatus`](shep_core::status::ProcStatus) or one of the dog
     /// verbs' own sentences.
@@ -173,7 +173,7 @@ impl DogRow {
     }
 }
 
-impl Render for DogRow {
+impl Render for DogsRow {
     fn headers() -> &'static [&'static str] {
         &["NAME", "SOURCE", "SHEPHERD", "STATUS"]
     }
@@ -270,7 +270,7 @@ pub(crate) mod tests {
     #[test]
     fn dog_enabled_row_does_not_drift() {
         assert_no_drift(
-            &DogRow::new("metrics", DogSource::BuiltIn, "online", true),
+            &DogsRow::new("metrics", DogSource::BuiltIn, "online", true),
             |j| j,
             &["SOURCE"],
         );
@@ -280,7 +280,7 @@ pub(crate) mod tests {
     #[test]
     fn dog_disabled_row_does_not_drift() {
         assert_no_drift(
-            &DogRow::new(
+            &DogsRow::new(
                 "metrics",
                 DogSource::BuiltIn,
                 "not running; will not start with the next shepherd",
@@ -295,7 +295,7 @@ pub(crate) mod tests {
     #[test]
     fn dog_adopted_row_does_not_drift() {
         assert_no_drift(
-            &DogRow::new(
+            &DogsRow::new(
                 "otel",
                 DogSource::Adopted {
                     path: "/usr/local/bin/shep-otel".to_string(),
@@ -313,7 +313,7 @@ pub(crate) mod tests {
     #[test]
     fn dog_rehomed_row_does_not_drift_with_or_without_a_source() {
         assert_no_drift(
-            &DogRow::new(
+            &DogsRow::new(
                 "otel",
                 DogSource::Adopted {
                     path: "/usr/local/bin/shep-otel".to_string(),
@@ -325,7 +325,7 @@ pub(crate) mod tests {
             &["SOURCE"],
         );
         assert_no_drift(
-            &DogRow::new(
+            &DogsRow::new(
                 "ghost",
                 None::<DogSource>,
                 "not running; will not start with the next shepherd",
@@ -380,7 +380,7 @@ pub(crate) mod tests {
     /// rendering.
     #[test]
     fn a_dog_action_row_colours_a_status_and_never_a_sentence() {
-        let acted = DogRow::new(
+        let acted = DogsRow::new(
             "log-rotate",
             DogSource::Adopted {
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
@@ -397,7 +397,7 @@ pub(crate) mod tests {
         assert_eq!(row[3], painted("(o.o) online", Role::Meadow));
 
         let sentence = "no shepherd running; the config was written";
-        let unacted = DogRow::new("log-rotate", DogSource::BuiltIn, sentence, false);
+        let unacted = DogsRow::new("log-rotate", DogSource::BuiltIn, sentence, false);
         let row = &unacted.rows_for(coloured(), true)[0];
         assert_eq!(row[3], sentence, "a sentence is left exactly as it was");
     }
@@ -406,7 +406,7 @@ pub(crate) mod tests {
     /// so in a whole sentence.
     #[test]
     fn a_dog_action_row_leaves_the_name_and_the_shepherd_column_plain() {
-        let row = &DogRow::new(
+        let row = &DogsRow::new(
             "log-rotate",
             DogSource::BuiltIn,
             "no shepherd running",
@@ -420,7 +420,7 @@ pub(crate) mod tests {
     /// `rehome` is the only one of the four whose SOURCE can be absent.
     #[test]
     fn a_rehomed_row_with_nothing_to_forget_still_mutes_its_source() {
-        let row = &DogRow::new("metrics", None::<DogSource>, "stopped", true)
+        let row = &DogsRow::new("metrics", None::<DogSource>, "stopped", true)
             .rows_for(coloured(), true)[0];
         assert_eq!(row[1], painted("-", Role::Ink3));
         assert_eq!(row[3], painted("(-.-) stopped", Role::Ink3));
@@ -432,7 +432,7 @@ pub(crate) mod tests {
     /// the four dog-action rows into one is exactly where it goes missing.
     #[test]
     fn the_dog_action_json_keeps_the_path_the_source_column_drops() {
-        let adopted = DogRow::new(
+        let adopted = DogsRow::new(
             "otel",
             DogSource::Adopted {
                 path: "/usr/local/bin/shep-otel".to_string(),
@@ -449,7 +449,7 @@ pub(crate) mod tests {
         assert_eq!(json["shepherd_acted"], serde_json::json!(true));
 
         // `rehome` alone reaches this: `null`, never the column's own `-`.
-        let forgotten = DogRow::new("metrics", None::<DogSource>, "stopped", false);
+        let forgotten = DogsRow::new("metrics", None::<DogSource>, "stopped", false);
         assert_eq!(forgotten.rows()[0][1], "-");
         assert_eq!(
             serde_json::to_value(&forgotten).unwrap()["source"],
