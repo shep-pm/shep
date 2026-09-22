@@ -130,14 +130,17 @@ pub fn append(path: &Path, bark: &Bark, max_bytes: u64) -> Result<(), BarkError>
     let new_line = serde_json::to_string(bark)?;
     lines.push(new_line);
 
-    // Oldest-out: drop the front line until the ring fits under the cap,
-    // or only the record just appended is left.
-    loop {
-        if lines.len() <= 1 || ring_bytes(&lines) <= max_bytes {
-            break;
-        }
-        lines.remove(0);
+    // Oldest-out: count the prefix that has to go, then drop it in one
+    // `drain`. Line-at-a-time removal is quadratic in the lines evicted.
+    // A lowered cap makes that nearly the whole ring. The last line
+    // stays whatever its size: it is the record just appended.
+    let mut ring = ring_bytes(&lines);
+    let mut evicted = 0;
+    while ring > max_bytes && lines.len() - evicted > 1 {
+        ring -= line_bytes(&lines[evicted]);
+        evicted += 1;
     }
+    lines.drain(..evicted);
 
     write_ring(path, &lines)
 }
@@ -184,10 +187,15 @@ fn read_text(path: &Path) -> Result<String, BarkError> {
     }
 }
 
-/// Total on-disk size, in bytes, if `lines` were written one per line
-/// (each line plus its trailing `\n`).
+/// On-disk size, in bytes, of one line: its own bytes plus the `\n`
+/// [`write_ring`] writes after it.
+fn line_bytes(line: &str) -> u64 {
+    line.len() as u64 + 1
+}
+
+/// Total on-disk size, in bytes, if `lines` were written one per line.
 fn ring_bytes(lines: &[String]) -> u64 {
-    lines.iter().map(|line| line.len() as u64 + 1).sum()
+    lines.iter().map(|line| line_bytes(line)).sum()
 }
 
 /// Rewrites `path` to hold exactly `lines`: the content lands in a
@@ -256,6 +264,31 @@ mod tests {
         );
     }
 
+    /// Dropping one line too many leaves the ring under its cap too, so
+    /// this pins the survivors rather than the size alone.
+    #[test]
+    fn a_cap_crossed_by_many_lines_at_once_takes_the_prefix_and_no_more() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("barks.jsonl");
+        for i in 0..20 {
+            append(&path, &bark_for("web", i), DEFAULT_MAX_BYTES).unwrap();
+        }
+
+        // Room for the last four of the twenty-one lines the next append
+        // leaves behind, so seventeen have to go in one call.
+        let mut expected = read_lines(&path).unwrap();
+        expected.push(serde_json::to_string(&bark_for("web", 20)).unwrap());
+        let evicted = expected.len() - 4;
+        expected.drain(..evicted);
+        let cap = ring_bytes(&expected);
+
+        append(&path, &bark_for("web", 20), cap).unwrap();
+
+        let kept = read_lines(&path).unwrap();
+        assert_eq!(kept, expected, "the whole prefix goes, and nothing past it");
+        assert_eq!(ring_bytes(&kept), cap, "the byte accounting stays exact");
+    }
+
     #[test]
     fn a_bark_bigger_than_the_cap_is_written_anyway() {
         let dir = tempfile::tempdir().unwrap();
@@ -266,6 +299,27 @@ mod tests {
         };
         append(&path, &huge, 64).unwrap();
         assert_eq!(read(&path).unwrap().len(), 1);
+    }
+
+    /// The cap yields to the record rather than the record to the cap:
+    /// the ring empties ahead of it, and the alert still lands.
+    #[test]
+    fn an_oversized_bark_evicts_every_line_before_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("barks.jsonl");
+        append(&path, &bark_for("web", 0), DEFAULT_MAX_BYTES).unwrap();
+
+        let huge = Bark {
+            message: "x".repeat(4096),
+            ..bark_for("api", 1)
+        };
+        append(&path, &huge, 64).unwrap();
+
+        assert_eq!(
+            read(&path).unwrap(),
+            vec![huge],
+            "the one record too big to fit, alone"
+        );
     }
 
     #[test]
