@@ -10,7 +10,7 @@ use shep_core::protocol::{DogSource, Request, Response};
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
-use crate::output::{DogsRow, Streams, emit, write_outcome};
+use crate::output::{DogActionRow, Streams, emit, write_outcome};
 
 use super::{NO_SHEPHERD_ENABLE_STATUS, connect_or_absent, dog_source, fail_config};
 
@@ -130,7 +130,7 @@ async fn enable_after_config(
     client: Option<&Client>,
 ) -> ExitCode {
     let Some(client) = client else {
-        let row = DogsRow::new(name, source.clone(), NO_SHEPHERD_ENABLE_STATUS, false);
+        let row = DogActionRow::new(name, source.clone(), NO_SHEPHERD_ENABLE_STATUS, false);
         return write_outcome(emit(
             &mut *streams.out,
             streams.fmt,
@@ -147,7 +147,7 @@ async fn enable_after_config(
     };
     match client.request(request).await {
         Ok(Response::DogStarted(info)) => {
-            let row = DogsRow::new(name, source.clone(), info.status, true);
+            let row = DogActionRow::new(name, source.clone(), info.status, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,

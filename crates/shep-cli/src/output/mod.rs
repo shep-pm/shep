@@ -43,7 +43,7 @@ pub use flock::emit_flock;
 // nothing names them and `unused_imports` still flags it there.
 #[cfg_attr(windows, allow(unused_imports))]
 pub use rows::{
-    AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogsRow, DogRows, EmptiedFile,
+    AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogActionRow, DogRows, EmptiedFile,
     EmptiedFiles, FlockRows, FlushedRows, ImportEnvRow, ImportEnvRows, ImportRow, ImportRows,
     KillRow, KvEntry, KvRows, KvUnsetRow, LambRows, RolledSheep, RolledSheepRows, SavedRollRow,
     SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretStatus, SecretValueRow, SentLineRows,

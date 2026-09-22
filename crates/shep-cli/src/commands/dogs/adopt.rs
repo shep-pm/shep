@@ -12,7 +12,7 @@ use crate::cli::AdoptArgs;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
-use crate::output::{DogsRow, Streams, emit, write_outcome};
+use crate::output::{DogActionRow, Streams, emit, write_outcome};
 
 use super::vet::{
     DogSchema, fail_adopt, report_dog_version, vet_binary, warn_group_writable,
@@ -228,7 +228,7 @@ async fn adopt_after_config(
         path: path.display().to_string(),
     };
     let Some(client) = client else {
-        let row = DogsRow::new(name, source, NO_SHEPHERD_ENABLE_STATUS, false);
+        let row = DogActionRow::new(name, source, NO_SHEPHERD_ENABLE_STATUS, false);
         return write_outcome(emit(
             &mut *streams.out,
             streams.fmt,
@@ -243,7 +243,7 @@ async fn adopt_after_config(
     };
     match client.request(request).await {
         Ok(Response::DogStarted(info)) => {
-            let row = DogsRow::new(name, source, info.status, true);
+            let row = DogActionRow::new(name, source, info.status, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,
