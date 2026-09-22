@@ -11,6 +11,14 @@ use super::toolkit::{dog_action_paint, exit_cell, paint, process_info_paint, rep
 
 const EMPTY: &str = "-";
 
+/// The SOURCE column's cell: `source`'s kind, or `-` when there is none.
+///
+/// Never the adopted path, which is wider than the rest of the table
+/// together and is one `--format json` away.
+fn source_cell(source: Option<&DogSource>) -> String {
+    source.map_or(EMPTY, |source| source.into()).to_owned()
+}
+
 /// The dogs half of a flock listing: the `ProcessInfo`s whose `dog` marker
 /// is set.
 ///
@@ -55,13 +63,8 @@ impl Render for DogRows {
                     p.memory_bytes
                         .map_or_else(|| EMPTY.to_string(), crate::output::human_bytes),
                     crate::output::human_duration(p.uptime_ms),
-                    // Never the adopted path: too wide for a column. `None`
-                    // is unreachable, since callers filter on
-                    // `dog.is_some()`.
-                    p.dog
-                        .as_ref()
-                        .map_or(EMPTY, |source| source.into())
-                        .to_string(),
+                    // `None` is unreachable: callers filter on `dog.is_some()`.
+                    source_cell(p.dog.as_ref()),
                 ]
             })
             .collect()
@@ -181,13 +184,7 @@ impl Render for DogActionRow {
     fn rows(&self) -> Vec<Vec<String>> {
         vec![vec![
             self.name.clone(),
-            // The kind alone, never the adopted path: too wide for a column,
-            // and one `--format json` away. `-` for `None`, as `DogRows::rows`
-            // renders it.
-            self.source
-                .as_ref()
-                .map_or(EMPTY, |source| source.into())
-                .to_owned(),
+            source_cell(self.source.as_ref()),
             self.shepherd_acted.to_string(),
             self.status.to_owned(),
         ]]
