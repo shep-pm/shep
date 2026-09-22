@@ -324,6 +324,40 @@ mod tests {
         );
     }
 
+    /// `shepherd_acted` separates "only the config changed" from "a shepherd
+    /// acted", and this verb's two branches differ in little else. The pair
+    /// is the guard: either case alone passes while the other branch carries
+    /// the wrong flag.
+    #[tokio::test]
+    async fn adopt_reports_whether_a_shepherd_acted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = shep_client::testing::fake_client_answering(&path, |_| {
+            Response::DogStarted(shep_client::testing::sample_info())
+        })
+        .await;
+        let binary = PathBuf::from("/usr/local/bin/shep-otel");
+
+        for (client, expected) in [(Some(&client), true), (None, false)] {
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let mut streams = streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+
+            let code = adopt_after_config(&mut streams, "otel", &binary, client).await;
+
+            assert_eq!(code, ExitCode::Success);
+            let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+            assert_eq!(
+                json["data"]["shepherd_acted"],
+                serde_json::json!(expected),
+                "client present: {}, payload: {}",
+                client.is_some(),
+                String::from_utf8_lossy(&out)
+            );
+        }
+    }
+
     #[tokio::test]
     async fn adopt_with_no_shepherd_writes_the_config_and_exits_zero() {
         let dir = tempfile::tempdir().unwrap();
