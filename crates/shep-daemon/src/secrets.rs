@@ -89,12 +89,12 @@ impl ProviderSecrets {
     /// setting that put it there was `persist = true` and stays so until a
     /// push says otherwise.
     pub fn load(cache: &Path) -> Self {
-        let cached = read_cache(cache);
-        let persisted = cached.values.keys().cloned().collect();
+        let (namespaces, pushed) = read_cache(cache).into_parts();
+        let persisted = namespaces.keys().cloned().collect();
         Self {
             state: Mutex::new(State {
-                namespaces: cached.values,
-                pushed: cached.pushed,
+                namespaces,
+                pushed,
                 persisted,
             }),
             writer: Mutex::new(()),
@@ -182,10 +182,7 @@ impl ProviderSecrets {
     /// from after it.
     pub fn snapshot(&self) -> ProviderCache {
         let state = self.state();
-        ProviderCache {
-            values: state.namespaces.clone(),
-            pushed: state.pushed.clone(),
-        }
+        ProviderCache::new(state.namespaces.clone(), state.pushed.clone())
     }
 
     /// Every `(namespace, environment)` pair a dog has pushed, values not
@@ -236,10 +233,9 @@ fn read_cache(path: &Path) -> ProviderCache {
         return ProviderCache::default();
     };
     match serde_json::from_str::<CacheFile>(&raw) {
-        Ok(file) if file.version == PROVIDER_CACHE_VERSION => ProviderCache {
-            values: file.namespaces,
-            pushed: file.pushed,
-        },
+        Ok(file) if file.version == PROVIDER_CACHE_VERSION => {
+            ProviderCache::new(file.namespaces, file.pushed)
+        }
         _ => ProviderCache::default(),
     }
 }
@@ -284,7 +280,7 @@ mod tests {
             .unwrap();
 
         let snap = store.snapshot();
-        let vercel = &snap.values["vercel"];
+        let vercel = snap.namespace("vercel").unwrap();
         assert_eq!(vercel["A"]["production"], "9");
         assert!(
             !vercel.contains_key("B"),
@@ -313,8 +309,9 @@ mod tests {
             )
             .unwrap();
         let snap = store.snapshot();
-        assert_eq!(snap.values["v"]["A"]["production"], "p");
-        assert_eq!(snap.values["v"]["A"]["staging"], "s");
+        let v = snap.namespace("v").unwrap();
+        assert_eq!(v["A"]["production"], "p");
+        assert_eq!(v["A"]["staging"], "s");
         assert_eq!(
             snap.pushed["v"],
             BTreeSet::from(["production".to_string(), "staging".to_string()]),
@@ -478,7 +475,7 @@ mod tests {
             .unwrap();
 
         let snap = store.snapshot();
-        assert!(snap.values.contains_key("vercel"), "the values are there");
+        assert!(snap.namespace("vercel").is_some(), "the values are there");
         assert_eq!(
             snap.pushed["vercel"],
             BTreeSet::from(["production".to_string()])

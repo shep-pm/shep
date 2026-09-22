@@ -13,6 +13,7 @@ use shep_core::paths::ShepPaths;
 use shep_core::protocol::ProcessInfo;
 use shep_core::secrets::{self, ALL_ENVIRONMENTS};
 
+use crate::commands::query::read_roll;
 use crate::secret_readers::{self, Reader};
 
 /// Which store a row came from.
@@ -97,7 +98,10 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
         Err(error) => (BTreeMap::new(), Some(error.to_string())),
     };
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
-    let readers = secret_readers::by_reference(paths, procs);
+    // One read of the muster roll serves both the readers and the age:
+    // this used to read and parse the whole snapshot twice per pane open.
+    let roll = read_roll(paths);
+    let readers = secret_readers::by_reference(paths, roll.as_ref(), procs);
 
     let mut environments: BTreeSet<String> = BTreeSet::new();
     environments.insert(ALL_ENVIRONMENTS.to_string());
@@ -108,7 +112,7 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
     // the operator never named, and this list is both `SET IN`'s denominator
     // and the tab row: leaving those out prints a count bigger than its own
     // denominator and hides the environment from every tab.
-    for keys in providers.values.values() {
+    for (_, keys) in providers.namespaces() {
         for slots in keys.values() {
             environments.extend(slots.keys().cloned());
         }
@@ -124,7 +128,7 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
             &readers,
         ));
     }
-    for (namespace, keys) in &providers.values {
+    for (namespace, keys) in providers.namespaces() {
         for (key, slots) in keys {
             let qualified = format!("{namespace}/{key}");
             rows.push(row(
@@ -145,7 +149,7 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
         environments: environments.into_iter().collect(),
         rows,
         unreadable,
-        roll_age: secret_readers::roll_age(paths),
+        roll_age: roll.as_ref().map(secret_readers::roll_age),
         allow_read,
         store: paths.secrets.clone(),
         provider_cache: paths.secrets_cache.clone(),
@@ -172,8 +176,7 @@ pub(crate) fn stored_value(store: &Path, provider_cache: &Path, row: &SecretRow)
         Source::Namespace(namespace) => {
             let bare = row.key.strip_prefix(namespace)?.strip_prefix('/')?;
             secrets::provider_cache_on_disk(provider_cache)
-                .values
-                .get(namespace)?
+                .namespace(namespace)?
                 .get(bare)?
                 .get(environment)
                 .cloned()
@@ -478,6 +481,43 @@ mod tests {
             1,
             "a provider row's key must match the reference by_reference stored, or \
              every provider row silently shows no readers"
+        );
+    }
+
+    /// The pane's roll age rides the same read as its readers: one parse of
+    /// the roll per model build, and the age still arrives. The threading
+    /// is the kind of wiring a signature change drops silently — the
+    /// readers would keep working and only the caption's "saved Ns ago"
+    /// would go blank.
+    #[test]
+    fn the_model_carries_the_roll_age_from_the_same_read_as_the_readers() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        secrets::set(&paths.secrets, "K", ALL_ENVIRONMENTS, "v").unwrap();
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.env.insert("PW".into(), "{{secret:K}}".into());
+        write_roll(&paths, &[app]);
+
+        let with_roll = model(&paths, &[online("web")], ALL_ENVIRONMENTS);
+        assert!(
+            with_roll.roll_age.is_some(),
+            "a roll on disk must still produce an age now that it arrives by the readers' read"
+        );
+        assert_eq!(
+            with_roll
+                .rows
+                .iter()
+                .find(|row| row.key == "K")
+                .map(|row| row.readers.len()),
+            Some(1),
+            "the one read must serve the readers too"
+        );
+
+        std::fs::remove_file(&paths.snapshot).unwrap();
+        let without_roll = model(&paths, &[online("web")], ALL_ENVIRONMENTS);
+        assert!(
+            without_roll.roll_age.is_none(),
+            "no roll is no age, not a stale one"
         );
     }
 }

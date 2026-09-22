@@ -1,23 +1,22 @@
 ---
 import { REPO } from "../../data/repo";
 /*
- * Reference pills — Source / API / Spec links under a docs page's <h1>.
- * One shared component reading web/src/data/
- * docs-nav.ts's per-item source/spec/api fields, so a page's pills can't
- * drift from its own metadata and a new page can't ship without at least
- * a Source pill — that field has no `?`, so leaving it off is a type error,
- * not a silent gap.
+ * Reference pills: Source / API / Spec links under a docs page's <h1>.
+ * One shared component reading web/src/data/docs-nav.ts's per-item
+ * source/spec/api fields, so a page's pills cannot drift from its own
+ * metadata and a new page cannot ship without at least a Source pill:
+ * that field has no `?`, so leaving it off is a type error rather than a
+ * silent gap.
  *
- * Source and Spec both point into the GitHub repo, which went public on
- * 2026-08-16; API points at docs.rs, which has had shep-core since its
- * first publish. Both kinds are live now. `pillTargetsLive` in docs-nav.ts
- * is the single switch: while a kind is `false` the pill renders dimmed,
- * non-interactive, and marked `aria-disabled`, with a tooltip saying why,
- * instead of either a confident-looking link that 404s or hiding the
- * sourcing until launch day. Flip the flag once true and every pill of that
- * kind becomes a plain clickable `<a>`, no other code changes.
+ * Source and Spec both point into the GitHub repo, which is public; API
+ * points at docs.rs, which has had shep-core since its first publish.
+ * Every pill resolves, so every pill is a plain `<a>`.
+ *
+ * A kind pointing somewhere not yet live would need a dimmed, inert
+ * variant carrying a tooltip that says why. No kind does, so no such
+ * branch exists to go stale behind a flag nobody reads.
  */
-import { docsNav, pillTargetsLive } from "../../data/docs-nav";
+import { docsNav } from "../../data/docs-nav";
 
 interface Props {
   slug: string;
@@ -41,52 +40,32 @@ const pills = [
     kind: "Source" as const,
     label: path,
     href: `${REPO}/blob/main/${path}`,
-    live: pillTargetsLive.github,
-    disabledReason: "Not public yet. The repo is private until launch.",
   })),
   item.spec && {
     kind: "Spec" as const,
     label: item.spec.label,
     href: `${REPO}/blob/main/${SPEC_FILE}#${item.spec.anchor}`,
-    live: pillTargetsLive.github,
-    disabledReason: "Not public yet. The repo is private until launch.",
   },
   item.api && {
     kind: "API" as const,
     label: item.api.label,
     href: `https://docs.rs/shep-core/latest/shep_core/${item.api.path}`,
-    live: pillTargetsLive.docsRs,
-    disabledReason: "Not published yet. shep-core hasn't shipped to crates.io.",
   },
 ].filter(Boolean) as {
   kind: "Source" | "Spec" | "API";
   label: string;
   href: string;
-  live: boolean;
-  disabledReason: string;
 }[];
 ---
 
 <div class="ref-pills" data-pagefind-ignore>
   {
-    pills.map((pill) =>
-      pill.live ? (
-        <a class="pill" href={pill.href} target="_blank" rel="noopener noreferrer">
-          <span class="kind">{pill.kind}</span>
-          <span class="label">{pill.label}</span>
-        </a>
-      ) : (
-        <span
-          class="pill disabled"
-          aria-disabled="true"
-          tabindex="-1"
-          title={pill.disabledReason}
-        >
-          <span class="kind">{pill.kind}</span>
-          <span class="label">{pill.label}</span>
-        </span>
-      ),
-    )
+    pills.map((pill) => (
+      <a class="pill" href={pill.href} target="_blank" rel="noopener noreferrer">
+        <span class="kind">{pill.kind}</span>
+        <span class="label">{pill.label}</span>
+      </a>
+    ))
   }
 </div>
 
@@ -119,12 +98,6 @@ const pills = [
     color: var(--ink);
   }
 
-  .pill.disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-    border-style: dashed;
-  }
-
   .kind {
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -134,10 +107,6 @@ const pills = [
     border-radius: 12px;
     padding: 2px 8px;
     flex: none;
-  }
-
-  .pill.disabled .kind {
-    background: var(--ink-3);
   }
 
   .label {

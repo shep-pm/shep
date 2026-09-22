@@ -1,0 +1,5 @@
+error: `#[dog_config]` cannot be used on a union: a union has no serde representation, so there is no schema for a mark to go into
+ --> tests/refusals/a_union.rs:4:7
+  |
+4 | union Config {
+  |       ^^^^^^
