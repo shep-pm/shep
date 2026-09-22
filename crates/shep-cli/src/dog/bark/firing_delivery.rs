@@ -1,5 +1,6 @@
 use super::rules::Firing;
 use super::sinks::Sink;
+use futures_util::future::join_all;
 use shep_core::barks::{self, SinkOutcome};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -63,6 +64,14 @@ pub(super) fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
 /// Delivers `firing` to each of its named sinks, then writes the resulting
 /// [`shep_core::barks::Bark`] to `barks_path`.
 ///
+/// The sinks are driven together rather than in turn: a dead endpoint's
+/// timeout runs beside the healthy sinks' deliveries instead of ahead of
+/// them, so one unreachable webhook no longer holds up an alert the
+/// others could have carried. Each delivery keeps its own
+/// [`Delivery::sink_timeout`] and its own [`SinkOutcome`], and `join_all`
+/// hands the outcomes back in `firing.sinks`' order, which is the order
+/// the trail has always recorded them in.
+///
 /// After delivery, since a [`Firing`]'s [`shep_core::barks::Bark::sinks`]
 /// is empty until each sink has been tried. Written even when every sink
 /// refused it: the local trail is what an operator reads when the page
@@ -73,9 +82,8 @@ pub(super) fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
 /// It does not replace `append`'s own cross-process `flock(2)`.
 async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
     let mut bark = firing.bark;
-    let mut outcomes = Vec::with_capacity(firing.sinks.len());
-    for name in &firing.sinks {
-        let outcome = match delivery.sinks.get(name) {
+    let outcomes = join_all(firing.sinks.iter().map(|name| async {
+        match delivery.sinks.get(name) {
             Some(sink) => match super::sinks::deliver(sink, &bark, delivery.sink_timeout).await {
                 Ok(()) => SinkOutcome {
                     sink: name.clone(),
@@ -93,9 +101,9 @@ async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
                 sink: name.clone(),
                 error: Some("sink not configured".to_owned()),
             },
-        };
-        outcomes.push(outcome);
-    }
+        }
+    }))
+    .await;
     bark.sinks = outcomes;
 
     let _guard = delivery.append_lock.lock().await;
@@ -184,6 +192,88 @@ mod tests {
         assert!(
             recorded[0].sinks[0].error.is_some(),
             "the 500 must be recorded as a failed delivery, not silently dropped"
+        );
+    }
+
+    /// A dead endpoint's timeout must run beside the healthy sinks, not
+    /// ahead of them. Asserted as an order rather than a duration, the
+    /// way `slow_sink`'s own doc suggests: the live sink's request has to
+    /// arrive while the dead one is still hanging, and in turn it is not
+    /// contacted until that timeout has already passed.
+    #[tokio::test]
+    async fn a_dead_sink_does_not_delay_the_live_ones_delivery() {
+        let (dead_addr, dead_connected) = slow_sink().await;
+        let (live_addr, live_request) = one_shot_sink(200, "ok").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+
+        let mut sinks = BTreeMap::new();
+        sinks.insert(
+            "dead".to_owned(),
+            json_sink(format!("http://{dead_addr}/hook")),
+        );
+        sinks.insert(
+            "live".to_owned(),
+            json_sink(format!("http://{live_addr}/hook")),
+        );
+        let firing = Firing {
+            bark: Bark {
+                at_ms: 1_000,
+                rule: "gave_up".to_owned(),
+                subject: "web".to_owned(),
+                message: "web gave up: restart budget exhausted".to_owned(),
+                sinks: Vec::new(),
+            },
+            sinks: vec!["dead".to_owned(), "live".to_owned()],
+        };
+
+        let delivery = Delivery {
+            sinks: Arc::new(sinks),
+            append_lock: Arc::new(Mutex::new(())),
+            barks_path: Arc::new(barks_path.clone()),
+            // Wider than the wait below by a margin no localhost round
+            // trip closes: in turn, the live sink is not contacted until
+            // this has already elapsed.
+            sink_timeout: Duration::from_millis(500),
+            max_bytes: barks::DEFAULT_MAX_BYTES,
+        };
+        let recorded = tokio::spawn(async move { deliver_and_record(firing, &delivery).await });
+
+        tokio::time::timeout(Duration::from_secs(5), dead_connected)
+            .await
+            .expect("the dead sink must be contacted at all")
+            .expect("the dead sink's accept signal must arrive");
+        tokio::time::timeout(Duration::from_millis(150), live_request)
+            .await
+            .expect(
+                "the live sink must hear about the alert while the dead one still hangs; \
+                 driven in turn it would have waited out the dead sink's timeout first",
+            )
+            .expect("the live sink must have captured its request");
+
+        // The delivery then finishes on the dead sink's own timeout, with
+        // both outcomes in the firing's order.
+        tokio::time::timeout(Duration::from_secs(5), recorded)
+            .await
+            .expect("the delivery must end on the dead sink's own timeout, not outlive it")
+            .expect("the delivery task must not panic");
+        let barks = shep_core::barks::read(&barks_path).unwrap();
+        assert_eq!(barks.len(), 1);
+        let outcomes = &barks[0].sinks;
+        assert_eq!(outcomes.len(), 2, "both sinks must be recorded");
+        assert_eq!(
+            outcomes[0].sink, "dead",
+            "the trail keeps the firing's order"
+        );
+        assert!(
+            outcomes[0].error.is_some(),
+            "the dead sink's timeout is its outcome, not a dropped one"
+        );
+        assert_eq!(outcomes[1].sink, "live");
+        assert!(
+            outcomes[1].error.is_none(),
+            "the live sink must have been delivered to: {:?}",
+            outcomes[1]
         );
     }
 }
