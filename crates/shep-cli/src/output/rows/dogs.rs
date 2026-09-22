@@ -1,5 +1,4 @@
-//! The dog-specific rows: `DogRows`, and the four dog-action replies
-//! (`DogEnabledRow`, `DogDisabledRow`, `DogAdoptedRow`, `DogRehomedRow`)
+//! The dog-specific rows: `DogRows`, and the `DogRow` reply
 //! `shep enable`/`disable`/`adopt`/`rehome` render.
 
 use serde::Serialize;
@@ -9,6 +8,8 @@ use crate::output::Render;
 use crate::style::Presentation;
 
 use super::toolkit::{dog_action_paint, exit_cell, paint, process_info_paint, reported};
+
+const EMPTY: &str = "-";
 
 /// The dogs half of a flock listing: the `ProcessInfo`s whose `dog` marker
 /// is set.
@@ -28,17 +29,6 @@ use super::toolkit::{dog_action_paint, exit_cell, paint, process_info_paint, rep
 #[serde(transparent)]
 pub struct DogRows(pub Vec<ProcessInfo>);
 
-/// `DogSource`'s table rendering, shared by every payload with a SOURCE
-/// column. `DogSource` is `#[non_exhaustive]`, so a kind this client predates
-/// renders `unknown`.
-fn dog_source_label(source: &DogSource) -> &'static str {
-    match source {
-        DogSource::BuiltIn => "built-in",
-        DogSource::Adopted { .. } => "adopted",
-        _ => "unknown",
-    }
-}
-
 impl Render for DogRows {
     fn headers() -> &'static [&'static str] {
         &[
@@ -56,20 +46,22 @@ impl Render for DogRows {
                     // A dog whose process is up and which has never
                     // answered this shepherd reads `silent`, not `online`.
                     reported(p).word(),
-                    p.pid.map_or_else(|| "-".to_string(), |pid| pid.to_string()),
+                    p.pid
+                        .map_or_else(|| EMPTY.to_string(), |pid| pid.to_string()),
                     p.restarts.to_string(),
                     exit_cell(p.pid, p.last_exit),
                     p.cpu_percent
-                        .map_or_else(|| "-".to_string(), |cpu| format!("{cpu:.1}%")),
+                        .map_or_else(|| EMPTY.to_string(), |cpu| format!("{cpu:.1}%")),
                     p.memory_bytes
-                        .map_or_else(|| "-".to_string(), crate::output::human_bytes),
+                        .map_or_else(|| EMPTY.to_string(), crate::output::human_bytes),
                     crate::output::human_duration(p.uptime_ms),
                     // Never the adopted path: too wide for a column. `None`
                     // is unreachable, since callers filter on
                     // `dog.is_some()`.
-                    p.dog.as_ref().map_or("-".to_string(), |source| {
-                        dog_source_label(source).to_string()
-                    }),
+                    p.dog
+                        .as_ref()
+                        .map_or(EMPTY, |source| source.into())
+                        .to_string(),
                 ]
             })
             .collect()
@@ -143,61 +135,68 @@ impl Render for DogRows {
     // SOURCE takes FOLD's `7`.
     const PRIORITIES: &'static [u8] = &[0, 0, 0, 2, 4, 6, 5, 3, 1, 7];
 }
-/// `shep enable <name>`: what the config edit and, if a shepherd is running,
-/// the resulting `EnableDog` RPC did.
+
+/// `shep enable`/`disable`/`adopt`/`rehome`'s one-row reply: what the config
+/// edit and, if a shepherd was reached, the resulting RPC did.
 ///
 /// [`Self::shepherd_acted`] and [`Self::status`] are how a `--format json`
 /// consumer tells the two outcomes apart.
+///
+/// `source` keeps the whole [`DogSource`], so JSON carries an adopted
+/// binary's path; the SOURCE column renders the kind alone, which is all a
+/// column has room for. `None` is `rehome`'s case alone: it reads the source
+/// before the edit forgets it, and a dog that was never adopted has none.
 #[derive(Debug, Serialize)]
-pub struct DogEnabledRow {
-    /// The dog's name.
-    pub name: String,
-    /// Where its binary comes from, read out of `shep.toml`:
-    /// [`DogSource::Adopted`] for a name in `[daemon] adopted_dogs`,
-    /// [`DogSource::BuiltIn`] otherwise.
-    pub source: DogSource,
-    /// Whether a shepherd was reached and asked to start the dog. `false`
-    /// means only the config changed; `enable` never autostarts one.
-    pub shepherd_acted: bool,
-    /// The dog's resulting status: a real `ProcStatus` rendering
-    /// (`"online"`, `"starting"`, ...) when a shepherd started it, or a
-    /// sentence explaining why not when none answered.
-    pub status: String,
-}
-
-// Shared scaffolding for the four dog-action tables. All four render one row
-// of `["NAME", "SOURCE", "SHEPHERD", "STATUS"]` and share the JSON keys, the
-// priorities and the paint dispatch; each resolves its own `source` to a
-// label first.
-struct DogActionRow<'a> {
-    name: &'a str,
-    source: &'a str,
+pub struct DogRow {
+    name: String,
+    source: Option<DogSource>,
     shepherd_acted: bool,
-    status: &'a str,
+    status: &'static str,
 }
 
-impl DogActionRow<'_> {
+impl DogRow {
+    /// `source` takes a [`DogSource`] or an [`Option`] of one; `status` takes
+    /// a [`ProcStatus`](shep_core::status::ProcStatus) or one of the dog
+    /// verbs' own sentences.
+    pub fn new(
+        name: impl Into<String>,
+        source: impl Into<Option<DogSource>>,
+        status: impl Into<&'static str>,
+        shepherd_acted: bool,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            source: source.into(),
+            shepherd_acted,
+            status: status.into(),
+        }
+    }
+}
+
+impl Render for DogRow {
     fn headers() -> &'static [&'static str] {
         &["NAME", "SOURCE", "SHEPHERD", "STATUS"]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
         vec![vec![
-            self.name.to_string(),
-            self.source.to_string(),
+            self.name.clone(),
+            // The kind alone, never the adopted path: too wide for a column,
+            // and one `--format json` away. `-` for `None`, as `DogRows::rows`
+            // renders it.
+            self.source
+                .as_ref()
+                .map_or(EMPTY, |source| source.into())
+                .to_owned(),
             self.shepherd_acted.to_string(),
-            self.status.to_string(),
+            self.status.to_owned(),
         ]]
     }
 
     // The four dog-action rows' shared treatment; see `dog_action_paint`.
-    fn rows_for(
-        rows: Vec<Vec<String>>,
-        presentation: Presentation,
-        status_word: bool,
-    ) -> Vec<Vec<String>> {
+    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
         paint(
-            rows,
+            self.rows(),
             Self::headers(),
             presentation,
             status_word,
@@ -205,217 +204,27 @@ impl DogActionRow<'_> {
         )
     }
 
-    // Parallel to `headers()`. SOURCE drops before SHEPHERD, and a 4-column
-    // table loses only one of the two.
-    const PRIORITIES: &'static [u8] = &[0, 7, 6, 0];
-}
-
-// One JSON key rule for the four dog-action tables. A macro, not a shared
-// fn: rustc's dead-code pass cannot see a use that occurs only inside
-// another trait impl's body. The panic names `Self` so a rename cannot
-// leave a stale literal in an unreachable arm.
-macro_rules! dog_action_json_key {
-    ($header:expr) => {{
-        let caller: &'static str = core::any::type_name::<Self>();
-        let header: &str = $header;
+    /// # Panics
+    /// If `header` is not one of `Self::headers()`'s own values.
+    #[track_caller]
+    fn json_key_for(header: &str) -> &'static str {
         match header {
             "NAME" => "name",
             "SOURCE" => "source",
             "SHEPHERD" => "shepherd_acted",
             "STATUS" => "status",
-            other => panic!("{caller}::headers() does not include {other:?}"),
+            other => panic!("DogRow::headers() does not include {other:?}"),
         }
-    }};
-}
-
-impl Render for DogEnabledRow {
-    fn headers() -> &'static [&'static str] {
-        DogActionRow::headers()
     }
-
-    fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
-    }
-
-    /// Shared with the other three dog-action rows; see
-    /// [`DogActionRow::rows_for`].
-    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
-        DogActionRow::rows_for(self.rows(), presentation, status_word)
-    }
-
-    #[track_caller]
-    fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!(header)
-    }
-
+    // Parallel to `headers()`. SOURCE drops before SHEPHERD, and a 4-column
+    // table loses only one of the two.
+    const PRIORITIES: &'static [u8] = &[0, 7, 6, 0];
     const JSON_ONLY: &'static [&'static str] = &[];
-
-    const PRIORITIES: &'static [u8] = DogActionRow::PRIORITIES;
-}
-/// `shep disable <name>`: what the config edit and, if a shepherd is running,
-/// the resulting `DisableDog` RPC did.
-///
-/// [`Self::source`] comes from the same `shep.toml` lookup
-/// [`DogEnabledRow::source`] uses, never from the reply, which carries only
-/// ids.
-#[derive(Debug, Serialize)]
-pub struct DogDisabledRow {
-    /// The dog's name.
-    pub name: String,
-    /// Where its binary comes from; see this type's own doc.
-    pub source: DogSource,
-    /// Whether a shepherd was reached and asked to stop the dog.
-    pub shepherd_acted: bool,
-    /// The dog's resulting status: `"stopped"` when a shepherd acted, or a
-    /// sentence explaining why not when none answered.
-    pub status: String,
-}
-
-impl Render for DogDisabledRow {
-    fn headers() -> &'static [&'static str] {
-        DogActionRow::headers()
-    }
-
-    fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
-    }
-
-    /// Same treatment as [`DogEnabledRow::rows_for`]; see
-    /// [`DogActionRow::rows_for`].
-    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
-        DogActionRow::rows_for(self.rows(), presentation, status_word)
-    }
-
-    #[track_caller]
-    fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!(header)
-    }
-
-    const JSON_ONLY: &'static [&'static str] = &[];
-
-    const PRIORITIES: &'static [u8] = DogActionRow::PRIORITIES;
-}
-/// `shep adopt <path> [--name <name>]`: what the config edit and, if a
-/// shepherd is running, the resulting `EnableDog` RPC did.
-///
-/// [`Self::source`] is always [`DogSource::Adopted`]: this verb vetted the
-/// path itself, so it looks nothing up.
-#[derive(Debug, Serialize)]
-pub struct DogAdoptedRow {
-    /// The dog's name.
-    pub name: String,
-    /// Always [`DogSource::Adopted`], carrying the vetted, canonicalized
-    /// path `adopt` just recorded.
-    pub source: DogSource,
-    /// Whether a shepherd was reached and asked to start the dog. `false`
-    /// means only the config changed; no verb here autostarts one.
-    pub shepherd_acted: bool,
-    /// The dog's resulting status: a real `ProcStatus` rendering
-    /// (`"online"`, `"starting"`, ...) when a shepherd started it, or a
-    /// sentence explaining why not when none answered.
-    pub status: String,
-}
-
-impl Render for DogAdoptedRow {
-    fn headers() -> &'static [&'static str] {
-        DogActionRow::headers()
-    }
-
-    fn rows(&self) -> Vec<Vec<String>> {
-        DogActionRow {
-            name: &self.name,
-            source: dog_source_label(&self.source),
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
-    }
-
-    /// Same treatment as [`DogEnabledRow::rows_for`]; see
-    /// [`DogActionRow::rows_for`].
-    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
-        DogActionRow::rows_for(self.rows(), presentation, status_word)
-    }
-
-    #[track_caller]
-    fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!(header)
-    }
-
-    const JSON_ONLY: &'static [&'static str] = &[];
-
-    const PRIORITIES: &'static [u8] = DogActionRow::PRIORITIES;
-}
-/// `shep rehome <name>`: what the config edit and, if a shepherd is running,
-/// the resulting `DisableDog` RPC did.
-///
-/// [`Self::source`] is an [`Option`] because `rehome` reports what it forgot,
-/// and it still runs for a name `shep.toml` never had an entry for.
-#[derive(Debug, Serialize)]
-pub struct DogRehomedRow {
-    /// The dog's name.
-    pub name: String,
-    /// Where its binary came from, read before this verb forgot it. See
-    /// this type's own doc for what `None` means.
-    pub source: Option<DogSource>,
-    /// Whether a shepherd was reached and asked to stop the dog.
-    pub shepherd_acted: bool,
-    /// The dog's resulting status: `"stopped"` when a shepherd acted, or a
-    /// sentence explaining why not when none answered.
-    pub status: String,
-}
-
-impl Render for DogRehomedRow {
-    fn headers() -> &'static [&'static str] {
-        DogActionRow::headers()
-    }
-
-    fn rows(&self) -> Vec<Vec<String>> {
-        // `-` for `None`, as `DogRows::rows` renders it.
-        let source_label = self.source.as_ref().map_or_else(
-            || "-".to_string(),
-            |source| dog_source_label(source).to_string(),
-        );
-        DogActionRow {
-            name: &self.name,
-            source: &source_label,
-            shepherd_acted: self.shepherd_acted,
-            status: &self.status,
-        }
-        .rows()
-    }
-
-    /// Same treatment as [`DogEnabledRow::rows_for`]; see
-    /// [`DogActionRow::rows_for`].
-    fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
-        DogActionRow::rows_for(self.rows(), presentation, status_word)
-    }
-
-    #[track_caller]
-    fn json_key_for(header: &str) -> &'static str {
-        dog_action_json_key!(header)
-    }
-
-    const JSON_ONLY: &'static [&'static str] = &[];
-
-    const PRIORITIES: &'static [u8] = DogActionRow::PRIORITIES;
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use shep_core::status::ProcStatus;
+    use shep_core::{protocol::DogSource, status::ProcStatus};
 
     use crate::vocabulary::Role;
 
@@ -461,12 +270,7 @@ pub(crate) mod tests {
     #[test]
     fn dog_enabled_row_does_not_drift() {
         assert_no_drift(
-            &DogEnabledRow {
-                name: "metrics".to_string(),
-                source: DogSource::BuiltIn,
-                shepherd_acted: true,
-                status: "online".to_string(),
-            },
+            &DogRow::new("metrics", DogSource::BuiltIn, "online", true),
             |j| j,
             &["SOURCE"],
         );
@@ -476,12 +280,12 @@ pub(crate) mod tests {
     #[test]
     fn dog_disabled_row_does_not_drift() {
         assert_no_drift(
-            &DogDisabledRow {
-                name: "metrics".to_string(),
-                source: DogSource::BuiltIn,
-                shepherd_acted: false,
-                status: "not running; will not start with the next shepherd".to_string(),
-            },
+            &DogRow::new(
+                "metrics",
+                DogSource::BuiltIn,
+                "not running; will not start with the next shepherd",
+                false,
+            ),
             |j| j,
             &["SOURCE"],
         );
@@ -491,14 +295,14 @@ pub(crate) mod tests {
     #[test]
     fn dog_adopted_row_does_not_drift() {
         assert_no_drift(
-            &DogAdoptedRow {
-                name: "otel".to_string(),
-                source: DogSource::Adopted {
+            &DogRow::new(
+                "otel",
+                DogSource::Adopted {
                     path: "/usr/local/bin/shep-otel".to_string(),
                 },
-                shepherd_acted: true,
-                status: "online".to_string(),
-            },
+                "online",
+                true,
+            ),
             |j| j,
             &["SOURCE"],
         );
@@ -509,24 +313,24 @@ pub(crate) mod tests {
     #[test]
     fn dog_rehomed_row_does_not_drift_with_or_without_a_source() {
         assert_no_drift(
-            &DogRehomedRow {
-                name: "otel".to_string(),
-                source: Some(DogSource::Adopted {
+            &DogRow::new(
+                "otel",
+                DogSource::Adopted {
                     path: "/usr/local/bin/shep-otel".to_string(),
-                }),
-                shepherd_acted: true,
-                status: "stopped".to_string(),
-            },
+                },
+                "stopped",
+                true,
+            ),
             |j| j,
             &["SOURCE"],
         );
         assert_no_drift(
-            &DogRehomedRow {
-                name: "ghost".to_string(),
-                source: None,
-                shepherd_acted: false,
-                status: "not running; will not start with the next shepherd".to_string(),
-            },
+            &DogRow::new(
+                "ghost",
+                None::<DogSource>,
+                "not running; will not start with the next shepherd",
+                false,
+            ),
             |j| j,
             &["SOURCE"],
         );
@@ -572,18 +376,18 @@ pub(crate) mod tests {
         assert_eq!(row[7], painted("-", Role::Ink3), "MEM");
     }
 
-    /// `DogEnabledRow::status` can carry a sentence in place of a status
+    /// `DogRow`'s status can carry a sentence in place of a status
     /// rendering.
     #[test]
     fn a_dog_action_row_colours_a_status_and_never_a_sentence() {
-        let acted = DogEnabledRow {
-            name: "log-rotate".to_string(),
-            source: DogSource::Adopted {
+        let acted = DogRow::new(
+            "log-rotate",
+            DogSource::Adopted {
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
             },
-            shepherd_acted: true,
-            status: "online".to_string(),
-        };
+            "online",
+            true,
+        );
         let row = &acted.rows_for(coloured(), true)[0];
         assert_eq!(
             row[1],
@@ -593,12 +397,7 @@ pub(crate) mod tests {
         assert_eq!(row[3], painted("(o.o) online", Role::Meadow));
 
         let sentence = "no shepherd running; the config was written";
-        let unacted = DogEnabledRow {
-            name: "log-rotate".to_string(),
-            source: DogSource::BuiltIn,
-            shepherd_acted: false,
-            status: sentence.to_string(),
-        };
+        let unacted = DogRow::new("log-rotate", DogSource::BuiltIn, sentence, false);
         let row = &unacted.rows_for(coloured(), true)[0];
         assert_eq!(row[3], sentence, "a sentence is left exactly as it was");
     }
@@ -607,12 +406,12 @@ pub(crate) mod tests {
     /// so in a whole sentence.
     #[test]
     fn a_dog_action_row_leaves_the_name_and_the_shepherd_column_plain() {
-        let row = &DogDisabledRow {
-            name: "log-rotate".to_string(),
-            source: DogSource::BuiltIn,
-            shepherd_acted: false,
-            status: "no shepherd running".to_string(),
-        }
+        let row = &DogRow::new(
+            "log-rotate",
+            DogSource::BuiltIn,
+            "no shepherd running",
+            false,
+        )
         .rows_for(coloured(), true)[0];
         assert_eq!(row[0], "log-rotate");
         assert_eq!(row[2], "false");
@@ -621,15 +420,41 @@ pub(crate) mod tests {
     /// `rehome` is the only one of the four whose SOURCE can be absent.
     #[test]
     fn a_rehomed_row_with_nothing_to_forget_still_mutes_its_source() {
-        let row = &DogRehomedRow {
-            name: "metrics".to_string(),
-            source: None,
-            shepherd_acted: true,
-            status: "stopped".to_string(),
-        }
-        .rows_for(coloured(), true)[0];
+        let row = &DogRow::new("metrics", None::<DogSource>, "stopped", true)
+            .rows_for(coloured(), true)[0];
         assert_eq!(row[1], painted("-", Role::Ink3));
         assert_eq!(row[3], painted("(-.-) stopped", Role::Ink3));
+    }
+
+    /// The SOURCE column renders a kind and the JSON keeps the whole
+    /// `DogSource`, so an adopted binary's path survives a flattening that
+    /// only the table needs. Nothing else pins this payload, and collapsing
+    /// the four dog-action rows into one is exactly where it goes missing.
+    #[test]
+    fn the_dog_action_json_keeps_the_path_the_source_column_drops() {
+        let adopted = DogRow::new(
+            "otel",
+            DogSource::Adopted {
+                path: "/usr/local/bin/shep-otel".to_string(),
+            },
+            "online",
+            true,
+        );
+        assert_eq!(adopted.rows()[0][1], "adopted", "the column names a kind");
+
+        let json = serde_json::to_value(&adopted).unwrap();
+        assert_eq!(json["source"]["kind"], "adopted");
+        assert_eq!(json["source"]["path"], "/usr/local/bin/shep-otel");
+        assert_eq!(json["status"], "online");
+        assert_eq!(json["shepherd_acted"], serde_json::json!(true));
+
+        // `rehome` alone reaches this: `null`, never the column's own `-`.
+        let forgotten = DogRow::new("metrics", None::<DogSource>, "stopped", false);
+        assert_eq!(forgotten.rows()[0][1], "-");
+        assert_eq!(
+            serde_json::to_value(&forgotten).unwrap()["source"],
+            serde_json::Value::Null
+        );
     }
 
     /// The `Presentation` for one style, at a width nothing drops at.
