@@ -97,7 +97,7 @@ impl SettingField {
 #[must_use]
 pub fn settings_field_set() -> crate::lookout::field::FieldSet {
     use crate::lookout::app::{LOG_LEVEL_ORDER, STYLE_LEVEL_ORDER};
-    use crate::lookout::field::{Field, FieldKind, FieldSet};
+    use crate::lookout::field::{Bounds, Field, FieldKind, FieldSet};
 
     let f = |field: SettingField, group: &str, kind: FieldKind| Field {
         key: field.key().to_owned(),
@@ -113,6 +113,7 @@ pub fn settings_field_set() -> crate::lookout::field::FieldSet {
         accepts: Vec::new(),
         refuses: Vec::new(),
         neighbours: Vec::new(),
+        bounds: Bounds::default(),
     };
     let log_levels = FieldKind::Choice(
         LOG_LEVEL_ORDER
