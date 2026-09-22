@@ -204,20 +204,36 @@ impl Outbox {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner.closed = true;
         drop(inner);
-        self.queued.notify_all();
-        self.drained.notify_all();
+        self.wake_waiters();
     }
 
-    /// Records that the writer has returned, then closes. Idempotent.
+    /// Records that the writer has returned, and closes. Idempotent.
     ///
     /// [`Outbox::close`] on its own does not mean a queued message is
     /// lost: the writer drains what is already there before it stops.
     /// This is the point after which nothing left will ever be written.
+    ///
+    /// Both flags move under one lock, and that is load-bearing rather
+    /// than tidy. Setting `stopped` and then calling `close` for the
+    /// other leaves a window where `stopped` holds and `closed` does
+    /// not. `push_blocking` reads only `closed`, so a push landing in
+    /// that window is told `Ok` for a message nothing will ever write,
+    /// and `ready()` calls straight into it. `writer_loop` ends here,
+    /// so the window would open on exactly the path that means the
+    /// shepherd has gone.
     pub(crate) fn stop(&self) {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner.stopped = true;
+        inner.closed = true;
         drop(inner);
-        self.close();
+        self.wake_waiters();
+    }
+
+    /// Wakes every kind of waiter. Called after a flag changes and
+    /// never with the lock held.
+    fn wake_waiters(&self) {
+        self.queued.notify_all();
+        self.drained.notify_all();
         self.emptied.notify_all();
     }
 
@@ -485,6 +501,26 @@ mod tests {
 
         outbox.close();
         assert_eq!(outbox.pop(), None);
+    }
+
+    /// Pins that `stop` closes as well as stops, which is what keeps a
+    /// push from being told `Ok` after the writer has gone.
+    ///
+    /// It does not prove the two flags move together, and no test from
+    /// outside this type can: the window is only observable from a
+    /// thread holding the lock between them. `stop`'s own doc carries
+    /// that reason. What this catches is the flag being dropped
+    /// outright, which is the regression a later edit would make.
+    #[test]
+    fn a_must_deliver_push_is_refused_once_the_writer_has_stopped() {
+        let outbox = Outbox::new(4);
+        outbox.stop();
+
+        assert!(matches!(
+            outbox.push_blocking(ChildMessage::Ready),
+            Err(ChannelError::Closed)
+        ));
+        assert!(outbox.is_closed(), "stop left the outbox open to pushes");
     }
 
     /// The whole point of the in-flight count, and the one thing an
