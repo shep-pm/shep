@@ -185,14 +185,17 @@ const headerCopy = Boolean(label) && iconCopy;
         .closest(".code-block")
         ?.querySelector<HTMLPreElement>(".code-block-pre");
       let revertTimer: ReturnType<typeof setTimeout> | undefined;
+      // Whichever variant rendered, its markup already carries the resting
+      // name. Reading it beats naming one here: an `aria-label` overrides
+      // the button's own text, so a hardcoded string renames the other
+      // variant rather than describing it.
+      const restingLabel = button.getAttribute("aria-label") ?? "Copy";
 
       const setCopied = (copied: boolean) => {
         if (label) label.textContent = copied ? "copied" : "copy";
         if (copyIcon) copyIcon.style.display = copied ? "none" : "";
         if (copiedIcon) copiedIcon.style.display = copied ? "" : "none";
-        if (copyIcon || copiedIcon) {
-          button.setAttribute("aria-label", copied ? "Copied" : "Copy command");
-        }
+        button.setAttribute("aria-label", copied ? "Copied" : restingLabel);
       };
 
       // A denied permission or a missing clipboard API would otherwise leave
@@ -209,9 +212,7 @@ const headerCopy = Boolean(label) && iconCopy;
         if (label) label.textContent = "failed";
         if (copyIcon) copyIcon.style.display = "";
         if (copiedIcon) copiedIcon.style.display = "none";
-        if (copyIcon || copiedIcon) {
-          button.setAttribute("aria-label", "Copy failed");
-        }
+        button.setAttribute("aria-label", "Copy failed");
       };
 
       button.addEventListener("click", async () => {
