@@ -16,7 +16,6 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import NotBuilt from "../../components/docs/NotBuilt.astro";
-import { pillTargetsLive } from "../../data/docs-nav";
 ---
 
 <DocsLayout
@@ -59,16 +58,9 @@ import { pillTargetsLive } from "../../data/docs-nav";
       Generated straight from the two live routers <code>whistle/read.rs</code>{" "}
       and <code>whistle/control.rs</code> build, not a second hand-typed
       copy beside them:{" "}
-      {pillTargetsLive.github ? (
-        <a href={repoFile("docs/whistle/tools.md")}>
-          the full generated reference is on GitHub
-        </a>
-      ) : (
-        <span>
-          the full generated reference is <code>docs/whistle/tools.md</code>{" "}
-          in the repo
-        </span>
-      )}.
+      <a href={repoFile("docs/whistle/tools.md")}>
+        the full generated reference is on GitHub
+      </a>.
     </p>
     <div class="tool-table">
       <div class="row header">
