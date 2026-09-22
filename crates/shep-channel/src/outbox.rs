@@ -7,9 +7,15 @@
 //!
 //! One queue holds both. A full queue gives up a metric, never a
 //! `Ready` or an `ActionReply`.
+//!
+//! An app that wants to exit without losing what it queued waits on
+//! `drain`. A message the writer has taken is not yet a message the
+//! shepherd has, so the count that matters spans both the queue and the
+//! one write in progress.
 
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use crate::{ChannelError, ChildMessage};
 
@@ -20,11 +26,31 @@ use crate::{ChannelError, ChildMessage};
 /// kilobytes plus whatever names and bodies heap-allocate.
 pub(crate) const DEFAULT_CAPACITY: usize = 1024;
 
+/// How a wait on [`Outbox::drain`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Drain {
+    /// Nothing is queued and nothing is part-written. Everything the
+    /// outbox took has reached the transport.
+    Empty,
+    /// The writer returned with messages still unwritten. They are gone.
+    Stopped,
+    /// The budget ran out with messages still waiting.
+    TimedOut,
+}
+
 #[derive(Debug)]
 struct Inner {
     queue: VecDeque<ChildMessage>,
     dropped: u64,
     closed: bool,
+    /// Messages [`Outbox::pop`] handed the writer that it has not
+    /// reported written. At most one while a single writer runs, and
+    /// the whole reason `drain` cannot just read `queue.is_empty()`.
+    in_flight: usize,
+    /// The writer loop has returned. Nothing still held will ever be
+    /// written. Distinct from `closed`, which the reader also sets and
+    /// which the writer keeps draining through.
+    stopped: bool,
 }
 
 /// The bounded queue the writer thread drains.
@@ -36,6 +62,12 @@ pub(crate) struct Outbox {
     queued: Condvar,
     /// Signalled when a message leaves, or the outbox closes.
     drained: Condvar,
+    /// Signalled when nothing is left to write, or the writer stops.
+    ///
+    /// Its own condvar rather than `drained`: that one wakes a push
+    /// waiting for room, and `notify_one` between two kinds of waiter
+    /// wakes the wrong one.
+    emptied: Condvar,
 }
 
 impl Outbox {
@@ -48,10 +80,13 @@ impl Outbox {
                 queue: VecDeque::new(),
                 dropped: 0,
                 closed: false,
+                in_flight: 0,
+                stopped: false,
             }),
             capacity,
             queued: Condvar::new(),
             drained: Condvar::new(),
+            emptied: Condvar::new(),
         }
     }
 
@@ -129,6 +164,9 @@ impl Outbox {
     }
 
     /// Takes the next message, waiting for one. `None` once closed and empty.
+    ///
+    /// A taken message counts as in flight until [`Outbox::wrote`], so a
+    /// `drain` in progress keeps waiting for it.
     pub(crate) fn pop(&self) -> Option<ChildMessage> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         while inner.queue.is_empty() && !inner.closed {
@@ -139,9 +177,26 @@ impl Outbox {
         }
         let taken = inner.queue.pop_front();
         if taken.is_some() {
+            inner.in_flight = inner.in_flight.saturating_add(1);
             self.drained.notify_one();
         }
         taken
+    }
+
+    /// Reports that the message the writer last took reached the
+    /// transport.
+    ///
+    /// Called only after a successful write. A failed one leaves the
+    /// message in flight so the [`Outbox::stop`] that follows reaches a
+    /// `drain` as [`Drain::Stopped`] rather than [`Drain::Empty`].
+    pub(crate) fn wrote(&self) {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        inner.in_flight = inner.in_flight.saturating_sub(1);
+        let idle = inner.in_flight == 0 && inner.queue.is_empty();
+        drop(inner);
+        if idle {
+            self.emptied.notify_all();
+        }
     }
 
     /// Releases every waiter. Idempotent.
@@ -149,8 +204,77 @@ impl Outbox {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner.closed = true;
         drop(inner);
+        self.wake_waiters();
+    }
+
+    /// Records that the writer has returned, and closes. Idempotent.
+    ///
+    /// [`Outbox::close`] on its own does not mean a queued message is
+    /// lost: the writer drains what is already there before it stops.
+    /// This is the point after which nothing left will ever be written.
+    ///
+    /// Both flags move under one lock, and that is load-bearing rather
+    /// than tidy. Setting `stopped` and then calling `close` for the
+    /// other leaves a window where `stopped` holds and `closed` does
+    /// not. `push_blocking` reads only `closed`, so a push landing in
+    /// that window is told `Ok` for a message nothing will ever write,
+    /// and `ready()` calls straight into it. `writer_loop` ends here,
+    /// so the window would open on exactly the path that means the
+    /// shepherd has gone.
+    pub(crate) fn stop(&self) {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        inner.stopped = true;
+        inner.closed = true;
+        drop(inner);
+        self.wake_waiters();
+    }
+
+    /// Wakes every kind of waiter. Called after a flag changes and
+    /// never with the lock held.
+    fn wake_waiters(&self) {
         self.queued.notify_all();
         self.drained.notify_all();
+        self.emptied.notify_all();
+    }
+
+    /// Waits for everything held right now to reach the transport,
+    /// giving up after `timeout`.
+    ///
+    /// Waits on the outbox being empty rather than on the messages that
+    /// were there at the call, so a thread still emitting can hold it
+    /// open. `timeout` bounds that either way, and a zero one is a
+    /// non-blocking probe.
+    pub(crate) fn drain(&self, timeout: Duration) -> Drain {
+        let started = Instant::now();
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            // Before `stopped`, so a writer that emptied the outbox and
+            // then returned reads as the success it is.
+            if inner.queue.is_empty() && inner.in_flight == 0 {
+                return Drain::Empty;
+            }
+            if inner.stopped {
+                return Drain::Stopped;
+            }
+            let Some(left) = timeout.checked_sub(started.elapsed()) else {
+                return Drain::TimedOut;
+            };
+            if left.is_zero() {
+                return Drain::TimedOut;
+            }
+            inner = self
+                .emptied
+                .wait_timeout(inner, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+    }
+
+    /// How many messages are waiting for the transport, counting the one
+    /// the writer is part-way through.
+    pub(crate) fn pending(&self) -> usize {
+        let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        inner.queue.len() + inner.in_flight
     }
 
     /// Whether the writer has stopped, which is the shepherd having gone
@@ -182,6 +306,29 @@ mod tests {
     /// Every wait in this module's tests is bounded by this. A working
     /// outbox answers in microseconds; this is slack for a loaded runner.
     const DEADLINE: Duration = Duration::from_secs(5);
+
+    /// Runs `drain(timeout)` on its own thread, bounded from outside the
+    /// call.
+    ///
+    /// The `timeout` handed to `drain` is that function's input, not this
+    /// test's forcing mechanism (IR-46). A drain called straight from the
+    /// test body and given its own bound to hold parks the whole binary
+    /// when it regresses, which reports as a harness timeout naming
+    /// nothing. Measured: with `drain` stubbed to never return, five of
+    /// the six tests below hung and only the one already spawning a
+    /// thread failed. `DEADLINE` is this side's bound, so a regression
+    /// fails here by name.
+    #[track_caller]
+    fn drain_bounded(outbox: &Arc<Outbox>, timeout: Duration) -> Drain {
+        let (tx, rx) = mpsc::channel();
+        let draining = Arc::clone(outbox);
+        // Never joined. A parked drain holds this thread, and joining it
+        // would put back the hang this exists to avoid.
+        std::thread::spawn(move || {
+            let _ = tx.send(draining.drain(timeout));
+        });
+        rx.recv_timeout(DEADLINE).expect("drain never returned")
+    }
 
     fn metric(value: f64) -> ChildMessage {
         ChildMessage::Metric {
@@ -354,5 +501,146 @@ mod tests {
 
         outbox.close();
         assert_eq!(outbox.pop(), None);
+    }
+
+    /// Pins that `stop` closes as well as stops, which is what keeps a
+    /// push from being told `Ok` after the writer has gone.
+    ///
+    /// It does not prove the two flags move together, and no test from
+    /// outside this type can: the window is only observable from a
+    /// thread holding the lock between them. `stop`'s own doc carries
+    /// that reason. What this catches is the flag being dropped
+    /// outright, which is the regression a later edit would make.
+    #[test]
+    fn a_must_deliver_push_is_refused_once_the_writer_has_stopped() {
+        let outbox = Outbox::new(4);
+        outbox.stop();
+
+        assert!(matches!(
+            outbox.push_blocking(ChildMessage::Ready),
+            Err(ChannelError::Closed)
+        ));
+        assert!(outbox.is_closed(), "stop left the outbox open to pushes");
+    }
+
+    /// The whole point of the in-flight count, and the one thing an
+    /// empty-queue check gets wrong. The test is the writer here: it
+    /// takes the message and never writes it, which is the window a
+    /// process exiting from `on_shutdown` falls into.
+    ///
+    /// Forcing mechanism in both directions. The `recv_timeout` that
+    /// must expire proves the drain is still waiting; the one bounded by
+    /// `DEADLINE` proves `wrote()` releases it. Drop the `in_flight`
+    /// bookkeeping and the first assertion fails in 200ms.
+    #[test]
+    fn a_drain_waits_for_a_message_the_writer_took_but_has_not_written() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
+
+        let (tx, rx) = mpsc::channel();
+        let draining = Arc::clone(&outbox);
+        let handle = std::thread::spawn(move || {
+            tx.send(draining.drain(DEADLINE)).expect("report");
+        });
+
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "drain reported an empty outbox while the writer still held a message"
+        );
+        assert_eq!(outbox.pending(), 1, "an in-flight message is still pending");
+
+        outbox.wrote();
+
+        assert_eq!(
+            rx.recv_timeout(DEADLINE).expect("drain never returned"),
+            Drain::Empty
+        );
+        assert_eq!(outbox.pending(), 0);
+        handle.join().expect("drainer panicked");
+    }
+
+    /// `DEADLINE` bounds a regression that would otherwise park here
+    /// until the harness kills the whole binary.
+    #[test]
+    fn a_drain_reports_a_writer_that_stopped_with_a_message_unwritten() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+
+        outbox.stop();
+
+        assert_eq!(drain_bounded(&outbox, DEADLINE), Drain::Stopped);
+        assert_eq!(
+            outbox.pending(),
+            1,
+            "the unwritten message is what was lost"
+        );
+    }
+
+    /// A writer that emptied the outbox and then returned delivered
+    /// everything, so this is a success and not a `Stopped`.
+    #[test]
+    fn a_drain_of_an_outbox_a_stopped_writer_had_emptied_is_a_success() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox.stop();
+
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
+    }
+
+    /// The timeout is the test's own bound: nothing is draining this
+    /// outbox, so a regression that waits for a drainer fails here in
+    /// 50ms rather than hanging.
+    #[test]
+    fn a_drain_gives_up_on_a_queue_nothing_is_draining() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+
+        assert_eq!(
+            drain_bounded(&outbox, Duration::from_millis(50)),
+            Drain::TimedOut
+        );
+    }
+
+    /// A zero timeout is a probe, so it must answer both ways without
+    /// waiting rather than always reporting a timeout.
+    #[test]
+    fn a_zero_timeout_drain_answers_without_waiting() {
+        let outbox = Arc::new(Outbox::new(4));
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
+
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::TimedOut);
+    }
+
+    /// A closed outbox is not a stopped one: the writer keeps draining
+    /// what is already queued, and a drain has to wait for that rather
+    /// than call the messages lost.
+    #[test]
+    fn closing_alone_does_not_end_a_drain() {
+        let outbox = Arc::new(Outbox::new(4));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+
+        outbox.close();
+
+        assert_eq!(
+            drain_bounded(&outbox, Duration::from_millis(50)),
+            Drain::TimedOut,
+            "a close with the writer still draining was read as a loss"
+        );
+
+        // Now drain it the way the writer would, and the same wait succeeds.
+        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
+        outbox.wrote();
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
     }
 }

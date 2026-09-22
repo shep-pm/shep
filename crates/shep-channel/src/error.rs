@@ -16,8 +16,13 @@ pub enum ChannelError {
     /// The environment names a channel this platform cannot open, for
     /// example `SHEP_CHANNEL_PIPE` on unix. Carries the variable and value.
     Unusable(String),
-    /// The writer has stopped and the message was not queued.
+    /// The writer has stopped, so the message never reached the
+    /// shepherd: it was refused at the queue, or it was queued and the
+    /// writer returned before writing it.
     Closed,
+    /// A [`crate::Shepherd::flush`] ran out of time with messages still
+    /// waiting for the writer. They may yet be written.
+    TimedOut,
     /// This process already took its shepherd channel. A second
     /// [`crate::Channel::open`] call returns this rather than retake the
     /// descriptor, which would produce two owners.
@@ -31,6 +36,7 @@ impl core::fmt::Display for ChannelError {
             Self::Malformed(message) => write!(f, "malformed shepherd-channel frame: {message}"),
             Self::Unusable(what) => write!(f, "unusable shepherd channel: {what}"),
             Self::Closed => f.write_str("the shepherd channel is closed"),
+            Self::TimedOut => f.write_str("the shepherd channel did not finish writing in time"),
             Self::AlreadyTaken => f.write_str(
                 "the shepherd channel has already been taken by this process and can only be taken once",
             ),

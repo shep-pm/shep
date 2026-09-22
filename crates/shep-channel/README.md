@@ -18,6 +18,10 @@ shepherd.metric("rps", 4200.0);
 
 // Serve until the shepherd asks this app to stop.
 wait_for_stop.recv().ok();
+
+// Sending queues. Whatever the writer thread has not reached yet dies
+// with the process, so drain it before exiting.
+shepherd.flush(std::time::Duration::from_secs(2))?;
 ```
 
 Ask for a channel in the Flockfile with `channel = true`, or get one from
@@ -29,6 +33,10 @@ gets a reply, which is the part an app is most likely to get wrong: to the
 shepherd, silence from an app thinking hard and silence from an app that
 never understood the question look the same, and only `action_timeout`
 running out tells them apart.
+
+`flush` is the call that is easiest to leave out. Sending queues, so an app
+that exits from its own shutdown handler loses replies an operator is still
+waiting on.
 
 The wire itself is documented in `docs/shepherd-channel.md` in the shep
 repository. It is language agnostic, and Go, JavaScript and Python
