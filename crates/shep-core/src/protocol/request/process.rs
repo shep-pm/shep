@@ -30,6 +30,21 @@ pub enum DogSource {
     },
 }
 
+impl DogSource {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            DogSource::BuiltIn => "built-in",
+            DogSource::Adopted { .. } => "adopted",
+        }
+    }
+}
+
+impl From<&DogSource> for &'static str {
+    fn from(source: &DogSource) -> Self {
+        source.as_str()
+    }
+}
+
 /// One process the OS reports as a descendant of a sheep.
 ///
 /// Not the set of processes that die with the sheep: this is a parent-pid

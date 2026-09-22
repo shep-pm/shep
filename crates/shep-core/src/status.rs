@@ -33,16 +33,28 @@ pub enum ProcStatus {
     WaitingRestart,
 }
 
-impl fmt::Display for ProcStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl ProcStatus {
+    const fn as_str(&self) -> &'static str {
+        match self {
             Self::Starting => "starting",
             Self::Online => "online",
             Self::Stopping => "stopping",
             Self::Stopped => "stopped",
             Self::Errored => "errored",
             Self::WaitingRestart => "waiting-restart",
-        })
+        }
+    }
+}
+
+impl From<ProcStatus> for &'static str {
+    fn from(source: ProcStatus) -> Self {
+        source.as_str()
+    }
+}
+
+impl fmt::Display for ProcStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
