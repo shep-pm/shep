@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-22
+
+### Fixed
+
+- Carry a secret mark on the field, not on its name **(BREAKING)**
+
+
 ## [0.9.0] - 2026-09-21
 
 

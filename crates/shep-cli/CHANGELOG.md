@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-22
+
+### Added
+
+- List shep-discord under a new interactive dog category ([#564](https://github.com/shep-pm/shep/pull/564))
+
+### Fixed
+
+- Put provider secret values behind ProviderCache accessors **(BREAKING)**
+- Put provider secret values behind ProviderCache accessors ([#589](https://github.com/shep-pm/shep/pull/589)) **(BREAKING)**
+- Carry a secret mark on the field, not on its name ([#594](https://github.com/shep-pm/shep/pull/594)) **(BREAKING)**
+
+### Performance
+
+- Sample the host off the tokio worker
+- Sample the host off the tokio worker ([#548](https://github.com/shep-pm/shep/pull/548))
+- Deliver bark's sinks together, not in turn ([#550](https://github.com/shep-pm/shep/pull/550))
+- Parse the muster roll once per secrets pane open ([#549](https://github.com/shep-pm/shep/pull/549))
+
+
 ## [0.9.0] - 2026-09-21
 
 ### Changed

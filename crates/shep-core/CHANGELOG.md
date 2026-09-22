@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-22
+
+### Fixed
+
+- Put provider secret values behind ProviderCache accessors **(BREAKING)**
+- Put provider secret values behind ProviderCache accessors ([#589](https://github.com/shep-pm/shep/pull/589)) **(BREAKING)**
+- Carry a secret mark on the field, not on its name ([#594](https://github.com/shep-pm/shep/pull/594)) **(BREAKING)**
+
+
 ## [0.9.0] - 2026-09-21
 
 ### Changed
