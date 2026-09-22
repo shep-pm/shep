@@ -291,6 +291,29 @@ mod tests {
     /// outbox answers in microseconds; this is slack for a loaded runner.
     const DEADLINE: Duration = Duration::from_secs(5);
 
+    /// Runs `drain(timeout)` on its own thread, bounded from outside the
+    /// call.
+    ///
+    /// The `timeout` handed to `drain` is that function's input, not this
+    /// test's forcing mechanism (IR-46). A drain called straight from the
+    /// test body and given its own bound to hold parks the whole binary
+    /// when it regresses, which reports as a harness timeout naming
+    /// nothing. Measured: with `drain` stubbed to never return, five of
+    /// the six tests below hung and only the one already spawning a
+    /// thread failed. `DEADLINE` is this side's bound, so a regression
+    /// fails here by name.
+    #[track_caller]
+    fn drain_bounded(outbox: &Arc<Outbox>, timeout: Duration) -> Drain {
+        let (tx, rx) = mpsc::channel();
+        let draining = Arc::clone(outbox);
+        // Never joined. A parked drain holds this thread, and joining it
+        // would put back the hang this exists to avoid.
+        std::thread::spawn(move || {
+            let _ = tx.send(draining.drain(timeout));
+        });
+        rx.recv_timeout(DEADLINE).expect("drain never returned")
+    }
+
     fn metric(value: f64) -> ChildMessage {
         ChildMessage::Metric {
             name: "rps".into(),
@@ -507,14 +530,14 @@ mod tests {
     /// until the harness kills the whole binary.
     #[test]
     fn a_drain_reports_a_writer_that_stopped_with_a_message_unwritten() {
-        let outbox = Outbox::new(4);
+        let outbox = Arc::new(Outbox::new(4));
         outbox
             .push_blocking(ChildMessage::Ready)
             .expect("room for readiness");
 
         outbox.stop();
 
-        assert_eq!(outbox.drain(DEADLINE), Drain::Stopped);
+        assert_eq!(drain_bounded(&outbox, DEADLINE), Drain::Stopped);
         assert_eq!(
             outbox.pending(),
             1,
@@ -526,10 +549,10 @@ mod tests {
     /// everything, so this is a success and not a `Stopped`.
     #[test]
     fn a_drain_of_an_outbox_a_stopped_writer_had_emptied_is_a_success() {
-        let outbox = Outbox::new(4);
+        let outbox = Arc::new(Outbox::new(4));
         outbox.stop();
 
-        assert_eq!(outbox.drain(Duration::ZERO), Drain::Empty);
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
     }
 
     /// The timeout is the test's own bound: nothing is draining this
@@ -537,25 +560,28 @@ mod tests {
     /// 50ms rather than hanging.
     #[test]
     fn a_drain_gives_up_on_a_queue_nothing_is_draining() {
-        let outbox = Outbox::new(4);
+        let outbox = Arc::new(Outbox::new(4));
         outbox
             .push_blocking(ChildMessage::Ready)
             .expect("room for readiness");
 
-        assert_eq!(outbox.drain(Duration::from_millis(50)), Drain::TimedOut);
+        assert_eq!(
+            drain_bounded(&outbox, Duration::from_millis(50)),
+            Drain::TimedOut
+        );
     }
 
     /// A zero timeout is a probe, so it must answer both ways without
     /// waiting rather than always reporting a timeout.
     #[test]
     fn a_zero_timeout_drain_answers_without_waiting() {
-        let outbox = Outbox::new(4);
-        assert_eq!(outbox.drain(Duration::ZERO), Drain::Empty);
+        let outbox = Arc::new(Outbox::new(4));
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
 
         outbox
             .push_blocking(ChildMessage::Ready)
             .expect("room for readiness");
-        assert_eq!(outbox.drain(Duration::ZERO), Drain::TimedOut);
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::TimedOut);
     }
 
     /// A closed outbox is not a stopped one: the writer keeps draining
@@ -571,7 +597,7 @@ mod tests {
         outbox.close();
 
         assert_eq!(
-            outbox.drain(Duration::from_millis(50)),
+            drain_bounded(&outbox, Duration::from_millis(50)),
             Drain::TimedOut,
             "a close with the writer still draining was read as a loss"
         );
@@ -579,6 +605,6 @@ mod tests {
         // Now drain it the way the writer would, and the same wait succeeds.
         assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
         outbox.wrote();
-        assert_eq!(outbox.drain(Duration::ZERO), Drain::Empty);
+        assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
     }
 }

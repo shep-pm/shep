@@ -397,6 +397,25 @@ mod tests {
         }))
     }
 
+    /// Runs `flush(timeout)` on its own thread, bounded from outside the
+    /// call.
+    ///
+    /// `timeout` is the input to the call under test, so it cannot also
+    /// be this test's forcing mechanism (IR-46). `DEADLINE` is, and it
+    /// is held on this side, so a flush that never returns fails here
+    /// rather than parking the binary.
+    #[track_caller]
+    fn flush_bounded(shepherd: &Shepherd, timeout: Duration) -> Result<(), ChannelError> {
+        let (tx, rx) = mpsc::channel();
+        let flushing = shepherd.clone();
+        // Never joined, for the reason `outbox::tests::drain_bounded`
+        // gives: joining a parked flush puts the hang back.
+        std::thread::spawn(move || {
+            let _ = tx.send(flushing.flush(timeout));
+        });
+        rx.recv_timeout(DEADLINE).expect("flush never returned")
+    }
+
     #[test]
     fn an_inert_handle_accepts_everything_and_does_nothing() {
         let shepherd = Shepherd::inert(None);
@@ -670,7 +689,7 @@ mod tests {
         writer_loop(&mut FailingSink, &outbox);
 
         assert!(matches!(
-            shepherd.flush(DEADLINE),
+            flush_bounded(&shepherd, DEADLINE),
             Err(ChannelError::Closed)
         ));
         assert_eq!(shepherd.pending(), 1, "the lost message is still counted");
@@ -689,7 +708,7 @@ mod tests {
             .expect("room for readiness");
 
         assert!(matches!(
-            shepherd.flush(Duration::from_millis(50)),
+            flush_bounded(&shepherd, Duration::from_millis(50)),
             Err(ChannelError::TimedOut)
         ));
         assert_eq!(shepherd.pending(), 1);
