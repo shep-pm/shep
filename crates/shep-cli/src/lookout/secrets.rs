@@ -112,7 +112,7 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
     // the operator never named, and this list is both `SET IN`'s denominator
     // and the tab row: leaving those out prints a count bigger than its own
     // denominator and hides the environment from every tab.
-    for keys in providers.values.values() {
+    for (_, keys) in providers.namespaces() {
         for slots in keys.values() {
             environments.extend(slots.keys().cloned());
         }
@@ -128,7 +128,7 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
             &readers,
         ));
     }
-    for (namespace, keys) in &providers.values {
+    for (namespace, keys) in providers.namespaces() {
         for (key, slots) in keys {
             let qualified = format!("{namespace}/{key}");
             rows.push(row(
@@ -176,8 +176,7 @@ pub(crate) fn stored_value(store: &Path, provider_cache: &Path, row: &SecretRow)
         Source::Namespace(namespace) => {
             let bare = row.key.strip_prefix(namespace)?.strip_prefix('/')?;
             secrets::provider_cache_on_disk(provider_cache)
-                .values
-                .get(namespace)?
+                .namespace(namespace)?
                 .get(bare)?
                 .get(environment)
                 .cloned()
