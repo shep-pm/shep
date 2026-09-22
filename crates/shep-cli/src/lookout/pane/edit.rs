@@ -581,7 +581,11 @@ mod tests {
             pane.cycle();
             pane.begin_typing();
             pane.type_char('x');
-            assert_eq!(pane.apply_typing(), None, "the field takes what was typed");
+            assert_eq!(
+                pane.apply_typing(),
+                None,
+                "{key} passes validation; the lock is what stops it filing"
+            );
             assert!(pane.edits().is_empty(), "{key} reached the set");
         }
     }

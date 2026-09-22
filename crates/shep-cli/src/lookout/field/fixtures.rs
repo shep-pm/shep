@@ -7,6 +7,7 @@
 
 use super::FieldSet;
 
+/// The `properties` map of `v`, which must be a JSON object.
 pub(super) fn props(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
     v.as_object().unwrap().clone()
 }
