@@ -147,11 +147,11 @@ pub enum DogSourceRow {
         /// The path, as the operator gave it to `shep adopt`.
         path: String,
     },
-    /// A source kind this build predates.
+    /// A source kind this whistle predates.
     ///
     /// `DogSource` is `#[non_exhaustive]` (IR-20), so `From<&DogSource>`
     /// cannot be a two-arm match: the compiler refuses it. A future
-    /// daemon reporting a source kind this build predates gets a row
+    /// daemon reporting a source kind this whistle predates gets a row
     /// rather than a build failure.
     Unknown,
 }
