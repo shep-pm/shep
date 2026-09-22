@@ -74,13 +74,13 @@ export const BUDGETS: Record<string, number> = {
   containers: 560, // 526
   upgrading: 560, // 526
   kv: 550, // 519
-  serve: 480, // 448
   // Raised from 440 on 2026-09-21 for the prebuilt-binary download list,
   // which is new content rather than a correction. The page was sitting at
   // exactly 440, one word from failing the build, and the `// 413` beside
   // the old number was 27 words stale: the figure in this comment is only
   // as good as the run that wrote it.
   "getting-started": 500, // 471
+  serve: 480, // 448
   cli: 380, // 356
   "community-dogs": 300, // 277
   terminology: 210, // 199
