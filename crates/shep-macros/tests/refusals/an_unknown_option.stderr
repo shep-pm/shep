@@ -1,0 +1,5 @@
+error: unknown `shep` option: the only one is `secret`, as in `#[shep(secret)]`
+ --> tests/refusals/an_unknown_option.rs:5:12
+  |
+5 |     #[shep(scret)]
+  |            ^^^^^

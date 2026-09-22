@@ -1,0 +1,5 @@
+error: `#[shep(secret)]` marks a field, not a variant: move it onto the field inside that holds the credential
+ --> tests/refusals/shep_on_a_variant.rs:5:5
+  |
+5 |     #[shep(secret)]
+  |     ^^^^^^^^^^^^^^^

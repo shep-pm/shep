@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use shep_client::ReconnectingClient;
-use shep_client::dogs::DogConfig;
+use shep_client::dogs::dog_config;
 use shep_core::protocol::{ProcessInfo, Request, Response};
 use sysinfo::{MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System};
 use tokio::net::{TcpListener, TcpStream};
@@ -35,10 +35,11 @@ const READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// `deny_unknown_fields`: a misspelled key must be a startup error naming
 /// it, not a dog silently serving on a port the operator did not choose.
 ///
-/// `DogConfig` carries no `#[shep(secret)]`, because an address is not a
+/// `dog_config` carries no `#[shep(secret)]`, because an address is not a
 /// credential. The derive is still what lets `config_schema` publish this
 /// section, and a config type with nothing to mark still wants the impl.
-#[derive(Debug, Clone, PartialEq, Deserialize, schemars::JsonSchema, DogConfig)]
+#[dog_config]
+#[derive(Debug, Clone, PartialEq, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 pub struct MetricsConfig {
     /// Where to listen. Loopback by default; binding wider is explicit.
@@ -303,8 +304,7 @@ mod tests {
     /// `default` drops `required` and puts the real default beside the key.
     #[test]
     fn the_metrics_schema_offers_the_port_it_would_bind_and_refuses_unknown_keys() {
-        let schema = shep_client::dogs::config_schema::<MetricsConfig>()
-            .expect("this config marks no field, so no mark can be missing");
+        let schema = shep_client::dogs::config_schema::<MetricsConfig>();
         let schema = schema.as_value();
 
         assert_eq!(

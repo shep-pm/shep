@@ -26,10 +26,11 @@ const probeSnippet = `fn main() {
     // ...normal startup, reached only when this run is not a probe.
 }`;
 
-const configSnippet = `use shep_client::dogs::DogConfig;
+const configSnippet = `use shep_client::dogs::dog_config;
 use shep_client::shep_core::values::{MemSize, UpDuration};
 
-#[derive(Default, serde::Deserialize, schemars::JsonSchema, DogConfig)]
+#[dog_config]
+#[derive(Default, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 struct MyDogConfig {
     /// Where to POST. Doc comments become the schema's descriptions.
@@ -561,8 +562,8 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
     </p>
     <p>
       <code>probe</code> answers this flag too, from its type parameter.
-      Derive <code>JsonSchema</code> and <code>DogConfig</code> on the type
-      the dog deserializes its config into, and mark every field holding a
+      Put <code>#[dog_config]</code> above the derives on the type the dog
+      deserializes its config into, and mark every field holding a
       credential:
     </p>
     <CodeBlock label="config.rs">{configSnippet}</CodeBlock>
@@ -570,19 +571,26 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>#[shep(secret)]</code> says the field is a bearer credential,
       and shep renders one as <code>&lt;set&gt;</code>: replaceable, never
       read back. The attribute exists rather than the schemars extension it
-      expands to because that extension key is a string the author types,
-      and a transposed letter in it compiles, validates, marks nothing, and
-      paints the credential on screen. Marking a field the schema doesn't
-      have, which is what a <code>#[serde(rename)]</code> on it produces, is
-      a refusal rather than a silent pass.
+      writes because that extension key is a string the author types, and a
+      transposed letter in it compiles, validates, marks nothing, and paints
+      the credential on screen.
     </p>
     <Callout variant="careful">
-      A mark names a field of the type shep asked about. A credential one
-      type down, in a nested struct or in a map's values, isn't covered by a
-      mark down there: mark the field that holds them. Bark's own{" "}
-      <code>sinks</code> map is marked whole for this reason, and every sink
-      in it carries a webhook URL.
+      Above the derives, not below. rustc expands whatever sits above{" "}
+      <code>#[dog_config]</code> before reaching it, so a{" "}
+      <code>JsonSchema</code> derive listed first has already built its impl
+      by the time the mark goes on the field. That's a compile error naming
+      the fix, not a field that quietly ships unmarked.
     </Callout>
+    <p>
+      The mark travels with the field. A <code>#[serde(rename)]</code>{" "}
+      carries it to the renamed property, and a credential inside a nested
+      struct or a map's values is marked in every config that holds that
+      type. Mark the field holding the credential, at whatever depth it
+      sits. Bark marks its <code>sinks</code> map as well as each sink's
+      URL, which redacts the collapsed map a pane shows before anyone opens
+      it.
+    </p>
     <p>
       <code>MemSize</code> and <code>UpDuration</code> need no dependency of
       their own. A dog configuring a size or a timer reads them out of{" "}

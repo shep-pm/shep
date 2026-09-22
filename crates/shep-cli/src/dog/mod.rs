@@ -78,16 +78,13 @@ fn exit_for(lost: &LinkLost) -> ExitCode {
 ///
 /// [`None`] for a name that is not a built-in, which is how a caller tells
 /// an adopted dog (spawn its recorded path and ask) from a built-in
-/// (this). Also [`None`] when the schema could not be built at all:
-/// `config_schema` refusing a `#[shep(secret)]` mark that landed on no
-/// property is a bug in this binary, not a fact about the dog, and the
-/// caller has one way of saying "no schema" either way.
+/// (this).
 pub(crate) fn builtin_schema(name: &str) -> Option<serde_json::Value> {
     use shep_client::dogs::config_schema;
 
     let schema = match name {
-        "metrics" => config_schema::<metrics::MetricsConfig>().ok()?,
-        "bark" => config_schema::<bark::BarkConfig>().ok()?,
+        "metrics" => config_schema::<metrics::MetricsConfig>(),
+        "bark" => config_schema::<bark::BarkConfig>(),
         _ => return None,
     };
     serde_json::to_value(schema).ok()
