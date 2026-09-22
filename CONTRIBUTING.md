@@ -128,8 +128,10 @@ Nine types are accepted, and a hook and a CI job both check:
 `feat` `fix` `perf` `refactor` `docs` `test` `ci` `chore` `style`
 
 Add `!` after the type or scope for anything that breaks a caller, on the
-commit that breaks it, in the crate that breaks. A `!` on a pull request title
-is read by nobody, because release-plz ignores merge commits.
+commit that breaks it, in the crate that breaks. Do not rely on the pull
+request title alone. release-plz does read merge commits, so a title can reach
+a changelog, but the commit carrying the break is the one that names a single
+crate, and the one a bisect or a revert lands on.
 
 Bodies are welcome and can be long. Say why, not what.
 

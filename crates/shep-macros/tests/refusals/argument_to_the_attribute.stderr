@@ -1,0 +1,5 @@
+error: `#[dog_config]` takes no arguments: the marking goes on the fields, as `#[shep(secret)]`
+ --> tests/refusals/argument_to_the_attribute.rs:3:14
+  |
+3 | #[dog_config(secret)]
+  |              ^^^^^^

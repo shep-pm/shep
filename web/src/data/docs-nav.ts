@@ -440,29 +440,6 @@ export const docsNav: DocsNavGroup[] = [
   },
 ];
 
-/**
- * Whether each pill *kind* has anywhere real to send a reader yet. Both
- * started false: the repo was private (a GitHub link 404s for anyone
- * without access) and no crate had published (docs.rs had nothing to show).
- * A pill of a dead kind still renders, with the real, final URL already in
- * its href, dimmed and inert instead of clickable, rather than either
- * shipping a confident-looking link that 404s or hiding the sourcing
- * entirely.
- *
- * Nothing here checks the network, so a flag is a claim someone has to
- * verify by hand. Both were checked with `curl` on 2026-09-14: every
- * `api.path` in this file answers 200 under
- * docs.rs/shep-core/latest/shep_core/.
- */
-export const pillTargetsLive = {
-  // The repository went public on 2026-08-16, so every Source and Spec pill
-  // resolves. shep-core published on crates.io and docs.rs built it, so the
-  // API pills resolve too: they were dimmed for a publish that had already
-  // happened.
-  github: true,
-  docsRs: true,
-};
-
 /** One chapter, flattened out of its group and numbered from 1. */
 export interface DocsChapter {
   /** 1-based position across the whole book, unbuilt chapters included. */

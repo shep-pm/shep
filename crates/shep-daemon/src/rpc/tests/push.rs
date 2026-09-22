@@ -36,7 +36,7 @@ async fn a_push_lands_in_the_registry_the_supervisor_reads() {
 
     let snapshot = h.ctx.provider_secrets.snapshot();
     assert_eq!(
-        snapshot.values["vercel"]["API_KEY"]["production"],
+        snapshot.namespace("vercel").unwrap()["API_KEY"]["production"],
         "sk_live"
     );
     assert!(snapshot.pushed["vercel"].contains("production"));

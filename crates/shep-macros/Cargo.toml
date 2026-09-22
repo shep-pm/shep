@@ -1,6 +1,6 @@
 [package]
 name = "shep-macros"
-description = "The DogConfig derive for shep plugins: marks a config field as a credential so shep renders it redacted"
+description = "The dog_config attribute for shep plugins: marks a config field as a credential so shep renders it redacted"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 license.workspace = true
 readme = "README.md"
 documentation = "https://docs.rs/shep-macros"
-keywords = ["shep", "process-manager", "derive", "macro", "schema"]
+keywords = ["shep", "process-manager", "attribute", "macro", "schema"]
 categories = ["development-tools", "config"]
 
 [lib]
@@ -21,8 +21,8 @@ proc-macro2.workspace = true
 
 # A dependency cycle on paper and none in the build graph: `shep-client`
 # depends on this crate normally, and dev-dependencies sit outside the
-# library build, so cargo allows it. Lets the derive's doctest name
-# `shep_client::dogs::DogConfig`, what the expansion actually produces.
+# library build, so cargo allows it. Lets the macro's doctest name
+# `shep_client::dogs::dog_config`, what a dog actually writes.
 [dev-dependencies]
 # Path-only, with no `version`, DELIBERATELY. `cargo publish` strips `path`
 # and keeps whatever `version` a dependency carries, so the workspace entry's
@@ -34,6 +34,7 @@ proc-macro2.workspace = true
 shep-client = { path = "../shep-client" }
 schemars.workspace = true
 serde.workspace = true
+trybuild.workspace = true
 
 [lints]
 workspace = true

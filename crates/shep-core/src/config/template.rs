@@ -638,19 +638,19 @@ mod tests {
             "DB_PASSWORD".to_string(),
             BTreeMap::from([("production".to_string(), "hunter2".to_string())]),
         )]);
-        let providers = ProviderCache {
-            values: BTreeMap::from([(
+        let providers = ProviderCache::new(
+            BTreeMap::from([(
                 "vercel".to_string(),
                 BTreeMap::from([(
                     "API_KEY".to_string(),
                     BTreeMap::from([("production".to_string(), "sk_live".to_string())]),
                 )]),
             )]),
-            pushed: BTreeMap::from([(
+            BTreeMap::from([(
                 "vercel".to_string(),
                 BTreeSet::from(["production".to_string()]),
             )]),
-        };
+        );
         SecretView::new(environment.to_string(), store, providers)
     }
 
