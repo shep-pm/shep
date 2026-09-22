@@ -44,3 +44,11 @@ crates/shep-cli/tests/fixtures/gallery-logs/api-err.log text eol=lf
 # checks this out CRLF on Windows: a diff on all 48 lines. `shep-go`
 # vendors these bytes and gofmt wants LF.
 crates/shep-channel/wire/channel.go text eol=lf
+
+# `include_str!`ed as a byte-exact fixture in `dog::metrics::exposition`'s
+# `a_full_flock_renders_exactly_the_bytes_the_baseline_did`, which compares
+# it against a string `render` builds at runtime with `\n`. `text=auto`
+# above checks it out CRLF on Windows, which reads as a diff on every line
+# — three Windows jobs red for a reason that has nothing to do with the
+# code under test. The same trap as the schema and the snapshots above.
+crates/shep-cli/src/dog/metrics/testdata/exposition_golden.prom text eol=lf
