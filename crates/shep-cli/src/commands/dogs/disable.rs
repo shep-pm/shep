@@ -97,7 +97,8 @@ mod tests {
     use super::*;
     use crate::cli::Format;
 
-    /// Every test here drives a dog verb under `--format table`.
+    /// A dog verb's streams under `--format table`; a test reading a
+    /// JSON field sets `fmt` itself.
     fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
         Streams {
             out,
