@@ -1,4 +1,4 @@
-//! The dog-specific rows: `DogRows`, and the `DogRow` reply
+//! The dog-specific rows: `DogRows`, and the `DogActionRow` reply
 //! `shep enable`/`disable`/`adopt`/`rehome` render.
 
 use serde::Serialize;
@@ -213,7 +213,7 @@ impl Render for DogActionRow {
             "SOURCE" => "source",
             "SHEPHERD" => "shepherd_acted",
             "STATUS" => "status",
-            other => panic!("DogRow::headers() does not include {other:?}"),
+            other => panic!("DogActionRow::headers() does not include {other:?}"),
         }
     }
     // Parallel to `headers()`. SOURCE drops before SHEPHERD, and a 4-column
@@ -376,7 +376,7 @@ pub(crate) mod tests {
         assert_eq!(row[7], painted("-", Role::Ink3), "MEM");
     }
 
-    /// `DogRow`'s status can carry a sentence in place of a status
+    /// `DogActionRow`'s status can carry a sentence in place of a status
     /// rendering.
     #[test]
     fn a_dog_action_row_colours_a_status_and_never_a_sentence() {
