@@ -75,7 +75,7 @@ async fn disable_after_config(
         .await
     {
         Ok(Response::Deleted(_ids)) => {
-            let row = DogActionRow::new(name, source.clone(), DISABLED_STATUS, false);
+            let row = DogActionRow::new(name, source.clone(), DISABLED_STATUS, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,
@@ -157,6 +157,36 @@ mod tests {
             written.contains("metrics"),
             "and it touches nothing else: {written}"
         );
+    }
+
+    /// `shepherd_acted` is the one field telling a `--format json` consumer
+    /// whether a shepherd was reached or only the config changed, and the two
+    /// branches here differ in nothing else a test was reading. It shipped as
+    /// `false` on both, so this pins the reached branch.
+    #[tokio::test]
+    async fn disable_reports_that_the_shepherd_acted_when_one_answered() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) =
+            shep_client::testing::fake_client_answering(&path, |_| Response::Deleted(vec![7]))
+                .await;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut streams = streams(&mut out, &mut err);
+        streams.fmt = Format::Json;
+
+        let code =
+            disable_after_config(&mut streams, "bark", &DogSource::BuiltIn, Some(&client)).await;
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            json["data"]["shepherd_acted"],
+            serde_json::json!(true),
+            "a shepherd answered Deleted, so it acted: {}",
+            String::from_utf8_lossy(&out)
+        );
+        assert_eq!(json["data"]["status"], DISABLED_STATUS);
     }
 
     #[tokio::test]
