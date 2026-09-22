@@ -2083,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "shep"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "anstyle",
  "assert_cmd",
@@ -2123,7 +2123,7 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "command-fds",
  "serde",
@@ -2134,11 +2134,11 @@ dependencies = [
 
 [[package]]
 name = "shep-cli"
-version = "0.9.0"
+version = "0.10.0"
 
 [[package]]
 name = "shep-client"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "futures-util",
  "nix 0.29.0",
@@ -2154,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "shep-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -2217,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "shep-examples"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "nix 0.29.0",
  "shep-channel",
@@ -2225,7 +2225,7 @@ dependencies = [
 
 [[package]]
 name = "shep-macros"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
