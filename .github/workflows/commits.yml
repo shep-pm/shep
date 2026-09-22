@@ -31,8 +31,11 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
-          # --no-merges: release-plz ignores merge commits, so a `!` on a PR
-          # title or merge subject never reaches it.
+          # --no-merges scopes this job to the subjects an author wrote. It
+          # says nothing about which commits release-plz reads: in this repo
+          # `merge_commit_title = PR_TITLE`, so a merge subject comes from the
+          # pull request title and does reach the changelog. That one is not
+          # checked here.
           #
           # No exemptions here, unlike the local hook: an unsquashed
           # fixup!/squash!/amend! commit and a `git revert` subject both parse
@@ -75,7 +78,9 @@ jobs:
 
           Put a ! after the type or scope on the commit that actually breaks
           something, in the crate that breaks. A ! on this pull request's
-          title does nothing, because release-plz never reads the merge commit.
+          title reaches the changelog through the merge subject, but it lands
+          in every crate the pull request touched rather than the one that
+          broke, and this job does not check it.
           MSG
             exit 1
           fi
