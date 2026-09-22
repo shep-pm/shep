@@ -34,6 +34,8 @@ pub enum ProcStatus {
 }
 
 impl ProcStatus {
+    /// The status word, exactly as [`fmt::Display`] and the JSON encoding
+    /// spell it.
     const fn as_str(&self) -> &'static str {
         match self {
             Self::Starting => "starting",
@@ -46,6 +48,9 @@ impl ProcStatus {
     }
 }
 
+/// The status word, for a caller putting it in a cell or a payload without
+/// going through [`fmt::Display`] and an allocation. By value, since
+/// `ProcStatus` is `Copy`.
 impl From<ProcStatus> for &'static str {
     fn from(source: ProcStatus) -> Self {
         source.as_str()
