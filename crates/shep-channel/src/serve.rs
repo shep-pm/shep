@@ -339,8 +339,13 @@ fn start() -> Shepherd {
     if let Err(error) = writer_spawn {
         // Without this thread, nothing drains the outbox.
         // `ready()` would queue silently and `wait_ready` would hang.
-        // Stop the outbox first so `ready()`/`metric()`/`flush()` fail
-        // honestly: no writer ran, so nothing queued will ever be written.
+        // So the handle below is inert instead, holding no outbox at
+        // all: `ready()` and `flush()` answer `Ok(())` and `metric()`
+        // does nothing, none of them reaching the one stopped here.
+        // That stop is bookkeeping on an outbox nothing else holds,
+        // which drops on the next line. It is kept so this arm cannot
+        // leave a live outbox behind if the code above it grows a
+        // second holder.
         // The handle still carries the version stamp, since the channel opened.
         warn(&format!(
             "failed to spawn the shep-channel writer thread: {error}; continuing without a channel"
