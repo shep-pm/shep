@@ -19,7 +19,8 @@ mod testing;
 pub use error::SecretError;
 pub use format::{ALL_ENVIRONMENTS, MAX_KEY_BYTES, MAX_VALUE_BYTES, SECRETS_VERSION};
 pub use provider::{
-    NamespaceValues, PROVIDER_CACHE_VERSION, ProviderCache, PushedPairs, provider_cache_on_disk,
+    NamespaceTable, NamespaceValues, PROVIDER_CACHE_VERSION, ProviderCache, PushedPairs,
+    provider_cache_on_disk,
 };
 pub use refs::{SecretRef, namespaces_of, references, sealed_keys};
 pub use resolve_mod::{Resolution, SecretView};

@@ -23,7 +23,7 @@ impl fmt::Debug for SecretView {
         f.debug_struct("SecretView")
             .field("environment", &self.environment)
             .field("keys", &self.store.len())
-            .field("namespaces", &self.providers.values.len())
+            .field("namespaces", &self.providers.namespace_count())
             .finish()
     }
 }
@@ -104,7 +104,7 @@ impl SecretView {
     pub fn resolve(&self, reference: &SecretRef<'_>) -> Resolution<'_> {
         let table = match reference.namespace {
             None => Some(&self.store),
-            Some(namespace) => self.providers.values.get(namespace),
+            Some(namespace) => self.providers.namespace(namespace),
         };
         if let Some(value) =
             table
@@ -320,13 +320,13 @@ mod tests {
         let view = SecretView::new(
             "production".to_string(),
             BTreeMap::new(),
-            ProviderCache {
-                values: BTreeMap::from([("vercel".to_string(), BTreeMap::new())]),
-                pushed: BTreeMap::from([(
+            ProviderCache::new(
+                BTreeMap::from([("vercel".to_string(), BTreeMap::new())]),
+                BTreeMap::from([(
                     "vercel".to_string(),
                     BTreeSet::from(["production".to_string()]),
                 )]),
-            },
+            ),
         );
 
         assert!(matches!(

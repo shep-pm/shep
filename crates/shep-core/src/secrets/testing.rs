@@ -7,35 +7,35 @@ use std::collections::{BTreeMap, BTreeSet};
 /// A cache holding `vercel/PRESENT` for `production`, pushed as that
 /// one pair.
 pub(super) fn vercel_production() -> ProviderCache {
-    ProviderCache {
-        values: BTreeMap::from([(
+    ProviderCache::new(
+        BTreeMap::from([(
             "vercel".to_string(),
             BTreeMap::from([(
                 "PRESENT".to_string(),
                 BTreeMap::from([("production".to_string(), "v".to_string())]),
             )]),
         )]),
-        pushed: BTreeMap::from([(
+        BTreeMap::from([(
             "vercel".to_string(),
             BTreeSet::from(["production".to_string()]),
         )]),
-    }
+    )
 }
 
 /// A cache holding `vercel/PRESENT` for [`ALL_ENVIRONMENTS`], pushed as
 /// that one pair and no other.
 pub(super) fn vercel_all() -> ProviderCache {
-    ProviderCache {
-        values: BTreeMap::from([(
+    ProviderCache::new(
+        BTreeMap::from([(
             "vercel".to_string(),
             BTreeMap::from([(
                 "PRESENT".to_string(),
                 BTreeMap::from([(ALL_ENVIRONMENTS.to_string(), "v".to_string())]),
             )]),
         )]),
-        pushed: BTreeMap::from([(
+        BTreeMap::from([(
             "vercel".to_string(),
             BTreeSet::from([ALL_ENVIRONMENTS.to_string()]),
         )]),
-    }
+    )
 }
