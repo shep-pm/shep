@@ -1,41 +1,46 @@
-//! The `DogConfig` derive, and nothing else.
+//! The `dog_config` attribute, and nothing else.
 //!
 //! A dog publishes a JSON Schema for its config so shep can render a
 //! settings pane. One field kind needs marking: a credential, shown
 //! as `<set>` rather than its value. `schemars` can mark that by hand
 //! with `#[schemars(extend("x-shep-secret" = true))]`. But the key is
-//! a string an author can misspell silently. This derive turns that
-//! into a compile error.
+//! a string an author can misspell silently. This attribute writes it
+//! for them, and turns a misspelled option into a compile error.
 //!
-//! Depend on `shep-client`, not this crate: it re-exports the derive
-//! next to the `DogConfig` trait it implements.
+//! Depend on `shep-client`, not this crate: it re-exports the attribute
+//! next to the `DogConfig` trait the expansion implements.
 
 #![forbid(unsafe_code)]
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{Attribute, Data, DeriveInput, Field, Meta, Token, parse_macro_input};
+use syn::{Attribute, Data, DeriveInput, Field, Meta, Token, parse_macro_input, parse_quote};
 
-/// The attribute this derive claims. Only `#[shep(secret)]` is spelled with
-/// it today.
+/// The attribute this macro claims on a field. Only `#[shep(secret)]` is
+/// spelled with it today.
 const ATTR: &str = "shep";
 
 /// The one option `#[shep(...)]` accepts.
 const SECRET: &str = "secret";
 
+/// The derive a marked field's extension rides on, checked by name because a
+/// macro cannot resolve a path.
+const JSON_SCHEMA: &str = "JsonSchema";
+
 /// Marks which of a dog's config fields are credentials, so shep can redact
 /// them without the dog author ever typing the extension key that says so.
 ///
-/// Derive it on the type a dog deserializes its config into, alongside
-/// `schemars::JsonSchema`, and mark each credential field with
-/// `#[shep(secret)]`. A struct and an enum both work, and the enum matters:
-/// a bark sink is one, tagged by kind, with a webhook URL in every variant.
+/// Put it above the derives on the type a dog deserializes its config into,
+/// and mark each credential field with `#[shep(secret)]`. A struct and an
+/// enum both work, and the enum matters: a bark sink is one, tagged by kind,
+/// with a webhook URL in every variant.
 ///
 /// ```rust
-/// use shep_client::dogs::DogConfig;
+/// use shep_client::dogs::dog_config;
 ///
-/// #[derive(serde::Deserialize, schemars::JsonSchema, DogConfig)]
+/// #[dog_config]
+/// #[derive(serde::Deserialize, schemars::JsonSchema)]
 /// #[serde(tag = "kind", rename_all = "snake_case")]
 /// enum Sink {
 ///     Discord {
@@ -47,74 +52,96 @@ const SECRET: &str = "secret";
 ///         url: String,
 ///     },
 /// }
-///
-/// // One name, not two: see below.
-/// assert_eq!(Sink::SECRET_FIELDS, ["url"]);
 /// ```
 ///
 /// That example runs, which needs `shep-client` as a dev-dependency
 /// of this crate. A cycle on paper, allowed since dev-dependencies
-/// sit outside the library build graph. The derive's behaviour is
-/// tested in `shep-client`, where the marking happens.
+/// sit outside the library build graph.
 ///
 /// # What it expands to
 ///
-/// An `impl shep_client::dogs::DogConfig`, carrying the names of the marked
-/// fields and the extension key that marks them. The key comes from
-/// `shep_core::dogs::SECRET_KEY` by way of `shep_client`'s re-export.
-/// It is never spelled out here or in the dog:
+/// The type as written, with each `#[shep(secret)]` replaced by the
+/// `schemars` extension that marks the property, plus an
+/// `impl shep_client::dogs::DogConfig`:
 ///
 /// ```rust,ignore
-/// impl ::shep_client::dogs::DogConfig for Sink {
-///     const SECRET_KEY: &'static str = ::shep_client::dogs::SECRET_KEY;
-///     const SECRET_FIELDS: &'static [&'static str] = &["url"];
+/// #[derive(serde::Deserialize, schemars::JsonSchema)]
+/// #[serde(tag = "kind", rename_all = "snake_case")]
+/// enum Sink {
+///     Discord {
+///         #[schemars(extend("x-shep-secret" = true))]
+///         url: String,
+///     },
+///     // ...
 /// }
+///
+/// impl ::shep_client::dogs::DogConfig for Sink {}
 /// ```
 ///
-/// One `"url"`, not two, for the two variants above. The list is
-/// names, and a name repeated across variants is one name.
-/// `schemars` builds a `oneOf`, one object per variant with its own
-/// `properties`, for a tagged enum. A mark has to reach every
-/// occurrence of the name, not a single top-level property.
+/// The mark rides the field rather than naming it, which is what makes it
+/// reach a property `schemars` renamed and a property nested inside another
+/// type's subschema. A marked field of a type some other config merely
+/// holds is marked in that config's schema too, at whatever depth
+/// `schemars` puts it.
 ///
-/// # Renames
+/// # Put it ABOVE the derives
 ///
-/// A field is named here by its Rust identifier. A
-/// `#[serde(rename)]` on a marked field changes what the schema
-/// calls it. The marker would then have no property to land on.
-/// That is caught where the marking happens, in `shep_client`. It
-/// refuses a name it cannot find rather than passing an unmarked
-/// credential on.
+/// The order is load-bearing, and getting it wrong is refused rather than
+/// ignored. rustc expands the attributes above this one before it runs, so a
+/// `#[derive(schemars::JsonSchema)]` listed first has already built its impl
+/// by the time the extension goes on the field, and the mark reaches no
+/// schema. A marked field with no `JsonSchema` derive left to see is that
+/// mistake, and also the plain one of forgetting the derive; both take the
+/// same message.
 ///
-/// A `#[serde(rename_all)]` on a tagged enum renames the variants,
-/// not their fields, so a `url` inside one stays `url`.
+/// A type with no marked field is unaffected: it takes no new attribute and
+/// needs no derive, which is what keeps `shep-client`'s `schema` feature
+/// optional.
 ///
 /// # Compile errors
 ///
 /// Deliberate refusals, each with its own message:
 ///
 /// - `#[shep(secret)]` on an unnamed field (tuple struct or variant),
-///   with no schema property to mark;
+///   which `schemars` puts in `prefixItems` where a pane has no property
+///   to read;
 /// - `#[shep(...)]` on the type or on a variant, neither of which is a field;
 /// - a union, which has no serde representation to build a schema from;
 /// - `#[shep]` with no option in parentheses;
 /// - `#[shep(secret = ...)]`, since `secret` is a flag and takes no value;
-/// - any option other than `secret`, rejected as a likely misspelling of it.
+/// - any option other than `secret`, rejected as a likely misspelling of it;
+/// - an argument to `#[dog_config]` itself, which takes none;
+/// - a marked field with no `JsonSchema` derive below this attribute, per the
+///   section above.
 ///
 /// A struct or variant with no fields, an unmarked tuple, and a
 /// unit-variant enum are accepted and carry no marks. A dog whose config
 /// holds no credential still wants the impl.
-#[proc_macro_derive(DogConfig, attributes(shep))]
-pub fn derive_dog_config(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    expand(&input)
+#[proc_macro_attribute]
+pub fn dog_config(args: TokenStream, input: TokenStream) -> TokenStream {
+    if !args.is_empty() {
+        let args = TokenStream2::from(args);
+        return syn::Error::new_spanned(
+            args,
+            "`#[dog_config]` takes no arguments: the marking goes on the \
+             fields, as `#[shep(secret)]`",
+        )
+        .into_compile_error()
+        .into();
+    }
+    let mut input = parse_macro_input!(input as DeriveInput);
+    expand(&mut input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
 
-/// The derive's whole body, in a form that can return an error instead of
+/// The macro's whole body, in a form that can return an error instead of
 /// a token stream.
-fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
+///
+/// Mutates `input`: a marked field loses its `#[shep(secret)]` and gains the
+/// `schemars` extension. The attribute has to go, since nothing downstream
+/// registers it and rustc refuses an attribute no macro claims.
+fn expand(input: &mut DeriveInput) -> syn::Result<TokenStream2> {
     if let Some(attr) = find_shep_attribute(&input.attrs) {
         return Err(syn::Error::new_spanned(
             attr,
@@ -123,37 +150,85 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         ));
     }
 
-    let mut secrets: Vec<String> = Vec::new();
-    for field in fields_of(input)? {
-        if !is_secret(field)? {
+    let derives_json_schema = derives_json_schema(&input.attrs);
+    let mut marked = false;
+    for field in fields_of_mut(input)? {
+        if !take_secret(field)? {
             continue;
         }
-        let Some(ident) = &field.ident else {
+        if field.ident.is_none() {
             return Err(syn::Error::new_spanned(
                 field,
-                "`#[shep(secret)]` cannot mark an unnamed field: a JSON Schema \
-                 property has a name and this field has none, so the mark would \
-                 have nothing to land on. Name the field.",
+                "`#[shep(secret)]` cannot mark an unnamed field: `schemars` \
+                 puts it in `prefixItems`, where a settings pane reading \
+                 properties by name has nothing to find. Name the field.",
             ));
-        };
-        let name = ident.to_string();
-        // Deduped rather than pushed blind. An internally tagged
-        // enum repeats a field name across variants, like a bark
-        // sink's `url`. The list holds names to look for, not
-        // places to look.
-        if !secrets.contains(&name) {
-            secrets.push(name);
         }
+        marked = true;
+        field.attrs.push(secret_extension());
+    }
+
+    if marked && !derives_json_schema {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "a `#[shep(secret)]` field needs `#[derive(schemars::JsonSchema)]` \
+             BELOW `#[dog_config]` on this type. The mark is written as a \
+             `schemars` attribute, so a derive listed above this one has \
+             already expanded without it and the credential would go out \
+             unmarked. Move `#[dog_config]` above the derives, or add the \
+             derive.",
+        ));
     }
 
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
-        impl #impl_generics ::shep_client::dogs::DogConfig for #name #ty_generics #where_clause {
-            const SECRET_KEY: &'static str = ::shep_client::dogs::SECRET_KEY;
-            const SECRET_FIELDS: &'static [&'static str] = &[#(#secrets),*];
-        }
+        #input
+
+        impl #impl_generics ::shep_client::dogs::DogConfig
+            for #name #ty_generics #where_clause {}
     })
+}
+
+/// Whether the type still has a `derive` naming `JsonSchema` for the
+/// extension on a marked field to reach.
+///
+/// False for a type that derives it ABOVE `#[dog_config]` as well as for one
+/// that does not derive it at all: rustc expands the attributes above this
+/// one first and leaves none of them in the input, so the two are the same
+/// picture from here and have the same fix.
+fn derives_json_schema(attrs: &[Attribute]) -> bool {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("derive"))
+        .any(|attr| {
+            let mut found = false;
+            // A `derive` that will not parse as a path list is rustc's error to
+            // report, not this macro's, so a failure here says only "not found".
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|last| last.ident == JSON_SCHEMA)
+                {
+                    found = true;
+                }
+                Ok(())
+            });
+            found
+        })
+}
+
+/// The `schemars` extension a marked field carries.
+///
+/// The key is a literal because `schemars` accepts only a literal in that
+/// position, which is the whole reason this crate exists. It must stay equal
+/// to `shep_core::dogs::SECRET_KEY`, and
+/// `the_extension_key_is_the_one_shep_core_publishes` in `shep-client` is
+/// what fails when it does not.
+fn secret_extension() -> Attribute {
+    parse_quote!(#[schemars(extend("x-shep-secret" = true))])
 }
 
 /// Every field the type has, a struct's directly and an enum's
@@ -163,12 +238,12 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
 /// come back empty. A union is refused outright: it has no serde
 /// representation for a mark to land on. [`expand`] checks each
 /// collected field once it knows which carry a mark.
-fn fields_of(input: &DeriveInput) -> syn::Result<Vec<&Field>> {
-    match &input.data {
-        Data::Struct(data) => Ok(data.fields.iter().collect()),
+fn fields_of_mut(input: &mut DeriveInput) -> syn::Result<Vec<&mut Field>> {
+    match &mut input.data {
+        Data::Struct(data) => Ok(data.fields.iter_mut().collect()),
         Data::Enum(data) => {
             let mut fields = Vec::new();
-            for variant in &data.variants {
+            for variant in &mut data.variants {
                 if let Some(attr) = find_shep_attribute(&variant.attrs) {
                     return Err(syn::Error::new_spanned(
                         attr,
@@ -176,24 +251,25 @@ fn fields_of(input: &DeriveInput) -> syn::Result<Vec<&Field>> {
                          it onto the field inside that holds the credential",
                     ));
                 }
-                fields.extend(variant.fields.iter());
+                fields.extend(variant.fields.iter_mut());
             }
             Ok(fields)
         }
         Data::Union(_) => Err(syn::Error::new_spanned(
             &input.ident,
-            "`DogConfig` cannot be derived for a union: a union has no serde \
+            "`#[dog_config]` cannot be used on a union: a union has no serde \
              representation, so there is no schema for a mark to go into",
         )),
     }
 }
 
-/// Whether a field carries `#[shep(secret)]`.
+/// Whether a field carries `#[shep(secret)]`, removing every `#[shep(...)]`
+/// it finds.
 ///
 /// Repeating the attribute on one field is accepted and marks it
 /// once. It is redundant rather than wrong. A second error message
 /// would be noise next to the one that matters: a misspelled option.
-fn is_secret(field: &Field) -> syn::Result<bool> {
+fn take_secret(field: &mut Field) -> syn::Result<bool> {
     let mut secret = false;
     for attr in &field.attrs {
         if !attr.path().is_ident(ATTR) {
@@ -223,6 +299,7 @@ fn is_secret(field: &Field) -> syn::Result<bool> {
             Ok(())
         })?;
     }
+    field.attrs.retain(|attr| !attr.path().is_ident(ATTR));
     Ok(secret)
 }
 

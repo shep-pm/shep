@@ -1,0 +1,5 @@
+error: `#[shep]` needs an option in parentheses: the only one is `secret`, as in `#[shep(secret)]`
+ --> tests/refusals/shep_with_no_option.rs:5:5
+  |
+5 |     #[shep]
+  |     ^^^^^^^

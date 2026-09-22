@@ -1,7 +1,7 @@
 use super::rules::{Rule, Rules};
 use super::sinks::Sink;
 use serde::Deserialize;
-use shep_client::dogs::DogConfig;
+use shep_client::dogs::dog_config;
 use shep_core::barks::{self};
 use shep_core::values::UpDuration;
 use std::collections::BTreeMap;
@@ -11,18 +11,17 @@ use std::collections::BTreeMap;
 /// `deny_unknown_fields`: a misspelled key must be a startup error naming
 /// it, the same reasoning [`super::super::metrics::MetricsConfig`] gives for its
 /// own section.
-#[derive(Debug, Clone, PartialEq, Deserialize, schemars::JsonSchema, DogConfig)]
+#[dog_config]
+#[derive(Debug, Clone, PartialEq, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 pub struct BarkConfig {
     /// Named sinks, `[dog.bark.sinks]`.
     ///
-    /// Marked whole, not per URL, and the difference is where the mark
-    /// lands. `#[shep(secret)]` names a field of THIS type, and the URL is
-    /// a field of [`Sink`] one level down, so a mark there is absent from
-    /// the schema shep generates for [`BarkConfig`]: every sink would go
-    /// out with its bearer token as an ordinary string. Marking the map
-    /// says less than marking each URL would, and it says it about the
-    /// type shep actually asks. Over-redacting is the safe direction.
+    /// Marked whole AS WELL AS per URL, which is belt and braces rather
+    /// than redundancy: [`Sink`]'s own marks redact each URL inside the
+    /// sub-screen the map opens, and this one redacts the collapsed map a
+    /// pane shows before anyone opens it. Over-redacting is the safe
+    /// direction.
     #[shep(secret)]
     pub sinks: BTreeMap<String, Sink>,
     /// Named rules, `[[dog.bark.rules]]`. Empty means
@@ -99,8 +98,7 @@ mod tests {
     /// the one place a marker could land on `Rule::sinks`.
     #[test]
     fn the_bark_schema_marks_the_sinks_map_and_leaves_the_rules_plain() {
-        let schema = shep_client::dogs::config_schema::<BarkConfig>()
-            .expect("`sinks` is a property of this type");
+        let schema = shep_client::dogs::config_schema::<BarkConfig>();
         let schema = schema.as_value();
 
         assert_eq!(

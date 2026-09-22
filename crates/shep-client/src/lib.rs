@@ -17,7 +17,7 @@
 #![doc(test(attr(deny(warnings))))]
 #![forbid(unsafe_code)]
 
-// the `DogConfig` derive expands to `impl ::shep_client::dogs::DogConfig`,
+// the `dog_config` attribute expands to `impl ::shep_client::dogs::DogConfig`,
 // a path this crate has no other way to name for its own tests
 extern crate self as shep_client;
 

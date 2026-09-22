@@ -1,0 +1,5 @@
+error: a `#[shep(secret)]` field needs `#[derive(schemars::JsonSchema)]` BELOW `#[dog_config]` on this type. The mark is written as a `schemars` attribute, so a derive listed above this one has already expanded without it and the credential would go out unmarked. Move `#[dog_config]` above the derives, or add the derive.
+ --> tests/refusals/no_json_schema_derive.rs:4:8
+  |
+4 | struct Config {
+  |        ^^^^^^

@@ -690,15 +690,16 @@ need of configuring is the one that is disabled or has never started, and it
 has no connection to answer on. Configure then enable is the order an
 operator wants.
 
-`probe` answers this flag too, from its type parameter. Derive `JsonSchema`
-and `DogConfig` on the type the dog deserializes its config into, and mark
+`probe` answers this flag too, from its type parameter. Put `#[dog_config]`
+above the derives on the type the dog deserializes its config into, and mark
 every field holding a credential:
 
 ```rust
-use shep_client::dogs::DogConfig;
+use shep_client::dogs::dog_config;
 use shep_client::shep_core::values::{MemSize, UpDuration};
 
-#[derive(Default, serde::Deserialize, schemars::JsonSchema, DogConfig)]
+#[dog_config]
+#[derive(Default, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 struct MyDogConfig {
     /// Where to POST. Doc comments become the schema's descriptions.
@@ -715,16 +716,21 @@ struct MyDogConfig {
 
 `#[shep(secret)]` says the field is a bearer credential, and shep renders
 one as `<set>`: replaceable, never read back. The attribute exists rather
-than the schemars extension it expands to because that extension key is a
+than the schemars extension it writes because that extension key is a
 string the author types, and a transposed letter in it compiles, validates,
-marks nothing, and paints the credential on screen. Marking a field the
-schema does not have, which is what a `#[serde(rename)]` on it produces, is
-a refusal rather than a silent pass.
+marks nothing, and paints the credential on screen.
 
-**A mark names a field of the type shep asked about.** A credential one type
-down, in a nested struct or in a map's values, is not covered by a mark down
-there: mark the field that holds them. Bark's own `sinks` map is marked
-whole for this reason, and every sink in it carries a webhook URL.
+**Above the derives, not below.** rustc expands whatever sits above
+`#[dog_config]` before reaching it, so a `JsonSchema` derive listed first has
+already built its impl by the time the mark goes on the field. That is a
+compile error naming the fix, not a field that quietly ships unmarked.
+
+**The mark travels with the field.** A `#[serde(rename)]` carries it to the
+renamed property, and a credential inside a nested struct or a map's values
+is marked in every config that holds that type. Mark the field holding the
+credential, at whatever depth it sits. Bark marks its `sinks` map as well as
+each sink's URL, which redacts the collapsed map a pane shows before anyone
+opens it.
 
 **`MemSize` and `UpDuration` need no dependency of their own.** A dog
 configuring a size or a timer reads them out of

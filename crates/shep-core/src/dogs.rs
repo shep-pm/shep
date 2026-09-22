@@ -22,7 +22,7 @@ pub const SCHEMA_FLAG: &str = "--schema";
 pub const SHEP_PROTOCOL_KEY: &str = "shep-protocol";
 
 /// The schemars extension key that marks a config field as a credential.
-/// Written by the `DogConfig` derive. A typo here fails silently: the schema
+/// Written by the `dog_config` attribute. A typo fails silently: the schema
 /// still validates, the field is simply not marked, and a credential can
 /// render unredacted.
 pub const SECRET_KEY: &str = "x-shep-secret";
