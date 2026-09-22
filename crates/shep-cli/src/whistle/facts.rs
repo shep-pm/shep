@@ -80,7 +80,7 @@ pub struct SheepRow {
     /// `None`.
     pub cpu_ms: Option<u64>,
     /// Present when this row is a dog rather than a sheep.
-    pub dog: Option<DogRow>,
+    pub dog: Option<DogSourceRow>,
     /// Process-tree members, when the reply walked for them (`describe`
     /// does, `list` does not).
     pub lambs: Option<Vec<LambRow>>,
@@ -139,7 +139,7 @@ pub struct SheepRow {
 /// Where a dog came from. Mirrors `DogSource`'s tagged wire shape exactly.
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DogRow {
+pub enum DogSourceRow {
     /// An argv branch of the shep binary itself.
     BuiltIn,
     /// A binary an operator adopted.
@@ -147,13 +147,12 @@ pub enum DogRow {
         /// The path, as the operator gave it to `shep adopt`.
         path: String,
     },
-    /// A source kind this build predates.
+    /// A source kind this whistle predates.
     ///
     /// `DogSource` is `#[non_exhaustive]` (IR-20), so `From<&DogSource>`
-    /// cannot be a two-arm match — the compiler refuses it. This mirrors
-    /// `output::rows::dog_source_label`'s own "unknown" fallback for the
-    /// same enum, so a future daemon reporting a source kind this whistle
-    /// predates gets a row rather than a build failure.
+    /// cannot be a two-arm match: the compiler refuses it. A future
+    /// daemon reporting a source kind this whistle predates gets a row
+    /// rather than a build failure.
     Unknown,
 }
 
@@ -193,7 +192,7 @@ impl From<&ProcessInfo> for SheepRow {
             cpu_percent: info.cpu_percent,
             memory_bytes: info.memory_bytes,
             cpu_ms: info.cpu_ms,
-            dog: info.dog.as_ref().map(DogRow::from),
+            dog: info.dog.as_ref().map(DogSourceRow::from),
             lambs: info
                 .lambs
                 .as_ref()
@@ -219,7 +218,7 @@ impl From<&ExitInfo> for ExitInfoRow {
     }
 }
 
-impl From<&DogSource> for DogRow {
+impl From<&DogSource> for DogSourceRow {
     fn from(source: &DogSource) -> Self {
         match source {
             DogSource::BuiltIn => Self::BuiltIn,

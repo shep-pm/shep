@@ -43,12 +43,11 @@ pub use flock::emit_flock;
 // nothing names them and `unused_imports` still flags it there.
 #[cfg_attr(windows, allow(unused_imports))]
 pub use rows::{
-    AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogAdoptedRow, DogDisabledRow,
-    DogEnabledRow, DogRehomedRow, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows,
-    ImportEnvRow, ImportEnvRows, ImportRow, ImportRows, KillRow, KvEntry, KvRows, KvUnsetRow,
-    LambRows, RolledSheep, RolledSheepRows, SavedRollRow, SecretKeyRow, SecretKeyRows,
-    SecretSlotRow, SecretStatus, SecretValueRow, SentLineRows, SignalledRows, StartupStep,
-    StartupSteps, TriggeredRows,
+    AvailableDogRows, BarkRows, DeletedIds, DescribedSecret, DogActionRow, DogRows, EmptiedFile,
+    EmptiedFiles, FlockRows, FlushedRows, ImportEnvRow, ImportEnvRows, ImportRow, ImportRows,
+    KillRow, KvEntry, KvRows, KvUnsetRow, LambRows, RolledSheep, RolledSheepRows, SavedRollRow,
+    SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretStatus, SecretValueRow, SentLineRows,
+    SignalledRows, StartupStep, StartupSteps, TriggeredRows,
 };
 pub use table::{human_bytes, human_duration, local_timestamp, render_table};
 
@@ -381,7 +380,6 @@ pub fn emit_partial<T: Render>(
 /// [`io::ErrorKind::BrokenPipe`], which is [`ExitCode::Success`]:
 /// `shep flock | head` closes the pipe on purpose, and that is not a
 /// failed command.
-#[allow(dead_code)]
 #[must_use]
 pub fn write_outcome(result: io::Result<()>) -> ExitCode {
     match result {

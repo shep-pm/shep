@@ -12,7 +12,7 @@ use crate::cli::AdoptArgs;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
-use crate::output::{DogAdoptedRow, Streams, emit, write_outcome};
+use crate::output::{DogActionRow, Streams, emit, write_outcome};
 
 use super::vet::{
     DogSchema, fail_adopt, report_dog_version, vet_binary, warn_group_writable,
@@ -228,12 +228,7 @@ async fn adopt_after_config(
         path: path.display().to_string(),
     };
     let Some(client) = client else {
-        let row = DogAdoptedRow {
-            name: name.to_string(),
-            source,
-            shepherd_acted: false,
-            status: NO_SHEPHERD_ENABLE_STATUS.to_string(),
-        };
+        let row = DogActionRow::new(name, source, NO_SHEPHERD_ENABLE_STATUS, false);
         return write_outcome(emit(
             &mut *streams.out,
             streams.fmt,
@@ -248,12 +243,7 @@ async fn adopt_after_config(
     };
     match client.request(request).await {
         Ok(Response::DogStarted(info)) => {
-            let row = DogAdoptedRow {
-                name: name.to_string(),
-                source,
-                shepherd_acted: true,
-                status: info.status.to_string(),
-            };
+            let row = DogActionRow::new(name, source, info.status, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,
@@ -274,7 +264,8 @@ mod tests {
     use super::*;
     use crate::cli::Format;
 
-    /// Every test here drives a dog verb under `--format table`.
+    /// A dog verb's streams under `--format table`; a test reading a
+    /// JSON field sets `fmt` itself.
     fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
         Streams {
             out,
@@ -332,6 +323,40 @@ mod tests {
                 },
             }
         );
+    }
+
+    /// `shepherd_acted` separates "only the config changed" from "a shepherd
+    /// acted", and this verb's two branches differ in little else. The pair
+    /// is the guard: either case alone passes while the other branch carries
+    /// the wrong flag.
+    #[tokio::test]
+    async fn adopt_reports_whether_a_shepherd_acted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = shep_client::testing::fake_client_answering(&path, |_| {
+            Response::DogStarted(shep_client::testing::sample_info())
+        })
+        .await;
+        let binary = PathBuf::from("/usr/local/bin/shep-otel");
+
+        for (client, expected) in [(Some(&client), true), (None, false)] {
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let mut streams = streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+
+            let code = adopt_after_config(&mut streams, "otel", &binary, client).await;
+
+            assert_eq!(code, ExitCode::Success);
+            let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+            assert_eq!(
+                json["data"]["shepherd_acted"],
+                serde_json::json!(expected),
+                "client present: {}, payload: {}",
+                client.is_some(),
+                String::from_utf8_lossy(&out)
+            );
+        }
     }
 
     #[tokio::test]

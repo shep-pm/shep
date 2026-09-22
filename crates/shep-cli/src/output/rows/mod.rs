@@ -223,10 +223,7 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<FlockRows>(&["ID", "NAME", "STATUS"]);
         assert_priorities_match_headers::<DogRows>(&["ID", "NAME", "STATUS"]);
         assert_priorities_match_headers::<LambRows>(&["PID", "NAME"]);
-        assert_priorities_match_headers::<DogEnabledRow>(&["NAME", "STATUS"]);
-        assert_priorities_match_headers::<DogDisabledRow>(&["NAME", "STATUS"]);
-        assert_priorities_match_headers::<DogAdoptedRow>(&["NAME", "STATUS"]);
-        assert_priorities_match_headers::<DogRehomedRow>(&["NAME", "STATUS"]);
+        assert_priorities_match_headers::<DogActionRow>(&["NAME", "STATUS"]);
         assert_priorities_match_headers::<FlushedRows>(&["ID", "NAME"]);
         assert_priorities_match_headers::<EmptiedFiles>(&["STREAM", "RESULT"]);
         assert_priorities_match_headers::<DeletedIds>(&["ID"]);
@@ -369,16 +366,16 @@ pub(crate) mod tests {
             |headers: &[&'static str], name: &str| headers.iter().position(|h| *h == name).unwrap();
 
         // --- the four dog-action rows, through `dog_action_paint` ---------
-        let adopted = DogAdoptedRow {
-            name: "log-rotate".to_string(),
-            source: DogSource::Adopted {
+        let adopted = DogActionRow::new(
+            "log-rotate",
+            DogSource::Adopted {
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
             },
-            shepherd_acted: true,
-            status: "online".to_string(),
-        };
-        let cells = reversed::<DogAdoptedRow>(adopted.rows().remove(0), dog_action_paint);
-        let h = DogAdoptedRow::headers();
+            "online",
+            true,
+        );
+        let cells = reversed::<DogActionRow>(adopted.rows().remove(0), dog_action_paint);
+        let h = DogActionRow::headers();
         assert_eq!(
             cells[at(h, "SOURCE")],
             painted("adopted", Role::Butter),

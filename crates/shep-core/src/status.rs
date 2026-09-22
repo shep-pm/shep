@@ -33,16 +33,33 @@ pub enum ProcStatus {
     WaitingRestart,
 }
 
-impl fmt::Display for ProcStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl ProcStatus {
+    /// The status word, exactly as [`fmt::Display`] and the JSON encoding
+    /// spell it.
+    const fn as_str(&self) -> &'static str {
+        match self {
             Self::Starting => "starting",
             Self::Online => "online",
             Self::Stopping => "stopping",
             Self::Stopped => "stopped",
             Self::Errored => "errored",
             Self::WaitingRestart => "waiting-restart",
-        })
+        }
+    }
+}
+
+/// The status word, for a caller putting it in a cell or a payload without
+/// going through [`fmt::Display`] and an allocation. By value, since
+/// `ProcStatus` is `Copy`.
+impl From<ProcStatus> for &'static str {
+    fn from(source: ProcStatus) -> Self {
+        source.as_str()
+    }
+}
+
+impl fmt::Display for ProcStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

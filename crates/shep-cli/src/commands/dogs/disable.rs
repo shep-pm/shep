@@ -10,7 +10,7 @@ use shep_core::protocol::{DogSource, Request, Response};
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
-use crate::output::{DogDisabledRow, Streams, emit, write_outcome};
+use crate::output::{DogActionRow, Streams, emit, write_outcome};
 
 use super::{
     DISABLED_STATUS, NO_SHEPHERD_DISABLE_STATUS, connect_or_absent, dog_source, fail_config,
@@ -57,12 +57,7 @@ async fn disable_after_config(
     client: Option<&Client>,
 ) -> ExitCode {
     let Some(client) = client else {
-        let row = DogDisabledRow {
-            name: name.to_string(),
-            source: source.clone(),
-            shepherd_acted: false,
-            status: NO_SHEPHERD_DISABLE_STATUS.to_string(),
-        };
+        let row = DogActionRow::new(name, source.clone(), NO_SHEPHERD_DISABLE_STATUS, false);
         return write_outcome(emit(
             &mut *streams.out,
             streams.fmt,
@@ -80,12 +75,7 @@ async fn disable_after_config(
         .await
     {
         Ok(Response::Deleted(_ids)) => {
-            let row = DogDisabledRow {
-                name: name.to_string(),
-                source: source.clone(),
-                shepherd_acted: true,
-                status: DISABLED_STATUS.to_string(),
-            };
+            let row = DogActionRow::new(name, source.clone(), DISABLED_STATUS, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,
@@ -107,7 +97,8 @@ mod tests {
     use super::*;
     use crate::cli::Format;
 
-    /// Every test here drives a dog verb under `--format table`.
+    /// A dog verb's streams under `--format table`; a test reading a
+    /// JSON field sets `fmt` itself.
     fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
         Streams {
             out,
@@ -167,6 +158,59 @@ mod tests {
             written.contains("metrics"),
             "and it touches nothing else: {written}"
         );
+    }
+
+    /// `shepherd_acted` is the one field telling a `--format json` consumer
+    /// whether a shepherd was reached or only the config changed. This
+    /// function's two branches differ in nothing else a test reads, so
+    /// nothing else catches the flag being wrong on one of them.
+    #[tokio::test]
+    async fn disable_reports_that_the_shepherd_acted_when_one_answered() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) =
+            shep_client::testing::fake_client_answering(&path, |_| Response::Deleted(vec![7]))
+                .await;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut streams = streams(&mut out, &mut err);
+        streams.fmt = Format::Json;
+
+        let code =
+            disable_after_config(&mut streams, "bark", &DogSource::BuiltIn, Some(&client)).await;
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            json["data"]["shepherd_acted"],
+            serde_json::json!(true),
+            "a shepherd answered Deleted, so it acted: {}",
+            String::from_utf8_lossy(&out)
+        );
+        assert_eq!(json["data"]["status"], DISABLED_STATUS);
+    }
+
+    /// The other half of the pair above. Pinning only the reached branch
+    /// leaves this one free to drift to `true`, which would tell a consumer
+    /// a shepherd stopped the dog when none was running.
+    #[tokio::test]
+    async fn disable_reports_that_no_shepherd_acted_when_none_answered() {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut streams = streams(&mut out, &mut err);
+        streams.fmt = Format::Json;
+
+        let code = disable_after_config(&mut streams, "bark", &DogSource::BuiltIn, None).await;
+
+        assert_eq!(code, ExitCode::Success);
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            json["data"]["shepherd_acted"],
+            serde_json::json!(false),
+            "no shepherd answered, so none acted: {}",
+            String::from_utf8_lossy(&out)
+        );
+        assert_eq!(json["data"]["status"], NO_SHEPHERD_DISABLE_STATUS);
     }
 
     #[tokio::test]

@@ -30,6 +30,28 @@ pub enum DogSource {
     },
 }
 
+impl DogSource {
+    /// The kind's one-word label, `built-in` or `adopted`.
+    ///
+    /// Never the adopted path: this is what a SOURCE column shows, and the
+    /// path is on the variant for a caller that wants it.
+    const fn as_str(&self) -> &'static str {
+        match self {
+            DogSource::BuiltIn => "built-in",
+            DogSource::Adopted { .. } => "adopted",
+        }
+    }
+}
+
+/// The kind's label, for a caller rendering a source into a cell or a
+/// metric value. Takes a borrow, since [`DogSource::Adopted`] owns a
+/// `String` that the label does not read.
+impl From<&DogSource> for &'static str {
+    fn from(source: &DogSource) -> Self {
+        source.as_str()
+    }
+}
+
 /// One process the OS reports as a descendant of a sheep.
 ///
 /// Not the set of processes that die with the sheep: this is a parent-pid

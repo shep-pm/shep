@@ -9,7 +9,7 @@ use crate::commands::dog_migration;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
-use crate::output::{DogRehomedRow, Streams, emit, write_outcome};
+use crate::output::{DogActionRow, Streams, emit, write_outcome};
 
 use super::{DISABLED_STATUS, NO_SHEPHERD_DISABLE_STATUS, connect_or_absent, fail_config};
 
@@ -62,12 +62,7 @@ async fn rehome_after_config(
     client: Option<&Client>,
 ) -> ExitCode {
     let Some(client) = client else {
-        let row = DogRehomedRow {
-            name: name.to_string(),
-            source,
-            shepherd_acted: false,
-            status: NO_SHEPHERD_DISABLE_STATUS.to_string(),
-        };
+        let row = DogActionRow::new(name, source, NO_SHEPHERD_DISABLE_STATUS, false);
         return write_outcome(emit(
             &mut *streams.out,
             streams.fmt,
@@ -83,12 +78,7 @@ async fn rehome_after_config(
         .await
     {
         Ok(Response::Deleted(_ids)) => {
-            let row = DogRehomedRow {
-                name: name.to_string(),
-                source,
-                shepherd_acted: true,
-                status: DISABLED_STATUS.to_string(),
-            };
+            let row = DogActionRow::new(name, source, DISABLED_STATUS, true);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,
@@ -111,7 +101,8 @@ mod tests {
     use super::*;
     use crate::cli::Format;
 
-    /// Every test here drives a dog verb under `--format table`.
+    /// A dog verb's streams under `--format table`; a test reading a
+    /// JSON field sets `fmt` itself.
     fn streams<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>) -> Streams<'a> {
         Streams {
             out,
@@ -206,6 +197,39 @@ mod tests {
             !String::from_utf8(err).unwrap().contains("kept ["),
             "there was no section, so there is nothing to say was kept"
         );
+    }
+
+    /// `shepherd_acted` separates "only the config changed" from "a shepherd
+    /// acted", and this verb's two branches differ in little else. The pair
+    /// is the guard: either case alone passes while the other branch carries
+    /// the wrong flag.
+    #[tokio::test]
+    async fn rehome_reports_whether_a_shepherd_acted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) =
+            shep_client::testing::fake_client_answering(&path, |_| Response::Deleted(vec![3]))
+                .await;
+
+        for (client, expected) in [(Some(&client), true), (None, false)] {
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let mut streams = streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+
+            let code =
+                rehome_after_config(&mut streams, "otel", Some(DogSource::BuiltIn), client).await;
+
+            assert_eq!(code, ExitCode::Success);
+            let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+            assert_eq!(
+                json["data"]["shepherd_acted"],
+                serde_json::json!(expected),
+                "client present: {}, payload: {}",
+                client.is_some(),
+                String::from_utf8_lossy(&out)
+            );
+        }
     }
 
     #[tokio::test]

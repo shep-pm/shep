@@ -314,7 +314,7 @@ mod tests {
         );
         assert!(
             result.0.flock[1].dog.is_some(),
-            "the dog row must carry its DogRow: {:?}",
+            "the dog row must carry its DogSourceRow: {:?}",
             result.0.flock[1]
         );
 

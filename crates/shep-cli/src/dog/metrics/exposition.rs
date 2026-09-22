@@ -5,7 +5,6 @@
 
 use core::fmt::{self, Write as _};
 
-use shep_core::protocol::DogSource;
 use shep_core::status::ProcStatus;
 
 use super::Reading;
@@ -95,16 +94,6 @@ fn labels(pairs: &[(&str, &str)]) -> String {
     out
 }
 
-/// `DogSource`'s label value. `DogSource` is `#[non_exhaustive]`, so a kind
-/// this client predates renders `unknown` rather than failing to build.
-fn dog_source_label(source: &DogSource) -> &'static str {
-    match source {
-        DogSource::BuiltIn => "built-in",
-        DogSource::Adopted { .. } => "adopted",
-        _ => "unknown",
-    }
-}
-
 /// Renders `reading` as Prometheus text exposition, format version 0.0.4.
 ///
 /// One `# HELP`/`# TYPE` pair per metric name, every series of a name
@@ -180,7 +169,7 @@ pub fn render(reading: &Reading) -> String {
         if let Some(source) = &info.dog {
             let pairs = [
                 ("dog", info.name.as_str()),
-                ("source", dog_source_label(source)),
+                ("source", <&'static str>::from(source)),
             ];
             let up = i32::from(info.status == ProcStatus::Online);
             dog_up.push(&labels(&pairs), up);
@@ -206,12 +195,11 @@ pub fn render(reading: &Reading) -> String {
         uptime.push(&sheep_labels, info.uptime_ms / 1000);
 
         for candidate in ALL_STATUSES {
-            let candidate_string = candidate.to_string();
             let status_pairs = [
                 ("sheep", info.name.as_str()),
                 ("id", id_string.as_str()),
                 ("fold", fold),
-                ("status", candidate_string.as_str()),
+                ("status", <&'static str>::from(candidate)),
             ];
             let value = i32::from(info.status == candidate);
             status.push(&labels(&status_pairs), value);
