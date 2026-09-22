@@ -286,7 +286,13 @@ mod tests {
 
         let kept = read_lines(&path).unwrap();
         assert_eq!(kept, expected, "the whole prefix goes, and nothing past it");
-        assert_eq!(ring_bytes(&kept), cap, "the byte accounting stays exact");
+        // Against the bytes on disk, not against `ring_bytes` again: the
+        // count the eviction trusts is the one under test here.
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len(),
+            cap,
+            "the byte accounting stays exact"
+        );
     }
 
     #[test]
