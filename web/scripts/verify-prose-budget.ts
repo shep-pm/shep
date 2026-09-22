@@ -58,14 +58,7 @@ export const BUDGETS: Record<string, number> = {
   lifecycle: 2020, // 1919
   logs: 1900, // 1805
   "from-pm2": 1720, // 1659
-  // Raised from 1690 on 2026-09-21 for "Finish writing before you exit".
-  // The page described every message an app sends and nothing about the
-  // one way a written reply is still lost, which is exiting from the
-  // shutdown path before a queued reply reaches the descriptor. That
-  // costs the operator a full `action_timeout` and reads as an app that
-  // never answered. The old ceiling left 29 words of room, so this is a
-  // raise rather than a rewrite that fit.
-  "shepherd-channel": 1850, // 1764
+  "shepherd-channel": 1690, // 1604
   "boot-order": 1670, // 1586
   "talking-to-a-sheep": 1620, // 1534
   // Raised from 1330 on the same day and for the same feature. `host` is a

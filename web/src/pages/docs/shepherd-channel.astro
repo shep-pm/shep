@@ -303,21 +303,6 @@ ID  NAME  OUTCOME     DETAIL
       costs the operator a timeout; both are refused immediately.
     </p>
 
-    <h2 id="finish-writing-before-you-exit">Finish writing before you exit</h2>
-    <p>
-      <code>shutdown</code> asks you to end the process, so it is the one
-      place a reply you already wrote can still be lost. A library that
-      writes on another thread, or an app that buffers its own output,
-      drops whatever had not reached the descriptor. The operator sees a
-      timeout instead of your answer.
-    </p>
-    <p class="fine">
-      Writing straight to the descriptor leaves nothing to do here: a{" "}
-      <code>write</code> that returned is with the kernel, and shep gets it
-      whether or not you are still alive. <code>shep-channel</code> queues
-      instead, so it has <code>Shepherd::flush</code>. Give it a budget well
-      inside <code>kill_timeout</code>.
-    </p>
     <h2 id="everything-you-write-here-is-also-public-on-the-bus">Everything you write here is also public on the bus</h2>
     <p>
       Every message you send on fd 3 (<code>ready</code>,{" "}
