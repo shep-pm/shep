@@ -67,7 +67,6 @@ Getting started
   shep start server.js    start it and keep it alive
   shep flock              see what's running
   shep bleats server      follow its output
-  shep save               remember this flock across reboots
   shep startup            bring it back after a reboot
 
 Run things       start add serve stop restart reload delete stock

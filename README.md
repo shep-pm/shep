@@ -104,8 +104,8 @@ $ shep start ./Flockfile.toml
 └────┴────────┴──────────────┴───────┴──────────┴──────┴─────┴────────┴────────┴──────┴──────┘
 ```
 
-`shep save` writes that down, and `shep startup` installs the service that
-brings it back after a reboot.
+The shepherd writes that down on its own, and `shep startup` installs the
+service that brings it back after a reboot.
 
 ## Following output
 

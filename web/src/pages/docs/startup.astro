@@ -64,7 +64,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
     </p>
 
     <ShortVersion>
-      <CodeBlock>{`1. shep save                     # if you have not already
+      <CodeBlock>{`1. shep save                     # optional: see the roll on disk
 2. sudo shep startup             # writes and enables the unit
 3. systemctl status shep-<you>   # active (running), and green
 4. reboot
@@ -75,7 +75,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       Step 3 going <code>active (running)</code> means something specific:
       the generated unit is <code>Type=notify</code>, so systemd doesn't
       consider it started until the daemon itself says so: it only
-      sends that signal once step 1's muster restore has finished. A green
+      sends that signal once its muster restore has finished. A green
       status at step 3 is already evidence the restore path works, before
       the reboot ever happens.
     </Callout>
