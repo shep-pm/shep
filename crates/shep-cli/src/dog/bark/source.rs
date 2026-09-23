@@ -1,12 +1,137 @@
-//! Bark's shepherd seams implemented over a real [`ReconnectingClient`].
+//! What bark reads the shepherd through, and the real implementation of
+//! each over one [`ReconnectingClient`].
 
+use core::fmt;
+use core::future::Future;
 use std::sync::Arc;
 
 use shep_client::{EventStream, LinkLost, RECONNECT_MIN_DELAY, ReconnectingClient, RequestError};
 use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response, RpcError, RpcErrorCode};
 
-use super::{ConfigSource, EventSource, FlockSource, Resubscribe};
 use crate::dog::SHEPHERD_RETURN_BUDGET;
+
+/// One source of bus events: a frame, or a notice that frames were lost.
+///
+/// A trait rather than a concrete `EventStream`, so a test can drive this
+/// loop from a real `tokio::sync::broadcast::Receiver` with a small
+/// capacity and make the bus genuinely drop events.
+pub trait EventSource: Send {
+    /// The next event; `Err(count)` when the source dropped `count` frames
+    /// before this one; `None` when it ends.
+    fn next(&mut self) -> impl Future<Output = Option<Result<BusEvent, u64>>> + Send;
+
+    /// Arms a fresh source against whatever shepherd is answering now,
+    /// waiting a bounded time for one to be.
+    ///
+    /// A subscription belongs to one connection, so a handover ends it:
+    /// the shepherd execs a successor on purpose and every dog is meant to
+    /// cross that without restarting. What
+    /// [`run_loop`](super::event_loop::run_loop) calls when [`Self::next`]
+    /// returns `None`.
+    ///
+    /// # Errors
+    /// [`Resubscribe`], which the dog exits on either way. The two arms
+    /// exit differently, because a shepherd that never answered and one
+    /// that answered and refused send an operator to different places.
+    fn resubscribe(&mut self) -> impl Future<Output = Result<(), Resubscribe>> + Send;
+}
+
+/// Why bark could not arm a fresh subscription.
+///
+/// Two outcomes rather than one, so a re-subscribe reports what the first
+/// subscription would have. [`run`](super::run) exits
+/// `ExitCode::from(&err)` when the shepherd refuses the opening
+/// `Subscribe`; without this a refusal after a handover would exit
+/// `DaemonUnreachable` instead, naming a shepherd that is running and
+/// answering.
+#[derive(Debug)]
+#[must_use = "which of the two it was decides how the dog exits"]
+pub enum Resubscribe {
+    /// No shepherd answered inside the dog's budget, or one refused this
+    /// dog's protocol version at the handshake.
+    Lost(LinkLost),
+    /// The `Subscribe` did not succeed and waiting cannot change that.
+    /// Carried whole, since `RequestError` already decides an exit code and
+    /// flattening it would lose that.
+    ///
+    /// All four of `RequestError`'s non-`Closed` conditions arrive here,
+    /// and they are not one fault:
+    ///
+    /// - `Rpc` is a shepherd answering and saying no.
+    /// - `Wire` and `Undecodable` are the transport failing, so pointing an
+    ///   operator at the shepherd's configuration sends them to the wrong
+    ///   place.
+    /// - `Timeout` is nobody answering in time, which means the request may
+    ///   never have reached a shepherd at all.
+    ///
+    /// Named for the request rather than for a refusal, matching
+    /// [`DogRunError::Request`](crate::dog::runtime::DogRunError::Request),
+    /// because only one of the four is a refusal.
+    ///
+    /// `Timeout` cannot arrive here today: `ClientEvents::resubscribe`
+    /// bounds each attempt by what is left of `SHEPHERD_RETURN_BUDGET`,
+    /// five seconds, and `Client::subscribe` carries seven, so the outer
+    /// bound always fires first and reports a spent budget instead. That is
+    /// a consequence of the two numbers rather than a guarantee, so the
+    /// variant documents the condition rather than relying on it.
+    Request(RequestError),
+}
+
+impl fmt::Display for Resubscribe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lost(lost) => lost.fmt(f),
+            Self::Request(err) => write!(f, "the subscription request failed: {err}"),
+        }
+    }
+}
+
+impl core::error::Error for Resubscribe {
+    /// Both arms wrap an error rather than describing one, so a structured
+    /// logger walking the chain reaches the connection or RPC failure
+    /// underneath instead of stopping here.
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Lost(lost) => Some(lost),
+            Self::Request(err) => Some(err),
+        }
+    }
+}
+
+/// What bark reads the flock through, so the loop's poll is drivable
+/// without a socket.
+///
+/// `Sync`, not just `Send`: [`run_loop`](super::event_loop::run_loop)'s
+/// future holds `&F` across the `.await` in
+/// [`reconcile`](super::event_loop::reconcile), so both its lag arm and its
+/// interval arm poll the same source without moving it.
+pub trait FlockSource: Send + Sync {
+    /// The flock as it stands.
+    ///
+    /// # Errors
+    /// Whatever the source failed with: in production, whatever
+    /// `Request::ListFlock` failed with.
+    fn flock(&self) -> impl Future<Output = Result<Vec<ProcessInfo>, RequestError>> + Send;
+}
+
+/// What bark re-asks its own `[bark]` section through, so a config change
+/// is drivable without a socket.
+///
+/// `BusEvent::DogConfigChanged` says nothing about what changed, so the
+/// frame is only a prompt: the answer is one `Request::DogConfig`.
+///
+/// `Sync` for the reason [`FlockSource`] is:
+/// [`run_loop`](super::event_loop::run_loop)'s future holds a `&C` across the
+/// `.await` in [`reloaded_config`](super::event_loop::reloaded_config).
+pub trait ConfigSource: Send + Sync {
+    /// This dog's `[bark]` section as it stands now, empty when the file
+    /// has no such section.
+    ///
+    /// # Errors
+    /// Whatever the source failed with: in production, whatever
+    /// `Request::DogConfig` failed with.
+    fn section(&self) -> impl Future<Output = Result<String, RequestError>> + Send;
+}
 
 /// Bark's subscription, and what arming a fresh one after a handover
 /// takes: the client to ask, and the topics the first one named.

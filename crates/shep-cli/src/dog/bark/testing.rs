@@ -1,10 +1,9 @@
 //! Fixtures and helpers shared by this module's tests.
 
 use super::config::BarkConfig;
-use super::config_hot_reload::{ConfigSource, FlockSource};
-use super::dog_lifecycle::Resubscribe;
 use super::rules::Rules;
 use super::sinks::Sink;
+use super::source::{ConfigSource, EventSource, FlockSource, Resubscribe};
 use super::*;
 use crate::http::{HttpRequest, read_request, write_response};
 use shep_client::{LinkLost, RequestError};
@@ -22,7 +21,7 @@ use tokio::sync::{broadcast, oneshot};
 
 /// [`EventSource`] over the real thing bark's subscription lags on: a
 /// `tokio::sync::broadcast::Receiver`. The production path implements
-/// the trait for [`shep_client::EventStream`] in `dog/mod.rs`.
+/// the trait for [`ClientEvents`](super::source::ClientEvents).
 impl EventSource for broadcast::Receiver<BusEvent> {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
         match self.recv().await {

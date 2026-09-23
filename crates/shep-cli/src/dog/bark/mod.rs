@@ -1,9 +1,11 @@
 //! `shep dog bark`: the webhook-alert dog.
 //!
-//! [`sinks`] holds the webhook destinations and the delivery function;
-//! [`rules`] decides which bus events and poll snapshots become a
-//! [`rules::Firing`]. This module has [`BarkConfig`] and [`run_loop`],
-//! which subscribes to the shepherd's bus and polls the flock.
+//! [`run`] reads `[bark]`, subscribes, and hands over to [`run_loop`],
+//! which reads the shepherd's bus and polls the flock. [`rules`] decides
+//! which events and poll snapshots become a [`rules::Firing`], and
+//! [`sinks`] renders and posts each one. [`source`] holds the traits the
+//! loop reads the shepherd through, and their implementations over a real
+//! client.
 //!
 //! The bus is a `tokio::sync::broadcast`, so a lagging subscriber has
 //! events dropped rather than queued, and load is when an alert matters
@@ -12,20 +14,20 @@
 //! once.
 
 mod config;
-mod config_hot_reload;
-mod dog_lifecycle;
-mod firing_delivery;
+mod delivery;
+mod event_loop;
 pub mod rules;
 pub mod sinks;
 mod source;
 #[cfg(test)]
 mod testing;
-pub use config::{BarkConfig, rules_for};
-pub use config_hot_reload::{ConfigSource, FlockSource};
-pub use dog_lifecycle::{EventSource, Resubscribe, run_loop};
+
+pub use config::BarkConfig;
 
 use std::sync::Arc;
 
+use config::rules_for;
+use event_loop::run_loop;
 use source::{ClientEvents, ClientShepherd};
 
 use super::DogRuntime;
