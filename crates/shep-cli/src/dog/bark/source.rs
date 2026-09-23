@@ -133,6 +133,26 @@ pub trait ConfigSource: Send + Sync {
     fn section(&self) -> impl Future<Output = Result<String, RequestError>> + Send;
 }
 
+/// Subscribes `client` to `topics` and wraps it for every role bark reads
+/// through: the events, and one shepherd for the flock and config sources.
+///
+/// # Errors
+/// Whatever the `Subscribe` failed with.
+pub(super) async fn subscribe(
+    client: ReconnectingClient,
+    dog: String,
+    topics: Vec<String>,
+) -> Result<(ClientEvents, Arc<ClientShepherd>), RequestError> {
+    let stream = client.subscribe(topics.clone()).await?;
+    let shepherd = Arc::new(ClientShepherd { client, dog });
+    let events = ClientEvents {
+        shepherd: Arc::clone(&shepherd),
+        topics,
+        stream,
+    };
+    Ok((events, shepherd))
+}
+
 /// Bark's subscription, and what arming a fresh one after a handover
 /// takes: the client to ask, and the topics the first one named.
 ///
@@ -144,9 +164,9 @@ pub(super) struct ClientEvents {
     /// Reached through the same [`Arc`] the flock and config sources use,
     /// so every role speaks to one client rather than to clients that
     /// would reconnect independently.
-    pub(super) shepherd: Arc<ClientShepherd>,
-    pub(super) topics: Vec<String>,
-    pub(super) stream: EventStream,
+    shepherd: Arc<ClientShepherd>,
+    topics: Vec<String>,
+    stream: EventStream,
 }
 
 /// `self.stream.next()` resolves to [`EventStream`]'s own inherent method,
@@ -245,9 +265,9 @@ fn unexpected_reply(request: &str, expected: &str) -> RequestError {
 /// two roles reach it through one [`Arc`] rather than through two clients
 /// that would reconnect independently.
 pub(super) struct ClientShepherd {
-    pub(super) client: ReconnectingClient,
+    client: ReconnectingClient,
     /// The dog whose section [`ConfigSource`] re-asks for.
-    pub(super) dog: String,
+    dog: String,
 }
 
 impl FlockSource for ClientShepherd {
@@ -319,16 +339,7 @@ mod tests {
             .await
             .unwrap();
         let topics = vec!["process.*".to_owned(), "config.dog.bark".to_owned()];
-        let stream = client.subscribe(topics.clone()).await.unwrap();
-        let shepherd = Arc::new(ClientShepherd {
-            client,
-            dog: "bark".to_owned(),
-        });
-        let mut events = ClientEvents {
-            shepherd: Arc::clone(&shepherd),
-            topics,
-            stream,
-        };
+        let (mut events, _shepherd) = subscribe(client, "bark".to_owned(), topics).await.unwrap();
 
         // The handover, exactly: the accepted connection dies while the
         // listener stays bound.
@@ -392,16 +403,7 @@ mod tests {
             .await
             .unwrap();
         let topics = vec!["process.*".to_owned()];
-        let stream = client.subscribe(topics.clone()).await.unwrap();
-        let shepherd = Arc::new(ClientShepherd {
-            client,
-            dog: "bark".to_owned(),
-        });
-        let mut events = ClientEvents {
-            shepherd: Arc::clone(&shepherd),
-            topics,
-            stream,
-        };
+        let (mut events, _shepherd) = subscribe(client, "bark".to_owned(), topics).await.unwrap();
 
         // The successor accepts the handshake and refuses the one
         // subscription that follows it.
@@ -453,16 +455,8 @@ mod tests {
                 .await
                 .unwrap();
             let topics = vec!["process.*".to_owned()];
-            let stream = client.subscribe(topics.clone()).await.unwrap();
-            let shepherd = Arc::new(ClientShepherd {
-                client,
-                dog: "bark".to_owned(),
-            });
-            let mut events = ClientEvents {
-                shepherd: Arc::clone(&shepherd),
-                topics,
-                stream,
-            };
+            let (mut events, _shepherd) =
+                subscribe(client, "bark".to_owned(), topics).await.unwrap();
 
             // Gone for good, listener and all, which is what a stopped
             // shepherd leaves behind. A handover leaves the listener bound.

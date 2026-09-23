@@ -28,7 +28,6 @@ use std::sync::Arc;
 
 use config::rules_for;
 use event_loop::run_loop;
-use source::{ClientEvents, ClientShepherd};
 
 use super::DogRuntime;
 use crate::exit::ExitCode;
@@ -38,8 +37,8 @@ use crate::exit::ExitCode;
 /// Parses `[dog.bark]`, builds [`rules::Rules`] (or
 /// [`rules::Rules::default_rules`] when the operator configured
 /// none), subscribes to the shepherd's bus on `process.*`, and hands both
-/// to [`run_loop`] alongside a [`ClientShepherd`] wrapping this same
-/// connection.
+/// to [`run_loop`] alongside a [`ClientShepherd`](source::ClientShepherd)
+/// wrapping this same connection.
 ///
 /// A refused config or a rule set `Rules::new` rejects are both
 /// [`ExitCode::InvalidConfig`].
@@ -68,23 +67,14 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
     // Named once, because `ClientEvents` asks for the same list again on
     // every handover and a second literal could drift from this one.
     let topics = vec!["process.*".to_owned(), format!("config.dog.{dog}")];
-    let stream = match runtime.client.subscribe(topics.clone()).await {
-        Ok(stream) => stream,
+    let (events, shepherd) = match source::subscribe(runtime.client, dog, topics).await {
+        Ok(subscribed) => subscribed,
         Err(err) => {
             eprintln!("shep dog bark: could not subscribe to the shepherd's bus: {err}");
             return ExitCode::from(&err);
         }
     };
-    let barks_path = runtime.paths.barks.clone();
-    let shepherd = Arc::new(ClientShepherd {
-        client: runtime.client,
-        dog,
-    });
-    let events = ClientEvents {
-        shepherd: Arc::clone(&shepherd),
-        topics,
-        stream,
-    };
+    let barks_path = runtime.paths.barks;
     run_loop(
         events,
         Arc::clone(&shepherd),
