@@ -272,7 +272,11 @@ mod tests {
         let handle = serve_one_request(&socket, sample_ack(), response).await;
         let paths = test_paths(dir.path(), socket);
 
-        let runtime = DogRuntime::start("bark", paths).await.unwrap();
+        let runtime =
+            tokio::time::timeout(Duration::from_secs(5), DogRuntime::start("bark", paths))
+                .await
+                .expect("DogRuntime::start hung instead of connecting")
+                .unwrap();
 
         let envelope = tokio::time::timeout(Duration::from_secs(5), handle)
             .await
@@ -300,7 +304,10 @@ mod tests {
         let served = shep_client::testing::fake_daemon(&socket, Ok(sample_ack())).await;
         let paths = test_paths(dir.path(), socket);
 
-        let _started = DogRuntime::start("bark", paths).await;
+        let _started =
+            tokio::time::timeout(Duration::from_secs(5), DogRuntime::start("bark", paths))
+                .await
+                .expect("DogRuntime::start hung instead of connecting");
 
         let hello = tokio::time::timeout(Duration::from_secs(5), served)
             .await
