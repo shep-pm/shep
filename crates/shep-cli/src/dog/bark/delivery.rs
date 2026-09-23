@@ -118,24 +118,11 @@ async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
 
 #[cfg(test)]
 mod tests {
-
-    use std::collections::BTreeMap;
-
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use shep_core::barks::{self};
-
-    use tokio::sync::Mutex;
-
-    use super::super::rules::Firing;
-
     use shep_core::barks::Bark;
-
-    use super::*;
+    use shep_core::values::UpDuration;
 
     use super::super::testing::*;
-    use shep_core::values::UpDuration;
+    use super::*;
 
     /// A `gave_up` firing for `web`, routed to `sinks`.
     fn gave_up_firing(sinks: &[&str]) -> Firing {
