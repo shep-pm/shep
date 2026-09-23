@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-22
+
+### Changed
+
+- Collapse the four dog-action rows into one DogRow
+- Rename the whistle's DogRow to DogSourceRow
+- Rename the new `DogRow` => `DogsRow` to avoid conflict
+- Rename `DogsRow` => `DogActionRow` for improved clarity
+- Give the SOURCE column one renderer again
+- Render the metric labels through the shared conversions
+
+### Fixed
+
+- Report that disable's shepherd acted when one did
+
+
 ## [0.10.0] - 2026-09-22
 
 ### Added
