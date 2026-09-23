@@ -245,7 +245,7 @@ mod tests {
             rx2,
             flock.clone(),
             gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
+            &config_with_sink(addr),
             &barks_path,
             // Never asked: no `config.dog.bark` frame is sent here.
             ScriptedConfig::answering(String::new()),
@@ -316,7 +316,7 @@ mod tests {
             source,
             flock.clone(),
             gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
+            &config_with_sink(addr),
             &barks_path,
             ScriptedConfig::answering(String::new()),
         ));
@@ -489,7 +489,7 @@ mod tests {
             source,
             flock.clone(),
             gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
+            &config_with_sink(addr),
             &barks_path,
             ScriptedConfig::answering(String::new()),
         ));
@@ -537,6 +537,30 @@ mod tests {
         loop_handle.abort();
     }
 
+    /// Runs the loop on `source` until `tx` is dropped and the dog exits on
+    /// whatever its re-subscribe reports.
+    async fn exit_code_once_the_stream_ends(
+        source: HandoverSource,
+        tx: broadcast::Sender<BusEvent>,
+    ) -> ExitCode {
+        let (addr, _captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        let loop_handle = tokio::spawn(run_loop(
+            source,
+            ScriptedFlock::answering(Vec::new()),
+            gave_up_rules(),
+            &config_with_sink(addr),
+            &barks_path,
+            ScriptedConfig::answering(String::new()),
+        ));
+        drop(tx);
+        tokio::time::timeout(Duration::from_secs(5), loop_handle)
+            .await
+            .expect("a dog whose stream ended for good must exit, not linger")
+            .unwrap()
+    }
+
     /// fails if a dog whose shepherd is gone for good lingers. A lingering
     /// dog attaches itself to whatever shepherd next binds that socket,
     /// beside that shepherd's own dog of the same kind, and doubles its
@@ -551,25 +575,7 @@ mod tests {
             },
         );
 
-        let (addr, _captured) = one_shot_sink(200, "").await;
-        let dir = tempfile::tempdir().unwrap();
-        let barks_path = dir.path().join("barks.jsonl");
-
-        let loop_handle = tokio::spawn(run_loop(
-            source,
-            ScriptedFlock::answering(Vec::new()),
-            gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
-            &barks_path,
-            ScriptedConfig::answering(String::new()),
-        ));
-
-        drop(tx);
-
-        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
-            .await
-            .expect("a dog whose shepherd is gone must exit, not linger")
-            .unwrap();
+        let code = exit_code_once_the_stream_ends(source, tx).await;
         assert_eq!(
             code,
             ExitCode::DaemonUnreachable,
@@ -594,25 +600,7 @@ mod tests {
         let (tx, rx) = tokio::sync::broadcast::channel(8);
         let (source, _resubscribes) = HandoverSource::refusing(vec![rx], RpcErrorCode::Unsupported);
 
-        let (addr, _captured) = one_shot_sink(200, "").await;
-        let dir = tempfile::tempdir().unwrap();
-        let barks_path = dir.path().join("barks.jsonl");
-
-        let loop_handle = tokio::spawn(run_loop(
-            source,
-            ScriptedFlock::answering(Vec::new()),
-            gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
-            &barks_path,
-            ScriptedConfig::answering(String::new()),
-        ));
-
-        drop(tx);
-
-        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
-            .await
-            .expect("a refused subscription must end the dog, not be waited out")
-            .unwrap();
+        let code = exit_code_once_the_stream_ends(source, tx).await;
         assert_eq!(
             code,
             ExitCode::Unsupported,
@@ -635,25 +623,7 @@ mod tests {
             },
         );
 
-        let (addr, _captured) = one_shot_sink(200, "").await;
-        let dir = tempfile::tempdir().unwrap();
-        let barks_path = dir.path().join("barks.jsonl");
-
-        let loop_handle = tokio::spawn(run_loop(
-            source,
-            ScriptedFlock::answering(Vec::new()),
-            gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
-            &barks_path,
-            ScriptedConfig::answering(String::new()),
-        ));
-
-        drop(tx);
-
-        let code = tokio::time::timeout(Duration::from_secs(5), loop_handle)
-            .await
-            .expect("a refused dog must exit rather than retry")
-            .unwrap();
+        let code = exit_code_once_the_stream_ends(source, tx).await;
         assert_eq!(code, ExitCode::ProtocolMismatch);
     }
 
@@ -682,7 +652,7 @@ mod tests {
             rx,
             ScriptedFlock::answering(Vec::new()),
             gave_up_rules(),
-            &config_with_sink(old_addr, &barks_path),
+            &config_with_sink(old_addr),
             &barks_path,
             source.clone(),
         ));
@@ -732,7 +702,7 @@ mod tests {
             rx,
             ScriptedFlock::answering(Vec::new()),
             gave_up_rules(),
-            &config_with_sink(addr, &barks_path),
+            &config_with_sink(addr),
             &barks_path,
             source.clone(),
         ));

@@ -137,6 +137,20 @@ mod tests {
     use super::super::testing::*;
     use shep_core::values::UpDuration;
 
+    /// A `gave_up` firing for `web`, routed to `sinks`.
+    fn gave_up_firing(sinks: &[&str]) -> Firing {
+        Firing {
+            bark: Bark {
+                at_ms: 1_000,
+                rule: "gave_up".to_owned(),
+                subject: "web".to_owned(),
+                message: "web gave up: restart budget exhausted".to_owned(),
+                sinks: Vec::new(),
+            },
+            sinks: sinks.iter().map(|&name| name.to_owned()).collect(),
+        }
+    }
+
     /// Drives `deliver_and_record` directly rather than through
     /// `run_loop`: the property belongs to that function, and the loop's
     /// event plumbing would need a second synchronization mechanism to
@@ -149,16 +163,7 @@ mod tests {
 
         let mut sinks = BTreeMap::new();
         sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
-        let firing = Firing {
-            bark: Bark {
-                at_ms: 1_000,
-                rule: "gave_up".to_owned(),
-                subject: "web".to_owned(),
-                message: "web gave up: restart budget exhausted".to_owned(),
-                sinks: Vec::new(),
-            },
-            sinks: vec!["ops".to_owned()],
-        };
+        let firing = gave_up_firing(&["ops"]);
 
         let delivery = Delivery {
             sinks: Arc::new(sinks),
@@ -210,16 +215,7 @@ mod tests {
             "live".to_owned(),
             json_sink(format!("http://{live_addr}/hook")),
         );
-        let firing = Firing {
-            bark: Bark {
-                at_ms: 1_000,
-                rule: "gave_up".to_owned(),
-                subject: "web".to_owned(),
-                message: "web gave up: restart budget exhausted".to_owned(),
-                sinks: Vec::new(),
-            },
-            sinks: vec!["dead".to_owned(), "live".to_owned()],
-        };
+        let firing = gave_up_firing(&["dead", "live"]);
 
         let delivery = Delivery {
             sinks: Arc::new(sinks),
@@ -275,11 +271,11 @@ mod tests {
     fn a_reconfigure_takes_the_new_settings_and_keeps_the_trail() {
         let dir = tempfile::tempdir().unwrap();
         let barks_path = dir.path().join("barks.jsonl");
-        let before = config_with_sink("127.0.0.1:1".parse().unwrap(), &barks_path);
+        let before = config_with_sink("127.0.0.1:1".parse().unwrap());
         let mut delivery = Delivery::new(&before, &barks_path);
         let lock = Arc::clone(&delivery.append_lock);
 
-        let mut after = config_with_sink("127.0.0.1:2".parse().unwrap(), &barks_path);
+        let mut after = config_with_sink("127.0.0.1:2".parse().unwrap());
         after.sink_timeout = UpDuration::from_millis(1_234);
         after.history_bytes = 4_096;
         delivery.reconfigure(&after);

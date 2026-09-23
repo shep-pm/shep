@@ -14,7 +14,6 @@ use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, oneshot};
@@ -301,7 +300,7 @@ pub(super) fn gave_up_rules() -> Rules {
 /// A [`BarkConfig`] with one sink, `"ops"`, POSTing to `addr`. `poll`
 /// is 60s, past every timeout these tests bound themselves by, so a
 /// poll that fires is attributable to the lag path.
-pub(super) fn config_with_sink(addr: SocketAddr, _barks_path: &Path) -> BarkConfig {
+pub(super) fn config_with_sink(addr: SocketAddr) -> BarkConfig {
     let mut sinks = BTreeMap::new();
     sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
     BarkConfig {
