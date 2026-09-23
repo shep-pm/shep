@@ -339,7 +339,9 @@ mod tests {
             .await
             .unwrap();
         let topics = vec!["process.*".to_owned(), "config.dog.bark".to_owned()];
-        let (mut events, _shepherd) = subscribe(client, "bark".to_owned(), topics).await.unwrap();
+        let (mut events, _shepherd) = subscribe(client, "bark".to_owned(), topics.clone())
+            .await
+            .unwrap();
 
         // The handover, exactly: the accepted connection dies while the
         // listener stays bound.
@@ -376,6 +378,20 @@ mod tests {
             asked,
             vec![Some("bark".to_owned()), Some("bark".to_owned())],
             "the second handshake must name the dog too, or a refusal is unactionable"
+        );
+
+        let subscribed: Vec<_> = shepherds
+            .envelopes()
+            .into_iter()
+            .filter_map(|(generation, envelope)| match envelope.body {
+                Request::Subscribe { topics } => Some((generation, topics)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            subscribed,
+            vec![(1, topics.clone()), (2, topics)],
+            "a re-subscribe asking for fewer topics leaves the dog deaf to the rest"
         );
     }
 
