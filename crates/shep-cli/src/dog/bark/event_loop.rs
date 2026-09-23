@@ -3,11 +3,9 @@
 
 use core::future::Future;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use shep_core::protocol::BusEvent;
-use tokio::sync::Mutex;
 use tokio::time::MissedTickBehavior;
 
 use super::config::{BarkConfig, rules_for};
@@ -36,22 +34,12 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
     barks_path: &Path,
     config_source: C,
 ) -> impl Future<Output = ExitCode> + Send + use<E, F, C> {
-    let sinks = Arc::new(config.sinks.clone());
-    let sink_timeout = config.sink_timeout.as_duration();
-    let max_bytes = config.history_bytes;
+    let mut delivery = Delivery::new(config, barks_path);
     let mut poll_period = config.poll.as_duration();
-    let barks_path = Arc::new(barks_path.to_path_buf());
 
     async move {
         let mut events = events;
         let mut rules = rules;
-        let mut delivery = Delivery {
-            sinks,
-            append_lock: Arc::new(Mutex::new(())),
-            barks_path,
-            sink_timeout,
-            max_bytes,
-        };
 
         let mut sigterm = match crate::shutdown::Terminate::install() {
             Ok(sigterm) => sigterm,
@@ -99,9 +87,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 // In place, never a restart: sinks and
                                 // rules are pure data with no OS resource
                                 // to rebind.
-                                delivery.sinks = Arc::new(next.sinks.clone());
-                                delivery.sink_timeout = next.sink_timeout.as_duration();
-                                delivery.max_bytes = next.history_bytes;
+                                delivery.reconfigure(&next);
                                 // Rebuilt, which resets each rule's
                                 // per-subject debounce: carrying it over
                                 // a renumbered rule set would key state on

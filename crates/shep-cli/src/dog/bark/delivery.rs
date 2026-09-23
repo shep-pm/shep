@@ -1,9 +1,10 @@
+use super::config::BarkConfig;
 use super::rules::Firing;
 use super::sinks::Sink;
 use futures_util::future::join_all;
 use shep_core::barks::{self, SinkOutcome};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -13,9 +14,7 @@ use tokio::sync::Mutex;
 /// [`deliver_and_record`] travel as one.
 ///
 /// `Clone` is what [`spawn_firings`] hands each spawned task: three
-/// [`Arc`] bumps and two copies, the same clones it used to make one by
-/// one. A config reload rebinds `sinks`, `sink_timeout` and `max_bytes`
-/// in place; `append_lock` and `barks_path` outlive every reload.
+/// [`Arc`] bumps and two copies.
 ///
 /// `Debug` is safe despite `sinks` holding webhook URLs, which are bearer
 /// credentials: [`Sink`]'s own `Debug` redacts them.
@@ -31,6 +30,27 @@ pub(super) struct Delivery {
     pub(super) sink_timeout: Duration,
     /// The trail's size ceiling.
     pub(super) max_bytes: u64,
+}
+
+impl Delivery {
+    /// A delivery to `config`'s sinks, writing its trail to `barks_path`.
+    pub(super) fn new(config: &BarkConfig, barks_path: &Path) -> Self {
+        Self {
+            sinks: Arc::new(config.sinks.clone()),
+            append_lock: Arc::new(Mutex::new(())),
+            barks_path: Arc::new(barks_path.to_path_buf()),
+            sink_timeout: config.sink_timeout.as_duration(),
+            max_bytes: config.history_bytes,
+        }
+    }
+
+    /// Takes what a reloaded `config` changes, in place. The append lock
+    /// and the trail's path outlive every reload.
+    pub(super) fn reconfigure(&mut self, config: &BarkConfig) {
+        self.sinks = Arc::new(config.sinks.clone());
+        self.sink_timeout = config.sink_timeout.as_duration();
+        self.max_bytes = config.history_bytes;
+    }
 }
 
 /// Spawns one delivery task per firing, so
@@ -115,6 +135,7 @@ mod tests {
     use super::*;
 
     use super::super::testing::*;
+    use shep_core::values::UpDuration;
 
     /// Drives `deliver_and_record` directly rather than through
     /// `run_loop`: the property belongs to that function, and the loop's
@@ -248,5 +269,28 @@ mod tests {
             "the live sink must have been delivered to: {:?}",
             outcomes[1]
         );
+    }
+
+    #[test]
+    fn a_reconfigure_takes_the_new_settings_and_keeps_the_trail() {
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        let before = config_with_sink("127.0.0.1:1".parse().unwrap(), &barks_path);
+        let mut delivery = Delivery::new(&before, &barks_path);
+        let lock = Arc::clone(&delivery.append_lock);
+
+        let mut after = config_with_sink("127.0.0.1:2".parse().unwrap(), &barks_path);
+        after.sink_timeout = UpDuration::from_millis(1_234);
+        after.history_bytes = 4_096;
+        delivery.reconfigure(&after);
+
+        assert_eq!(*delivery.sinks, after.sinks);
+        assert_eq!(delivery.sink_timeout, Duration::from_millis(1_234));
+        assert_eq!(delivery.max_bytes, 4_096);
+        assert!(
+            Arc::ptr_eq(&delivery.append_lock, &lock),
+            "a second lock would let two appends race"
+        );
+        assert_eq!(*delivery.barks_path, barks_path);
     }
 }
