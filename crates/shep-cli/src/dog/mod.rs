@@ -7,7 +7,7 @@
 //! connects to the socket and asks for the section over
 //! `Request::DogConfig`.
 //!
-//! [`run_dog`] validates the name against [`BUILT_IN_DOGS`], connects, and
+//! [`run_dog`] parses the name into a [`BuiltInDog`], connects, and
 //! dispatches: `"metrics"` to [`metrics::run`], `"bark"` to [`bark::run`].
 
 pub mod bark;
@@ -24,12 +24,50 @@ use shep_core::paths::ShepPaths;
 
 use crate::exit::ExitCode;
 
-/// The dog names this binary can run built-in.
+/// A dog this binary runs built-in.
+///
+/// Every `match` on it is exhaustive, so a new variant fails to compile
+/// at each dispatch rather than reaching one that never heard of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuiltInDog {
+    Metrics,
+    Bark,
+}
+
+impl BuiltInDog {
+    /// Every variant. A new one goes here too: nothing else lists them.
+    const ALL: [Self; 2] = [Self::Metrics, Self::Bark];
+
+    /// The name `shep dog <name>` and `enabled_dogs` know it by.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Metrics => "metrics",
+            Self::Bark => "bark",
+        }
+    }
+
+    /// The built-in dog called `name`, or [`None`] for any other name.
+    fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|dog| dog.name() == name)
+    }
+}
+
+/// The dog names this binary can run built-in, [`BuiltInDog::name`] of
+/// each variant.
 ///
 /// `enabled_dogs` accepts any name at all, an adopted dog's own choice, but
-/// a re-exec through `shep dog <name>` only ever reaches one of these two.
+/// a re-exec through `shep dog <name>` only ever reaches one of these.
 /// [`run_dog`] refuses anything else before touching the socket.
-pub(crate) const BUILT_IN_DOGS: [&str; 2] = ["metrics", "bark"];
+pub(crate) const BUILT_IN_DOGS: [&str; BuiltInDog::ALL.len()] = {
+    // A loop because `map` is not callable in a `const`.
+    let mut names = [""; BuiltInDog::ALL.len()];
+    let mut i = 0;
+    while i < names.len() {
+        names[i] = BuiltInDog::ALL[i].name();
+        i += 1;
+    }
+    names
+};
 
 /// How long a dog waits for a shepherd to answer again before it gives up
 /// and exits.
@@ -81,10 +119,9 @@ fn exit_for(lost: &LinkLost) -> ExitCode {
 pub(crate) fn builtin_schema(name: &str) -> Option<serde_json::Value> {
     use shep_client::dogs::config_schema;
 
-    let schema = match name {
-        "metrics" => config_schema::<metrics::MetricsConfig>(),
-        "bark" => config_schema::<bark::BarkConfig>(),
-        _ => return None,
+    let schema = match BuiltInDog::from_name(name)? {
+        BuiltInDog::Metrics => config_schema::<metrics::MetricsConfig>(),
+        BuiltInDog::Bark => config_schema::<bark::BarkConfig>(),
     };
     serde_json::to_value(schema).ok()
 }
@@ -92,16 +129,23 @@ pub(crate) fn builtin_schema(name: &str) -> Option<serde_json::Value> {
 /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
 ///
 /// An unknown name is refused before the socket is touched
-/// ([`ExitCode::Usage`]), naming the two built-ins in the refusal.
+/// ([`ExitCode::Usage`]), naming every built-in in the refusal.
 ///
 /// A dog's own diagnostics go to stderr, plain text: the daemon's log pump
 /// captures it into `$SHEP_HOME/logs/<name>-0-err.log` like any sheep's,
 /// read with `shep bleats <name>`.
 pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
-    if !BUILT_IN_DOGS.contains(&name) {
-        eprintln!("shep dog: unknown dog {name:?}; the built-in dogs are \"metrics\" and \"bark\"");
+    let Some(dog) = BuiltInDog::from_name(name) else {
+        let known: Vec<String> = BUILT_IN_DOGS
+            .iter()
+            .map(|known| format!("{known:?}"))
+            .collect();
+        eprintln!(
+            "shep dog: unknown dog {name:?}; the built-in dogs are {}",
+            known.join(", ")
+        );
         return ExitCode::Usage;
-    }
+    };
     let runtime = match DogRuntime::start(name, paths).await {
         Ok(runtime) => runtime,
         Err(err) => {
@@ -109,10 +153,9 @@ pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
             return exit_code_for(&err);
         }
     };
-    match name {
-        "metrics" => metrics::run(runtime).await,
-        "bark" => bark::run(runtime).await,
-        _ => unreachable!("checked against BUILT_IN_DOGS above"),
+    match dog {
+        BuiltInDog::Metrics => metrics::run(runtime).await,
+        BuiltInDog::Bark => bark::run(runtime).await,
     }
 }
 
@@ -131,6 +174,15 @@ mod builtin_schema_tests {
             true
         );
         assert!(builtin_schema("otel").is_none());
+    }
+
+    #[test]
+    fn every_built_in_is_listed_by_name_and_parses_back() {
+        assert_eq!(BUILT_IN_DOGS, BuiltInDog::ALL.map(BuiltInDog::name));
+        for dog in BuiltInDog::ALL {
+            assert_eq!(BuiltInDog::from_name(dog.name()), Some(dog));
+        }
+        assert_eq!(BuiltInDog::from_name("otel"), None);
     }
 }
 
