@@ -7,7 +7,6 @@ Getting started
   shep start server.js    start it and keep it alive
   shep flock              see what's running
   shep bleats server      follow its output
-  shep save               remember this flock across reboots
   shep startup            bring it back after a reboot
 
 Run things       start add serve stop restart reload delete stock
@@ -756,7 +755,7 @@ Exits as soon as the shepherd accepts, printing the instances that remain. On a 
 departing instances are still running their stop ladders at that point; they report themselves on
 the bus, under process.delete.
 
-The new count is written to the muster roll, so `shep save` and a reboot keep it.
+The new count is written to the muster roll, so a reboot keeps it.
 
 Usage: shep stock [OPTIONS] <NAME> <COUNT>
 
@@ -2389,7 +2388,10 @@ Options:
   -V, --version
           Print version
 @@VERB:save@@
-Write the muster roll now, so a reboot can bring this flock back
+Write the muster roll now and say where it landed.
+
+The shepherd already rewrites the roll after every change. This is for seeing it on disk before a
+reboot rather than trusting that it is.
 
 Usage: shep save [OPTIONS]
 
@@ -2436,7 +2438,7 @@ Options:
   -V, --version
           Print version
 @@VERB:muster@@
-Assemble the flock from the muster roll `save` wrote, starting the shepherd first if none is running
+Assemble the flock from the muster roll, starting the shepherd first if none is running
 
 Usage: shep muster [OPTIONS]
 

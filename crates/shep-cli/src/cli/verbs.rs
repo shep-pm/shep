@@ -163,8 +163,7 @@ pub enum Commands {
     /// stop ladders at that point; they report themselves on the bus, under
     /// process.delete.
     ///
-    /// The new count is written to the muster roll, so `shep save` and a
-    /// reboot keep it.
+    /// The new count is written to the muster roll, so a reboot keeps it.
     #[command(visible_alias = "scale")]
     Stock(StockArgs),
     /// List the flock.
@@ -353,10 +352,13 @@ pub enum Commands {
     Ping,
     /// Shut the shepherd down.
     Kill,
-    /// Write the muster roll now, so a reboot can bring this flock back.
+    /// Write the muster roll now and say where it landed.
+    ///
+    /// The shepherd already rewrites the roll after every change. This is for
+    /// seeing it on disk before a reboot rather than trusting that it is.
     Save,
-    /// Assemble the flock from the muster roll `save` wrote, starting the
-    /// shepherd first if none is running.
+    /// Assemble the flock from the muster roll, starting the shepherd first
+    /// if none is running.
     // Hidden alias `resurrect` (pm2's own word for this), so the muscle
     // memory carries over: `alias`, not `visible_aliases`, so it stays out
     // of `--help` rather than being taught by it. A plain `//` comment
