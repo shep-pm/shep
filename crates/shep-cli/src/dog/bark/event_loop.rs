@@ -734,4 +734,39 @@ mod tests {
 
         loop_handle.abort();
     }
+
+    /// An emptied section parses to no sinks at all, which `Rules::new`
+    /// refuses, so the running sinks must stay.
+    #[tokio::test]
+    async fn a_config_change_that_empties_the_section_keeps_the_running_sinks() {
+        let (addr, captured) = one_shot_sink(200, "").await;
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        let source = ScriptedConfig::answering(String::new());
+
+        let (tx, rx) = broadcast::channel(16);
+        let loop_handle = tokio::spawn(run_loop(
+            rx,
+            ScriptedFlock::answering(Vec::new()),
+            gave_up_rules(),
+            &config_with_sink(addr, &barks_path),
+            &barks_path,
+            source.clone(),
+        ));
+
+        tx.send(BusEvent::DogConfigChanged {
+            dog: "bark".to_owned(),
+        })
+        .unwrap();
+        tx.send(errored_event("web")).unwrap();
+
+        let req = tokio::time::timeout(Duration::from_secs(5), captured)
+            .await
+            .expect("the running sink must still get the bark")
+            .unwrap();
+        assert!(String::from_utf8_lossy(&req.body).contains("web"));
+        assert_eq!(source.calls(), 1, "the frame must still be re-asked");
+
+        loop_handle.abort();
+    }
 }
