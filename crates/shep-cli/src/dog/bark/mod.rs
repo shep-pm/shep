@@ -36,9 +36,9 @@ use crate::exit::ExitCode;
 ///
 /// Parses `[dog.bark]`, builds [`rules::Rules`] (or
 /// [`rules::Rules::default_rules`] when the operator configured
-/// none), subscribes to the shepherd's bus on `process.*`, and hands both
-/// to [`run_loop`] alongside a [`ClientShepherd`](source::ClientShepherd)
-/// wrapping this same connection.
+/// none), subscribes to the shepherd's bus on `process.*` and
+/// `config.dog.bark`, and hands both to [`run_loop`] alongside a
+/// [`ClientShepherd`](source::ClientShepherd) wrapping this same connection.
 ///
 /// A refused config or a rule set `Rules::new` rejects are both
 /// [`ExitCode::InvalidConfig`].
