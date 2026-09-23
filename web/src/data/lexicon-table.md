@@ -28,7 +28,7 @@ The whole vocabulary, and whether it exists yet.
 | a fold | a namespace or group | `shep fold backend`, `fold =` in config | yes |
 | Flockfile | the app config file | `Flockfile.toml` / `.yaml` / `.json` / `.json5` | yes |
 | bleats | logs | `shep bleats` (alias `logs`) | yes |
-| muster | bring a saved flock back | `shep save`, then `shep muster` | yes |
+| muster | bring a saved flock back | `shep muster` | yes |
 | the shepherd channel | a private pipe on fd 3 between daemon and app | `channel = true`, `shep trigger` | yes |
 | a lamb | a child process of a sheep | tree-kill, `describe`'s tree view | yes |
 | a dog | a plugin process the shepherd supervises | `shep enable metrics`, `shep dogs` | yes |

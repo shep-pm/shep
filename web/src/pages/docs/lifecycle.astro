@@ -274,7 +274,10 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       It's back, registered, still called <code>parked</code>, still{" "}
       <code>stopped</code>. Nothing restarted it, because it wasn't running
       when the roll was written and <code>muster</code>'s rule is "was it up
-      when we saved," not "does it exist."
+      when the roll was written," not "does it exist." The{" "}
+      <code>save</code> is only there to show that moment: the shepherd had
+      already written the roll, and <code>kill</code> writes it once more on
+      the way down.
     </p>
     <VerbSignature verb="delete" usage="shep delete <selector>...">
       <p>
@@ -290,8 +293,8 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       Same sheep, same save-kill-muster sequence, different verb. This time{" "}
       <code>parked</code> is not in the restored flock at all, not even as a{" "}
       <code>stopped</code> row. Deleting it took it out of the registry
-      immediately, so it was never a candidate for the roll <code>save</code>{" "}
-      wrote afterward, and <code>muster</code> can only restore what the
+      immediately, so it was never a candidate for any roll written
+      afterward, and <code>muster</code> can only restore what the
       roll remembers. There's no undelete: the config is gone unless you
       kept the Flockfile that produced it.
     </p>

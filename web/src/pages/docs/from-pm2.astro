@@ -56,7 +56,7 @@ const benchTable: { metric: string; shep: string; pm2: string; ratio: string }[]
 3. pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
 4. shep start ./Flockfile.toml     # the flock comes up under shep
 5. shep flock                      # every app online, CPU and MEM populated
-6. shep save                       # names the roll it wrote and the app count`}</CodeBlock>
+6. shep save                       # optional: shep already wrote the roll`}</CodeBlock>
       <Callout variant="note">
         The flock is running and its roll is saved, but nothing yet starts it
         after a reboot. That is <code>pm2 startup</code>'s counterpart, and it

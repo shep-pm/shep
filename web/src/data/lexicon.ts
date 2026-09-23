@@ -77,7 +77,7 @@ export const lexiconSignposts: LexiconSignpost[] = [
   {
     term: "muster",
     meaning: "Bring a saved flock back after a reboot.",
-    cli: "shep save · shep muster",
+    cli: "shep muster",
     bg: "var(--barn)",
     fg: "var(--fleece)",
     tilt: "1.4deg",

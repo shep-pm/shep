@@ -170,15 +170,16 @@ dropped env key — goes to stderr, in both `--format table` and
 
 **`shep save`** writes the muster roll: a snapshot of the running flock
 that a later `shep muster` (or a reboot, once `shep startup` is in place)
-reads back. It takes no selector — the roll always records the whole
-flock — and it talks only to an already-running daemon; it will not start
-one on your behalf, because autostarting a daemon just to save an empty
-flock would overwrite a good roll with an empty one. A save against a
-daemon whose engine has already stopped fails loudly rather than writing
-nothing and calling it success.
+reads back. The shepherd already keeps the roll current, so this is a
+check rather than a step: it shows the roll is on disk. It takes no
+selector — the roll always records the whole flock — and it talks only to
+an already-running daemon; it will not start one on your behalf, because
+autostarting a daemon just to save an empty flock would overwrite a good
+roll with an empty one. A save against a daemon whose engine has already
+stopped fails loudly rather than writing nothing and calling it success.
 
 **`shep startup`** installs the unit that brings the shepherd — and the
-flock `save` last recorded — back after a reboot. `shep unstartup` is its
+flock its roll records — back after a reboot. `shep unstartup` is its
 undo. Both are covered in full in the rollback section below; the runbook
 that follows walks through where `startup` sits in the whole sequence.
 
@@ -196,7 +197,7 @@ check and what a failure looks like.
 3.  pm2 delete all && pm2 kill      # the one destructive step, and it is pm2's
 4.  shep start ./Flockfile.toml     # the flock comes up under shep
 5.  shep flock                      # every app online, CPU and MEM populated
-6.  shep save                       # names the roll it wrote and the app count
+6.  shep save                       # optional: shep already wrote the roll
 7.  sudo shep startup --user <you>  # writes and enables the unit
 8.  systemctl status shep-<you>     # active (running), and green
 9.  reboot
@@ -212,7 +213,7 @@ generated Flockfile first.
 Step 8's unit going `active (running)` means something specific here: the
 generated unit is `Type=notify`, so systemd does not consider it started
 until the daemon itself says so — and the daemon sends that signal only
-once the muster restore from step 6's roll has finished, not the moment
+once the muster restore has finished, not the moment
 the process execs. A green status at step 8 is therefore already evidence
 the restore path works, before the reboot ever happens.
 
@@ -226,9 +227,10 @@ look.
 
 **`active (running)` at step 10, but an empty `shep flock` at step 11.**
 The unit came up against the wrong `$SHEP_HOME` — it is supervising a
-daemon, just not the one whose roll you saved. `systemctl cat shep-<you>`
-shows the `SHEP_HOME` the unit actually carries; compare it against the
-`$SHEP_HOME` step 6 saved into.
+daemon, just not the one whose roll holds your flock.
+`systemctl cat shep-<you>` shows the `SHEP_HOME` the unit actually
+carries; compare it against the `$SHEP_HOME` step 4 started the flock
+under.
 
 **The wrong `PATH` was captured, and an app fails to spawn only after a
 reboot.** Step 7 runs as `sudo shep startup ...`, and `sudo` on most
