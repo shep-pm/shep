@@ -16,7 +16,7 @@ use crate::dog::runtime::parse_section;
 use crate::exit::ExitCode;
 
 /// Bark's loop: subscribe for speed, poll for correctness. Ends on
-/// `SIGINT`/`SIGTERM` or when `events` does.
+/// `SIGINT`/`SIGTERM`, or when `events` ends and its re-subscribe fails.
 ///
 /// A dropped frame polls immediately, since the bus drops what a lagging
 /// subscriber cannot keep up with. Firings are spawned, never awaited
