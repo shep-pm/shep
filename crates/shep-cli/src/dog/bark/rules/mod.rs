@@ -147,8 +147,8 @@ fn wire_spelling(kind: ProcessEventKind) -> &'static str {
     }
 }
 
-/// Whether `kind` is a spelling [`ProcessEventKind`] actually has, the same
-/// way [`wire_spelling`] reads the mapping rather than hand-listing it.
+/// Whether `kind` is a spelling [`ProcessEventKind`] actually has, read from
+/// its own `Deserialize` rather than hand-listed the way [`wire_spelling`] is.
 fn is_known_kind(kind: &str) -> bool {
     // `ProcessEventKind`'s `Deserialize` now accepts any string, decoding an
     // unrecognized one as `Unrecognized` rather than erroring, so validity
