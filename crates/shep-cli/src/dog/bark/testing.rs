@@ -104,15 +104,11 @@ impl HandoverSource {
 
 impl EventSource for HandoverSource {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
-        let stream = self.current.as_mut()?;
-        match stream.recv().await {
-            Ok(event) => Some(Ok(event)),
-            Err(broadcast::error::RecvError::Lagged(count)) => Some(Err(count)),
-            Err(broadcast::error::RecvError::Closed) => {
-                self.current = None;
-                None
-            }
+        let next = EventSource::next(self.current.as_mut()?).await;
+        if next.is_none() {
+            self.current = None;
         }
+        next
     }
 
     async fn resubscribe(&mut self) -> Result<(), Resubscribe> {
