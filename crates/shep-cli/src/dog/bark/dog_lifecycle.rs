@@ -39,10 +39,11 @@ pub trait EventSource: Send {
 /// Why bark could not arm a fresh subscription.
 ///
 /// Two outcomes rather than one, so a re-subscribe reports what the first
-/// subscription would have. `run_bark` exits `ExitCode::from(&err)` when
-/// the shepherd refuses the opening `Subscribe`; without this a refusal
-/// after a handover would exit `DaemonUnreachable` instead, naming a
-/// shepherd that is running and answering.
+/// subscription would have. [`run`](super::run) exits
+/// `ExitCode::from(&err)` when the shepherd refuses the opening
+/// `Subscribe`; without this a refusal after a handover would exit
+/// `DaemonUnreachable` instead, naming a shepherd that is running and
+/// answering.
 #[derive(Debug)]
 #[must_use = "which of the two it was decides how the dog exits"]
 pub enum Resubscribe {
@@ -360,7 +361,7 @@ mod tests {
     /// fails if a shepherd that answers and refuses the subscription is
     /// reported as a shepherd that never answered.
     ///
-    /// `run_bark` exits `ExitCode::from(&err)` when the opening `Subscribe`
+    /// `bark::run` exits `ExitCode::from(&err)` when the opening `Subscribe`
     /// is refused. A re-subscribe meeting the same refusal has to exit the
     /// same code, or the same fault reports differently depending on
     /// whether a handover happened to have run first.
