@@ -14,6 +14,7 @@ use super::config::{BarkConfig, rules_for};
 use super::delivery::{Delivery, spawn_firings};
 use super::rules::Rules;
 use super::source::{ConfigSource, EventSource, FlockSource, Resubscribe};
+use crate::dog::runtime::parse_section;
 use crate::exit::ExitCode;
 
 /// Bark's loop: subscribe for speed, poll for correctness. Ends on
@@ -166,15 +167,11 @@ pub(super) async fn reloaded_config<C: ConfigSource>(source: &C) -> Option<(Bark
     };
     // Empty means the section is gone. The default no-sink rule is
     // rejected, so bark keeps the current configuration.
-    let config = if section.is_empty() {
-        BarkConfig::default()
-    } else {
-        match toml::from_str::<BarkConfig>(&section) {
-            Ok(config) => config,
-            Err(_err) => {
-                eprintln!("shep dog bark: [bark] in dogs.toml does not parse; see `shep dogs`");
-                return None;
-            }
+    let config = match parse_section::<BarkConfig>(&section) {
+        Ok(config) => config,
+        Err(_err) => {
+            eprintln!("shep dog bark: [bark] in dogs.toml does not parse; see `shep dogs`");
+            return None;
         }
     };
     match rules_for(&config) {

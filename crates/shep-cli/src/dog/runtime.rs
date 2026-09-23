@@ -167,14 +167,27 @@ impl DogRuntime {
     where
         T: serde::de::DeserializeOwned + Default,
     {
-        if self.section.is_empty() {
-            return Ok(T::default());
-        }
-        toml::from_str(&self.section).map_err(|err| DogRunError::Section {
+        parse_section(&self.section).map_err(|err| DogRunError::Section {
             name: self.name.clone(),
             message: err.to_string(),
         })
     }
+}
+
+/// A dog's section parsed into `T`, or `T::default()` when it is empty,
+/// which is how the shepherd answers for a dog with no section.
+///
+/// # Errors
+/// The parser's own error. It can quote the section, webhook URLs
+/// included, so report the fact rather than the message.
+pub(super) fn parse_section<T>(section: &str) -> Result<T, toml::de::Error>
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    if section.is_empty() {
+        return Ok(T::default());
+    }
+    toml::from_str(section)
 }
 
 /// Maps a failed [`DogRuntime::start`] to the exit code that reports it.
@@ -232,6 +245,19 @@ mod tests {
 
         let empty = runtime_with_section("");
         assert_eq!(empty.config::<Cfg>().unwrap(), Cfg::default());
+    }
+
+    #[test]
+    fn an_empty_section_parses_to_the_defaults_even_with_a_required_field() {
+        #[derive(Debug, Default, serde::Deserialize, PartialEq)]
+        struct Required {
+            port: u16,
+        }
+        assert!(
+            toml::from_str::<Required>("").is_err(),
+            "the fixture must refuse an empty document, or this proves nothing"
+        );
+        assert_eq!(parse_section::<Required>("").unwrap(), Required::default());
     }
 
     #[tokio::test]
