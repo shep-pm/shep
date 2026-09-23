@@ -35,8 +35,14 @@ enum BuiltInDog {
 }
 
 impl BuiltInDog {
-    /// Every variant. A new one goes here too: nothing else lists them.
-    const ALL: [Self; 2] = [Self::Metrics, Self::Bark];
+    /// Every variant.
+    const ALL: [Self; 2] = {
+        // Exhaustive, so a new variant stops the build here, beside the list.
+        match Self::Metrics {
+            Self::Metrics | Self::Bark => {}
+        }
+        [Self::Metrics, Self::Bark]
+    };
 
     /// The name `shep dog <name>` and `enabled_dogs` know it by.
     const fn name(self) -> &'static str {
