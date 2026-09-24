@@ -34,6 +34,7 @@ mod error;
 mod identity;
 mod runtime;
 mod section;
+mod startup;
 mod stop;
 
 pub use error::ShepherdError;
@@ -48,6 +49,7 @@ use shep_core::dogs::{SCHEMA_FLAG, SHEP_PROTOCOL_KEY, VERSION_FLAG};
 /// Its own documentation carries the rules: which shapes accept
 /// `#[shep(secret)]`, which refuse it, and what the expansion looks like.
 pub use shep_macros::dog_config;
+pub use startup::{DogAction, HomeError, PRINT_CONFIG_FLAG, UsageError, parse_args, resolve_paths};
 pub use stop::{Interrupted, Stop, StopRequest};
 
 /// That a type's config schema has been through [`dog_config`], so every
