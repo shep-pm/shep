@@ -9,12 +9,15 @@
 //! primitives; [`FakeDaemon`] and the `fake_client_*` helpers connect a
 //! real [`Client`](crate::client::Client) against a scripted peer; [`fast_opts`],
 //! [`start_fake_daemon_answering_on`] and [`child_exiting_with`] serve the
-//! autostart tests.
+//! autostart tests. [`schema_keys`] and [`printed_keys`] are a dog's own:
+//! what its tests compare its config schema against.
 
 mod autostart;
 mod client;
 mod handover;
 mod handshake;
+#[cfg(feature = "schema")]
+mod schema;
 mod scripted;
 mod shared;
 pub use autostart::{child_exiting_with, fast_opts, start_fake_daemon_answering_on};
@@ -30,6 +33,8 @@ pub use handshake::{
     fake_daemon, fake_daemon_accepting_repeatedly, fake_daemon_accepting_repeatedly_with_ack,
     fake_daemon_wedged_after_handshake, serve_one_request,
 };
+#[cfg(feature = "schema")]
+pub use schema::{printed_keys, schema_keys};
 pub use scripted::FakeDaemon;
 use scripted::{SCRIPT_CHANNEL_CAPACITY, ScriptCommand, serve_scripted};
 use shared::{
