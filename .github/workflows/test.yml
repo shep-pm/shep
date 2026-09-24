@@ -463,6 +463,22 @@ jobs:
       # shared runner is proving the harness compiles and executes, not
       # collecting a timing.
       - run: cargo +${{ matrix.toolchain }} bench --manifest-path benches/Cargo.toml -- --test
+  # The versus-pm2 harness never runs here: it needs macOS, a third-party npm
+  # package and a quiet wall clock. What can run is the half that judges its
+  # output against `baseline.json`, plus a parse of the script itself, which
+  # nothing else reads between the releases it is run at.
+  #
+  # No toolchain and no cargo, like `manifests.yml`: the judge is standard
+  # library Python and ubuntu-latest ships one.
+  versus-pm2:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.bench == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash -n benches/versus-pm2/versus-pm2.sh
+      - run: python3 -m unittest discover --start-directory benches/versus-pm2 --verbose
   privileged:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
