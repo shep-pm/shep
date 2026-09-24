@@ -117,6 +117,9 @@ impl<R: ProcessRunner> Actor<R> {
         let source = ReadinessSource::of(app.config())
             .expect("ResolvedApp already passed ProbeTarget::parse in normalize");
         let gated = !matches!(source, ReadinessSource::Heuristic);
+        // Read before the move below: a gated app's readiness task wants the
+        // same timeout the spawn just used, and `app` is what hands it over.
+        let listen_timeout = app.config().listen_timeout.as_duration();
 
         match self.runner.spawn(&spec) {
             Ok((proc, io)) => {
@@ -128,7 +131,10 @@ impl<R: ProcessRunner> Actor<R> {
                     id,
                     proc,
                     io,
-                    app.clone(),
+                    // Moved, not cloned: the entry's spec was cloned once
+                    // above, and a crash loop paid a second full config copy
+                    // here on every respawn.
+                    app,
                     self.events.clone(),
                     self.tx.clone(),
                 );
@@ -140,7 +146,7 @@ impl<R: ProcessRunner> Actor<R> {
                         // caused the respawn as the ungated arm below does.
                         manually,
                         source,
-                        app.config().listen_timeout.as_duration(),
+                        listen_timeout,
                         spec_prober(&spec),
                         self.tx.clone(),
                     ))

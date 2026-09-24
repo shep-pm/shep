@@ -80,6 +80,14 @@ impl EnvValue {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The value, consuming: the caller already owns the entry, so
+    /// borrowing through [`Self::as_str`] and copying would double the
+    /// allocation for a `String` already in hand.
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 impl From<String> for EnvValue {
