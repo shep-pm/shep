@@ -27,19 +27,17 @@ pub fn schema_keys<T: DogConfig + schemars::JsonSchema>() -> Vec<String> {
 /// The keys a `--print-config` block sets, sorted: one `#key = value` line
 /// each, commented out so the defaults stay the dog's.
 ///
-/// A line opening `# ` is prose, not a setting, and is skipped.
+/// A line opening `# ` is prose, and a line with no `=` sets nothing, so
+/// both are skipped.
 #[must_use]
 pub fn printed_keys(block: &str) -> Vec<String> {
     let mut keys: Vec<String> = block
         .lines()
         .filter_map(|line| line.strip_prefix('#'))
         .filter(|setting| !setting.starts_with(char::is_whitespace))
-        .filter_map(|setting| {
-            setting
-                .split(|c: char| c == '=' || c.is_whitespace())
-                .next()
-        })
-        .filter(|key| !key.is_empty())
+        .filter_map(|setting| setting.split_once('='))
+        .map(|(key, _value)| key.trim_end())
+        .filter(|key| !key.is_empty() && !key.contains(char::is_whitespace))
         .map(str::to_owned)
         .collect();
     keys.sort();
@@ -76,6 +74,11 @@ mod tests {
     #[test]
     fn a_printed_block_names_its_settings_and_not_its_prose() {
         assert_eq!(printed_keys(PRINTED), ["interval", "keep"]);
+    }
+
+    #[test]
+    fn a_key_with_no_value_is_not_a_setting() {
+        assert!(printed_keys("#interval\n#keep\n").is_empty());
     }
 
     /// The comparison a dog writes: two-way, so a stale printed key fails
