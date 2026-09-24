@@ -28,6 +28,7 @@ use std::sync::Arc;
 
 use config::rules_for;
 use event_loop::run_loop;
+use shep_client::dogs::Stop;
 
 use super::DogRuntime;
 use crate::exit::ExitCode;
@@ -43,6 +44,7 @@ use crate::exit::ExitCode;
 /// A refused config or a rule set `Rules::new` rejects are both
 /// [`ExitCode::InvalidConfig`].
 pub async fn run(runtime: DogRuntime) -> ExitCode {
+    let stop = Stop::on_stop_signals();
     let config = match runtime.config::<BarkConfig>() {
         Ok(config) => config,
         Err(_err) => {
@@ -82,6 +84,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
         &config,
         &barks_path,
         shepherd,
+        stop,
     )
     .await
 }

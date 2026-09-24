@@ -237,9 +237,7 @@ mod tests {
     async fn no_request_never_wakes() {
         let mut stop = Stop::never();
         assert!(
-            timeout(Duration::from_secs(60), stop.wait())
-                .await
-                .is_err(),
+            timeout(Duration::from_secs(60), stop.wait()).await.is_err(),
             "nothing requested a stop, so the wait must not resolve"
         );
         assert!(!stop.requested());
@@ -275,9 +273,7 @@ mod tests {
     async fn installed_listeners_do_not_fire_on_their_own() {
         for mut stop in [Stop::on_interrupt(), Stop::on_stop_signals()] {
             assert!(
-                timeout(Duration::from_secs(60), stop.wait())
-                    .await
-                    .is_err(),
+                timeout(Duration::from_secs(60), stop.wait()).await.is_err(),
                 "no signal was sent, so no stop was requested"
             );
         }

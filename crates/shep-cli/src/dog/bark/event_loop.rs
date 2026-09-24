@@ -5,6 +5,7 @@ use core::future::Future;
 use std::path::Path;
 use std::time::Duration;
 
+use shep_client::dogs::Stop;
 use shep_core::protocol::BusEvent;
 use tokio::time::MissedTickBehavior;
 
@@ -16,7 +17,7 @@ use crate::dog::runtime::parse_section;
 use crate::exit::ExitCode;
 
 /// Bark's loop: subscribe for speed, poll for correctness. Ends on
-/// `SIGINT`/`SIGTERM`, or when `events` ends and its re-subscribe fails.
+/// `stop`, or when `events` ends and its re-subscribe fails.
 ///
 /// A dropped frame polls immediately, since the bus drops what a lagging
 /// subscriber cannot keep up with. Firings are spawned, never awaited
@@ -33,6 +34,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
     config: &BarkConfig,
     barks_path: &Path,
     config_source: C,
+    stop: Stop,
 ) -> impl Future<Output = ExitCode> + Send + use<E, F, C> {
     let mut delivery = Delivery::new(config, barks_path);
     let mut poll_period = config.poll.as_duration();
@@ -40,21 +42,13 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
     async move {
         let mut events = events;
         let mut rules = rules;
-
-        let mut sigterm = match crate::shutdown::Terminate::install() {
-            Ok(sigterm) => sigterm,
-            Err(err) => {
-                eprintln!("shep dog bark: could not install a shutdown handler: {err}");
-                return ExitCode::Failure;
-            }
-        };
+        let mut stop = stop;
 
         let mut poll_interval = poll_timer(poll_period);
 
         loop {
             tokio::select! {
-                _ = tokio::signal::ctrl_c() => break ExitCode::Success,
-                _ = sigterm.recv() => break ExitCode::Success,
+                () = stop.wait() => break ExitCode::Success,
                 next = events.next() => {
                     match next {
                         // One connection generation ended. Usually the
@@ -249,6 +243,7 @@ mod tests {
             &barks_path,
             // Never asked: no `config.dog.bark` frame is sent here.
             ScriptedConfig::answering(String::new()),
+            Stop::never(),
         ));
 
         let req = tokio::time::timeout(Duration::from_secs(5), captured)
@@ -319,6 +314,7 @@ mod tests {
             &config_with_sink(addr),
             &barks_path,
             ScriptedConfig::answering(String::new()),
+            Stop::never(),
         ));
 
         // The handover: the first generation's sender goes, exactly as an
@@ -433,6 +429,7 @@ mod tests {
             &config,
             &barks_path,
             ScriptedConfig::answering(String::new()),
+            Stop::never(),
         ));
 
         // The order is the assertion: the slow sink has a connection and
@@ -492,6 +489,7 @@ mod tests {
             &config_with_sink(addr),
             &barks_path,
             ScriptedConfig::answering(String::new()),
+            Stop::never(),
         ));
 
         // Two handovers back to back, each ending a generation the dog is
@@ -553,6 +551,7 @@ mod tests {
             &config_with_sink(addr),
             &barks_path,
             ScriptedConfig::answering(String::new()),
+            Stop::never(),
         ));
         drop(tx);
         tokio::time::timeout(Duration::from_secs(5), loop_handle)
@@ -655,6 +654,7 @@ mod tests {
             &config_with_sink(old_addr),
             &barks_path,
             source.clone(),
+            Stop::never(),
         ));
 
         // One receiver, one queue: the loop awaits the re-ask before it
@@ -705,6 +705,7 @@ mod tests {
             &config_with_sink(addr),
             &barks_path,
             source.clone(),
+            Stop::never(),
         ));
 
         tx.send(BusEvent::DogConfigChanged {

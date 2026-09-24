@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use shep_client::ReconnectingClient;
-use shep_client::dogs::dog_config;
+use shep_client::dogs::{Stop, dog_config};
 use shep_core::protocol::{ProcessInfo, Request, Response};
 use sysinfo::{MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System};
 use tokio::net::{TcpListener, TcpStream};
@@ -161,6 +161,7 @@ pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
 /// A refused bind is fatal: a dog running but bound to nothing looks
 /// healthy from the outside.
 pub async fn run(runtime: DogRuntime) -> ExitCode {
+    let mut stop = Stop::on_stop_signals();
     let config = match runtime.config::<MetricsConfig>() {
         Ok(config) => config,
         Err(_err) => {
@@ -178,17 +179,9 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
             return ExitCode::Failure;
         }
     };
-    let mut sigterm = match crate::shutdown::Terminate::install() {
-        Ok(sigterm) => sigterm,
-        Err(err) => {
-            eprintln!("shep dog metrics: could not install a shutdown handler: {err}");
-            return ExitCode::Failure;
-        }
-    };
     let client = Arc::new(runtime.client);
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => ExitCode::Success,
-        _ = sigterm.recv() => ExitCode::Success,
+        () = stop.wait() => ExitCode::Success,
         () = accept_forever(listener, Arc::clone(&client)) => ExitCode::Success,
         // A scrape is the only thing that makes this dog touch its client,
         // so nothing else here would ever notice the shepherd was gone: an
@@ -205,7 +198,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
 }
 
 /// Accepts connections off `listener` forever, one task per connection.
-/// Never returns: [`run`] races it against the two shutdown signals.
+/// Never returns: [`run`] races it against a stop request.
 async fn accept_forever(listener: TcpListener, client: Arc<ReconnectingClient>) {
     loop {
         match listener.accept().await {
