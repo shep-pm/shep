@@ -7,6 +7,7 @@ use tokio::io::{
     AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader, Lines,
 };
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::time::{Instant, sleep_until, timeout};
 
 use crate::channel::{ChildMessage, ShepherdMessage};
@@ -82,6 +83,13 @@ where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
 {
+    // The common case skips the `select!`, whose timer is registered and
+    // removed per call under a lock every worker thread contends for.
+    match logs_tx.try_reserve() {
+        Ok(slot) => return Some(slot),
+        Err(TrySendError::Closed(())) => return None,
+        Err(TrySendError::Full(())) => {}
+    }
     loop {
         // Recomputed every iteration from the stored mark, so losing the
         // race never extends the window.
