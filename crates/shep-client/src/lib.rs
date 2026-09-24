@@ -32,6 +32,8 @@ mod connection;
 pub mod dogs;
 mod events;
 mod reconnect;
+// inherent methods on `Client` and `ReconnectingClient`, one per typed request
+mod typed;
 // public module, not a flattened re-export, so `spawn::DAEMON_ALREADY_RUNNING`
 // reads as a qualified cross-crate contract. Plain `//`, not `///`: an outer
 // doc on a `mod` item merges into the crate root and breaks this module's

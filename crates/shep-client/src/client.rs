@@ -94,6 +94,17 @@ pub enum RequestError {
     /// knows. The likely cause is a daemon newer than this client, not a
     /// daemon-side failure, so the message says which side could not read.
     Undecodable(WireError),
+    /// The daemon answered with a [`Response`] other than the one a typed
+    /// request expects, such as a `Flock` for a `DogConfig`.
+    ///
+    /// Names both by variant alone: a listing or a dog's section never
+    /// reaches the message.
+    UnexpectedReply {
+        /// The request sent, by its `Request` variant name.
+        asked: &'static str,
+        /// The answer received, by [`Response::name`].
+        answered: &'static str,
+    },
 }
 
 impl fmt::Display for RequestError {
@@ -107,6 +118,9 @@ impl fmt::Display for RequestError {
                 f,
                 "this client could not decode the daemon's reply ({err}); the daemon is likely newer than this build"
             ),
+            Self::UnexpectedReply { asked, answered } => {
+                write!(f, "the daemon answered {asked} with {answered}")
+            }
         }
     }
 }
@@ -115,7 +129,9 @@ impl core::error::Error for RequestError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Wire(err) | Self::Undecodable(err) => Some(err),
-            Self::Rpc(_) | Self::Timeout { .. } | Self::Closed => None,
+            Self::Rpc(_) | Self::Timeout { .. } | Self::Closed | Self::UnexpectedReply { .. } => {
+                None
+            }
         }
     }
 }
