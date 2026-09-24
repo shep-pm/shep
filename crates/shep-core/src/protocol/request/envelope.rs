@@ -108,6 +108,22 @@ impl RpcErrorCode {
         Self::Unsupported,
     ];
 
+    /// The [`crate::exit`] code a process stopping on this refusal exits
+    /// with. A code this build has not been taught is [`crate::exit::INTERNAL`].
+    #[must_use]
+    pub const fn exit_code(self) -> u8 {
+        use crate::exit;
+        match self {
+            Self::NotFound => exit::NOT_FOUND,
+            Self::InvalidConfig => exit::INVALID_CONFIG,
+            Self::SpawnFailed => exit::SPAWN_FAILED,
+            Self::ProtocolMismatch => exit::PROTOCOL_MISMATCH,
+            Self::Internal | Self::Unrecognized => exit::INTERNAL,
+            Self::DeadlineExceeded => exit::DEADLINE_EXCEEDED,
+            Self::Unsupported => exit::UNSUPPORTED,
+        }
+    }
+
     /// Never called; exists so this crate fails to build if a variant is
     /// added to [`RpcErrorCode`] without also being added to [`Self::ALL`].
     ///
