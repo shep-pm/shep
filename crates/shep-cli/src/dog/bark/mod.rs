@@ -44,7 +44,6 @@ use crate::exit::ExitCode;
 /// A refused config or a rule set `Rules::new` rejects are both
 /// [`ExitCode::InvalidConfig`].
 pub async fn run(runtime: DogRuntime) -> ExitCode {
-    let stop = Stop::on_stop_signals();
     let config = match runtime.config::<BarkConfig>() {
         Ok(config) => config,
         Err(err) => {
@@ -82,7 +81,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
         &config,
         &barks_path,
         shepherd,
-        stop,
+        Stop::on_stop_signals(),
     )
     .await
 }

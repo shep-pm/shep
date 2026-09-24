@@ -161,7 +161,6 @@ pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
 /// A refused bind is fatal: a dog running but bound to nothing looks
 /// healthy from the outside.
 pub async fn run(runtime: DogRuntime) -> ExitCode {
-    let mut stop = Stop::on_stop_signals();
     let config = match runtime.config::<MetricsConfig>() {
         Ok(config) => config,
         Err(err) => {
@@ -176,6 +175,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
             return ExitCode::Failure;
         }
     };
+    let mut stop = Stop::on_stop_signals();
     let client = Arc::new(runtime.into_client());
     tokio::select! {
         () = stop.wait() => ExitCode::Success,
