@@ -93,12 +93,12 @@ pub const HOME_DIR_VAR: &str = "%USERPROFILE%";
 /// How an operator on this platform spells `SHEP_HOME`, for a refusal that
 /// has to say what to set.
 #[cfg(not(windows))]
-pub(crate) const SHEP_HOME_VAR: &str = "$SHEP_HOME";
+pub const SHEP_HOME_VAR: &str = "$SHEP_HOME";
 
 /// How an operator on this platform spells `SHEP_HOME`, for a refusal that
 /// has to say what to set.
 #[cfg(windows)]
-pub(crate) const SHEP_HOME_VAR: &str = "%SHEP_HOME%";
+pub const SHEP_HOME_VAR: &str = "%SHEP_HOME%";
 
 /// The directory a shep home defaults to, under the user's own home.
 const DEFAULT_HOME_DIR: &str = ".shep";
@@ -249,7 +249,14 @@ impl ShepPaths {
     /// encoding by building a `String`.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
-        let home = home_under(env, home_dir);
+        Self::at(home_under(env, home_dir))
+    }
+
+    /// The layout under `home`, a root already resolved, as by [`shep_home`].
+    ///
+    /// [`Self::socket`] resolves per-platform, as [`Self::resolve`] says.
+    #[must_use]
+    pub fn at(home: PathBuf) -> Self {
         let run = home.join("run");
         // `mut` is read only by the `cfg(windows)` block below; on unix the
         // value is returned exactly as built.
