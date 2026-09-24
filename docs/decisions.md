@@ -37,7 +37,7 @@ go for the full argument. The commit that removed them names itself.
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
 - [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (4)
-- [CI and releases](#ci-and-releases) (2)
+- [CI and releases](#ci-and-releases) (3)
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (8)
 - [Following the flock](#following-the-flock) (3)
@@ -1982,6 +1982,16 @@ Every CI nextest profile writes junit, and a composite action runs after every n
 **Why:** Retries went on for the integration tier on 2026-09-04 because a contended runner cannot always schedule a real shepherd and real sheep promptly, and the same day's two CI-only failures (the entry above this section) were both real defects a retry would have hidden. The retry is the right call for the merge and the wrong call for the record, and the record was the half that was missing: `.config/nextest.toml` said "`--junit` is on so the retries are countable" while no profile named a junit path, so a retried test left no trace anywhere a person looks. The report always exits 0. The test step already gave the verdict; this is what a person reads afterwards, and it is deliberately loud rather than a count in a log, because a count in a log is what the previous arrangement amounted to.
 
 `verified .config/nextest.toml, .github/actions/nextest-report/action.yml, .github/workflows/test.yml`
+
+### A performance regression is judged on shep's own figure, with pm2 as the control, by hand at a release
+
+`benches/versus-pm2/baseline.json` holds the last kept run of the versus-pm2 harness, and `versus-pm2.sh --check` compares a new run with it through `compare.py`, exiting 0 when every gated metric held, 1 when one regressed past its threshold and 2 when the run cannot be judged. A metric regresses when shep's own figure worsens past its threshold. It is judged only when shep's two rounds agree within that threshold, pm2's figure in the same run is within it of pm2's baseline figure, and the run's OS and architecture match the baseline's. `--record` replaces the baseline and refuses a run those rules could not judge. Nothing in CI runs the harness; CI runs `compare.py`'s tests and a parse of the script.
+
+**Why:** #291 and #292 were both found by a person reading a run against `from-pm2.astro`, because no run was ever kept anywhere a later one could be diffed against (#367). CI stays out of it for the reason the `bench` job already gives: a shared runner cannot hold a wall clock still, and this harness also installs a third-party npm package. Gating on the shep/pm2 ratio was the other candidate, and it charges shep for whatever moves pm2: between the two published runs node went from v26.5.0 to v26.8.1 and pm2's idle RSS fell 7.4%, so the ratio moved 35% where shep's memory grew 25%. Using pm2 as a control instead is the argument both issues were made on, that shep moved while pm2 at the same version on the same box did not. It also turns a machine that moved into an explicit "cannot judge" rather than a false regression or a false pass. Exit 2 is kept apart from exit 1 so that "slower" and "could not tell" never read the same.
+
+The committed baseline was transcribed from the docs page's 2026-09-14 table, not recorded, since that run's `metrics.jsonl` was never kept. Its `notes` field says so, and the first `--record` replaces it.
+
+`verified benches/versus-pm2/compare.py (METRICS, judge, record), benches/versus-pm2/test_compare.py, benches/versus-pm2/versus-pm2.sh (preflight, m_run, main), .github/workflows/test.yml (versus-pm2), web/src/pages/docs/from-pm2.astro, benches/versus-pm2/README.md`
 
 ## Config pane writes
 

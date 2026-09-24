@@ -224,6 +224,79 @@ The four above, plus `cargo test --workspace --all-features -- --test-threads=1`
 and both `benches/` gates. The serial run is not ceremony: it was red on `main`
 before Phase 5 and it caught a real regression in Phase 6.
 
+### The versus-pm2 harness — at a release, by hand, never per pull request
+
+```bash
+./benches/versus-pm2/versus-pm2.sh --check
+```
+
+**Run it on macOS before merging a release pull request, and after any change
+aimed at one of its numbers.** Not per pull request, and not in CI: it
+installs a third-party npm package, spends minutes of wall clock, and is worth
+nothing on a machine that is not held still, which a shared runner never is.
+The `bench` job runs the two criterion benches with `-- --test` for the same
+reason, and its comment says so. `benches/versus-pm2/README.md` lists what a
+run needs on disk first, and the harness refuses to start without it.
+
+**Until 2026-09-24 a run's only record was a docs page.** Both regressions on
+record, warm start in #291 and idle RSS, log cost and binary size in #292,
+were found by a person running the harness and reading its output against
+`from-pm2.astro`. Nothing in the repository could have caught either.
+`benches/versus-pm2/baseline.json` is that record now, and `--check` is the
+comparison. It exits with one of three codes:
+
+- **0, held.** Every gated metric is within its threshold.
+- **1, regressed.** shep's own figure moved past a threshold while pm2 held.
+  The report names the metric, both figures and pm2's change beside them.
+- **2, cannot judge.** Not a pass. shep's two rounds disagreed by more than
+  the threshold, pm2 itself moved past it, a round is missing, or the run
+  came from another OS or architecture than the baseline. Each one means the
+  run could not tell a change that size from the machine moving, so it says
+  which rather than guessing. Re-run on a quieter machine.
+
+**pm2 is the control, not the denominator.** A regression is a change in
+shep's own figure, judged only when pm2's figure in the same run held within
+the same threshold. That is the argument #291 and #292 were made on: shep
+moved, pm2 at the same version on the same box did not. Dividing shep by pm2
+instead would charge shep for whatever moved pm2. Between 2026-08-29 and
+2026-09-14 node went from v26.5.0 to v26.8.1 and pm2's idle RSS fell 7.4%,
+so the ratio moved 35% where shep's own memory grew 25%. Binary size has no
+control, since machine load does not move a file size.
+
+**Thresholds are code, each with its reason.** `METRICS` in
+`benches/versus-pm2/compare.py`: 10% for idle RSS and both start times, 5%
+for log cost per line because a real 8% regression is on record that 10%
+would pass, 5% for binary size because a byte count is not noise, and idle
+CPU reported but never gated, since both tools sit at hundredths of a
+percent. `--check --threshold start_warm=20` moves one for one run. Moving one
+for good is a change to that table, reviewed like any other.
+
+**Record when the numbers move on purpose.** A regression you have decided to
+ship, an improvement worth holding onto (`--check` names one and says to
+record it, or a later slide back to the old figure passes unnoticed), or a
+new pm2 or node to measure against:
+
+```bash
+./benches/versus-pm2/versus-pm2.sh --record
+```
+
+It refuses a run with a missing round, or with two shep rounds further apart
+than a threshold, because a baseline its own thresholds cannot judge against
+is not one. Commit the `git diff` of `baseline.json` with the reason in the
+message. A baseline is one machine's: on a different machine, record at the
+baseline's shep version there first, then check the new build against that.
+
+The committed file was transcribed from `from-pm2.astro`'s 2026-09-14 table,
+not recorded, because that run's samples were never kept. Its `notes` field
+says what that costs. The first `--record` replaces it.
+
+**What nothing measures yet**, so a green `--check` says nothing about it:
+daemon boot on its own rather than inside a cold start, a round trip over the
+control socket (the harness's `list_roundtrip_s` is a whole `shep flock`
+process, spawn included), handover and reload timing, lookout's render time
+per frame, whistle's request latency, Flockfile and config parse time, and
+log throughput as a bench rather than as one line of a shell script.
+
 ### Measuring a mutation's blast radius
 
 Use the inner loop. Escalate to `cargo test --workspace --all-features
