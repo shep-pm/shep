@@ -66,6 +66,18 @@ struct OverridesFile {
     apps: BTreeMap<String, AppOverrides>,
 }
 
+impl OverridesFile {
+    /// Whether `name` already holds `record`, `None` meaning absent, in a
+    /// current-version store
+    ///
+    /// A rewrite costs two `fsync`s, each a full drive-cache flush on macOS,
+    /// and every load of an unchanged Flockfile asks for one. A missing or
+    /// older store never holds anything: writing it creates or upgrades it.
+    fn holds(&self, name: &str, record: Option<&AppOverrides>) -> bool {
+        self.version == OVERRIDES_VERSION && self.apps.get(name) == record
+    }
+}
+
 /// Error type returned by this module.
 ///
 /// `#[non_exhaustive]`: shep-core is published, so a new failure variant
@@ -182,6 +194,8 @@ pub fn get(path: &Path, name: &str) -> Result<Option<AppOverrides>, OverridesErr
 
 /// Stores `value` under `name`, replacing any previous overrides.
 ///
+/// Writes nothing when the store already holds exactly `value` there.
+///
 /// # Errors
 ///
 /// - [`OverridesError::FutureVersion`]: the store on disk is newer than
@@ -192,6 +206,9 @@ pub fn get(path: &Path, name: &str) -> Result<Option<AppOverrides>, OverridesErr
 pub fn put(path: &Path, name: &str, value: &AppOverrides) -> Result<(), OverridesError> {
     let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
+    if file.holds(name, Some(value)) {
+        return Ok(());
+    }
     file.version = OVERRIDES_VERSION;
     file.apps.insert(name.to_string(), value.clone());
     write_file(path, &file)
@@ -219,7 +236,8 @@ pub fn remove(path: &Path, name: &str) -> Result<bool, OverridesError> {
 /// change lands or none does. Names the batch does not mention are left
 /// untouched, and the read and write happen under the same lock, so this
 /// is safe against a concurrent writer touching a different app. An empty
-/// batch takes no lock and writes nothing.
+/// batch takes no lock and writes nothing, and a batch the store already
+/// holds takes the lock and writes nothing.
 ///
 /// # Errors
 ///
@@ -234,6 +252,12 @@ pub fn update(
     }
     let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
+    if changes
+        .iter()
+        .all(|(name, change)| file.holds(name, change.as_ref()))
+    {
+        return Ok(());
+    }
     for (name, change) in changes {
         match change {
             Some(value) => {
@@ -284,6 +308,71 @@ mod tests {
         let path = dir.path().join("overrides.json");
         update(&path, &BTreeMap::new()).unwrap();
         assert!(!path.exists(), "an empty batch created a store");
+    }
+
+    /// Compact on purpose: any rewrite pretty-prints, so surviving bytes
+    /// mean nothing was written.
+    #[test]
+    fn a_batch_the_store_already_holds_leaves_the_file_alone() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("overrides.json");
+        let compact = r#"{"version":1,"apps":{"web":{"fields":{},"declared":["name","script"],"declared_env":[]}}}"#;
+        std::fs::write(&path, compact).unwrap();
+        let web = AppOverrides {
+            declared: ["name", "script"].iter().map(|s| s.to_string()).collect(),
+            ..AppOverrides::default()
+        };
+
+        let unchanged = BTreeMap::from([
+            ("web".to_string(), Some(web.clone())),
+            ("never-stored".to_string(), None),
+        ]);
+        update(&path, &unchanged).unwrap();
+        put(&path, "web", &web).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
+    }
+
+    #[test]
+    fn one_changed_record_rewrites_the_whole_batch() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("overrides.json");
+        let compact = r#"{"version":1,"apps":{"api":{"fields":{},"declared":["script"],"declared_env":[]},"db":{"fields":{},"declared":["script"],"declared_env":[]}}}"#;
+        std::fs::write(&path, compact).unwrap();
+        let declaring = |keys: &[&str]| AppOverrides {
+            declared: keys.iter().map(|s| s.to_string()).collect(),
+            ..AppOverrides::default()
+        };
+
+        let changes = BTreeMap::from([
+            ("api".to_string(), Some(declaring(&["script"]))),
+            ("db".to_string(), Some(declaring(&["cwd", "script"]))),
+        ]);
+        update(&path, &changes).unwrap();
+
+        assert_ne!(std::fs::read_to_string(&path).unwrap(), compact);
+        let stored = all(&path).unwrap();
+        assert_eq!(stored.get("api"), Some(&declaring(&["script"])));
+        assert_eq!(stored.get("db"), Some(&declaring(&["cwd", "script"])));
+    }
+
+    /// The version is part of what a store holds: a record equal to the
+    /// batch's still gets its file upgraded.
+    #[test]
+    fn an_older_store_is_rewritten_even_when_its_records_match() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("overrides.json");
+        std::fs::write(
+            &path,
+            r#"{"version":0,"apps":{"worker":{"fields":{},"declared":[],"declared_env":[]}}}"#,
+        )
+        .unwrap();
+
+        put(&path, "worker", &AppOverrides::default()).unwrap();
+
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(raw["version"], serde_json::json!(OVERRIDES_VERSION));
     }
 
     #[test]
