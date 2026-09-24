@@ -30,8 +30,10 @@
 
 use std::io::Write as _;
 
+mod identity;
 mod stop;
 
+pub use identity::DogIdentity;
 pub use shep_core::dogs::SECRET_KEY;
 use shep_core::dogs::{SCHEMA_FLAG, SHEP_PROTOCOL_KEY, VERSION_FLAG};
 /// The attribute that implements [`DogConfig`], re-exported so a dog takes
