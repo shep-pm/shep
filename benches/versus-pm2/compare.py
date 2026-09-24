@@ -40,6 +40,7 @@ import argparse
 import json
 import math
 import sys
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -160,10 +161,18 @@ class Row:
 
 
 def number(value: object) -> float | None:
-    """A JSON number as a float, or None for anything else, bools included."""
+    """A JSON number as a float, or None for anything else, bools included.
+
+    None for an int past a float's range too, such as `10**400` in a
+    hand-edited `metrics.jsonl`: `math.isfinite` raises on one rather than
+    answering.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value) if math.isfinite(value) else None
+    try:
+        return float(value) if math.isfinite(value) else None
+    except OverflowError:
+        return None
 
 
 def change(now: float | None, then: float | None) -> float | None:
@@ -574,6 +583,12 @@ def main(argv: list[str] | None = None) -> int:
         return args.run(args)
     except InputError as err:
         print(f"compare.py: {err}", file=sys.stderr)
+        return UNJUDGED
+    except Exception:
+        # Python exits 1 on an uncaught error, which is REGRESSED's code, so
+        # a crash would otherwise read as shep getting slower.
+        traceback.print_exc()
+        print("compare.py: crashed, so nothing was judged", file=sys.stderr)
         return UNJUDGED
 
 

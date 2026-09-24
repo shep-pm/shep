@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -286,6 +287,19 @@ class Judge(Harness):
         self.baseline.write_text(json.dumps(baseline))
         self.assertEqual(self.check(make_run()), 2)
         self.assertIn("schema 2, and this checker reads 1", self.out)
+
+    def test_an_int_past_a_floats_range_is_a_missing_figure_not_a_crash(self) -> None:
+        run = make_run()
+        next(r for r in run if r["metric"] == "idle" and r["tag"] == "A1")["rss_kb"] = 10**400
+        self.assertEqual(self.check(run), 2, self.out)
+        self.assertIn("idle_rss: the run has 1 of 2 shep rounds", self.out)
+        self.assertEqual(self.record(run), 2, self.out)
+        self.assertNotIn("Traceback", self.out)
+
+    def test_a_crash_exits_cannot_judge_never_regressed(self) -> None:
+        with mock.patch.object(compare, "judge", side_effect=RuntimeError("boom")):
+            self.assertEqual(self.check(make_run()), 2)
+        self.assertIn("crashed, so nothing was judged", self.out)
 
     def test_a_line_that_is_not_json_names_its_line(self) -> None:
         path = self.dir / "metrics.jsonl"
