@@ -6,6 +6,15 @@
 #
 # Every metric is a function; run the whole thing or source it and call one.
 #
+#   versus-pm2.sh            run, then print metrics.jsonl
+#   versus-pm2.sh --check    run, then judge it against baseline.json:
+#                            exit 0 held, 1 regressed, 2 cannot judge
+#   versus-pm2.sh --record   run, then write it to baseline.json
+#
+# Anything after --check is handed to compare.py, so
+# `--check --threshold start_warm=20` loosens one metric for one run.
+# compare.py's docstring says what each verdict means.
+#
 # WHY $ROOT IS NOT UNDER $SCRATCH: an AF_UNIX sun_path is 104 bytes. The
 # scratch dir alone is 155 chars, so both daemons fail to bind a socket under
 # it - pm2 wedges a God Daemon at 100% CPU, shep refuses outright. pm2 also
@@ -23,6 +32,10 @@ PM2_BIN="$SCRATCH/pm2-install/node_modules/.bin/pm2"
 SHEP_HOME_DIR="$ROOT/shep-bench-home"
 APPS="$ROOT/apps"
 export PM2_HOME="$ROOT/pm2-home"
+# Next to this script, so --record writes into the checkout it runs from and
+# the result is a diff to commit.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE="${VERSUS_BASELINE:-$HERE/baseline.json}"
 
 N_APPS=10
 SETTLE_IDLE=10
@@ -33,7 +46,6 @@ START_TIMEOUT=60
 POLL_INTERVAL=0.01
 LINE_BYTES=62   # verified at runtime by check_line_bytes
 
-mkdir -p "$RAW" "$APPS"
 METRICS="$RAW/metrics.jsonl"
 
 # ---------------------------------------------------------------- helpers --
@@ -413,11 +425,57 @@ m_footprint() {
 
 m_versions() {
   local sha pv nv
-  sha=$(cd "$SCRATCH/wt-bench" && git rev-parse HEAD)
+  # The checkout SHEP_BIN was built in, not a fixed worktree: a SHEP_BIN
+  # pointed elsewhere otherwise records another build's commit, and a
+  # recorded baseline carries that commit into the repository. Empty when
+  # the binary is not under a checkout, which compare.py reads as unknown.
+  sha=$(git -C "$(dirname "$SHEP_BIN")" rev-parse HEAD 2>/dev/null)
   pv=$(node -e "console.log(require('$SCRATCH/pm2-install/node_modules/pm2/package.json').version)")
   nv=$(node --version)
   emit "{\"metric\":\"versions\",\"shep_sha\":\"$sha\",\"shep_version\":\"$("$SHEP_BIN" --version | head -1 | awk '{print $2}')\",\"pm2\":\"$pv\",\"node\":\"$nv\"}"
   echo "  shep $sha | pm2 $pv | node $nv"
+}
+
+# The run's date and platform, which compare.py needs before it will judge
+# anything: a baseline only judges runs from its own OS and architecture.
+# Built with json.dumps rather than by hand, since a CPU brand string is not
+# ours to trust to be quote-free.
+m_run() {
+  emit "$(python3 - "$(date +%F)" "$(uname -s)" "$(uname -m)" \
+    "$(sysctl -n machdep.cpu.brand_string 2>/dev/null)" \
+    "$(sysctl -n hw.ncpu 2>/dev/null)" <<'PY'
+import json, sys
+date, os_, arch, cpu, ncpu = sys.argv[1:]
+print(json.dumps({"metric": "run", "date": date, "os": os_, "arch": arch,
+                  "cpu": cpu or None, "ncpu": int(ncpu) if ncpu.isdigit() else None}))
+PY
+)"
+}
+
+# Everything a run needs and does not make for itself, checked before
+# anything is killed or started. Missing, each one surfaces minutes in as a
+# start failure in the first round rather than as the thing that is missing.
+preflight() {
+  local ok=0 tool
+  # `stat -f %z`, `sysctl machdep` and a /private/tmp root are all macOS.
+  # GNU stat reads `-f` as "report the filesystem" and `%z` as a second
+  # file to report on, so every size this takes would be a paragraph of
+  # filesystem statistics rather than a number.
+  [ "$(uname -s)" = Darwin ] || {
+    echo "this harness is macOS-only; it reads BSD stat and sysctl" >&2; ok=1; }
+  [ -x "$SHEP_BIN" ] || {
+    echo "no shep binary at $SHEP_BIN: build one, or set SHEP_BIN" >&2; ok=1; }
+  [ -x "$PM2_BIN" ] || {
+    echo "no pm2 at $PM2_BIN: npm install --prefix $SCRATCH/pm2-install pm2@<version>," >&2
+    echo "  the baseline's version for --check, so the control is the same program" >&2
+    ok=1; }
+  for tool in python3 perl node; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "$tool is not on PATH" >&2; ok=1; }
+  done
+  if [ "$MODE" = check ] && [ ! -r "$BASELINE" ]; then
+    echo "no baseline at $BASELINE to check against" >&2; ok=1
+  fi
+  return "$ok"
 }
 
 # Idempotent: the trap and the normal path both call this.
@@ -448,6 +506,39 @@ round() { # tag
   m_idle  shep "$tag"; m_log  shep "$tag"; m_start shep "$tag"
 }
 
+usage() {
+  cat <<'USAGE'
+usage: versus-pm2.sh [--check [compare.py check options] | --record]
+       source versus-pm2.sh --source-only    then call one m_* function
+
+  (none)    run shep, pm2, shep, then print metrics.jsonl
+  --check   run, then judge the result against baseline.json:
+            exit 0 held, 1 regressed, 2 cannot judge
+  --record  run, then write the result to baseline.json
+
+VERSUS_BASELINE names another baseline file for either mode.
+USAGE
+}
+
+# Read before any trap is installed or any daemon touched: a mistyped mode
+# should cost nothing, not a cleanup pass over the bench daemons. What
+# follows --check is compare.py's, read when the run ends; a mistake there
+# costs one re-judge of the kept samples, which main prints the command for.
+MODE=run
+case "${1:-}" in
+  --source-only) MODE=source ;;
+  --check)       MODE=check; shift ;;
+  --record)      MODE=record; shift
+                 [ $# -eq 0 ] || { usage >&2; exit 2; } ;;
+  -h|--help)     usage; exit 0 ;;
+  "")            ;;
+  *)             usage >&2; exit 2 ;;
+esac
+if [ "$MODE" != source ]; then
+  preflight || exit 2
+fi
+mkdir -p "$RAW" "$APPS"
+
 # Installed here, below cleanup_all's definition: a trap set before the
 # function exists fires into an unbound name on an early interrupt.
 #
@@ -467,6 +558,7 @@ main() {
   # called it.
   write_workloads || exit 1
   m_versions
+  m_run
   echo "--- machine ---"
   echo "$(sysctl -n machdep.cpu.brand_string) / $(sysctl -n hw.ncpu) cpus"
   pmset -g batt | head -2
@@ -483,6 +575,25 @@ main() {
   m_footprint
   cleanup_all
   echo; echo "=== metrics.jsonl ==="; cat "$METRICS"
+
+  local rc=0
+  case "$MODE" in
+    check)
+      echo; echo "=== against $BASELINE ==="
+      python3 "$HERE/compare.py" check "$METRICS" --baseline "$BASELINE" "$@"
+      rc=$?
+      # The raw samples outlive the run, so a second opinion, or the same
+      # one with a threshold moved, never needs another run.
+      echo; echo "judge this run again without re-running it:"
+      echo "  python3 $HERE/compare.py check $METRICS"
+      ;;
+    record)
+      echo
+      python3 "$HERE/compare.py" record "$METRICS" --out "$BASELINE"
+      rc=$?
+      ;;
+  esac
+  return "$rc"
 }
 
-[ "${1:-}" = "--source-only" ] || main "$@"
+[ "$MODE" = source ] || main "$@"
