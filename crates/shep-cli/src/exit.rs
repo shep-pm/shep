@@ -168,9 +168,9 @@ mod tests {
 
     #[test]
     fn every_rpc_error_code_maps_to_a_distinct_nonzero_exit_code() {
-        // `ALL` is exhaustive-checked inside shep-core, so a new variant lands
-        // here, collides with `Internal` under the `From` impl's `_` arm, and
-        // fails the distinctness assertion.
+        // `ALL` and `RpcErrorCode::exit_code` are both exhaustive inside
+        // shep-core, so a new variant lands here with a number of its own,
+        // and one reusing another's fails the distinctness assertion.
         let codes = shep_core::protocol::RpcErrorCode::ALL;
         let mapped: Vec<u8> = codes.iter().map(|c| ExitCode::from(*c) as u8).collect();
         assert!(
