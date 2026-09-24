@@ -5,7 +5,7 @@ use core::future::Future;
 use std::path::Path;
 use std::time::Duration;
 
-use shep_client::dogs::Stop;
+use shep_client::dogs::{Stop, parse_section};
 use shep_core::protocol::BusEvent;
 use tokio::time::MissedTickBehavior;
 
@@ -13,7 +13,6 @@ use super::config::{BarkConfig, rules_for};
 use super::delivery::{Delivery, spawn_firings};
 use super::rules::Rules;
 use super::source::{ConfigSource, EventSource, FlockSource, Resubscribe};
-use crate::dog::runtime::parse_section;
 use crate::exit::ExitCode;
 
 /// Bark's loop: subscribe for speed, poll for correctness. Ends on
@@ -147,10 +146,10 @@ pub(super) async fn reloaded_config<C: ConfigSource>(source: &C) -> Option<(Bark
     };
     // Empty means the section is gone. The default no-sink rule is
     // rejected, so bark keeps the current configuration.
-    let config = match parse_section::<BarkConfig>(&section) {
+    let config = match parse_section::<BarkConfig>("bark", &section) {
         Ok(config) => config,
-        Err(_err) => {
-            eprintln!("shep dog bark: [bark] in dogs.toml does not parse; see `shep dogs`");
+        Err(err) => {
+            eprintln!("shep dog bark: {err}; see `shep dogs`");
             return None;
         }
     };

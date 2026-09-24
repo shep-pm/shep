@@ -164,11 +164,8 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
     let mut stop = Stop::on_stop_signals();
     let config = match runtime.config::<MetricsConfig>() {
         Ok(config) => config,
-        Err(_err) => {
-            // The fact, not the value: `DogRunError::Section`'s message is
-            // the TOML parser's own complaint, which can quote the
-            // offending line.
-            eprintln!("shep dog metrics: [metrics] in dogs.toml does not parse; see `shep dogs`");
+        Err(err) => {
+            eprintln!("shep dog metrics: {err}; see `shep dogs`");
             return ExitCode::InvalidConfig;
         }
     };
@@ -179,7 +176,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
             return ExitCode::Failure;
         }
     };
-    let client = Arc::new(runtime.client);
+    let client = Arc::new(runtime.into_client());
     tokio::select! {
         () = stop.wait() => ExitCode::Success,
         () = accept_forever(listener, Arc::clone(&client)) => ExitCode::Success,

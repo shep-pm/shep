@@ -66,7 +66,7 @@ pub enum Resubscribe {
     ///   never have reached a shepherd at all.
     ///
     /// Named for the request rather than for a refusal, matching
-    /// [`DogRunError::Request`](crate::dog::runtime::DogRunError::Request),
+    /// [`ShepherdError::Request`](shep_client::dogs::ShepherdError::Request),
     /// because only one of the four is a refusal.
     ///
     /// `Timeout` cannot arrive here today: `ClientEvents::resubscribe`

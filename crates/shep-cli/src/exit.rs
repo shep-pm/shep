@@ -146,6 +146,14 @@ impl From<&shep_client::LinkLost> for ExitCode {
     }
 }
 
+/// Maps a dog failing on its shepherd to the exit code that reports it,
+/// through [`shep_client::dogs::ShepherdError::exit_code`].
+impl From<&shep_client::dogs::ShepherdError> for ExitCode {
+    fn from(err: &shep_client::dogs::ShepherdError) -> Self {
+        Self::from_shared(err.exit_code())
+    }
+}
+
 /// Maps a failed `connect_or_spawn` attempt to the exit code that reports
 /// it, through [`shep_client::spawn::SpawnError::exit_code`].
 impl From<&shep_client::spawn::SpawnError> for ExitCode {

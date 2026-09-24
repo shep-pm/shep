@@ -12,13 +12,12 @@
 
 pub mod bark;
 pub mod metrics;
-mod runtime;
 
-pub use runtime::DogRuntime;
-use runtime::exit_code_for;
+pub use shep_client::dogs::DogRuntime;
 
 use std::time::Duration;
 
+use shep_client::dogs::DogIdentity;
 use shep_core::paths::ShepPaths;
 
 use crate::exit::ExitCode;
@@ -136,11 +135,11 @@ pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
         );
         return ExitCode::Usage;
     };
-    let runtime = match DogRuntime::start(name, paths).await {
+    let runtime = match DogRuntime::start(DogIdentity::named(name), paths).await {
         Ok(runtime) => runtime,
         Err(err) => {
             eprintln!("shep dog {name}: {err}");
-            return exit_code_for(&err);
+            return ExitCode::from(&err);
         }
     };
     match dog {
