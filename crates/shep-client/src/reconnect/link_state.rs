@@ -49,6 +49,20 @@ pub enum LinkLost {
     },
 }
 
+impl LinkLost {
+    /// The [`shep_core::exit`] code a dog giving up on its shepherd uses.
+    ///
+    /// Not success: a dog nothing answered has not finished its work.
+    #[must_use]
+    pub const fn exit_code(&self) -> u8 {
+        use shep_core::exit;
+        match self {
+            Self::Refused { .. } => exit::PROTOCOL_MISMATCH,
+            Self::Budget { .. } => exit::DAEMON_UNREACHABLE,
+        }
+    }
+}
+
 impl fmt::Display for LinkLost {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -117,5 +131,18 @@ mod tests {
     fn reconnected_debug_is_the_verdict_and_nothing_else() {
         assert_eq!(format!("{:?}", Reconnected::SameDaemon), "SameDaemon");
         assert_eq!(format!("{:?}", Reconnected::NewDaemon), "NewDaemon");
+    }
+
+    #[test]
+    fn a_refused_link_exits_protocol_mismatch_and_a_spent_budget_unreachable() {
+        let refused = LinkLost::Refused {
+            daemon_version: None,
+            message: "too old".to_owned(),
+        };
+        let spent = LinkLost::Budget {
+            waited: Duration::from_secs(5),
+        };
+        assert_eq!(refused.exit_code(), shep_core::exit::PROTOCOL_MISMATCH);
+        assert_eq!(spent.exit_code(), shep_core::exit::DAEMON_UNREACHABLE);
     }
 }

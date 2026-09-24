@@ -107,6 +107,25 @@ pub enum RequestError {
     },
 }
 
+impl RequestError {
+    /// The [`shep_core::exit`] code a process stopping on this error uses.
+    ///
+    /// A refusal takes its own code's number, and a closed connection is
+    /// nothing answering. A reply this build cannot decode is a plain
+    /// failure, since neither side is known to be at fault.
+    #[must_use]
+    pub const fn exit_code(&self) -> u8 {
+        use shep_core::exit;
+        match self {
+            Self::Rpc(rpc) => rpc.code.exit_code(),
+            Self::Timeout { .. } => exit::DEADLINE_EXCEEDED,
+            Self::Closed => exit::DAEMON_UNREACHABLE,
+            Self::Wire(_) | Self::UnexpectedReply { .. } => exit::INTERNAL,
+            Self::Undecodable(_) => exit::FAILURE,
+        }
+    }
+}
+
 impl fmt::Display for RequestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -358,4 +377,41 @@ impl Client {
 /// above the wire range saturates at `u64::MAX` ms rather than overflowing.
 fn millis(d: Duration) -> u64 {
     u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use shep_core::exit;
+    use shep_core::protocol::RpcErrorCode;
+
+    use super::*;
+
+    #[test]
+    fn a_request_error_exits_on_its_causes_code() {
+        let unsupported = RequestError::Rpc(RpcError {
+            code: RpcErrorCode::Unsupported,
+            message: "no such verb".to_owned(),
+            daemon_version: None,
+        });
+        let cases = [
+            (unsupported, exit::UNSUPPORTED),
+            (RequestError::Closed, exit::DAEMON_UNREACHABLE),
+            (
+                RequestError::Timeout {
+                    after: Duration::from_secs(7),
+                },
+                exit::DEADLINE_EXCEEDED,
+            ),
+            (
+                RequestError::UnexpectedReply {
+                    asked: "ListFlock",
+                    answered: "Pong",
+                },
+                exit::INTERNAL,
+            ),
+        ];
+        for (err, code) in cases {
+            assert_eq!(err.exit_code(), code, "{err}");
+        }
+    }
 }
