@@ -70,7 +70,9 @@ shep-macros.workspace = true
 # through shep-core and whistle, so this adds an edge rather than a crate.
 schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["net", "rt", "time", "sync", "macros"] }
+# `signal` is `dogs::Stop`'s: every dog needs a handler installed before its
+# loop starts, and adds no crate shep-cli has not already pulled in.
+tokio = { workspace = true, features = ["net", "rt", "time", "sync", "macros", "signal"] }
 tokio-util.workspace = true
 tokio-stream.workspace = true   # wrappers::BroadcastStream, for the event-bus subscription stream
 futures-util.workspace = true
