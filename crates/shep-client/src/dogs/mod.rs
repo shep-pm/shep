@@ -30,10 +30,12 @@
 
 use std::io::Write as _;
 
+mod error;
 mod identity;
 mod section;
 mod stop;
 
+pub use error::ShepherdError;
 pub use identity::DogIdentity;
 pub use section::{SectionError, parse_section};
 pub use shep_core::dogs::SECRET_KEY;
