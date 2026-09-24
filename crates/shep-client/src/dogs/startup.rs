@@ -92,6 +92,9 @@ pub fn parse_args<'a>(
 }
 
 /// Why no shep home could be found to reach the shepherd through.
+///
+/// Non-exhaustive: the CLI refuses more homes than this, and a dog may
+/// come to refuse them too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HomeError {
