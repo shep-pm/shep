@@ -2322,3 +2322,19 @@ while the runtime has not run at all. The visible tell is an unfilled `{{ }}`
 template hole.
 
 `verified docs/lookout/design-files/README.md, docs/shep-design/README.md, and the five .dc.html scenes in those two directories`
+
+## Durable writes on the start path
+
+### An override write that changes nothing is not made, because on macOS it was the whole warm-start regression
+
+`overrides::update` and `overrides::put` now read the store under the lock as before, and return without writing when every change is one the store already holds at the current version. A missing store, or one at an older version, is still written.
+
+**Why:** Starting ten apps against a running shepherd went from 0.056 s at 0.1.12 to 0.095 s at 0.8.0 on macOS (#291), and the Linux runs could not see it. There the two versions measure about 0.03 s apiece, and every sheep is online at the first poll in both. The count is what moved. A warm start made one `fsync` at 0.1.12 and four at 0.8.0; a cold start two and five. Two of the four sit on the path `shep start` waits for: the `ApplyConfig` that `cdfa9d73` sends after `Start` to establish a fresh app's declared keys rewrites `overrides.json` on the supervisor's own thread, and `e93304d4` made each such write flush the directory as well as the file. The `flock.json` pair is written by the debounced roll writer and delays no reply. On Linux here an `fsync` is close to free. On macOS `File::sync_all` is `fcntl(F_FULLFSYNC)`, which flushes the drive's whole write cache. Two of those at about 20 ms apiece are the gap; that per-flush figure is inferred from the gap, not measured on a Mac.
+
+The versus-pm2 harness measures exactly that rewrite: `shep delete all` leaves each record in place, so the warm start's `ApplyConfig` writes a byte-identical file, and so does its cold start, because `reset_shep` keeps `$SHEP_HOME`. So does every deploy that re-runs an unchanged Flockfile. Skipping only a write that changes nothing keeps both fixes whole. A first load and an edited file still establish durably before the reply, and `sync_dir` still runs on every write that is made.
+
+It was measured on Linux by preloading a shim that adds a fixed delay to every `fsync` and `fdatasync`. At 10 ms each, median of ten warm starts, two runs apiece: 0.1.12 at 0.030 s both times, 0.8.0 at 0.052 s and 0.051 s, the fix at 0.032 s both times. A cold start that keeps `$SHEP_HOME` gave 0.158 s and 0.160 s, 0.181 s and 0.185 s, then 0.164 s and 0.158 s. Without the delay all three are level. A root shepherd refuses to open a sheep's log below `/tmp`, so a Linux run as root needs `$SHEP_HOME` under a directory root owns. The macOS figures are for the next harness run to confirm.
+
+`reloading_an_unchanged_file_leaves_the_override_store_unwritten` is the guard, since nothing in CI times a start. It fails against the store as it was before this change.
+
+`verified crates/shep-core/src/overrides.rs (holds, put, update), crates/shep-daemon/src/supervisor/actor_config.rs (handle_apply_config), crates/shep-cli/src/commands/lifecycle/start.rs (the establishing apply_declared), crates/shep-core/src/atomic_file.rs (publish, sync_dir), crates/shep-daemon/src/snapshot/mod.rs (FlockRegistry::record)`
