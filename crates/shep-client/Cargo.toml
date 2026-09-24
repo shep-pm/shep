@@ -73,6 +73,10 @@ serde_json = { workspace = true, optional = true }
 # `signal` is `dogs::Stop`'s: every dog needs a handler installed before its
 # loop starts, and adds no crate shep-cli has not already pulled in.
 tokio = { workspace = true, features = ["net", "rt", "time", "sync", "macros", "signal"] }
+# `dogs::parse_section`: a dog's section arrives as TOML text, and the
+# parse is shared so none of them can quote a credential in its error.
+serde.workspace = true
+toml.workspace = true
 tokio-util.workspace = true
 tokio-stream.workspace = true   # wrappers::BroadcastStream, for the event-bus subscription stream
 futures-util.workspace = true
