@@ -12,7 +12,8 @@ times a wall clock, and a shared runner can hold neither still.
 
 `VERSUS_SCRATCH` picks where builds, the pm2 install and the raw samples go
 (default `/tmp/shep-versus-pm2`); `SHEP_BIN` points at an already-built
-release binary if you have one. `docs/testing.md` says when to run it.
+release `shep` if you have one, with the package's other binaries beside it.
+`docs/testing.md` says when to run it.
 
 ## Before the first run
 
@@ -22,9 +23,10 @@ before it touches a daemon, and names whatever is missing:
 - macOS. It reads BSD `stat` and `sysctl`, and its socket root is under
   `/private/tmp`.
 - A release build of shep at `$VERSUS_SCRATCH/wt-bench/target/release/shep`,
-  or wherever `SHEP_BIN` says. A worktree keeps the build off your checkout,
-  and with no `CARGO_TARGET_DIR` set the binary lands inside it, which is how
-  the run finds the commit it records:
+  or wherever `SHEP_BIN` says, with every other `[[bin]]` the package
+  declares beside it: the footprint sizes all of them. A worktree keeps the
+  build off your checkout, and with no `CARGO_TARGET_DIR` set the binaries
+  land inside it, which is how the run finds the commit it records:
 
   ```sh
   git worktree add /tmp/shep-versus-pm2/wt-bench <rev>
@@ -69,9 +71,9 @@ Both tools run the *same two shell scripts* the harness writes, under the same
 | Metric | Workload |
 | --- | --- |
 | Idle daemon CPU and RSS | ten `while true; do sleep 5; done` apps |
-| Log-plane CPU per line | one unthrottled `echo` loop, 62-byte lines |
+| Log-plane CPU per line | one unthrottled `echo` loop, 58-byte lines |
 | Start latency | ten apps, cold daemon and warm |
-| Footprint | shep's binary against the pm2 install tree |
+| Footprint | every binary a shep install puts on disk against the pm2 install tree |
 
 The shepherd is what is sampled, never the children. On the pm2 side that
 means its God Daemon.
@@ -115,12 +117,18 @@ Idle CPU is reported as the instrument read it. Both figures are hundredths
 of one percent of one core; the difference is not a result.
 
 That footprint row compares one binary against a whole install tree, which is
-not a like-for-like. `m_footprint` reads `stat` on `$SHEP_BIN` alone, and the
+not a like-for-like. `m_footprint` read `stat` on `$SHEP_BIN` alone, and the
 three-binary split landed on 2026-08-15, before this run: an install put
 `shep`, `shep-runtime` and `shep-dev` on disk, so the honest shep side of that
 row is three times 14.23 MiB. The row said "Install footprint" until
 2026-09-14. The harness's own printed label said "shep binary" the whole
 time.
+
+`m_footprint` now reads the `[[bin]]` names from
+`crates/shep-cli/Cargo.toml`, sizes each one beside `$SHEP_BIN`, and reports
+their sum as the install, plus the gzipped tar of them as the download. It
+refuses to report when one is missing, rather than count part of the install
+as all of it.
 
 Neither side counts a runtime. shep's binaries are static and pm2's tree is
 not: it needs Node, another 72.73 MiB installed on the machine these were

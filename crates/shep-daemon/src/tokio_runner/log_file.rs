@@ -10,7 +10,7 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use shep_core::logstamp::stamp_into;
+use shep_core::logstamp::Stamper;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _, BufWriter};
 use tokio::time::Instant;
 
@@ -64,6 +64,8 @@ pub(super) struct LogFile<W = tokio::fs::File> {
     ///
     /// Nothing outside [`LogFile::append`] may read it.
     pub(super) stamp: String,
+    /// Renders each line's timestamp into `stamp`.
+    pub(super) stamper: Stamper,
 }
 
 /// Where one stream's log handle comes from when a pump starts.
@@ -107,6 +109,7 @@ impl LogFile<tokio::fs::File> {
             handle: Some(BufWriter::with_capacity(LOG_BUFFER, file)),
             buffered_since: None,
             stamp: String::new(),
+            stamper: Stamper::default(),
         }
     }
 
@@ -127,6 +130,7 @@ impl LogFile<tokio::fs::File> {
             handle,
             buffered_since: None,
             stamp: String::new(),
+            stamper: Stamper::default(),
         }
     }
 
@@ -259,7 +263,7 @@ impl<W: AsyncWrite + Unpin> LogFile<W> {
             return;
         };
         self.stamp.clear();
-        stamp_into(&mut self.stamp);
+        self.stamper.stamp_into(&mut self.stamp);
         self.stamp.push_str(line);
         self.stamp.push('\n');
         // Held across the write, not merely around the buffer copy: one
