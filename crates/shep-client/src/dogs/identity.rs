@@ -18,11 +18,11 @@ impl DogIdentity {
     /// Reads [`DOG_NAME_VAR`] through `env`, falling back to
     /// `default_section` for a process nothing named.
     ///
-    /// A blank value names no dog. Anything else is taken verbatim, since
-    /// the shepherd matches it against its own registry.
+    /// An empty value names no dog. Anything else is taken verbatim, even
+    /// whitespace, since the shepherd set exactly what it registered.
     #[must_use]
     pub fn from_env(env: &dyn Fn(&str) -> Option<String>, default_section: &str) -> Self {
-        match env(DOG_NAME_VAR).filter(|name| !name.trim().is_empty()) {
+        match env(DOG_NAME_VAR).filter(|name| !name.is_empty()) {
             Some(name) => Self::named(name),
             None => Self {
                 handshake: None,
@@ -79,19 +79,20 @@ mod tests {
         assert_eq!(identity.section(), "log-rotate");
     }
 
-    /// shep-deploy's answer, and now every dog's: `[  ]` is not a section
-    /// anybody writes, and no registry entry answers to it.
     #[test]
-    fn a_blank_name_is_no_name() {
-        for blank in ["", " ", "\t\n"] {
-            let identity = DogIdentity::from_env(&named(blank), "discord");
-            assert_eq!(identity, DogIdentity::from_env(&|_| None, "discord"));
-        }
+    fn an_empty_name_is_no_name() {
+        let identity = DogIdentity::from_env(&named(""), "discord");
+        assert_eq!(identity, DogIdentity::from_env(&|_| None, "discord"));
     }
 
+    /// `shep adopt --name "  "` registers exactly that, so the dog it spawns
+    /// has to announce exactly that.
     #[test]
-    fn a_name_is_passed_through_verbatim() {
-        let identity = DogIdentity::from_env(&named(" deploy "), "deploy");
-        assert_eq!(identity.handshake(), Some(" deploy "));
+    fn any_other_name_is_passed_through_verbatim() {
+        for name in [" ", " deploy "] {
+            let identity = DogIdentity::from_env(&named(name), "deploy");
+            assert_eq!(identity.handshake(), Some(name));
+            assert_eq!(identity.section(), name);
+        }
     }
 }
