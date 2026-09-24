@@ -4,7 +4,6 @@ use core::fmt;
 
 use shep_client::{ConnectError, ReconnectingClient, RequestError};
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{Request, Response};
 
 use crate::exit::ExitCode;
 
@@ -52,13 +51,8 @@ impl fmt::Debug for DogRuntime {
 pub enum DogRunError {
     /// No shepherd answered at the socket.
     Connect(ConnectError),
-    /// The shepherd refused the config request.
+    /// The shepherd refused the config request, or answered it out of turn.
     Request(RequestError),
-    /// The shepherd answered `Request::DogConfig` with something other
-    /// than `Response::DogSection`. Never returned by a daemon on the same
-    /// protocol version; kept reportable rather than `unreachable!()`, so
-    /// a dog exits cleanly instead of panicking.
-    UnexpectedReply,
     /// The section does not fit the shape [`DogRuntime::config`] was asked
     /// to parse it as.
     Section {
@@ -79,7 +73,6 @@ impl fmt::Debug for DogRunError {
         match self {
             Self::Connect(err) => f.debug_tuple("Connect").field(err).finish(),
             Self::Request(err) => f.debug_tuple("Request").field(err).finish(),
-            Self::UnexpectedReply => f.write_str("UnexpectedReply"),
             Self::Section { name, .. } => f
                 .debug_struct("Section")
                 .field("name", name)
@@ -94,9 +87,6 @@ impl fmt::Display for DogRunError {
         match self {
             Self::Connect(err) => write!(f, "no shepherd answered at the socket: {err}"),
             Self::Request(err) => write!(f, "the shepherd refused the config request: {err}"),
-            Self::UnexpectedReply => {
-                f.write_str("the shepherd answered with a response this client does not understand")
-            }
             Self::Section { name, message } => {
                 write!(f, "dog {name}'s own configuration does not fit: {message}")
             }
@@ -109,7 +99,7 @@ impl core::error::Error for DogRunError {
         match self {
             Self::Connect(err) => Some(err),
             Self::Request(err) => Some(err),
-            Self::UnexpectedReply | Self::Section { .. } => None,
+            Self::Section { .. } => None,
         }
     }
 }
@@ -135,20 +125,11 @@ impl DogRuntime {
     ///
     /// # Errors
     /// - [`DogRunError::Connect`]: no shepherd answered at the socket.
-    /// - [`DogRunError::Request`]: the shepherd refused the config request.
-    /// - [`DogRunError::UnexpectedReply`]: the shepherd answered
-    ///   `Request::DogConfig` with something other than
-    ///   `Response::DogSection`.
+    /// - [`DogRunError::Request`]: the shepherd refused the config request,
+    ///   or answered it with something other than `Response::DogSection`.
     pub async fn start(name: &str, paths: ShepPaths) -> Result<Self, DogRunError> {
         let client = ReconnectingClient::connect_as_dog(&paths.socket, name).await?;
-        let response = client
-            .request(Request::DogConfig {
-                name: name.to_string(),
-            })
-            .await?;
-        let Response::DogSection { toml } = response else {
-            return Err(DogRunError::UnexpectedReply);
-        };
+        let toml = client.dog_config(name).await?;
         Ok(Self {
             section: toml.as_str().to_string(),
             client,
@@ -194,13 +175,12 @@ where
 ///
 /// `Connect`/`Request` defer to the same `ExitCode` conversions every
 /// other verb's client-connect/request failure goes through. `Section` is
-/// [`ExitCode::InvalidConfig`]; `UnexpectedReply` is [`ExitCode::Internal`].
+/// [`ExitCode::InvalidConfig`].
 pub(super) fn exit_code_for(err: &DogRunError) -> ExitCode {
     match err {
         DogRunError::Connect(inner) => ExitCode::from(inner),
         DogRunError::Request(inner) => ExitCode::from(inner),
         DogRunError::Section { .. } => ExitCode::InvalidConfig,
-        DogRunError::UnexpectedReply => ExitCode::Internal,
     }
 }
 
@@ -209,6 +189,7 @@ mod tests {
     use std::time::Duration;
 
     use shep_client::testing::{fake_reconnecting_client_on, sample_ack, serve_one_request};
+    use shep_core::protocol::{Request, Response};
 
     use super::*;
     use crate::dog::tests::test_paths;

@@ -6,7 +6,7 @@ use core::future::Future;
 use std::sync::Arc;
 
 use shep_client::{EventStream, LinkLost, RECONNECT_MIN_DELAY, ReconnectingClient, RequestError};
-use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response, RpcError, RpcErrorCode};
+use shep_core::protocol::{BusEvent, ProcessInfo};
 
 use crate::dog::SHEPHERD_RETURN_BUDGET;
 
@@ -54,8 +54,9 @@ pub enum Resubscribe {
     /// Carried whole, since `RequestError` already decides an exit code and
     /// flattening it would lose that.
     ///
-    /// All four of `RequestError`'s non-`Closed` conditions arrive here,
-    /// and they are not one fault:
+    /// Four of `RequestError`'s conditions arrive here, and they are not
+    /// one fault. `Closed` is a lost link, and `subscribe` never reads the
+    /// reply's variant, so no `UnexpectedReply` either:
     ///
     /// - `Rpc` is a shepherd answering and saying no.
     /// - `Wire` and `Undecodable` are the transport failing, so pointing an
@@ -246,20 +247,6 @@ impl EventSource for ClientEvents {
     }
 }
 
-/// The error for a reply that is not the variant the request names.
-///
-/// Never returned by a daemon on the same protocol version; kept
-/// reportable rather than `unreachable!()`. One function rather than the
-/// literal at each impl, so the two reports keep saying the same thing
-/// in the same shape.
-fn unexpected_reply(request: &str, expected: &str) -> RequestError {
-    RequestError::Rpc(RpcError {
-        code: RpcErrorCode::Internal,
-        message: format!("the shepherd answered {request} with something other than {expected}"),
-        daemon_version: None,
-    })
-}
-
 /// Wraps [`ReconnectingClient`] as both [`FlockSource`] and
 /// [`ConfigSource`]. [`ReconnectingClient`] is not `Clone`, so the
 /// two roles reach it through one [`Arc`] rather than through two clients
@@ -272,25 +259,14 @@ pub(super) struct ClientShepherd {
 
 impl FlockSource for ClientShepherd {
     async fn flock(&self) -> Result<Vec<ProcessInfo>, RequestError> {
-        match self.client.request(Request::ListFlock).await? {
-            Response::Flock(flock) => Ok(flock),
-            _ => Err(unexpected_reply("ListFlock", "Response::Flock")),
-        }
+        self.client.list_flock().await
     }
 }
 
 impl ConfigSource for ClientShepherd {
     async fn section(&self) -> Result<String, RequestError> {
-        let response = self
-            .client
-            .request(Request::DogConfig {
-                name: self.dog.clone(),
-            })
-            .await?;
-        match response {
-            Response::DogSection { toml } => Ok(toml.as_str().to_string()),
-            _ => Err(unexpected_reply("DogConfig", "Response::DogSection")),
-        }
+        let section = self.client.dog_config(&self.dog).await?;
+        Ok(section.as_str().to_owned())
     }
 }
 
@@ -313,6 +289,7 @@ mod tests {
     use std::time::Duration;
 
     use shep_client::testing::{Handshake, fake_daemon_across_handovers, sample_ack};
+    use shep_core::protocol::{Request, RpcError, RpcErrorCode};
 
     use super::*;
 

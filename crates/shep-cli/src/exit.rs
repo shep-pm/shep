@@ -133,15 +133,16 @@ impl From<&shep_client::ConnectError> for ExitCode {
 /// `Rpc` defers to the [`RpcErrorCode`] conversion, so the two taxonomies
 /// cannot drift. `Closed` is the same "nothing is answering" condition as a
 /// failed connect. `Wire` is this client failing to encode its own request, a
-/// fault in this binary. A future variant falls to [`ExitCode::Failure`].
+/// fault in this binary, and `UnexpectedReply` a daemon answering out of
+/// turn. A future variant falls to [`ExitCode::Failure`].
 impl From<&shep_client::RequestError> for ExitCode {
     fn from(err: &shep_client::RequestError) -> Self {
-        use shep_client::RequestError::{Closed, Rpc, Timeout, Wire};
+        use shep_client::RequestError::{Closed, Rpc, Timeout, UnexpectedReply, Wire};
         match err {
             Rpc(rpc) => Self::from(rpc.code),
             Timeout { .. } => Self::DeadlineExceeded,
             Closed => Self::DaemonUnreachable,
-            Wire(_) => Self::Internal,
+            Wire(_) | UnexpectedReply { .. } => Self::Internal,
             _ => Self::Failure,
         }
     }

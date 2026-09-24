@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use shep_client::ReconnectingClient;
 use shep_client::dogs::{Stop, dog_config};
-use shep_core::protocol::{ProcessInfo, Request, Response};
+use shep_core::protocol::ProcessInfo;
 use sysinfo::{MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -237,12 +237,12 @@ async fn handle_connection(mut stream: TcpStream, client: Arc<ReconnectingClient
         return;
     }
 
-    let flock = match client.request(Request::ListFlock).await {
-        Ok(Response::Flock(flock)) => flock,
+    let flock = match client.list_flock().await {
+        Ok(flock) => flock,
         // A failed `ListFlock` answers 503, not a 200 with nothing in it:
         // a scraper reads that as a real empty flock, where a 503 is
         // `up == 0` for this target.
-        Ok(_) | Err(_) => {
+        Err(_) => {
             let _: Result<(), HttpError> = http::write_response(
                 &mut stream,
                 503,
