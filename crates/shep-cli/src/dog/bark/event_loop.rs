@@ -68,7 +68,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                             Err(failed) => {
                                 eprintln!("shep dog bark: {failed}");
                                 break match &failed {
-                                    Resubscribe::Lost(lost) => crate::dog::exit_for(lost),
+                                    Resubscribe::Lost(lost) => ExitCode::from(lost),
                                     Resubscribe::Request(err) => ExitCode::from(err),
                                 };
                             }

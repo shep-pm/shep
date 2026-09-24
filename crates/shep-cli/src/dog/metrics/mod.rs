@@ -192,7 +192,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
         // long inside the budget.
         lost = client.link_lost(super::SHEPHERD_RETURN_BUDGET) => {
             eprintln!("shep dog metrics: {lost}");
-            super::exit_for(&lost)
+            ExitCode::from(&lost)
         }
     }
 }
