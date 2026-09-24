@@ -5,12 +5,63 @@ hand at a release and never in CI: it installs a third-party npm package and
 times a wall clock, and a shared runner can hold neither still.
 
 ```sh
-./benches/versus-pm2/versus-pm2.sh
+./benches/versus-pm2/versus-pm2.sh --check    # judge a run against baseline.json
+./benches/versus-pm2/versus-pm2.sh --record   # replace baseline.json with a run
+./benches/versus-pm2/versus-pm2.sh            # print a run's figures, judge nothing
 ```
 
 `VERSUS_SCRATCH` picks where builds, the pm2 install and the raw samples go
 (default `/tmp/shep-versus-pm2`); `SHEP_BIN` points at an already-built
 release `shep` if you have one, with the package's other binaries beside it.
+`docs/testing.md` says when to run it.
+
+## Before the first run
+
+The harness builds nothing and installs nothing. It checks for all of this
+before it touches a daemon, and names whatever is missing:
+
+- macOS. It reads BSD `stat` and `sysctl`, and its socket root is under
+  `/private/tmp`.
+- A release build of shep at `$VERSUS_SCRATCH/wt-bench/target/release/shep`,
+  or wherever `SHEP_BIN` says, with every other `[[bin]]` the package
+  declares beside it: the footprint sizes all of them. A worktree keeps the
+  build off your checkout, and with no `CARGO_TARGET_DIR` set the binaries
+  land inside it, which is how the run finds the commit it records:
+
+  ```sh
+  git worktree add /tmp/shep-versus-pm2/wt-bench <rev>
+  cargo build --release --manifest-path /tmp/shep-versus-pm2/wt-bench/Cargo.toml
+  ```
+
+- pm2 in the scratch directory. For `--check`, install the version
+  `baseline.json` names: pm2 is the control, and a different pm2 is a
+  different control.
+
+  ```sh
+  npm install --prefix /tmp/shep-versus-pm2/pm2-install pm2@7.0.4
+  ```
+
+- `python3`, `perl` and `node` on `PATH`.
+
+## The baseline
+
+`baseline.json` is the last run somebody decided to keep, reduced by
+`compare.py` to one figure per metric per tool. `--check` runs the harness
+and compares shep's figures with it; `--record` runs the harness and
+replaces it, and the `git diff` of that file is the before and after. Every
+run keeps its `metrics.jsonl`, so judging a finished run again costs a
+second rather than another run:
+
+```sh
+python3 benches/versus-pm2/compare.py check /tmp/shep-versus-pm2/versus-pm2-raw/metrics.jsonl
+```
+
+What the three verdicts mean, and why pm2 is the control rather than the
+denominator, is at the top of `compare.py`. Each metric's threshold and the
+reason for it is in its `METRICS` table. The committed file was transcribed
+from the docs page's 2026-09-14 table rather than recorded, since that run's
+samples were never kept. Its `notes` say what that costs, and the first
+`--record` replaces it.
 
 ## What it measures, and why each is fair
 
@@ -49,6 +100,9 @@ porting it. Nothing here reads pm2's source, and neither should you.
 ## Results, 2026-08-29
 
 shep 0.1.12 (`d113586`) against pm2 7.0.4 on node v26.5.0, macOS.
+
+The first run, kept as it was written. The current figures are
+`baseline.json` and the docs page, and neither reads this section.
 
 | Metric | shep | pm2 | Ratio |
 | --- | --- | --- | --- |

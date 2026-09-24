@@ -136,6 +136,16 @@ cargo deny check
 The four above, plus `cargo test --workspace --all-features -- --test-threads=1`
 and both `benches/` gates. The serial run has caught a real regression.
 
+### At a release, by hand, on macOS
+
+```bash
+./benches/versus-pm2/versus-pm2.sh --check
+```
+
+The only comparison of shep's performance against a recorded baseline
+(`benches/versus-pm2/baseline.json`). Never in CI. Exit 2 is "cannot judge",
+not a pass. docs/testing.md covers the exit codes and when to `--record`.
+
 ## Subagent dispatch
 
 - **Writing plans:** Opus, extra thinking. Plans carry the design work; a thin

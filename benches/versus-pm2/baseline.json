@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "source": "transcribed from web/src/pages/docs/from-pm2.astro, not recorded by the harness",
+  "notes": [
+    "The 2026-09-14 run's metrics.jsonl was never committed, so this seed is the docs page's table converted back to the harness's units. Its precision is the page's: 0.01 MiB, 0.01 us, 1 ms. The next `versus-pm2.sh --record` replaces the whole file with a real run.",
+    "The page prints one shep figure per metric and does not say how the two shep rounds were combined, so shep_rounds is absent. A recorded baseline stores their mean and both rounds.",
+    "idle_cpu is absent. The page does not say which of the harness's two idle CPU columns it printed, and the metric is reported rather than gated, so a guess here would only mislead a later diff.",
+    "footprint is the page's install row, 53.85 MiB for shep's three binaries, which the page reached as three times one measured binary rather than by sizing all three. It is held as `shep_install_bytes`, the field the harness writes from #616 on; a run from an older harness carries one binary as `shep_binary_bytes` and is refused against it rather than compared.",
+    "The page names an Apple M4 Pro and no OS; the harness is macOS-only, and an M4 Pro is arm64. ncpu and the shep commit were not published."
+  ],
+  "recorded": "2026-09-14",
+  "shep_version": "0.8.0",
+  "shep_sha": null,
+  "pm2": "7.0.4",
+  "node": "v26.8.1",
+  "machine": {
+    "os": "Darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Pro",
+    "ncpu": null
+  },
+  "metrics": {
+    "idle_rss": {
+      "unit": "KiB",
+      "field": "rss_kb",
+      "shep": 17828,
+      "pm2": 67461
+    },
+    "log_cpu_per_line": {
+      "unit": "us",
+      "field": "us_per_line",
+      "shep": 2.27,
+      "pm2": 4.1
+    },
+    "start_cold": {
+      "unit": "s",
+      "field": "cold_s",
+      "shep": 0.195,
+      "pm2": 0.366
+    },
+    "start_warm": {
+      "unit": "s",
+      "field": "warm_s",
+      "shep": 0.095,
+      "pm2": 0.201
+    },
+    "footprint": {
+      "unit": "bytes",
+      "field": "shep_install_bytes",
+      "shep": 56465818,
+      "pm2": 24232837
+    }
+  }
+}

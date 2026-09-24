@@ -254,6 +254,16 @@ deliberate: a release pull request that bumps no version is left open and red
 rather than merged, and the `crates-io` environment will hold the publish if a
 required reviewer is ever configured there.
 
+**One check is yours, deliberately.** `benches/versus-pm2/versus-pm2.sh
+--check` compares shep's performance with the committed baseline, and it
+needs macOS and a quiet machine, so no workflow runs it. Run it before
+merging a release pull request. An exit of 1 names the metric that
+regressed; it does not block the merge by itself. Whether a regression ships
+is the maintainer's call, and the check exists so that call is made before
+the release rather than found afterwards on a docs page, which is how #291
+and #292 were found. [testing.md](testing.md) has what each exit code means
+and when to record a new baseline.
+
 The token lives in that workflow's `crates-io` environment, so a laptop never
 needs one. That environment is also where a required reviewer goes if this
 ever wants a human gate between merging and spending a version number.
