@@ -94,18 +94,25 @@ METRICS: tuple[Metric, ...] = (
     Metric("start_warm", "start ten apps, warm", "start", "warm_s", "s", 0.10),
     # Measured once per run, and a byte count is not noise, so 5% is a
     # deliberate size change rather than a wobble. No control: pm2's install
-    # tree says nothing about whether shep's binary grew.
+    # tree says nothing about whether shep's install grew.
     Metric(
         "footprint",
-        "shep binary vs pm2 install",
+        "shep install vs pm2 install",
         "footprint",
-        "shep_binary_bytes",
+        "shep_install_bytes",
         "bytes",
         0.05,
         rounds=1,
         controlled=False,
     ),
 )
+
+# What a footprint record calls shep's side, preferred first. The harness
+# sized one binary as `shep_binary_bytes`; #616 has it size every [[bin]] as
+# `shep_install_bytes` instead. Those are different quantities, three
+# binaries against one, so a baseline names the field it holds and a run
+# carrying the other is refused rather than read as a size change.
+FOOTPRINT_FIELDS = ("shep_install_bytes", "shep_binary_bytes")
 
 BY_KEY = {metric.key: metric for metric in METRICS}
 
@@ -117,6 +124,9 @@ class Reading:
     # One figure per shep round, in the order the run took them.
     shep: tuple[float, ...]
     pm2: float | None
+    # The record field shep's figures came from. The metric's own field,
+    # except for a footprint from a harness older than #616.
+    field: str
 
     @property
     def shep_mean(self) -> float | None:
@@ -211,16 +221,19 @@ def read(metric: Metric, records: list[dict]) -> Reading:
     """One metric's figures from a run.
 
     Every metric but one is a record per tool per round, with `tool` naming
-    which. Footprint is one record carrying both tools' sizes, and pm2's is
-    in KiB because `du -sk` is what measured it.
+    which. Footprint is one record carrying both tools' sizes, shep's under
+    whichever of `FOOTPRINT_FIELDS` the harness wrote, and pm2's in KiB
+    because `du -sk` is what measured it.
     """
     if metric.record == "footprint":
         record = first(records, "footprint") or {}
-        shep = number(record.get("shep_binary_bytes"))
+        field = next((f for f in FOOTPRINT_FIELDS if f in record), metric.field)
+        shep = number(record.get(field))
         pm2 = number(record.get("pm2_install_kb"))
         return Reading(
             shep=() if shep is None else (shep,),
             pm2=None if pm2 is None else pm2 * 1024,
+            field=field,
         )
     rounds = [r for r in records if r["metric"] == metric.record]
     shep = tuple(
@@ -233,7 +246,7 @@ def read(metric: Metric, records: list[dict]) -> Reading:
         for r in rounds
         if r.get("tool") == "pm2" and (value := number(r.get(metric.field))) is not None
     ]
-    return Reading(shep=shep, pm2=sum(pm2) / len(pm2) if pm2 else None)
+    return Reading(shep=shep, pm2=sum(pm2) / len(pm2) if pm2 else None, field=metric.field)
 
 
 def judge(metric: Metric, threshold: float | None, reading: Reading, base: object) -> Row:
@@ -241,7 +254,11 @@ def judge(metric: Metric, threshold: float | None, reading: Reading, base: objec
     entry = base if isinstance(base, dict) else None
     base_shep = number(entry.get("shep")) if entry else None
     base_pm2 = number(entry.get("pm2")) if entry else None
-    shep_change = change(reading.shep_mean, base_shep)
+    # None when the run measured another quantity than the baseline holds,
+    # so the report never prints a change between two different things.
+    held = entry.get("field", metric.field) if entry else metric.field
+    comparable = held == reading.field
+    shep_change = change(reading.shep_mean, base_shep) if comparable else None
     pm2_change = change(reading.pm2, base_pm2)
     spread = reading.spread
 
@@ -257,6 +274,11 @@ def judge(metric: Metric, threshold: float | None, reading: Reading, base: objec
         reason = "the baseline's shep figure is not a positive number"
     elif len(reading.shep) < metric.rounds:
         reason = f"the run has {len(reading.shep)} of {metric.rounds} shep rounds for it"
+    elif not comparable:
+        reason = (
+            f"the baseline holds `{held}` and this run measured `{reading.field}`, which are "
+            "different quantities: record a baseline from a run that measures the same one"
+        )
     elif threshold is not None and metric.rounds > 1 and spread is None:
         reason = "a shep round read zero, so the rounds cannot show the machine held still"
     elif threshold is not None and spread is not None and spread > threshold:
@@ -453,7 +475,7 @@ def check(args: argparse.Namespace) -> int:
         print(f"regressed: {', '.join(regressed)}")
         return REGRESSED
     if unjudged:
-        print(f"cannot judge: {', '.join(unjudged)}. Not a pass; re-run on a quieter machine.")
+        print(f"cannot judge: {', '.join(unjudged)}. Not a pass; each line above says why.")
         return UNJUDGED
     print("held: every gated metric is within its threshold")
     return HELD
@@ -487,6 +509,7 @@ def record(args: argparse.Namespace) -> int:
         else:
             metrics[metric.key] = {
                 "unit": metric.unit,
+                "field": reading.field,
                 "shep": round(reading.shep_mean, 6),
                 "shep_rounds": list(reading.shep),
                 "pm2": round(reading.pm2, 6),

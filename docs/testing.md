@@ -249,10 +249,13 @@ comparison. It exits with one of three codes:
 - **1, regressed.** shep's own figure moved past a threshold while pm2 held.
   The report names the metric, both figures and pm2's change beside them.
 - **2, cannot judge.** Not a pass. shep's two rounds disagreed by more than
-  the threshold, pm2 itself moved past it, a round is missing, or the run
-  came from another OS or architecture than the baseline. Each one means the
-  run could not tell a change that size from the machine moving, so it says
-  which rather than guessing. Re-run on a quieter machine.
+  the threshold, pm2 itself moved past it, a round is missing, the run came
+  from another OS or architecture than the baseline, or it measured another
+  quantity than the baseline holds. The report says which rather than
+  guessing. Disagreeing rounds or a moving pm2 mean the machine moved, and a
+  missing round means the harness refused one: re-run, on a quieter machine
+  for the first two. Another platform or quantity means this baseline cannot
+  judge the run at all: record one that matches.
 
 **pm2 is the control, not the denominator.** A regression is a change in
 shep's own figure, judged only when pm2's figure in the same run held within
@@ -260,13 +263,13 @@ the same threshold. That is the argument #291 and #292 were made on: shep
 moved, pm2 at the same version on the same box did not. Dividing shep by pm2
 instead would charge shep for whatever moved pm2. Between 2026-08-29 and
 2026-09-14 node went from v26.5.0 to v26.8.1 and pm2's idle RSS fell 7.4%,
-so the ratio moved 35% where shep's own memory grew 25%. Binary size has no
+so the ratio moved 35% where shep's own memory grew 25%. Install size has no
 control, since machine load does not move a file size.
 
 **Thresholds are code, each with its reason.** `METRICS` in
 `benches/versus-pm2/compare.py`: 10% for idle RSS and both start times, 5%
 for log cost per line because a real 8% regression is on record that 10%
-would pass, 5% for binary size because a byte count is not noise, and idle
+would pass, 5% for install size because a byte count is not noise, and idle
 CPU reported but never gated, since both tools sit at hundredths of a
 percent. `--check --threshold start_warm=20` moves one for one run. Moving one
 for good is a change to that table, reviewed like any other.

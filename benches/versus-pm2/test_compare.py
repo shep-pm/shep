@@ -39,7 +39,10 @@ PM2 = {
     "cold_s": 0.366,
     "warm_s": 0.201,
 }
+# One binary, as the harness sized it before #616, and the three-binary
+# install it sizes from #616 on, which is what baseline.json holds.
 SHEP_BINARY_BYTES = 18811453
+SHEP_INSTALL_BYTES = 56465818
 PM2_INSTALL_KB = 23665
 
 
@@ -47,7 +50,8 @@ def make_run(
     shep: dict | None = None,
     pm2: dict | None = None,
     second_round: dict | None = None,
-    binary_bytes: int = SHEP_BINARY_BYTES,
+    shep_bytes: int = SHEP_INSTALL_BYTES,
+    footprint_field: str = "shep_install_bytes",
     os_: str = "Darwin",
     arch: str = "arm64",
     drop: tuple[str, ...] = (),
@@ -57,7 +61,8 @@ def make_run(
     `shep` and `pm2` override figures for every round of that tool;
     `second_round` overrides the A2 round only, which is how a machine that
     shifted mid-run looks. `drop` removes records by `metric`, or by
-    `metric/tag` for one round.
+    `metric/tag` for one round. The footprint record takes #616's shape
+    unless `footprint_field` names the one-binary field it replaced.
     """
     rounds = {
         "A1": {**SHEP, **(shep or {})},
@@ -98,9 +103,17 @@ def make_run(
                 "list_roundtrip_s": 0.01,
             },
         ]
-    records.append(
-        {"metric": "footprint", "shep_binary_bytes": binary_bytes, "pm2_install_kb": PM2_INSTALL_KB}
-    )
+    if footprint_field == "shep_install_bytes":
+        third = shep_bytes // 3
+        footprint = {
+            "metric": "footprint",
+            "shep_binaries_bytes": {"shep": third, "shep-runtime": third, "shep-dev": shep_bytes - 2 * third},
+            "shep_install_bytes": shep_bytes,
+            "shep_archive_gz_bytes": shep_bytes // 3,
+        }
+    else:
+        footprint = {"metric": "footprint", footprint_field: shep_bytes}
+    records.append({**footprint, "pm2_install_kb": PM2_INSTALL_KB})
     return [
         r
         for r in records
@@ -161,10 +174,30 @@ class Judge(Harness):
         self.assertEqual(self.check(make_run(shep={"us_per_line": 2.27 * 1.08})), 1, self.out)
         self.assertEqual(self.verdict("log_cpu_per_line"), "regressed")
 
-    def test_a_binary_that_grew_regresses_with_no_control_consulted(self) -> None:
-        self.assertEqual(self.check(make_run(binary_bytes=int(SHEP_BINARY_BYTES * 1.26))), 1, self.out)
+    def test_an_install_that_grew_regresses_with_no_control_consulted(self) -> None:
+        self.assertEqual(self.check(make_run(shep_bytes=int(SHEP_INSTALL_BYTES * 1.26))), 1, self.out)
         self.assertEqual(self.verdict("footprint"), "regressed")
         self.assertIn("with no control to consult", self.out)
+
+    def test_one_binary_is_never_compared_with_a_whole_install(self) -> None:
+        # Read as a size change, a third of the install is a 67% improvement.
+        run = make_run(shep_bytes=SHEP_BINARY_BYTES, footprint_field="shep_binary_bytes")
+        self.assertEqual(self.check(run), 2, self.out)
+        self.assertEqual(self.verdict("footprint"), "unjudged")
+        self.assertIn(
+            "the baseline holds `shep_install_bytes` and this run measured `shep_binary_bytes`",
+            self.out,
+        )
+        self.assertNotIn("improved", self.out)
+        self.assertNotIn("-66.7%", self.out)
+
+    def test_a_run_from_before_616_is_judged_against_a_baseline_from_before_616(self) -> None:
+        run = make_run(shep_bytes=SHEP_BINARY_BYTES, footprint_field="shep_binary_bytes")
+        self.assertEqual(self.record(run), 0, self.out)
+        footprint = json.loads(self.baseline.read_text())["metrics"]["footprint"]
+        self.assertEqual((footprint["field"], footprint["shep"]), ("shep_binary_bytes", SHEP_BINARY_BYTES))
+        self.assertEqual(self.check(run), 0, self.out)
+        self.assertEqual(self.verdict("footprint"), "held")
 
     def test_pm2_moving_past_the_threshold_makes_the_metric_unjudgeable(self) -> None:
         # Both slower by the same amount is a slower machine, not a regression.
@@ -265,7 +298,10 @@ class Record(Harness):
     def test_the_baseline_carries_the_mean_and_both_rounds(self) -> None:
         self.assertEqual(self.record(make_run(second_round={"warm_s": 0.099})), 0, self.out)
         warm = json.loads(self.baseline.read_text())["metrics"]["start_warm"]
-        self.assertEqual(warm, {"unit": "s", "shep": 0.097, "shep_rounds": [0.095, 0.099], "pm2": 0.201})
+        self.assertEqual(
+            warm,
+            {"unit": "s", "field": "warm_s", "shep": 0.097, "shep_rounds": [0.095, 0.099], "pm2": 0.201},
+        )
 
     def test_the_baseline_names_what_it_measured(self) -> None:
         baseline = json.loads(self.baseline.read_text())
@@ -274,6 +310,8 @@ class Record(Harness):
         self.assertEqual(baseline["shep_version"], "0.9.1")
         self.assertEqual(baseline["machine"], {"os": "Darwin", "arch": "arm64", "cpu": "Apple M4 Pro", "ncpu": 14})
         self.assertEqual(baseline["metrics"]["footprint"]["pm2"], PM2_INSTALL_KB * 1024)
+        self.assertEqual(baseline["metrics"]["footprint"]["field"], "shep_install_bytes")
+        self.assertEqual(baseline["metrics"]["idle_rss"]["field"], "rss_kb")
 
     def test_an_unsteady_run_is_not_recorded(self) -> None:
         before = self.baseline.read_text()
@@ -299,6 +337,7 @@ class Committed(unittest.TestCase):
                 entry = baseline["metrics"].get(metric.key)
                 self.assertIsNotNone(entry, "a gated metric the baseline cannot judge")
                 self.assertEqual(entry["unit"], metric.unit)
+                self.assertEqual(entry.get("field"), metric.field)
                 self.assertGreater(compare.number(entry["shep"]), 0)
                 self.assertGreater(compare.number(entry["pm2"]), 0)
         self.assertTrue(baseline["machine"]["os"] and baseline["machine"]["arch"])
@@ -314,10 +353,13 @@ class Committed(unittest.TestCase):
         kinds = set(re.findall(r'\\"metric\\":\\"(\w+)\\"', script)) | set(
             re.findall(r'"metric": "(\w+)"', script)
         )
-        read = {"tool", "shep_binary_bytes", "pm2_install_kb", "shep_version", "shep_sha", "pm2", "node"}
+        read = {"tool", "pm2_install_kb", "shep_version", "shep_sha", "pm2", "node"}
         read |= {"date", "os", "arch", "cpu", "ncpu"}
-        read |= {metric.field for metric in compare.METRICS}
+        read |= {metric.field for metric in compare.METRICS if metric.record != "footprint"}
         self.assertEqual(read - emitted, set())
+        # Footprint takes whichever of its fields the harness writes, so one
+        # is enough, and it must be one: none is a footprint never read.
+        self.assertTrue(emitted & set(compare.FOOTPRINT_FIELDS), compare.FOOTPRINT_FIELDS)
         wanted = {metric.record for metric in compare.METRICS} | {"run", "versions"}
         self.assertEqual(wanted - kinds, set())
 
