@@ -32,11 +32,13 @@ use std::io::Write as _;
 
 mod error;
 mod identity;
+mod runtime;
 mod section;
 mod stop;
 
 pub use error::ShepherdError;
 pub use identity::DogIdentity;
+pub use runtime::DogRuntime;
 pub use section::{SectionError, parse_section};
 pub use shep_core::dogs::SECRET_KEY;
 use shep_core::dogs::{SCHEMA_FLAG, SHEP_PROTOCOL_KEY, VERSION_FLAG};
