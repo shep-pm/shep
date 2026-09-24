@@ -131,7 +131,7 @@ jobs:
       id-token: write
       attestations: write
     # A ceiling against a hang, not a budget: `[profile.release]`'s `lto =
-    # "thin"` and `codegen-units = 1` make these legs slower than anything
+    # "fat"` and `codegen-units = 1` make these legs slower than anything
     # in test.yml.
     timeout-minutes: 60
     steps:

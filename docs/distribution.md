@@ -159,7 +159,7 @@ keyless, no key to store, no rotation, and both Homebrew and Chocolatey
 care about checksums anyway.
 
 Expect these builds to be slower than CI's. `[profile.release]` in the
-workspace manifest sets `lto = "thin"` and `codegen-units = 1`, which is
+workspace manifest sets `lto = "fat"` and `codegen-units = 1`, which is
 the right trade for a shipped binary and the wrong one for a fast job.
 
 ## The trigger, and the four releases
