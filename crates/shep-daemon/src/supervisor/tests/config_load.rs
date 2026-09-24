@@ -474,3 +474,37 @@ async fn reset_restores_every_setting_and_only_reset_all_takes_env() {
         "--reset=all removes the override record"
     );
 }
+
+/// Every `shep start` of a registered app sends this load, and a rewrite
+/// flushes twice on the supervisor's thread. The store is re-saved compact
+/// so any rewrite, which pretty-prints, shows.
+#[tokio::test(start_paused = true)]
+async fn reloading_an_unchanged_file_leaves_the_override_store_unwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
+    let file = || declared_app(AppConfig::minimal("web", "./srv"), &["name", "script"]);
+    apply_config(&mut actor, vec![file()], ResetDepth::None).await;
+    let established = shep_core::overrides::all(&actor.paths.overrides).unwrap();
+    assert!(
+        established.contains_key("web"),
+        "the first load establishes"
+    );
+    let compact = serde_json::json!({
+        "version": shep_core::overrides::OVERRIDES_VERSION,
+        "apps": established,
+    })
+    .to_string();
+    std::fs::write(&actor.paths.overrides, &compact).unwrap();
+
+    let reply = apply_config(&mut actor, vec![file()], ResetDepth::None).await;
+
+    assert_eq!(
+        reply[0].refused, None,
+        "an unchanged load refuses nothing: {reply:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&actor.paths.overrides).unwrap(),
+        compact,
+        "an unchanged load rewrote the override store"
+    );
+}
