@@ -483,7 +483,7 @@ PY
 # anything is killed or started. Missing, each one surfaces minutes in as a
 # start failure in the first round rather than as the thing that is missing.
 preflight() {
-  local ok=0 tool
+  local ok=0 tool names name
   # `stat -f %z`, `sysctl machdep` and a /private/tmp root are all macOS.
   # GNU stat reads `-f` as "report the filesystem" and `%z` as a second
   # file to report on, so every size this takes would be a paragraph of
@@ -492,6 +492,16 @@ preflight() {
     echo "this harness is macOS-only; it reads BSD stat and sysctl" >&2; ok=1; }
   [ -x "$SHEP_BIN" ] || {
     echo "no shep binary at $SHEP_BIN: build one, or set SHEP_BIN" >&2; ok=1; }
+  # m_footprint sizes every [[bin]] beside SHEP_BIN and refuses the metric
+  # when one is missing, which it finds out last, after the whole run, and
+  # a --record then refuses to write anything.
+  names=$(shep_bin_names 2>/dev/null)
+  [ -n "$names" ] || {
+    echo "no [[bin]] names in $SCRATCH/wt-bench/crates/shep-cli/Cargo.toml for the footprint" >&2; ok=1; }
+  for name in $names; do
+    [ -f "$(dirname "$SHEP_BIN")/$name" ] || {
+      echo "no $name beside $SHEP_BIN: the footprint sizes every [[bin]]" >&2; ok=1; }
+  done
   [ -x "$PM2_BIN" ] || {
     echo "no pm2 at $PM2_BIN: npm install --prefix $SCRATCH/pm2-install pm2@<version>," >&2
     echo "  the baseline's version for --check, so the control is the same program" >&2
