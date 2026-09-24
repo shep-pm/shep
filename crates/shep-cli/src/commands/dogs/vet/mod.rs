@@ -213,7 +213,10 @@ pub(crate) fn dog_env(home: &Path, name: &str) -> Vec<(String, OsString)> {
     // dog whole, and the two shep owns cannot be shadowed by an inherited
     // one of the same name.
     env.push(("SHEP_HOME".to_string(), home.as_os_str().to_owned()));
-    env.push(("SHEP_DOG_NAME".to_string(), OsString::from(name)));
+    env.push((
+        shep_core::dogs::DOG_NAME_VAR.to_string(),
+        OsString::from(name),
+    ));
     env
 }
 

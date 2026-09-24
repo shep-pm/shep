@@ -119,7 +119,7 @@ fn run_adopted_dog(
     let status = std::process::Command::new(path)
         .args(extra_args)
         .env("SHEP_HOME", home)
-        .env("SHEP_DOG_NAME", name)
+        .env(shep_core::dogs::DOG_NAME_VAR, name)
         .status();
     match status {
         Ok(status) => std::process::ExitCode::from(dog_exit_code(status)),
