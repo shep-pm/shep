@@ -52,7 +52,7 @@ impl fmt::Display for UsageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { dog, argument } = self;
         match argument.as_str() {
-            "--help" | "-h" => write!(f, "{dog} takes no options."),
+            "--help" | "-h" => write!(f, "{dog} takes one option, {PRINT_CONFIG_FLAG}."),
             VERSION_FLAG | SCHEMA_FLAG => write!(
                 f,
                 "{dog} answers {argument} as its first argument only, which is where the \
@@ -171,7 +171,7 @@ mod tests {
         let refused = |argument| parse_args("shep-log-rotate", [argument]).unwrap_err();
         assert_eq!(
             refused("-h").to_string(),
-            "shep-log-rotate takes no options."
+            "shep-log-rotate takes one option, --print-config."
         );
         assert_eq!(
             refused("--dry-run").to_string(),
