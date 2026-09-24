@@ -14,19 +14,19 @@ use crate::output::{BarkRows, Streams, emit, write_outcome};
 /// a line a writer died mid-append leaves unparseable costs that one record,
 /// not the whole read.
 ///
-/// `--tail N` takes the last N records, since [`barks::read`] answers oldest
-/// first.
+/// `--tail N` takes the last N records, oldest first, and pays for a
+/// window of the file's end rather than the whole ring ([`barks::read_last`]).
 pub fn barks(streams: &mut Streams<'_>, paths: &ShepPaths, args: &BarksArgs) -> ExitCode {
-    let mut history = match barks::read(&paths.barks) {
+    let history = match args.tail {
+        Some(tail) => barks::read_last(&paths.barks, tail),
+        None => barks::read(&paths.barks),
+    };
+    let history = match history {
         Ok(history) => history,
         Err(err) => {
             return streams.fail(ExitCode::Failure, &err.to_string());
         }
     };
-    if let Some(tail) = args.tail {
-        let keep_from = history.len().saturating_sub(tail);
-        history.drain(..keep_from);
-    }
     write_outcome(emit(
         &mut *streams.out,
         streams.fmt,

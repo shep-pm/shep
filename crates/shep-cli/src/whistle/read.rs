@@ -169,10 +169,8 @@ impl Whistle {
         Parameters(params): Parameters<BarksParams>,
     ) -> Result<Json<BarkListing>, CallToolResult> {
         let limit = (params.tail.unwrap_or(DEFAULT_TAIL).min(MAX_TAIL)) as usize;
-        let mut history = barks::read(&self.paths.barks)
+        let history = barks::read_last(&self.paths.barks, limit)
             .map_err(|err| shepherd::own_refusal("failure", err.to_string()))?;
-        let keep_from = history.len().saturating_sub(limit);
-        history.drain(..keep_from);
         Ok(Json(BarkListing {
             barks: history.iter().map(BarkRow::from).collect(),
         }))
