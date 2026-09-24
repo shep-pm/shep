@@ -1,22 +1,20 @@
+use super::config::BarkConfig;
 use super::rules::Firing;
 use super::sinks::Sink;
 use futures_util::future::join_all;
 use shep_core::barks::{self, SinkOutcome};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time::MissedTickBehavior;
 
 /// Everything a delivery needs, so the five values that travel together
-/// through [`reconcile`](crate::dog::bark::config_hot_reload::reconcile), [`spawn_firings`] and [`deliver_and_record`]
-/// travel as one.
+/// through [`reconcile`](super::event_loop::reconcile), [`spawn_firings`] and
+/// [`deliver_and_record`] travel as one.
 ///
 /// `Clone` is what [`spawn_firings`] hands each spawned task: three
-/// [`Arc`] bumps and two copies, the same clones it used to make one by
-/// one. A config reload rebinds `sinks`, `sink_timeout` and `max_bytes`
-/// in place; `append_lock` and `barks_path` outlive every reload.
+/// [`Arc`] bumps and two copies.
 ///
 /// `Debug` is safe despite `sinks` holding webhook URLs, which are bearer
 /// credentials: [`Sink`]'s own `Debug` redacts them.
@@ -34,24 +32,30 @@ pub(super) struct Delivery {
     pub(super) max_bytes: u64,
 }
 
-/// The poll timer for `period`.
-///
-/// `interval_at`, not `interval`: a plain `interval` fires its first tick
-/// immediately, so the first poll would be attributable to the timer's
-/// startup rather than to a drop or an elapsed interval.
-///
-/// One function, not two call sites: a reload that rebuilt the timer and
-/// forgot `MissedTickBehavior::Delay` would leave a poll that ran long
-/// firing a burst of catch-up ticks.
-pub(super) fn poll_timer(period: Duration) -> tokio::time::Interval {
-    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    interval
+impl Delivery {
+    /// A delivery to `config`'s sinks, writing its trail to `barks_path`.
+    pub(super) fn new(config: &BarkConfig, barks_path: &Path) -> Self {
+        Self {
+            sinks: Arc::new(config.sinks.clone()),
+            append_lock: Arc::new(Mutex::new(())),
+            barks_path: Arc::new(barks_path.to_path_buf()),
+            sink_timeout: config.sink_timeout.as_duration(),
+            max_bytes: config.history_bytes,
+        }
+    }
+
+    /// Takes what a reloaded `config` changes, in place. The append lock
+    /// and the trail's path outlive every reload.
+    pub(super) fn reconfigure(&mut self, config: &BarkConfig) {
+        self.sinks = Arc::new(config.sinks.clone());
+        self.sink_timeout = config.sink_timeout.as_duration();
+        self.max_bytes = config.history_bytes;
+    }
 }
 
-/// Spawns one delivery task per firing, so [`run_loop`](crate::dog::bark::dog_lifecycle::run_loop)'s own `select!`
-/// returns to reading the next event immediately rather than waiting on any
-/// of them.
+/// Spawns one delivery task per firing, so
+/// [`run_loop`](super::event_loop::run_loop)'s own `select!` returns to
+/// reading the next event immediately rather than waiting on any of them.
 pub(super) fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
     for firing in firings {
         let delivery = delivery.clone();
@@ -112,39 +116,30 @@ async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
     }
 }
 
-/// Wall-clock milliseconds since the Unix epoch.
-///
-/// [`Rules::on_event`](crate::dog::bark::rules::Rules::on_event) and [`Rules::on_poll`](crate::dog::bark::rules::Rules::on_poll) take a caller-supplied
-/// timestamp so a test can fix it; this is the production caller.
-pub(super) fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
-
-    use std::collections::BTreeMap;
-
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use shep_core::barks::{self};
-
-    use tokio::sync::Mutex;
-
-    use super::super::rules::Firing;
-
     use shep_core::barks::Bark;
-
-    use super::*;
+    use shep_core::values::UpDuration;
 
     use super::super::testing::*;
+    use super::*;
+
+    /// A `gave_up` firing for `web`, routed to `sinks`.
+    fn gave_up_firing(sinks: &[&str]) -> Firing {
+        Firing {
+            bark: Bark {
+                at_ms: 1_000,
+                rule: "gave_up".to_owned(),
+                subject: "web".to_owned(),
+                message: "web gave up: restart budget exhausted".to_owned(),
+                sinks: Vec::new(),
+            },
+            sinks: sinks.iter().map(|&name| name.to_owned()).collect(),
+        }
+    }
 
     /// Drives `deliver_and_record` directly rather than through
-    /// `dog_lifecycle::run_loop`: the property belongs to that function, and the loop's
+    /// `run_loop`: the property belongs to that function, and the loop's
     /// event plumbing would need a second synchronization mechanism to
     /// know when a failed delivery finished.
     #[tokio::test]
@@ -155,16 +150,7 @@ mod tests {
 
         let mut sinks = BTreeMap::new();
         sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
-        let firing = Firing {
-            bark: Bark {
-                at_ms: 1_000,
-                rule: "gave_up".to_owned(),
-                subject: "web".to_owned(),
-                message: "web gave up: restart budget exhausted".to_owned(),
-                sinks: Vec::new(),
-            },
-            sinks: vec!["ops".to_owned()],
-        };
+        let firing = gave_up_firing(&["ops"]);
 
         let delivery = Delivery {
             sinks: Arc::new(sinks),
@@ -216,16 +202,7 @@ mod tests {
             "live".to_owned(),
             json_sink(format!("http://{live_addr}/hook")),
         );
-        let firing = Firing {
-            bark: Bark {
-                at_ms: 1_000,
-                rule: "gave_up".to_owned(),
-                subject: "web".to_owned(),
-                message: "web gave up: restart budget exhausted".to_owned(),
-                sinks: Vec::new(),
-            },
-            sinks: vec!["dead".to_owned(), "live".to_owned()],
-        };
+        let firing = gave_up_firing(&["dead", "live"]);
 
         let delivery = Delivery {
             sinks: Arc::new(sinks),
@@ -275,5 +252,28 @@ mod tests {
             "the live sink must have been delivered to: {:?}",
             outcomes[1]
         );
+    }
+
+    #[test]
+    fn a_reconfigure_takes_the_new_settings_and_keeps_the_trail() {
+        let dir = tempfile::tempdir().unwrap();
+        let barks_path = dir.path().join("barks.jsonl");
+        let before = config_with_sink("127.0.0.1:1".parse().unwrap());
+        let mut delivery = Delivery::new(&before, &barks_path);
+        let lock = Arc::clone(&delivery.append_lock);
+
+        let mut after = config_with_sink("127.0.0.1:2".parse().unwrap());
+        after.sink_timeout = UpDuration::from_millis(1_234);
+        after.history_bytes = 4_096;
+        delivery.reconfigure(&after);
+
+        assert_eq!(*delivery.sinks, after.sinks);
+        assert_eq!(delivery.sink_timeout, Duration::from_millis(1_234));
+        assert_eq!(delivery.max_bytes, 4_096);
+        assert!(
+            Arc::ptr_eq(&delivery.append_lock, &lock),
+            "a second lock would let two appends race"
+        );
+        assert_eq!(*delivery.barks_path, barks_path);
     }
 }

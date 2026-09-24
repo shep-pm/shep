@@ -1,10 +1,9 @@
 //! Fixtures and helpers shared by this module's tests.
 
 use super::config::BarkConfig;
-use super::config_hot_reload::{ConfigSource, FlockSource};
-use super::dog_lifecycle::Resubscribe;
 use super::rules::Rules;
 use super::sinks::Sink;
+use super::source::{ConfigSource, EventSource, FlockSource, Resubscribe};
 use super::*;
 use crate::http::{HttpRequest, read_request, write_response};
 use shep_client::{LinkLost, RequestError};
@@ -15,14 +14,13 @@ use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, oneshot};
 
 /// [`EventSource`] over the real thing bark's subscription lags on: a
 /// `tokio::sync::broadcast::Receiver`. The production path implements
-/// the trait for [`shep_client::EventStream`] in `dog/mod.rs`.
+/// the trait for [`ClientEvents`](super::source::ClientEvents).
 impl EventSource for broadcast::Receiver<BusEvent> {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
         match self.recv().await {
@@ -106,15 +104,11 @@ impl HandoverSource {
 
 impl EventSource for HandoverSource {
     async fn next(&mut self) -> Option<Result<BusEvent, u64>> {
-        let stream = self.current.as_mut()?;
-        match stream.recv().await {
-            Ok(event) => Some(Ok(event)),
-            Err(broadcast::error::RecvError::Lagged(count)) => Some(Err(count)),
-            Err(broadcast::error::RecvError::Closed) => {
-                self.current = None;
-                None
-            }
+        let next = EventSource::next(self.current.as_mut()?).await;
+        if next.is_none() {
+            self.current = None;
         }
+        next
     }
 
     async fn resubscribe(&mut self) -> Result<(), Resubscribe> {
@@ -302,7 +296,7 @@ pub(super) fn gave_up_rules() -> Rules {
 /// A [`BarkConfig`] with one sink, `"ops"`, POSTing to `addr`. `poll`
 /// is 60s, past every timeout these tests bound themselves by, so a
 /// poll that fires is attributable to the lag path.
-pub(super) fn config_with_sink(addr: SocketAddr, _barks_path: &Path) -> BarkConfig {
+pub(super) fn config_with_sink(addr: SocketAddr) -> BarkConfig {
     let mut sinks = BTreeMap::new();
     sinks.insert("ops".to_owned(), json_sink(format!("http://{addr}/hook")));
     BarkConfig {

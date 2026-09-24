@@ -434,10 +434,8 @@ fn parse_status_code(status_line: &str) -> Result<u16, SinkError> {
 
 #[cfg(test)]
 mod tests {
-    use tokio::sync::oneshot;
-
+    use super::super::testing::one_shot_sink;
     use super::*;
-    use crate::http::{HttpRequest, read_request, write_response};
 
     /// Every variant's `url` carries the credential marker; nothing else
     /// does. The key is spelled out here, not read from
@@ -488,30 +486,6 @@ mod tests {
         Sink::Slack {
             url: "https://hooks.slack.com/services/T0/B0/super-secret-token".to_string(),
         }
-    }
-
-    /// Binds an ephemeral port, accepts one connection, answers
-    /// `status`/`body`, and hands the captured request back. Never a real
-    /// webhook.
-    async fn one_shot_sink(
-        status: u16,
-        body: &str,
-    ) -> (std::net::SocketAddr, oneshot::Receiver<HttpRequest>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let (tx, rx) = oneshot::channel();
-        let body = body.to_string();
-        tokio::spawn(async move {
-            let (mut stream, _peer) = listener.accept().await.unwrap();
-            let req = read_request(&mut stream, Duration::from_secs(5))
-                .await
-                .unwrap();
-            write_response(&mut stream, status, "application/json", body.as_bytes())
-                .await
-                .unwrap();
-            let _ = tx.send(req);
-        });
-        (addr, rx)
     }
 
     #[test]

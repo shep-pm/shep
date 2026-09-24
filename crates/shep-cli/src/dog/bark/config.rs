@@ -2,7 +2,7 @@ use super::rules::{Rule, Rules};
 use super::sinks::Sink;
 use serde::Deserialize;
 use shep_client::dogs::dog_config;
-use shep_core::barks::{self};
+use shep_core::barks;
 use shep_core::values::UpDuration;
 use std::collections::BTreeMap;
 
@@ -80,13 +80,6 @@ impl Default for BarkConfig {
 
 #[cfg(test)]
 mod tests {
-
-    use shep_core::barks::{self};
-
-    use shep_core::values::UpDuration;
-
-    use super::super::rules::Rules;
-
     use super::*;
 
     /// The sinks map carries the credential marker, every sink's own URL
