@@ -31,7 +31,7 @@ SETTLE_LOG=5
 SAMPLE_LOG=30
 START_TIMEOUT=60
 POLL_INTERVAL=0.01
-LINE_BYTES=62   # verified at runtime by check_line_bytes
+LINE_BYTES=58   # verified at runtime by check_line_bytes
 
 mkdir -p "$RAW" "$APPS"
 METRICS="$RAW/metrics.jsonl"
@@ -184,7 +184,7 @@ pm2_dpid()  { cat "$PM2_HOME/pm2.pid" 2>/dev/null; }
 write_workloads() {
   mkdir -p "$APPS"
   printf '#!/bin/sh\nwhile true; do sleep 5; done\n' > "$APPS/quiet.sh"
-  # 62 bytes per line, fixed, so a byte delta divides into an exact line count.
+  # 58 bytes per line, fixed, so a byte delta divides into an exact line count.
   printf '#!/bin/sh\nwhile true; do echo "%s"; done\n' \
     "shep versus pm2 benchmark line, fixed width payload xxxxx" > "$APPS/loud.sh"
   chmod +x "$APPS/quiet.sh" "$APPS/loud.sh"
@@ -402,13 +402,40 @@ m_start() { # tool tag
 
 # ------------------------------------------------------ metric 5: footprint --
 
+# Every [[bin]] the shep package declares: what `cargo install shep`, the
+# .deb and the release archives all put on disk. Read from the manifest, so
+# a new [[bin]] is counted too.
+shep_bin_names() {
+  awk '/^\[\[bin\]\]/ { inbin = 1; next }
+       /^\[/         { inbin = 0 }
+       inbin && /^name = / { gsub(/"/, "", $3); print $3 }' \
+    "$SCRATCH/wt-bench/crates/shep-cli/Cargo.toml"
+}
+
+bytes_of() { wc -c < "$1" | tr -d ' '; }
+
+# The install is every binary beside $SHEP_BIN. A missing one refuses the
+# metric rather than reporting part of the install as all of it.
 m_footprint() {
   echo "[footprint]"
-  local sb pm
-  sb=$(stat -f %z "$SHEP_BIN")
+  local dir names name b total=0 per="" pm gz
+  dir=$(dirname "$SHEP_BIN")
+  names=$(shep_bin_names)
+  [ -n "$names" ] || { echo "  no [[bin]] names found in the manifest" >&2; return 1; }
+  for name in $names; do
+    [ -f "$dir/$name" ] || { echo "  $dir/$name is missing, refusing to report" >&2; return 1; }
+    b=$(bytes_of "$dir/$name")
+    total=$((total + b))
+    per="$per\"$name\":$b,"
+    python3 -c "print(f'  $name {$b/1048576:.2f} MiB')"
+  done
+  # What a release archive weighs: the same binaries, tarred and gzipped.
+  # shellcheck disable=SC2086 # one word per binary name is the point
+  gz=$(tar -czf - -C "$dir" $names | wc -c | tr -d ' ')
   pm=$(du -sk "$SCRATCH/pm2-install" | awk '{print $1}')
-  emit "{\"metric\":\"footprint\",\"shep_binary_bytes\":$sb,\"pm2_install_kb\":$pm}"
-  python3 -c "print(f'  shep binary {$sb/1048576:.2f} MiB   pm2 install {$pm/1024:.2f} MiB')"
+  emit "{\"metric\":\"footprint\",\"shep_binaries_bytes\":{${per%,}},\
+\"shep_install_bytes\":$total,\"shep_archive_gz_bytes\":$gz,\"pm2_install_kb\":$pm}"
+  python3 -c "print(f'  shep install {$total/1048576:.2f} MiB, {$gz/1048576:.2f} MiB gzipped   pm2 install {$pm/1024:.2f} MiB')"
 }
 
 m_versions() {

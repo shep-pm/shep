@@ -13,7 +13,7 @@ use tokio::io::{AsyncWrite, BufWriter};
 use tokio::sync::oneshot;
 use tokio::time::{Instant, timeout};
 
-use shep_core::logstamp::{LOG_STAMP_BYTES, stamp_into};
+use shep_core::logstamp::{LOG_STAMP_BYTES, Stamper, stamp_into};
 
 use crate::runner::LogCtl;
 
@@ -230,6 +230,7 @@ async fn a_run_of_lines_costs_one_write_per_bufferful_not_one_per_line() {
         handle: Some(BufWriter::with_capacity(LOG_BUFFER, sink.clone())),
         buffered_since: None,
         stamp: String::new(),
+        stamper: Stamper::default(),
     };
     for _ in 0..lines {
         log.append(LINE).await;
@@ -277,6 +278,7 @@ async fn a_line_from_a_sheep_that_then_goes_quiet_still_reaches_its_file() {
         handle: Some(BufWriter::with_capacity(LOG_BUFFER, sink.clone())),
         buffered_since: None,
         stamp: String::new(),
+        stamper: Stamper::default(),
     };
 
     log.append(LINE).await;
@@ -806,6 +808,7 @@ async fn a_flush_reports_the_write_its_file_never_took() {
         )),
         buffered_since: None,
         stamp: String::new(),
+        stamper: Stamper::default(),
     };
 
     // Swallowed by design: the pump keeps draining a child whose log

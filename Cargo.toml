@@ -275,9 +275,11 @@ debug = false
 # Cargo's default release profile optimizes each crate on its own, but the
 # daemon's hot paths cross crate boundaries on every log line: the pump is in
 # shep-daemon, the codec and `BusEvent` in shep-core, the channels and timer
-# wheel in tokio. `lto = "thin"`: a quarter smaller binary, and this
-# workload is bound by syscalls and wakeups rather than inlinable code, so
-# thin and fat LTO run the same speed.
+# wheel in tokio. That workload is bound by syscalls and wakeups rather than
+# inlinable code, so thin and fat LTO run the same speed. Fat, because it is
+# smaller: 20.45 MiB per binary against thin's 21.79 on Linux x86_64, and
+# 0.66 MiB less idle daemon RSS, which is mostly the binary's own resident
+# text. A clean build takes about 13 s longer.
 #
 # Not `panic = "abort"`: shep-client's spawn.rs calls `JoinError::is_panic`
 # and `resume_unwind` to re-raise a panicked task in its caller, which needs
@@ -285,7 +287,7 @@ debug = false
 #
 # Not `strip`: symbols are what let `sample(1)` name a frame during profiling.
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 
 [workspace.lints.rust]

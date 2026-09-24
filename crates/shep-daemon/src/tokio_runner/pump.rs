@@ -2,12 +2,14 @@
 //! [`spawn_channel_pumps`] spawn, and the line-draining helpers they share.
 
 use std::io;
+use std::pin::Pin;
 
 use tokio::io::{
     AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader, Lines,
 };
 use tokio::sync::mpsc;
-use tokio::time::{Instant, sleep_until, timeout};
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::time::{Instant, Sleep, sleep_until, timeout};
 
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::runner::{LogCtl, LogLine, RunnerError, StdinWrite};
@@ -82,6 +84,13 @@ where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
 {
+    // The common case skips the `select!`, whose timer is registered and
+    // removed per call under a lock every worker thread contends for.
+    match logs_tx.try_reserve() {
+        Ok(slot) => return Some(slot),
+        Err(TrySendError::Closed(())) => return None,
+        Err(TrySendError::Full(())) => {}
+    }
     loop {
         // Recomputed every iteration from the stored mark, so losing the
         // race never extends the window.
@@ -121,6 +130,31 @@ where
 {
     match lines {
         Some(lines) => lines.next_line().await,
+        None => core::future::pending().await,
+    }
+}
+
+/// Points `timer` at `deadline`, touching the timer wheel only when the
+/// deadline moved or was retired.
+///
+/// The pump keeps one timer across lines: building one per `select!`
+/// registers and removes it under a lock every worker thread contends for.
+fn arm_idle_flush(timer: &mut Option<Pin<Box<Sleep>>>, deadline: Option<Instant>) {
+    match (timer.as_mut(), deadline) {
+        (_, None) => *timer = None,
+        (Some(sleep), Some(at)) if sleep.deadline() == at => {}
+        (Some(sleep), Some(at)) => sleep.as_mut().reset(at),
+        (None, Some(at)) => *timer = Some(Box::pin(sleep_until(at))),
+    }
+}
+
+/// Resolves when `timer` fires, and never while it is unarmed.
+///
+/// Cancel-safe: a `Sleep` that loses a `select!` race stays registered at
+/// the same deadline.
+async fn idle_flush_due(timer: &mut Option<Pin<Box<Sleep>>>) {
+    match timer {
+        Some(sleep) => sleep.as_mut().await,
         None => core::future::pending().await,
     }
 }
@@ -268,10 +302,11 @@ pub(super) fn spawn_log_pump<O, E>(
             err: stderr.map(|reader| with_read_buffer(reader).lines()),
         };
 
+        let mut idle_flush = None;
         while streams.out.is_some() || streams.err.is_some() {
             // Recomputed every iteration from the stored mark;
             // `reserve_slot` carries the same branch.
-            let flush_at = files.flush_deadline();
+            arm_idle_flush(&mut idle_flush, files.flush_deadline());
             tokio::select! {
                 result = next_line(&mut streams.out), if files.reading() => {
                     // Bound before the `match`: the future borrows `streams`,
@@ -324,11 +359,7 @@ pub(super) fn spawn_log_pump<O, E>(
                 // on. Cancel-safe: a closed channel stays closed.
                 () = logs_tx.closed() => break,
 
-                // Cancel-safe: rebuilt against the same absolute deadline
-                // every iteration, so losing the race costs nothing.
-                () = sleep_until(flush_at.unwrap_or_else(Instant::now)), if flush_at.is_some() => {
-                    files.flush_idle().await;
-                }
+                () = idle_flush_due(&mut idle_flush) => files.flush_idle().await,
             }
         }
         // On the way out rather than in the branch that prompted it: four
