@@ -2143,6 +2143,7 @@ dependencies = [
  "futures-util",
  "nix 0.29.0",
  "schemars",
+ "serde",
  "serde_json",
  "shep-core",
  "shep-macros",
@@ -2150,6 +2151,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "toml 0.8.23",
 ]
 
 [[package]]

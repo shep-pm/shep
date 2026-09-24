@@ -118,6 +118,22 @@ pub enum SpawnError {
     },
 }
 
+impl SpawnError {
+    /// The [`shep_core::exit`] code a process stopping on this error uses.
+    ///
+    /// A connect keeps its own code, so a refusal stays a protocol mismatch
+    /// through autostart. Every other way autostart ends, nothing answers.
+    #[must_use]
+    pub const fn exit_code(&self) -> u8 {
+        match self {
+            Self::Connect(inner) => inner.exit_code(),
+            Self::Launch(_) | Self::DaemonExited { .. } | Self::DeadlineExpired { .. } => {
+                shep_core::exit::DAEMON_UNREACHABLE
+            }
+        }
+    }
+}
+
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

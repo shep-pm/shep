@@ -398,6 +398,14 @@ silently retried could stop a sheep twice. It reconnects when asked,
 through `Client::reconnect`, which reports whether the daemon now answering
 is the one from before.
 
+The rest of what every dog repeats between `probe` and its own loop is in
+`shep_client::dogs` too. `DogIdentity::from_env` reads `$SHEP_DOG_NAME`, and
+`DogRuntime::start` connects under it and fetches your section; its `config`
+reports a line number and never the line, since a section carries
+credentials. `Stop::on_stop_signals` turns `SIGTERM` into a request your loop
+can finish a step before honouring, and every error there carries
+`exit_code()`, shep's own number for the cause from `shep_core::exit`.
+
 That is what `shep daemon reload` asks of a dog. A dog is carried across the
 reload the way a sheep is: the process is a child of a shepherd whose pid
 does not change, so it keeps its own pid and its restart count stays where it

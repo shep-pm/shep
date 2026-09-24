@@ -12,14 +12,12 @@
 
 pub mod bark;
 pub mod metrics;
-mod runtime;
 
-pub use runtime::DogRuntime;
-use runtime::exit_code_for;
+pub use shep_client::dogs::DogRuntime;
 
 use std::time::Duration;
 
-use shep_client::LinkLost;
+use shep_client::dogs::DogIdentity;
 use shep_core::paths::ShepPaths;
 
 use crate::exit::ExitCode;
@@ -100,21 +98,6 @@ pub(crate) const BUILT_IN_DOGS: [&str; BuiltInDog::ALL.len()] = {
 /// shepherd to come along.
 const SHEPHERD_RETURN_BUDGET: Duration = shep_daemon::dogs::DOG_SILENCE_BUDGET;
 
-/// The exit code a dog reports when it gave up on its shepherd.
-///
-/// Not `Success`, because a dog that stopped because nothing answered has
-/// not finished its work, and an operator told a running shepherd was
-/// unreachable goes looking for the wrong thing. The wildcard is what
-/// [`LinkLost`]'s `non_exhaustive` asks for: until something says
-/// otherwise, a variant added later is one more way of not reaching a
-/// shepherd.
-fn exit_for(lost: &LinkLost) -> ExitCode {
-    match lost {
-        LinkLost::Refused { .. } => ExitCode::ProtocolMismatch,
-        _ => ExitCode::DaemonUnreachable,
-    }
-}
-
 /// The schema a built-in dog would print for the schema flag, without
 /// spawning anything: a built-in dog is this binary, so the answer is one
 /// call away rather than a subprocess and a timeout away.
@@ -152,11 +135,11 @@ pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
         );
         return ExitCode::Usage;
     };
-    let runtime = match DogRuntime::start(name, paths).await {
+    let runtime = match DogRuntime::start(DogIdentity::named(name), paths).await {
         Ok(runtime) => runtime,
         Err(err) => {
             eprintln!("shep dog {name}: {err}");
-            return exit_code_for(&err);
+            return ExitCode::from(&err);
         }
     };
     match dog {

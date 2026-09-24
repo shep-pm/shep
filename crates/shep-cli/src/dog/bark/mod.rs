@@ -28,6 +28,7 @@ use std::sync::Arc;
 
 use config::rules_for;
 use event_loop::run_loop;
+use shep_client::dogs::Stop;
 
 use super::DogRuntime;
 use crate::exit::ExitCode;
@@ -45,10 +46,8 @@ use crate::exit::ExitCode;
 pub async fn run(runtime: DogRuntime) -> ExitCode {
     let config = match runtime.config::<BarkConfig>() {
         Ok(config) => config,
-        Err(_err) => {
-            // The fact, not the value: a `[bark]` section can carry a
-            // webhook URL with a bearer token in its path.
-            eprintln!("shep dog bark: [bark] in dogs.toml does not parse; see `shep dogs`");
+        Err(err) => {
+            eprintln!("shep dog bark: {err}; see `shep dogs`");
             return ExitCode::InvalidConfig;
         }
     };
@@ -63,18 +62,18 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
     // `config.*`, which would hand it every other dog's prompts too. `dog`
     // is reused below for `ClientShepherd`'s re-read request, so the two
     // cannot drift apart.
-    let dog = runtime.name.clone();
+    let dog = runtime.identity().section().to_owned();
     // Named once, because `ClientEvents` asks for the same list again on
     // every handover and a second literal could drift from this one.
     let topics = vec!["process.*".to_owned(), format!("config.dog.{dog}")];
-    let (events, shepherd) = match source::subscribe(runtime.client, dog, topics).await {
+    let barks_path = runtime.paths().barks.clone();
+    let (events, shepherd) = match source::subscribe(runtime.into_client(), dog, topics).await {
         Ok(subscribed) => subscribed,
         Err(err) => {
             eprintln!("shep dog bark: could not subscribe to the shepherd's bus: {err}");
             return ExitCode::from(&err);
         }
     };
-    let barks_path = runtime.paths.barks;
     run_loop(
         events,
         Arc::clone(&shepherd),
@@ -82,6 +81,7 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
         &config,
         &barks_path,
         shepherd,
+        Stop::on_stop_signals(),
     )
     .await
 }

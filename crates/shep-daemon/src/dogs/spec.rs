@@ -133,7 +133,7 @@ pub fn dog_app(spec: &DogSpec, paths: &ShepPaths) -> Result<ResolvedApp, DogErro
     // from, so this is its only channel.
     config
         .env
-        .insert("SHEP_DOG_NAME".to_string(), spec.name.clone());
+        .insert(shep_core::dogs::DOG_NAME_VAR.to_string(), spec.name.clone());
     normalize(config).map_err(|err| DogError::Config(err.to_string()))
 }
 

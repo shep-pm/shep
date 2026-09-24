@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use shep_client::ReconnectingClient;
-use shep_client::dogs::dog_config;
-use shep_core::protocol::{ProcessInfo, Request, Response};
+use shep_client::dogs::{Stop, dog_config};
+use shep_core::protocol::ProcessInfo;
 use sysinfo::{MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -163,11 +163,8 @@ pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
 pub async fn run(runtime: DogRuntime) -> ExitCode {
     let config = match runtime.config::<MetricsConfig>() {
         Ok(config) => config,
-        Err(_err) => {
-            // The fact, not the value: `DogRunError::Section`'s message is
-            // the TOML parser's own complaint, which can quote the
-            // offending line.
-            eprintln!("shep dog metrics: [metrics] in dogs.toml does not parse; see `shep dogs`");
+        Err(err) => {
+            eprintln!("shep dog metrics: {err}; see `shep dogs`");
             return ExitCode::InvalidConfig;
         }
     };
@@ -178,17 +175,10 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
             return ExitCode::Failure;
         }
     };
-    let mut sigterm = match crate::shutdown::Terminate::install() {
-        Ok(sigterm) => sigterm,
-        Err(err) => {
-            eprintln!("shep dog metrics: could not install a shutdown handler: {err}");
-            return ExitCode::Failure;
-        }
-    };
-    let client = Arc::new(runtime.client);
+    let mut stop = Stop::on_stop_signals();
+    let client = Arc::new(runtime.into_client());
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => ExitCode::Success,
-        _ = sigterm.recv() => ExitCode::Success,
+        () = stop.wait() => ExitCode::Success,
         () = accept_forever(listener, Arc::clone(&client)) => ExitCode::Success,
         // A scrape is the only thing that makes this dog touch its client,
         // so nothing else here would ever notice the shepherd was gone: an
@@ -199,13 +189,13 @@ pub async fn run(runtime: DogRuntime) -> ExitCode {
         // long inside the budget.
         lost = client.link_lost(super::SHEPHERD_RETURN_BUDGET) => {
             eprintln!("shep dog metrics: {lost}");
-            super::exit_for(&lost)
+            ExitCode::from(&lost)
         }
     }
 }
 
 /// Accepts connections off `listener` forever, one task per connection.
-/// Never returns: [`run`] races it against the two shutdown signals.
+/// Never returns: [`run`] races it against a stop request.
 async fn accept_forever(listener: TcpListener, client: Arc<ReconnectingClient>) {
     loop {
         match listener.accept().await {
@@ -244,12 +234,12 @@ async fn handle_connection(mut stream: TcpStream, client: Arc<ReconnectingClient
         return;
     }
 
-    let flock = match client.request(Request::ListFlock).await {
-        Ok(Response::Flock(flock)) => flock,
+    let flock = match client.list_flock().await {
+        Ok(flock) => flock,
         // A failed `ListFlock` answers 503, not a 200 with nothing in it:
         // a scraper reads that as a real empty flock, where a 503 is
         // `up == 0` for this target.
-        Ok(_) | Err(_) => {
+        Err(_) => {
             let _: Result<(), HttpError> = http::write_response(
                 &mut stream,
                 503,

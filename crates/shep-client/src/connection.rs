@@ -79,6 +79,24 @@ pub enum ConnectError {
     },
 }
 
+impl ConnectError {
+    /// The [`shep_core::exit`] code a process stopping on this error uses:
+    /// a refusal is a protocol mismatch, and every other stage is nothing
+    /// usable answering.
+    #[must_use]
+    pub const fn exit_code(&self) -> u8 {
+        use shep_core::exit;
+        match self {
+            Self::ProtocolMismatch { .. } => exit::PROTOCOL_MISMATCH,
+            Self::Connect { .. }
+            | Self::Io(_)
+            | Self::Wire(_)
+            | Self::HandshakeClosed
+            | Self::HandshakeTimeout { .. } => exit::DAEMON_UNREACHABLE,
+        }
+    }
+}
+
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -470,5 +488,23 @@ mod tests {
             panic!("a backlogged connect must time out, not hang or read as success; got {err:?}");
         };
         assert_eq!(after, Duration::from_millis(150));
+    }
+
+    /// A refusal is the one stage an upgrade fixes; every other stage is
+    /// nothing answering.
+    #[test]
+    fn a_refusal_exits_protocol_mismatch_and_every_other_stage_unreachable() {
+        let refused = ConnectError::ProtocolMismatch {
+            client: 1,
+            daemon_version: None,
+            message: "too old".to_owned(),
+        };
+        assert_eq!(refused.exit_code(), shep_core::exit::PROTOCOL_MISMATCH);
+        for unreachable in [
+            ConnectError::HandshakeClosed,
+            ConnectError::Io(std::io::Error::other("reset")),
+        ] {
+            assert_eq!(unreachable.exit_code(), shep_core::exit::DAEMON_UNREACHABLE);
+        }
     }
 }

@@ -1,7 +1,12 @@
 //! The process exit-code taxonomy: [`ExitCode`] and its wire-error
 //! conversions. `docs/specs/shep-v1.md` §9 is the source of truth for the
 //! numbers and their meanings.
+//!
+//! Every code a dog can also exit on is defined from [`shep_core::exit`], and
+//! every conversion defers to the error's own `exit_code()`, so a built-in
+//! dog and an adopted one report a cause with one number.
 
+use shep_core::exit;
 use shep_core::protocol::RpcErrorCode;
 
 /// A `shep` process exit status.
@@ -12,25 +17,25 @@ pub enum ExitCode {
     #[cfg_attr(windows, allow(dead_code))]
     Success = 0,
     /// An error with no more specific code.
-    Failure = 1,
+    Failure = exit::FAILURE,
     /// Bad arguments. clap's own convention.
-    Usage = 2,
+    Usage = exit::USAGE,
     /// A selector matched no registered sheep.
-    NotFound = 3,
+    NotFound = exit::NOT_FOUND,
     /// A Flockfile or daemon config failed validation.
-    InvalidConfig = 4,
+    InvalidConfig = exit::INVALID_CONFIG,
     /// No daemon answered, and none could be started.
     #[cfg_attr(windows, allow(dead_code))]
-    DaemonUnreachable = 5,
+    DaemonUnreachable = exit::DAEMON_UNREACHABLE,
     /// The daemon refused this client's handshake: its protocol version is
     /// below the daemon's `MIN_SUPPORTED` floor.
-    ProtocolMismatch = 6,
+    ProtocolMismatch = exit::PROTOCOL_MISMATCH,
     /// The daemon could not spawn a sheep.
-    SpawnFailed = 7,
+    SpawnFailed = exit::SPAWN_FAILED,
     /// The request outlived its deadline.
-    DeadlineExceeded = 8,
+    DeadlineExceeded = exit::DEADLINE_EXCEEDED,
     /// An unexpected daemon-side failure.
-    Internal = 9,
+    Internal = exit::INTERNAL,
     /// Another daemon already holds this `$SHEP_HOME`. Read across the
     /// process boundary by `shep_client::spawn::DAEMON_ALREADY_RUNNING`,
     /// which must stay equal to 10.
@@ -57,7 +62,7 @@ pub enum ExitCode {
     /// [`RpcErrorCode::Unsupported`]: the verb this binary sent is not one
     /// the connected daemon implements, so a newer shepherd is the remedy
     /// rather than different arguments.
-    Unsupported = 13,
+    Unsupported = exit::UNSUPPORTED,
 }
 
 impl ExitCode {
@@ -87,82 +92,73 @@ impl ExitCode {
     }
 }
 
-/// Maps a daemon-reported [`RpcErrorCode`] to the exit code that reports it.
-///
-/// `RpcErrorCode` is `#[non_exhaustive]`, so a variant this binary predates
-/// becomes [`ExitCode::Internal`], not [`ExitCode::Failure`].
+impl ExitCode {
+    /// The variant [`shep_core::exit`] spells `code`, and
+    /// [`ExitCode::Failure`] for a number it does not define.
+    ///
+    /// For the conversions below, whose numbers shep-core and shep-client
+    /// decide.
+    const fn from_shared(code: u8) -> Self {
+        match code {
+            exit::USAGE => Self::Usage,
+            exit::NOT_FOUND => Self::NotFound,
+            exit::INVALID_CONFIG => Self::InvalidConfig,
+            exit::DAEMON_UNREACHABLE => Self::DaemonUnreachable,
+            exit::PROTOCOL_MISMATCH => Self::ProtocolMismatch,
+            exit::SPAWN_FAILED => Self::SpawnFailed,
+            exit::DEADLINE_EXCEEDED => Self::DeadlineExceeded,
+            exit::INTERNAL => Self::Internal,
+            exit::UNSUPPORTED => Self::Unsupported,
+            _ => Self::Failure,
+        }
+    }
+}
+
+/// Maps a daemon-reported [`RpcErrorCode`] to the exit code that reports it,
+/// through [`RpcErrorCode::exit_code`].
 impl From<RpcErrorCode> for ExitCode {
     fn from(code: RpcErrorCode) -> Self {
-        match code {
-            RpcErrorCode::NotFound => Self::NotFound,
-            RpcErrorCode::InvalidConfig => Self::InvalidConfig,
-            RpcErrorCode::SpawnFailed => Self::SpawnFailed,
-            RpcErrorCode::ProtocolMismatch => Self::ProtocolMismatch,
-            RpcErrorCode::Internal => Self::Internal,
-            RpcErrorCode::DeadlineExceeded => Self::DeadlineExceeded,
-            RpcErrorCode::Unsupported => Self::Unsupported,
-            _ => Self::Internal,
-        }
+        Self::from_shared(code.exit_code())
     }
 }
 
 /// Maps a failure to reach the daemon at all to the exit code that reports
-/// it.
-///
-/// [`shep_client::ConnectError::ProtocolMismatch`] is the one variant with
-/// its own code; every other means nothing usable answered at the socket,
-/// whatever stage failed. A future variant falls to [`ExitCode::Failure`].
+/// it, through [`shep_client::ConnectError::exit_code`].
 impl From<&shep_client::ConnectError> for ExitCode {
     fn from(err: &shep_client::ConnectError) -> Self {
-        use shep_client::ConnectError::{
-            Connect, HandshakeClosed, HandshakeTimeout, Io, ProtocolMismatch, Wire,
-        };
-        match err {
-            ProtocolMismatch { .. } => Self::ProtocolMismatch,
-            Connect { .. } | Io(_) | Wire(_) | HandshakeClosed | HandshakeTimeout { .. } => {
-                Self::DaemonUnreachable
-            }
-            _ => Self::Failure,
-        }
+        Self::from_shared(err.exit_code())
     }
 }
 
 /// Maps a failed request against an already-connected daemon to the exit
-/// code that reports it.
-///
-/// `Rpc` defers to the [`RpcErrorCode`] conversion, so the two taxonomies
-/// cannot drift. `Closed` is the same "nothing is answering" condition as a
-/// failed connect. `Wire` is this client failing to encode its own request, a
-/// fault in this binary. A future variant falls to [`ExitCode::Failure`].
+/// code that reports it, through [`shep_client::RequestError::exit_code`].
 impl From<&shep_client::RequestError> for ExitCode {
     fn from(err: &shep_client::RequestError) -> Self {
-        use shep_client::RequestError::{Closed, Rpc, Timeout, Wire};
-        match err {
-            Rpc(rpc) => Self::from(rpc.code),
-            Timeout { .. } => Self::DeadlineExceeded,
-            Closed => Self::DaemonUnreachable,
-            Wire(_) => Self::Internal,
-            _ => Self::Failure,
-        }
+        Self::from_shared(err.exit_code())
+    }
+}
+
+/// Maps a dog giving up on its shepherd to the exit code that reports it,
+/// through [`shep_client::LinkLost::exit_code`].
+impl From<&shep_client::LinkLost> for ExitCode {
+    fn from(lost: &shep_client::LinkLost) -> Self {
+        Self::from_shared(lost.exit_code())
+    }
+}
+
+/// Maps a dog failing on its shepherd to the exit code that reports it,
+/// through [`shep_client::dogs::ShepherdError::exit_code`].
+impl From<&shep_client::dogs::ShepherdError> for ExitCode {
+    fn from(err: &shep_client::dogs::ShepherdError) -> Self {
+        Self::from_shared(err.exit_code())
     }
 }
 
 /// Maps a failed `connect_or_spawn` attempt to the exit code that reports
-/// it.
-///
-/// `Connect` defers to the [`shep_client::ConnectError`] conversion, so a
-/// version-skew refusal keeps [`ExitCode::ProtocolMismatch`] through the
-/// autostart path. `Launch`, `DaemonExited` and `DeadlineExpired` are the
-/// three ways autostart ends with no daemon answering. A future variant
-/// falls to [`ExitCode::Failure`].
+/// it, through [`shep_client::spawn::SpawnError::exit_code`].
 impl From<&shep_client::spawn::SpawnError> for ExitCode {
     fn from(err: &shep_client::spawn::SpawnError) -> Self {
-        use shep_client::spawn::SpawnError::{Connect, DaemonExited, DeadlineExpired, Launch};
-        match err {
-            Connect(inner) => Self::from(inner),
-            Launch(_) | DaemonExited { .. } | DeadlineExpired { .. } => Self::DaemonUnreachable,
-            _ => Self::Failure,
-        }
+        Self::from_shared(err.exit_code())
     }
 }
 
@@ -172,9 +168,9 @@ mod tests {
 
     #[test]
     fn every_rpc_error_code_maps_to_a_distinct_nonzero_exit_code() {
-        // `ALL` is exhaustive-checked inside shep-core, so a new variant lands
-        // here, collides with `Internal` under the `From` impl's `_` arm, and
-        // fails the distinctness assertion.
+        // `ALL` and `RpcErrorCode::exit_code` are both exhaustive inside
+        // shep-core, so a new variant lands here with a number of its own,
+        // and one reusing another's fails the distinctness assertion.
         let codes = shep_core::protocol::RpcErrorCode::ALL;
         let mapped: Vec<u8> = codes.iter().map(|c| ExitCode::from(*c) as u8).collect();
         assert!(
@@ -187,6 +183,27 @@ mod tests {
             mapped.len(),
             "distinct causes need distinct exit codes: {mapped:?}"
         );
+    }
+
+    /// fails if a shared number reads back as a different variant, which
+    /// would report one cause under another's name.
+    #[test]
+    fn every_shared_code_reads_back_as_the_variant_it_defines() {
+        let shared = [
+            ExitCode::Failure,
+            ExitCode::Usage,
+            ExitCode::NotFound,
+            ExitCode::InvalidConfig,
+            ExitCode::DaemonUnreachable,
+            ExitCode::ProtocolMismatch,
+            ExitCode::SpawnFailed,
+            ExitCode::DeadlineExceeded,
+            ExitCode::Internal,
+            ExitCode::Unsupported,
+        ];
+        for code in shared {
+            assert_eq!(ExitCode::from_shared(code as u8), code);
+        }
     }
 
     /// Distinctness is the property; the exact words are pinned by a later

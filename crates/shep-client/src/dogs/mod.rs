@@ -1,24 +1,16 @@
-//! The dog side of the probe contract: one call a dog makes as its first
-//! line, which answers every question shep asks its binary.
+//! What every dog shares: answering shep's probes, starting up, talking to
+//! its shepherd, and stopping.
 //!
-//! A dog is a plugin process the shepherd supervises. Before shep adopts one,
-//! and again whenever it needs the dog's config schema, it spawns the binary
-//! with a flag and reads what comes back. [`probe`] answers both flags, so
-//! neither the answer's format nor the flag names are ever typed by a dog
-//! author:
+//! A dog is a plugin process the shepherd supervises. Everything here is
+//! the part each dog would otherwise copy, and the copies drift apart in
+//! ways an operator reads in `shep dogs`.
 //!
-//! ```no_run
-//! # #[shep_client::dogs::dog_config]
-//! # #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-//! # struct MyDogConfig {}
-//! fn main() {
-//!     shep_client::dogs::probe::<MyDogConfig>(
-//!         env!("CARGO_PKG_NAME"),
-//!         env!("CARGO_PKG_VERSION"),
-//!     );
-//!     // ...normal startup, reached only when this run is not a probe.
-//! }
-//! ```
+//! ## Answering shep's probes
+//!
+//! Before shep adopts a dog, and whenever it needs the dog's config schema,
+//! it spawns the binary with a flag and reads what comes back. [`probe`]
+//! answers both, so neither the format nor the flags are typed by a dog
+//! author. It is the first line of `main`, before anything opens a socket.
 //!
 //! `name` and `version` are arguments rather than `env!` calls in this
 //! crate, since `env!` expands where it is written and would report
@@ -27,9 +19,91 @@
 //! Answering is optional: with the `schema` feature off, [`probe`] still
 //! answers the version flag, and the schema flag exits without printing,
 //! which shep reads as a dog with no schema and refuses nothing for.
+//!
+//! ## Starting up
+//!
+//! After [`probe`], in this order:
+//!
+//! - [`parse_args`], unless the dog has a command mode of its own.
+//! - [`Stop::on_stop_signals`], or [`Stop::on_interrupt`] for a dog the
+//!   shepherd may kill outright. Before anything is awaited.
+//! - [`resolve_paths`] and [`DogIdentity::from_env`].
+//! - [`DogRuntime::start`], then [`DogRuntime::config`] for the section.
+//!
+//! ## Stopping
+//!
+//! [`ShepherdError`], [`SectionError`], [`UsageError`] and [`HomeError`]
+//! each carry an `exit_code()`, shep's own number for the same cause.
+//!
+//! ```no_run
+//! use std::process::ExitCode;
+//!
+//! use shep_client::dogs::{self, DogAction, DogIdentity, DogRuntime, Stop};
+//!
+//! # #[shep_client::dogs::dog_config]
+//! # #[derive(Default, serde::Deserialize)]
+//! # #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+//! # struct Settings {}
+//! #[tokio::main]
+//! async fn main() -> ExitCode {
+//!     dogs::probe::<Settings>(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+//!
+//!     let args: Vec<String> = std::env::args().skip(1).collect();
+//!     match dogs::parse_args("my-dog", args.iter().map(String::as_str)) {
+//!         Ok(DogAction::Run) => {}
+//!         Ok(DogAction::PrintConfig) => {
+//!             println!("#interval = \"1h\"");
+//!             return ExitCode::SUCCESS;
+//!         }
+//!         Err(usage) => {
+//!             eprintln!("{usage}");
+//!             return usage.exit_code().into();
+//!         }
+//!     }
+//!
+//!     let mut stop = Stop::on_stop_signals();
+//!     let paths = match dogs::resolve_paths(&|key| std::env::var_os(key)) {
+//!         Ok(paths) => paths,
+//!         Err(err) => {
+//!             eprintln!("my-dog: {err}");
+//!             return err.exit_code().into();
+//!         }
+//!     };
+//!     let identity = DogIdentity::from_env(&|key| std::env::var(key).ok(), "my-dog");
+//!     let runtime = match DogRuntime::start(identity, paths).await {
+//!         Ok(runtime) => runtime,
+//!         Err(err) => {
+//!             eprintln!("my-dog: {err}");
+//!             return err.exit_code().into();
+//!         }
+//!     };
+//!     let _settings: Settings = match runtime.config() {
+//!         Ok(settings) => settings,
+//!         Err(err) => {
+//!             eprintln!("my-dog: {err}");
+//!             return err.exit_code().into();
+//!         }
+//!     };
+//!
+//!     // The dog's own loop, watching `stop` beside its work.
+//!     stop.wait().await;
+//!     ExitCode::SUCCESS
+//! }
+//! ```
 
 use std::io::Write as _;
 
+mod error;
+mod identity;
+mod runtime;
+mod section;
+mod startup;
+mod stop;
+
+pub use error::ShepherdError;
+pub use identity::DogIdentity;
+pub use runtime::DogRuntime;
+pub use section::{SectionError, parse_section};
 pub use shep_core::dogs::SECRET_KEY;
 use shep_core::dogs::{SCHEMA_FLAG, SHEP_PROTOCOL_KEY, VERSION_FLAG};
 /// The attribute that implements [`DogConfig`], re-exported so a dog takes
@@ -38,6 +112,8 @@ use shep_core::dogs::{SCHEMA_FLAG, SHEP_PROTOCOL_KEY, VERSION_FLAG};
 /// Its own documentation carries the rules: which shapes accept
 /// `#[shep(secret)]`, which refuse it, and what the expansion looks like.
 pub use shep_macros::dog_config;
+pub use startup::{DogAction, HomeError, PRINT_CONFIG_FLAG, UsageError, parse_args, resolve_paths};
+pub use stop::{Interrupted, Stop, StopRequest};
 
 /// That a type's config schema has been through [`dog_config`], so every
 /// field marked `#[shep(secret)]` carries [`SECRET_KEY`] wherever `schemars`

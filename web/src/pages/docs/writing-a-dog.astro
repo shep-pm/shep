@@ -158,7 +158,8 @@ watchdog  adopted  true      stopped`}</CodeBlock>
       the CLI uses it, and a <code>shep stop</code> that silently retried
       could stop a sheep twice. It reconnects when asked, through{" "}
       <code>Client::reconnect</code>, which reports whether the daemon now
-      answering is the one from before.
+      answering is the one from before. The rest every dog repeats, from its
+      section to its exit codes, is in <code>shep_client::dogs</code>.
     </p>
     <p>
       That is what <code>shep daemon reload</code> asks of a dog. A dog is

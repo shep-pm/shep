@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 // budget below is measured against a `tokio::time::sleep` that does too.
 use crate::client::{Client, RequestError};
 use crate::connection::{ConnectError, HANDSHAKE_TIMEOUT};
+use crate::dogs::DogIdentity;
 use crate::events::EventStream;
 use shep_core::protocol::{HelloAck, Request, Response};
 use tokio::time::Instant;
@@ -242,6 +243,16 @@ impl ReconnectingClient {
         name: &str,
     ) -> Result<Self, ConnectError> {
         Self::connect_inner(socket, timeout, Some(name)).await
+    }
+
+    /// Connects as `identity` says: as its dog when a shepherd named this
+    /// process, and anonymously when none did.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::connect_with_timeout`].
+    pub async fn connect_as(socket: &Path, identity: &DogIdentity) -> Result<Self, ConnectError> {
+        Self::connect_inner(socket, HANDSHAKE_TIMEOUT, identity.handshake()).await
     }
 
     async fn connect_inner(
@@ -507,6 +518,28 @@ mod tests {
             vec![Some("metrics".to_string()), Some("metrics".to_string())],
             "every generation must be told which dog is talking to it"
         );
+    }
+
+    #[tokio::test]
+    async fn an_identity_announces_its_handshake_name_or_none() {
+        let named = DogIdentity::named("rotate");
+        let anonymous = DogIdentity::from_env(&|_| None, "log-rotate");
+        for (identity, announced) in [(named, Some("rotate")), (anonymous, None)] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = control_address(dir.path());
+            let hello = crate::testing::fake_daemon(&path, Ok(crate::testing::sample_ack())).await;
+
+            let client = ReconnectingClient::connect_as(&path, &identity)
+                .await
+                .unwrap();
+
+            let hello = tokio::time::timeout(Duration::from_secs(5), hello)
+                .await
+                .expect("the fake daemon read the hello")
+                .unwrap();
+            assert_eq!(hello.dog_name.as_deref(), announced);
+            assert_eq!(client.dog_name(), announced);
+        }
     }
 
     /// fails if a request that was in flight when the daemon was replaced

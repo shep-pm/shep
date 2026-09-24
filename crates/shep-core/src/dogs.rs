@@ -21,6 +21,13 @@ pub const SCHEMA_FLAG: &str = "--schema";
 /// later contract stays adoptable by this one.
 pub const SHEP_PROTOCOL_KEY: &str = "shep-protocol";
 
+/// The variable the shepherd names a dog in: the `[<name>]` section it
+/// reads, and the name it announces at the handshake.
+///
+/// Set on every run shep makes of an adopted dog: supervised, `shep <name>`
+/// and the probes. A built-in dog reads its name from argv instead.
+pub const DOG_NAME_VAR: &str = "SHEP_DOG_NAME";
+
 /// The schemars extension key that marks a config field as a credential.
 /// Written by the `dog_config` attribute. A typo fails silently: the schema
 /// still validates, the field is simply not marked, and a credential can
