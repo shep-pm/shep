@@ -76,10 +76,10 @@ pub(super) fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
 /// hands the outcomes back in `firing.sinks`' order, which is the order
 /// the trail has always recorded them in.
 ///
-/// After delivery, since a [`Firing`]'s [`shep_core::barks::Bark::sinks`]
-/// is empty until each sink has been tried. Written even when every sink
-/// refused it: the local trail is what an operator reads when the page
-/// never arrived.
+/// The bark is written after delivery, since a [`Firing`]'s
+/// [`shep_core::barks::Bark::sinks`] is empty until each sink has been tried.
+/// Written even when every sink refused it: the local trail is what an
+/// operator reads when the page never arrived.
 ///
 /// [`Delivery::append_lock`] covers only the [`barks::append`] call, a
 /// read-modify-rename against one file that several of these run at once.
