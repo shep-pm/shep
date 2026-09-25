@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-25
+
+### Performance
+
+- Add a Stamper that formats a log stamp once per second
+- Skip an override write that changes nothing ([#615](https://github.com/shep-pm/shep/pull/615))
+
+
 ## [0.10.1] - 2026-09-22
 
 ### Changed
