@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-25
+
+### Changed
+
+- Regroup bark's files by what each one is about
+- Parse a dog's section one way at startup and on reload
+- Let Delivery take its own settings from a BarkConfig
+- Build bark's client adapters in one place
+- Name the built-in dogs once, as an enum
+- Stop the build on a BuiltInDog variant ALL leaves out
+
+
 ## [0.10.1] - 2026-09-22
 
 ### Changed
