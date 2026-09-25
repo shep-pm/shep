@@ -147,3 +147,17 @@ Most common drift: panicking constructors, `std::error::Error` instead of
 
 - Conventional commit subjects: `type(scope): summary`. Types are `feat` `fix` `perf` `refactor` `docs` `test` `ci` `chore` `style`. Put `!` on the commit that breaks something, in the crate it breaks. release-plz silently drops a subject it cannot parse. `.githooks/commit-msg` and `.github/workflows/commits.yml` enforce it; [CONTRIBUTING.md](CONTRIBUTING.md) has the detail.
 - Every subagent brief states the commit rule in its own text.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `shep-pm/shep`, via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, label string equal to role name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `docs/terminology.md` is the glossary and `docs/decisions.md` the decision log. See `docs/agents/domain.md`.
