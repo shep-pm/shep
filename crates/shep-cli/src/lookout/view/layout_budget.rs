@@ -11,7 +11,6 @@ use ratatui::layout::Rect;
 #[cfg(test)]
 const CHROME_ROWS: u16 = 4;
 
-/// The host strip is one line.
 /// The shortest terminal that gets the design's two blank chrome rows, one
 /// under the title band and one under the rule.
 ///
@@ -22,6 +21,7 @@ const CHROME_ROWS: u16 = 4;
 /// rows above that floor is where the air costs nothing that matters.
 pub(super) const ROOMY_HEIGHT: u16 = 30;
 
+/// The host strip is one line.
 pub(super) const HOST_ROWS: u16 = 1;
 
 /// The detail pane: one rule and four lines.
@@ -84,13 +84,6 @@ pub fn panes_for(height: u16) -> Panes {
         .map_or(Panes::NONE, |(_, panes)| *panes)
 }
 
-/// Renders the whole dashboard.
-///
-/// Synchronous, and every branch draws something except a zero-area frame,
-/// which returns without drawing. A degenerate case draws a sentence rather
-/// than nothing, since a blank pane cannot say whether the shepherd has
-/// nothing to run or the dashboard is broken.
-///
 /// How tall the settings screen's body is for a terminal of `area`, between
 /// the title line and the status bar. Zero for a terminal too small to draw
 /// at all, so a caller that asks before checking size gets a viewport that
