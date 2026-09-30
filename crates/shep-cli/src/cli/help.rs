@@ -218,6 +218,71 @@ mod tests {
         )
     }
 
+    /// Reads the workspace root's `README.md`, or `None` outside the
+    /// workspace checkout -- see [`workspace_web_dir`] for why a published
+    /// crate has no such file to read.
+    ///
+    /// # Panics
+    /// Inside the workspace, if the file cannot be read.
+    fn read_workspace_readme() -> Option<String> {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        dir.is_dir().then_some(())?;
+        Some(
+            std::fs::read_to_string(dir.join("README.md")).unwrap_or_else(|err| {
+                panic!("README.md exists in the workspace but could not be read: {err}")
+            }),
+        )
+    }
+
+    /// The grouped verb listing [`HELP_TEMPLATE`] renders, verbatim: the
+    /// lines from `Run things` through the last `HELP_GROUPS` heading,
+    /// stopping short of the blank line before `Aliases`.
+    fn help_template_group_block() -> &'static str {
+        let start = HELP_TEMPLATE
+            .find("Run things")
+            .expect("HELP_TEMPLATE opens its group listing with `Run things`");
+        let tail = &HELP_TEMPLATE[start..];
+        let end = tail
+            .find("\n\nAliases")
+            .expect("the group listing ends before the blank line above `Aliases`");
+        &tail[..end]
+    }
+
+    /// fails when the README's own copy of the grouped verb listing --
+    /// under "Everything else" -- drifts from what `shep --help` actually
+    /// renders.
+    ///
+    /// Nothing else reads that block: it is prose the generator does not
+    /// touch, so a verb move that updates [`HELP_GROUPS`] and
+    /// [`HELP_TEMPLATE`] leaves the README as a plausible-looking lie until
+    /// something reads it back.
+    ///
+    /// Skips outside the workspace checkout -- see
+    /// [`read_workspace_readme`].
+    #[test]
+    fn the_readme_names_the_same_verb_groups_as_help_does() {
+        let Some(readme) = read_workspace_readme() else {
+            return;
+        };
+
+        let fence_start = readme
+            .find("```text\n")
+            .expect("the README has a fenced verb-grouping block")
+            + "```text\n".len();
+        let fence_end = readme[fence_start..]
+            .find("```")
+            .expect("the fenced block closes");
+        let readme_block = readme[fence_start..fence_start + fence_end].trim_end();
+
+        assert_eq!(
+            readme_block,
+            help_template_group_block(),
+            "README.md's verb grouping has drifted from HELP_TEMPLATE's; \
+             copy the `Run things` .. `Help` lines from help.rs into README.md's \
+             \"Everything else\" block"
+        );
+    }
+
     #[test]
     fn the_command_tree_parses_and_is_internally_consistent() {
         use clap::CommandFactory;
