@@ -13,6 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
+### Added
+
+- Let a dog's --version answer ask for the shepherd channel **(BREAKING)**
+- Record on an adopted DogSource whether it asked for the channel **(BREAKING)**
+- Name a dog's missing channel in its own trigger outcome
+- Shep adopt records a dog's channel ask and every start honours it
+
+### Changed
+
+- Add a name to a [daemon] array through one ShepToml helper
+
+### Fixed
+
+- Refuse a second config read while one is still out
+
+
 ## [0.11.0] - 2026-09-29
 
 ### Added

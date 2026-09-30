@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
+### Added
+
+- Let a dog ask for the shepherd channel through dogs::Probe
+
+
 ## [0.11.0] - 2026-09-29
 
 ### Added

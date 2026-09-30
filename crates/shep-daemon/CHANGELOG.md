@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
+### Added
+
+- Record on an adopted DogSource whether it asked for the channel **(BREAKING)**
+- Start an adopted dog that asked with the shepherd channel
+- Name a dog's missing channel in its own trigger outcome
+
+### Fixed
+
+- Restart a reload-abandoned replacement left Starting
+
+
 ## [0.11.0] - 2026-09-29
 
 ### Performance

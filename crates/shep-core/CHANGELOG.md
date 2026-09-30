@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
+### Added
+
+- Derive Default for MemSize and UpDuration
+- Let a dog's --version answer ask for the shepherd channel **(BREAKING)**
+- Record on an adopted DogSource whether it asked for the channel **(BREAKING)**
+- Name a dog's missing channel in its own trigger outcome
+- Add [daemon] channel_dogs to shep.toml **(BREAKING)**
+
+### Changed
+
+- Unify borrowed-to-owned name conversion in graph.rs
+
+### Performance
+
+- Compile glob-to-regex selectors once, not twice
+
+
 ## [0.11.0] - 2026-09-29
 
 ### Fixed
