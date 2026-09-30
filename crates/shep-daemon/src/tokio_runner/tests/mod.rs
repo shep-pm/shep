@@ -309,6 +309,33 @@ fn is_open(fd: RawFd) -> bool {
     nix::fcntl::fcntl(fd, nix::fcntl::FcntlArg::F_GETFD).is_ok()
 }
 
+/// Waits for `fd` to close, the signal that the pump has read EOF on the
+/// stream behind it and dropped its reader (see [`spawn_log_pump`]'s
+/// `AfterLine::StreamEnded` arm, which clears the number in the same
+/// statement it drops the reader).
+///
+/// Polls with a real sleep rather than [`tokio::task::yield_now`]: the EOF
+/// this waits on is delivered through the OS reactor, which only gets
+/// driven once the runtime has nothing left to run. A `yield_now` loop
+/// just reschedules this task behind whatever else is ready, so on a
+/// current-thread runtime that stays busy the executor may never park long
+/// enough to poll the reactor at all, no matter how many rounds it runs.
+/// `tokio::time::sleep` forces that park. Bounded by [`PUMP_DEADLINE`], not
+/// left open-ended.
+#[cfg(unix)]
+async fn wait_for_fd_to_close(fd: RawFd) {
+    let closed = timeout(PUMP_DEADLINE, async {
+        while is_open(fd) {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await;
+    assert!(
+        closed.is_ok(),
+        "fd {fd} did not close inside {PUMP_DEADLINE:?}"
+    );
+}
+
 /// How many times `a_last_line_written_before_the_sheep_task_lets_go_reaches_the_file`
 /// reconstructs the race.
 ///
@@ -449,16 +476,23 @@ const SMALLEST_PIPE: usize = 16 * 1024;
 #[cfg(unix)]
 const RUN_LINE: usize = 8;
 
-/// Hands the runtime to the pump task and back.
+/// Hands the runtime to the pump task and back, for a stream backed by an
+/// in-memory [`tokio::io::duplex`] pair rather than a real pipe.
 ///
-/// `#[tokio::test]` runs on a current-thread runtime, so yielding is
-/// what lets the pump run at all: dropping a duplex writer wakes its
-/// read with EOF, and retiring a stream from there has no await of its
-/// own, so the pump reaches its next park before this returns. The
-/// repeats are slack for a pump that wakes with other work already
-/// queued, not a race the count papers over.
-async fn let_the_pump_settle() {
-    for _ in 0..16 {
+/// `#[tokio::test]` runs on a current-thread runtime, so yielding is what
+/// lets the pump run at all: dropping a duplex writer wakes its read with
+/// EOF *synchronously*, by pushing the pump's task straight onto the run
+/// queue, and retiring a stream from there has no await of its own, so one
+/// turn is enough for the pump to reach its next park. That is what tells
+/// this apart from [`wait_for_fd_to_close`]: a duplex pair has no OS
+/// reactor in the loop, so there is no event that a busy runtime could
+/// leave the reactor holding. The second yield is slack for whichever task
+/// this one's caller happens to be queued behind, not a race the count
+/// papers over (see #294, where the pipe-backed counterpart of this
+/// function tried to use the same fixed count to wait on a real EOF and
+/// could not).
+async fn let_the_duplex_pump_settle() {
+    for _ in 0..2 {
         tokio::task::yield_now().await;
     }
 }
