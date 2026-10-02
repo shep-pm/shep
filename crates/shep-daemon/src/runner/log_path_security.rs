@@ -269,8 +269,9 @@ mod tests {
 
     /// The link is foreign to the daemon and points at a root-owned, tight
     /// directory, so a walk that followed it would wave it through and blame
-    /// a later ancestor of the tempdir instead. Only the path in the answer
-    /// tells the two apart. This is the case `O_NOFOLLOW`
+    /// a higher ancestor instead: the tempdir, or `/tmp` under root, where
+    /// the root-owned tempdir is exempt. Only the path in the answer tells
+    /// the two apart. This is the case `O_NOFOLLOW`
     /// cannot cover: the redirect is one level up.
     #[test]
     fn a_symlinked_component_is_judged_as_the_link_not_as_its_target() {
