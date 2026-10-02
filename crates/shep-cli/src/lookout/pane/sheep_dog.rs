@@ -333,6 +333,76 @@ mod tests {
         );
     }
 
+    /// `worker.allowed_domains` as a dog's own schema writes it: a list
+    /// whose items are a `$ref`, one table down, beside an array of
+    /// tables the pane has no editor for.
+    fn worker_schema() -> Value {
+        json!({
+            "$ref": "#/$defs/Settings",
+            "$defs": {
+                "Settings": {
+                    "type": "object",
+                    "properties": {
+                        "worker": { "$ref": "#/$defs/Worker" },
+                        "hosts": { "type": "array", "items": { "$ref": "#/$defs/Host" } },
+                    },
+                },
+                "Worker": {
+                    "type": "object",
+                    "properties": {
+                        "allowed_domains": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/NonBlank" },
+                        },
+                    },
+                },
+                "Host": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string" } },
+                },
+                "NonBlank": { "type": "string" },
+            },
+        })
+    }
+
+    #[test]
+    fn a_nested_list_opens_the_list_sub_screen_and_writes_at_its_path() {
+        let stored = json!({
+            "worker": { "allowed_domains": ["a.example"], "kept": 1 },
+            "hosts": [{ "name": "h" }],
+        });
+        let mut pane = ConfigPane::sheep_dog(
+            "web".into(),
+            "jobs".into(),
+            &worker_schema(),
+            stored.as_object().cloned().expect("a table"),
+        );
+        pane.move_to_key("worker.allowed_domains");
+        pane.open_list();
+        let list = pane.list_mut().expect("the list sub-screen opens");
+        assert_eq!(list.key(), "worker.allowed_domains");
+        assert_eq!(list.elements(), ["a.example"]);
+        list.move_to_last();
+        pane.file_list_element("b.example".into());
+
+        let table = pane.edited_table_with(pane.edits());
+        assert_eq!(
+            table["worker"],
+            json!({ "allowed_domains": ["a.example", "b.example"], "kept": 1 })
+        );
+        assert_eq!(table["hosts"], json!([{ "name": "h" }]));
+    }
+
+    #[test]
+    fn an_array_of_tables_opens_no_list_sub_screen() {
+        let mut pane =
+            ConfigPane::sheep_dog("web".into(), "jobs".into(), &worker_schema(), Map::new());
+        pane.move_to_key("hosts");
+        pane.open_list();
+        assert!(pane.list().is_none());
+        assert!(pane.lock("hosts").is_some());
+    }
+
     #[test]
     fn no_edit_gives_back_the_table_as_it_came() {
         assert_eq!(
