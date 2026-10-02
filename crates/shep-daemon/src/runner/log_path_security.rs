@@ -285,7 +285,14 @@ mod tests {
         // root is exempt whatever the daemon's uid is, so it hands the link
         // away instead of moving the daemon's uid.
         let daemon_uid = if me() == ROOT_UID {
+            use std::os::unix::fs::MetadataExt as _;
+
             std::os::unix::fs::lchown(&link, Some(FOREIGN_UID), None).unwrap();
+            assert_eq!(
+                std::fs::symlink_metadata(&link).unwrap().uid(),
+                FOREIGN_UID,
+                "lchown must hand over the link itself, not what it points at"
+            );
             ROOT_UID
         } else {
             me() + 1
