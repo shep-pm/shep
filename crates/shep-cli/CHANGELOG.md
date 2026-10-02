@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-10-02
+
+### Fixed
+
+- Open the list editor on a dog table's string and integer lists
+- Keep secret lists read-only and reseed an open list on refresh
+
+
 ## [0.12.1] - 2026-10-02
 
 ### Added
