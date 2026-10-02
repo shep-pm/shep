@@ -533,12 +533,16 @@ jobs:
     # `real_runner.rs`'s privilege-drop case needs a real uid change and a
     # real supplementary-group clear, both root-only.
     #
+    # `log_path_security`'s two ownership cases are here for a different
+    # reason: only root can `chown` or `lchown` a fixture to another uid, so
+    # only a root run takes their root branch.
+    #
     # A container, not `sudo` on the runner: the daemon has to actually
     # start as root to prove it can drop to `nobody` and that std cleared
     # root's supplementary groups on the way.
     runs-on: ubuntu-latest
-    # One test, but the container has to build shep-daemon's test tier to get
-    # to it.
+    # A few tests, but the container has to build shep-daemon's test tier to
+    # get to them.
     timeout-minutes: 20
     container:
       image: rust:1.88
@@ -551,4 +555,15 @@ jobs:
       - run: >
           cargo test -p shep-daemon --test real_runner --locked --all-features
           -- --ignored --exact a_dropped_child_runs_as_the_requested_user
+      # Not `#[ignore]`d: they run in the main tiers as an ordinary user and
+      # take their root branch only here, where `uid 0` is real. Libtest exits
+      # 0 when a filter matches nothing, so the grep is the floor: a rename
+      # leaves it at "0 passed" and fails the step.
+      - shell: bash
+        run: |
+          cargo test -p shep-daemon --lib --locked --all-features -- --exact \
+            runner::log_path_security::tests::an_ancestor_owned_by_another_user_is_loose_however_tight_its_mode \
+            runner::log_path_security::tests::a_symlinked_component_is_judged_as_the_link_not_as_its_target \
+            | tee log-path-security.out
+          grep -q 'test result: ok. 2 passed' log-path-security.out
 

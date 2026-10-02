@@ -267,9 +267,11 @@ mod tests {
         );
     }
 
-    /// The link is owned by this user and points at a root-owned, tight
-    /// directory, so following it blames the tempdir instead. Only the path
-    /// in the answer tells the two apart. This is the case `O_NOFOLLOW`
+    /// The link is foreign to the daemon and points at a root-owned, tight
+    /// directory, so a walk that followed it would wave it through and blame
+    /// a higher ancestor instead: the tempdir, or `/tmp` under root, where
+    /// the root-owned tempdir is exempt. Only the path in the answer tells
+    /// the two apart. This is the case `O_NOFOLLOW`
     /// cannot cover: the redirect is one level up.
     #[test]
     fn a_symlinked_component_is_judged_as_the_link_not_as_its_target() {
@@ -280,7 +282,24 @@ mod tests {
         std::os::unix::fs::symlink("/usr", &link).unwrap();
         let log = link.join("web-0-out.log");
 
-        let loose = loose_ancestor(&log, me() + 1).expect("a foreign-owned component is loose");
+        // As in the ownership case above: a root runner owns the link, and
+        // root is exempt whatever the daemon's uid is, so it hands the link
+        // away instead of moving the daemon's uid.
+        let daemon_uid = if me() == ROOT_UID {
+            use std::os::unix::fs::MetadataExt as _;
+
+            std::os::unix::fs::lchown(&link, Some(FOREIGN_UID), None).unwrap();
+            assert_eq!(
+                std::fs::symlink_metadata(&link).unwrap().uid(),
+                FOREIGN_UID,
+                "lchown must hand over the link itself, not what it points at"
+            );
+            ROOT_UID
+        } else {
+            me() + 1
+        };
+
+        let loose = loose_ancestor(&log, daemon_uid).expect("a foreign-owned component is loose");
         assert_eq!(
             loose.path,
             link,
