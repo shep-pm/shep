@@ -49,7 +49,6 @@ pub fn app_in_sheep_pane_with_env(env: &[(&str, &str)]) -> App {
             .build(),
     );
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Edit));
     let mut config = AppConfig {
         name: "web".to_string(),
         ..AppConfig::default()
@@ -57,17 +56,25 @@ pub fn app_in_sheep_pane_with_env(env: &[(&str, &str)]) -> App {
     for (key, value) in env {
         config.env.insert((*key).to_string(), (*value).to_string());
     }
+    open_config_pane(
+        &mut app,
+        SheepConfigView::new(config, Vec::new(), Vec::new()),
+    );
+    app
+}
+
+/// Opens `web`'s config pane on the selected sheep the way the event loop
+/// does, `e` and then the shepherd's answer, which here is `view`. Whatever
+/// the gate and the sheep's status are when it is called is what the pane
+/// opens with: the caller sets both first.
+fn open_config_pane(app: &mut App, view: SheepConfigView) {
+    app.update(Msg::Key(KeyPress::Edit));
     app.update(Msg::Replied {
         sent: Sent::SheepConfig {
             name: "web".to_string(),
         },
-        result: Ok(Response::SheepConfig(Box::new(SheepConfigView::new(
-            config,
-            Vec::new(),
-            Vec::new(),
-        )))),
+        result: Ok(Response::SheepConfig(Box::new(view))),
     });
-    app
 }
 
 /// Walks an open config pane's cursor onto the env row named `key`, the
@@ -122,13 +129,7 @@ pub fn app_in_sheep_pane_with_control() -> App {
             .build(),
     );
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Edit));
-    app.update(Msg::Replied {
-        sent: Sent::SheepConfig {
-            name: "web".to_string(),
-        },
-        result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
-    });
+    open_config_pane(&mut app, sheep_config_view());
     app
 }
 
@@ -156,15 +157,7 @@ fn app_in_sheep_pane_parking(pending: Vec<String>) -> App {
             .build(),
     );
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Edit));
-    app.update(Msg::Replied {
-        sent: Sent::SheepConfig {
-            name: "web".to_string(),
-        },
-        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
-            pending,
-        )))),
-    });
+    open_config_pane(&mut app, sheep_config_view_parking(pending));
     app
 }
 
@@ -181,13 +174,7 @@ pub fn app_in_sheep_pane() -> App {
             .pid(Some(48_000))
             .build(),
     );
-    app.update(Msg::Key(KeyPress::Edit));
-    app.update(Msg::Replied {
-        sent: Sent::SheepConfig {
-            name: "web".to_string(),
-        },
-        result: Ok(Response::SheepConfig(Box::new(sheep_config_view()))),
-    });
+    open_config_pane(&mut app, sheep_config_view());
     app
 }
 
@@ -209,15 +196,7 @@ pub fn app_in_sheep_pane_read_only() -> App {
 pub fn app_in_sheep_pane_on_a_stopped_sheep() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Stopped).build());
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Edit));
-    app.update(Msg::Replied {
-        sent: Sent::SheepConfig {
-            name: "web".to_string(),
-        },
-        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
-            Vec::new(),
-        )))),
-    });
+    open_config_pane(&mut app, sheep_config_view_parking(Vec::new()));
     app
 }
 
@@ -228,15 +207,7 @@ pub fn app_in_sheep_pane_on_a_stopped_sheep() -> App {
 pub fn app_in_sheep_pane_on_a_draining_sheep() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Stopping).build());
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Edit));
-    app.update(Msg::Replied {
-        sent: Sent::SheepConfig {
-            name: "web".to_string(),
-        },
-        result: Ok(Response::SheepConfig(Box::new(sheep_config_view_parking(
-            Vec::new(),
-        )))),
-    });
+    open_config_pane(&mut app, sheep_config_view_parking(Vec::new()));
     app
 }
 
@@ -263,8 +234,11 @@ pub fn file_edit(app: &mut App, key: &str, value: &str) {
 /// one, then down the filtered list onto the row itself. No fixture
 /// reaches into the pane to place it.
 ///
+/// # Panics
+///
 /// Panics if the pane is closed or has no field by that name, which is a
 /// fixture bug rather than a failure the test is about.
+#[track_caller]
 pub fn select_field(app: &mut App, key: &str) {
     let pane = app.config_pane().expect("the pane is open");
     let group = pane
