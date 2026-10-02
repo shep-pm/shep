@@ -158,12 +158,21 @@ jobs:
   lint-stable:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS is the machine `rust-toolchain.toml` is for, and the only leg
+        # that lints its `cfg(target_os = "macos")` code.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # `stable` floats, here and in `rust-toolchain.toml`, so the two can
+      # differ by a release; the version in the log says which one a red run saw.
+      - run: cargo +stable clippy --version
       - run: cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
   docs:
     needs: changes
