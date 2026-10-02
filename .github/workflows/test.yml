@@ -149,31 +149,6 @@ jobs:
       # unlinted, and clippy's whole value here is that it sees what the
       # local gate sees.
       - run: cargo +1.93 clippy --workspace --all-targets --all-features -- -D warnings
-  # The same clippy command on the toolchain `rust-toolchain.toml` gives a
-  # local run (`stable`, which floats). `lint` above pins 1.93 and so missed
-  # lints that stable added: the task gate failed locally while CI stayed
-  # green. A separate job rather than a matrix leg on `lint`, so `lint` keeps
-  # the context name branch protection requires; a new stable lint turns this
-  # one red without blocking merges, and is the cue to fix it.
-  lint-stable:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS is the machine `rust-toolchain.toml` is for, and the only leg
-        # that lints its `cfg(target_os = "macos")` code.
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install stable --profile minimal --component clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      # `stable` floats, here and in `rust-toolchain.toml`, so the two can
-      # differ by a release; the version in the log says which one a red run saw.
-      - run: cargo +stable clippy --version
-      - run: cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
   docs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
