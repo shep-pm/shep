@@ -6,9 +6,10 @@
 //! [`flattened`] walks every nested table's own `properties` instead of
 //! treating it as one opaque leaf, so `hours.start` becomes its own row,
 //! built by the same [`super::field_from`] every other schema-driven pane
-//! uses. An array, an array of tables, and a map of scalars or tables stay
-//! one `Opaque` row: none of those has a shape [`flattened`] can walk back
-//! into a set of writes.
+//! uses. An array of strings or integers stays a list row, which the pane
+//! writes whole at its dotted path. An array of tables and a map of scalars
+//! or tables stay one `Opaque` row: neither has a shape [`flattened`] can
+//! walk back into a set of writes.
 
 use std::collections::BTreeMap;
 
@@ -36,10 +37,13 @@ pub(crate) struct Flattened {
 /// property's key, however many tables deep the schema nests. Every other
 /// property becomes one leaf row, built by [`super::field_from`] so its
 /// kind, help and secret mark come out exactly as they would in any other
-/// schema-driven pane. A leaf whose kind is [`FieldKind::Map`] or
-/// [`FieldKind::List`] is shown as [`FieldKind::Opaque`] instead: an array
-/// and a map of scalars or tables stay read-only here, since neither has a
-/// shape this flatten can write back into by path.
+/// schema-driven pane. A leaf whose kind is [`FieldKind::Map`] is shown as
+/// [`FieldKind::Opaque`] instead: a map stays read-only here, since it has
+/// no shape this flatten can write back into by path. So is a secret list,
+/// since the list sub-screen seeds its editor with the stored elements and
+/// draws what is typed unmasked. An array of tables is already
+/// [`FieldKind::Opaque`]; any other array of strings or integers is a
+/// [`FieldKind::List`], filed whole.
 #[must_use]
 pub(crate) fn flattened(schema: &Value) -> Flattened {
     let defs = schema
@@ -141,13 +145,14 @@ fn walk<'a>(
             .join(".");
         let mut field = super::field_from(key, property_schema, defs);
         field.key.clone_from(&dotted);
-        if looped || matches!(field.kind, FieldKind::Map | FieldKind::List(_)) {
-            field.kind = FieldKind::Opaque;
-            field.editable = false;
-        }
         // `field_from` already masks a row with a secret anywhere beneath
         // it; what it cannot see is a secret table above this one.
         field.secret |= inherited;
+        let secret_list = field.secret && matches!(field.kind, FieldKind::List(_));
+        if looped || secret_list || field.kind == FieldKind::Map {
+            field.kind = FieldKind::Opaque;
+            field.editable = false;
+        }
         fields.push(field);
         paths.insert(dotted, path);
     }
@@ -191,6 +196,7 @@ mod tests {
 
     use super::super::fixtures::props;
     use super::*;
+    use crate::lookout::field::ListItem;
 
     /// A per-sheep schema three tables deep, through a `$ref` chain, the
     /// way a dog's own `--schema` answer nests one: `models` names
@@ -260,15 +266,58 @@ mod tests {
     }
 
     #[test]
-    fn an_array_and_a_scalar_map_stay_one_opaque_row() {
+    fn a_scalar_map_stays_one_opaque_row() {
         let flat = flattened(&sheep_schema());
-        let tags = flat.fields.by_key("tags").unwrap();
-        assert_eq!(tags.kind, FieldKind::Opaque);
-        assert!(!tags.editable);
-
         let labels = flat.fields.by_key("labels").unwrap();
         assert_eq!(labels.kind, FieldKind::Opaque);
         assert!(!labels.editable);
+    }
+
+    #[test]
+    fn a_list_of_strings_or_integers_stays_a_list_row() {
+        let flat = flattened(&sheep_schema());
+        let tags = flat.fields.by_key("tags").unwrap();
+        assert_eq!(tags.kind, FieldKind::List(ListItem::Text));
+        assert!(tags.editable);
+
+        let flat = flattened(&json!({
+            "type": "object",
+            "properties": {
+                "ports": { "type": "array", "items": { "type": "integer" } },
+            },
+        }));
+        assert_eq!(
+            flat.fields.by_key("ports").unwrap().kind,
+            FieldKind::List(ListItem::Integer)
+        );
+    }
+
+    /// A dog's `Vec<NonBlank>` names its items through a `$ref`, one table
+    /// down.
+    #[test]
+    fn a_list_inside_a_nested_table_with_ref_items_is_a_list_row() {
+        let flat = flattened(&json!({
+            "$ref": "#/$defs/Settings",
+            "$defs": {
+                "Settings": {
+                    "type": "object",
+                    "properties": { "worker": { "$ref": "#/$defs/Worker" } },
+                },
+                "Worker": {
+                    "type": "object",
+                    "properties": {
+                        "allowed_domains": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/NonBlank" },
+                        },
+                    },
+                },
+                "NonBlank": { "type": "string" },
+            },
+        }));
+        let domains = flat.fields.by_key("worker.allowed_domains").unwrap();
+        assert_eq!(domains.kind, FieldKind::List(ListItem::Text));
+        assert!(domains.editable);
     }
 
     #[test]
@@ -428,6 +477,41 @@ mod tests {
         for key in ["plain.user", "plain.tls.key"] {
             assert!(!flat.fields.by_key(key).expect(key).secret, "{key}");
         }
+    }
+
+    /// The list sub-screen seeds its editor with the stored element and
+    /// draws what is typed unmasked, so a secret list has no editor.
+    #[test]
+    fn a_secret_list_stays_one_read_only_row() {
+        let flat = flattened(&json!({
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "x-shep-secret": true,
+                },
+                "creds": { "$ref": "#/$defs/Creds", "x-shep-secret": true },
+                "plain": { "type": "array", "items": { "type": "string" } },
+            },
+            "$defs": {
+                "Creds": {
+                    "type": "object",
+                    "properties": {
+                        "tokens": { "type": "array", "items": { "type": "string" } },
+                    },
+                },
+            },
+        }));
+        for key in ["keys", "creds.tokens"] {
+            let field = flat.fields.by_key(key).expect(key);
+            assert_eq!(field.kind, FieldKind::Opaque, "{key}");
+            assert!(!field.editable, "{key}");
+        }
+        assert_eq!(
+            flat.fields.by_key("plain").unwrap().kind,
+            FieldKind::List(ListItem::Text)
+        );
     }
 
     /// A read-only row draws its value as JSON, so a secret inside it has

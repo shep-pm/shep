@@ -594,9 +594,9 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     </p>
     <p>
       A nested struct in the schema becomes dotted rows here,{" "}
-      <code>models.worker.model</code> for a <code>models</code> field
-      holding a <code>worker</code> holding a <code>model</code>. A secret
-      reads <code>&lt;set&gt;</code>. <code>Esc</code> writes the whole
+      like <code>models.worker.model</code>. A secret
+      reads <code>&lt;set&gt;</code>. A list of strings or integers opens
+      the sheep pane's list sub-screen. <code>Esc</code> writes the whole
       table and lands on the dashboard, not back on the sub-screen. If the
       table changed since the pane opened, nothing is written: the pane
       reloads it under your edits, and <code>Esc</code> again writes.

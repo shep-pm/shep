@@ -109,7 +109,8 @@ impl ConfigPane {
 
     /// Replaces the table under an open pane with the shepherd's current
     /// one, keeping the cursor and the filed edits. An open editor is
-    /// dropped, for the reason [`Self::adopt_edits`] gives.
+    /// dropped, for the reason [`Self::adopt_edits`] gives. An open list
+    /// sub-screen is reseeded from the filed elements, at its cursor.
     pub(in crate::lookout) fn adopt_table(&mut self, table: Map<String, Value>) {
         let Some(state) = self.dog_table.as_mut() else {
             return;
@@ -117,6 +118,9 @@ impl ConfigPane {
         self.values = flatten_values(&table, &state.paths);
         state.table = table;
         self.typing = None;
+        if let Some(list) = self.list.take() {
+            self.adopt_list_view(list.key(), list.view().clone());
+        }
     }
 }
 
@@ -331,6 +335,106 @@ mod tests {
             Value::Object(table),
             json!({ "concurrency": 2, "models": { "worker": { "model": "large" } } })
         );
+    }
+
+    /// `worker.allowed_domains` as a dog's own schema writes it: a list
+    /// whose items are a `$ref`, one table down, beside an array of
+    /// tables the pane has no editor for.
+    fn worker_schema() -> Value {
+        json!({
+            "$ref": "#/$defs/Settings",
+            "$defs": {
+                "Settings": {
+                    "type": "object",
+                    "properties": {
+                        "worker": { "$ref": "#/$defs/Worker" },
+                        "hosts": { "type": "array", "items": { "$ref": "#/$defs/Host" } },
+                    },
+                },
+                "Worker": {
+                    "type": "object",
+                    "properties": {
+                        "allowed_domains": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/NonBlank" },
+                        },
+                    },
+                },
+                "Host": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string" } },
+                },
+                "NonBlank": { "type": "string" },
+            },
+        })
+    }
+
+    #[test]
+    fn a_nested_list_opens_the_list_sub_screen_and_writes_at_its_path() {
+        let stored = json!({
+            "worker": { "allowed_domains": ["a.example"], "kept": 1 },
+            "hosts": [{ "name": "h" }],
+        });
+        let mut pane = ConfigPane::sheep_dog(
+            "web".into(),
+            "jobs".into(),
+            &worker_schema(),
+            stored.as_object().cloned().expect("a table"),
+        );
+        pane.move_to_key("worker.allowed_domains");
+        pane.open_list();
+        let list = pane.list_mut().expect("the list sub-screen opens");
+        assert_eq!(list.key(), "worker.allowed_domains");
+        assert_eq!(list.elements(), ["a.example"]);
+        list.move_to_last();
+        pane.file_list_element("b.example".into());
+
+        let table = pane.edited_table_with(pane.edits());
+        assert_eq!(
+            table["worker"],
+            json!({ "allowed_domains": ["a.example", "b.example"], "kept": 1 })
+        );
+        assert_eq!(table["hosts"], json!([{ "name": "h" }]));
+    }
+
+    /// A refresh replaces the shepherd's table under an open sub-screen,
+    /// and the next keystroke rebuilds the whole array from the
+    /// sub-screen's own elements: left on the old array, it would write
+    /// that one over what the shepherd now holds.
+    #[test]
+    fn a_refresh_under_an_open_list_shows_the_shepherds_new_array() {
+        let stored = json!({ "worker": { "allowed_domains": ["a.example"] } });
+        let mut pane = ConfigPane::sheep_dog(
+            "web".into(),
+            "jobs".into(),
+            &worker_schema(),
+            stored.as_object().cloned().expect("a table"),
+        );
+        pane.move_to_key("worker.allowed_domains");
+        pane.open_list();
+
+        let fresh = json!({ "worker": { "allowed_domains": ["a.example", "c.example"] } });
+        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        let list = pane.list_mut().expect("the sub-screen stays open");
+        assert_eq!(list.elements(), ["a.example", "c.example"]);
+
+        list.move_to_last();
+        pane.file_list_element("b.example".into());
+        let table = pane.edited_table_with(pane.edits());
+        assert_eq!(
+            table["worker"]["allowed_domains"],
+            json!(["a.example", "c.example", "b.example"])
+        );
+    }
+
+    #[test]
+    fn an_array_of_tables_opens_no_list_sub_screen() {
+        let mut pane =
+            ConfigPane::sheep_dog("web".into(), "jobs".into(), &worker_schema(), Map::new());
+        pane.move_to_key("hosts");
+        pane.open_list();
+        assert!(pane.list().is_none());
+        assert!(pane.lock("hosts").is_some());
     }
 
     #[test]
