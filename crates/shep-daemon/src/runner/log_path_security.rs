@@ -280,7 +280,17 @@ mod tests {
         std::os::unix::fs::symlink("/usr", &link).unwrap();
         let log = link.join("web-0-out.log");
 
-        let loose = loose_ancestor(&log, me() + 1).expect("a foreign-owned component is loose");
+        // As in the ownership case above: a root runner owns the link, and
+        // root is exempt whatever the daemon's uid is, so it hands the link
+        // away instead of moving the daemon's uid.
+        let daemon_uid = if me() == ROOT_UID {
+            std::os::unix::fs::lchown(&link, Some(FOREIGN_UID), None).unwrap();
+            ROOT_UID
+        } else {
+            me() + 1
+        };
+
+        let loose = loose_ancestor(&log, daemon_uid).expect("a foreign-owned component is loose");
         assert_eq!(
             loose.path,
             link,
