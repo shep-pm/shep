@@ -71,7 +71,6 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::*;
     use super::*;
     use crate::commands::settings::ScalarView;
     use crate::lookout::view::fixtures;
