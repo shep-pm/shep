@@ -109,7 +109,8 @@ impl ConfigPane {
 
     /// Replaces the table under an open pane with the shepherd's current
     /// one, keeping the cursor and the filed edits. An open editor is
-    /// dropped, for the reason [`Self::adopt_edits`] gives.
+    /// dropped, for the reason [`Self::adopt_edits`] gives. An open list
+    /// sub-screen is reseeded from the filed elements, at its cursor.
     pub(in crate::lookout) fn adopt_table(&mut self, table: Map<String, Value>) {
         let Some(state) = self.dog_table.as_mut() else {
             return;
@@ -117,6 +118,9 @@ impl ConfigPane {
         self.values = flatten_values(&table, &state.paths);
         state.table = table;
         self.typing = None;
+        if let Some(list) = self.list.take() {
+            self.adopt_list_view(list.key(), list.view().clone());
+        }
     }
 }
 
@@ -391,6 +395,36 @@ mod tests {
             json!({ "allowed_domains": ["a.example", "b.example"], "kept": 1 })
         );
         assert_eq!(table["hosts"], json!([{ "name": "h" }]));
+    }
+
+    /// A refresh replaces the shepherd's table under an open sub-screen,
+    /// and the next keystroke rebuilds the whole array from the
+    /// sub-screen's own elements: left on the old array, it would write
+    /// that one over what the shepherd now holds.
+    #[test]
+    fn a_refresh_under_an_open_list_shows_the_shepherds_new_array() {
+        let stored = json!({ "worker": { "allowed_domains": ["a.example"] } });
+        let mut pane = ConfigPane::sheep_dog(
+            "web".into(),
+            "jobs".into(),
+            &worker_schema(),
+            stored.as_object().cloned().expect("a table"),
+        );
+        pane.move_to_key("worker.allowed_domains");
+        pane.open_list();
+
+        let fresh = json!({ "worker": { "allowed_domains": ["a.example", "c.example"] } });
+        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        let list = pane.list_mut().expect("the sub-screen stays open");
+        assert_eq!(list.elements(), ["a.example", "c.example"]);
+
+        list.move_to_last();
+        pane.file_list_element("b.example".into());
+        let table = pane.edited_table_with(pane.edits());
+        assert_eq!(
+            table["worker"]["allowed_domains"],
+            json!(["a.example", "c.example", "b.example"])
+        );
     }
 
     #[test]
