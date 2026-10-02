@@ -88,6 +88,12 @@ cargo test --workspace --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 ```
 
+The clippy line runs on `stable`, which is what `rust-toolchain.toml` gives a
+local run, so it sees lints newer than CI's pinned 1.93 `lint` job. CI's
+`lint-stable` job runs the same command on stable, so a lint that lands in a
+new stable release shows up there rather than only in the next agent's local
+gate. It is not a required check.
+
 **If the task changed anything an operator types or sees**, the gate has a
 fifth step in `web/` -- see the docs trigger below for what counts and why:
 
