@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-02
+
+### Fixed
+
+- Panic loudly when arm_reload_deadline has no job
+
+
 ## [0.12.0] - 2026-09-30
 
 ### Added
