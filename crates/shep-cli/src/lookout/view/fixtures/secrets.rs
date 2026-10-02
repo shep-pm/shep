@@ -12,17 +12,29 @@ use crate::secret_readers::Reader;
 use super::flock::full_app;
 use super::render::render;
 
+/// A dashboard with the secrets pane opened the way the event loop opens it,
+/// `s` and then the shepherd's answer, which here is `model` for
+/// `environment`. Every secrets fixture that builds its model by hand starts
+/// here; none of them says anything else about how the pane opened.
+fn app_with_secrets_loaded(environment: &str, model: SecretsModel) -> App {
+    let mut app = full_app();
+    app.update(Msg::Key(KeyPress::Secrets));
+    app.update(Msg::Secrets {
+        environment: environment.to_string(),
+        result: Ok(Box::new(model)),
+    });
+    app
+}
+
 /// The secrets pane, opened and loaded: `DB_PASSWORD` set for `production`
 /// only, `ELSEWHERE_ONLY` set for `ci` only, `SET_EVERYWHERE` set for `all`,
 /// `SET_IN_ALL_THREE` set for every environment slot including `all`, the
 /// tab on `production` (the first load's own default, since `environment`
 /// below is what it asks for).
 pub fn app_with_secrets() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec![
                 "all".to_string(),
                 "ci".to_string(),
@@ -67,19 +79,16 @@ pub fn app_with_secrets() -> App {
                 },
             ],
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// The secrets pane with one row whose value is exactly `MAX_VALUE_BYTES`
 /// long, for the column-overflow test.
 pub fn app_with_a_maximum_length_secret() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![SecretRow {
                 key: "HUGE".to_string(),
@@ -90,19 +99,16 @@ pub fn app_with_a_maximum_length_secret() -> App {
                 readers: Vec::new(),
             }],
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// The secrets pane with one row from a provider's own cache, for the
 /// read-only-group test.
 pub fn app_with_a_pushed_secret() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![SecretRow {
                 key: "vercel/API_TOKEN".to_string(),
@@ -113,9 +119,8 @@ pub fn app_with_a_pushed_secret() -> App {
                 readers: Vec::new(),
             }],
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// One operator row and one provider row, for the `+ new key` affordance's
@@ -123,11 +128,9 @@ pub fn app_with_a_pushed_secret() -> App {
 /// either end the way [`app_with_secrets`] (no namespace) or
 /// [`app_with_a_pushed_secret`] (no operator row) alone would show.
 pub fn app_with_secrets_and_a_provider_row() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![
                 SecretRow {
@@ -148,9 +151,8 @@ pub fn app_with_secrets_and_a_provider_row() -> App {
                 },
             ],
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// Operator, namespace, operator, in that order: `SecretsModel::rows` is
@@ -158,11 +160,9 @@ pub fn app_with_secrets_and_a_provider_row() -> App {
 /// fixture that is not, for the test pinning `SecretsPane::new_key_anchor`
 /// as the single computation both the cursor and the renderer read.
 pub fn app_with_interleaved_secret_sources() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![
                 SecretRow {
@@ -191,9 +191,8 @@ pub fn app_with_interleaved_secret_sources() -> App {
                 },
             ],
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// The value [`app_with_secrets_and_reads`] stores, and so the exact text a
@@ -208,13 +207,7 @@ pub const REVEALED_VALUE: &str = "hunter2-not-really";
 /// could not exercise one. The caller owns `home` and has to keep it alive
 /// for as long as the app.
 pub fn app_with_secrets_and_reads(home: &Path, allow_read: bool) -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(secrets_model(home, allow_read))),
-    });
-    app
+    app_with_secrets_loaded("production", secrets_model(home, allow_read))
 }
 
 /// The model [`app_with_secrets_and_reads`] loads, and the store on disk it
@@ -275,13 +268,7 @@ fn secrets_write_model() -> SecretsModel {
 /// The secrets pane, opened and loaded on [`secrets_write_model`], read-only
 /// (the default [`Control`]).
 pub fn app_with_secrets_read_only() -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "all".to_string(),
-        result: Ok(Box::new(secrets_write_model())),
-    });
-    app
+    app_with_secrets_loaded("all", secrets_write_model())
 }
 
 /// [`app_with_secrets_read_only`] with the control gate open, for every
@@ -391,15 +378,12 @@ pub fn app_revealing(home: &Path) -> App {
     app
 }
 
-/// A single operator row, `DB_PASSWORD`, selected by default, named by two
-/// sheep: `catcher` online, `web` not. For the WHO READS IT panel's own
-/// caption test.
+/// A single operator row, `DB_PASSWORD`, selected by default, whose readers
+/// are exactly `readers`, over a muster roll to have read them from.
 fn app_with_one_row_and_readers(readers: Vec<Reader>) -> App {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![SecretRow {
                 key: "DB_PASSWORD".to_string(),
@@ -414,9 +398,8 @@ fn app_with_one_row_and_readers(readers: Vec<Reader>) -> App {
             // cannot reach.
             roll_age: Some(Duration::from_secs(184)),
             ..SecretsModel::default()
-        })),
-    });
-    app
+        },
+    )
 }
 
 /// The secrets pane rendered with `DB_PASSWORD` named by one online and one
@@ -461,11 +444,9 @@ pub fn render_secrets_gate_shut() -> Buffer {
 
 /// The secrets pane rendered with the muster roll `age` old.
 pub fn render_secrets_with_roll_age(age: Duration) -> Buffer {
-    let mut app = full_app();
-    app.update(Msg::Key(KeyPress::Secrets));
-    app.update(Msg::Secrets {
-        environment: "production".to_string(),
-        result: Ok(Box::new(SecretsModel {
+    let app = app_with_secrets_loaded(
+        "production",
+        SecretsModel {
             environments: vec!["production".to_string()],
             rows: vec![SecretRow {
                 key: "DB_PASSWORD".to_string(),
@@ -477,8 +458,8 @@ pub fn render_secrets_with_roll_age(age: Duration) -> Buffer {
             }],
             roll_age: Some(age),
             ..SecretsModel::default()
-        })),
-    });
+        },
+    );
     render(&app, 160, 48)
 }
 
