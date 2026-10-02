@@ -60,6 +60,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Esc => Some(KeyPress::Escape),
         KeyCode::Char('/') => Some(KeyPress::FilterStart),
         KeyCode::Tab => Some(KeyPress::NextGroup),
+        KeyCode::BackTab => Some(KeyPress::PrevGroup),
         KeyCode::Char(digit @ '1'..='9') => Some(KeyPress::Group(digit as u8 - b'0')),
         KeyCode::Char('u') => Some(KeyPress::Undo),
         KeyCode::Char('c') => Some(KeyPress::Continue),
@@ -309,10 +310,10 @@ mod tests {
         );
     }
 
-    /// `Tab` belongs to the config pane's group cycling, so the secrets
-    /// pane's tab row names `<-/->` and nothing else. It used to name a
-    /// tab alias as well, which #206 took: a caption naming a key that
-    /// lands somewhere else is worse than one key short.
+    /// `Tab` and `Shift+Tab` belong to the config pane's group cycling, so
+    /// the secrets pane's tab row names `<-/->` and nothing else. It used
+    /// to name a tab alias as well, which #206 took: a caption naming a key
+    /// that lands somewhere else is worse than one key short.
     #[test]
     fn tab_walks_the_config_pane_groups_and_the_tab_row_does_not_claim_it() {
         assert_eq!(
@@ -324,8 +325,8 @@ mod tests {
                 &Event::Key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
                 InputMode::Normal
             ),
-            None,
-            "shift-tab went with it rather than leaving half a pair bound"
+            Some(KeyPress::PrevGroup),
+            "shift-tab walks back where tab walks forward"
         );
         assert_eq!(
             map_key(&key(KeyCode::Tab), InputMode::Text),

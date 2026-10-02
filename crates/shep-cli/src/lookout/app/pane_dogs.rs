@@ -125,6 +125,7 @@ impl App {
             | KeyPress::Continue
             | KeyPress::Undo
             | KeyPress::NextGroup
+            | KeyPress::PrevGroup
             | KeyPress::Group(_) => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle

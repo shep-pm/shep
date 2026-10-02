@@ -170,6 +170,8 @@ pub enum KeyPress {
     SecretDelete,
     /// `Tab`: moves the config pane's focus to the next group.
     NextGroup,
+    /// `Shift+Tab`: moves the config pane's focus to the previous group.
+    PrevGroup,
     /// `1` through `8`: jumps the config pane's focus straight to that
     /// group, numbered in the order the pane lists them.
     Group(u8),

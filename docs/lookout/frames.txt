@@ -1976,7 +1976,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
                 ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐tab/S-tab    next / prev group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐1-9          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
                 ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
@@ -2028,7 +2028,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌ 
  ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌ 
  ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌ 
- ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌ 
+ ▐tab/S-tab    next / prev group  m            minimum level      u            undo the edit       ▟███████▙                    ▌ 
  ▐1-9          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌ 
  ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌ 
  ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌ 
@@ -2065,7 +2065,7 @@ g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc     
 J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload              
 ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                       
 ←/→          environment tab    o            out / err / both   d            restore default                                     
-tab          next config group  m            minimum level      u            undo the edit                                       
+tab/S-tab    next / prev group  m            minimum level      u            undo the edit                                       
 1-9          jump to a group    f            follow the tail    s            shepherd settings                                   
 n/N          next / prev match  w            wrap long lines    S            secrets                                             
 ↵            open selection     /            filter, or match   D            delete a secret                                     
@@ -2117,7 +2117,7 @@ g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc     
 J/K          next / prev sheep  F            gather by fold     e            the config pane        
 ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value          
 ←/→          environment tab    o            out / err / both   d            restore default        
-tab          next config group  m            minimum level      u            undo the edit          
+tab/S-tab    next / prev group  m            minimum level      u            undo the edit          
 1-9          jump to a group    f            follow the tail    s            shepherd settings      
 n/N          next / prev match  w            wrap long lines    S            secrets                
 ↵            open selection     /            filter, or match   D            delete a secret        
@@ -2169,7 +2169,7 @@ g/G home/end first / last       b            feed, full screen
 J/K          next / prev sheep  F            gather by fold           
 ctrl-d/u     page the feed      z            collapse a fold          
 ←/→          environment tab    o            out / err / both         
-tab          next config group  m            minimum level            
+tab/S-tab    next / prev group  m            minimum level            
 1-9          jump to a group    f            follow the tail          
 n/N          next / prev match  w            wrap long lines          
 ↵            open selection     /            filter, or match         
@@ -2236,7 +2236,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
                 ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐tab/S-tab    next / prev group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐1-9          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
                 ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
@@ -2288,7 +2288,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload           ▌                
                 ▐ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                    ▌                
                 ▐←/→          environment tab    o            out / err / both   d            restore default      ▟█████▙                     ▌                
-                ▐tab          next config group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
+                ▐tab/S-tab    next / prev group  m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐1-9          jump to a group    f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐n/N          next / prev match  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
                 ▐↵            open selection     /            filter, or match   D            delete a secret                                  ▌                
@@ -2325,7 +2325,7 @@ g/G home/end first / last       b            feed, full screen  ⌫ ↵ esc     
 J/K          next / prev sheep  F            gather by fold     e            the config pane    L            reload                                             
 ctrl-d/u     page the feed      z            collapse a fold    space        cycle a value                                                                      
 ←/→          environment tab    o            out / err / both   d            restore default                                                                    
-tab          next config group  m            minimum level      u            undo the edit                                                                      
+tab/S-tab    next / prev group  m            minimum level      u            undo the edit                                                                      
 1-9          jump to a group    f            follow the tail    s            shepherd settings                                                                  
 n/N          next / prev match  w            wrap long lines    S            secrets                                                                            
 ↵            open selection     /            filter, or match   D            delete a secret                                                                    

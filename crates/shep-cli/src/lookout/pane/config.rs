@@ -432,6 +432,11 @@ impl ConfigPane {
         self.group = (self.group + 1) % GROUP_ORDER.len();
     }
 
+    /// Walks to the previous group, wrapping from the first back to the last.
+    pub fn prev_group(&mut self) {
+        self.group = (self.group + GROUP_ORDER.len() - 1) % GROUP_ORDER.len();
+    }
+
     /// Jumps to the `digit`th group, one-based, the way `1`..`9` name them
     /// on the tab row. A digit past [`GROUP_ORDER`]'s length is ignored, so
     /// a tenth group added later needs a key of its own before it is

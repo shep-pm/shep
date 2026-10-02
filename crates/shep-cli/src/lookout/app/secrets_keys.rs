@@ -157,6 +157,7 @@ impl App {
             // source rather than by a field group, files nothing, and so
             // has neither a group to walk nor an edit set to take back.
             | KeyPress::NextGroup
+            | KeyPress::PrevGroup
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

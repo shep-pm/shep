@@ -320,12 +320,18 @@ impl App {
                     pane.undo_edit();
                 }
             }
-            // `tab` walks the groups; a digit jumps straight to one. Both
-            // reset the cursor to the group's first field, so `j`/`k` never
-            // start on a row the new tab does not draw.
+            // `tab` and `shift-tab` walk the groups; a digit jumps straight
+            // to one. All reset the cursor to the group's first field, so
+            // `j`/`k` never start on a row the new tab does not draw.
             KeyPress::NextGroup => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.next_group();
+                    pane.move_to_first();
+                }
+            }
+            KeyPress::PrevGroup => {
+                if let Some(pane) = self.config_pane_mut() {
+                    pane.prev_group();
                     pane.move_to_first();
                 }
             }

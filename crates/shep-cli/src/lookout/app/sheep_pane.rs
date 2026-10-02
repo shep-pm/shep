@@ -269,10 +269,10 @@ impl App {
             | KeyPress::TabPrev
             | KeyPress::TabNext
             | KeyPress::SecretDelete => Effect::None,
-            // The groups and the filed edit set belong to the config pane.
-            // This pane lists a sheep's fields read-only, so it has no
-            // group to switch to and nothing filed to take back.
+            // The groups and the filed edit set belong to the config pane;
+            // this read-only list has neither to switch or take back.
             | KeyPress::NextGroup
+            | KeyPress::PrevGroup
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

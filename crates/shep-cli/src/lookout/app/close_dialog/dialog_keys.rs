@@ -55,9 +55,10 @@ impl App {
                 | KeyPress::MatchNext
                 | KeyPress::MatchPrev
                 | KeyPress::Bleats
-                // `NextGroup`/`Group`/`Undo` belong to the config pane: no
+                // `NextGroup`/`PrevGroup`/`Group`/`Undo` belong to the config pane: no
                 // other screen has groups to walk or a filed edit set to undo.
                 | KeyPress::NextGroup
+                | KeyPress::PrevGroup
                 | KeyPress::Group(_)
                 | KeyPress::Undo => Effect::None,
             }

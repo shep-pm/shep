@@ -172,7 +172,7 @@ impl App {
             }
             // The groups belong to the field list; the sub-screen is one
             // field's own array and has none to walk.
-            KeyPress::NextGroup | KeyPress::Group(_) => {}
+            KeyPress::NextGroup | KeyPress::PrevGroup | KeyPress::Group(_) => {}
         }
         Effect::None
     }

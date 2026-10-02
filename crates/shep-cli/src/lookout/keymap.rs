@@ -106,7 +106,9 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::TabPrev | KeyPress::TabNext => {
             row("\u{2190}/\u{2192}", Group::Moving, "environment tab")
         }
-        KeyPress::NextGroup => row("tab", Group::Moving, "next config group"),
+        KeyPress::NextGroup | KeyPress::PrevGroup => {
+            row("tab/S-tab", Group::Moving, "next / prev group")
+        }
         KeyPress::Group(_) => row("1-9", Group::Moving, "jump to a group"),
         KeyPress::MatchNext | KeyPress::MatchPrev => row("n/N", Group::Moving, "next / prev match"),
         KeyPress::Confirm => row("\u{21b5}", Group::Moving, "open selection"),
@@ -166,6 +168,7 @@ const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Char('d'), KeyModifiers::CONTROL),
     (KeyCode::Left, KeyModifiers::NONE),
     (KeyCode::Tab, KeyModifiers::NONE),
+    (KeyCode::BackTab, KeyModifiers::SHIFT),
     (KeyCode::Char('1'), KeyModifiers::NONE),
     (KeyCode::Char('n'), KeyModifiers::NONE),
     (KeyCode::Enter, KeyModifiers::NONE),

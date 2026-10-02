@@ -302,8 +302,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     <ul>
       <li><code>S</code> opens the pane, and closes it again</li>
       <li>
-        <code>&larr;</code>/<code>&rarr;</code>, or <code>Tab</code>/{" "}
-        <code>Shift-Tab</code>, move the environment tab
+        <code>&larr;</code>/<code>&rarr;</code> move the environment tab
       </li>
       <li><code>j</code>/<code>k</code>, <code>g</code>/<code>G</code> move the cursor</li>
       <li><code>z</code> collapses the group under the cursor, hiding its members</li>
@@ -455,9 +454,10 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     </p>
     <p>
       A tab row above the fields names all nine groups, <code>dogs</code>{" "}
-      last. <code>Tab</code> walks to the next one, and <code>1</code>{" "}
+      last. <code>Tab</code> walks to the next one, <code>Shift-Tab</code>{" "}
+      walks back to the previous one, and both wrap. <code>1</code>{" "}
       through <code>9</code> jump straight to a group by its position in
-      that row. Either resets the cursor to the group's first field.
+      that row. Each resets the cursor to the group's first field.
     </p>
     <p>
       A panel to the right of a wide enough pane explains whichever field
@@ -573,7 +573,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     <h2 id="a-sheeps-dogs-row">A sheep's dogs row</h2>
     <p>
       <code>dogs</code> has a tab of its own, last in the row, reached with{" "}
-      <code>9</code> or <code>Tab</code>. It names its dogs,{" "}
+      <code>9</code>, <code>Tab</code> or <code>Shift-Tab</code>. It names its dogs,{" "}
       <code>jobs, legacy</code>, or <code>none</code>, never a value. Enter
       or <code>e</code> probes every adopted dog and opens a sub-screen.
     </p>

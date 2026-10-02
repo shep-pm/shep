@@ -132,7 +132,7 @@ impl App {
             // only from text mode, already branched above. `map_key` also
             // sends `Remove`/`StepUp`/`StepDown` from Normal mode
             // (`d`/`K`/`J`), so those land here too, just inert.
-            // `NextGroup`/`Group`/`Undo` belong to the config pane: no other
+            // `NextGroup`/`PrevGroup`/`Group`/`Undo` belong to the config pane: no other
             // screen has groups to walk or a filed edit set to undo.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
@@ -142,6 +142,7 @@ impl App {
             | KeyPress::StepUp
             | KeyPress::StepDown
             | KeyPress::NextGroup
+            | KeyPress::PrevGroup
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

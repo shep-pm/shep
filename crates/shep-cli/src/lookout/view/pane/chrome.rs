@@ -313,6 +313,36 @@ mod tests {
         assert_eq!(app.config_pane().unwrap().group(), GROUP_ORDER[0]);
     }
 
+    #[test]
+    fn shift_tab_wraps_from_the_first_group_to_the_last() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.update(Msg::Key(KeyPress::PrevGroup));
+        assert_eq!(
+            app.config_pane().unwrap().group(),
+            GROUP_ORDER[GROUP_ORDER.len() - 1]
+        );
+    }
+
+    #[test]
+    fn shift_tab_walks_the_groups_tab_walked_in_reverse() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.update(Msg::Key(KeyPress::NextGroup));
+        app.update(Msg::Key(KeyPress::NextGroup));
+        app.update(Msg::Key(KeyPress::PrevGroup));
+        assert_eq!(app.config_pane().unwrap().group(), GROUP_ORDER[1]);
+    }
+
+    #[test]
+    fn shift_tab_puts_the_cursor_on_the_new_groups_first_row() {
+        let mut app = fixtures::app_in_sheep_pane();
+        app.update(Msg::Key(KeyPress::NextGroup));
+        app.update(Msg::Key(KeyPress::SelectDown));
+        app.update(Msg::Key(KeyPress::PrevGroup));
+        let pane = app.config_pane().unwrap();
+        assert_eq!(pane.cursor(), pane.rows().first().copied());
+        assert_ne!(pane.cursor(), None, "the first group has a row to land on");
+    }
+
     /// The digits reach the same nine groups `tab` does. A key that
     /// reaches nothing is exactly the shape this plan exists to avoid.
     #[test]
