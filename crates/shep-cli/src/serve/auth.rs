@@ -232,7 +232,8 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
         return None;
     }
     let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for chunk in bytes.chunks_exact(4) {
+    let (chunks, _) = bytes.as_chunks::<4>();
+    for chunk in chunks {
         let mut sextets = [0u8; 4];
         let mut pad = 0u8;
         for (i, &byte) in chunk.iter().enumerate() {

@@ -83,7 +83,6 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::*;
     use super::*;
     use crate::lookout::app::testing::*;
 

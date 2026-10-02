@@ -136,7 +136,6 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::*;
     use super::super::testing::*;
     use super::*;
     use crate::lookout::secrets::SecretRow;
