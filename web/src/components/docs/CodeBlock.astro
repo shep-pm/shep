@@ -85,7 +85,7 @@ const headerCopy = Boolean(label) && iconCopy;
     )
   }
   <div class="code-block-body">
-    <pre class="code-block-pre"><slot /></pre>
+    <pre class={`code-block-pre${!headerCopy ? " has-floating-copy" : ""}`}><slot /></pre>
     {
       !headerCopy && (
         <button
@@ -130,13 +130,17 @@ const headerCopy = Boolean(label) && iconCopy;
 
   .code-block-pre {
     margin: 0;
-    padding: 20px 56px 20px 22px;
+    padding: 20px 22px;
     font-family: "Space Mono", monospace;
     font-size: 13.5px;
     line-height: 1.9;
     color: var(--illus-terminal-text);
     overflow-x: auto;
     white-space: pre;
+  }
+
+  .code-block-pre.has-floating-copy {
+    padding-right: 56px;
   }
 
   .code-copy {
