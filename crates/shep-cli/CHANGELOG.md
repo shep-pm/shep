@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-10-02
+
+### Changed
+
+- Share the open-pane step across lookout fixtures
+
+### Fixed
+
+- Clear clippy lints that fire on stable 1.98
+
+
 ## [0.12.2] - 2026-10-02
 
 ### Fixed
