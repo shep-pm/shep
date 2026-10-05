@@ -80,7 +80,12 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.
-  "shepherd-channel": 1890, // 1804
+  //
+  // Raised from 1890 on 2026-10-05 for "Asking the operator": `ask`,
+  // `withdraw` and `answer` are three new messages an app author has to be
+  // told about, with a grammar each, so the page tracks the feature count.
+  // The section was cut once before the ceiling moved.
+  "shepherd-channel": 2350, // 2242
   "from-pm2": 1720, // 1659
   "boot-order": 1670, // 1586
   "talking-to-a-sheep": 1620, // 1534

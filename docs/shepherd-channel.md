@@ -113,10 +113,10 @@ only that half:
   channel.
 
 **The wire format below is unchanged** — same newline-delimited JSON, same
-`ready`/`metric`/`action-reply`/`lamb-label` outbound and `shutdown`/`action` inbound
-shapes, same correlation id. A named pipe opened in byte mode is a blocking
-byte stream, so "read a line, parse it, act on it" still describes reading
-it exactly.
+`ready`/`metric`/`action-reply`/`lamb-label`/`ask`/`withdraw` outbound and
+`shutdown`/`action`/`answer` inbound shapes, same correlation id. A named
+pipe opened in byte mode is a blocking byte stream, so "read a line, parse
+it, act on it" still describes reading it exactly.
 
 ### The one way that pipe is not a descriptor
 
@@ -178,6 +178,8 @@ build a JSON object, append `\n`, write it.
 | `{"kind":"metric","name":"<name>","value":<number>}` | A custom metric sample. Currently logged by the daemon at debug level and nothing more — no dog reads it yet. |
 | `{"kind":"action-reply","action":"<name>","body":"<text>","id":<number>}` | Your answer to a triggered action. `action` names which one; `body` is free-form text and becomes what the operator sees. `id` is optional — echo the `id` from the `action` message you are answering and shep matches your reply to that exact request. |
 | `{"kind":"lamb-label","pid":<number>,"label":"<text>"}` | Names one of your own child processes in `shep describe` and lookout. An empty `label` clears it. See [Naming your lambs](#naming-your-lambs). |
+| `{"kind":"ask","question":"<id>","text":"<text>","takes":"yes-no"}` | Puts a question to the operator. `takes` is `yes-no` or `text`. See [Asking the operator](#asking-the-operator). |
+| `{"kind":"withdraw","question":"<id>"}` | Takes a question back because you no longer need the answer. |
 
 ### What you receive (daemon writes this)
 
@@ -185,6 +187,7 @@ build a JSON object, append `\n`, write it.
 |---|---|
 | `{"kind":"shutdown"}` | Sent instead of a stop signal when `shutdown_with_message = true`. Treat it as your cue to shut down gracefully; the daemon still escalates to `SIGKILL` after `kill_timeout` if you take too long. |
 | `{"kind":"action","name":"<name>","id":<number>}`, optionally with `"params":"<text>"` | An operator ran `shep trigger <selector> <name> [params]` against you. `params` is present only when the operator supplied one; `id` is always present — echo it on your reply. |
+| `{"kind":"answer","question":"<id>","answer":"<text>"}`, optionally with `note`, `via` and `who` | The operator answered a question you asked. See [Asking the operator](#asking-the-operator). |
 
 The Go spelling of both shapes is generated from the Rust enums above and
 committed at `crates/shep-channel/wire/channel.go`. It is the same file
@@ -303,6 +306,89 @@ so sending one to an older shep costs nothing but the warning.
 In Rust, `shep_channel::Shepherd::label_lamb(pid, LambLabel::new("worker 1")?)`
 checks the grammar before anything is sent.
 
+## Asking the operator
+
+An app that needs a person to decide something can ask, and carry on while
+it waits. The shepherd holds the question, shows it to the operator, and
+hands the answer back on the same descriptor.
+
+```json
+{"kind":"ask","question":"koji-3","text":"Merge #12 into main?","takes":"yes-no"}
+```
+
+- **`question`** is your own id for it: 1 to 32 characters from
+  `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, so an operator can type it. Ask
+  again with an id that is still open and the text and kind are replaced.
+- **`text`** is at most 1000 characters. Newlines are fine. Any other
+  control character is not.
+- **`takes`** is `yes-no` or `text`.
+
+A line that breaks a rule is dropped as a malformed frame and the shepherd
+logs a warning. There is no reply either way.
+
+The question shows up in `shep describe` in a section titled "Questions
+of <name> (id N)", in `--format json` as `questions[]` (only when the sheep
+has one open), and in `shep answer` with no arguments, which lists every
+open question in the flock. The operator answers with the verb:
+
+```text
+$ shep answer
+SHEEP  QUESTION  TAKES   ASKED  TEXT
+asker  q1        yes-no  2s     Ship it?\nline two
+
+$ shep answer asker q1 no rebase first
+answered q1 on asker
+```
+
+The words after the question are joined with spaces. For a `yes-no`
+question the first word is the answer and the rest is the note. For a
+`text` question every word is the answer. A dog can answer too: it sends the
+same request over the client socket, and fills in `via` and `who`.
+
+What you receive:
+
+```json
+{"kind":"answer","question":"koji-3","answer":"no","note":"rebase first"}
+```
+
+- **`answer`** for `yes-no` is exactly `yes` or `no`. It may carry a `note`
+  of at most 500 characters. For `text` it is the answer itself, 1 to 1000
+  characters with the same control-character rule as `text`, and it carries
+  no note.
+- **`via`** names the dog that delivered the answer. It is absent when the
+  operator answered at the socket or with `shep answer`. At most 64
+  characters.
+- **`who`** is what that dog says about the person. At most 128 characters.
+
+`via` and `who` are claims nobody checked. shep passes them through unread,
+and any client on the socket can write them. Treat them as a label for a log
+line, not as proof of who said yes. Proving that is the delivering dog's
+job.
+
+The first answer wins. A second one is refused, and the message says how the
+question closed. A question closes when it is answered, when you withdraw
+it, or when your process exits. A restart forgets your open questions, so
+ask again at start. A `shep daemon reload` keeps them: your channel crosses
+it, you are still waiting, and you have no reason to ask twice.
+
+The shepherd holds 64 open questions for each process. The 65th is dropped
+and logged. It does not push an older one out, because losing a question
+somebody is about to answer is worse than refusing a new one.
+
+An `answer` is delivered once and you owe no reply. If the answer reaches a
+sheep that is not reading its channel, the question stays open and the
+operator is told it was not delivered. If your app has no `on_answer`
+handler, `shep-channel` warns on stderr and the answer is lost.
+
+In Rust, `QuestionId::new` and `QuestionText::new` check the grammar before
+anything is sent. Then `Shepherd::ask(id, text, Takes::YesNo)` and
+`Shepherd::withdraw(id)` send, and `Shepherd::on_answer(|answer| ...)`
+registers the handler. The handler runs on the reader thread, so a slow one
+delays the next message.
+
+An older shepherd logs `ask` and `withdraw` as malformed and carries on, so
+asking one costs the warning and no answer will come.
+
 ## Finish writing before you exit
 
 `shutdown` is the one message that asks you to end the process, which makes
@@ -320,11 +406,11 @@ down while you wait.
 
 ## Everything you write here is also public on the bus
 
-Every message you send on fd 3 — `ready`, `metric`, `action-reply`,
-`lamb-label` — is republished on the daemon's event bus under `channel.*`
-(`channel.ready`, `channel.metric`, `channel.action_reply`,
-`channel.lamb_label`), as its own
-topic alongside `process.*` and the log topics. Anyone subscribed to
+Every message you send on fd 3 (`ready`, `metric`, `action-reply`,
+`lamb-label`, `ask`, `withdraw`) is republished on the daemon's event bus
+under `channel.*` (`channel.ready`, `channel.metric`,
+`channel.action_reply`, `channel.lamb_label`, `channel.ask`,
+`channel.withdraw`), as its own topic alongside `process.*` and the log topics. Anyone subscribed to
 `channel.*` sees it, not just the operator who happened to send the
 `trigger` you were answering.
 
@@ -349,3 +435,5 @@ with any subscriber seeing, not just the one who asked.
 - Echo the `id` from the action on your reply — one field, and it is what
   makes a slow action's answer land on the right trigger.
 - What you put in `body` is what the operator reads back.
+- To ask the operator something, send `ask` with your own id. The answer comes
+  back as an `answer` message, and `shep answer` is how the operator sends it.
