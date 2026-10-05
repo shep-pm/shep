@@ -83,8 +83,10 @@ Windows gaps.
 3. The sweep's grace is `kill_timeout` on every path, including a reload
    drain. Worst case a stop takes 2 × `kill_timeout`, only when lambs outlive
    the sheep and ignore `SIGTERM`.
-4. One-second residual on pid reuse: a pid recycled within the snapshot's own
-   second passes the check. Documented, no pidfds.
+4. A residual on pid reuse: a pid recycled within about a second of the
+   walk passes the check, two on Linux (sysinfo floors both the boot time
+   and the start ticks). Documented, no pidfds. Found in review: a start
+   time from before the machine booted is refused outright.
 5. No new bus event: a `tracing` info line per sweep that signalled anything,
    a warn when one needed `SIGKILL`.
 6. A nested shepherd started from inside a sheep is a lamb and is swept if it

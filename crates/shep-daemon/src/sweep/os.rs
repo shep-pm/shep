@@ -31,10 +31,12 @@ impl LambSweep for StatsSweep {
     #[cfg(unix)]
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32> {
         let pids: Vec<u32> = snapshot.pids().collect();
+        let booted_secs = (crate::now_ms() / 1000).saturating_sub(sysinfo::System::uptime());
         unix::survivors_in(
             snapshot,
             &crate::proc_table::read_pids(&pids),
             std::process::id(),
+            booted_secs,
         )
     }
 
@@ -76,13 +78,23 @@ mod unix {
         }
     }
 
+    /// How far before `booted_secs` a start time may read and still count:
+    /// both it and the start time are floored seconds.
+    const BOOT_SLACK_SECS: u64 = 2;
+
     /// The pids in `snapshot` that `readings` show are still the processes
     /// it saw.
+    ///
+    /// A start time before `booted_secs` is not an epoch second at all: Linux
+    /// without a `btime` line makes sysinfo report one near the uptime, which
+    /// would pass every pid.
     pub(super) fn survivors_in(
         snapshot: &LambSnapshot,
         readings: &HashMap<u32, PidReading>,
         own: u32,
+        booted_secs: u64,
     ) -> Vec<u32> {
+        let earliest = booted_secs.saturating_sub(BOOT_SLACK_SECS);
         snapshot
             .pids()
             .filter(|&pid| lamb_pid(pid, own).is_ok())
@@ -92,7 +104,7 @@ mod unix {
                         && reading
                             .started_secs
                             .zip(snapshot.seen_at(*pid))
-                            .is_some_and(|(started, seen)| started <= seen)
+                            .is_some_and(|(started, seen)| earliest <= started && started <= seen)
                 })
             })
             .collect()
@@ -151,7 +163,7 @@ mod unix {
 
             // 12 started after the snapshot, 13 is a zombie, 14 has no start
             // time and 15 is gone.
-            assert_eq!(survivors_in(&snapshot, &readings, OWN), vec![10, 11]);
+            assert_eq!(survivors_in(&snapshot, &readings, OWN, 0), vec![10, 11]);
         }
 
         #[test]
@@ -166,7 +178,7 @@ mod unix {
 
             // 10 was seen only by the tick, before it started: a recycled pid.
             assert_eq!(
-                survivors_in(&tick.merge(fresh), &readings, OWN),
+                survivors_in(&tick.merge(fresh), &readings, OWN, 0),
                 vec![11, 12]
             );
         }
@@ -176,7 +188,21 @@ mod unix {
             let snapshot = LambSnapshot::new([0, 1, OWN, 10], TAKEN_AT);
             let readings =
                 HashMap::from([(0, live(0)), (1, live(0)), (OWN, live(0)), (10, live(0))]);
-            assert_eq!(survivors_in(&snapshot, &readings, OWN), vec![10]);
+            assert_eq!(survivors_in(&snapshot, &readings, OWN, 0), vec![10]);
+        }
+
+        #[test]
+        fn a_start_time_from_before_the_machine_booted_is_not_a_survivor() {
+            let booted = TAKEN_AT - 3_600;
+            let snapshot = LambSnapshot::new([10, 11, 12], TAKEN_AT);
+            let readings = HashMap::from([
+                (10, live(booted)),
+                (11, live(booted - BOOT_SLACK_SECS - 1)),
+                // An uptime-sized reading, as a Linux host with no `btime`
+                // line produces.
+                (12, live(90)),
+            ]);
+            assert_eq!(survivors_in(&snapshot, &readings, OWN, booted), vec![10]);
         }
 
         // Tests the guard without `kill`: a broken guard here must not

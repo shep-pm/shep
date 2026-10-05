@@ -10,8 +10,10 @@
 //!
 //! A snapshot stores each pid with the second it was seen, not start times.
 //! A pid is a survivor only if it is alive, not a zombie, and started no
-//! later than that second. A pid recycled within that same second still
-//! passes: a one-second residual, accepted.
+//! later than that second. A pid recycled within about a second of the walk
+//! still passes, two on Linux, where sysinfo floors both the boot time and
+//! the start ticks: a residual, accepted. A start time from before the
+//! machine booted is never trusted.
 //!
 //! ## Windows
 //!
