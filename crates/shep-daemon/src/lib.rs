@@ -61,6 +61,8 @@
 //!
 //! - `sys`: adopting an inherited descriptor, this crate's only unsafe surface
 //!   on unix (unix only)
+//! - `proc_table`: targeted process-table reads of a few named pids, for
+//!   start times and liveness (unix only)
 //! - [`privilege`]: `user`/`group` config to numeric uid/gid, one portable
 //!   `resolve()` over a unix impl and a non-unix stub that refuses outright
 //! - [`notify`]: one `READY=1` datagram to `$NOTIFY_SOCKET`, sent by [`boot`]
@@ -215,6 +217,10 @@ pub(crate) mod host;
 #[cfg(unix)]
 pub(crate) mod handover;
 pub(crate) mod kill;
+// Unix only, like both its callers: a handover's adopted start times and the
+// lamb sweep's liveness check.
+#[cfg(unix)]
+pub(crate) mod proc_table;
 // The provider values a dog has pushed, and the cache file they survive a
 // restart in. Crate-private: a dog writes here over the socket, never by
 // linking this crate.
