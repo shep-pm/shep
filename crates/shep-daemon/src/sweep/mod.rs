@@ -51,11 +51,14 @@ impl LambSnapshot {
     }
 
     /// The pids this snapshot saw, in pid order.
+    // Read only by the unix survivor check, and by tests.
+    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
     pub(crate) fn pids(&self) -> impl Iterator<Item = u32> + '_ {
         self.seen_at.keys().copied()
     }
 
     /// The second `pid` was seen, or `None` if this snapshot never saw it.
+    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
     pub(crate) fn seen_at(&self, pid: u32) -> Option<u64> {
         self.seen_at.get(&pid).copied()
     }
@@ -93,9 +96,12 @@ pub(crate) enum LambSignal {
 pub(crate) enum SignalError {
     /// The pid is `0`, `1`, this daemon's own, or too large for the OS to
     /// name: a `kill` there would hit a group, init or the shepherd.
+    // Only the unix `kill` path builds these two, plus the test fake.
+    #[cfg_attr(not(unix), expect(dead_code))]
     NotALamb(u32),
     /// The OS refused the `kill`, with its reason: the pid exited, or
     /// belongs to another user.
+    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
     Refused(String),
     /// This platform has no per-pid signal delivery for a sweep to use.
     #[cfg(not(unix))]
