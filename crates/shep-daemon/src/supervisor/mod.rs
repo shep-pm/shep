@@ -93,6 +93,7 @@ mod handle;
 mod handover;
 mod logs;
 mod manual;
+mod questions;
 mod reload;
 mod sheep;
 mod slot;
