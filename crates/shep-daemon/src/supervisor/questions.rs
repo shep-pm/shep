@@ -130,6 +130,18 @@ impl Questions {
         &self.open
     }
 
+    /// A store holding `open` and nothing settled, as a successor rebuilds
+    /// one from a handover. Past [`MAX_OPEN`] the rest are dropped, as
+    /// [`Self::ask`] drops them.
+    #[cfg(unix)]
+    pub(super) fn reopened(open: impl IntoIterator<Item = OpenQuestion>) -> Self {
+        let mut questions = Self::default();
+        for question in open {
+            let _ = questions.ask(question);
+        }
+        questions
+    }
+
     /// Empties the store as the process goes, returning the ids that were
     /// open. Nothing is remembered: nobody can ask about a process that is
     /// gone.

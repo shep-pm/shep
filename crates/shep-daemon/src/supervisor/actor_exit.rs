@@ -95,6 +95,7 @@ impl<R: ProcessRunner> Actor<R> {
                 restart_due: slot.restart_due,
                 log_ctl: slot.log_ctl.clone(),
                 channel_open: slot.open_channel().is_some(),
+                questions: slot.questions.open().to_vec(),
             })
             .collect();
         // `HashMap` iteration order is arbitrary; id order makes two

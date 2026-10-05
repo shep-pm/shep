@@ -9,7 +9,7 @@
 
 use std::time::SystemTime;
 
-use shep_core::protocol::DogSource;
+use shep_core::protocol::{DogSource, OpenQuestion, QuestionId, QuestionText, Takes};
 use shep_core::status::ProcStatus;
 
 use super::{handover_over, sample_handover};
@@ -476,5 +476,40 @@ fn a_deadline_is_carried_only_for_a_sheep_owed_a_respawn() {
         online.restart_due(),
         None,
         "a running sheep must not carry a deadline left over from an earlier exit"
+    );
+}
+
+#[test]
+fn a_blob_written_before_questions_were_carried_still_loads() {
+    let open = OpenQuestion::new(
+        QuestionId::new("deploy").unwrap(),
+        QuestionText::new("Ship it?").unwrap(),
+        Takes::YesNo,
+        1_700_000_000_000,
+    );
+    let mut blob = sample_handover();
+    blob.sheep[0] = carried(&entry_fixture(|_| {})).with_questions(vec![open.clone()]);
+    let mut value = serde_json::to_value(&blob).unwrap();
+    let carrying = Handover::load_value(value.clone()).expect("a blob this daemon wrote must load");
+    assert_eq!(
+        carrying.sheep[0].questions(),
+        Some(&[open][..]),
+        "an open question must cross the blob whole, its asked_at_ms included"
+    );
+    let sheep = value["sheep"][0]
+        .as_object_mut()
+        .expect("a carried sheep is an object");
+    assert!(
+        sheep.remove("questions").is_some(),
+        "the field this case removes must be there to remove"
+    );
+
+    let loaded = Handover::load_value(value).expect("an older blob must still load");
+
+    assert_eq!(loaded.sheep[0].questions(), None);
+    assert_eq!(
+        loaded.sheep[0].fds(),
+        blob.sheep[0].fds(),
+        "the rest of the row is unchanged by the one field that was absent"
     );
 }

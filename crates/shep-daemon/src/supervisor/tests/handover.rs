@@ -4,6 +4,9 @@
 //! pumps. A pump that never reports must not hang it, and a sweep of six wedged
 //! pumps has to cost one deadline rather than six.
 
+use shep_core::protocol::{Answer, Takes};
+
+use super::questions::{answer_web, ask, channelled, open_ids_become, question_id, web_asking};
 use super::*;
 
 /// Whether `fd` names something open in this process.
@@ -313,5 +316,113 @@ async fn the_snapshot_carries_the_actors_counters_and_slot_state() {
         blob.sheep()[0].fds(),
         CarriedFds::none(),
         "a sheep with no pump has no descriptors to carry"
+    );
+}
+
+/// [`AdoptingRunner`], with the shepherd channel of each sheep it adopts left
+/// open and its far end held by the case.
+#[cfg(unix)]
+#[derive(Debug)]
+struct ChannelledAdoption(mpsc::Sender<ShepherdMessage>);
+
+#[cfg(unix)]
+impl ProcessRunner for ChannelledAdoption {
+    type Proc = StandInProc;
+
+    fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
+        AdoptingRunner.spawn(spec)
+    }
+
+    fn adopt(&self, spec: crate::runner::AdoptSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
+        let (proc, io) = AdoptingRunner.adopt(spec)?;
+        Ok((
+            proc,
+            ProcIo {
+                to_child: self.0.clone(),
+                ..io
+            },
+        ))
+    }
+}
+
+/// Snapshot, blob and install are each the real path, so a question dropped
+/// by any of them leaves the successor's listing empty.
+/// How `settled` closed is not carried: the successor knows only that it
+/// is not open.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn an_open_question_crosses_a_handover_and_is_still_answerable() {
+    let dir = tempfile::tempdir().unwrap();
+    let (handle, io, _events) = web_asking(&dir, "settled", Takes::YesNo).await;
+    answer_web(&handle, "settled", "yes").await.unwrap();
+    io.from_child_tx
+        .send(ask("deploy", "Ship it?", Takes::YesNo))
+        .await
+        .unwrap();
+    open_ids_become(&handle, 0, &["deploy"]).await;
+    let asked = handle.list().await[0].questions.clone();
+    assert!(
+        matches!(
+            answer_web(&handle, "settled", "no").await,
+            Err(SupervisorError::QuestionNotOpen(how)) if how.contains("already answered")
+        ),
+        "fixture check: the predecessor remembers how `settled` closed"
+    );
+
+    let (fds, _held) = daemon_fds(&dir);
+    let (_candidates, blob, _parked) = handle.handover_snapshot(fds).await.unwrap();
+    let blob = Handover::load_value(serde_json::to_value(&blob).unwrap())
+        .expect("a blob this daemon wrote must load");
+    let (to_child, mut to_child_rx) = mpsc::channel(8);
+    let (events, _rx) = crate::bus::test_bus(64);
+    let successor = SupervisorBuilder::new(ChannelledAdoption(to_child), test_paths(&dir), events)
+        .spawn_adopted(
+            blob.sheep().iter().cloned().map(without_handles).collect(),
+            blob.counters(),
+            Vec::new(),
+        )
+        .expect("a carried flock installs");
+
+    assert_eq!(
+        successor.list().await[0].questions,
+        asked,
+        "the successor must list the open question as the predecessor did, asked_at_ms included"
+    );
+    assert_eq!(
+        answer_web(&successor, "settled", "no").await,
+        Err(SupervisorError::QuestionNotOpen(
+            "web has no open question settled".to_string()
+        ))
+    );
+    assert_eq!(
+        answer_web(&successor, "deploy", "yes").await,
+        Ok((0, "web".to_string()))
+    );
+    assert_eq!(
+        sent_action(&mut to_child_rx).await,
+        ShepherdMessage::Answer(Answer::new(question_id("deploy"), "yes"))
+    );
+}
+
+/// Read off the JSON rather than the loaded value: an empty list and an
+/// absent key load alike, and only the absent key leaves the blob of a flock
+/// that never asked as it was before questions were carried.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_sheep_with_nothing_open_writes_no_questions_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let (handle, _runner, _events) =
+        started(&dir, channelled("web"), vec![ProcScript::never_exits()]).await;
+    let (fds, _held) = daemon_fds(&dir);
+
+    let (_candidates, blob, _parked) = handle.handover_snapshot(fds).await.unwrap();
+
+    let value = serde_json::to_value(&blob).unwrap();
+    let row = value["sheep"][0]
+        .as_object()
+        .expect("a carried sheep is an object");
+    assert!(
+        !row.contains_key("questions"),
+        "a sheep with nothing open must write no questions key: {row:?}"
     );
 }

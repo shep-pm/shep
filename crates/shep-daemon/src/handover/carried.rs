@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use shep_core::config::AppConfig;
-use shep_core::protocol::{DogSource, ExitInfo};
+use shep_core::protocol::{DogSource, ExitInfo, OpenQuestion};
 use shep_core::status::ProcStatus;
 
 use crate::entry::{ProcessEntry, ReloadState};
@@ -113,6 +113,13 @@ pub struct CarriedSheep {
     /// Carried with [`Self::pending`] and never without it: the load that
     /// parks the config decides this, and a later diff cannot recompute it.
     pub(super) pending_reidentifies: Option<bool>,
+    /// The running process's open questions, in the order first asked, or
+    /// `None` when it has none. Its settled questions are not carried.
+    ///
+    /// Never `Some` of an empty list, so a sheep with nothing open writes no
+    /// key at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) questions: Option<Vec<OpenQuestion>>,
     /// The resolved config this instance runs under, environment included.
     ///
     /// The `AppConfig` beneath [`ProcessEntry::spec`]'s `ResolvedApp`, not the
@@ -160,6 +167,7 @@ impl CarriedSheep {
             // together.
             pending_reidentifies: entry.pending.as_ref().map(|_| entry.pending_reidentifies),
             ready_failed: Some(ready_failed),
+            questions: None,
             // The slot's own field is written on the one transition into
             // `WaitingRestart` and never cleared, so gating here stops an
             // expired moment riding out on an `Online` row.
@@ -168,6 +176,20 @@ impl CarriedSheep {
                 .flatten(),
             app: entry.spec.config().clone(),
         }
+    }
+
+    /// This row, carrying `open` as the running process's open questions.
+    #[must_use]
+    pub fn with_questions(mut self, open: Vec<OpenQuestion>) -> Self {
+        self.questions = (!open.is_empty()).then_some(open);
+        self
+    }
+
+    /// The running process's open questions, in the order first asked, or
+    /// `None` for one with none open.
+    #[must_use]
+    pub fn questions(&self) -> Option<&[OpenQuestion]> {
+        self.questions.as_deref()
     }
 
     /// The descriptor numbers this instance's output travels on.

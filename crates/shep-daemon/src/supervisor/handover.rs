@@ -79,6 +79,8 @@ pub(super) struct HandoverDraft {
     /// to the next `open`. [`SheepSlot::open_channel`] is the fact that decides
     /// delivery, and is only reachable from the actor loop.
     pub(super) channel_open: bool,
+    /// The running process's open questions, in the order first asked.
+    pub(super) questions: Vec<OpenQuestion>,
 }
 
 /// Spawns the task that assembles one handover snapshot and answers its
@@ -130,7 +132,8 @@ pub(super) fn spawn_handover_task(
                 draft.manual,
                 draft.ready_failed,
                 draft.restart_due,
-            );
+            )
+            .with_questions(draft.questions);
             let candidate = OwnedCandidate {
                 entry: draft.entry,
                 pump_unresponsive,
