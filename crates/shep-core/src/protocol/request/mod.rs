@@ -7,6 +7,8 @@ mod handshake;
 mod outcomes;
 mod process;
 mod redacted;
+#[cfg(test)]
+mod request_wire;
 mod response;
 mod response_name;
 mod selector_spec;
