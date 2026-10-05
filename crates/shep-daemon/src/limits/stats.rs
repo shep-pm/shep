@@ -129,11 +129,21 @@ impl StatsState {
     ///
     /// Leaves the baseline map alone: see [`Self::watch`] for why nothing can
     /// read a stale entry, and [`Self::record_baseline`] for what clears it.
+    /// Drops the lamb snapshot, which a sheep reusing this root pid could
+    /// otherwise read before it is watched itself. The sheep task has already
+    /// swept: an unwatch follows the exit it reports.
     pub(crate) fn unwatch(&self, id: u32) {
-        self.watched
+        let root_pid = self
+            .watched
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&id);
+        if let Some(root_pid) = root_pid {
+            self.lamb_snapshots
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&root_pid);
+        }
     }
 
     /// Records every watched root's CPU counter from one periodic reading.
@@ -589,6 +599,21 @@ mod tests {
             stats.last_lamb_snapshot(100),
             Some(LambSnapshot::new([101, 102], 78))
         );
+    }
+
+    #[test]
+    fn an_unwatched_root_leaves_no_lamb_snapshot_behind() {
+        let index = TreeIndex::build(&[rss(100, Some(SHEPHERD), 0), rss(101, Some(100), 0)]);
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
+        stats.watch(1, 100);
+        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        assert!(
+            stats.last_lamb_snapshot(100).is_some(),
+            "sanity: one was recorded"
+        );
+
+        stats.unwatch(1);
+        assert_eq!(stats.last_lamb_snapshot(100), None);
     }
 
     #[test]
