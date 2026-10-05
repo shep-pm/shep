@@ -293,3 +293,6 @@ async fn the_extras_sweep_reaches_a_started_sheep_and_its_respawn() {
         "the crash swept the first pid's tick, the stop the respawn's walk"
     );
 }
+
+#[cfg(unix)]
+mod slow;
