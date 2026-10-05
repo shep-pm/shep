@@ -4,6 +4,7 @@
 use std::io;
 use std::pin::Pin;
 
+use shep_core::protocol::Takes;
 use tokio::io::{
     AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader, Lines,
 };
@@ -451,6 +452,18 @@ pub(super) fn spawn_channel_pumps<S>(
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => match serde_json::from_str::<ChildMessage>(&line) {
+                    // Decodes so the rest of the channel keeps working, but no
+                    // answer could fit it, so it goes the way of a bad frame.
+                    Ok(ChildMessage::Ask {
+                        takes: Takes::Unrecognized,
+                        ..
+                    }) => {
+                        tracing::warn!(
+                            %line,
+                            "malformed shepherd-channel frame: `takes` names a kind this \
+                             shepherd does not know"
+                        );
+                    }
                     Ok(msg) => {
                         if from_child_tx.send(msg).await.is_err() {
                             break; // owning sheep task dropped from_child

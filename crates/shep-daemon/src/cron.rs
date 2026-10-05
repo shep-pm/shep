@@ -140,12 +140,15 @@ pub fn spawn_cron_worker(
                         | SupervisorError::IsADog(_)
                         | SupervisorError::InvalidEnv(_)
                         | SupervisorError::InvalidField(_)
-                        | SupervisorError::Overrides(_)),
+                        | SupervisorError::Overrides(_)
+                        | SupervisorError::QuestionNotOpen(_)
+                        | SupervisorError::InvalidAnswer(_)),
                     ) => {
-                        // None of these nine can arrive here. A restart
+                        // None of these eleven can arrive here. A restart
                         // writes no logs, reloads nothing, scales nothing,
-                        // and names no dog, field or override. Named rather
-                        // than a catch-all, so a new variant fails to compile.
+                        // and names no dog, field, override or question.
+                        // Named rather than a catch-all, so a new variant
+                        // fails to compile.
                         tracing::warn!(name, %err, "cron-triggered restart reported an unrelated failure");
                     }
                     Err(err @ SupervisorError::EngineStopped) => {

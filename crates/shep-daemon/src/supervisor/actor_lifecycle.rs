@@ -213,6 +213,8 @@ impl<R: ProcessRunner> Actor<R> {
         reason: &dyn fmt::Display,
     ) -> ProcessInfo {
         tracing::warn!(id, %reason, "no process was started");
+        // Goes with `to_child` below, as in `handle_exited`.
+        self.close_questions(id);
         let slot = self
             .sheep
             .get_mut(&id)
@@ -261,6 +263,8 @@ impl<R: ProcessRunner> Actor<R> {
         if !err.is_retriable() {
             return self.respawn_failed(id, manually, err);
         }
+        // Goes with `to_child` below, as in `handle_exited`.
+        self.close_questions(id);
         let slot = self
             .sheep
             .get_mut(&id)

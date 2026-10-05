@@ -40,6 +40,22 @@ impl<R: ProcessRunner> Actor<R> {
                     }
                     false
                 }
+                Msg::Ask {
+                    id,
+                    root_pid,
+                    question,
+                } => {
+                    self.handle_ask(id, root_pid, question);
+                    false
+                }
+                Msg::Withdraw {
+                    id,
+                    root_pid,
+                    question,
+                } => {
+                    self.handle_withdraw(id, root_pid, question);
+                    false
+                }
                 Msg::ReloadDeadline { name, stamp } => {
                     self.handle_reload_deadline(&name, stamp);
                     false
@@ -246,6 +262,20 @@ impl<R: ProcessRunner> Actor<R> {
                 reply,
             } => {
                 self.begin_send_line(&selector, line, reply);
+                false
+            }
+            // Answered during a shutdown: an answer spawns nothing.
+            Command::Answer {
+                selector,
+                question,
+                answer,
+                note,
+                via,
+                who,
+                reply,
+            } => {
+                let answered = self.handle_answer(&selector, &question, answer, note, via, who);
+                let _ = reply.send(answered);
                 false
             }
             Command::Stop { selector, reply } => {

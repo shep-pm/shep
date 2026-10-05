@@ -117,6 +117,22 @@ pub enum SupervisorError {
     /// land. Nothing was spawned, nothing was killed, and the file on disk
     /// is what it was before the request.
     Overrides(String),
+    /// An answer found no open question to settle; carries why, naming the
+    /// sheep.
+    ///
+    /// Three shapes: the matched sheep has no open shepherd channel, none of
+    /// them holds the question (saying how it closed when that is
+    /// remembered), or its process is going and the answer was not
+    /// delivered. Maps to
+    /// [`RpcErrorCode::NotFound`](shep_core::protocol::RpcErrorCode::NotFound).
+    QuestionNotOpen(String),
+    /// An answer the caller can ask differently; carries the reason.
+    ///
+    /// Three shapes: a value that breaks the question grammar or is not one
+    /// the question takes, a selector that is not one sheep, and a name
+    /// whose instances both hold the question. Maps to
+    /// [`RpcErrorCode::InvalidConfig`](shep_core::protocol::RpcErrorCode::InvalidConfig).
+    InvalidAnswer(String),
     /// The actor has shut down; its mailbox is closed.
     EngineStopped,
 }
@@ -135,6 +151,8 @@ impl fmt::Display for SupervisorError {
             Self::InvalidEnv(msg) => write!(f, "cannot set that env key: {msg}"),
             Self::InvalidField(msg) => write!(f, "cannot set that field: {msg}"),
             Self::Overrides(msg) => write!(f, "overrides store unusable: {msg}"),
+            Self::QuestionNotOpen(msg) => f.write_str(msg),
+            Self::InvalidAnswer(msg) => write!(f, "cannot answer: {msg}"),
             Self::EngineStopped => f.write_str("supervisor engine has shut down"),
         }
     }

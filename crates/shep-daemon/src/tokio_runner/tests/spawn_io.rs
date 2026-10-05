@@ -21,8 +21,9 @@ use tokio::io::DuplexStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::channel::ChildMessage;
 #[cfg(unix)]
-use crate::channel::{ChildMessage, ShepherdMessage};
+use crate::channel::ShepherdMessage;
 #[cfg(unix)]
 use crate::runner::{AdoptSpec, LogCtl, ProcessRunner, RunningProcess};
 use crate::runner::{Preflight, SpawnSpec, StdinWrite};
@@ -34,7 +35,7 @@ use super::super::TokioRunner;
 use super::super::log_file::{LogSink, PipeFds};
 #[cfg(unix)]
 use super::super::pump::spawn_log_pump;
-use super::super::pump::spawn_stdin_pump;
+use super::super::pump::{spawn_channel_pumps, spawn_stdin_pump};
 use super::super::runner::{PATH_LIST_SEPARATOR, summarise_path, what_exec_will_find};
 #[cfg(unix)]
 use super::super::signal_group;
@@ -354,6 +355,31 @@ async fn an_adopted_shepherd_channel_carries_both_directions() {
         .expect("an adopted sheep must still have a channel reader")
         .expect("the reader must forward what the child said");
     assert_eq!(back, ChildMessage::Ready);
+}
+
+/// An `ask` whose `takes` this build does not know is dropped like a
+/// malformed frame, and the line after it still arrives.
+#[tokio::test]
+async fn an_ask_with_an_unknown_takes_is_dropped_and_the_channel_keeps_going() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let (daemon_end, mut child_end) = tokio::io::duplex(1024);
+    let (from_child_tx, mut from_child) = mpsc::channel(CHANNEL_CAPACITY);
+    let (_to_child, to_child_rx) = mpsc::channel(CHANNEL_CAPACITY);
+    spawn_channel_pumps(daemon_end, from_child_tx, to_child_rx);
+
+    child_end
+        .write_all(
+            b"{\"kind\":\"ask\",\"question\":\"q\",\"text\":\"x\",\"takes\":\"maybe\"}\n\
+              {\"kind\":\"ready\"}\n",
+        )
+        .await
+        .unwrap();
+    let first = timeout(PUMP_DEADLINE, from_child.recv())
+        .await
+        .expect("the line after the dropped ask must still arrive")
+        .expect("the reader must still be forwarding");
+    assert_eq!(first, ChildMessage::Ready);
 }
 
 /// fails if an adopted sheep that never had a channel is given ends

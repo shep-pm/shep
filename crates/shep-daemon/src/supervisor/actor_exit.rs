@@ -266,6 +266,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// deferred reply waiting on this id. Returns `true` iff this exit just
     /// completed a `Shutdown`'s aggregation (the actor loop should break).
     pub(super) fn handle_exited(&mut self, id: u32, outcome: ExitOutcome) -> bool {
+        // Goes with `to_child` below: a question belongs to the process
+        // that asked it.
+        self.close_questions(id);
         let Some(slot) = self.sheep.get_mut(&id) else {
             tracing::warn!(id, "Msg::Exited for an unregistered id");
             return false;

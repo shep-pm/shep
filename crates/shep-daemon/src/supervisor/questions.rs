@@ -48,10 +48,6 @@ pub(super) struct Questions {
     settled: VecDeque<(QuestionId, Settled)>,
 }
 
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "read only by tests until the actor holds one")
-)]
 impl Questions {
     /// Opens `question`, or replaces the open one with the same id.
     pub(super) fn ask(&mut self, question: OpenQuestion) -> Asked {

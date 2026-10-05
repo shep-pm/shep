@@ -474,7 +474,12 @@ impl<R: ProcessRunner> Actor<R> {
         let mut listing: Vec<ProcessInfo> = self
             .sheep
             .values()
-            .map(|slot| to_info(&slot.entry, &self.smits))
+            .map(|slot| {
+                let mut info = to_info(&slot.entry, &self.smits);
+                let open = slot.questions.open();
+                info.questions = (!open.is_empty()).then(|| open.to_vec());
+                info
+            })
             .collect();
         sort_flock(&mut listing);
         listing
