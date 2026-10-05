@@ -394,7 +394,7 @@ mod tests {
         store
             .answer("twice", "yes", None, Some("cli"), None)
             .unwrap();
-        for n in 0..MAX_SETTLED - 1 {
+        for n in 0..3 {
             let name = format!("filler{n}");
             store.ask(q(&name, "t?", Takes::YesNo, 0));
             assert!(store.withdraw(&id(&name)));
@@ -405,6 +405,26 @@ mod tests {
                 via: Some("cli".into()),
                 who: None,
             })))
+        );
+    }
+
+    #[test]
+    fn a_question_settled_twice_takes_one_slot_of_the_memory() {
+        let mut store = Questions::default();
+        store.ask(q("oldest", "t?", Takes::YesNo, 0));
+        assert!(store.withdraw(&id("oldest")));
+        for round in 0..2 {
+            store.ask(q("repeat", "t?", Takes::YesNo, round));
+            assert!(store.withdraw(&id("repeat")));
+        }
+        for n in 0..MAX_SETTLED - 2 {
+            let name = format!("pad{n}");
+            store.ask(q(&name, "t?", Takes::YesNo, 0));
+            assert!(store.withdraw(&id(&name)));
+        }
+        assert_eq!(
+            store.answer("oldest", "yes", None, None, None),
+            Err(Refusal::NotOpen(Some(Settled::Withdrawn)))
         );
     }
 }
