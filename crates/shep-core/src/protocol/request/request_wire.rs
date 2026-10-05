@@ -325,6 +325,18 @@ fn request_wire_snapshots() {
                 table: None,
             },
         ),
+        // Every option set, so each key's name is on the wire once.
+        envelope(
+            38,
+            Request::Answer {
+                selector: SelectorSpec::Name("web".to_string()),
+                question: "deploy-1".to_string(),
+                answer: "yes".to_string(),
+                note: Some("after the freeze".to_string()),
+                via: Some("discord".to_string()),
+                who: Some("ada".to_string()),
+            },
+        ),
     ];
     insta::assert_json_snapshot!("request_wire_v11", requests);
 }

@@ -38,9 +38,10 @@ pub use events::{BusEvent, ProcessEventKind};
 pub use frame::ServerFrame;
 pub use request::{
     ActionOutcome, ActionReply, DogSectionToml, DogSource, EnvValue, Envelope, ExitInfo, Hello,
-    HelloAck, HelloReply, HostUsage, Lamb, LineOutcome, LineReply, ProcessInfo, ProcessInfoBuilder,
-    Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView,
-    SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
+    HelloAck, HelloReply, HostUsage, Lamb, LineOutcome, LineReply, OpenQuestion, ProcessInfo,
+    ProcessInfoBuilder, Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec, Settled,
+    SheepApplied, SheepConfigView, SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit,
+    SmitError, sort_flock,
 };
 pub use shep_channel::{
     Answer, CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, QuestionError, QuestionId,

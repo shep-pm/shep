@@ -39,6 +39,7 @@ impl Response {
             Self::Triggered(_) => "Triggered",
             Self::Signalled(_) => "Signalled",
             Self::SentLine(_) => "SentLine",
+            Self::Answered { .. } => "Answered",
             Self::RollSaved { .. } => "RollSaved",
             Self::Mustered(_) => "Mustered",
             Self::DogSection { .. } => "DogSection",

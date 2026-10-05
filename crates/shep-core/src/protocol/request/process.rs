@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::LevelRule;
 use crate::status::ProcStatus;
 
-use super::DogSource;
+use super::{DogSource, OpenQuestion};
 
 // Named by intra-doc links and by nothing rustc compiles, so the
 // import is behind `cfg(doc)` rather than flagged unused.
@@ -161,6 +161,12 @@ pub struct ProcessInfo {
     /// Read [`Lamb`]'s own doc before rendering this: the list is not the set
     /// of processes a stop kills, and any output built from it has to say so.
     pub lambs: Option<Vec<Lamb>>,
+    /// The questions this sheep has open, in the order first asked, or
+    /// `None` when it has none or the peer daemon predates the field.
+    ///
+    /// Never `Some(vec![])`: an empty list is absent from the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub questions: Option<Vec<OpenQuestion>>,
     /// How this sheep's process most recently stopped existing under this
     /// daemon. `None` while it has never exited under this daemon, and when
     /// the peer daemon predates the field.
@@ -305,6 +311,7 @@ impl ProcessInfo {
                 cpu_ms: None,
                 dog: None,
                 lambs: None,
+                questions: None,
                 last_exit: None,
                 smit: None,
                 instance: None,
@@ -407,6 +414,12 @@ impl ProcessInfoBuilder {
         self
     }
 
+    /// Sets the sheep's open questions; `None` when it has none.
+    pub fn questions(mut self, questions: Option<Vec<OpenQuestion>>) -> Self {
+        self.info.questions = questions;
+        self
+    }
+
     /// Sets how this sheep's process most recently stopped; `None` while it
     /// has never exited under this daemon.
     pub fn last_exit(mut self, last_exit: Option<ExitInfo>) -> Self {
@@ -504,6 +517,7 @@ pub(super) fn sample_info() -> ProcessInfo {
         cpu_ms: None,
         dog: None,
         lambs: None,
+        questions: None,
         last_exit: Some(ExitInfo {
             code: Some(1),
             signal: None,
@@ -535,6 +549,7 @@ pub(super) fn sample_info() -> ProcessInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{QuestionId, QuestionText, Takes};
 
     #[test]
     fn a_builder_with_nothing_set_is_a_sheep_that_has_not_run() {
@@ -691,6 +706,29 @@ mod tests {
             .lambs(Some(Vec::new()))
             .build();
         assert_eq!(walked_empty.lambs, Some(Vec::new()));
+    }
+
+    #[test]
+    fn no_open_questions_leaves_no_questions_key() {
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online).build();
+        assert_eq!(info.questions, None);
+        assert!(!serde_json::to_string(&info).unwrap().contains("questions"));
+    }
+
+    #[test]
+    fn an_open_question_round_trips_on_a_process_info() {
+        let open = OpenQuestion::new(
+            QuestionId::new("deploy-1").unwrap(),
+            QuestionText::new("Ship it?").unwrap(),
+            Takes::YesNo,
+            1_700_000_000_000,
+        );
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .questions(Some(vec![open]))
+            .build();
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains(r#""questions":[{"#), "{json}");
+        assert_eq!(serde_json::from_str::<ProcessInfo>(&json).unwrap(), info);
     }
 
     #[test]

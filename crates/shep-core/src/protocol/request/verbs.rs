@@ -427,6 +427,33 @@ pub enum Request {
         /// where the operator typed one.
         line: String,
     },
+    /// Answer a question a sheep has open (see `shep answer`).
+    ///
+    /// Refused with [`RpcErrorCode::NotFound`] when the selector matches no
+    /// sheep, or when the matched sheep has no open question with that id.
+    /// Refused with [`RpcErrorCode::InvalidConfig`], naming the rule, when
+    /// `question`, `answer`, `note`, `via` or `who` breaks the grammar in
+    /// `shep_channel`, or when the answer is not one the question takes.
+    Answer {
+        /// Which sheep. It must match exactly one: an answer belongs to a
+        /// single question.
+        selector: SelectorSpec,
+        /// The id of the open question. A `String`, not a `QuestionId`, so
+        /// a malformed id is refused here with the rule it broke instead of
+        /// failing the whole frame's decode.
+        question: String,
+        /// The answer: `yes` or `no` for a yes-or-no question, any text
+        /// otherwise.
+        answer: String,
+        /// A remark delivered with a yes-or-no answer. A note on a text
+        /// question is refused.
+        note: Option<String>,
+        /// The channel the answer came through, such as a chat bridge's
+        /// name. Recorded with the settlement.
+        via: Option<String>,
+        /// Who answered. Recorded with the settlement.
+        who: Option<String>,
+    },
     /// Write the muster roll now, bypassing the snapshot writer's debounce
     SaveRoll,
     /// Assemble the flock from the muster roll on disk: start every app the

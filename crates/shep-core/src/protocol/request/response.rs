@@ -319,6 +319,15 @@ pub enum Response {
     Signalled(Vec<SignalReply>),
     /// Answer to `SendLine`: one [`LineReply`] row per matched sheep.
     SentLine(Vec<LineReply>),
+    /// Answer to `Answer`: the sheep's question was delivered.
+    Answered {
+        /// Id of the sheep that asked
+        id: u32,
+        /// Name of the sheep that asked
+        name: String,
+        /// The question that was answered, as the sheep spelled it
+        question: String,
+    },
     /// Answer to `SaveRoll`
     RollSaved {
         /// Absolute path of the roll the daemon wrote
@@ -384,11 +393,12 @@ pub enum Response {
 mod tests {
     use super::super::process::sample_info;
     use super::super::{
-        ActionOutcome, DogSource, ExitInfo, Lamb, LineOutcome, Reply, Request, RpcError,
-        RpcErrorCode, SignalOutcome,
+        ActionOutcome, DogSource, ExitInfo, Lamb, LineOutcome, OpenQuestion, Reply, Request,
+        RpcError, RpcErrorCode, SignalOutcome,
     };
     use super::*;
     use crate::config::AppConfig;
+    use crate::protocol::{QuestionId, QuestionText, Takes};
     use crate::status::ProcStatus;
 
     /// The reply carries key names and never a value.
@@ -873,6 +883,28 @@ mod tests {
                     name: "web".to_string(),
                     dog: "jobs".to_string(),
                 }),
+            },
+            Reply {
+                id: 45,
+                result: Ok(Response::Answered {
+                    id: 3,
+                    name: "web".to_string(),
+                    question: "deploy-1".to_string(),
+                }),
+            },
+            // The one row with an open question; `sample_info()` pins the
+            // absent `questions` key.
+            Reply {
+                id: 46,
+                result: Ok(Response::Flock(vec![ProcessInfo {
+                    questions: Some(vec![OpenQuestion::new(
+                        QuestionId::new("deploy-1").unwrap(),
+                        QuestionText::new("Merge #12?").unwrap(),
+                        Takes::YesNo,
+                        1_700_000_000_000,
+                    )]),
+                    ..sample_info()
+                }])),
             },
         ];
         insta::assert_json_snapshot!("reply_wire_v11", replies);

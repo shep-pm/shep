@@ -1,6 +1,6 @@
 ---
 source: crates/shep-core/src/protocol/events.rs
-assertion_line: 400
+assertion_line: 435
 expression: events
 ---
 [
@@ -329,6 +329,20 @@ expression: events
     "data": {
       "dog": "jobs",
       "sheep": "web"
+    }
+  },
+  {
+    "event": "question_settled",
+    "data": {
+      "id": 3,
+      "name": "web",
+      "question": "deploy-1",
+      "settled": {
+        "kind": "answered",
+        "via": "discord",
+        "who": "ops"
+      },
+      "at_ms": 1700000000000
     }
   }
 ]
