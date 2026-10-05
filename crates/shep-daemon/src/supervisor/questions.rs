@@ -333,4 +333,78 @@ mod tests {
         assert_eq!(store.close_all(), vec![id("one"), id("two")]);
         assert!(store.open().is_empty());
     }
+
+    #[test]
+    fn asking_an_open_id_on_a_full_store_replaces_it() {
+        let mut store = Questions::default();
+        for n in 0..MAX_OPEN {
+            store.ask(q(&format!("full{n}"), "t?", Takes::YesNo, 0));
+        }
+        assert_eq!(
+            store.ask(q("full7", "again?", Takes::Text, 9)),
+            Asked::Replaced
+        );
+        assert_eq!(store.open().len(), MAX_OPEN);
+    }
+
+    #[test]
+    fn a_bad_via_is_a_wrong_form_and_the_question_stays_open() {
+        let mut store = Questions::default();
+        store.ask(q("via-q", "t?", Takes::YesNo, 0));
+        assert_eq!(
+            store.answer("via-q", "yes", None, Some(""), None),
+            Err(Refusal::WrongForm(QuestionError::Empty { field: "via" }))
+        );
+        assert!(store.holds("via-q"));
+    }
+
+    #[test]
+    fn a_bad_who_is_a_wrong_form_and_the_question_stays_open() {
+        let mut store = Questions::default();
+        store.ask(q("who-q", "t?", Takes::YesNo, 0));
+        assert_eq!(
+            store.answer("who-q", "yes", None, None, Some("a\tb")),
+            Err(Refusal::WrongForm(QuestionError::ControlCharacter {
+                field: "who"
+            }))
+        );
+        assert!(store.holds("who-q"));
+    }
+
+    #[test]
+    fn closing_all_leaves_no_memory_of_settled_questions() {
+        let mut store = Questions::default();
+        store.ask(q("settled-first", "t?", Takes::YesNo, 0));
+        store
+            .answer("settled-first", "yes", None, None, None)
+            .unwrap();
+        store.close_all();
+        assert_eq!(
+            store.answer("settled-first", "yes", None, None, None),
+            Err(Refusal::NotOpen(None))
+        );
+    }
+
+    #[test]
+    fn a_question_settled_twice_recalls_its_newest_settlement() {
+        let mut store = Questions::default();
+        store.ask(q("twice", "t?", Takes::YesNo, 0));
+        assert!(store.withdraw(&id("twice")));
+        store.ask(q("twice", "t?", Takes::YesNo, 1));
+        store
+            .answer("twice", "yes", None, Some("cli"), None)
+            .unwrap();
+        for n in 0..MAX_SETTLED - 1 {
+            let name = format!("filler{n}");
+            store.ask(q(&name, "t?", Takes::YesNo, 0));
+            assert!(store.withdraw(&id(&name)));
+        }
+        assert_eq!(
+            store.answer("twice", "no", None, None, None),
+            Err(Refusal::NotOpen(Some(Settled::Answered {
+                via: Some("cli".into()),
+                who: None,
+            })))
+        );
+    }
 }
