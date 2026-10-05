@@ -116,6 +116,7 @@ impl PollingEnforcer {
                 // size), each id building its own index over the whole host
                 // table.
                 let sampled_at = tokio::time::Instant::now();
+                let taken_at_secs = crate::now_ms() / 1000;
                 let table = sampler.sample();
                 let index = TreeIndex::build(&table);
 
@@ -124,6 +125,7 @@ impl PollingEnforcer {
                 // its window against.
                 stats.record_baseline(&index, tokio::time::Instant::now());
                 stats.prune_labels(&index, sampled_at);
+                stats.record_lamb_snapshots(&index, taken_at_secs, std::process::id());
 
                 // Summed and self-disarmed in one locked section, so the
                 // next tick cannot re-report the same over-limit reading.
@@ -307,6 +309,32 @@ mod tests {
             "1500 CPU-ms over the 7.5 s since the tick is 20%, got {cpu}"
         );
         drop(enforcer);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_tick_records_a_lamb_snapshot_for_a_sheep_nothing_is_armed_against() {
+        // Parented to this test process: the tick snapshots only the
+        // shepherd's own tree.
+        let sampler: Arc<dyn MemorySampler> = Arc::new(ScriptedSampler::new(vec![vec![
+            rss(1, Some(std::process::id()), 100),
+            rss(2, Some(1), 100),
+        ]]));
+        let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
+        stats.watch(9, 1);
+        let before = crate::now_ms() / 1000;
+        let (tx, mut rx) = mpsc::channel(1);
+        let _enforcer = PollingEnforcer::start(Arc::clone(&sampler), tx, Arc::clone(&stats));
+        tokio::task::yield_now().await;
+        assert_eq!(stats.last_lamb_snapshot(1), None, "no tick has run yet");
+
+        assert_no_breach_within(&mut rx, ticks(1)).await;
+
+        let snapshot = stats.last_lamb_snapshot(1).expect("the tick recorded one");
+        assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![2]);
+        assert!(
+            snapshot.seen_at(2).is_some_and(|seen| seen >= before),
+            "{snapshot:?}"
+        );
     }
 
     /// Fails to compile the moment somebody adds a generic method to

@@ -27,6 +27,7 @@
 //! - [`runner`]: [`ProcessRunner`](runner::ProcessRunner) spawn seam, two impls
 //! - `fake`: deterministic scripted runner, absent from a default-features build
 //! - `kill`: the kill ladder, portable and generic over the process handle
+//! - `sweep`: signals the lambs a sheep left running once its leader is reaped
 //! - [`supervisor`]: the actor: owns entries, spawns per-sheep tasks, routes commands
 //! - [`channel`]: shepherd channel codec (child↔daemon messages, newline-JSON)
 //! - `cron`: the `Clock` seam and the `cron_restart` worker
@@ -225,6 +226,8 @@ pub(crate) mod proc_table;
 // restart in. Crate-private: a dog writes here over the socket, never by
 // linking this crate.
 pub(crate) mod secrets;
+#[cfg_attr(not(test), expect(dead_code))]
+pub(crate) mod sweep;
 pub(crate) mod watch;
 
 // Reachable tier: each of these is named from outside this crate's `src`, by

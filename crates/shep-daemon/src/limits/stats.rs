@@ -23,6 +23,7 @@ use tokio::time::Instant;
 
 use super::labels::LambLabels;
 use super::sample::{MemorySampler, ProcessIdentity, TreeIndex};
+use crate::sweep::LambSnapshot;
 
 /// One sheep's live resource reading.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -66,6 +67,9 @@ pub(crate) struct StatsState {
     watched: Mutex<HashMap<u32, u32>>,
     /// The last periodic reading, per watched root pid.
     baselines: Mutex<HashMap<u32, Baseline>>,
+    /// Each watched root's lambs as of the last periodic tick, for a sweep
+    /// after the root has exited and taken its ppid tree with it.
+    lamb_snapshots: Mutex<HashMap<u32, LambSnapshot>>,
     /// What each sheep named its lambs, joined into [`Self::lambs_of`].
     labels: LambLabels,
 }
@@ -92,6 +96,7 @@ impl StatsState {
             sampler,
             watched: Mutex::new(HashMap::new()),
             baselines: Mutex::new(HashMap::new()),
+            lamb_snapshots: Mutex::new(HashMap::new()),
             labels: LambLabels::default(),
         }
     }
@@ -110,6 +115,11 @@ impl StatsState {
         // recycles pids, and inheriting a stale counter would charge a new
         // sheep with the old one's accumulated CPU.
         self.baselines
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&root_pid);
+        // Likewise for lambs: a sweep must not chase a dead sheep's lambs.
+        self.lamb_snapshots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&root_pid);
@@ -148,6 +158,59 @@ impl StatsState {
             .baselines
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = fresh;
+    }
+
+    /// Records the lambs of every watched root `index` shows descending from
+    /// `shepherd`, from one periodic reading.
+    ///
+    /// Replaced wholesale like [`Self::record_baseline`]. `taken_at_secs` is
+    /// read before the table `index` was built from. A root outside
+    /// `shepherd`'s tree is no sheep of ours, so its children are never
+    /// recorded for a sweep to signal.
+    pub(crate) fn record_lamb_snapshots(
+        &self,
+        index: &TreeIndex,
+        taken_at_secs: u64,
+        shepherd: u32,
+    ) {
+        let ours = index.descendants_of(shepherd);
+        let fresh: HashMap<u32, LambSnapshot> = self
+            .watched_pids()
+            .into_iter()
+            .filter(|root_pid| ours.contains(root_pid))
+            .map(|root_pid| {
+                let lambs = index.descendants_of(root_pid);
+                (root_pid, LambSnapshot::new(lambs, taken_at_secs))
+            })
+            .collect();
+        *self
+            .lamb_snapshots
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = fresh;
+    }
+
+    /// What the last periodic tick recorded for `root_pid`, if it was
+    /// watched then.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn last_lamb_snapshot(&self, root_pid: u32) -> Option<LambSnapshot> {
+        self.lamb_snapshots
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&root_pid)
+            .cloned()
+    }
+
+    /// One fresh walk of `root_pid`'s lambs, empty unless `root_pid`
+    /// descends from `shepherd`. Blocking, like [`Self::sample_now`].
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn lamb_snapshot_now(&self, root_pid: u32, shepherd: u32) -> LambSnapshot {
+        let taken_at_secs = crate::now_ms() / 1000;
+        let table = self.sampler.sample();
+        let index = TreeIndex::build(&table);
+        if !index.descendants_of(shepherd).contains(&root_pid) {
+            return LambSnapshot::new([], taken_at_secs);
+        }
+        LambSnapshot::new(index.descendants_of(root_pid), taken_at_secs)
     }
 
     /// [`Self::record_baseline`] over a reading this call takes itself.
@@ -323,7 +386,10 @@ mod tests {
 
     use super::super::MEMORY_POLL_INTERVAL;
     use super::*;
-    use crate::testing::{ScriptedSampler, identity, rss_cpu};
+    use crate::testing::{ScriptedSampler, identity, rss, rss_cpu};
+
+    /// The pid a scripted table names as the shepherd its sheep descend from.
+    const SHEPHERD: u32 = 50;
 
     #[tokio::test(start_paused = true)]
     async fn a_sheep_with_no_baseline_reports_no_cpu_but_still_reports_memory() {
@@ -496,6 +562,97 @@ mod tests {
             vec![(7, 5353)],
             "unwatching an id never watched must leave the rest alone"
         );
+    }
+
+    #[test]
+    fn a_tick_records_each_watched_roots_lambs_and_drops_the_unwatched() {
+        let index = TreeIndex::build(&[
+            rss(100, Some(SHEPHERD), 0),
+            rss(101, Some(100), 0),
+            rss(102, Some(101), 0),
+            rss(200, Some(SHEPHERD), 0),
+            rss(201, Some(200), 0),
+        ]);
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
+        stats.watch(1, 100);
+        stats.watch(2, 200);
+        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        assert_eq!(
+            stats.last_lamb_snapshot(100),
+            Some(LambSnapshot::new([101, 102], 77))
+        );
+
+        stats.unwatch(2);
+        stats.record_lamb_snapshots(&index, 78, SHEPHERD);
+        assert_eq!(stats.last_lamb_snapshot(200), None);
+        assert_eq!(
+            stats.last_lamb_snapshot(100),
+            Some(LambSnapshot::new([101, 102], 78))
+        );
+    }
+
+    #[test]
+    fn a_recycled_pid_starts_with_no_lamb_snapshot() {
+        let index = TreeIndex::build(&[rss(100, Some(SHEPHERD), 0), rss(101, Some(100), 0)]);
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
+        stats.watch(1, 100);
+        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        assert!(
+            stats.last_lamb_snapshot(100).is_some(),
+            "sanity: one was recorded"
+        );
+
+        stats.watch(2, 100);
+        assert_eq!(
+            stats.last_lamb_snapshot(100),
+            None,
+            "the new process on pid 100 must not inherit the old one's lambs"
+        );
+    }
+
+    #[test]
+    fn a_fresh_walk_snapshots_every_descendant_and_not_the_root() {
+        let table = vec![
+            rss(100, Some(SHEPHERD), 0),
+            rss(101, Some(100), 0),
+            rss(102, Some(101), 0),
+            rss(200, Some(SHEPHERD), 0),
+        ];
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![table])));
+        let before = crate::now_ms() / 1000;
+
+        let snapshot = stats.lamb_snapshot_now(100, SHEPHERD);
+
+        assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![101, 102]);
+        let taken = snapshot.seen_at(101).expect("101 was seen");
+        assert!(
+            (before..=before + 60).contains(&taken),
+            "a wall-clock second near {before}, got {taken}"
+        );
+    }
+
+    // A scripted runner's pids name real processes on the host. Neither look
+    // may hand a sweep their children.
+    #[test]
+    fn a_root_outside_the_shepherds_tree_is_never_snapshotted() {
+        let table = vec![
+            rss(100, Some(SHEPHERD), 0),
+            rss(101, Some(100), 0),
+            rss(200, Some(SHEPHERD + 1), 0),
+            rss(201, Some(200), 0),
+        ];
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![table.clone()])));
+        stats.watch(1, 100);
+        stats.watch(2, 200);
+
+        stats.record_lamb_snapshots(&TreeIndex::build(&table), 77, SHEPHERD);
+
+        assert_eq!(
+            stats.last_lamb_snapshot(100),
+            Some(LambSnapshot::new([101], 77))
+        );
+        assert_eq!(stats.last_lamb_snapshot(200), None);
+        assert!(stats.lamb_snapshot_now(200, SHEPHERD).is_empty());
     }
 
     #[test]
