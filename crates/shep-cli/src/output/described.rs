@@ -10,7 +10,9 @@ use shep_core::protocol::ProcessInfo;
 use crate::cli::Format;
 use crate::style::Presentation;
 
-use super::{FlockRows, LabelledLambRows, LambRows, SCHEMA_VERSION, rows, table_of};
+use super::{
+    DescribedQuestionRows, FlockRows, LabelledLambRows, LambRows, SCHEMA_VERSION, rows, table_of,
+};
 
 /// The `--format json` shape [`emit_described`] writes:
 /// [`super::OutputEnvelope`]'s own three fields, plus `secrets` riding
@@ -108,6 +110,22 @@ pub fn emit_described(
                 } else {
                     write!(out, "{}", table_of(&LambRows(lambs.clone()), style))?;
                 }
+            }
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| {
+                    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+                });
+            for sheep in &flock.0 {
+                if sheep.questions.as_deref().is_none_or(<[_]>::is_empty) {
+                    continue;
+                }
+                writeln!(out, "\nQuestions of {} (id {})", sheep.name, sheep.id)?;
+                write!(
+                    out,
+                    "{}",
+                    table_of(&DescribedQuestionRows::of(sheep, now_ms), style)
+                )?;
             }
             // Once per name, not once per row: a parked or overridden
             // config belongs to the app, and the daemon writes the same
@@ -246,6 +264,44 @@ mod tests {
             let rendered = String::from_utf8(out).unwrap();
             assert!(!rendered.contains("never answered"), "{rendered}");
         }
+    }
+
+    #[test]
+    fn open_questions_get_a_section_and_a_sheep_without_any_gets_none() {
+        use shep_core::protocol::{OpenQuestion, QuestionId, QuestionText, Takes};
+
+        let asking = ProcessInfo::builder(3, "web", ProcStatus::Online)
+            .questions(Some(vec![OpenQuestion::new(
+                QuestionId::new("q1").unwrap(),
+                QuestionText::new("Ship it?").unwrap(),
+                Takes::YesNo,
+                1_000,
+            )]))
+            .build();
+        let quiet = ProcessInfo::builder(4, "db", ProcStatus::Online).build();
+        let render = |info: ProcessInfo| {
+            let mut out = Vec::new();
+            emit_described(
+                &mut out,
+                Format::Table,
+                "describe",
+                vec![info],
+                Presentation::BARE,
+                &[],
+            )
+            .unwrap();
+            String::from_utf8(out).unwrap()
+        };
+
+        let rendered = render(asking);
+        assert!(rendered.contains("Questions of web (id 3)"), "{rendered}");
+        assert!(rendered.contains("QUESTION"), "{rendered}");
+        assert!(rendered.contains("yes-no"), "{rendered}");
+        assert!(rendered.contains("Ship it?"), "{rendered}");
+        assert!(
+            !render(quiet).contains("Questions of"),
+            "a sheep with nothing open renders as it always did"
+        );
     }
 
     #[test]

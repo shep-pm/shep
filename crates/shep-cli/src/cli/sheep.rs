@@ -276,6 +276,25 @@ pub struct TriggerArgs {
     pub params: Option<String>,
 }
 
+/// Arguments to `shep answer`.
+///
+/// Bare, it lists every open question. With a sheep it needs the question and
+/// the answer too, so a half-typed command is a usage error rather than a
+/// listing that looks like it did something.
+#[derive(Debug, clap::Args)]
+pub struct AnswerArgs {
+    /// name, id or `name:slot`; omit to list every open question
+    #[arg(requires = "question")]
+    pub sheep: Option<String>,
+    /// Id of the question to answer, as `shep answer` lists it
+    #[arg(requires_all = ["sheep", "words"])]
+    pub question: Option<String>,
+    /// The answer: `yes` or `no` and an optional note, or free text; an
+    /// answer that starts with `-` goes after `--`
+    #[arg(num_args = 1..)]
+    pub words: Vec<String>,
+}
+
 /// Arguments to `shep signal`.
 ///
 /// Not [`SelectorArgs`]: this verb needs a second positional. The selector
@@ -528,5 +547,40 @@ mod tests {
             selector_arg.is_required_set(),
             "trigger's selector must stay required, never default to the whole flock"
         );
+    }
+
+    fn parse_answer(argv: &[&str]) -> (crate::cli::Format, Vec<String>) {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(argv).unwrap();
+        let Commands::Answer(args) = cli.command else {
+            panic!("{argv:?} must parse as `shep answer`");
+        };
+        (cli.global.format, args.words)
+    }
+
+    /// A global flag after the answer is the flag, not more of the answer.
+    #[test]
+    fn a_global_flag_after_an_answer_is_parsed_as_a_flag() {
+        let (format, words) =
+            parse_answer(&["shep", "answer", "web", "q1", "yes", "--format", "json"]);
+        assert_eq!(format, crate::cli::Format::Json);
+        assert_eq!(words, ["yes"]);
+    }
+
+    #[test]
+    fn an_answer_starting_with_a_dash_goes_after_a_double_dash() {
+        use clap::Parser;
+        let (_, words) = parse_answer(&["shep", "answer", "web", "q1", "--", "-1"]);
+        assert_eq!(words, ["-1"]);
+        assert!(Cli::try_parse_from(["shep", "answer", "web", "q1", "-1"]).is_err());
+    }
+
+    #[test]
+    fn answer_with_a_sheep_and_no_question_is_a_usage_error() {
+        use clap::Parser;
+        let err = Cli::try_parse_from(["shep", "answer", "web"]).unwrap_err();
+        assert_eq!(err.exit_code(), 2, "{err}");
+        let err = Cli::try_parse_from(["shep", "answer", "web", "q1"]).unwrap_err();
+        assert_eq!(err.exit_code(), 2, "{err}");
     }
 }
