@@ -26,7 +26,7 @@ New crate-private module `crates/shep-daemon/src/sweep.rs` (or `sweep/` if it
 grows past ~500 lines with tests, IR-48).
 
 - `LambSnapshot`: pids (deduplicated) and `taken_at_secs` (wall-clock seconds
-  since the epoch). A `merge` that unions pids and keeps the **earlier**
+  since the epoch). A `merge` that unions pids and keeps the **later** (corrected in Task 2: per pid, see the spec)
   second, since a survivor must have started no later than the snapshot that
   saw it.
 - Trait `LambSweep: Send + Sync`, dyn-compatible, synchronous:
@@ -66,7 +66,7 @@ grows past ~500 lines with tests, IR-48).
 - Tests (paused clock): empty snapshot signals nothing; all exit after `Term`
   → no `Kill`, returns before `grace`; one ignores `Term` → `Kill` after
   `grace`; a failed delivery is logged and the sweep still finishes; `merge`
-  keeps the earlier second; the poll tick records a snapshot for a watched
+  keeps the later second per pid; the poll tick records a snapshot for a watched
   root and drops one for an unwatched root. A real-table unix test that
   `survivors` refuses pid 1, our own pid, and a pid whose start time is after
   `taken_at_secs` (spawn a child, snapshot with `taken_at_secs` one hour in

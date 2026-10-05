@@ -212,6 +212,14 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       <code>SIGKILL</code>, a signal nothing can trap, and that's the end of
       it either way.
     </p>
+    <p id="lamb-sweep">
+      A process group doesn't hold every lamb: one that calls{" "}
+      <code>setsid</code> leaves it, and one that outlives the sheep never
+      sees the second rung. So on unix, once the sheep's process exits,
+      shep sends <code>SIGTERM</code> to every lamb it saw in the sheep's
+      tree, then <code>SIGKILL</code> after <code>kill_timeout</code>. A
+      crash is swept too. Only then does the stop return.
+    </p>
     <p>
       The grace period is where the two verbs that also drive a reload
       diverge from the two that don't. <code>stop</code>, <code>restart</code>{" "}
@@ -445,10 +453,9 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       takes real time to become ready.
     </p>
     <p class="fine">
-      <code>SIGKILL</code>ing a sheep's own process never reaches every
-      lamb it forked; see{" "}
-      <a href="/docs/folds">Folds</a> for what a stop
-      actually kills versus what a sheep's process tree contains.
+      The <a href="#lamb-sweep">sweep</a> misses a lamb that
+      double-forks out of the tree before shep looks, and skips a recycled
+      pid. On Windows a stop ends the sheep's whole job object instead.
     </p>
 
     <details>

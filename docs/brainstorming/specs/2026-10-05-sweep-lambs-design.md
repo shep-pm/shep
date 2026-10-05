@@ -30,8 +30,10 @@ happens once the lambs are gone.
 
 ### What is swept: a snapshot
 
-A snapshot is a set of pids plus the wall-clock second it was taken. No start
-times are stored.
+A snapshot is a set of pids, each dated by the wall-clock second of the walk
+that saw it. A merge keeps the later second per pid. No start times are
+stored. (Corrected during Task 2: one second for the whole merged set, the
+earlier one, refused every lamb born since the last tick.)
 
 - **A ladder** (`SheepCtl::Kill`): before the first rung, a fresh walk of the
   process table (`TreeIndex::descendants_of(root)`), merged with the last
@@ -45,7 +47,7 @@ times are stored.
 ### The sweep (unix)
 
 1. Survivors: each snapshot pid that is alive, not a zombie, and whose OS
-   start time is at or before the snapshot's second. A pid cannot be recycled
+   start time is at or before the second of the walk that saw it. A pid cannot be recycled
    while its process lives, so a process alive at both readings that started
    no later than the snapshot is the one the snapshot saw. Pids `<= 1` and the
    shepherd's own pid are never survivors.
