@@ -200,6 +200,8 @@ impl BusEvent {
                 ChildMessage::Metric { .. } => "channel.metric",
                 ChildMessage::ActionReply { .. } => "channel.action_reply",
                 ChildMessage::LambLabel { .. } => "channel.lamb_label",
+                ChildMessage::Ask { .. } => "channel.ask",
+                ChildMessage::Withdraw { .. } => "channel.withdraw",
             },
             Self::Dropped { .. } => "daemon.dropped",
             Self::DaemonShutdown => "daemon.shutdown",
@@ -222,8 +224,8 @@ impl BusEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::LambLabel;
     use crate::protocol::request::{ExitInfo, ProcessInfo};
+    use crate::protocol::{LambLabel, QuestionId, QuestionText, Takes};
     use crate::status::ProcStatus;
 
     /// The comment above this enum said a new variant is not free because
@@ -484,6 +486,20 @@ mod tests {
                 },
                 "channel.lamb_label",
             ),
+            (
+                ChildMessage::Ask {
+                    question: QuestionId::new("q1").unwrap(),
+                    text: QuestionText::new("Merge?").unwrap(),
+                    takes: Takes::YesNo,
+                },
+                "channel.ask",
+            ),
+            (
+                ChildMessage::Withdraw {
+                    question: QuestionId::new("q1").unwrap(),
+                },
+                "channel.withdraw",
+            ),
         ] {
             let event = BusEvent::Channel {
                 id: 3,
@@ -511,6 +527,14 @@ mod tests {
             ChildMessage::LambLabel {
                 pid: 1,
                 label: LambLabel::new("").unwrap(),
+            },
+            ChildMessage::Ask {
+                question: QuestionId::new("q1").unwrap(),
+                text: QuestionText::new("Merge?").unwrap(),
+                takes: Takes::Text,
+            },
+            ChildMessage::Withdraw {
+                question: QuestionId::new("q1").unwrap(),
             },
         ] {
             let topic = BusEvent::Channel { id: 1, message }.topic();

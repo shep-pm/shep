@@ -179,6 +179,12 @@ pub(super) async fn run_sheep<P: RunningProcess>(
                                     .send(Msg::LambLabel { root_pid, pid, label })
                                     .await;
                             }
+                            ChildMessage::Ask { question, .. } => {
+                                tracing::debug!(%question, "ask from the channel");
+                            }
+                            ChildMessage::Withdraw { question } => {
+                                tracing::debug!(%question, "withdraw from the channel");
+                            }
                         }
                     }
                     None => from_child_open = false,

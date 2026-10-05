@@ -19,10 +19,16 @@ const (
 	KindActionReply = "action-reply"
 	// KindLambLabel names one of the app's own child processes.
 	KindLambLabel = "lamb-label"
+	// KindAsk is a question the app puts to the operator.
+	KindAsk = "ask"
+	// KindWithdraw takes back a question the app asked.
+	KindWithdraw = "withdraw"
 	// KindShutdown is the shepherd asking the app to stop.
 	KindShutdown = "shutdown"
 	// KindAction is the shepherd dispatching one custom action.
 	KindAction = "action"
+	// KindAnswer is the operator's answer to one question.
+	KindAnswer = "answer"
 )
 
 // ChildMessage is one line the app writes to the shepherd.
@@ -31,14 +37,17 @@ const (
 // pointer. Dropping a zero would lose a metric of 0 or an empty label,
 // which clears one.
 type ChildMessage struct {
-	Kind   string   `json:"kind"`
-	Name   *string  `json:"name,omitempty"`
-	Value  *float64 `json:"value,omitempty"`
-	Action *string  `json:"action,omitempty"`
-	Body   *string  `json:"body,omitempty"`
-	ID     *uint64  `json:"id,omitempty"`
-	PID    *uint32  `json:"pid,omitempty"`
-	Label  *string  `json:"label,omitempty"`
+	Kind     string   `json:"kind"`
+	Name     *string  `json:"name,omitempty"`
+	Value    *float64 `json:"value,omitempty"`
+	Action   *string  `json:"action,omitempty"`
+	Body     *string  `json:"body,omitempty"`
+	ID       *uint64  `json:"id,omitempty"`
+	PID      *uint32  `json:"pid,omitempty"`
+	Label    *string  `json:"label,omitempty"`
+	Question *string  `json:"question,omitempty"`
+	Text     *string  `json:"text,omitempty"`
+	Takes    *string  `json:"takes,omitempty"`
 }
 
 // ShepherdMessage is one line the shepherd writes to the app.
@@ -46,8 +55,13 @@ type ChildMessage struct {
 // Kind selects which other fields carry meaning. An absent Params
 // differs from an empty one, so it is a pointer too.
 type ShepherdMessage struct {
-	Kind   string  `json:"kind"`
-	Name   *string `json:"name,omitempty"`
-	Params *string `json:"params,omitempty"`
-	ID     *uint64 `json:"id,omitempty"`
+	Kind     string  `json:"kind"`
+	Name     *string `json:"name,omitempty"`
+	Params   *string `json:"params,omitempty"`
+	ID       *uint64 `json:"id,omitempty"`
+	Question *string `json:"question,omitempty"`
+	Answer   *string `json:"answer,omitempty"`
+	Note     *string `json:"note,omitempty"`
+	Via      *string `json:"via,omitempty"`
+	Who      *string `json:"who,omitempty"`
 }

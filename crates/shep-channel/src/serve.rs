@@ -63,6 +63,24 @@ struct Inner {
 }
 
 impl Shepherd {
+    /// Queues one message, blocking until there is room. `Ok(())` with no
+    /// channel.
+    pub(crate) fn push_blocking(&self, message: ChildMessage) -> Result<(), ChannelError> {
+        match &self.0.outbox {
+            Some(outbox) => outbox.push_blocking(message),
+            None => Ok(()),
+        }
+    }
+
+    /// Hands `handler` to the registry. Backs [`Shepherd::on_answer`].
+    pub(crate) fn register_answer(&self, handler: crate::dispatch::AnswerHandler) {
+        self.0
+            .dispatch
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .register_answer(handler);
+    }
+
     fn inert(version: Option<String>) -> Self {
         Self(Arc::new(Inner {
             outbox: None,
@@ -319,6 +337,12 @@ pub(crate) fn reader_loop<R: BufRead>(
                     Outcome::ShutdownFailed(message) => {
                         warn(&format!("shutdown handler panicked: {message}"));
                     }
+                    Outcome::UnhandledAnswer(id) => warn(&format!(
+                        "answer to question {id} arrived with no on_answer handler; it is lost"
+                    )),
+                    Outcome::AnswerFailed(message) => {
+                        warn(&format!("answer handler panicked: {message}"));
+                    }
                 }
             }
             Err(ChannelError::Malformed(message)) => {
@@ -562,6 +586,65 @@ mod tests {
             shutdown_hits.load(std::sync::atomic::Ordering::SeqCst),
             1,
             "the well-formed shutdown after the two bad lines was never reached"
+        );
+    }
+
+    /// An answer, then a shutdown whose handler counts its runs.
+    const ANSWER_THEN_SHUTDOWN: &[u8] =
+        b"{\"kind\":\"answer\",\"question\":\"q1\",\"answer\":\"yes\"}\n{\"kind\":\"shutdown\"}\n";
+
+    /// Runs `reader_loop` over [`ANSWER_THEN_SHUTDOWN`] with `dispatch`
+    /// plus a counting shutdown handler, and hands back the warnings and
+    /// how often the shutdown ran.
+    fn read_answer_then_shutdown(mut dispatch: Dispatch) -> (Vec<String>, usize) {
+        let shutdown_hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&shutdown_hits);
+        dispatch.register_shutdown(Box::new(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+        let mut reader = Cursor::new(ANSWER_THEN_SHUTDOWN.to_vec());
+        let outbox = Outbox::new(4);
+        let dispatch = RwLock::new(dispatch);
+        let warnings: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+        let warn = |message: &str| warnings.lock().unwrap().push(message.to_string());
+
+        reader_loop(&mut reader, &outbox, &dispatch, &warn);
+
+        (
+            warnings.into_inner().unwrap(),
+            shutdown_hits.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    }
+
+    #[test]
+    fn an_answer_with_no_handler_warns_once_and_the_loop_keeps_going() {
+        let (warnings, shutdowns) = read_answer_then_shutdown(Dispatch::default());
+
+        assert_eq!(
+            warnings,
+            ["answer to question q1 arrived with no on_answer handler; it is lost"]
+        );
+        assert_eq!(
+            shutdowns, 1,
+            "the shutdown after the answer was never reached"
+        );
+    }
+
+    /// An unwind out of the handler would end the loop before the next line.
+    #[test]
+    fn a_panicking_answer_handler_warns_once_and_the_loop_keeps_going() {
+        let mut dispatch = Dispatch::default();
+        dispatch.register_answer(Box::new(|_| panic!("no such state")));
+
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let (warnings, shutdowns) = read_answer_then_shutdown(dispatch);
+        std::panic::set_hook(previous);
+
+        assert_eq!(warnings, ["answer handler panicked: no such state"]);
+        assert_eq!(
+            shutdowns, 1,
+            "the shutdown after the answer was never reached"
         );
     }
 
