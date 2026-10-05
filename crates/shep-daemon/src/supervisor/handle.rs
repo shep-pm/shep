@@ -761,8 +761,9 @@ impl SupervisorHandle {
     /// # Errors
     ///
     /// - [`SupervisorError::NotFound`]: nothing matched.
-    /// - [`SupervisorError::QuestionNotOpen`]: no matched sheep has an open
-    ///   channel, none holds the question, or its process is exiting.
+    /// - [`SupervisorError::QuestionNotOpen`]: no instance that matched is
+    ///   running with a channel, none holds the question, or the holder's
+    ///   channel could not take the answer.
     /// - [`SupervisorError::InvalidAnswer`]: the selector is not one sheep,
     ///   a value breaks the grammar or is not one the question takes, or
     ///   several instances hold the question.

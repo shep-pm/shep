@@ -120,10 +120,10 @@ pub enum SupervisorError {
     /// An answer found no open question to settle; carries why, naming the
     /// sheep.
     ///
-    /// Three shapes: the matched sheep has no open shepherd channel, none of
-    /// them holds the question (saying how it closed when that is
-    /// remembered), or its process is going and the answer was not
-    /// delivered. Maps to
+    /// Four shapes: the matched sheep is not running or has no shepherd
+    /// channel, none of them holds the question (saying how it closed when
+    /// that is remembered), its app is not reading the channel, or its
+    /// process is going. The last two leave the question open. Maps to
     /// [`RpcErrorCode::NotFound`](shep_core::protocol::RpcErrorCode::NotFound).
     QuestionNotOpen(String),
     /// An answer the caller can ask differently; carries the reason.

@@ -73,22 +73,32 @@ impl<R: ProcessRunner> Actor<R> {
             return Err(SupervisorError::NotFound);
         };
         let channelled: Vec<u32> = matched
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|id| self.sheep[id].open_channel().is_some())
             .collect();
         let Some(&first_channelled) = channelled.first() else {
             let name = &self.sheep[&first].entry.spec.config().name;
-            return Err(SupervisorError::QuestionNotOpen(format!(
-                "{name} has no shepherd channel, so it has no questions"
-            )));
+            let why = if matched.iter().all(|id| self.sheep[id].entry.pid.is_none()) {
+                "is not running, so it has no open questions"
+            } else {
+                "has no open shepherd channel, so its questions cannot be answered"
+            };
+            return Err(SupervisorError::QuestionNotOpen(format!("{name} {why}")));
         };
         let holders: Vec<u32> = channelled
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|id| self.sheep[id].questions.holds(question))
             .collect();
         let target = match holders.as_slice() {
-            // Not held anywhere: the store refuses without changing.
-            [] => first_channelled,
+            // Not held anywhere: the store refuses without changing, from
+            // the instance that remembers how the question closed if one does.
+            [] => channelled
+                .iter()
+                .copied()
+                .find(|id| self.sheep[id].questions.remembers(question))
+                .unwrap_or(first_channelled),
             [one] => *one,
             many => {
                 let ids: Vec<String> = many.iter().map(u32::to_string).collect();
@@ -118,15 +128,24 @@ impl<R: ProcessRunner> Actor<R> {
         message.note = note;
         message.via = via.clone();
         message.who = who.clone();
-        let delivered = slot
-            .open_channel()
-            .is_some_and(|to_child| to_child.try_send(ShepherdMessage::Answer(message)).is_ok());
-        if !delivered {
-            // Full or closed: the process is going, and its exit closes
-            // the question as `gone`.
-            return Err(SupervisorError::QuestionNotOpen(format!(
+        let unsent = match slot.open_channel() {
+            Some(to_child) => match to_child.try_send(ShepherdMessage::Answer(message)) {
+                Ok(()) => None,
+                Err(mpsc::error::TrySendError::Full(_)) => Some(format!(
+                    "{name} is not reading its shepherd channel, so the answer was not \
+                     delivered; question {question} is still open"
+                )),
+                // The process is going, and its exit closes the question as `gone`.
+                Err(mpsc::error::TrySendError::Closed(_)) => Some(format!(
+                    "{name} is exiting, so question {question} was not delivered"
+                )),
+            },
+            None => Some(format!(
                 "{name} is exiting, so question {question} was not delivered"
-            )));
+            )),
+        };
+        if let Some(why) = unsent {
+            return Err(SupervisorError::QuestionNotOpen(why));
         }
         slot.questions = questions;
         self.publish_settled(target, name.clone(), closed, Settled::Answered { via, who });

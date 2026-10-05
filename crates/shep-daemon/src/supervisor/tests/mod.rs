@@ -33,6 +33,7 @@ mod adopt;
 mod adopt_restart;
 #[cfg(unix)]
 mod adopt_swap;
+mod answers;
 mod config_load;
 mod config_promote;
 mod config_rearm;

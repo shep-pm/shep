@@ -120,6 +120,11 @@ impl Questions {
         self.open.iter().any(|q| q.question.as_str() == id)
     }
 
+    /// Whether how a question with this id closed is still remembered.
+    pub(super) fn remembers(&self, id: &str) -> bool {
+        self.settled.iter().any(|(seen, _)| seen.as_str() == id)
+    }
+
     /// The open questions, in the order first asked.
     pub(super) fn open(&self) -> &[OpenQuestion] {
         &self.open

@@ -83,6 +83,28 @@ async fn an_answer_round_trips_to_answered_and_reaches_the_child() {
                 .with_via("cli")
         ))
     );
+
+    // A question the sheep never asked is exit 3, not exit 4.
+    let reply = reply_of(
+        dispatch(
+            envelope(
+                4,
+                Request::Answer {
+                    selector: SelectorSpec::Name("web".to_string()),
+                    question: "never-asked".to_string(),
+                    answer: "yes".to_string(),
+                    note: None,
+                    via: None,
+                    who: None,
+                },
+            ),
+            &h.ctx,
+        )
+        .await,
+    );
+    let err = reply.result.unwrap_err();
+    assert_eq!(err.code, RpcErrorCode::NotFound);
+    assert_eq!(err.message, "web has no open question never-asked");
 }
 
 #[tokio::test(start_paused = true)]
