@@ -191,7 +191,6 @@ impl StatsState {
 
     /// What the last periodic tick recorded for `root_pid`, if it was
     /// watched then.
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn last_lamb_snapshot(&self, root_pid: u32) -> Option<LambSnapshot> {
         self.lamb_snapshots
             .lock()
@@ -202,7 +201,6 @@ impl StatsState {
 
     /// One fresh walk of `root_pid`'s lambs, empty unless `root_pid`
     /// descends from `shepherd`. Blocking, like [`Self::sample_now`].
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn lamb_snapshot_now(&self, root_pid: u32, shepherd: u32) -> LambSnapshot {
         let taken_at_secs = crate::now_ms() / 1000;
         let table = self.sampler.sample();
@@ -313,9 +311,11 @@ impl StatsState {
     /// produce a cycle in the parent links, but a fixture can and a torn
     /// `/proc` read might.
     ///
-    /// Not the set of processes a stop kills: the kill acts on the process
-    /// group, which diverges from the ppid tree in both directions. Anything
-    /// rendering this list owes the operator that caveat.
+    /// Not exactly the set of processes a stop kills. A stop signals the
+    /// process group, then sweeps this tree as walked at the stop and at the
+    /// last tick. So it also kills a group member that double-forked out of
+    /// the tree, unlisted here. Anything rendering this list owes the operator
+    /// that caveat.
     pub(crate) fn lambs_of(&self, index: &LambIndex, root_pid: u32) -> Vec<Lamb> {
         // `visited` seeded with the root, which does two things at once: it
         // keeps the sheep out of its own lamb list, and it terminates a

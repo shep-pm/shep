@@ -11,6 +11,7 @@ async fn stopping_the_last_instance_stops_its_cron_worker() {
     let h = harness_with_extras(vec![ProcScript::never_exits(); 12], |reports| Extras {
         clock: Arc::clone(&clock) as Arc<dyn Clock>,
         enforcer: Arc::new(RecordingEnforcer::default()),
+        lamb_sweep: idle_sweep(),
         max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
         reports,
         stats: idle_stats(),
@@ -73,6 +74,7 @@ async fn a_reload_leaves_the_name_groups_cron_worker_where_it_was() {
     let h = harness_with_extras(vec![ProcScript::never_exits(); 2], |reports| Extras {
         clock: Arc::clone(&clock) as Arc<dyn Clock>,
         enforcer: Arc::new(RecordingEnforcer::default()),
+        lamb_sweep: idle_sweep(),
         max_cron_sleep: Duration::from_secs(600),
         reports,
         stats: idle_stats(),
@@ -141,6 +143,7 @@ fn backoff_harness(clock: &Arc<TestClock>) -> Harness {
         |reports| Extras {
             clock: Arc::clone(clock) as Arc<dyn Clock>,
             enforcer: Arc::new(RecordingEnforcer::default()),
+            lamb_sweep: idle_sweep(),
             max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
             reports,
             stats: idle_stats(),
@@ -276,6 +279,7 @@ async fn a_respawn_that_cannot_spawn_stops_the_name_groups_cron_worker() {
     let h = harness_with_extras(vec![ProcScript::never_exits()], |reports| Extras {
         clock: Arc::clone(&clock) as Arc<dyn Clock>,
         enforcer: Arc::new(RecordingEnforcer::default()),
+        lamb_sweep: idle_sweep(),
         max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
         reports,
         stats: idle_stats(),
@@ -321,6 +325,7 @@ async fn the_actor_arms_the_memory_limit_against_the_spawned_pid() {
                 reports.breaches.clone(),
                 Arc::clone(&stats),
             )),
+            lamb_sweep: idle_sweep(),
             max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
             reports,
             stats,
@@ -373,6 +378,7 @@ async fn the_actor_arms_a_readiness_gated_app_once_it_comes_online() {
                 reports.breaches.clone(),
                 Arc::clone(&stats),
             )),
+            lamb_sweep: idle_sweep(),
             max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
             reports,
             stats,

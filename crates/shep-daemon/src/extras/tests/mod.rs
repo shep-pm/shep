@@ -9,7 +9,7 @@ use tokio::sync::broadcast;
 use super::*;
 use crate::bus::SharedEvent;
 use crate::cron::DEFAULT_MAX_CRON_SLEEP;
-use crate::fake::{ProcScript, ScriptedRunner};
+use crate::fake::{ProcScript, ScriptedRunner, idle_sweep};
 use crate::limits::PollingEnforcer;
 use crate::limits::sample::ProcessRss;
 use crate::probes::ProbeFailure;
@@ -66,6 +66,7 @@ fn rig(max_cron_sleep: Duration) -> Rig {
         extras: Extras {
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             enforcer: Arc::clone(&enforcer) as Arc<dyn LimitEnforcer>,
+            lamb_sweep: idle_sweep(),
             max_cron_sleep,
             reports: ExtrasReports {
                 breaches: breach_tx,

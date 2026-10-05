@@ -26,7 +26,6 @@ use tokio::time::Instant;
 
 mod os;
 
-#[cfg_attr(not(test), expect(unused_imports))]
 pub(crate) use os::StatsSweep;
 
 /// How often [`sweep_lambs`] re-reads its survivors during the grace.

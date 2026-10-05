@@ -5,10 +5,10 @@
 //! not its resident set alone. [`sample::MemorySampler`] reads the process
 //! table, [`sample::tree_rss`] sums one tree, and [`LimitEnforcer`] watches
 //! those sums; `stats::StatsState` rides the same tick for `shep flock` and
-//! to prune lamb labels. The
-//! ppid-based sum only approximates the killed process group: a forked
-//! orphan can leave the tree but stay in the group, and a `setsid`
-//! descendant can leave the group but stay in the tree. A breach is noticed
+//! to prune lamb labels and record each tree for the lamb sweep. The
+//! ppid-based sum only approximates what a stop ends: the stop signals the
+//! process group, then sweeps the tree. A forked orphan that left the tree
+//! is still killed with its group, though never summed. A breach is noticed
 //! at the next `MEMORY_POLL_INTERVAL`, and its restart does not count
 //! against `max_restarts`.
 

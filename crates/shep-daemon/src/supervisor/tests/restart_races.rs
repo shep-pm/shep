@@ -78,6 +78,7 @@ async fn a_stale_liveness_failure_from_a_replaced_probe_does_not_restart() {
     let extras = Extras {
         clock: Arc::new(SystemClock),
         enforcer: Arc::new(RecordingEnforcer::default()),
+        lamb_sweep: idle_sweep(),
         max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
         reports: ExtrasReports {
             breaches: breach_tx,

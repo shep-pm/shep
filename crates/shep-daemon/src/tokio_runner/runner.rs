@@ -196,9 +196,10 @@ impl RunningProcess for TokioProc {
     /// Terminates the sheep's whole job: every process it spawned, however
     /// deeply nested.
     ///
-    /// Stronger than the unix rung: a grandchild that calls `setsid` escapes
-    /// its process group, while a job member cannot leave its job or spawn
-    /// outside it, since `sys_windows::Job::create` grants no breakaway.
+    /// Stronger than the unix rung, which a grandchild escapes by calling
+    /// `setsid` and leaves to the lamb sweep. A job member cannot leave its
+    /// job or spawn outside it, since `sys_windows::Job::create` grants no
+    /// breakaway.
     #[cfg(windows)]
     fn kill_tree(&mut self) -> Result<(), RunnerError> {
         self.job
@@ -256,8 +257,9 @@ impl RunningProcess for TokioProc {
 /// Sends `sig` to the whole process group led by `pid`.
 ///
 /// `-pid` names the group `spawn`'s `process_group(0)` establishes. A
-/// descendant that forks and then calls `setsid` lands in its own session,
-/// which neither stop rung reaches.
+/// descendant that calls `setsid` lands in its own session, which this
+/// misses. A sheep's lamb sweep ends it after the leader exits; a probe's
+/// child has no sweep.
 ///
 /// # Errors
 ///

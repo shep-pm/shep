@@ -2,9 +2,16 @@
 //! list per look, and a ledger of every signal
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::sweep::{LambSignal, LambSnapshot, LambSweep, SignalError};
+
+/// A sweep that finds no lambs, for a fixture's `Extras` to hold.
+///
+/// Never the real one: a scripted pid names a real process on the host.
+pub(crate) fn idle_sweep() -> Arc<dyn LambSweep> {
+    Arc::new(ScriptedSweep::new())
+}
 
 /// A [`LambSweep`] that touches no process.
 ///

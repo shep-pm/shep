@@ -354,6 +354,7 @@ impl<R: ProcessRunner> Actor<R> {
                     app.clone(),
                     self.events.clone(),
                     self.tx.clone(),
+                    self.lamb_sweep(),
                 );
                 let ready_tx = spawn_readiness_task(
                     new_id,

@@ -226,7 +226,6 @@ pub(crate) mod proc_table;
 // restart in. Crate-private: a dog writes here over the socket, never by
 // linking this crate.
 pub(crate) mod secrets;
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) mod sweep;
 pub(crate) mod watch;
 

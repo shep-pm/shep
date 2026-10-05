@@ -12,7 +12,7 @@ use shep_core::values::{MemSize, UpDuration};
 use super::*;
 use crate::cron::{DEFAULT_MAX_CRON_SLEEP, SystemClock};
 use crate::extras::{ExtrasReports, spawn_extras_reporter};
-use crate::fake::{ProcScript, ScriptedRunner};
+use crate::fake::{ProcScript, ScriptedRunner, idle_sweep};
 use crate::limits::LimitEnforcer;
 use crate::testing::capture_logs;
 use crate::testing::{
@@ -45,6 +45,7 @@ mod flush;
 #[cfg(unix)]
 mod handover;
 mod interleaving;
+mod lamb_sweep;
 mod readiness;
 mod reload_bus;
 mod reload_drain;
@@ -1042,6 +1043,7 @@ fn actor_over(
     let extras = Extras {
         clock: Arc::new(SystemClock),
         enforcer: Arc::clone(&enforcer) as Arc<dyn LimitEnforcer>,
+        lamb_sweep: idle_sweep(),
         max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
         reports: ExtrasReports {
             breaches: breach_tx,
