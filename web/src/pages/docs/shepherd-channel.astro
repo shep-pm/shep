@@ -336,8 +336,7 @@ ID  NAME  OUTCOME     DETAIL
     <h2 id="asking-the-operator">Asking the operator</h2>
     <p>
       An app that needs a person to decide something can ask and carry on.
-      The shepherd holds the question and hands the answer back on the same
-      descriptor.
+      The shepherd hands the answer back on the same descriptor.
     </p>
     <CodeBlock>{`{"kind":"ask","question":"koji-3","text":"Merge #12 into main?","takes":"yes-no"}`}</CodeBlock>
     <ul>
@@ -346,11 +345,10 @@ ID  NAME  OUTCOME     DETAIL
       <li><code>takes</code> is <code>yes-no</code> or <code>text</code>.</li>
     </ul>
     <p>
-      A line that breaks a rule is dropped as malformed and logged, with no
-      reply. The operator sees open questions in <code>shep describe</code>{" "}
-      (and <code>questions[]</code> in its JSON), and{" "}
-      <code>shep answer</code> with no arguments lists them all. To answer,
-      the operator names the sheep, the question and the words:
+      A line that breaks a rule is dropped as malformed and logged. The
+      operator sees open questions in <code>shep describe</code> and in{" "}
+      <code>shep answer</code> with no arguments, and answers by naming the
+      sheep, the question and the words:
     </p>
     <CodeBlock>{`$ shep answer
 SHEEP  QUESTION  TAKES   ASKED  TEXT
@@ -361,18 +359,20 @@ answered q1 on asker`}</CodeBlock>
     <p>
       For a <code>yes-no</code> question the first word is the answer and
       the rest is the note. For a <code>text</code> question every word is
-      the answer. A dog can answer too, over the client socket.
+      the answer. A dog can answer too, over the client socket:{" "}
+      <a href="/docs/writing-a-dog#questions">writing a dog</a> has the
+      request.
     </p>
     <CodeBlock>{`{"kind":"answer","question":"koji-3","answer":"no","note":"rebase first"}`}</CodeBlock>
     <ul>
       <li><code>answer</code> is exactly <code>yes</code> or <code>no</code> for <code>yes-no</code>, with an optional <code>note</code> of at most 500 characters. For <code>text</code> it is 1 to 1000 characters and has no note.</li>
-      <li><code>via</code> names the dog that delivered it, and is absent when the operator answered at the socket. At most 64 characters.</li>
-      <li><code>who</code> is what the dog says about the person. At most 128 characters.</li>
+      <li><code>via</code> names the dog that delivered it, and is absent when the operator answered at the socket (64 characters at most).</li>
+      <li><code>who</code> is what the dog says about the person (128 at most).</li>
     </ul>
     <Callout variant="careful">
       <code>via</code> and <code>who</code> are claims nobody checked. shep
-      passes them through unread. Proving who answered is the delivering
-      dog's job.
+      passes them through unread, so they are fit for a log line. They do
+      not show who said yes. That is the delivering dog's job.
     </Callout>
     <p>
       The first answer wins. A question closes when it is answered, when you
@@ -380,15 +380,12 @@ answered q1 on asker`}</CodeBlock>
       <code>shep daemon reload</code> keeps your open questions.
     </p>
     <p class="fine">
-      The shepherd holds 64 per process, and the 65th is dropped and
-      logged. You owe no reply to an answer. If your app is not reading its
-      channel, the answer is refused and the question stays open. With no{" "}
-      <code>on_answer</code> handler, <code>shep-channel</code> warns on
-      stderr and the answer is lost. In Rust, <code>Shepherd::ask</code>,{" "}
-      <code>Shepherd::withdraw</code> and <code>Shepherd::on_answer</code>{" "}
-      do the sending and the handling, after{" "}
-      <code>QuestionId::new</code> and <code>QuestionText::new</code> check
-      the grammar.
+      The shepherd holds 64 per process and drops the 65th. You owe no
+      reply to an answer. If your app is not reading its channel, the
+      question stays open. In Rust, <code>Shepherd::ask</code>,{" "}
+      <code>withdraw</code> and <code>on_answer</code> do the work, and
+      without an <code>on_answer</code> handler an answer is lost with a
+      warning on stderr.
     </p>
 
     <h2 id="everything-you-write-here-is-also-public-on-the-bus">Everything you write here is also public on the bus</h2>
@@ -400,7 +397,9 @@ answered q1 on asker`}</CodeBlock>
       <code>channel.metric</code>, <code>channel.action_reply</code>,{" "}
       <code>channel.lamb_label</code>, <code>channel.ask</code>,{" "}
       <code>channel.withdraw</code>), its own topic alongside{" "}
-      <code>process.*</code> and the log topics. Anyone subscribed to{" "}
+      <code>process.*</code> and the log topics. Shep adds{" "}
+      <code>question.settled</code> when a question stops being open, with
+      its id and how it closed but never its text. Anyone subscribed to{" "}
       <code>channel.*</code> sees it, not just the operator who happened to
       send the trigger you were answering.
     </p>

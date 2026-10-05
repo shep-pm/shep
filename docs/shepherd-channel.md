@@ -342,8 +342,9 @@ answered q1 on asker
 
 The words after the question are joined with spaces. For a `yes-no`
 question the first word is the answer and the rest is the note. For a
-`text` question every word is the answer. A dog can answer too: it sends the
-same request over the client socket, and fills in `via` and `who`.
+`text` question every word is the answer. A dog can answer too, over the
+client socket, and fills in `via` and `who`. See
+[Questions](dogs.md#questions) for how.
 
 What you receive:
 
@@ -361,8 +362,8 @@ What you receive:
 - **`who`** is what that dog says about the person. At most 128 characters.
 
 `via` and `who` are claims nobody checked. shep passes them through unread,
-and any client on the socket can write them. Treat them as a label for a log
-line, not as proof of who said yes. Proving that is the delivering dog's
+and any client on the socket can write them. They are fit for a log line.
+They do not show who said yes, and proving that is the delivering dog's
 job.
 
 The first answer wins. A second one is refused, and the message says how the
@@ -410,7 +411,10 @@ Every message you send on fd 3 (`ready`, `metric`, `action-reply`,
 `lamb-label`, `ask`, `withdraw`) is republished on the daemon's event bus
 under `channel.*` (`channel.ready`, `channel.metric`,
 `channel.action_reply`, `channel.lamb_label`, `channel.ask`,
-`channel.withdraw`), as its own topic alongside `process.*` and the log topics. Anyone subscribed to
+`channel.withdraw`), as its own topic alongside `process.*` and the log
+topics. Shep adds one event of its own when a question stops being open,
+`question.settled`, carrying the question's id and how it closed, never its
+text or the answer. Anyone subscribed to
 `channel.*` sees it, not just the operator who happened to send the
 `trigger` you were answering.
 

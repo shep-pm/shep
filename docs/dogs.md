@@ -887,6 +887,46 @@ gives up on it, and the exit code or signal when its process stops.
 `shep bleats <name> --follow` sees the same lines live, marked the same
 way, interleaved with the dog's own output in arrival order.
 
+## Questions
+
+A sheep can ask the operator a question over its shepherd channel (see
+[Asking the operator](shepherd-channel.md#asking-the-operator)). A dog is
+how a question reaches a phone or a chat room, and how the answer gets back.
+
+To show a question, a dog reads the open ones and follows the rest:
+
+- `ProcessInfo::questions` on the `ListFlock` the dog already makes, on
+  connect and after a handover. It holds each sheep's open questions in the
+  order first asked, and is `None` when there are none.
+- `channel.ask` for a new question, republished from the sheep's channel.
+- `question.settled` for one that is no longer open. It carries the sheep's
+  id and name, the question id, `at_ms` and `settled`: `answered` with an
+  optional `via` and `who`, `withdrawn`, or `gone` when the process exited.
+  It never carries the question's text or the answer. A dog that wants to
+  edit a message it sent keeps its own copy of the text.
+
+`channel.ask` is the sheep's own line, republished before the shepherd
+stores the question. It fires for an ask the shepherd then drops, such as a
+65th open question or one from a process that has already been replaced,
+and it fires again each time the sheep replaces a question. It carries only
+the sheep's id. Confirm the question with `ListFlock` before you post it.
+
+To answer, a dog sends `Request::Answer { selector, question, answer, note,
+via, who }` over the client socket. The selector must match exactly one
+sheep. `note` goes only with a `yes-no` question. Success is
+`Response::Answered { id, name, question }`. A refusal is an ordinary RPC
+error with the shepherd's own message: `NotFound` when no sheep matches or
+the question is not open (the message says how it closed, if it is among the
+last 64 settled), and `InvalidConfig` for a value outside the grammar, a
+selector that is not one sheep, or a question open on two instances.
+A `NotFound` whose message says the sheep is not reading its shepherd
+channel leaves the question open, so retry it rather than marking it
+closed.
+
+Set `via` to the dog's own name and `who` to whatever the dog's sink says
+about the person, such as a chat user id. Shep checks neither and passes
+both to the sheep as written. Proving who answered is the dog's job.
+
 ## When the shepherd goes away
 
 A dog's process outlives the shepherd that spawned it, and that is

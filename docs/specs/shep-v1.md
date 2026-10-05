@@ -279,7 +279,10 @@ of that exposure, so the socket would buy a round trip for nothing.
   `channel.*` (shepherd-channel messages), `daemon.*`. `channel.*` is
   `channel.ready`, `channel.metric`, `channel.action_reply`,
   `channel.lamb_label`, `channel.ask`, `channel.withdraw` — every message
-  kind a sheep writes on fd 3. The outbound half (`shutdown`, `action`) is
+  kind a sheep writes on fd 3. `question.settled` is shep's own event, not a
+  republish: sheep id and name, question id, `settled` (`answered` with
+  optional `via` and `who`, `withdrawn` or `gone`) and `at_ms`, never the
+  question text or the answer. The outbound half (`shutdown`, `action`) is
   deliberately absent: those are already reported to their caller, by
   `process.stop` and by `Response::Triggered`.
 - Stability: every frame type has committed byte fixtures + insta snapshots
