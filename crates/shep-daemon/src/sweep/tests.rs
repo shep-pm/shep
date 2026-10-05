@@ -64,8 +64,8 @@ async fn a_lamb_that_ignores_term_is_killed_once_the_grace_runs_out() {
 
     assert_eq!(
         Instant::now() - start,
-        GRACE,
-        "KILL waits out the whole grace"
+        GRACE + KILL_SETTLE_POLL,
+        "KILL waits out the whole grace, then one look sees it landed"
     );
     assert_eq!(
         sweep.signals(),
@@ -79,8 +79,8 @@ async fn a_lamb_that_ignores_term_is_killed_once_the_grace_runs_out() {
     let looks = sweep.looks();
     assert_eq!(
         looks.len(),
-        1 + (GRACE.as_millis() / SWEEP_POLL_INTERVAL.as_millis()) as usize,
-        "one look before TERM, then one per poll interval"
+        2 + (GRACE.as_millis() / SWEEP_POLL_INTERVAL.as_millis()) as usize,
+        "one look before TERM, one per poll interval, one after KILL"
     );
     assert!(looks.iter().all(|look| *look == snapshot_of(&[7, 8])));
 }
@@ -92,9 +92,47 @@ async fn a_zero_grace_looks_once_more_then_kills() {
 
     let report = sweep_lambs(&sweep, &snapshot_of(&[7]), Duration::ZERO).await;
 
-    assert_eq!(Instant::now(), start);
+    assert_eq!(Instant::now() - start, KILL_SETTLE_POLL);
     assert_eq!(report.killed, vec![7]);
-    assert_eq!(sweep.looks().len(), 2);
+    assert_eq!(sweep.looks().len(), 3);
+}
+
+// A stop reply must not race the kernel tearing a killed lamb down.
+#[tokio::test(start_paused = true)]
+async fn the_sweep_returns_only_once_a_killed_lamb_has_stopped_running() {
+    let sweep = ScriptedSweep::new().with_survivors(vec![vec![7]]);
+
+    sweep_lambs(&sweep, &snapshot_of(&[7]), Duration::ZERO).await;
+
+    assert!(sweep.survivors(&snapshot_of(&[7])).is_empty());
+    assert_eq!(sweep.looks().len(), 4, "a look after KILL saw it gone");
+}
+
+#[test]
+fn a_lamb_that_survives_kill_is_logged_and_left_after_the_settle_bound() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .start_paused(true)
+        .build()
+        .unwrap();
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7]])
+        .unkillable(7);
+
+    let mut elapsed = Duration::ZERO;
+    let logs = capture_logs(|| {
+        runtime.block_on(async {
+            let start = Instant::now();
+            sweep_lambs(&sweep, &snapshot_of(&[7]), Duration::ZERO).await;
+            elapsed = Instant::now() - start;
+        });
+    });
+
+    assert_eq!(elapsed, KILL_SETTLE);
+    assert!(
+        logs.contains("still running after SIGKILL") && logs.contains("lambs=[7]"),
+        "{logs}"
+    );
 }
 
 // A sync test over its own paused runtime: `capture_logs` only sees records

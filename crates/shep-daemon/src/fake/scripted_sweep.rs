@@ -17,13 +17,16 @@ pub(crate) fn idle_sweep() -> Arc<dyn LambSweep> {
 ///
 /// [`LambSweep::survivors`] replays one scripted list per call and repeats
 /// the last once the script runs out. An empty script never reports a
-/// survivor.
+/// survivor. A delivered `Kill` removes its pid from every later list, as
+/// the kernel would, unless the pid is [`Self::unkillable`].
 #[derive(Debug, Default)]
 pub(crate) struct ScriptedSweep {
     fresh: HashMap<u32, LambSnapshot>,
     last: HashMap<u32, LambSnapshot>,
     survivors: Vec<Vec<u32>>,
     refusing: HashSet<u32>,
+    unkillable: HashSet<u32>,
+    killed: Mutex<HashSet<u32>>,
     looks: Mutex<Vec<LambSnapshot>>,
     signals: Mutex<Vec<(u32, LambSignal)>>,
 }
@@ -55,6 +58,13 @@ impl ScriptedSweep {
     /// Every signal to `pid` fails as the OS refusing it.
     pub(crate) fn refusing(mut self, pid: u32) -> Self {
         self.refusing.insert(pid);
+        self
+    }
+
+    /// `pid` takes its `Kill` and stays in the survivor lists, like a
+    /// process stuck in uninterruptible sleep.
+    pub(crate) fn unkillable(mut self, pid: u32) -> Self {
+        self.unkillable.insert(pid);
         self
     }
 
@@ -93,7 +103,12 @@ impl LambSweep for ScriptedSweep {
         let Some(last) = self.survivors.len().checked_sub(1) else {
             return Vec::new();
         };
-        self.survivors[(looks.len() - 1).min(last)].clone()
+        let killed = self.killed.lock().unwrap_or_else(PoisonError::into_inner);
+        self.survivors[(looks.len() - 1).min(last)]
+            .iter()
+            .copied()
+            .filter(|pid| !killed.contains(pid))
+            .collect()
     }
 
     fn signal(&self, pid: u32, signal: LambSignal) -> Result<(), SignalError> {
@@ -103,6 +118,12 @@ impl LambSweep for ScriptedSweep {
             .push((pid, signal));
         if self.refusing.contains(&pid) {
             return Err(SignalError::Refused("scripted refusal".to_string()));
+        }
+        if signal == LambSignal::Kill && !self.unkillable.contains(&pid) {
+            self.killed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(pid);
         }
         Ok(())
     }

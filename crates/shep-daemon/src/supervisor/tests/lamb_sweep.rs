@@ -218,7 +218,11 @@ async fn the_exit_is_reported_only_after_a_lamb_that_ignores_term_is_killed() {
     exited_within(&mut sheep.actor_rx, NO_LONGER_THAN)
         .await
         .expect("the exit is reported once the sweep ends");
-    assert_eq!(start.elapsed(), kill_timeout(), "the sweep's whole grace");
+    assert_eq!(
+        start.elapsed(),
+        kill_timeout() + crate::sweep::KILL_SETTLE_POLL,
+        "the sweep's whole grace, then one look that sees the KILL landed"
+    );
     assert_eq!(
         sweep.signals(),
         vec![(7, LambSignal::Term), (7, LambSignal::Kill)]

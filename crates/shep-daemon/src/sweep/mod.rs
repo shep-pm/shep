@@ -35,6 +35,15 @@ pub(crate) use os::StatsSweep;
 /// 100 ms of the last lamb exiting.
 const SWEEP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// How long [`sweep_lambs`] waits for a `SIGKILL`ed lamb to stop running.
+///
+/// A killed process is gone within milliseconds unless it is stuck in
+/// uninterruptible sleep, which no signal ends; this only bounds that case.
+const KILL_SETTLE: Duration = Duration::from_secs(1);
+
+/// How often [`sweep_lambs`] looks while waiting out [`KILL_SETTLE`].
+pub(crate) const KILL_SETTLE_POLL: Duration = Duration::from_millis(10);
+
 /// The pids a sweep may signal, each with the wall-clock second it was seen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LambSnapshot {
@@ -161,7 +170,8 @@ pub(crate) struct SweepReport {
 /// Ends every survivor of `snapshot`: `SIGTERM`, up to `grace` to exit, then
 /// `SIGKILL` for what is left.
 ///
-/// Returns as soon as no survivor remains. An empty snapshot reads nothing.
+/// Returns as soon as no survivor remains, waiting up to [`KILL_SETTLE`] for
+/// a `SIGKILL` to land. An empty snapshot reads nothing.
 /// A failed delivery is logged and never stops the sweep.
 pub(crate) async fn sweep_lambs(
     sweep: &dyn LambSweep,
@@ -177,22 +187,37 @@ pub(crate) async fn sweep_lambs(
     }
     deliver(sweep, &termed, LambSignal::Term);
 
-    let deadline = Instant::now() + grace;
-    let killed = loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        tokio::time::sleep(remaining.min(SWEEP_POLL_INTERVAL)).await;
-        let left = sweep.survivors(snapshot);
-        if left.is_empty() || Instant::now() >= deadline {
-            break left;
-        }
-    };
+    let killed = poll_until_gone(sweep, snapshot, grace, SWEEP_POLL_INTERVAL).await;
 
     tracing::info!(lambs = ?termed, "swept lambs that outlived their sheep");
     if !killed.is_empty() {
         tracing::warn!(lambs = ?killed, "lambs ignored SIGTERM for the whole grace; sending SIGKILL");
         deliver(sweep, &killed, LambSignal::Kill);
+        let stuck = poll_until_gone(sweep, snapshot, KILL_SETTLE, KILL_SETTLE_POLL).await;
+        if !stuck.is_empty() {
+            tracing::warn!(lambs = ?stuck, "lambs still running after SIGKILL; leaving them");
+        }
     }
     SweepReport { termed, killed }
+}
+
+/// Re-reads `snapshot`'s survivors every `every` until none are left or
+/// `bound` has passed, and returns the last reading.
+async fn poll_until_gone(
+    sweep: &dyn LambSweep,
+    snapshot: &LambSnapshot,
+    bound: Duration,
+    every: Duration,
+) -> Vec<u32> {
+    let deadline = Instant::now() + bound;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        tokio::time::sleep(remaining.min(every)).await;
+        let left = sweep.survivors(snapshot);
+        if left.is_empty() || Instant::now() >= deadline {
+            break left;
+        }
+    }
 }
 
 /// Sends `signal` to each of `pids`, logging every refusal.
