@@ -39,9 +39,12 @@ Established from the code, not assumed.
 - **An action reaches a child through the slot's open channel.**
   `actor_actions.rs` takes `slot.open_channel()` and sends a
   `ShepherdMessage` on it. An answer goes the same way.
-- **A dog says who it is in `Hello::dog_name`.** The shepherd knows which
-  connection belongs to which dog, so it can stamp an answer with the dog
-  that delivered it rather than trusting the request to say so.
+- **A dog's `Hello::dog_name` is a claim.** `server/conn_protocol.rs`
+  records it and checks it against nothing, so any client on the socket
+  can name itself a dog. The socket is the trust boundary: a peer that
+  reaches it can already `shep stop` the flock.
+- **Every listing is built in one place.** `Actor::snapshot_all` answers
+  both `ListFlock` and `Describe`, so a field it fills reaches both.
 - **bark is one-way.** Its sinks (`discord`, `slack`, `json`) each make one
   HTTP POST per firing. Nothing in bark reads anything back.
 - **shep-discord has a gateway bot.** It already serves slash commands and
@@ -58,8 +61,8 @@ Established from the code, not assumed.
 Two messages from the sheep:
 
 ```json
-{"kind":"ask","id":"koji-3","text":"Merge #12 into main?","takes":"yes-no"}
-{"kind":"withdraw","id":"koji-3"}
+{"kind":"ask","question":"koji-3","text":"Merge #12 into main?","takes":"yes-no"}
+{"kind":"withdraw","question":"koji-3"}
 ```
 
 One message to the sheep:
@@ -68,9 +71,12 @@ One message to the sheep:
 {"kind":"answer","question":"koji-3","answer":"no","note":"rebase first","via":"discord","who":"<@81234>"}
 ```
 
-- **`id`** is the app's own: 1 to 32 characters from `[A-Za-z0-9._-]`, so it
-  can be typed on a command line and inside an ntfy reply. Asking again with
-  an `id` that is still open replaces that question's text and kind.
+- **`question`** is the question's id, the app's own: 1 to 32 characters
+  from `[A-Za-z0-9._-]`, so it can be typed on a command line and inside an
+  ntfy reply. Asking again with an id that is still open replaces that
+  question's text and kind. The key is `question` and not `id` on all three
+  messages: shep-go's `ChildMessage` is one flat struct whose `ID` is
+  `action-reply`'s number, and a string under the same key would not decode.
 - **`text`** is at most 1000 characters. Newlines are allowed, any other
   control character is refused. 1000 leaves a Discord message (2000) room
   for the framing a dog adds.
@@ -79,11 +85,13 @@ One message to the sheep:
   `note` of at most 500 characters, kelpie's `no <note>`. For `text` it is
   the answer itself, 1 to 1000 characters with the same control-character
   rule as `text`, and carries no note.
-- **`via`** is set by the shepherd from the answering connection's
-  `dog_name`, and absent when an operator answered at the socket directly
-  (the CLI or lookout).
-- **`who`** is what the dog says about the person, at most 128 characters,
-  passed through unread. shep vouches for `via` only.
+- **`via`** names the dog that delivered the answer, and is absent when an
+  operator answered at the socket directly (the CLI or lookout). At most 64
+  characters.
+- **`who`** is what the dog says about the person, at most 128 characters.
+- **shep vouches for neither.** Both are what the answering client said,
+  passed through unread. Proof of who answered is the delivering dog's
+  job, which is why a dog writes `who` and not shep.
 
 A line that breaks any of these rules is dropped as a malformed frame and
 logged, as `lamb-label` is. The sheep gets no reply.
@@ -111,24 +119,29 @@ In Rust, `shep_channel::Question::new(id, text, Takes)` and
   in memory, and never carries them across a handover.
 - **`answered` means handed to the channel writer.** The sheep owes no reply.
 - **One bus event of shep's own,** `question.settled`, carrying the sheep's
-  id and name, the question id, and how it closed: `answered` with `via` and
-  `who`, `withdrawn`, or `gone` (the process exited). A dog edits the message
+  id and name, the question id, and how it closed (`Settled`): `answered`
+  with `via` and `who`, `withdrawn`, or `gone` (the process exited). A dog edits the message
   it already sent when it sees one. `channel.ask` and `channel.withdraw`
   come from the republish.
 
 ## The client protocol and the CLI
 
-- **`Request::Answer { sheep, question, answer, note, who }`** names one
-  sheep by name or id, not a selector. It answers:
-  - `answered`
-  - `not_open`: no such question open on this sheep's running process,
-    naming how it closed when it is among the remembered ones (answered,
-    with `via` and `who`, or withdrawn)
-  - `wrong_form`: `maybe` to a `yes-no` question, a note on a `text` one, a
-    value outside the grammar
-  - `no_channel`: the sheep has no channel, so it cannot have asked
-- **`Request::Questions`** answers every open question in the flock, oldest
-  first. A dog asks it on connect and after a handover, then follows the bus.
+- **`Request::Answer { sheep, question, answer, note, via, who }`** names one
+  sheep by id, name or instance, never `all`, a regex or a fold. Success is
+  `Response::Answered { id, name, question }`. Every refusal is an existing
+  `RpcErrorCode`, so `shep answer` needs no new exit code:
+  - `NotFound` (exit 3): no sheep matches; it has no channel, so it cannot
+    have asked; or the question is not open on its running process. The
+    message says how it closed when it is among the remembered ones
+    (answered, naming `via` and `who`, or withdrawn).
+  - `InvalidConfig` (exit 4): `maybe` to a `yes-no` question, a note on a
+    `text` one, a value outside the grammar, a selector that is not one
+    sheep, or a name whose instances both hold that question open (the
+    message names their ids, to answer by id).
+- **`ProcessInfo` carries `questions`,** the open ones oldest first, `None`
+  when there are none. `ListFlock` and `Describe` both fill it, so a dog
+  reads every open question with the `ListFlock` it already makes on
+  connect and after a handover, then follows the bus. No request of its own.
 - **`shep answer <sheep> <question> <answer> [note...]`** is a new verb.
   The words after `<question>` are joined with spaces: for a `yes-no`
   question the first word is the answer and the rest the note, for a
@@ -182,7 +195,8 @@ its own instead:
 Each is complete on its own:
 
 1. **shep:** the wire, the shepherd's store and handover, the bus event,
-   both requests, `shep answer`, `describe` and JSON, docs and site.
+   `Request::Answer`, `ProcessInfo::questions`, `shep answer`, `describe`
+   and JSON, docs and site.
 2. **shep:** lookout's marker, list and answer prompt.
 3. **shep:** bark's `question` rule.
 4. **Follow-up issues:** shep-discord's buttons and allowlist, a new
