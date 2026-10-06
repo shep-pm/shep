@@ -19,6 +19,7 @@ use shep_client::{Client, ConnectError, EventStream, Lagged, RequestError};
 use shep_core::protocol::{BusEvent, ProcessInfo, Request, Response};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 
+use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 
 /// The topics lookout subscribes to.
@@ -163,9 +164,8 @@ impl FlockSource for ClientFlock {
     }
 
     async fn send(&self, request: Request) -> Result<Response, RequestError> {
-        // The client's own default deadline, the same one `commands::lifecycle`
-        // passes for stop, restart and reload.
-        self.0.request(request).await
+        let deadline = deadline_for(&request);
+        self.0.request_with_deadline(request, deadline).await
     }
 }
 
@@ -442,6 +442,29 @@ mod tests {
             crate::version_guard::VersionGuard::Enforce,
         )
         .expect("a matching version is not a skew");
+    }
+
+    /// Fails if lookout's stop goes out on the client's 5s default, which a
+    /// kill ladder plus a lamb sweep can outlast.
+    #[tokio::test]
+    async fn a_stop_sent_through_client_flock_asks_for_the_stop_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let addr = shep_client::testing::control_address(dir.path());
+        let (client, _fake) = shep_client::testing::fake_client_needing_budget(
+            &addr,
+            std::time::Duration::from_secs(7),
+            Response::Stopped(Vec::new()),
+        )
+        .await;
+        let flock = ClientFlock(client);
+
+        let answer = flock
+            .send(Request::Stop {
+                selector: shep_core::protocol::SelectorSpec::All,
+            })
+            .await;
+
+        assert_eq!(answer, Ok(Response::Stopped(Vec::new())));
     }
 
     /// The two files together, since the detail pane's cell says "on disk"

@@ -9,9 +9,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use shep_client::testing::{
-    fake_client_answering, fake_client_capturing_envelopes, fake_client_replying_err,
+    fake_client_answering, fake_client_capturing_envelopes, fake_client_needing_budget,
+    fake_client_replying_err,
 };
-use shep_client::{Client, DEFAULT_DEADLINE, RELOAD_DEADLINE, START_DEADLINE};
+use shep_client::{Client, RELOAD_DEADLINE, START_DEADLINE, STOP_DEADLINE};
 use shep_core::config::{AppConfig, FlockFormat, Flockfile, ResetDepth};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{

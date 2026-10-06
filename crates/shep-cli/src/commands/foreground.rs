@@ -11,6 +11,7 @@ use crate::cli::{BleatsArgs, DaemonArgs};
 use crate::commands::bleats::bleats_with_signal;
 use crate::commands::daemon::{boot_supervisor, daemon_exit_code};
 use crate::commands::empty::{Sample, sample, watch_until_empty};
+use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
@@ -182,16 +183,17 @@ pub async fn run(streams: &mut Streams<'_>, quiet: bool, options: ForegroundOpti
     // Stop and delete before asking the shepherd itself to go. Skipped when
     // the supervisor is already gone: `delete_flock_on_shutdown` covers it.
     if tidy_up && !already_consumed {
-        let _ = client
-            .request(Request::Stop {
+        for request in [
+            Request::Stop {
                 selector: SelectorSpec::All,
-            })
-            .await;
-        let _ = client
-            .request(Request::Delete {
+            },
+            Request::Delete {
                 selector: SelectorSpec::All,
-            })
-            .await;
+            },
+        ] {
+            let deadline = deadline_for(&request);
+            let _ = client.request_with_deadline(request, deadline).await;
+        }
     }
 
     // Best-effort: if the supervisor already exited, nothing is listening on
