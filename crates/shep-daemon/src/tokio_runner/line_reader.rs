@@ -4,6 +4,12 @@ use std::io;
 
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
 
+/// The scratch capacity kept between lines, in bytes.
+///
+/// Two reader buffers' worth: a line past it is rare, and one such line
+/// should not pin its memory for as long as the stream lives.
+const RETAINED_LINE: usize = 16 * 1024;
+
 /// A [`BufReader`] that hands out one line at a time from a scratch buffer it
 /// keeps, so a line costs no allocation of its own.
 ///
@@ -52,6 +58,7 @@ impl<R: AsyncRead + Unpin> LineReader<R> {
     pub(super) async fn read_line(&mut self) -> io::Result<Option<&str>> {
         if self.handed_out {
             self.buf.clear();
+            self.buf.shrink_to(RETAINED_LINE);
             self.handed_out = false;
         }
         let read = self.reader.read_until(b'\n', &mut self.buf).await?;
@@ -165,6 +172,30 @@ mod tests {
         writer.write_all(b"fresh\n").await.unwrap();
 
         assert_eq!(lines.read_line().await.unwrap(), Some("fresh"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_very_long_line_does_not_leave_its_capacity_behind() {
+        let (mut writer, reader) = duplex(64);
+        let mut lines = over(reader);
+        let long = "x".repeat(RETAINED_LINE * 4);
+        let send = async move {
+            writer.write_all(long.as_bytes()).await.unwrap();
+            writer.write_all(b"\nshort\n").await.unwrap();
+        };
+
+        let (_, ()) = tokio::join!(send, async {
+            assert_eq!(
+                lines.read_line().await.unwrap().map(str::len),
+                Some(RETAINED_LINE * 4)
+            );
+            assert_eq!(lines.read_line().await.unwrap(), Some("short"));
+            assert!(
+                lines.buf.capacity() <= RETAINED_LINE,
+                "the scratch buffer kept {} bytes after one long line",
+                lines.buf.capacity()
+            );
+        });
     }
 
     #[tokio::test(start_paused = true)]
