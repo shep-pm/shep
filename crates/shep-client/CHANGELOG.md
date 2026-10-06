@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-10-06
+
+### Added
+
+- Add STOP_DEADLINE and a slow-daemon test fake
+
+
 ## [0.12.3] - 2026-10-02
 
 
