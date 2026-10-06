@@ -57,9 +57,7 @@ impl<R: AsyncRead + Unpin> LineReader<R> {
     /// not do, since it loses a partial line when cancelled.
     pub(super) async fn read_line(&mut self) -> io::Result<Option<&str>> {
         if self.handed_out {
-            self.buf.clear();
-            self.buf.shrink_to(RETAINED_LINE);
-            self.handed_out = false;
+            self.release();
         }
         let read = self.reader.read_until(b'\n', &mut self.buf).await?;
         if read == 0 && self.buf.is_empty() {
@@ -79,6 +77,30 @@ impl<R: AsyncRead + Unpin> LineReader<R> {
                 "stream did not contain valid UTF-8",
             )),
         }
+    }
+
+    /// [`Self::read_line`] with the line copied out, for a caller that holds
+    /// it across an await. The scratch buffer is released before returning,
+    /// so a long line is not held twice while the caller waits.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::read_line`].
+    ///
+    /// # Cancellation safety
+    ///
+    /// Cancel-safe, as [`Self::read_line`] is: nothing awaits after the copy.
+    pub(super) async fn read_line_owned(&mut self) -> io::Result<Option<String>> {
+        let line = self.read_line().await?.map(str::to_owned);
+        self.release();
+        Ok(line)
+    }
+
+    /// Forgets the line handed out, keeping at most [`RETAINED_LINE`] bytes.
+    fn release(&mut self) {
+        self.buf.clear();
+        self.buf.shrink_to(RETAINED_LINE);
+        self.handed_out = false;
     }
 }
 
@@ -193,6 +215,27 @@ mod tests {
             assert!(
                 lines.buf.capacity() <= RETAINED_LINE,
                 "the scratch buffer kept {} bytes after one long line",
+                lines.buf.capacity()
+            );
+        });
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_copied_out_long_line_is_not_held_a_second_time() {
+        let (mut writer, reader) = duplex(64);
+        let mut lines = over(reader);
+        let long = "x".repeat(RETAINED_LINE * 4);
+        let send = async move {
+            writer.write_all(long.as_bytes()).await.unwrap();
+            writer.write_all(b"\n").await.unwrap();
+        };
+
+        let (_, ()) = tokio::join!(send, async {
+            let line = lines.read_line_owned().await.unwrap();
+            assert_eq!(line.map(|line| line.len()), Some(RETAINED_LINE * 4));
+            assert!(
+                lines.buf.capacity() <= RETAINED_LINE,
+                "the scratch buffer kept {} bytes beside the copy",
                 lines.buf.capacity()
             );
         });

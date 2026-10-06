@@ -133,12 +133,16 @@ where
 }
 
 /// [`next_line_ref`] with the line copied out, for a caller that keeps it
-/// past the next read. Cancel-safe for the same reason.
+/// past the next read: the pump holds it while it waits for room on `logs`.
+/// Cancel-safe for the same reason.
 async fn next_line<R>(lines: &mut Option<LineReader<R>>) -> io::Result<Option<String>>
 where
     R: AsyncRead + Unpin,
 {
-    Ok(next_line_ref(lines).await?.map(str::to_owned))
+    match lines {
+        Some(lines) => lines.read_line_owned().await,
+        None => core::future::pending().await,
+    }
 }
 
 /// Points `timer` at `deadline`, touching the timer wheel only when the
