@@ -19,7 +19,9 @@ pub(crate) fn idle_sweep() -> Arc<dyn LambSweep> {
 /// [`LambSweep::survivors`] replays one scripted list per call and repeats
 /// the last once the script runs out. An empty script never reports a
 /// survivor. A delivered `Kill` removes its pid from every later list, as
-/// the kernel would, unless the pid is [`Self::unkillable`].
+/// the kernel would, unless the pid is [`Self::unkillable`]. A look at a
+/// sheep's own pid alone is a leader check: it answers from
+/// [`Self::with_running_leader`] and leaves the script where it was.
 #[derive(Debug, Default)]
 pub(crate) struct ScriptedSweep {
     fresh: HashMap<u32, LambSnapshot>,
@@ -27,6 +29,8 @@ pub(crate) struct ScriptedSweep {
     survivors: Vec<Vec<u32>>,
     born: Vec<Vec<u32>>,
     walks: Mutex<Vec<Vec<u32>>>,
+    running_leaders: HashSet<u32>,
+    leader_looks: Mutex<Vec<LambSnapshot>>,
     refusing: HashSet<u32>,
     unkillable: HashSet<u32>,
     killed: Mutex<HashSet<u32>>,
@@ -63,6 +67,33 @@ impl ScriptedSweep {
     pub(crate) fn with_born(mut self, script: Vec<Vec<u32>>) -> Self {
         self.born = script;
         self
+    }
+
+    /// `root_pid` still runs once its sheep's exit is reported, as after a
+    /// wait that returned early.
+    pub(crate) fn with_running_leader(mut self, root_pid: u32) -> Self {
+        self.running_leaders.insert(root_pid);
+        self
+    }
+
+    /// The one-pid snapshot each leader check asked about.
+    pub(crate) fn leader_looks(&self) -> Vec<LambSnapshot> {
+        self.leader_looks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The pid `snapshot` names alone, when that pid is a sheep's own.
+    fn leader_in(&self, snapshot: &LambSnapshot) -> Option<u32> {
+        let mut pids = snapshot.pids();
+        let (Some(pid), None) = (pids.next(), pids.next()) else {
+            return None;
+        };
+        let root = self.fresh.contains_key(&pid)
+            || self.last.contains_key(&pid)
+            || self.running_leaders.contains(&pid);
+        root.then_some(pid)
     }
 
     /// The roots each [`LambSweep::descendants`] call walked from.
@@ -113,6 +144,18 @@ impl LambSweep for ScriptedSweep {
     }
 
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32> {
+        if let Some(root) = self.leader_in(snapshot) {
+            self.leader_looks
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(snapshot.clone());
+            return self
+                .running_leaders
+                .contains(&root)
+                .then_some(root)
+                .into_iter()
+                .collect();
+        }
         let mut looks = self.looks.lock().unwrap_or_else(PoisonError::into_inner);
         looks.push(snapshot.clone());
         let Some(last) = self.survivors.len().checked_sub(1) else {

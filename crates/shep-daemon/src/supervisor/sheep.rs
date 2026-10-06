@@ -117,7 +117,7 @@ pub(super) async fn run_sheep<P: RunningProcess>(
                 if let Some(sweep) = &sweep
                     && let Some(snapshot) = sweep.last_snapshot(proc.pid())
                 {
-                    sweep_after_exit(sweep.as_ref(), &snapshot, id, &app).await;
+                    sweep_after_exit(sweep.as_ref(), &snapshot, proc.pid(), id, &app).await;
                 }
                 let _ = actor_tx.send(Msg::Exited { id, outcome }).await;
                 break;
@@ -134,7 +134,8 @@ pub(super) async fn run_sheep<P: RunningProcess>(
                         if let Some(sweep) = &sweep
                             && let Some(snapshot) = &snapshot
                         {
-                            sweep_after_exit(sweep.as_ref(), snapshot, id, &app).await;
+                            sweep_after_exit(sweep.as_ref(), snapshot, proc.pid(), id, &app)
+                                .await;
                         }
                         let _ = actor_tx.send(Msg::Exited { id, outcome }).await;
                         break;
@@ -240,15 +241,41 @@ async fn stop_snapshot(sweep: &Arc<dyn LambSweep>, root_pid: u32) -> LambSnapsho
 
 /// [`sweep_lambs`] with the app's `kill_timeout` as its grace, logging under
 /// the sheep's id and name.
+///
+/// Skipped, with a warning, while `root_pid` is still the leader the
+/// snapshot was taken under: a wait or a ladder can return before it exits,
+/// and its lambs are then a live sheep's.
 async fn sweep_after_exit(
     sweep: &dyn LambSweep,
     snapshot: &LambSnapshot,
+    root_pid: u32,
     id: u32,
     app: &ResolvedApp,
 ) {
     let config = app.config();
     let span = tracing::info_span!("lamb_sweep", id, name = %config.name);
+    if leader_still_runs(sweep, snapshot, root_pid) {
+        tracing::warn!(
+            parent: &span,
+            root_pid,
+            "the sheep's own process still runs after its exit was seen; leaving its lambs"
+        );
+        return;
+    }
     sweep_lambs(sweep, snapshot, config.kill_timeout.as_duration())
         .instrument(span)
         .await;
+}
+
+/// Whether `root_pid` passes the sweep's own survivor test against the
+/// latest look in `snapshot`.
+///
+/// A pid reused after the reap started later than that look, so it is never
+/// mistaken for the leader. An empty snapshot has nothing to sweep.
+fn leader_still_runs(sweep: &dyn LambSweep, snapshot: &LambSnapshot, root_pid: u32) -> bool {
+    snapshot.latest().is_some_and(|latest| {
+        !sweep
+            .survivors(&LambSnapshot::new([root_pid], latest))
+            .is_empty()
+    })
 }

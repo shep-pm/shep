@@ -73,6 +73,11 @@ impl LambSnapshot {
         self.seen_at.get(&pid).copied()
     }
 
+    /// The latest instant any of its pids was seen, `None` when empty.
+    pub(crate) fn latest(&self) -> Option<ProcInstant> {
+        self.seen_at.values().copied().max()
+    }
+
     /// Whether this snapshot saw no lambs at all.
     pub(crate) fn is_empty(&self) -> bool {
         self.seen_at.is_empty()

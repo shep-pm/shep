@@ -253,6 +253,13 @@ fn a_merge_unions_the_pids_and_dates_each_by_the_latest_look_that_saw_it() {
 }
 
 #[test]
+fn a_snapshots_latest_look_is_the_latest_any_pid_was_seen() {
+    let merged = LambSnapshot::new([7, 9], at(100)).merge(LambSnapshot::new([8], at(200)));
+    assert_eq!(merged.latest(), Some(at(200)), "not the first pid's, 100");
+    assert_eq!(LambSnapshot::default().latest(), None);
+}
+
+#[test]
 fn a_snapshot_keeps_each_pid_once() {
     let snapshot = LambSnapshot::new([9, 7, 9, 7], at(5));
     assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![7, 9]);
