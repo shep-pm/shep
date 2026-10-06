@@ -35,3 +35,34 @@ fn roll_counts_running_instances_and_prunes_deleted_names() {
     // The prune is sticky: a second roll must not resurrect `job`.
     assert_eq!(registry.roll(&infos, 0).apps.len(), 1);
 }
+
+// fails if the count is kept per listing position rather than per name: the
+// listing interleaves the names, and `idle` has entries but none running.
+#[test]
+fn roll_counts_each_name_separately_when_the_listing_interleaves_them() {
+    let registry = FlockRegistry::new();
+    let apps =
+        ["web", "job", "idle"].map(|name| normalize(AppConfig::minimal(name, "./srv")).unwrap());
+    registry.record(&apps);
+
+    let infos = [
+        info(0, "web", ProcStatus::Online),
+        info(1, "job", ProcStatus::Starting),
+        info(2, "idle", ProcStatus::Stopped),
+        info(3, "web", ProcStatus::Online),
+        info(4, "job", ProcStatus::Errored),
+        info(5, "web", ProcStatus::Online),
+    ];
+    let roll = registry.roll(&infos, 0);
+
+    let counts: Vec<(&str, u32)> = roll
+        .apps
+        .iter()
+        .map(|saved| (saved.app.name.as_str(), saved.instances_running))
+        .collect();
+    assert_eq!(
+        counts,
+        [("idle", 0), ("job", 1), ("web", 3)],
+        "a name with only stopped entries is kept, at zero"
+    );
+}

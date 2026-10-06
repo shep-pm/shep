@@ -197,18 +197,19 @@ impl FlockRegistry {
         // BTreeMap, so a panic elsewhere cannot leave it inconsistent, and
         // taking the daemon down over it would be the worse failure.
         let mut apps = self.apps.lock().unwrap_or_else(PoisonError::into_inner);
-        apps.retain(|name, _| infos.iter().any(|info| &info.name == name));
+        // One pass over the listing: a name present at all survives the
+        // prune, and its value is how many of its instances are up.
+        let mut running: BTreeMap<&str, u32> = BTreeMap::new();
+        for info in infos {
+            let up = running.entry(info.name.as_str()).or_default();
+            *up = up.saturating_add(u32::from(is_running(info.status)));
+        }
+        apps.retain(|name, _| running.contains_key(name.as_str()));
         let saved = apps
             .iter()
             .map(|(name, app)| SavedApp {
                 app: app.clone(),
-                instances_running: u32::try_from(
-                    infos
-                        .iter()
-                        .filter(|i| &i.name == name && is_running(i.status))
-                        .count(),
-                )
-                .unwrap_or(u32::MAX),
+                instances_running: running.get(name.as_str()).copied().unwrap_or(0),
             })
             .collect();
         FlockSnapshot {
