@@ -13,7 +13,8 @@ use shep_core::protocol::{
     Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError, RpcErrorCode,
     codec, decode_frame, encode_frame,
 };
-use shep_core::transport::{ServerReadHalf, ServerStream, ServerWriteHalf};
+use shep_core::transport::{ServerReadHalf, ServerStream};
+use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -216,13 +217,22 @@ async fn handshake(
     send(out, &ack).await
 }
 
-async fn write_loop(
-    mut sink: FramedWrite<ServerWriteHalf, LengthDelimitedCodec>,
+async fn write_loop<W: AsyncWrite + Unpin>(
+    mut sink: FramedWrite<W, LengthDelimitedCodec>,
     mut rx: mpsc::Receiver<Bytes>,
 ) {
-    while let Some(bytes) = rx.recv().await {
-        if sink.send(bytes).await.is_err() {
-            break; // peer gone; nothing left to drain the queue
+    while let Some(first) = rx.recv().await {
+        // `send` is feed plus flush, one write syscall per frame. Everything
+        // already queued shares one flush, taken before waiting again.
+        let mut next = Some(first);
+        while let Some(bytes) = next {
+            if sink.feed(bytes).await.is_err() {
+                return; // peer gone; nothing left to drain the queue
+            }
+            next = rx.try_recv().ok();
+        }
+        if sink.flush().await.is_err() {
+            return; // peer gone, surfaced by the flush
         }
     }
 }
@@ -236,10 +246,21 @@ async fn send<T: Serialize>(out: &mpsc::Sender<Bytes>, value: &T) -> Result<(), 
 mod tests {
     use super::super::server_lifecycle::CONN_QUEUE;
 
-    use futures_util::SinkExt;
+    use std::io;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
 
+    use bytes::Bytes;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::io::AsyncWrite;
+    use tokio::sync::mpsc;
+    use tokio_util::codec::{FramedRead, FramedWrite};
+
+    use super::write_loop;
     use shep_core::protocol::{
-        Envelope, Hello, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcErrorCode,
+        Envelope, Hello, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcErrorCode, codec,
     };
 
     use crate::bus::SharedEvent;
@@ -794,5 +815,118 @@ mod tests {
             "a nameless refusal must not restart anything"
         );
         assert_eq!(after.status, ProcStatus::Online);
+    }
+
+    /// A transport that records what reaches it. Each `poll_flush` stands for
+    /// one write syscall on a socket or pipe, which is what the loop spends.
+    #[derive(Clone, Default)]
+    struct Wire {
+        flushes: Arc<AtomicUsize>,
+        written: Arc<Mutex<Vec<u8>>>,
+        fail_flush: bool,
+    }
+
+    impl Wire {
+        fn flushes(&self) -> usize {
+            self.flushes.load(Ordering::Relaxed)
+        }
+
+        /// The payloads that reached the wire, in arrival order.
+        async fn frames(&self) -> Vec<Bytes> {
+            let written = self
+                .written
+                .lock()
+                .expect("no test panics holding it")
+                .clone();
+            FramedRead::new(written.as_slice(), codec())
+                .map(|frame| frame.expect("the loop writes whole frames").freeze())
+                .collect()
+                .await
+        }
+    }
+
+    impl AsyncWrite for Wire {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.written
+                .lock()
+                .expect("no test panics holding it")
+                .extend_from_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            self.flushes.fetch_add(1, Ordering::Relaxed);
+            if self.fail_flush {
+                return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+            }
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// fails if each queued frame still costs its own flush. A followed log on
+    /// a chatty flock queues many lines behind the writer, and the flushes
+    /// are the syscalls the client's stream pays for.
+    #[tokio::test(start_paused = true)]
+    async fn frames_already_queued_share_one_flush_and_keep_their_order() {
+        let wire = Wire::default();
+        let (tx, rx) = mpsc::channel::<Bytes>(CONN_QUEUE);
+        let sent: Vec<Bytes> = (0..50).map(|n| Bytes::from(format!("line {n}"))).collect();
+        for frame in &sent {
+            tx.send(frame.clone()).await.expect("the queue has room");
+        }
+        drop(tx);
+
+        write_loop(FramedWrite::new(wire.clone(), codec()), rx).await;
+
+        assert_eq!(wire.flushes(), 1, "fifty queued frames, one flush");
+        assert_eq!(wire.frames().await, sent);
+    }
+
+    /// fails if a frame fed after a batch is left in the buffer while the
+    /// loop waits for the next one: a quiet line must still reach the peer.
+    #[tokio::test(start_paused = true)]
+    async fn a_lone_frame_is_flushed_before_the_loop_waits_again() {
+        let wire = Wire::default();
+        let (tx, rx) = mpsc::channel::<Bytes>(CONN_QUEUE);
+        let writer = tokio::spawn(write_loop(FramedWrite::new(wire.clone(), codec()), rx));
+
+        tx.send(Bytes::from_static(b"quiet"))
+            .await
+            .expect("the writer is alive");
+        // The paused clock only advances once every task is idle, so this
+        // returns when the writer has parked on `recv`.
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+        assert_eq!(wire.frames().await, vec![Bytes::from_static(b"quiet")]);
+        assert!(!writer.is_finished(), "the sender is still open");
+    }
+
+    /// fails if a dead peer no longer ends the loop. The flush is where the
+    /// error surfaces, and nothing is left to drain the queue after it.
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_flush_ends_the_loop_with_the_sender_still_open() {
+        let wire = Wire {
+            fail_flush: true,
+            ..Wire::default()
+        };
+        let (tx, rx) = mpsc::channel::<Bytes>(CONN_QUEUE);
+        let writer = tokio::spawn(write_loop(FramedWrite::new(wire, codec()), rx));
+
+        tx.send(Bytes::from_static(b"unheard"))
+            .await
+            .expect("the writer is alive");
+
+        tokio::time::timeout(Duration::from_secs(5), writer)
+            .await
+            .expect("a failed flush must end the loop")
+            .expect("the writer does not panic");
     }
 }
