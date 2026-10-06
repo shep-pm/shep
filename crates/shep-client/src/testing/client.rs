@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::codec::Framed;
@@ -300,6 +301,46 @@ pub async fn fake_client_that_never_replies(path: &Path) -> (Client, JoinHandle<
         let mut frames = Framed::new(stream, codec());
         let _hello = handshake(&mut frames, sample_ack()).await;
         core::future::pending::<()>().await;
+    });
+    let client = Client::connect(path).await.unwrap();
+    (client, task)
+}
+
+/// Binds `path`, handshakes with [`sample_ack`], and answers each request
+/// with `response`, unless its wire deadline is shorter than `needs`, which
+/// it answers with `DeadlineExceeded` as the real daemon does when work
+/// outlasts the budget.
+///
+/// Decided from the envelope alone, with no sleep: a paused test clock
+/// auto-advances past a real socket read, so a fake that waited out `needs`
+/// would race the client's own timeout. Serves one connection, one request
+/// at a time.
+pub async fn fake_client_needing_budget(
+    path: &Path,
+    needs: Duration,
+    response: Response,
+) -> (Client, JoinHandle<()>) {
+    let mut listener = bind(path);
+    let task = tokio::spawn(async move {
+        let stream = listener.accept().await.unwrap();
+        let mut frames = Framed::new(stream, codec());
+        let _hello = handshake(&mut frames, sample_ack()).await;
+        loop {
+            let envelope = read_envelope(&mut frames).await;
+            let budget = Duration::from_millis(envelope.deadline_ms.unwrap_or(u64::MAX));
+            if budget < needs {
+                let message = format!("request deadline of {} ms expired", budget.as_millis());
+                write_err(
+                    &mut frames,
+                    envelope.id,
+                    RpcErrorCode::DeadlineExceeded,
+                    message,
+                )
+                .await;
+            } else {
+                write_reply(&mut frames, envelope.id, response.clone()).await;
+            }
+        }
     });
     let client = Client::connect(path).await.unwrap();
     (client, task)

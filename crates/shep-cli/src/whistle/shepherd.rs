@@ -15,6 +15,7 @@ use rmcp::model::CallToolResult;
 use shep_client::{Client, ConnectError, RequestError};
 use shep_core::protocol::{HelloAck, Request, Response};
 
+use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 
 /// The socket, and the one operation anything in `whistle` performs on it.
@@ -70,7 +71,11 @@ impl Shepherd {
         // one of `RECOVERY_VERBS`.
         refuse_if_skewed(&client)?;
         let ack = client.daemon().clone();
-        let response = client.request(request).await.map_err(|err| refusal(&err));
+        let deadline = deadline_for(&request);
+        let response = client
+            .request_with_deadline(request, deadline)
+            .await
+            .map_err(|err| refusal(&err));
         // Dropping the client ends its actor task and closes the socket. Done
         // explicitly rather than by scope end so the ordering is visible: the
         // reply is already in hand.

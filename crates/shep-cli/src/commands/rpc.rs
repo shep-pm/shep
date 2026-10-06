@@ -11,7 +11,10 @@
 
 use std::time::Duration;
 
-use shep_client::{Client, RequestError};
+use shep_client::{
+    Client, LOG_PLANE_DEADLINE, RELOAD_DEADLINE, RequestError, START_DEADLINE, STOP_DEADLINE,
+    TRIGGER_DEADLINE,
+};
 use shep_core::protocol::{Request, Response};
 
 use crate::exit::ExitCode;
@@ -23,6 +26,21 @@ use crate::output::{Render, Streams, emit, write_outcome};
 /// it alone: `import::dotenv` says which store it already wrote.
 pub(crate) const UNRECOGNISED: &str =
     "the daemon answered with a response this client does not understand";
+
+/// The budget `body` needs, or `None` for the client's own default.
+///
+/// Every sender that forwards a request it did not build itself asks here,
+/// so a verb's budget is named once instead of at each call site.
+pub(crate) const fn deadline_for(body: &Request) -> Option<Duration> {
+    match body {
+        Request::Stop { .. } | Request::Delete { .. } => Some(STOP_DEADLINE),
+        Request::Start { .. } | Request::Restart { .. } => Some(START_DEADLINE),
+        Request::Reload { .. } => Some(RELOAD_DEADLINE),
+        Request::Trigger { .. } => Some(TRIGGER_DEADLINE),
+        Request::Reopen { .. } | Request::Flush { .. } => Some(LOG_PLANE_DEADLINE),
+        _ => None,
+    }
+}
 
 /// Reports an answer this client cannot render, and hands back its code.
 ///
@@ -86,5 +104,73 @@ where
             streams.style,
         )),
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shep_client::{
+        LOG_PLANE_DEADLINE, RELOAD_DEADLINE, START_DEADLINE, STOP_DEADLINE, TRIGGER_DEADLINE,
+    };
+    use shep_core::protocol::SelectorSpec;
+
+    /// Fails if a verb silently falls back to the client's 5s default, or
+    /// a verb is given another's budget.
+    #[test]
+    fn each_lifecycle_verb_names_its_own_budget() {
+        let selector = || SelectorSpec::All;
+        let cases = [
+            (
+                Request::Stop {
+                    selector: selector(),
+                },
+                Some(STOP_DEADLINE),
+            ),
+            (
+                Request::Delete {
+                    selector: selector(),
+                },
+                Some(STOP_DEADLINE),
+            ),
+            (Request::Start { apps: Vec::new() }, Some(START_DEADLINE)),
+            (
+                Request::Restart {
+                    selector: selector(),
+                },
+                Some(START_DEADLINE),
+            ),
+            (
+                Request::Reload {
+                    selector: selector(),
+                },
+                Some(RELOAD_DEADLINE),
+            ),
+            (
+                Request::Trigger {
+                    selector: selector(),
+                    action: "x".into(),
+                    params: None,
+                },
+                Some(TRIGGER_DEADLINE),
+            ),
+            (
+                Request::Reopen {
+                    selector: selector(),
+                },
+                Some(LOG_PLANE_DEADLINE),
+            ),
+            (
+                Request::Flush {
+                    selector: selector(),
+                },
+                Some(LOG_PLANE_DEADLINE),
+            ),
+            (Request::Ping, None),
+            (Request::ListFlock, None),
+        ];
+        for (request, expected) in cases {
+            assert_eq!(deadline_for(&request), expected, "{request:?}");
+        }
     }
 }

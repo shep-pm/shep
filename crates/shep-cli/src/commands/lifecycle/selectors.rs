@@ -12,7 +12,7 @@ use shep_core::selector::ProcessSelector;
 
 use crate::cli::Format;
 use crate::commands::lifecycle::resolve::{TargetError, target_exit_code};
-use crate::commands::rpc::{client_error, unexpected_response};
+use crate::commands::rpc::{client_error, deadline_for, unexpected_response};
 use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{Render, Streams, emit, emit_flock, write_outcome};
@@ -37,6 +37,8 @@ pub(crate) fn parse_selectors(
 /// Not atomic: `shep stop a b c` where `b` matches nothing still stops `a`
 /// and `c`. Every selector is attempted, errors are rendered as they
 /// happen, and the returned code is the first failure.
+///
+/// A `None` deadline takes the verb's own budget from [`deadline_for`].
 pub(crate) async fn request_each<I, B, F>(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -56,10 +58,9 @@ where
     let mut failure: Option<ExitCode> = None;
 
     for selector in selectors {
-        match client
-            .request_with_deadline(body(selector.clone()), deadline)
-            .await
-        {
+        let request = body(selector.clone());
+        let deadline = deadline.or_else(|| deadline_for(&request));
+        match client.request_with_deadline(request, deadline).await {
             Ok(response) => match extract(response) {
                 Some(mut rows) => collected.append(&mut rows),
                 None => failure = failure.or(Some(unexpected_response(streams))),

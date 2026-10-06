@@ -311,10 +311,10 @@ async fn a_target_that_matches_nothing_is_a_usage_error_naming_what_was_tried() 
 /// its own `Request` variant
 ///
 /// The whole `sent.body` is asserted, so a verb sending the wrong request
-/// kind is caught. Also pins each verb's budget: `stop` and `delete`
-/// pass `None` and reach the wire as `DEFAULT_DEADLINE`, while `restart`
-/// and `reload` ask for their own because their staged walk runs inside
-/// the request handler. `reload` asks for the larger of the two: its
+/// kind is caught. Also pins each verb's budget: `stop` and `delete` ask
+/// for `STOP_DEADLINE` because a ladder and a sweep outlast the default,
+/// and `restart` and `reload` ask for their own because their staged walk
+/// runs inside the request handler. `reload` asks for the larger of the two: its
 /// stages cost a drain as well as a readiness wait, and two of them
 /// clear `START_DEADLINE` at the default timeouts.
 #[tokio::test]
@@ -375,7 +375,7 @@ async fn a_selector_reaches_the_wire_in_its_compiled_form() {
             // for a `None`, so an envelope carrying exactly that is the
             // signal that the call site passed one.
             let expected_deadline = match verb {
-                Verb::Stop | Verb::Delete => DEFAULT_DEADLINE,
+                Verb::Stop | Verb::Delete => STOP_DEADLINE,
                 Verb::Restart => START_DEADLINE,
                 Verb::Reload => RELOAD_DEADLINE,
             };
