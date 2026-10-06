@@ -311,8 +311,8 @@ async fn a_report_lands_what_the_reader_was_holding() {
 /// description with the reader, so it sees what the successor would.
 ///
 /// `drain_ready`'s documented residual is the one line of slack: a
-/// part-way line splits between the reader's buffer and `Lines`'
-/// accumulator, unreachable here. Fails at two lines lost, not one.
+/// part-way line splits between the reader's buffer and its scratch buffer,
+/// unreachable here. Fails at two lines lost, not one.
 #[tokio::test]
 async fn a_report_leaves_in_the_pipe_everything_it_did_not_write() {
     let dir = tempfile::tempdir().unwrap();
@@ -386,7 +386,7 @@ async fn a_report_leaves_in_the_pipe_everything_it_did_not_write() {
 /// A reader can strand at most one [`super::super::READ_BUFFER`], and
 /// the drain writes whole lines out of that buffer without reading the
 /// pipe behind it, so it cannot write more than the buffer held however
-/// fast the sheep is writing. The slack is one line: `tokio::io::Lines`
+/// fast the sheep is writing. The slack is one line: the `LineReader`
 /// may have been part-way through one before the buffer was filled.
 #[tokio::test]
 async fn a_report_drains_at_most_one_bufferful() {
