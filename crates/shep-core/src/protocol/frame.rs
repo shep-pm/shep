@@ -12,9 +12,7 @@
 use core::fmt;
 
 use serde::de::value::MapAccessDeserializer;
-use serde::de::{
-    DeserializeSeed, Error as _, IgnoredAny, IntoDeserializer, MapAccess, Unexpected, Visitor,
-};
+use serde::de::{DeserializeSeed, Error as _, IgnoredAny, IntoDeserializer, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::protocol::{BusEvent, Reply};
@@ -58,24 +56,32 @@ impl Kind {
     }
 }
 
-/// Reads one key without allocating, classifying it as it goes
-struct KindSeed;
+/// One top-level key: a known one costs no allocation, an unknown one owns its text
+enum Key {
+    Known(Kind, &'static str),
+    Other(String),
+}
 
-impl<'de> DeserializeSeed<'de> for KindSeed {
-    type Value = Option<(Kind, &'static str)>;
+struct KeySeed;
 
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+impl<'de> DeserializeSeed<'de> for KeySeed {
+    type Value = Key;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Key, D::Error> {
         struct KeyVisitor;
 
         impl Visitor<'_> for KeyVisitor {
-            type Value = Option<(Kind, &'static str)>;
+            type Value = Key;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str("a string key")
             }
 
-            fn visit_str<E>(self, key: &str) -> Result<Self::Value, E> {
-                Ok(Kind::of(key))
+            fn visit_str<E>(self, key: &str) -> Result<Key, E> {
+                Ok(match Kind::of(key) {
+                    Some((kind, name)) => Key::Known(kind, name),
+                    None => Key::Other(key.to_owned()),
+                })
             }
         }
 
@@ -83,22 +89,34 @@ impl<'de> DeserializeSeed<'de> for KindSeed {
     }
 }
 
-/// A map whose first key was already consumed, yielding it again
-struct Replay<A> {
+/// A map handed to one kind's decoder: yields the key already read first, then
+/// the rest, and notes whether a reply key went by
+///
+/// A frame with a reply key after an event key is neither kind, and decoding
+/// it as an event would leave the request that `id` answers waiting.
+struct Keys<A> {
     first: Option<&'static str>,
     rest: A,
+    reply_key_seen: bool,
 }
 
-impl<'de, A: MapAccess<'de>> MapAccess<'de> for Replay<A> {
+impl<'de, A: MapAccess<'de>> MapAccess<'de> for Keys<A> {
     type Error = A::Error;
 
     fn next_key_seed<K: DeserializeSeed<'de>>(
         &mut self,
         seed: K,
     ) -> Result<Option<K::Value>, Self::Error> {
-        match self.first.take() {
-            Some(key) => seed.deserialize(key.into_deserializer()).map(Some),
-            None => self.rest.next_key_seed(seed),
+        if let Some(key) = self.first.take() {
+            return seed.deserialize(key.into_deserializer()).map(Some);
+        }
+        match self.rest.next_key_seed(KeySeed)? {
+            None => Ok(None),
+            Some(Key::Known(kind, name)) => {
+                self.reply_key_seen |= matches!(kind, Kind::Reply);
+                seed.deserialize(name.into_deserializer()).map(Some)
+            }
+            Some(Key::Other(name)) => seed.deserialize(name.into_deserializer()).map(Some),
         }
     }
 
@@ -122,21 +140,30 @@ impl<'de> Visitor<'de> for FrameVisitor {
     // A key no frame kind owns is skipped: a Reply has always tolerated those.
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<ServerFrame, A::Error> {
         let (kind, key) = loop {
-            match map.next_key_seed(KindSeed)? {
-                Some(Some(found)) => break found,
-                Some(None) => {
+            match map.next_key_seed(KeySeed)? {
+                Some(Key::Known(kind, name)) => break (kind, name),
+                Some(Key::Other(_)) => {
                     map.next_value::<IgnoredAny>()?;
                 }
-                None => return Err(A::Error::invalid_type(Unexpected::Map, &self)),
+                None => return Err(A::Error::custom("missing `id`/`result` or `event`/`data`")),
             }
         };
-        let rest = MapAccessDeserializer::new(Replay {
+        let mut keys = Keys {
             first: Some(key),
             rest: map,
-        });
+            reply_key_seen: false,
+        };
         match kind {
-            Kind::Reply => Reply::deserialize(rest).map(ServerFrame::Reply),
-            Kind::Event => BusEvent::deserialize(rest).map(ServerFrame::Event),
+            Kind::Reply => {
+                Reply::deserialize(MapAccessDeserializer::new(keys)).map(ServerFrame::Reply)
+            }
+            Kind::Event => {
+                let event = BusEvent::deserialize(MapAccessDeserializer::new(&mut keys))?;
+                if keys.reply_key_seen {
+                    return Err(A::Error::custom("an event frame carries `id` or `result`"));
+                }
+                Ok(ServerFrame::Event(event))
+            }
         }
     }
 }
@@ -267,6 +294,21 @@ mod tests {
             serde_json::from_str::<ServerFrame>(event).unwrap(),
             ServerFrame::Event(BusEvent::LogOut { id: 3, .. })
         ));
+    }
+
+    #[test]
+    fn a_frame_carrying_both_kinds_of_key_is_never_taken_for_an_event() {
+        // Untagged tried Reply first. The first key decides here, so an event
+        // key leading a reply key fails instead of routing the reply as an event.
+        let event_first = r#"{"event":"log_out","data":{"id":3,"line":"ready"},"id":1,"result":{"Ok":{"kind":"pong"}}}"#;
+        let decoded = serde_json::from_str::<ServerFrame>(event_first);
+        assert!(decoded.is_err(), "{decoded:?}");
+
+        let reply_first = r#"{"id":1,"result":{"Ok":{"kind":"pong"}},"event":"log_out","data":{"id":3,"line":"ready"}}"#;
+        assert_eq!(
+            serde_json::from_str::<ServerFrame>(reply_first).unwrap(),
+            ServerFrame::Reply(sample_reply_with_id(1))
+        );
     }
 
     #[test]
