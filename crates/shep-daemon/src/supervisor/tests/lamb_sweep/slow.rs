@@ -73,6 +73,27 @@ fn detached_lamb(pid_file: &Path) -> Option<String> {
     ))
 }
 
+/// A perl lamb like [`detached_lamb`]'s, except that its first `SIGTERM`
+/// starts a child that ignores `SIGTERM` and writes its pid to
+/// `child.pid` beside `pid_file`. Perl only.
+fn lamb_that_forks_on_term(pid_file: &Path) -> Option<String> {
+    let perl = which("perl")?;
+    let child_file = pid_file.with_file_name("child.pid");
+    Some(format!(
+        "{perl} -e 'use POSIX (); POSIX::setsid() or die; \
+         sub put {{ open(my $f, \">\", \"$_[0].tmp\") or die; print $f $$; close($f); \
+         rename(\"$_[0].tmp\", $_[0]) or die }} \
+         my $born = 0; $SIG{{TERM}} = sub {{ return if $born++; my $c = fork(); \
+         if (defined $c && $c == 0) {{ $SIG{{TERM}} = \"IGNORE\"; put($ARGV[1]); \
+         sleep {LIFETIME_SECS}; exit 0 }} }}; \
+         put($ARGV[0]); my $end = time + {LIFETIME_SECS}; sleep 1 while time < $end' \
+         \"{pid_file}\" \"{child_file}\"",
+        perl = perl.display(),
+        pid_file = pid_file.display(),
+        child_file = child_file.display(),
+    ))
+}
+
 /// SIGKILLs every process it holds on drop, so a red case leaves nothing
 /// behind.
 ///
@@ -135,15 +156,14 @@ struct Rig {
 ///
 /// `None`, after saying why, on a host with no way to detach a lamb.
 async fn start_rig(
+    lamb: fn(&Path) -> Option<String>,
     rest: impl FnOnce(&Path, &Path) -> String,
     guard: &mut KillOnDrop,
 ) -> Option<Rig> {
     let dir = tempfile::tempdir().unwrap();
     let pid_file = dir.path().join("lamb.pid");
-    let (Some(lamb), Some(sleep)) = (detached_lamb(&pid_file), which("sleep")) else {
-        eprintln!(
-            "skipped: no sleep, or no perl, python3 or setsid, on PATH to detach a lamb with"
-        );
+    let (Some(lamb), Some(sleep)) = (lamb(&pid_file), which("sleep")) else {
+        eprintln!("skipped: no sleep, or nothing on PATH to detach this case's lamb with");
         return None;
     };
     let script = format!(
@@ -251,11 +271,14 @@ async fn reaped_within_bound(pid: u32) -> bool {
 /// Asserts the sweep ended `lamb_pid` before the exit was reported, `waited`
 /// after the exit began.
 ///
-/// By time, not by a look at the table: the sweep's `SIGKILL` is delivered,
-/// not awaited, so a lamb can still be running for a few milliseconds after
-/// the report. Only a sweep waits out the grace, since the leader obeys
-/// `SIGTERM` at once and the lamb never does.
+/// Only a sweep waits out the grace, since the leader obeys `SIGTERM` at
+/// once and the lamb never does. A killed lamb may linger as a zombie until
+/// init reaps it, so "ended" is not running, then gone within the bound.
 async fn assert_swept_before_the_report(lamb_pid: u32, waited: Duration) {
+    assert!(
+        !is_running(lamb_pid),
+        "the lamb {lamb_pid} was still running when the exit was reported"
+    );
     assert!(
         waited >= KILL_TIMEOUT,
         "the exit was reported after {waited:?}, inside the sweep's grace: nothing waited \
@@ -276,6 +299,7 @@ async fn assert_swept_before_the_report(lamb_pid: u32, waited: Duration) {
 async fn a_stop_ends_a_lamb_that_left_the_session_and_ignores_term() {
     let mut guard = KillOnDrop::default();
     let Some(rig) = start_rig(
+        detached_lamb,
         |_, sleep| format!("exec {} {LIFETIME_SECS}", sleep.display()),
         &mut guard,
     )
@@ -302,6 +326,7 @@ async fn a_stop_ends_a_lamb_that_left_the_session_and_ignores_term() {
 async fn a_natural_exit_ends_the_lamb_the_last_tick_saw() {
     let mut guard = KillOnDrop::default();
     let Some(rig) = start_rig(
+        detached_lamb,
         |dir, sleep| {
             format!(
                 "i=0; while [ ! -e \"{go}\" ] && [ $i -lt {polls} ]; do {sleep} 0.05; \
@@ -354,6 +379,7 @@ async fn a_natural_exit_ends_the_lamb_the_last_tick_saw() {
 async fn a_shepherd_shutdown_ends_a_lamb_that_left_the_session() {
     let mut guard = KillOnDrop::default();
     let Some(rig) = start_rig(
+        detached_lamb,
         |_, sleep| format!("exec {} {LIFETIME_SECS}", sleep.display()),
         &mut guard,
     )
@@ -368,4 +394,44 @@ async fn a_shepherd_shutdown_ends_a_lamb_that_left_the_session() {
         .expect("the shutdown must finish within the bound");
 
     assert_swept_before_the_report(rig.lamb_pid, started.elapsed()).await;
+}
+
+// Real time: real children answer the signals.
+#[tokio::test]
+async fn a_stop_ends_a_child_a_lamb_started_after_the_sweep_began() {
+    let mut guard = KillOnDrop::default();
+    let Some(rig) = start_rig(
+        lamb_that_forks_on_term,
+        |_, sleep| format!("exec {} {LIFETIME_SECS}", sleep.display()),
+        &mut guard,
+    )
+    .await
+    else {
+        return;
+    };
+    let child_file = rig.dir.path().join("child.pid");
+    let started = std::time::Instant::now();
+
+    tokio::time::timeout(
+        BOUND,
+        rig.sup
+            .stop(ProcessSelector::Name("lamb-keeper".to_owned())),
+    )
+    .await
+    .expect("the stop must reply within the bound")
+    .unwrap();
+    let waited = started.elapsed();
+
+    let child_pid = std::fs::read_to_string(&child_file)
+        .ok()
+        .and_then(|text| text.trim().parse::<u32>().ok())
+        .expect("the lamb must have started its child on the sweep's SIGTERM");
+    if is_running(child_pid) {
+        guard.hold(child_pid);
+    }
+    assert!(
+        !is_running(child_pid),
+        "the child {child_pid}, born after the sweep's walk, outlived the stop"
+    );
+    assert_swept_before_the_report(rig.lamb_pid, waited).await;
 }

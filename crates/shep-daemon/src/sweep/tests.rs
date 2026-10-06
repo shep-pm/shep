@@ -94,7 +94,7 @@ async fn a_zero_grace_looks_once_more_then_kills() {
 
     assert_eq!(Instant::now() - start, KILL_SETTLE_POLL);
     assert_eq!(report.killed, vec![7]);
-    assert_eq!(sweep.looks().len(), 3);
+    assert_eq!(sweep.looks().len(), 2, "one look, then one after KILL");
 }
 
 // A stop reply must not race the kernel tearing a killed lamb down.
@@ -105,7 +105,59 @@ async fn the_sweep_returns_only_once_a_killed_lamb_has_stopped_running() {
     sweep_lambs(&sweep, &snapshot_of(&[7]), Duration::ZERO).await;
 
     assert!(sweep.survivors(&snapshot_of(&[7])).is_empty());
-    assert_eq!(sweep.looks().len(), 4, "a look after KILL saw it gone");
+    assert_eq!(sweep.looks().len(), 3, "a look after KILL saw it gone");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_child_a_lamb_started_after_the_snapshot_is_termed_with_it() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7], vec![]])
+        .with_born(vec![vec![9]]);
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
+
+    assert_eq!(
+        sweep.walks().first(),
+        Some(&vec![7]),
+        "walked from the survivor"
+    );
+    assert_eq!(
+        sweep.signals(),
+        vec![(7, LambSignal::Term), (9, LambSignal::Term)]
+    );
+    assert_eq!(report.termed, vec![7, 9]);
+}
+
+// The lamb exits on its TERM, orphaning a child it started mid-grace. The
+// look that found the child while its parent lived is what holds it.
+#[tokio::test(start_paused = true)]
+async fn a_child_born_mid_grace_outlives_its_parent_and_is_still_killed() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7], vec![7], vec![9]])
+        .with_born(vec![vec![], vec![9], vec![]]);
+    let start = Instant::now();
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
+
+    assert_eq!(
+        sweep.signals(),
+        vec![
+            (7, LambSignal::Term),
+            (9, LambSignal::Term),
+            (9, LambSignal::Kill)
+        ]
+    );
+    assert_eq!(report.termed, vec![7, 9]);
+    assert_eq!(report.killed, vec![9]);
+    assert_eq!(Instant::now() - start, GRACE + KILL_SETTLE_POLL);
+    assert!(
+        sweep
+            .looks()
+            .iter()
+            .skip(2)
+            .all(|look| look.pids().any(|pid| pid == 9)),
+        "every look after the find carries the orphan"
+    );
 }
 
 #[test]

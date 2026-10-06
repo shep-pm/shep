@@ -28,6 +28,10 @@ impl LambSweep for StatsSweep {
         self.stats.last_lamb_snapshot(root_pid)
     }
 
+    fn descendants(&self, roots: &[u32]) -> LambSnapshot {
+        self.stats.lamb_walk_from(roots)
+    }
+
     #[cfg(unix)]
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32> {
         let pids: Vec<u32> = snapshot.pids().collect();

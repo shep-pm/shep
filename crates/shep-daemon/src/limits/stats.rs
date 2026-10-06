@@ -221,6 +221,22 @@ impl StatsState {
         LambSnapshot::new(index.descendants_of(root_pid), taken_at_secs)
     }
 
+    /// One fresh walk of every descendant of `roots`, the roots excluded.
+    /// Blocking, like [`Self::sample_now`].
+    ///
+    /// No shepherd-ancestry check: the lamb sweep calls this with lambs it
+    /// already verified, which an exited sheep leaves reparented to init.
+    pub(crate) fn lamb_walk_from(&self, roots: &[u32]) -> LambSnapshot {
+        let taken_at_secs = crate::now_ms() / 1000;
+        let table = self.sampler.sample();
+        let index = TreeIndex::build(&table);
+        let lambs = roots
+            .iter()
+            .flat_map(|&root| index.descendants_of(root))
+            .filter(|pid| !roots.contains(pid));
+        LambSnapshot::new(lambs, taken_at_secs)
+    }
+
     /// [`Self::record_baseline`] over a reading this call takes itself.
     ///
     /// For a caller with no index already in hand. The polling tick always
@@ -633,6 +649,26 @@ mod tests {
             None,
             "the new process on pid 100 must not inherit the old one's lambs"
         );
+    }
+
+    #[test]
+    fn a_walk_from_survivors_finds_their_children_and_not_the_survivors() {
+        // 101 and 201 are survivors reparented to init; 102 is 101's child,
+        // 202 is 201's, and 300 is nobody's.
+        let table = vec![
+            rss(1, None, 0),
+            rss(101, Some(1), 0),
+            rss(102, Some(101), 0),
+            rss(103, Some(102), 0),
+            rss(201, Some(1), 0),
+            rss(202, Some(201), 0),
+            rss(300, Some(1), 0),
+        ];
+        let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![table])));
+
+        let snapshot = stats.lamb_walk_from(&[101, 201]);
+
+        assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![102, 103, 202]);
     }
 
     #[test]

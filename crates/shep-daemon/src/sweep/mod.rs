@@ -2,8 +2,8 @@
 //!
 //! A stop signals the sheep's process group, which misses a lamb that left
 //! it, and a natural exit signals nothing at all. [`sweep_lambs`] closes both
-//! by signalling the pids a [`LambSnapshot`] saw, one by one, after the
-//! leader is reaped. [`LambSweep`] is the seam; [`StatsSweep`] reads the real
+//! by signalling the pids a [`LambSnapshot`] saw, and what those start while
+//! the sweep waits, one by one, after the leader is reaped. [`LambSweep`] is the seam; [`StatsSweep`] reads the real
 //! process table.
 //!
 //! ## Pid reuse
@@ -22,7 +22,7 @@
 
 use core::fmt;
 use core::time::Duration;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tokio::time::Instant;
 
@@ -62,8 +62,6 @@ impl LambSnapshot {
     }
 
     /// The pids this snapshot saw, in pid order.
-    // Read only by the unix survivor check, and by tests.
-    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
     pub(crate) fn pids(&self) -> impl Iterator<Item = u32> + '_ {
         self.seen_at.keys().copied()
     }
@@ -152,6 +150,14 @@ pub(crate) trait LambSweep: Send + Sync {
     /// never survivors.
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32>;
 
+    /// A fresh walk: every current ppid descendant of `roots`, the roots
+    /// excluded, dated by this walk's second.
+    ///
+    /// Called with survivors only. A survivor's children still point at it,
+    /// so a walk from it finds what it started after the snapshot, and a
+    /// survivor already passed the shepherd-ancestry check its snapshot did.
+    fn descendants(&self, roots: &[u32]) -> LambSnapshot;
+
     /// Sends `signal` to `pid` alone, never to a group.
     ///
     /// # Errors
@@ -163,17 +169,20 @@ pub(crate) trait LambSweep: Send + Sync {
 /// What one [`sweep_lambs`] call signalled, in pid order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SweepReport {
-    /// Every survivor sent `SIGTERM`, delivered or not.
+    /// Every lamb sent `SIGTERM`, delivered or not.
     pub termed: Vec<u32>,
-    /// Every survivor still alive at the end of the grace, sent `SIGKILL`.
+    /// Every lamb still alive at the end of the grace, sent `SIGKILL`.
     pub killed: Vec<u32>,
 }
 
-/// Ends every survivor of `snapshot`: `SIGTERM`, up to `grace` to exit, then
-/// `SIGKILL` for what is left.
+/// Ends every survivor of `snapshot`, and whatever they start meanwhile:
+/// `SIGTERM`, up to `grace` to exit, then `SIGKILL` for what is left.
 ///
-/// Returns as soon as no survivor remains, waiting up to [`KILL_SETTLE`] for
-/// a `SIGKILL` to land. An empty snapshot reads nothing.
+/// Each look, every [`SWEEP_POLL_INTERVAL`], walks from the survivors and
+/// adds what they started since, so a child is held before its parent exits
+/// and orphans it. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
+/// the deadline. Returns as soon as no lamb is left, waiting up to
+/// [`KILL_SETTLE`] for a `SIGKILL` to land. An empty snapshot reads nothing.
 /// A failed delivery is logged and never stops the sweep.
 pub(crate) async fn sweep_lambs(
     sweep: &dyn LambSweep,
@@ -183,19 +192,41 @@ pub(crate) async fn sweep_lambs(
     if snapshot.is_empty() {
         return SweepReport::default();
     }
-    let termed = sweep.survivors(snapshot);
+    let mut snapshot = snapshot.clone();
+    let mut termed = BTreeSet::new();
+    let deadline = Instant::now() + grace;
+    let killed = loop {
+        let mut alive = sweep.survivors(&snapshot);
+        if alive.is_empty() {
+            break alive;
+        }
+        let born = sweep.descendants(&alive);
+        alive.extend(born.pids());
+        alive.sort_unstable();
+        alive.dedup();
+        snapshot = snapshot.merge(born);
+        let first_seen: Vec<u32> = alive
+            .iter()
+            .copied()
+            .filter(|&pid| termed.insert(pid))
+            .collect();
+        deliver(sweep, &first_seen, LambSignal::Term);
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break alive;
+        }
+        tokio::time::sleep(remaining.min(SWEEP_POLL_INTERVAL)).await;
+    };
     if termed.is_empty() {
         return SweepReport::default();
     }
-    deliver(sweep, &termed, LambSignal::Term);
-
-    let killed = poll_until_gone(sweep, snapshot, grace, SWEEP_POLL_INTERVAL).await;
+    let termed: Vec<u32> = termed.into_iter().collect();
 
     tracing::info!(lambs = ?termed, "swept lambs that outlived their sheep");
     if !killed.is_empty() {
         tracing::warn!(lambs = ?killed, "lambs ignored SIGTERM for the whole grace; sending SIGKILL");
         deliver(sweep, &killed, LambSignal::Kill);
-        let stuck = poll_until_gone(sweep, snapshot, KILL_SETTLE, KILL_SETTLE_POLL).await;
+        let stuck = poll_until_gone(sweep, &snapshot, KILL_SETTLE, KILL_SETTLE_POLL).await;
         if !stuck.is_empty() {
             tracing::warn!(lambs = ?stuck, "lambs still running after SIGKILL; leaving them");
         }

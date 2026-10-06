@@ -24,6 +24,8 @@ pub(crate) struct ScriptedSweep {
     fresh: HashMap<u32, LambSnapshot>,
     last: HashMap<u32, LambSnapshot>,
     survivors: Vec<Vec<u32>>,
+    born: Vec<Vec<u32>>,
+    walks: Mutex<Vec<Vec<u32>>>,
     refusing: HashSet<u32>,
     unkillable: HashSet<u32>,
     killed: Mutex<HashSet<u32>>,
@@ -53,6 +55,21 @@ impl ScriptedSweep {
     pub(crate) fn with_survivors(mut self, script: Vec<Vec<u32>>) -> Self {
         self.survivors = script;
         self
+    }
+
+    /// One list per [`LambSweep::descendants`] call, in order, of what the
+    /// survivors started since; repeats the last once the script runs out.
+    pub(crate) fn with_born(mut self, script: Vec<Vec<u32>>) -> Self {
+        self.born = script;
+        self
+    }
+
+    /// The roots each [`LambSweep::descendants`] call walked from.
+    pub(crate) fn walks(&self) -> Vec<Vec<u32>> {
+        self.walks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Every signal to `pid` fails as the OS refusing it.
@@ -109,6 +126,15 @@ impl LambSweep for ScriptedSweep {
             .copied()
             .filter(|pid| !killed.contains(pid))
             .collect()
+    }
+
+    fn descendants(&self, roots: &[u32]) -> LambSnapshot {
+        let mut walks = self.walks.lock().unwrap_or_else(PoisonError::into_inner);
+        walks.push(roots.to_vec());
+        let Some(last) = self.born.len().checked_sub(1) else {
+            return LambSnapshot::new([], 0);
+        };
+        LambSnapshot::new(self.born[(walks.len() - 1).min(last)].clone(), 0)
     }
 
     fn signal(&self, pid: u32, signal: LambSignal) -> Result<(), SignalError> {
