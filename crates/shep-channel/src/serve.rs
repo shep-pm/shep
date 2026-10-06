@@ -270,17 +270,19 @@ pub fn serve() -> Shepherd {
     shepherd.clone()
 }
 
-/// Drives the writer side: drains `outbox` and writes each message.
-/// Stops once the transport fails or the outbox closes.
+/// Drives the writer side: drains `outbox` and writes what it took, a
+/// burst at a time. Stops once the transport fails or the outbox closes.
 ///
 /// A free function over `BufRead`/`Write`, not an inline closure. A test
 /// can drive it over a `Vec<u8>`, with no thread or socket.
 pub(crate) fn writer_loop<W: Write>(writer: &mut W, outbox: &Outbox) {
-    while let Some(message) = outbox.pop() {
-        if session::write_message(writer, &message).is_err() {
+    let mut batch = Vec::new();
+    let mut line = Vec::new();
+    while outbox.take_batch(&mut batch) {
+        if session::write_messages(writer, &batch, &mut line).is_err() {
             break;
         }
-        outbox.wrote();
+        outbox.wrote(batch.len());
     }
     // `stop`, not `close`: a failed write leaves its message unwritten,
     // and a `flush` waiting on it has to hear that rather than time out.
@@ -300,8 +302,9 @@ pub(crate) fn reader_loop<R: BufRead>(
     warn: &dyn Fn(&str),
 ) {
     let mut warned_malformed = false;
+    let mut line = Vec::new();
     loop {
-        match session::read_message(reader) {
+        match session::read_message(reader, &mut line) {
             Ok(Some(message)) => {
                 let resolved = dispatch
                     .read()
@@ -566,7 +569,7 @@ mod tests {
     }
 
     /// fails if end of stream leaves the outbox open, parking the writer
-    /// thread in `pop()` forever.
+    /// thread in `take_batch` forever.
     #[test]
     fn end_of_stream_breaks_the_loop_and_closes_the_outbox() {
         let mut reader = Cursor::new(Vec::new());
@@ -585,8 +588,8 @@ mod tests {
             "reader_loop returned without closing the outbox"
         );
         assert_eq!(
-            outbox.pop(),
-            None,
+            outbox.take(),
+            vec![],
             "outbox should read as closed-and-empty after EOF, not park a waiter"
         );
     }
@@ -606,11 +609,11 @@ mod tests {
 
         reader_loop(&mut reader, &outbox, &dispatch, &warn);
 
-        match outbox.pop() {
-            Some(ChildMessage::ActionReply { action, body, id }) => {
+        match outbox.take().as_slice() {
+            [ChildMessage::ActionReply { action, body, id }] => {
                 assert_eq!(action, "gc");
                 assert_eq!(body, "ok");
-                assert_eq!(id, Some(7));
+                assert_eq!(*id, Some(7));
             }
             other => panic!("expected an action reply, got {other:?}"),
         }
@@ -628,11 +631,11 @@ mod tests {
             .label_lamb(4312, label.clone())
             .expect("room for the label");
         assert_eq!(
-            outbox.pop(),
-            Some(ChildMessage::LambLabel {
+            outbox.take(),
+            vec![ChildMessage::LambLabel {
                 pid: 4312,
                 label: label.clone()
-            })
+            }]
         );
         outbox.close();
         assert!(matches!(
@@ -669,6 +672,53 @@ mod tests {
         );
         assert!(lines[0].contains("\"kind\":\"ready\""));
         assert!(lines[1].contains("\"kind\":\"metric\""));
+    }
+
+    /// A burst already queued costs the transport one write, however many
+    /// messages it holds, and every one of them still reaches the wire.
+    #[test]
+    fn the_writer_writes_a_queued_burst_in_one_write() {
+        struct CountingSink {
+            wire: Vec<u8>,
+            writes: usize,
+        }
+
+        impl Write for CountingSink {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.writes += 1;
+                self.wire.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let outbox = Outbox::new(8);
+        for value in [1.0, 2.0, 3.0] {
+            outbox.push_lossy(ChildMessage::Metric {
+                name: "rps".to_string(),
+                value,
+            });
+        }
+        outbox.close();
+
+        let mut sink = CountingSink {
+            wire: Vec::new(),
+            writes: 0,
+        };
+        writer_loop(&mut sink, &outbox);
+
+        assert_eq!(sink.writes, 1, "the burst was written message by message");
+        assert_eq!(
+            String::from_utf8(sink.wire)
+                .expect("valid utf8")
+                .lines()
+                .count(),
+            3
+        );
+        assert_eq!(outbox.pending(), 0, "a written burst is still pending");
     }
 
     /// The issue this API exists for. The sink is held shut until the
@@ -844,12 +894,9 @@ mod tests {
         rx.recv_timeout(DEADLINE)
             .expect("reader_loop deadlocked: a handler that registers a handler hung the reader");
 
-        let first = outbox.pop().expect("the reload reply");
-        let second = outbox
-            .pop()
-            .expect("the late reply, registered inside the reload handler");
-        match (first, second) {
-            (
+        // The second is the late reply, registered inside the reload handler.
+        match outbox.take().as_slice() {
+            [
                 ChildMessage::ActionReply {
                     action: action1,
                     body: body1,
@@ -860,13 +907,13 @@ mod tests {
                     body: body2,
                     id: id2,
                 },
-            ) => {
+            ] => {
                 assert_eq!(action1, "reload");
                 assert_eq!(body1, "reloaded");
-                assert_eq!(id1, Some(1));
+                assert_eq!(*id1, Some(1));
                 assert_eq!(action2, "late");
                 assert_eq!(body2, "late ok");
-                assert_eq!(id2, Some(2));
+                assert_eq!(*id2, Some(2));
             }
             other => panic!("expected two action replies, got {other:?}"),
         }

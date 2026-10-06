@@ -11,7 +11,7 @@
 //! An app that wants to exit without losing what it queued waits on
 //! `drain`. A message the writer has taken is not yet a message the
 //! shepherd has, so the count that matters spans both the queue and the
-//! one write in progress.
+//! batch being written.
 
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, PoisonError};
@@ -25,6 +25,13 @@ use crate::{ChannelError, ChildMessage};
 /// bytes on the stack. So a full queue's fixed cost is tens of
 /// kilobytes plus whatever names and bodies heap-allocate.
 pub(crate) const DEFAULT_CAPACITY: usize = 1024;
+
+/// The most messages one [`Outbox::take_batch`] hands the writer.
+///
+/// A starting guess, like the capacity. Messages in a batch are out of
+/// `push_lossy`'s reach, so this bounds how many metrics a blocked write
+/// can shield from eviction.
+pub(crate) const MAX_BATCH: usize = 64;
 
 /// How a wait on [`Outbox::drain`] ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +50,9 @@ struct Inner {
     queue: VecDeque<ChildMessage>,
     dropped: u64,
     closed: bool,
-    /// Messages [`Outbox::pop`] handed the writer that it has not
-    /// reported written. At most one while a single writer runs, and
-    /// the whole reason `drain` cannot just read `queue.is_empty()`.
+    /// Messages [`Outbox::take_batch`] handed the writer that it has not
+    /// reported written. At most one batch while a single writer runs,
+    /// and the whole reason `drain` cannot just read `queue.is_empty()`.
     in_flight: usize,
     /// The writer loop has returned. Nothing still held will ever be
     /// written. Distinct from `closed`, which the reader also sets and
@@ -163,11 +170,19 @@ impl Outbox {
         Ok(())
     }
 
-    /// Takes the next message, waiting for one. `None` once closed and empty.
+    /// Moves up to [`MAX_BATCH`] queued messages into `batch`, oldest
+    /// first, waiting for something to queue. `false` once closed and
+    /// empty, with `batch` left empty.
     ///
-    /// A taken message counts as in flight until [`Outbox::wrote`], so a
-    /// `drain` in progress keeps waiting for it.
-    pub(crate) fn pop(&self) -> Option<ChildMessage> {
+    /// One lock round trip for a burst. `batch` is cleared first, so the
+    /// writer keeps one `Vec` and its allocation across rounds.
+    ///
+    /// Taken messages count as in flight until [`Outbox::wrote`], so a
+    /// `drain` in progress keeps waiting for them. The cap keeps the rest
+    /// of a long burst in the queue, where `push_lossy` can still evict
+    /// a metric from it.
+    pub(crate) fn take_batch(&self, batch: &mut Vec<ChildMessage>) -> bool {
+        batch.clear();
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         while inner.queue.is_empty() && !inner.closed {
             inner = self
@@ -175,23 +190,36 @@ impl Outbox {
                 .wait(inner)
                 .unwrap_or_else(PoisonError::into_inner);
         }
-        let taken = inner.queue.pop_front();
-        if taken.is_some() {
-            inner.in_flight = inner.in_flight.saturating_add(1);
-            self.drained.notify_one();
+        if inner.queue.is_empty() {
+            return false;
         }
-        taken
+        let taken = inner.queue.len().min(MAX_BATCH);
+        batch.extend(inner.queue.drain(..taken));
+        inner.in_flight = inner.in_flight.saturating_add(batch.len());
+        drop(inner);
+        // Every slot opened at once, so one waiter would leave the rest
+        // parked with room to spare.
+        self.drained.notify_all();
+        true
     }
 
-    /// Reports that the message the writer last took reached the
+    /// One batch, as [`Outbox::take_batch`] hands it over.
+    #[cfg(test)]
+    pub(crate) fn take(&self) -> Vec<ChildMessage> {
+        let mut batch = Vec::new();
+        self.take_batch(&mut batch);
+        batch
+    }
+
+    /// Reports that `count` messages the writer took reached the
     /// transport.
     ///
     /// Called only after a successful write. A failed one leaves the
-    /// message in flight so the [`Outbox::stop`] that follows reaches a
+    /// messages in flight so the [`Outbox::stop`] that follows reaches a
     /// `drain` as [`Drain::Stopped`] rather than [`Drain::Empty`].
-    pub(crate) fn wrote(&self) {
+    pub(crate) fn wrote(&self, count: usize) {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        inner.in_flight = inner.in_flight.saturating_sub(1);
+        inner.in_flight = inner.in_flight.saturating_sub(count);
         let idle = inner.in_flight == 0 && inner.queue.is_empty();
         drop(inner);
         if idle {
@@ -270,8 +298,8 @@ impl Outbox {
         }
     }
 
-    /// How many messages are waiting for the transport, counting the one
-    /// the writer is part-way through.
+    /// How many messages are waiting for the transport, counting the
+    /// batch the writer is part-way through.
     pub(crate) fn pending(&self) -> usize {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner.queue.len() + inner.in_flight
@@ -345,8 +373,7 @@ mod tests {
         outbox.push_lossy(metric(3.0));
 
         assert_eq!(outbox.dropped(), 1);
-        assert_eq!(outbox.pop(), Some(metric(2.0)));
-        assert_eq!(outbox.pop(), Some(metric(3.0)));
+        assert_eq!(outbox.take(), vec![metric(2.0), metric(3.0)]);
     }
 
     #[test]
@@ -362,12 +389,117 @@ mod tests {
 
         assert_eq!(outbox.dropped(), 1);
         assert_eq!(
-            outbox.pop(),
-            Some(ChildMessage::Ready),
+            outbox.take(),
+            vec![ChildMessage::Ready, metric(2.0), metric(3.0)],
             "readiness was evicted by a metric"
         );
-        assert_eq!(outbox.pop(), Some(metric(2.0)));
-        assert_eq!(outbox.pop(), Some(metric(3.0)));
+    }
+
+    /// One lock round trip hands the writer the whole burst, in the order
+    /// it was queued, and all of it counts as in flight until written.
+    #[test]
+    fn a_burst_is_taken_in_one_batch_and_stays_pending_until_written() {
+        let outbox = Outbox::new(8);
+        outbox.push_lossy(metric(1.0));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("room for readiness");
+        outbox.push_lossy(metric(2.0));
+
+        let mut batch = Vec::new();
+        assert!(outbox.take_batch(&mut batch));
+
+        assert_eq!(batch, vec![metric(1.0), ChildMessage::Ready, metric(2.0)]);
+        assert_eq!(outbox.pending(), 3, "a taken batch is still in flight");
+        outbox.wrote(3);
+        assert_eq!(outbox.pending(), 0);
+    }
+
+    /// The writer reuses one `Vec` across batches. A batch left in it
+    /// from the last round must not be written twice.
+    #[test]
+    fn a_second_take_replaces_the_previous_batch() {
+        let outbox = Outbox::new(8);
+        let mut batch = Vec::new();
+
+        outbox.push_lossy(metric(1.0));
+        assert!(outbox.take_batch(&mut batch));
+        outbox.wrote(1);
+        outbox.push_lossy(metric(2.0));
+        assert!(outbox.take_batch(&mut batch));
+
+        assert_eq!(batch, vec![metric(2.0)]);
+    }
+
+    /// A message the writer has taken can no longer be evicted, so a take
+    /// that emptied a full queue would shield a whole capacity of metrics
+    /// from `push_lossy` for as long as one write blocks. The rest stays
+    /// queued, in order, and still evictable.
+    #[test]
+    fn a_take_leaves_the_rest_of_a_large_burst_queued_and_evictable() {
+        let outbox = Outbox::new(MAX_BATCH + 2);
+        for value in 0..MAX_BATCH + 2 {
+            outbox.push_lossy(metric(value as f64));
+        }
+
+        let mut batch = Vec::new();
+        assert!(outbox.take_batch(&mut batch));
+
+        assert_eq!(batch.len(), MAX_BATCH);
+        assert_eq!(batch[0], metric(0.0), "the oldest message goes first");
+        assert_eq!(outbox.pending(), MAX_BATCH + 2);
+
+        outbox.wrote(batch.len());
+        for value in 0..MAX_BATCH + 2 {
+            outbox.push_lossy(metric(1000.0 + value as f64));
+        }
+        assert_eq!(outbox.dropped(), 2);
+        assert_eq!(
+            outbox.take()[0],
+            metric(1000.0),
+            "eviction should have removed the two left-behind metrics, leaving the newest burst first"
+        );
+    }
+
+    /// A taken burst frees all of its room at once, so every blocked
+    /// pusher is woken, not one.
+    #[test]
+    fn a_take_wakes_every_push_waiting_for_room() {
+        let outbox = Arc::new(Outbox::new(2));
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("first fits");
+        outbox
+            .push_blocking(ChildMessage::Ready)
+            .expect("second fits");
+
+        let (tx, rx) = mpsc::channel();
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let pusher = Arc::clone(&outbox);
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    tx.send(pusher.push_blocking(ChildMessage::Ready))
+                        .expect("report");
+                })
+            })
+            .collect();
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a push returned while the outbox was full"
+        );
+
+        let mut batch = Vec::new();
+        assert!(outbox.take_batch(&mut batch));
+
+        for _ in 0..2 {
+            rx.recv_timeout(DEADLINE)
+                .expect("a pusher stayed parked after the room opened")
+                .expect("push after room");
+        }
+        for handle in handles {
+            handle.join().expect("pusher panicked");
+        }
     }
 
     #[test]
@@ -388,12 +520,9 @@ mod tests {
         outbox.push_lossy(metric(1.0));
 
         assert_eq!(outbox.dropped(), 1);
-        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
-        assert_eq!(outbox.pop(), Some(reply));
-        outbox.close();
         assert_eq!(
-            outbox.pop(),
-            None,
+            outbox.take(),
+            vec![ChildMessage::Ready, reply],
             "the incoming metric was queued past capacity"
         );
     }
@@ -419,7 +548,7 @@ mod tests {
             "push_blocking returned while the outbox was full"
         );
 
-        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
+        assert_eq!(outbox.take(), vec![ChildMessage::Ready]);
         rx.recv_timeout(DEADLINE)
             .expect("pusher did not proceed")
             .expect("push after room");
@@ -474,10 +603,12 @@ mod tests {
 
     /// Otherwise the writer thread is unjoinable at shutdown.
     #[test]
-    fn pop_returns_none_once_closed_and_empty() {
+    fn take_batch_reports_false_once_closed_and_empty() {
         let outbox = Outbox::new(4);
         outbox.close();
-        assert_eq!(outbox.pop(), None);
+        let mut batch = vec![ChildMessage::Ready];
+        assert!(!outbox.take_batch(&mut batch));
+        assert!(batch.is_empty(), "a stale batch survived the final take");
     }
 
     /// Emitting a metric after shutdown is ordinary, not an error, but the
@@ -487,11 +618,11 @@ mod tests {
         let outbox = Outbox::new(4);
         outbox.close();
         outbox.push_lossy(metric(1.0));
-        assert_eq!(outbox.pop(), None);
+        assert_eq!(outbox.take(), vec![]);
         assert_eq!(outbox.dropped(), 1);
     }
 
-    /// Closes before `pop()` so the test does not block on an empty, open
+    /// Closes before taking so the test does not block on an empty, open
     /// outbox.
     #[test]
     fn a_zero_capacity_outbox_counts_the_drop_and_retains_nothing() {
@@ -500,7 +631,7 @@ mod tests {
         assert_eq!(outbox.dropped(), 1);
 
         outbox.close();
-        assert_eq!(outbox.pop(), None);
+        assert_eq!(outbox.take(), vec![]);
     }
 
     /// Pins that `stop` closes as well as stops, which is what keeps a
@@ -530,7 +661,7 @@ mod tests {
     ///
     /// Forcing mechanism in both directions. The `recv_timeout` that
     /// must expire proves the drain is still waiting; the one bounded by
-    /// `DEADLINE` proves `wrote()` releases it. Drop the `in_flight`
+    /// `DEADLINE` proves `wrote` releases it. Drop the `in_flight`
     /// bookkeeping and the first assertion fails in 200ms.
     #[test]
     fn a_drain_waits_for_a_message_the_writer_took_but_has_not_written() {
@@ -538,7 +669,7 @@ mod tests {
         outbox
             .push_blocking(ChildMessage::Ready)
             .expect("room for readiness");
-        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
+        assert_eq!(outbox.take(), vec![ChildMessage::Ready]);
 
         let (tx, rx) = mpsc::channel();
         let draining = Arc::clone(&outbox);
@@ -552,7 +683,7 @@ mod tests {
         );
         assert_eq!(outbox.pending(), 1, "an in-flight message is still pending");
 
-        outbox.wrote();
+        outbox.wrote(1);
 
         assert_eq!(
             rx.recv_timeout(DEADLINE).expect("drain never returned"),
@@ -639,8 +770,8 @@ mod tests {
         );
 
         // Now drain it the way the writer would, and the same wait succeeds.
-        assert_eq!(outbox.pop(), Some(ChildMessage::Ready));
-        outbox.wrote();
+        assert_eq!(outbox.take(), vec![ChildMessage::Ready]);
+        outbox.wrote(1);
         assert_eq!(drain_bounded(&outbox, Duration::ZERO), Drain::Empty);
     }
 }
