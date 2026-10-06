@@ -8,12 +8,12 @@
 //!
 //! ## Pid reuse
 //!
-//! A snapshot stores each pid with the second it was seen, not start times.
-//! A pid is a survivor only if it is alive, not a zombie, and started no
-//! later than that second. A pid recycled within about a second of the walk
-//! still passes, two on Linux, where sysinfo floors both the boot time and
-//! the start ticks: a residual, accepted. A start time from before the
-//! machine booted is never trusted.
+//! A snapshot stores each pid with the [`ProcInstant`] it was seen, not start
+//! times. A pid is a survivor only if it is alive, not a zombie, and started
+//! no later than that instant. On Linux the clock is the kernel's tick, so a
+//! pid recycled within one tick of the walk still passes: 10 ms at the usual
+//! 100 Hz. Elsewhere it is the second, so about a second. A residual,
+//! accepted. A start time from before the machine booted is never trusted.
 //!
 //! ## Windows
 //!
@@ -25,6 +25,8 @@ use core::time::Duration;
 use std::collections::{BTreeMap, BTreeSet};
 
 use tokio::time::Instant;
+
+use crate::proc_table::ProcInstant;
 
 mod os;
 
@@ -46,18 +48,17 @@ const KILL_SETTLE: Duration = Duration::from_secs(1);
 /// How often [`sweep_lambs`] looks while waiting out [`KILL_SETTLE`].
 pub(crate) const KILL_SETTLE_POLL: Duration = Duration::from_millis(10);
 
-/// The pids a sweep may signal, each with the wall-clock second it was seen.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The pids a sweep may signal, each with the instant it was seen.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LambSnapshot {
-    seen_at: BTreeMap<u32, u64>,
+    seen_at: BTreeMap<u32, ProcInstant>,
 }
 
 impl LambSnapshot {
-    /// `pids` as seen at `taken_at_secs`, seconds since the Unix epoch, read
-    /// before the table was walked.
-    pub(crate) fn new(pids: impl IntoIterator<Item = u32>, taken_at_secs: u64) -> Self {
+    /// `pids` as seen at `taken_at`, read before the table was walked.
+    pub(crate) fn new(pids: impl IntoIterator<Item = u32>, taken_at: ProcInstant) -> Self {
         Self {
-            seen_at: pids.into_iter().map(|pid| (pid, taken_at_secs)).collect(),
+            seen_at: pids.into_iter().map(|pid| (pid, taken_at)).collect(),
         }
     }
 
@@ -66,10 +67,15 @@ impl LambSnapshot {
         self.seen_at.keys().copied()
     }
 
-    /// The second `pid` was seen, or `None` if this snapshot never saw it.
+    /// The instant `pid` was seen, or `None` if this snapshot never saw it.
     #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
-    pub(crate) fn seen_at(&self, pid: u32) -> Option<u64> {
+    pub(crate) fn seen_at(&self, pid: u32) -> Option<ProcInstant> {
         self.seen_at.get(&pid).copied()
+    }
+
+    /// The latest instant any of its pids was seen, `None` when empty.
+    pub(crate) fn latest(&self) -> Option<ProcInstant> {
+        self.seen_at.values().copied().max()
     }
 
     /// Whether this snapshot saw no lambs at all.
@@ -145,17 +151,18 @@ pub(crate) trait LambSweep: Send + Sync {
 
     /// The pids in `snapshot` that are still the processes it saw.
     ///
-    /// Alive, not a zombie, and started no later than the snapshot's second.
+    /// Alive, not a zombie, and started no later than the snapshot saw it.
     /// An unknown start time, a pid `<= 1` and this daemon's own pid are
     /// never survivors.
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32>;
 
     /// A fresh walk: every current ppid descendant of `roots`, the roots
-    /// excluded, dated by this walk's second.
+    /// excluded, dated by this walk's instant.
     ///
     /// Called with survivors only. A survivor's children still point at it,
     /// so a walk from it finds what it started after the snapshot, and a
     /// survivor already passed the shepherd-ancestry check its snapshot did.
+    /// The caller re-checks the survivors after, in case one exited mid-walk.
     fn descendants(&self, roots: &[u32]) -> LambSnapshot;
 
     /// Sends `signal` to `pid` alone, never to a group.
@@ -180,7 +187,8 @@ pub(crate) struct SweepReport {
 ///
 /// Each look, every [`SWEEP_POLL_INTERVAL`], walks from the survivors and
 /// adds what they started since, so a child is held before its parent exits
-/// and orphans it. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
+/// and orphans it. A walk counts only if its roots survive a re-check, see
+/// [`walk_from`]. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
 /// the deadline. Returns as soon as no lamb is left, waiting up to
 /// [`KILL_SETTLE`] for a `SIGKILL` to land. An empty snapshot reads nothing.
 /// A failed delivery is logged and never stops the sweep.
@@ -196,15 +204,11 @@ pub(crate) async fn sweep_lambs(
     let mut termed = BTreeSet::new();
     let deadline = Instant::now() + grace;
     let killed = loop {
-        let mut alive = sweep.survivors(&snapshot);
-        if alive.is_empty() {
-            break alive;
+        let roots = sweep.survivors(&snapshot);
+        if roots.is_empty() {
+            break roots;
         }
-        let born = sweep.descendants(&alive);
-        alive.extend(born.pids());
-        alive.sort_unstable();
-        alive.dedup();
-        snapshot = snapshot.merge(born);
+        let alive = walk_from(sweep, &mut snapshot, roots);
         let first_seen: Vec<u32> = alive
             .iter()
             .copied()
@@ -232,6 +236,37 @@ pub(crate) async fn sweep_lambs(
         }
     }
     SweepReport { termed, killed }
+}
+
+/// `roots`, the survivors of `snapshot`, plus what a walk from them found,
+/// which is merged into `snapshot`.
+///
+/// The walk has no ancestry check, so its finds count only if every root
+/// survives a re-read after it. A root alive at both reads was alive
+/// throughout, and a live pid is never reused. Otherwise only the roots that
+/// passed are kept, the finds are dropped, and the next look walks again.
+fn walk_from(sweep: &dyn LambSweep, snapshot: &mut LambSnapshot, roots: Vec<u32>) -> Vec<u32> {
+    let born = sweep.descendants(&roots);
+    if born.is_empty() {
+        return roots;
+    }
+    let still = sweep.survivors(snapshot);
+    if !roots.iter().all(|root| still.contains(root)) {
+        tracing::debug!(
+            ?roots,
+            "a lamb exited during the walk from it; walking again next look"
+        );
+        return roots
+            .into_iter()
+            .filter(|root| still.contains(root))
+            .collect();
+    }
+    let mut alive = roots;
+    alive.extend(born.pids());
+    alive.sort_unstable();
+    alive.dedup();
+    *snapshot = core::mem::take(snapshot).merge(born);
+    alive
 }
 
 /// Re-reads `snapshot`'s survivors every `every` until none are left or

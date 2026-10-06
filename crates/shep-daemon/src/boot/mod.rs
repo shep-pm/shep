@@ -55,6 +55,7 @@ use crate::rpc::RpcContext;
 use crate::runner::ProcessRunner;
 use crate::snapshot::{self, FlockRegistry, spawn_snapshot_writer};
 use crate::supervisor::{SupervisorBuilder, SupervisorHandle};
+use crate::sweep::LambSweep;
 
 /// Capacity of each of the two lifecycle-extra report channels.
 ///
@@ -163,7 +164,21 @@ pub struct BootOptions {
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,
+    options: BootOptions,
+) -> Result<RunningDaemon, BootError> {
+    boot_with_sweep(runner, paths, options, None).await
+}
+
+/// [`boot`], ending lambs through `sweep` in place of the real one when given.
+///
+/// # Errors
+///
+/// As [`boot`].
+pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
+    runner: R,
+    paths: ShepPaths,
     mut options: BootOptions,
+    sweep: Option<Arc<dyn LambSweep>>,
 ) -> Result<RunningDaemon, BootError> {
     // Before anything else: it reads the current directory, which is the
     // startup directory only until something moves it.
@@ -226,13 +241,16 @@ pub async fn boot<R: ProcessRunner>(
     let dog_watch = spawn_dog_watch(events.subscribe(), events.clone(), paths.barks.clone());
     let (breach_tx, breach_rx) = mpsc::channel(EXTRAS_REPORT_CAPACITY);
     let (live_tx, live_rx) = mpsc::channel(EXTRAS_REPORT_CAPACITY);
-    let extras = Extras::real(
+    let mut extras = Extras::real(
         ExtrasReports {
             breaches: breach_tx,
             liveness: live_tx,
         },
         max_cron_sleep(&options),
     );
+    if let Some(sweep) = sweep {
+        extras.lamb_sweep = sweep;
+    }
     // One `StatsState`, two owners: the extras record the periodic CPU
     // baseline and the RPC layer reads a live sample against it, so a second
     // state would leave one of them on an empty watch set.
@@ -481,6 +499,19 @@ async fn restore_flock(
     )
     .await?;
     Ok(())
+}
+
+/// [`boot`] over a sweep that finds no lambs.
+///
+/// Every boot test here drives a `ScriptedRunner`, whose pids can name real
+/// processes on the host. The real sweep would end their children.
+#[cfg(all(test, unix))]
+pub(crate) async fn boot_with_idle_sweep<R: ProcessRunner>(
+    runner: R,
+    paths: ShepPaths,
+    options: BootOptions,
+) -> Result<RunningDaemon, BootError> {
+    boot_with_sweep(runner, paths, options, Some(crate::fake::idle_sweep())).await
 }
 
 /// Serializes every test in this module tree whose `boot()` call succeeds

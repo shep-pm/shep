@@ -25,7 +25,7 @@ async fn boot_writes_readiness_to_the_callers_pipe_after_the_socket_is_bound() {
     let (mut reader, writer) = std::io::pipe().unwrap();
     let pipe = std::fs::File::from(std::os::fd::OwnedFd::from(writer));
 
-    let daemon = boot(
+    let daemon = boot_with_idle_sweep(
         ScriptedRunner::new(vec![]),
         paths.clone(),
         BootOptions {
@@ -91,7 +91,7 @@ async fn readiness_is_reported_only_once_the_roll_is_restored() {
         &notify_path,
     );
 
-    let daemon = boot(
+    let daemon = boot_with_idle_sweep(
         runner,
         paths.clone(),
         BootOptions {
@@ -134,7 +134,7 @@ async fn a_readiness_datagram_that_cannot_be_delivered_does_not_fail_the_boot() 
     let dir = tempfile::tempdir().unwrap();
     let paths = test_paths(&dir);
 
-    let daemon = boot(
+    let daemon = boot_with_idle_sweep(
         ScriptedRunner::new(vec![]),
         paths.clone(),
         BootOptions {

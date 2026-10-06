@@ -71,9 +71,10 @@ notify-debouncer-full.workspace = true
 # unix-only fd plumbing. The pure tier (types/traits/fake) compiles
 # everywhere; the OS tier (signal delivery, fd-passing) is unix-only. `fs`
 # is for sys.rs's readiness-pipe adoption: `nix::fcntl::fcntl`/
-# `FcntlArg::F_GETFD` lets `adopt_fd` refuse a closed descriptor.
+# `FcntlArg::F_GETFD` lets `adopt_fd` refuse a closed descriptor. `time` is
+# for proc_table.rs: `CLOCK_BOOTTIME`, the clock Linux dates a process on.
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["fs"] }
+nix = { workspace = true, features = ["fs", "time"] }
 command-fds.workspace = true
 
 # The job object that stands in for a unix process group. Confined to

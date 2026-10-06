@@ -9,12 +9,61 @@ mod dogs;
 mod readiness;
 
 use crate::boot::*;
-use crate::fake::{ProcScript, ScriptedRunner};
+use crate::fake::{FIRST_SCRIPTED_PID, ProcScript, ScriptedRunner, ScriptedSweep};
+use crate::proc_table::ProcInstant;
+use crate::sweep::{LambSignal, LambSnapshot, LambSweep};
 use crate::testing::test_paths;
 use shep_core::config::{AppConfig, ProbeConfig, ProbeKind, normalize};
 use shep_core::protocol::{BusEvent, ProcessEventKind};
+use shep_core::selector::ProcessSelector;
 use shep_core::values::UpDuration;
 use std::time::Duration;
+
+// A scripted pid can be another test's real child, so a boot test must never
+// end its lambs through the real sweep. Real time: binds a real socket.
+#[tokio::test]
+async fn a_boot_given_a_sweep_ends_a_sheeps_lambs_through_it() {
+    let _guard = SIGNAL_TEST_LOCK.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let sweep = Arc::new(
+        ScriptedSweep::new()
+            .with_fresh(
+                FIRST_SCRIPTED_PID,
+                LambSnapshot::new([7], ProcInstant::from_raw(1)),
+            )
+            .with_survivors(vec![vec![7], vec![]]),
+    );
+
+    let daemon = boot_with_sweep(
+        ScriptedRunner::new(vec![ProcScript::never_exits()]),
+        test_paths(&dir),
+        BootOptions::default(),
+        Some(Arc::clone(&sweep) as Arc<dyn LambSweep>),
+    )
+    .await
+    .unwrap();
+    let ctx = daemon.context();
+    let run = tokio::spawn(daemon.run());
+    ctx.supervisor
+        .start(vec![normalize(AppConfig::minimal("web", "./srv")).unwrap()])
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        ctx.supervisor.stop(ProcessSelector::Name("web".to_owned())),
+    )
+    .await
+    .expect("the stop must reply within the bound")
+    .unwrap();
+
+    assert_eq!(sweep.signals(), vec![(7, LambSignal::Term)]);
+    ctx.shutdown();
+    tokio::time::timeout(Duration::from_secs(10), run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
 
 // `boot` is the one place `DEFAULT_MAX_CRON_SLEEP` is applied: the CLI
 // keeps the knob an `Option` all the way down, so nothing else here would
@@ -54,7 +103,7 @@ async fn a_booted_daemon_restarts_a_sheep_whose_liveness_probe_fails() {
     let addr = reserved.local_addr().unwrap();
     drop(reserved);
 
-    let daemon = boot(
+    let daemon = boot_with_idle_sweep(
         ScriptedRunner::new(vec![ProcScript::never_exits(); 4]),
         paths.clone(),
         BootOptions::default(),

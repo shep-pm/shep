@@ -4,8 +4,12 @@ use crate::testing::capture_logs;
 
 const GRACE: Duration = Duration::from_secs(5);
 
+fn at(raw: u64) -> ProcInstant {
+    ProcInstant::from_raw(raw)
+}
+
 fn snapshot_of(pids: &[u32]) -> LambSnapshot {
-    LambSnapshot::new(pids.iter().copied(), 1_700_000_000)
+    LambSnapshot::new(pids.iter().copied(), at(1_700_000_000))
 }
 
 #[tokio::test(start_paused = true)]
@@ -108,10 +112,11 @@ async fn the_sweep_returns_only_once_a_killed_lamb_has_stopped_running() {
     assert_eq!(sweep.looks().len(), 3, "a look after KILL saw it gone");
 }
 
+// The second survivor list is the re-check after the walk: 7 still runs.
 #[tokio::test(start_paused = true)]
 async fn a_child_a_lamb_started_after_the_snapshot_is_termed_with_it() {
     let sweep = ScriptedSweep::new()
-        .with_survivors(vec![vec![7], vec![]])
+        .with_survivors(vec![vec![7], vec![7], vec![]])
         .with_born(vec![vec![9]]);
 
     let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
@@ -122,18 +127,68 @@ async fn a_child_a_lamb_started_after_the_snapshot_is_termed_with_it() {
         "walked from the survivor"
     );
     assert_eq!(
+        sweep.looks().get(1),
+        Some(&snapshot_of(&[7])),
+        "the re-check reads the roots, before the walk's finds are merged"
+    );
+    assert_eq!(
         sweep.signals(),
         vec![(7, LambSignal::Term), (9, LambSignal::Term)]
     );
     assert_eq!(report.termed, vec![7, 9]);
 }
 
+// 7 exits after the survivor read and its pid is reused before the walk:
+// the walk's 9 is a stranger's child.
+#[tokio::test(start_paused = true)]
+async fn a_walk_from_a_root_that_stopped_surviving_signals_none_of_its_finds() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7], vec![], vec![]])
+        .with_born(vec![vec![9]]);
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
+
+    assert!(
+        !sweep.signals().iter().any(|&(pid, _)| pid == 9),
+        "{:?}",
+        sweep.signals()
+    );
+    assert!(
+        !sweep.signals().iter().any(|&(pid, _)| pid == 7),
+        "a root that failed the re-check is not signalled on that look either"
+    );
+    assert!(
+        sweep.looks().iter().all(|look| look.seen_at(9).is_none()),
+        "the dropped find is never merged into a later look"
+    );
+    assert_eq!(report, SweepReport::default());
+}
+
+// One root of two fails the re-check: the look keeps the other, drops the
+// walk's finds, and the next look walks again.
+#[tokio::test(start_paused = true)]
+async fn a_failed_re_check_keeps_the_roots_that_passed_and_walks_again() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7, 8], vec![8], vec![8], vec![8], vec![]])
+        .with_born(vec![vec![9], vec![10]]);
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7, 8]), GRACE).await;
+
+    assert_eq!(
+        sweep.signals(),
+        vec![(8, LambSignal::Term), (10, LambSignal::Term)]
+    );
+    assert_eq!(sweep.walks(), vec![vec![7, 8], vec![8]]);
+    assert_eq!(report.termed, vec![8, 10]);
+}
+
 // The lamb exits on its TERM, orphaning a child it started mid-grace. The
 // look that found the child while its parent lived is what holds it.
 #[tokio::test(start_paused = true)]
 async fn a_child_born_mid_grace_outlives_its_parent_and_is_still_killed() {
+    // The third list is the re-check after the walk that found 9.
     let sweep = ScriptedSweep::new()
-        .with_survivors(vec![vec![7], vec![7], vec![9]])
+        .with_survivors(vec![vec![7], vec![7], vec![7], vec![9]])
         .with_born(vec![vec![], vec![9], vec![]]);
     let start = Instant::now();
 
@@ -154,7 +209,7 @@ async fn a_child_born_mid_grace_outlives_its_parent_and_is_still_killed() {
         sweep
             .looks()
             .iter()
-            .skip(2)
+            .skip(3)
             .all(|look| look.pids().any(|pid| pid == 9)),
         "every look after the find carries the orphan"
     );
@@ -232,8 +287,8 @@ fn a_refused_signal_is_logged_and_the_sweep_still_kills_the_rest() {
 // the tick's second, it would fail the start-time check and escape.
 #[test]
 fn a_merge_unions_the_pids_and_dates_each_by_the_latest_look_that_saw_it() {
-    let tick = LambSnapshot::new([7, 8], 100);
-    let fresh = LambSnapshot::new([8, 9], 200);
+    let tick = LambSnapshot::new([7, 8], at(100));
+    let fresh = LambSnapshot::new([8, 9], at(200));
 
     let merged = tick.clone().merge(fresh.clone());
     assert_eq!(
@@ -241,24 +296,31 @@ fn a_merge_unions_the_pids_and_dates_each_by_the_latest_look_that_saw_it() {
         vec![7, 8, 9],
         "every pid either look saw"
     );
-    assert_eq!(merged.seen_at(7), Some(100));
-    assert_eq!(merged.seen_at(8), Some(200));
-    assert_eq!(merged.seen_at(9), Some(200));
+    assert_eq!(merged.seen_at(7), Some(at(100)));
+    assert_eq!(merged.seen_at(8), Some(at(200)));
+    assert_eq!(merged.seen_at(9), Some(at(200)));
     assert_eq!(merged.seen_at(10), None);
     assert_eq!(fresh.merge(tick), merged, "the merge is symmetric");
 }
 
 #[test]
+fn a_snapshots_latest_look_is_the_latest_any_pid_was_seen() {
+    let merged = LambSnapshot::new([7, 9], at(100)).merge(LambSnapshot::new([8], at(200)));
+    assert_eq!(merged.latest(), Some(at(200)), "not the first pid's, 100");
+    assert_eq!(LambSnapshot::default().latest(), None);
+}
+
+#[test]
 fn a_snapshot_keeps_each_pid_once() {
-    let snapshot = LambSnapshot::new([9, 7, 9, 7], 5);
+    let snapshot = LambSnapshot::new([9, 7, 9, 7], at(5));
     assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![7, 9]);
-    assert_eq!(snapshot.seen_at(7), Some(5));
+    assert_eq!(snapshot.seen_at(7), Some(at(5)));
 }
 
 #[test]
 fn the_scripted_sweep_answers_with_its_canned_snapshots_behind_dyn() {
-    let fresh = LambSnapshot::new([7], 200);
-    let last = LambSnapshot::new([8], 100);
+    let fresh = LambSnapshot::new([7], at(200));
+    let last = LambSnapshot::new([8], at(100));
     let scripted = ScriptedSweep::new()
         .with_fresh(1, fresh.clone())
         .with_last(1, last.clone());

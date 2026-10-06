@@ -15,7 +15,7 @@ use super::*;
 use crate::extras::{Extras, LivenessReport};
 use crate::limits::sample::{MemorySampler as _, SysinfoSampler, TreeIndex};
 use crate::limits::stats::StatsState;
-use crate::proc_table::read_pids;
+use crate::proc_table::{ProcInstant, read_pids};
 
 /// Past anything a case waits for, so a stall fails rather than hangs.
 const BOUND: Duration = Duration::from_secs(20);
@@ -97,12 +97,12 @@ fn lamb_that_forks_on_term(pid_file: &Path) -> Option<String> {
 /// SIGKILLs every process it holds on drop, so a red case leaves nothing
 /// behind.
 ///
-/// Each pid is held with the start second the table gave it, read while the
-/// case knew the process was its own. A pid is signalled only while it is
+/// Each pid is held with the start the table gave it, read while the case
+/// knew the process was its own. A pid is signalled only while it is
 /// live, unreaped and still shows that start, which a recycled pid does not.
 #[derive(Default)]
 struct KillOnDrop {
-    held: Vec<(u32, u64)>,
+    held: Vec<(u32, ProcInstant)>,
 }
 
 impl KillOnDrop {
@@ -110,7 +110,7 @@ impl KillOnDrop {
     fn hold(&mut self, pid: u32) {
         let started = read_pids(&[pid])
             .get(&pid)
-            .and_then(|reading| reading.started_secs)
+            .and_then(|reading| reading.started)
             .expect("fixture check: a process this case just started has a start time");
         self.held.push((pid, started));
     }
@@ -124,7 +124,7 @@ impl Drop for KillOnDrop {
         for &(pid, started) in &self.held {
             let ours = readings
                 .get(&pid)
-                .is_some_and(|reading| !reading.zombie && reading.started_secs == Some(started));
+                .is_some_and(|reading| !reading.zombie && reading.started == Some(started));
             if ours
                 && pid > 1
                 && pid != own
@@ -343,7 +343,7 @@ async fn a_natural_exit_ends_the_lamb_the_last_tick_saw() {
         return;
     };
     // The tick the extras run every `MEMORY_POLL_INTERVAL`, taken by hand.
-    let taken_at = crate::now_ms() / 1000;
+    let taken_at = ProcInstant::now();
     let table = SysinfoSampler::new().sample();
     rig.stats
         .record_lamb_snapshots(&TreeIndex::build(&table), taken_at, std::process::id());
