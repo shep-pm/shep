@@ -222,14 +222,23 @@ async fn write_loop<W: AsyncWrite + Unpin>(
     mut rx: mpsc::Receiver<Bytes>,
 ) {
     while let Some(first) = rx.recv().await {
-        // `send` is feed plus flush, one write syscall per frame. Everything
-        // already queued shares one flush, taken before waiting again.
+        // `send` is feed plus flush, one flush per frame. What is already
+        // queued shares one flush, taken before waiting again. The batch is
+        // capped: `try_recv` never yields, so a producer that refills the
+        // queue as fast as it drains would otherwise hold this task, and the
+        // flush, off the scheduler.
         let mut next = Some(first);
+        let mut fed = 0;
         while let Some(bytes) = next {
             if sink.feed(bytes).await.is_err() {
                 return; // peer gone; nothing left to drain the queue
             }
-            next = rx.try_recv().ok();
+            fed += 1;
+            next = if fed < CONN_QUEUE {
+                rx.try_recv().ok()
+            } else {
+                None
+            };
         }
         if sink.flush().await.is_err() {
             return; // peer gone, surfaced by the flush
@@ -817,18 +826,29 @@ mod tests {
         assert_eq!(after.status, ProcStatus::Online);
     }
 
-    /// A transport that records what reaches it. Each `poll_flush` stands for
-    /// one write syscall on a socket or pipe, which is what the loop spends.
+    /// A transport that records what reaches it. It counts flushes, not write
+    /// syscalls: a flush is where the framed buffer is handed to the
+    /// transport, so it is the unit the loop controls.
     #[derive(Clone, Default)]
     struct Wire {
         flushes: Arc<AtomicUsize>,
+        /// Bytes written so far, taken at each flush.
+        flush_marks: Arc<Mutex<Vec<usize>>>,
         written: Arc<Mutex<Vec<u8>>>,
+        fail_write: bool,
         fail_flush: bool,
     }
 
     impl Wire {
         fn flushes(&self) -> usize {
             self.flushes.load(Ordering::Relaxed)
+        }
+
+        fn flush_marks(&self) -> Vec<usize> {
+            self.flush_marks
+                .lock()
+                .expect("no test panics holding it")
+                .clone()
         }
 
         /// The payloads that reached the wire, in arrival order.
@@ -851,6 +871,9 @@ mod tests {
             _cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<io::Result<usize>> {
+            if self.fail_write {
+                return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+            }
             self.written
                 .lock()
                 .expect("no test panics holding it")
@@ -860,6 +883,15 @@ mod tests {
 
         fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             self.flushes.fetch_add(1, Ordering::Relaxed);
+            let written = self
+                .written
+                .lock()
+                .expect("no test panics holding it")
+                .len();
+            self.flush_marks
+                .lock()
+                .expect("no test panics holding it")
+                .push(written);
             if self.fail_flush {
                 return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
             }
@@ -872,8 +904,8 @@ mod tests {
     }
 
     /// fails if each queued frame still costs its own flush. A followed log on
-    /// a chatty flock queues many lines behind the writer, and the flushes
-    /// are the syscalls the client's stream pays for.
+    /// a chatty flock queues many lines behind the writer, and each flush is
+    /// a hand-off to the transport.
     #[tokio::test(start_paused = true)]
     async fn frames_already_queued_share_one_flush_and_keep_their_order() {
         let wire = Wire::default();
@@ -928,5 +960,62 @@ mod tests {
             .await
             .expect("a failed flush must end the loop")
             .expect("the writer does not panic");
+    }
+
+    /// fails if a queue that never runs dry can hold the flush off. A steady
+    /// producer keeps `try_recv` returning frames, so only the cap ends the
+    /// batch; the frames are small enough that the buffer's backpressure
+    /// boundary never flushes for it.
+    #[tokio::test(start_paused = true)]
+    async fn a_queue_that_never_runs_dry_is_flushed_every_conn_queue_frames() {
+        const WIRE_FRAME: usize = 10 + 4;
+        const BATCHES: usize = 5;
+        let wire = Wire::default();
+        let (tx, rx) = mpsc::channel::<Bytes>(BATCHES * CONN_QUEUE);
+        let sent: Vec<Bytes> = (0..BATCHES * CONN_QUEUE)
+            .map(|n| Bytes::from(format!("line {n:05}")))
+            .collect();
+        for frame in &sent {
+            tx.try_send(frame.clone()).expect("the queue has room");
+        }
+        let writer = tokio::spawn(write_loop(FramedWrite::new(wire.clone(), codec()), rx));
+
+        // Returns once the writer has parked on `recv` with the queue empty.
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+        assert_eq!(
+            wire.flush_marks(),
+            (1..=BATCHES)
+                .map(|batch| batch * CONN_QUEUE * WIRE_FRAME)
+                .collect::<Vec<_>>(),
+            "one flush per {CONN_QUEUE} frames fed"
+        );
+        assert_eq!(wire.frames().await, sent);
+        assert!(!writer.is_finished(), "the sender is still open");
+    }
+
+    /// fails if a feed that errors mid-batch no longer ends the loop. Frames
+    /// past the buffer's backpressure boundary make `feed` write to the
+    /// transport, which is where a dead peer shows up before any flush.
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_feed_mid_batch_ends_the_loop_and_drops_the_queue() {
+        let wire = Wire {
+            fail_write: true,
+            ..Wire::default()
+        };
+        let (tx, rx) = mpsc::channel::<Bytes>(CONN_QUEUE);
+        for _ in 0..20 {
+            tx.try_send(Bytes::from(vec![b'x'; 1000]))
+                .expect("the queue has room");
+        }
+        let writer = tokio::spawn(write_loop(FramedWrite::new(wire.clone(), codec()), rx));
+
+        tokio::time::timeout(Duration::from_secs(5), writer)
+            .await
+            .expect("a failed feed must end the loop")
+            .expect("the writer does not panic");
+
+        assert_eq!(wire.flushes(), 0, "the flush is never reached");
+        assert!(tx.is_closed(), "the loop dropped the queue it gave up on");
     }
 }
