@@ -134,14 +134,28 @@ One thing it deliberately does not do, argued at its call site: a
 DAEMON-initiated restart gets no warning, since the check is CLI-side, so a
 crash or an autorestart respawn still walks into G12 row 5 unannounced.
 
+**A sheep's lambs are swept after it exits, on unix (#688).** A stop
+used to reach the sheep's process group and nothing else, so a lamb that
+called `setsid`, every lamb under `shutdown_with_message`, and any lamb
+that outlived the leader kept running, reparented to init. A crash
+touched none of them. `sweep/` now signals the pids a walk of the sheep's
+ppid tree saw, after the leader is reaped and before `Msg::Exited` is
+sent: SIGTERM, up to `kill_timeout`, then SIGKILL, walking from the
+survivors on every look so what they start meanwhile goes too. A stop walks fresh
+before the first rung and merges the last 15-second stats tick's walk; a
+crash has only the tick's. Each pid is dated by the walk that saw it and
+signalled only if its process started no later, which is what keeps a
+recycled pid safe without storing start times. shep-kelpie motivated it:
+a runner SIGKILLed or panicking left its Claude Code sessions working.
+
 **A probe's descendants are contained on unix now.** This paragraph used to
 say `Child::kill` does not reach them and that closing it needed a process
 group rather than a patch, which was right about the mechanism. `ask` in
 `crates/shep-cli/src/commands/dogs.rs` spawns with `process_group(0)` and
 `kill_probe_tree` sweeps `-pid`, the same shape `probes/os.rs` already used
 for the exec prober. Two holes stay open and are documented rather than
-closed. A descendant that calls `setsid` leaves the group, as `kill.rs`
-records for a sheep. And Windows has no process group, so the probe there
+closed. A descendant that calls `setsid` leaves the group, and a probe
+has no lamb sweep to catch it the way a sheep now does (#688). And Windows has no process group, so the probe there
 still kills only the binary it spawned; containment would mean reaching the
 `pub(crate)` job object in `sys_windows.rs`.
 
@@ -346,8 +360,10 @@ What that means for anyone editing this workspace:
   platform gate at all. Adding one back is a design decision, not a shrug.
 - **A per-sheep job object replaces the process group.** `sys_windows.rs` is
   the crate's only unsafe on that platform, mirroring `sys.rs`'s rule. It is
-  stronger than the unix design: `kill.rs` documents an escaped-`setsid`
-  hole that a job simply does not have.
+  stronger than the unix design on a stop: a `setsid` lamb escapes the
+  unix process group and is left to the lamb sweep, while a job member
+  cannot leave its job. The sweep is unix only, so a crash on Windows
+  still leaves the job's other processes running.
 - **Three refusals are permanent and deliberate**, each argued at its own
   call site: no graceful signal outside the shepherd channel, no
   `shep startup` (that is Tier B — an SCM service), and no `user`/`group`.

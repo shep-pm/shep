@@ -485,6 +485,7 @@ async fn a_lamb_label_on_the_channel_reaches_the_describe_walk() {
             .extras(Extras {
                 clock: Arc::new(SystemClock),
                 enforcer: Arc::new(RecordingEnforcer::default()),
+                lamb_sweep: idle_sweep(),
                 max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
                 reports: ExtrasReports { breaches, liveness },
                 stats: Arc::clone(&stats),

@@ -28,6 +28,7 @@ use crate::limits::stats::StatsState;
 use crate::limits::{LimitBreach, LimitEnforcer, PollingEnforcer};
 use crate::probes::{LivenessFailure, Prober, spawn_liveness_task};
 use crate::supervisor::SupervisorHandle;
+use crate::sweep::{LambSweep, StatsSweep};
 use crate::watch::{
     DEFAULT_WATCH_DELAY, MIN_WATCH_DELAY, WatchFilter, own_log_ignores, spawn_watch_group,
 };
@@ -71,6 +72,9 @@ pub struct Extras {
     /// Shared so [`ExtrasRegistry::disarm`], whose signature takes no
     /// [`Extras`], can reach it too.
     pub enforcer: Arc<dyn LimitEnforcer>,
+    /// Ends what a sheep left running once the sheep is gone, shared with
+    /// every sheep task.
+    pub(crate) lamb_sweep: Arc<dyn LambSweep>,
     /// Longest a cron worker parks before re-reading the clock, from
     /// `[daemon] max_cron_sleep`. Already defaulted: a value, not an option.
     pub max_cron_sleep: Duration,
@@ -96,11 +100,13 @@ impl Extras {
         // would mean a second syscall walk.
         let sampler: Arc<dyn MemorySampler> = Arc::new(SysinfoSampler::new());
         let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
+        let lamb_sweep = Arc::new(StatsSweep::new(Arc::clone(&stats)));
         let enforcer =
             PollingEnforcer::start(sampler, reports.breaches.clone(), Arc::clone(&stats));
         Self {
             clock: Arc::new(SystemClock),
             enforcer: Arc::new(enforcer),
+            lamb_sweep,
             max_cron_sleep,
             reports,
             stats,

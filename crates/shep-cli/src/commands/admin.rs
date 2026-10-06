@@ -24,7 +24,8 @@ use crate::output::{KillRow, Streams, emit, write_outcome};
 ///
 /// 60s, the daemon's own `MAX_DEADLINE_MS` ceiling, and it was 10s until the
 /// teardown became staged. One flock-wide ladder cost the longest
-/// `kill_timeout` once, 1.6s at the defaults. A reverse-order teardown pays
+/// `kill_timeout` once, 1.6s at the defaults, and twice when a lamb outlives
+/// its sheep and ignores `SIGTERM` too. A reverse-order teardown pays
 /// each stage's longest ladder in turn, so the budget is a sum over stages
 /// rather than one ladder: seven stages of default sheep that ignore
 /// `SIGTERM` passed 10s, and four stages holding one `kill_timeout = "5s"`

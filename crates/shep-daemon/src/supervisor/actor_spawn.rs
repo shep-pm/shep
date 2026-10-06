@@ -310,6 +310,7 @@ impl<R: ProcessRunner> Actor<R> {
                     app.clone(),
                     self.events.clone(),
                     self.tx.clone(),
+                    self.lamb_sweep(),
                 );
                 let ready_tx = if gated {
                     Some(spawn_readiness_task(
@@ -598,6 +599,7 @@ impl<R: ProcessRunner> Actor<R> {
             app.clone(),
             self.events.clone(),
             self.tx.clone(),
+            self.lamb_sweep(),
         );
         self.sheep.insert(
             id,

@@ -6,7 +6,10 @@
 //! one-exit-path invariant is enforced: however a sheep ends, the actor
 //! hears about it as exactly one `Msg::Exited`.
 
+use tracing::Instrument as _;
+
 use super::*;
+use crate::sweep::{LambSnapshot, LambSweep, sweep_lambs};
 
 /// One signal delivery a sheep task is asked to perform, plus where the answer
 /// goes.
@@ -31,6 +34,15 @@ pub(super) struct SheepHandles {
     pub(super) signals: mpsc::Sender<SignalRequest>,
 }
 
+impl<R: ProcessRunner> Actor<R> {
+    /// The sweep a new sheep task ends its lambs with: `None` without extras.
+    pub(super) fn lamb_sweep(&self) -> Option<Arc<dyn LambSweep>> {
+        self.extras
+            .as_ref()
+            .map(|extras| Arc::clone(&extras.lamb_sweep))
+    }
+}
+
 /// Spawns the per-sheep task and returns its two mailbox senders.
 pub(super) fn spawn_sheep_task<P: RunningProcess>(
     id: u32,
@@ -39,11 +51,12 @@ pub(super) fn spawn_sheep_task<P: RunningProcess>(
     app: ResolvedApp,
     events: Bus,
     actor_tx: mpsc::Sender<Msg>,
+    sweep: Option<Arc<dyn LambSweep>>,
 ) -> SheepHandles {
     let (ctl_tx, ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
     let (signal_tx, signal_rx) = mpsc::channel(SIGNAL_CAPACITY);
     tokio::spawn(run_sheep(
-        id, proc, io, app, ctl_rx, signal_rx, events, actor_tx,
+        id, proc, io, app, ctl_rx, signal_rx, events, actor_tx, sweep,
     ));
     SheepHandles {
         ctl: ctl_tx,
@@ -54,7 +67,9 @@ pub(super) fn spawn_sheep_task<P: RunningProcess>(
 /// The per-sheep task body: owns `(proc, io)` for the process's whole lifetime
 /// and drains every `ProcIo` channel. Exactly one of the first two `select!`
 /// branches ever fires per proc, which is the one-exit-path invariant, after
-/// which the task reports `Msg::Exited` and returns.
+/// which the task sweeps the sheep's lambs, reports `Msg::Exited` and returns.
+///
+/// `sweep` is `None` for an engine without extras, which leaves lambs alone.
 ///
 /// A natural exit racing an in-flight `Kill` cannot produce two `Msg::Exited`s
 /// or hang a caller: `tokio::select!` picks one ready branch per iteration,
@@ -62,7 +77,7 @@ pub(super) fn spawn_sheep_task<P: RunningProcess>(
 ///
 /// The `if <channel>_open` guards take a closed channel out of consideration;
 /// without them its `recv()` resolves to `None` on every poll, busy-spinning
-/// the `select!`. Eight parameters: each is threaded through that `select!`.
+/// the `select!`. Nine parameters: each is threaded through that `select!`.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_sheep<P: RunningProcess>(
     id: u32,
@@ -73,6 +88,7 @@ pub(super) async fn run_sheep<P: RunningProcess>(
     mut signal_rx: mpsc::Receiver<SignalRequest>,
     events: Bus,
     actor_tx: mpsc::Sender<Msg>,
+    sweep: Option<Arc<dyn LambSweep>>,
 ) {
     // Destructured in the task's own body, never in a shorter scope: dropping
     // the log pump's `logs` receiver or its last `log_ctl` sender ends the
@@ -97,14 +113,29 @@ pub(super) async fn run_sheep<P: RunningProcess>(
     loop {
         tokio::select! {
             outcome = proc.wait() => {
+                // The ppid tree left with the leader: only the tick saw it.
+                if let Some(sweep) = &sweep
+                    && let Some(snapshot) = sweep.last_snapshot(proc.pid())
+                {
+                    sweep_after_exit(sweep.as_ref(), &snapshot, id, &app).await;
+                }
                 let _ = actor_tx.send(Msg::Exited { id, outcome }).await;
                 break;
             }
             maybe_ctl = ctl_rx.recv(), if ctl_open => {
                 match maybe_ctl {
                     Some(SheepCtl::Kill { grace }) => {
+                        let snapshot = match &sweep {
+                            Some(sweep) => Some(stop_snapshot(sweep, proc.pid()).await),
+                            None => None,
+                        };
                         let outcome =
                             kill_process(&mut proc, app.config(), Some(&to_child), grace).await;
+                        if let Some(sweep) = &sweep
+                            && let Some(snapshot) = &snapshot
+                        {
+                            sweep_after_exit(sweep.as_ref(), snapshot, id, &app).await;
+                        }
                         let _ = actor_tx.send(Msg::Exited { id, outcome }).await;
                         break;
                     }
@@ -186,4 +217,38 @@ pub(super) async fn run_sheep<P: RunningProcess>(
             }
         }
     }
+}
+
+/// The lambs a stop sweeps: a fresh walk of `root_pid`'s tree, merged with
+/// the last tick's snapshot, which still names a lamb orphaned since.
+///
+/// The walk reads the whole process table, so it runs on the blocking pool
+/// like every other on-demand sample. A failed walk sweeps the tick's half.
+async fn stop_snapshot(sweep: &Arc<dyn LambSweep>, root_pid: u32) -> LambSnapshot {
+    let walker = Arc::clone(sweep);
+    let fresh = tokio::task::spawn_blocking(move || walker.snapshot(root_pid))
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(root_pid, %error, "lamb walk failed; sweeping the last tick's lambs only");
+            LambSnapshot::new([], 0)
+        });
+    match sweep.last_snapshot(root_pid) {
+        Some(last) => fresh.merge(last),
+        None => fresh,
+    }
+}
+
+/// [`sweep_lambs`] with the app's `kill_timeout` as its grace, logging under
+/// the sheep's id and name.
+async fn sweep_after_exit(
+    sweep: &dyn LambSweep,
+    snapshot: &LambSnapshot,
+    id: u32,
+    app: &ResolvedApp,
+) {
+    let config = app.config();
+    let span = tracing::info_span!("lamb_sweep", id, name = %config.name);
+    sweep_lambs(sweep, snapshot, config.kill_timeout.as_duration())
+        .instrument(span)
+        .await;
 }

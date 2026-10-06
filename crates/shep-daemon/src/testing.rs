@@ -24,7 +24,7 @@ use crate::bus::SharedEvent;
 use crate::cron::{Clock, DEFAULT_MAX_CRON_SLEEP};
 use crate::entry::{ProcessEntry, ReloadState, RestartBudget};
 use crate::extras::{Extras, ExtrasReports, LivenessReport};
-use crate::fake::{FIRST_SCRIPTED_PID, ProcScript, ScriptedRunner};
+use crate::fake::{FIRST_SCRIPTED_PID, ProcScript, ScriptedRunner, idle_sweep};
 use crate::limits::sample::{MemorySampler, ProcessIdentity, ProcessRss};
 use crate::limits::stats::StatsState;
 use crate::limits::{LimitBreach, LimitEnforcer};
@@ -412,8 +412,8 @@ fn standard_extras(sampler: Arc<dyn MemorySampler>, reports: ExtrasReports) -> E
             reports.breaches.clone(),
             Arc::clone(&stats),
         )),
-        // A fixture nobody configured behaves like a daemon nobody
-        // configured.
+        lamb_sweep: idle_sweep(),
+        // A fixture nobody configured behaves like a daemon nobody configured.
         max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
         reports,
         stats,

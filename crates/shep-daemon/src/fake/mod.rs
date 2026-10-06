@@ -7,8 +7,13 @@
 mod fake_process;
 mod proc_script;
 mod scripted_runner;
+// Test-only: `LambSweep` is crate-private, so no other crate could use it.
+#[cfg(test)]
+mod scripted_sweep;
 #[cfg(test)]
 mod testing;
 pub use fake_process::{FakeIo, FakeProc};
 pub use proc_script::ProcScript;
 pub use scripted_runner::{FIRST_SCRIPTED_PID, ScriptedRunner};
+#[cfg(test)]
+pub(crate) use scripted_sweep::{ScriptedSweep, idle_sweep};

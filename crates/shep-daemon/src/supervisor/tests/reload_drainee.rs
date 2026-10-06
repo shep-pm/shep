@@ -90,6 +90,7 @@ async fn a_drainee_whose_liveness_probe_fails_is_reaped_rather_than_restarted() 
                 // wired here; no `cron_restart` and no `max_memory`.
                 clock: Arc::new(SystemClock),
                 enforcer: Arc::new(RecordingEnforcer::default()),
+                lamb_sweep: idle_sweep(),
                 max_cron_sleep: DEFAULT_MAX_CRON_SLEEP,
                 reports: ExtrasReports {
                     breaches: breaches_tx,

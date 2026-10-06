@@ -4,6 +4,10 @@
 //! [`RunningProcess`], and is generic over that trait so one ladder drives
 //! both the engine tests' fake and the real child. Portable: it touches only
 //! [`StopSignal`] and the trait, never an OS signal API.
+//!
+//! The ladder reaches the sheep's process group and nothing else. A lamb
+//! that left the group, or outlived the leader, is ended by the lamb sweep
+//! the sheep task runs once this returns ([`crate::sweep`]).
 
 use core::time::Duration;
 
@@ -19,7 +23,7 @@ use crate::runner::{ExitOutcome, RunningProcess, StopSignal};
 /// `app.shutdown_with_message` with a `to_child` present sends
 /// [`ShepherdMessage::Shutdown`]; otherwise the app's [`StopSignal`] goes to
 /// the sheep's whole process group, lambs included. After `grace`,
-/// [`RunningProcess::kill_tree`] sweeps that same group again.
+/// [`RunningProcess::kill_tree`] signals that same group again.
 ///
 /// `grace` is the caller's, not the app's: `kill_timeout` for an ordinary
 /// stop, the longer `graceful_timeout` for a reload's drain. Delivery
@@ -27,8 +31,7 @@ use crate::runner::{ExitOutcome, RunningProcess, StopSignal};
 /// [`ExitOutcome`].
 // `kill_tree` is not redundant: the first rung's signal is catchable, the
 // message branch sends no signal, and a fork born after it never saw it.
-// A lamb outliving the sheep also skips this rung: `proc.wait()` already
-// resolved on the leader's exit, so `kill_tree` is never called.
+// It never runs once the leader has exited; the lamb sweep covers that.
 pub async fn kill_process<P: RunningProcess>(
     proc: &mut P,
     app: &AppConfig,

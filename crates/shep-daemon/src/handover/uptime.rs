@@ -10,17 +10,9 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::time::Instant;
 
-/// The refresh kind [`start_epoch_secs`] asks sysinfo for.
-///
-/// Nothing: the start time is filled whatever this says, so memory or CPU
-/// would buy an adoption the memory poll's syscalls, and tasks a
-/// `/proc/<pid>/task/` walk, for figures nothing here reads.
-fn refresh_kind() -> ProcessRefreshKind {
-    ProcessRefreshKind::nothing().without_tasks()
-}
+use crate::proc_table::read_pids;
 
 /// This machine's wall clock, in seconds since the Unix epoch.
 ///
@@ -35,17 +27,10 @@ fn wall_clock_secs() -> u64 {
 /// The second `pid` started at, as the operating system reports it, or
 /// `None` if it will not say.
 ///
-/// Its own [`System`]: this runs during a rehydrate, before a supervisor
-/// exists to borrow a retained table from. Only `pid` is refreshed, since a
-/// whole-table walk per carried sheep would scale a handover's cost with the
-/// machine's process count. A reported `0` is sysinfo's unfilled value, so it
-/// reads as unknown rather than as the epoch.
+/// A targeted read of `pid` alone: this runs during a rehydrate, once per
+/// carried sheep, before a supervisor exists to borrow a table from.
 fn start_epoch_secs(pid: u32) -> Option<u64> {
-    let pid = Pid::from_u32(pid);
-    let mut system = System::new();
-    system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, refresh_kind());
-    let started = system.process(pid)?.start_time();
-    (started != 0).then_some(started)
+    read_pids(&[pid]).get(&pid)?.started_secs
 }
 
 /// The age of a process that started at `started_secs`, seen from a wall
@@ -104,14 +89,6 @@ mod tests {
     #[test]
     fn a_pid_the_table_does_not_know_reads_as_unknown() {
         assert_eq!(start_epoch_secs(0), None);
-    }
-
-    #[test]
-    fn the_refresh_kind_asks_for_nothing_the_start_time_does_not_need() {
-        let kind = refresh_kind();
-        assert!(!kind.memory(), "the start time is not a memory reading");
-        assert!(!kind.cpu(), "the start time is not a CPU reading");
-        assert!(!kind.tasks(), "nothing here reads a thread");
     }
 
     /// Tests that spawn a real process and wait on real elapsed time.
