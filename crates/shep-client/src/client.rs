@@ -64,6 +64,16 @@ pub const LOG_PLANE_DEADLINE: Duration = Duration::from_secs(30);
 /// 60s rather than abandon a reply the daemon is still building.
 pub const TRIGGER_DEADLINE: Duration = Duration::from_secs(60);
 
+/// Budget for `Request::Stop` and `Request::Delete`.
+///
+/// A stop runs the kill ladder, then the lamb sweep, each bounded by a
+/// sheep's `kill_timeout`, and a selector can match many sheep. The client
+/// cannot size that: asking the daemon for each `kill_timeout` costs a round
+/// trip and still races the actor, so this asks for the daemon's whole
+/// `MAX_DEADLINE_MS` (60s) instead. A ladder plus sweep past about 58s still
+/// meets the daemon's clamp.
+pub const STOP_DEADLINE: Duration = Duration::from_secs(60);
+
 /// How much longer the client waits than the deadline it asked the daemon
 /// to honour, so it doesn't report a timeout for work that succeeded.
 pub const DEADLINE_GRACE: Duration = Duration::from_secs(2);
