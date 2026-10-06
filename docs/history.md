@@ -140,7 +140,8 @@ called `setsid`, every lamb under `shutdown_with_message`, and any lamb
 that outlived the leader kept running, reparented to init. A crash
 touched none of them. `sweep/` now signals the pids a walk of the sheep's
 ppid tree saw, after the leader is reaped and before `Msg::Exited` is
-sent: SIGTERM, up to `kill_timeout`, then SIGKILL. A stop walks fresh
+sent: SIGTERM, up to `kill_timeout`, then SIGKILL, walking from the
+survivors on every look so what they start meanwhile goes too. A stop walks fresh
 before the first rung and merges the last 15-second stats tick's walk; a
 crash has only the tick's. Each pid is dated by the walk that saw it and
 signalled only if its process started no later, which is what keeps a

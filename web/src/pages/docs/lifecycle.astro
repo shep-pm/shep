@@ -216,8 +216,9 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       A process group doesn't hold every lamb: one that calls{" "}
       <code>setsid</code> leaves it, and one that outlives the sheep never
       sees the second rung. So on unix, once the sheep's process exits,
-      shep sends <code>SIGTERM</code> to every lamb it saw in the sheep's
-      tree, then <code>SIGKILL</code> after <code>kill_timeout</code>. A
+      shep sends <code>SIGTERM</code> to every lamb in the sheep's tree,
+      and to anything they start meanwhile, then <code>SIGKILL</code> after{" "}
+      <code>kill_timeout</code>. A
       crash is swept too. Only then does the stop return.
     </p>
     <p>
