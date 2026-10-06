@@ -7,11 +7,28 @@ use std::io::{BufRead, Write};
 
 use crate::{ChannelError, ChildMessage, ShepherdMessage};
 
+/// The most capacity a scratch buffer keeps between calls.
+///
+/// A frame or batch bigger than this is the exception. Its allocation is
+/// given back rather than held for the life of the channel.
+const MAX_RETAINED: usize = 64 * 1024;
+
 /// Reads one message. `Ok(None)` is end of stream.
 ///
 /// `line` is scratch the caller keeps between calls, so a reader pays for
-/// one allocation rather than one per message. Cleared on entry.
+/// one allocation rather than one per message. Cleared on entry, and
+/// trimmed to [`MAX_RETAINED`] on return.
 pub(crate) fn read_message<R: BufRead>(
+    reader: &mut R,
+    line: &mut Vec<u8>,
+) -> Result<Option<ShepherdMessage>, ChannelError> {
+    let message = read_line(reader, line);
+    line.clear();
+    line.shrink_to(MAX_RETAINED);
+    message
+}
+
+fn read_line<R: BufRead>(
     reader: &mut R,
     line: &mut Vec<u8>,
 ) -> Result<Option<ShepherdMessage>, ChannelError> {
@@ -37,8 +54,20 @@ pub(crate) fn read_message<R: BufRead>(
 ///
 /// `line` is scratch the caller keeps between calls. Every message is
 /// encoded into it before anything is written, so an encoding failure puts
-/// nothing on the wire. Cleared on entry.
+/// nothing on the wire. Cleared on entry, and trimmed to [`MAX_RETAINED`]
+/// on return.
 pub(crate) fn write_messages<W: Write>(
+    writer: &mut W,
+    messages: &[ChildMessage],
+    line: &mut Vec<u8>,
+) -> Result<(), ChannelError> {
+    let written = write_line(writer, messages, line);
+    line.clear();
+    line.shrink_to(MAX_RETAINED);
+    written
+}
+
+fn write_line<W: Write>(
     writer: &mut W,
     messages: &[ChildMessage],
     line: &mut Vec<u8>,
@@ -231,6 +260,45 @@ mod tests {
             String::from_utf8(out).unwrap().lines().count(),
             3,
             "a reused buffer must not replay an earlier message"
+        );
+    }
+
+    /// One large frame must not leave its allocation behind for the life
+    /// of the channel.
+    #[test]
+    fn a_large_frame_does_not_pin_the_read_buffer() {
+        let name = "x".repeat(MAX_RETAINED * 2);
+        let mut reader = Cursor::new(format!(
+            "{{\"kind\":\"action\",\"name\":\"{name}\",\"id\":1}}\n"
+        ));
+        let mut line = Vec::new();
+
+        let message = read_message(&mut reader, &mut line).unwrap();
+
+        assert!(matches!(message, Some(ShepherdMessage::Action { .. })));
+        assert!(
+            line.capacity() <= MAX_RETAINED,
+            "the buffer kept {} bytes",
+            line.capacity()
+        );
+    }
+
+    #[test]
+    fn a_large_batch_does_not_pin_the_write_buffer() {
+        let mut out = Vec::new();
+        let mut line = Vec::new();
+        let big = ChildMessage::Metric {
+            name: "x".repeat(MAX_RETAINED * 2),
+            value: 1.0,
+        };
+
+        write_messages(&mut out, &[big], &mut line).unwrap();
+
+        assert!(out.len() > MAX_RETAINED * 2, "the batch was not written");
+        assert!(
+            line.capacity() <= MAX_RETAINED,
+            "the buffer kept {} bytes",
+            line.capacity()
         );
     }
 
