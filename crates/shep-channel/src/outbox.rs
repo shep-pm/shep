@@ -457,7 +457,7 @@ mod tests {
         assert_eq!(
             outbox.take()[0],
             metric(1000.0),
-            "the left-behind metrics were not evictable"
+            "eviction should have removed the two left-behind metrics, leaving the newest burst first"
         );
     }
 

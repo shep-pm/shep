@@ -7,24 +7,36 @@ use std::io::{BufRead, Write};
 
 use crate::{ChannelError, ChildMessage, ShepherdMessage};
 
-/// The most capacity a scratch buffer keeps between calls.
+/// The capacity a scratch buffer shrinks back to once it has grown far
+/// past it.
 ///
-/// A frame or batch bigger than this is the exception. Its allocation is
-/// given back rather than held for the life of the channel.
+/// A frame or batch that big is the exception. Its allocation is given
+/// back rather than held for the life of the channel.
 const MAX_RETAINED: usize = 64 * 1024;
+
+/// Empties `line` and, when it holds more than twice [`MAX_RETAINED`],
+/// shrinks it to that.
+///
+/// Twice, not once, so steady traffic just over the size does not grow
+/// and shrink the buffer on every message.
+fn reset(line: &mut Vec<u8>) {
+    line.clear();
+    if line.capacity() > MAX_RETAINED * 2 {
+        line.shrink_to(MAX_RETAINED);
+    }
+}
 
 /// Reads one message. `Ok(None)` is end of stream.
 ///
 /// `line` is scratch the caller keeps between calls, so a reader pays for
-/// one allocation rather than one per message. Cleared on entry, and
-/// trimmed to [`MAX_RETAINED`] on return.
+/// one allocation rather than one per message. Cleared on entry and on
+/// return, and released if a frame left it far past [`MAX_RETAINED`].
 pub(crate) fn read_message<R: BufRead>(
     reader: &mut R,
     line: &mut Vec<u8>,
 ) -> Result<Option<ShepherdMessage>, ChannelError> {
     let message = read_line(reader, line);
-    line.clear();
-    line.shrink_to(MAX_RETAINED);
+    reset(line);
     message
 }
 
@@ -54,16 +66,15 @@ fn read_line<R: BufRead>(
 ///
 /// `line` is scratch the caller keeps between calls. Every message is
 /// encoded into it before anything is written, so an encoding failure puts
-/// nothing on the wire. Cleared on entry, and trimmed to [`MAX_RETAINED`]
-/// on return.
+/// nothing on the wire. Cleared on entry and on return, and released if a
+/// batch left it far past [`MAX_RETAINED`].
 pub(crate) fn write_messages<W: Write>(
     writer: &mut W,
     messages: &[ChildMessage],
     line: &mut Vec<u8>,
 ) -> Result<(), ChannelError> {
     let written = write_line(writer, messages, line);
-    line.clear();
-    line.shrink_to(MAX_RETAINED);
+    reset(line);
     written
 }
 
@@ -281,6 +292,23 @@ mod tests {
             "the buffer kept {} bytes",
             line.capacity()
         );
+    }
+
+    /// Steady traffic a little over the retained size must not pay a
+    /// grow and a shrink per message.
+    #[test]
+    fn a_frame_just_over_the_retained_size_keeps_its_buffer() {
+        let name = "x".repeat(MAX_RETAINED + 1000);
+        let frame = format!("{{\"kind\":\"action\",\"name\":\"{name}\",\"id\":1}}\n");
+        let mut reader = Cursor::new(frame.repeat(2));
+        let mut line = Vec::new();
+
+        read_message(&mut reader, &mut line).unwrap();
+        let (address, capacity) = (line.as_ptr(), line.capacity());
+        read_message(&mut reader, &mut line).unwrap();
+
+        assert!(capacity > MAX_RETAINED, "the first frame was trimmed");
+        assert_eq!(line.as_ptr(), address, "the buffer was reallocated");
     }
 
     #[test]

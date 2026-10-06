@@ -91,7 +91,8 @@ impl Channel {
 
 /// A buffer a [`Channel`] keeps between messages.
 ///
-/// Holds the last message's bytes, which can carry a reply body, so the
+/// Emptied on return from every read and write, but a message's bytes
+/// are in it while one is in progress and can carry a reply body, so the
 /// derived `Debug` is not used (IR-41).
 #[derive(Default)]
 pub(crate) struct Scratch(pub(crate) Vec<u8>);
