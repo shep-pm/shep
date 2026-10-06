@@ -104,6 +104,11 @@ pub(super) struct SheepSlot {
     /// `None` on every other status, and not cleared on the way out of
     /// `WaitingRestart`. Nothing reads it without the status.
     pub(super) restart_due: Option<SystemTime>,
+    /// The running process's open questions and its last few settled ones.
+    ///
+    /// Emptied with [`Self::to_child`] by [`Actor::close_questions`]: a
+    /// question belongs to the process that asked it.
+    pub(super) questions: Questions,
 }
 
 impl SheepSlot {
@@ -128,6 +133,7 @@ impl SheepSlot {
             actions: ActionWaits::default(),
             ready_failed: false,
             restart_due: None,
+            questions: Questions::default(),
         }
     }
 

@@ -4,6 +4,7 @@
 //! compiles on every platform, and a Unix call site gates itself.
 
 pub mod admin;
+pub mod answer;
 pub mod bleats;
 pub(crate) mod bounded;
 pub mod daemon;

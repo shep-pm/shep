@@ -751,6 +751,48 @@ impl SupervisorHandle {
         rx.await.map_err(|_| SupervisorError::EngineStopped)?
     }
 
+    /// Delivers `answer` to the one sheep `selector` names that holds
+    /// `question` open, and answers with that sheep's id and name.
+    ///
+    /// The first answer wins: a second finds the question closed and is
+    /// told how. `via` and `who` are recorded as given, never checked
+    /// against anything.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::NotFound`]: nothing matched.
+    /// - [`SupervisorError::QuestionNotOpen`]: no instance that matched is
+    ///   running with a channel, none holds the question, or the holder's
+    ///   channel could not take the answer.
+    /// - [`SupervisorError::InvalidAnswer`]: the selector is not one sheep,
+    ///   a value breaks the grammar or is not one the question takes, or
+    ///   several instances hold the question.
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    pub(crate) async fn answer(
+        &self,
+        selector: ProcessSelector,
+        question: String,
+        answer: String,
+        note: Option<String>,
+        via: Option<String>,
+        who: Option<String>,
+    ) -> Result<(u32, String), SupervisorError> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(Msg::Command(Command::Answer {
+                selector,
+                question,
+                answer,
+                note,
+                via,
+                who,
+                reply,
+            }))
+            .await
+            .map_err(|_| SupervisorError::EngineStopped)?;
+        rx.await.map_err(|_| SupervisorError::EngineStopped)?
+    }
+
     /// Full flock listing, name-grouped (see [`Actor::snapshot_all`]).
     ///
     /// # Errors

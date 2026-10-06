@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
-use crate::{ChildMessage, ShepherdMessage};
+use crate::{Answer, ChildMessage, QuestionId, ShepherdMessage};
 
 /// What an action handler is: params, then the action's own name. Returns
 /// the reply body the operator reads.
@@ -21,6 +21,9 @@ pub type ActionHandler = Box<dyn Fn(Option<&str>, &str) -> String + Send + Sync 
 
 /// What a shutdown handler is.
 pub type ShutdownHandler = Box<dyn Fn() + Send + Sync + 'static>;
+
+/// What an answer handler is.
+pub type AnswerHandler = Box<dyn Fn(&Answer) + Send + Sync + 'static>;
 
 /// The registry's storage for an action handler: an `Arc`, not the `Box`
 /// callers register with. [`Dispatch::resolve`] clones a handle out and
@@ -31,18 +34,26 @@ type ActionFn = dyn Fn(Option<&str>, &str) -> String + Send + Sync;
 /// The shutdown-handler equivalent of [`ActionFn`].
 type ShutdownFn = dyn Fn() + Send + Sync;
 
+/// The answer-handler equivalent of [`ActionFn`].
+type AnswerFn = dyn Fn(&Answer) + Send + Sync;
+
 /// What handling one message produced.
 #[derive(Debug)]
 pub(crate) enum Outcome {
     /// Send this back.
     Reply(ChildMessage),
-    /// A shutdown, and a handler ran.
+    /// A shutdown or an answer, and a handler ran.
     Handled,
     /// A shutdown, and no handler was registered.
     UnhandledShutdown,
     /// A shutdown, and the registered handler panicked. Carries the panic
     /// text, the same way a panicking action handler's reply does.
     ShutdownFailed(String),
+    /// An answer, and no handler was registered.
+    UnhandledAnswer(QuestionId),
+    /// An answer, and the registered handler panicked. Carries the panic
+    /// text.
+    AnswerFailed(String),
 }
 
 /// What resolving one message against the registry found, before anything
@@ -72,6 +83,15 @@ pub(crate) enum Resolved {
     Shutdown(Arc<ShutdownFn>),
     /// A shutdown with no handler registered.
     UnhandledShutdown,
+    /// A registered answer handler, ready to call.
+    Answer {
+        /// The handler to run.
+        handler: Arc<AnswerFn>,
+        /// The answer to hand it.
+        answer: Answer,
+    },
+    /// An answer with no handler registered.
+    UnhandledAnswer(QuestionId),
 }
 
 /// The registered handlers.
@@ -79,6 +99,7 @@ pub(crate) enum Resolved {
 pub(crate) struct Dispatch {
     actions: HashMap<String, Arc<ActionFn>>,
     shutdown: Option<Arc<ShutdownFn>>,
+    answer: Option<Arc<AnswerFn>>,
 }
 
 // Hand-written because a boxed closure is not `Debug` and the workspace
@@ -91,6 +112,7 @@ impl core::fmt::Debug for Dispatch {
         f.debug_struct("Dispatch")
             .field("actions", &names)
             .field("shutdown", &self.shutdown.is_some())
+            .field("answer", &self.answer.is_some())
             .finish()
     }
 }
@@ -102,6 +124,10 @@ impl Dispatch {
 
     pub(crate) fn register_shutdown(&mut self, handler: ShutdownHandler) {
         self.shutdown = Some(Arc::from(handler));
+    }
+
+    pub(crate) fn register_answer(&mut self, handler: AnswerHandler) {
+        self.answer = Some(Arc::from(handler));
     }
 
     /// Looks a message up against the registry and clones out whatever it
@@ -121,6 +147,13 @@ impl Dispatch {
                     id,
                 },
                 None => Resolved::UnknownAction { name, id },
+            },
+            ShepherdMessage::Answer(answer) => match &self.answer {
+                Some(handler) => Resolved::Answer {
+                    handler: Arc::clone(handler),
+                    answer,
+                },
+                None => Resolved::UnhandledAnswer(answer.question),
             },
         }
     }
@@ -165,6 +198,13 @@ pub(crate) fn run(resolved: Resolved) -> Outcome {
             Err(payload) => Outcome::ShutdownFailed(panic_text(&*payload)),
         },
         Resolved::UnhandledShutdown => Outcome::UnhandledShutdown,
+        Resolved::Answer { handler, answer } => {
+            match catch_unwind(AssertUnwindSafe(|| handler(&answer))) {
+                Ok(()) => Outcome::Handled,
+                Err(payload) => Outcome::AnswerFailed(panic_text(&*payload)),
+            }
+        }
+        Resolved::UnhandledAnswer(id) => Outcome::UnhandledAnswer(id),
     }
 }
 
@@ -291,6 +331,56 @@ mod tests {
         }
     }
 
+    #[test]
+    fn an_answer_reaches_its_handler_and_sends_nothing_back() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let mut dispatch = Dispatch::default();
+        dispatch.register_answer(Box::new(move |answer: &Answer| {
+            sink.lock()
+                .unwrap()
+                .push((answer.question.to_string(), answer.answer.clone()));
+        }));
+        let answer = Answer::new(QuestionId::new("q1").unwrap(), "yes");
+        assert!(matches!(
+            dispatch.handle(ShepherdMessage::Answer(answer)),
+            Outcome::Handled
+        ));
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [("q1".to_string(), "yes".to_string())]
+        );
+    }
+
+    #[test]
+    fn an_answer_with_no_handler_is_reported_rather_than_dropped() {
+        let answer = Answer::new(QuestionId::new("q1").unwrap(), "yes");
+        match Dispatch::default().handle(ShepherdMessage::Answer(answer)) {
+            Outcome::UnhandledAnswer(id) => assert_eq!(id.as_str(), "q1"),
+            other => panic!("expected UnhandledAnswer, got {other:?}"),
+        }
+    }
+
+    /// An unwind here would skip the reader's own `close()`, as for shutdown.
+    #[test]
+    fn a_panicking_answer_handler_is_reported_rather_than_taking_the_reader_down() {
+        let mut dispatch = Dispatch::default();
+        dispatch.register_answer(Box::new(|_| panic!("no such state")));
+
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = dispatch.handle(ShepherdMessage::Answer(Answer::new(
+            QuestionId::new("q1").unwrap(),
+            "yes",
+        )));
+        std::panic::set_hook(previous);
+
+        match outcome {
+            Outcome::AnswerFailed(message) => assert_eq!(message, "no such state"),
+            other => panic!("expected AnswerFailed, got {other:?}"),
+        }
+    }
+
     /// IR-41: the Debug is a decision, not a derive.
     #[test]
     fn debug_names_the_registered_actions_and_nothing_else() {
@@ -299,7 +389,7 @@ mod tests {
         dispatch.register_action("dump".to_string(), Box::new(|_, _| String::new()));
         assert_eq!(
             format!("{dispatch:?}"),
-            "Dispatch { actions: [\"dump\", \"gc\"], shutdown: false }"
+            "Dispatch { actions: [\"dump\", \"gc\"], shutdown: false, answer: false }"
         );
     }
 }

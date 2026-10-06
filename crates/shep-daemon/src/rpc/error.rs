@@ -91,6 +91,18 @@ pub(super) fn rpc_error(err: &SupervisorError) -> RpcError {
             message: err.to_string(),
             daemon_version: None,
         },
+        // The bare payload: each message already names the sheep and the
+        // question, and how a remembered one closed.
+        SupervisorError::QuestionNotOpen(msg) => RpcError {
+            code: RpcErrorCode::NotFound,
+            message: msg.clone(),
+            daemon_version: None,
+        },
+        SupervisorError::InvalidAnswer(msg) => RpcError {
+            code: RpcErrorCode::InvalidConfig,
+            message: msg.clone(),
+            daemon_version: None,
+        },
         SupervisorError::EngineStopped => RpcError {
             code: RpcErrorCode::Internal,
             message: "the supervisor engine has stopped".to_string(),

@@ -1,6 +1,6 @@
 //! Selector-in, flock-out verbs that share the resolve-call-map
-//! pattern ([`selector_call`]), plus [`trigger`] and [`signal_request`],
-//! which need their own resolve path.
+//! pattern ([`selector_call`]), plus [`trigger`], [`signal_request`] and
+//! [`answer_request`], which need their own resolve path.
 
 use core::future::Future;
 
@@ -107,6 +107,33 @@ pub(super) async fn signal_request(
                 .map(Response::Signalled)
                 .map_err(|err| rpc_error(&err)),
         },
+    };
+    Outcome::Reply(Reply { id, result })
+}
+
+/// `Answer`'s own resolve-then-map path. The selector converts as every
+/// other verb's does; the actor refuses one that is not a single sheep.
+/// Eight parameters: one per field of the request, plus the two every arm
+/// takes.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn answer_request(
+    id: u64,
+    spec: SelectorSpec,
+    question: String,
+    answer: String,
+    note: Option<String>,
+    via: Option<String>,
+    who: Option<String>,
+    ctx: &RpcContext,
+) -> Outcome {
+    let result = match selector_of(spec) {
+        Err(err) => Err(err),
+        Ok(selector) => ctx
+            .supervisor
+            .answer(selector, question.clone(), answer, note, via, who)
+            .await
+            .map(|(id, name)| Response::Answered { id, name, question })
+            .map_err(|err| rpc_error(&err)),
     };
     Outcome::Reply(Reply { id, result })
 }

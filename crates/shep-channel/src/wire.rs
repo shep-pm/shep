@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::question::{Answer, QuestionId, QuestionText, Takes};
+
 /// The value the shepherd exports as `SHEP_CHANNEL_VERSION` to every child
 /// it opens a channel for.
 ///
@@ -54,6 +56,20 @@ pub enum ChildMessage {
         pid: u32,
         /// What `describe` shows beside the lamb's executable name
         label: LambLabel,
+    },
+    /// Puts a question to the operator.
+    Ask {
+        /// The name the answer will carry back
+        question: QuestionId,
+        /// What the operator is asked
+        text: QuestionText,
+        /// The kind of answer the question takes
+        takes: Takes,
+    },
+    /// Takes back a question the app asked and no longer needs answered.
+    Withdraw {
+        /// The question to take back
+        question: QuestionId,
     },
 }
 
@@ -183,6 +199,8 @@ pub enum ShepherdMessage {
         /// implementation details, not a promise.
         id: u64,
     },
+    /// The operator's answer to one question.
+    Answer(Answer),
 }
 
 #[cfg(test)]
@@ -334,6 +352,26 @@ mod tests {
             assert!(
                 serde_json::from_value::<ChildMessage>(frame).is_err(),
                 "{label:?} decoded"
+            );
+        }
+    }
+
+    #[test]
+    fn ask_withdraw_and_answer_wire_fixtures_round_trip() {
+        let ask = r#"{"kind":"ask","question":"koji-3","text":"Merge #12?","takes":"yes-no"}"#;
+        let withdraw = r#"{"kind":"withdraw","question":"koji-3"}"#;
+        let answer = r#"{"kind":"answer","question":"koji-3","answer":"no","note":"rebase first","via":"discord","who":"<@81234>"}"#;
+        let bare = r#"{"kind":"answer","question":"koji-3","answer":"yes"}"#;
+        for line in [ask, withdraw] {
+            let parsed: ChildMessage = serde_json::from_str(line).unwrap();
+            assert_eq!(serde_json::to_string(&parsed).unwrap(), line);
+        }
+        for line in [answer, bare] {
+            let parsed: ShepherdMessage = serde_json::from_str(line).unwrap();
+            assert_eq!(
+                serde_json::to_string(&parsed).unwrap(),
+                line,
+                "absent options stay absent"
             );
         }
     }

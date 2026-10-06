@@ -51,7 +51,7 @@ fi
 # array has grown and nobody re-ran this script.
 VERBS=(
   start add serve stop restart reload delete stock flock dogs enable disable
-  adopt rehome describe trigger signal whisper fold bleats lookout whistle
+  adopt rehome describe trigger signal whisper answer fold bleats lookout whistle
   reopen flush barks set get unset secret "secret set" "secret get"
   "secret unset" "secret list" ping kill save muster runtime dev import
   "import pm2" "import env" startup unstartup completions init style

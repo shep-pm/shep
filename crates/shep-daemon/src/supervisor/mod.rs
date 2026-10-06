@@ -33,8 +33,8 @@ use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
     ActionOutcome, ActionReply, BusEvent, DogSource, EnvValue, ExitInfo, LineOutcome, LineReply,
-    ProcessEventKind, ProcessInfo, SheepConfigView, SheepDrift, SignalOutcome, SignalReply, Smit,
-    sort_flock,
+    OpenQuestion, ProcessEventKind, ProcessInfo, QuestionId, SheepConfigView, SheepDrift,
+    SignalOutcome, SignalReply, Smit, sort_flock,
 };
 use shep_core::secrets::SecretView;
 use shep_core::selector::ProcessSelector;
@@ -80,6 +80,7 @@ mod actor_dog_tables;
 mod actor_exit;
 mod actor_lifecycle;
 mod actor_pane;
+mod actor_questions;
 mod actor_reload;
 mod actor_reload_done;
 mod actor_scale;
@@ -93,6 +94,7 @@ mod handle;
 mod handover;
 mod logs;
 mod manual;
+mod questions;
 mod reload;
 mod sheep;
 mod slot;
@@ -121,6 +123,7 @@ use logs::{flush_logs, reopen_logs, truncate_log};
 use logs::{spawn_flush_task, spawn_reopen_task};
 use manual::{ActionWaits, PendingAction};
 pub(crate) use manual::{CommandOrigin, ManualKind, PendingManual};
+use questions::Questions;
 #[cfg(unix)]
 pub(crate) use reload::CarriedReload;
 use reload::{LadderCap, ReloadJob};

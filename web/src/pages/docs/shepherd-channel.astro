@@ -124,6 +124,8 @@ channel = true`}</CodeBlock>
       <div class="row"><span><code>{`{"kind":"metric","name":"<n>","value":<num>}`}</code></span> <span data-label="Meaning">A custom metric sample. Currently logged by the daemon at debug level and nothing more. No dog reads it yet.</span></div>
       <div class="row"><span><code>{`{"kind":"action-reply","action":"<n>","body":"<t>","id":<num>}`}</code></span> <span data-label="Meaning">Your answer to a triggered action. <code>id</code> is optional: echo the one from the <code>action</code> message and shep matches your reply to that exact request.</span></div>
       <div class="row"><span><code>{`{"kind":"lamb-label","pid":<num>,"label":"<t>"}`}</code></span> <span data-label="Meaning">Names one of your child processes in <code>shep describe</code>. See <a href="#naming-your-lambs">naming your lambs</a>.</span></div>
+      <div class="row"><span><code>{`{"kind":"ask","question":"<id>","text":"<t>","takes":"yes-no"}`}</code></span> <span data-label="Meaning">Puts a question to the operator. <code>takes</code> is <code>yes-no</code> or <code>text</code>. See <a href="#asking-the-operator">asking the operator</a>.</span></div>
+      <div class="row"><span><code>{`{"kind":"withdraw","question":"<id>"}`}</code></span> <span data-label="Meaning">Takes a question back because you no longer need the answer.</span></div>
     </div>
 
     <h3 id="what-you-receive-daemon-writes-this">What you receive (daemon writes this)</h3>
@@ -131,6 +133,7 @@ channel = true`}</CodeBlock>
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
       <div class="row"><span><code>{`{"kind":"shutdown"}`}</code></span> <span data-label="Meaning">Sent instead of a stop signal when <code>shutdown_with_message = true</code>. The daemon still escalates to <code>SIGKILL</code> after <code>kill_timeout</code> if you take too long.</span></div>
       <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span data-label="Meaning">An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. <code>id</code> is always present: echo it on your reply.</span></div>
+      <div class="row"><span><code>{`{"kind":"answer","question":"<id>","answer":"<t>"}`}</code></span> <span data-label="Meaning">The operator answered a question you asked, optionally with <code>note</code>, <code>via</code> and <code>who</code>. See <a href="#asking-the-operator">asking the operator</a>.</span></div>
     </div>
 
     <h2 id="a-worked-example">A worked example</h2>
@@ -330,15 +333,73 @@ ID  NAME  OUTCOME     DETAIL
       you spawn the lamb.
     </p>
 
+    <h2 id="asking-the-operator">Asking the operator</h2>
+    <p>
+      An app that needs a person to decide something can ask and carry on.
+      The shepherd hands the answer back on the same descriptor.
+    </p>
+    <CodeBlock>{`{"kind":"ask","question":"koji-3","text":"Merge #12 into main?","takes":"yes-no"}`}</CodeBlock>
+    <ul>
+      <li><code>question</code> is your own id: 1 to 32 characters from <code>A-Z</code>, <code>a-z</code>, <code>0-9</code>, <code>.</code>, <code>_</code> and <code>-</code>. Ask again with an id still open and the text and kind are replaced.</li>
+      <li><code>text</code> is at most 1000 characters. Newlines are fine, other control characters are not.</li>
+      <li><code>takes</code> is <code>yes-no</code> or <code>text</code>.</li>
+    </ul>
+    <p>
+      A line that breaks a rule is dropped as malformed and logged. The
+      operator sees open questions in <code>shep describe</code> and in{" "}
+      <code>shep answer</code> with no arguments, and answers by naming the
+      sheep, the question and the words:
+    </p>
+    <CodeBlock>{`$ shep answer
+SHEEP  QUESTION  TAKES   ASKED  TEXT
+asker  q1        yes-no  2s     Ship it?\\nline two
+
+$ shep answer asker q1 no rebase first
+answered q1 on asker`}</CodeBlock>
+    <p>
+      For a <code>yes-no</code> question the first word is the answer and
+      the rest is the note. For a <code>text</code> question every word is
+      the answer. A dog can answer too, over the client socket:{" "}
+      <a href="/docs/writing-a-dog#questions">writing a dog</a> has the
+      request.
+    </p>
+    <CodeBlock>{`{"kind":"answer","question":"koji-3","answer":"no","note":"rebase first"}`}</CodeBlock>
+    <ul>
+      <li><code>answer</code> is exactly <code>yes</code> or <code>no</code> for <code>yes-no</code>, with an optional <code>note</code> of at most 500 characters. For <code>text</code> it is 1 to 1000 characters and has no note.</li>
+      <li><code>via</code> names the dog that delivered it, and is absent when the operator answered at the socket (64 characters at most).</li>
+      <li><code>who</code> is what the dog says about the person (128 at most).</li>
+    </ul>
+    <Callout variant="careful">
+      <code>via</code> and <code>who</code> are claims nobody checked. shep
+      passes them through unread, so they are fit for a log line. They do
+      not show who said yes. That is the delivering dog's job.
+    </Callout>
+    <p>
+      The first answer wins. A question closes when it is answered, when you
+      withdraw it, or when your process exits, so ask again at start. A{" "}
+      <code>shep daemon reload</code> keeps your open questions.
+    </p>
+    <p class="fine">
+      The shepherd holds 64 per process and drops the 65th. You owe no
+      reply to an answer. If your app is not reading its channel, the
+      question stays open. In Rust, <code>Shepherd::ask</code>,{" "}
+      <code>withdraw</code> and <code>on_answer</code> do the work, and
+      without an <code>on_answer</code> handler an answer is lost with a
+      warning on stderr.
+    </p>
+
     <h2 id="everything-you-write-here-is-also-public-on-the-bus">Everything you write here is also public on the bus</h2>
     <p>
       Every message you send on fd 3 (<code>ready</code>,{" "}
       <code>metric</code>, <code>action-reply</code>,{" "}
-      <code>lamb-label</code>) is republished on the daemon's event bus
+      <code>lamb-label</code>, <code>ask</code>, <code>withdraw</code>) is republished on the daemon's event bus
       under <code>channel.*</code> (<code>channel.ready</code>,{" "}
       <code>channel.metric</code>, <code>channel.action_reply</code>,{" "}
-      <code>channel.lamb_label</code>), its own topic alongside{" "}
-      <code>process.*</code> and the log topics. Anyone subscribed to{" "}
+      <code>channel.lamb_label</code>, <code>channel.ask</code>,{" "}
+      <code>channel.withdraw</code>), its own topic alongside{" "}
+      <code>process.*</code> and the log topics. Shep adds{" "}
+      <code>question.settled</code> when a question stops being open, with
+      its id and how it closed but never its text. Anyone subscribed to{" "}
       <code>channel.*</code> sees it, not just the operator who happened to
       send the trigger you were answering.
     </p>

@@ -710,6 +710,31 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>config.sheep.&lt;dog&gt;</code> to hear one change.
     </p>
 
+    <h2 id="questions">Questions</h2>
+    <p>
+      A sheep can ask the operator a question, and a dog can carry it to a
+      phone. Read the open ones from{" "}
+      <code>ProcessInfo::questions</code> on the <code>ListFlock</code> you
+      already make, then follow <code>channel.ask</code> and{" "}
+      <code>question.settled</code>, which carries the id and how it closed,
+      never the text.
+    </p>
+    <p>
+      <code>channel.ask</code> is the sheep's own line, republished before
+      the shepherd stores it. It fires for an ask the shepherd drops (a 65th
+      open question, or one from a replaced process) and again on every replace. It carries
+      only the sheep's id, so check <code>ListFlock</code> before posting.
+    </p>
+    <p>
+      To answer, send <code>Request::Answer {"{"} selector, question,
+      answer, note, via, who {"}"}</code>, which gets{" "}
+      <code>Response::Answered</code> or a refusal. Set{" "}
+      <code>via</code> to your own name and <code>who</code> to what your
+      sink says about the person. Shep checks neither, so proving who
+      answered is your job. A <code>NotFound</code> saying the sheep is not
+      reading its shepherd channel leaves the question open, so retry.
+    </p>
+
     <h2 id="publishing-a-per-sheep-schema">Publishing a per-sheep schema</h2>
     <p>
       A dog whose per-sheep table deserves a form in{" "}

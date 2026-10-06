@@ -41,7 +41,8 @@ pub(crate) use flock::FOLLOW_INTERVAL_FLOOR_SECONDS;
 #[allow(unused_imports)]
 pub use logs::DEFAULT_BLEAT_LINES;
 pub use sheep::{
-    ResetMode, SelectorArgs, ServeArgs, SignalArgs, StartArgs, StockArgs, TriggerArgs, WhisperArgs,
+    AnswerArgs, ResetMode, SelectorArgs, ServeArgs, SignalArgs, StartArgs, StockArgs, TriggerArgs,
+    WhisperArgs,
 };
 pub use store::{KvGetArgs, KvSetArgs, KvUnsetArgs, SecretArgs, SecretCommand};
 pub use system::{

@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::ChildMessage;
-use crate::protocol::request::ProcessInfo;
+use crate::protocol::request::{ProcessInfo, Settled};
+use crate::protocol::{ChildMessage, QuestionId};
 
 /// What happened to a sheep
 // wire format: changing existing variants is a breaking change
@@ -115,6 +115,23 @@ pub enum BusEvent {
         /// The message, exactly as it came off fd 3.
         message: ChildMessage,
     },
+    /// A question a sheep had open is no longer open. Published under
+    /// `question.settled`.
+    ///
+    /// Carries the question's id and how it ended, never its text or the
+    /// answer: the bus is a broadcast, and an answer can be a secret.
+    QuestionSettled {
+        /// The sheep that asked.
+        id: u32,
+        /// Name of the sheep that asked.
+        name: String,
+        /// The question that settled.
+        question: QuestionId,
+        /// How it stopped being open.
+        settled: Settled,
+        /// Unix millis
+        at_ms: u64,
+    },
     /// The bounded queue dropped this many events for this subscriber
     Dropped {
         /// Dropped-event count since last notice
@@ -200,7 +217,10 @@ impl BusEvent {
                 ChildMessage::Metric { .. } => "channel.metric",
                 ChildMessage::ActionReply { .. } => "channel.action_reply",
                 ChildMessage::LambLabel { .. } => "channel.lamb_label",
+                ChildMessage::Ask { .. } => "channel.ask",
+                ChildMessage::Withdraw { .. } => "channel.withdraw",
             },
+            Self::QuestionSettled { .. } => "question.settled",
             Self::Dropped { .. } => "daemon.dropped",
             Self::DaemonShutdown => "daemon.shutdown",
             // Built rather than named. `config.dog.` is the prefix a
@@ -222,8 +242,8 @@ impl BusEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::LambLabel;
     use crate::protocol::request::{ExitInfo, ProcessInfo};
+    use crate::protocol::{LambLabel, QuestionId, QuestionText, Takes};
     use crate::status::ProcStatus;
 
     /// The comment above this enum said a new variant is not free because
@@ -286,6 +306,7 @@ mod tests {
                     cpu_ms: None,
                     dog: None,
                     lambs: None,
+                    questions: None,
                     // `handle_exited` sets `last_exit` before deciding what
                     // to do with the exit, so this `Exit` row carries the
                     // outcome it announces.
@@ -398,8 +419,37 @@ mod tests {
             dog: "jobs".to_string(),
             sheep: "web".to_string(),
         });
+        // `settled` nests its own `kind` inside `data`, beside the
+        // question's id.
+        events.push(BusEvent::QuestionSettled {
+            id: 3,
+            name: "web".to_string(),
+            question: QuestionId::new("deploy-1").unwrap(),
+            settled: Settled::Answered {
+                via: Some("discord".to_string()),
+                who: Some("ops".to_string()),
+            },
+            at_ms: 1_700_000_000_000,
+        });
 
         insta::assert_json_snapshot!("bus_event_wire_v11", events);
+    }
+
+    #[test]
+    fn a_settled_question_has_its_topic_and_round_trips() {
+        let event = BusEvent::QuestionSettled {
+            id: 3,
+            name: "web".to_string(),
+            question: QuestionId::new("deploy-1").unwrap(),
+            settled: Settled::Answered {
+                via: Some("discord".to_string()),
+                who: None,
+            },
+            at_ms: 1_700_000_000_000,
+        };
+        assert_eq!(event.topic(), "question.settled");
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(serde_json::from_str::<BusEvent>(&json).unwrap(), event);
     }
 
     #[test]
@@ -484,6 +534,20 @@ mod tests {
                 },
                 "channel.lamb_label",
             ),
+            (
+                ChildMessage::Ask {
+                    question: QuestionId::new("q1").unwrap(),
+                    text: QuestionText::new("Merge?").unwrap(),
+                    takes: Takes::YesNo,
+                },
+                "channel.ask",
+            ),
+            (
+                ChildMessage::Withdraw {
+                    question: QuestionId::new("q1").unwrap(),
+                },
+                "channel.withdraw",
+            ),
         ] {
             let event = BusEvent::Channel {
                 id: 3,
@@ -511,6 +575,14 @@ mod tests {
             ChildMessage::LambLabel {
                 pid: 1,
                 label: LambLabel::new("").unwrap(),
+            },
+            ChildMessage::Ask {
+                question: QuestionId::new("q1").unwrap(),
+                text: QuestionText::new("Merge?").unwrap(),
+                takes: Takes::Text,
+            },
+            ChildMessage::Withdraw {
+                question: QuestionId::new("q1").unwrap(),
             },
         ] {
             let topic = BusEvent::Channel { id: 1, message }.topic();

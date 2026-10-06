@@ -5,6 +5,7 @@ use std::io::{IsTerminal, Write};
 
 use cli::{AdoptArgs, Cli, Commands, Format, ImportCommand};
 use commands::admin;
+use commands::answer;
 use commands::bleats;
 use commands::dev;
 use commands::dogs;
@@ -381,6 +382,10 @@ pub(crate) async fn run(
         },
         Commands::Trigger(ref args) => match connect_client(&mut streams, &paths, guard).await {
             Ok(client) => trigger::trigger(&client, &mut streams, args).await,
+            Err(code) => code,
+        },
+        Commands::Answer(ref args) => match connect_client(&mut streams, &paths, guard).await {
+            Ok(client) => answer::answer(&client, &mut streams, args).await,
             Err(code) => code,
         },
         Commands::Signal(ref args) => match connect_client(&mut streams, &paths, guard).await {

@@ -25,7 +25,9 @@ use super::enrichment::{
     dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats,
 };
 use super::error::rpc_error;
-use super::selector_verbs::{not_found, selector_call, selector_of, signal_request, trigger};
+use super::selector_verbs::{
+    answer_request, not_found, selector_call, selector_of, signal_request, trigger,
+};
 use super::walk::{reload_request, restart_request};
 
 /// Dispatches one request envelope against `ctx`, returning what the
@@ -229,6 +231,14 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             params,
         } => trigger(id, selector, action, params, ctx).await,
         Request::Signal { selector, signal } => signal_request(id, selector, signal, ctx).await,
+        Request::Answer {
+            selector,
+            question,
+            answer,
+            note,
+            via,
+            who,
+        } => answer_request(id, selector, question, answer, note, via, who, ctx).await,
         Request::SendLine { selector, line } => {
             // Refused here, not silently split by the writer: a line
             // carrying a newline would be delivered as two commands where the

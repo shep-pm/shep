@@ -119,7 +119,7 @@ fn debug_redacts_a_carried_sheeps_environment() {
          CarriedFds { out_pipe: Some(11), err_pipe: Some(12), out_log: Some(13), err_log: \
          Some(14), stdin: Some(15), channel: Some(16) }, pending_delete: Some(false), \
          manual: None, reload: Some(None), ready_failed: Some(false), restart_due: None, \
-         dog: None, pending: None, pending_reidentifies: None, app: AppConfig { \
+         dog: None, pending: None, pending_reidentifies: None, questions: None, app: AppConfig { \
          name: \"web\", script: \"./srv\", env: <1 vars>, .. } }"
     );
     // The whole blob too, which holds fields of its own.

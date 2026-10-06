@@ -33,6 +33,7 @@ mod adopt;
 mod adopt_restart;
 #[cfg(unix)]
 mod adopt_swap;
+mod answers;
 mod config_load;
 mod config_promote;
 mod config_rearm;
@@ -45,6 +46,7 @@ mod flush;
 #[cfg(unix)]
 mod handover;
 mod interleaving;
+mod questions;
 mod readiness;
 mod reload_bus;
 mod reload_drain;

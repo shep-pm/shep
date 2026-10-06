@@ -30,6 +30,8 @@
 //!   whatever had not been written yet.
 //! - An unhandled shutdown warns on stderr. This crate never stops a
 //!   process on its own.
+//! - A question is answered at most once. An answer with no `on_answer`
+//!   handler warns on stderr and is lost.
 
 #![doc(test(attr(deny(warnings))))]
 // Not `forbid`: `endpoint` needs unsafe to reach the channel. Two blocks
@@ -37,6 +39,8 @@
 // Windows peeks a pipe's buffer. Each carries its own `// SAFETY:` comment.
 #![deny(unsafe_code)]
 
+#[cfg(feature = "client")]
+mod ask;
 #[cfg(feature = "client")]
 mod channel;
 #[cfg(feature = "client")]
@@ -47,6 +51,7 @@ mod endpoint;
 mod error;
 #[cfg(feature = "client")]
 mod outbox;
+mod question;
 #[cfg(feature = "client")]
 mod serve;
 #[cfg(feature = "client")]
@@ -56,11 +61,12 @@ mod wire;
 #[cfg(feature = "client")]
 pub use channel::Channel;
 #[cfg(feature = "client")]
-pub use dispatch::{ActionHandler, ShutdownHandler};
+pub use dispatch::{ActionHandler, AnswerHandler, ShutdownHandler};
 #[cfg(feature = "client")]
 pub use endpoint::{Endpoint, FD_VAR, PIPE_VAR, VERSION_VAR, discover};
 #[cfg(feature = "client")]
 pub use error::ChannelError;
+pub use question::{Answer, QuestionError, QuestionId, QuestionText, Takes, check_via, check_who};
 #[cfg(feature = "client")]
 pub use serve::{Shepherd, serve};
 pub use wire::{CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, ShepherdMessage};

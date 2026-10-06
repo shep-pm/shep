@@ -620,6 +620,11 @@ impl<R: ProcessRunner> Actor<R> {
                 // Restored verbatim, though always `None` in practice: a sheep
                 // with a pid is not `WaitingRestart`.
                 restart_due: carried.restart_due(),
+                // Restored: the process that asked them crossed the exec.
+                // How earlier ones closed was not carried.
+                questions: Questions::reopened(
+                    carried.questions().unwrap_or_default().iter().cloned(),
+                ),
                 ..SheepSlot::new(entry)
             },
         );

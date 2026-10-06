@@ -319,6 +319,19 @@ ID  NAME    OUTCOME   DETAIL
       It has a page to itself:{" "}
       <a href="/docs/shepherd-channel">the shepherd channel</a>.
     </p>
+
+    <h2 id="an-answer-to-a-question">An answer to a question</h2>
+    <p>
+      The fourth verb in this group goes the other way. An app can ask the
+      operator a question over its shepherd channel, and{" "}
+      <code>shep answer &lt;selector&gt; &lt;question&gt; &lt;answer&gt;</code>{" "}
+      is how the operator replies. With no arguments it lists every open
+      question in the flock. The selector must name one sheep, so{" "}
+      <code>all</code>, a pattern and a fold are refused. The whole story is
+      under{" "}
+      <a href="/docs/shepherd-channel#asking-the-operator">asking the
+      operator</a>.
+    </p>
 </article>
 </DocsLayout>
 

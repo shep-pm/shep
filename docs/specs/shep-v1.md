@@ -277,8 +277,12 @@ of that exposure, so the socket would buy a round trip for nothing.
   server-side; bounded per-subscriber queue, drop-oldest, `Dropped{count}`
   notice event. Topics: `process.*` (lifecycle), `log.out`, `log.err`,
   `channel.*` (shepherd-channel messages), `daemon.*`. `channel.*` is
-  `channel.ready`, `channel.metric`, `channel.action_reply` — every message
-  kind a sheep writes on fd 3. The outbound half (`shutdown`, `action`) is
+  `channel.ready`, `channel.metric`, `channel.action_reply`,
+  `channel.lamb_label`, `channel.ask`, `channel.withdraw` — every message
+  kind a sheep writes on fd 3. `question.settled` is shep's own event, not a
+  republish: sheep id and name, question id, `settled` (`answered` with
+  optional `via` and `who`, `withdrawn` or `gone`) and `at_ms`, never the
+  question text or the answer. The outbound half (`shutdown`, `action`) is
   deliberately absent: those are already reported to their caller, by
   `process.stop` and by `Response::Triggered`.
 - Stability: every frame type has committed byte fixtures + insta snapshots
@@ -293,11 +297,18 @@ of that exposure, so the socket would buy a round trip for nothing.
 
 - **Shepherd channel** (extra pipe fd, newline JSON, language-agnostic):
   child→daemon `{"kind":"ready"}`, `{"kind":"metric",...}`,
-  `{"kind":"action-reply",...}`, `{"kind":"lamb-label",...}`; daemon→child
-  `{"kind":"shutdown"}`, `{"kind":"action",...}`. Fd number exported as
+  `{"kind":"action-reply",...}`, `{"kind":"lamb-label",...}`,
+  `{"kind":"ask",...}`, `{"kind":"withdraw",...}`; daemon→child
+  `{"kind":"shutdown"}`, `{"kind":"action",...}`, `{"kind":"answer",...}`. Fd number exported as
   `SHEP_CHANNEL_FD`, wire version as `SHEP_CHANNEL_VERSION` (`1`). A
   `lamb-label` names one of the app's own lambs for `describe`; it is
-  additive, and an older daemon drops it as malformed. An `action` carries
+  additive, and an older daemon drops it as malformed. `ask` puts a question
+  to the operator under the app's own `question` id, with `text` and `takes`
+  (`yes-no` or `text`); `withdraw` takes it back; `answer` brings the
+  operator's reply, with `note`, `via` and `who` when there are any. The
+  shepherd keeps at most 64 open questions per process, in memory, and
+  carries them across a handover; `via` and `who` are claims it never
+  checks. An `action` carries
   `name` and `id`, and `params` when the operator supplied any — the `params`
   key is absent otherwise, which is what keeps it additive (§9). `id` is the
   dispatch's correlation token; an app that echoes it back on its
@@ -403,7 +414,9 @@ Core verbs: `start` (script | Flockfile | `-` stdin JSON), `stop`, `restart`,
 rotation; also SIGUSR2 to the daemon), `muster` (save + resurrect pair:
 `shep save` / `shep muster` restores; `resurrect` hidden alias),
 `signal`, `sendline`, `trigger <target> <action> [params]` (custom actions via
-the shepherd channel `action`/`action-reply` messages), `enable`/`disable`
+the shepherd channel `action`/`action-reply` messages), `answer [<target>
+<question> <words>...]` (answers a question a sheep asked over the channel;
+bare, lists the open ones), `enable`/`disable`
 (dogs), `dogs` (list dogs), `barks` (recent alert history), `fold <name>`
 (list a fold), `lookout` (TUI; `dash` alias), `whistle` (MCP stdio), `serve`,
 `startup`/`unstartup`, `set`/`get`/`unset`, `import`, `dev`, `runtime`,

@@ -179,6 +179,25 @@ pub(super) async fn run_sheep<P: RunningProcess>(
                                     .send(Msg::LambLabel { root_pid, pid, label })
                                     .await;
                             }
+                            ChildMessage::Ask {
+                                question,
+                                text,
+                                takes,
+                            } => {
+                                // Stamped here, so a busy actor does not age it.
+                                let question =
+                                    OpenQuestion::new(question, text, takes, crate::now_ms());
+                                let root_pid = proc.pid();
+                                let _ = actor_tx
+                                    .send(Msg::Ask { id, root_pid, question })
+                                    .await;
+                            }
+                            ChildMessage::Withdraw { question } => {
+                                let root_pid = proc.pid();
+                                let _ = actor_tx
+                                    .send(Msg::Withdraw { id, root_pid, question })
+                                    .await;
+                            }
                         }
                     }
                     None => from_child_open = false,

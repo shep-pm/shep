@@ -38,11 +38,15 @@ pub use events::{BusEvent, ProcessEventKind};
 pub use frame::ServerFrame;
 pub use request::{
     ActionOutcome, ActionReply, DogSectionToml, DogSource, EnvValue, Envelope, ExitInfo, Hello,
-    HelloAck, HelloReply, HostUsage, Lamb, LineOutcome, LineReply, ProcessInfo, ProcessInfoBuilder,
-    Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView,
-    SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
+    HelloAck, HelloReply, HostUsage, Lamb, LineOutcome, LineReply, OpenQuestion, ProcessInfo,
+    ProcessInfoBuilder, Reply, Request, Response, RpcError, RpcErrorCode, SelectorSpec, Settled,
+    SheepApplied, SheepConfigView, SheepDrift, SheepRefusal, SignalOutcome, SignalReply, Smit,
+    SmitError, sort_flock,
 };
-pub use shep_channel::{CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, ShepherdMessage};
+pub use shep_channel::{
+    Answer, CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, QuestionError, QuestionId,
+    QuestionText, ShepherdMessage, Takes, check_via, check_who,
+};
 pub use wire::{MAX_FRAME_BYTES, WireError, codec, decode_frame, encode_frame, reply_id};
 
 /// The shepherd channel's wire types. Moved to the `shep-channel` crate;

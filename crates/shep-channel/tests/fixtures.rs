@@ -14,7 +14,9 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use shep_channel::{ChildMessage, LambLabel, ShepherdMessage};
+use shep_channel::{
+    Answer, ChildMessage, LambLabel, QuestionId, QuestionText, ShepherdMessage, Takes,
+};
 
 mod common;
 
@@ -86,6 +88,20 @@ fn child_messages_match_their_fixtures() {
                 label: LambLabel::new("").expect("an empty label clears"),
             },
         ),
+        (
+            "child-ask",
+            ChildMessage::Ask {
+                question: QuestionId::new("koji-3").expect("a valid id"),
+                text: QuestionText::new("Merge #12?").expect("a valid text"),
+                takes: Takes::YesNo,
+            },
+        ),
+        (
+            "child-withdraw",
+            ChildMessage::Withdraw {
+                question: QuestionId::new("koji-3").expect("a valid id"),
+            },
+        ),
     ];
     for (name, value) in cases {
         check(name, &value);
@@ -111,6 +127,22 @@ fn shepherd_messages_match_their_fixtures() {
                 params: Some("debug".into()),
                 id: 8,
             },
+        ),
+        (
+            "shepherd-answer",
+            ShepherdMessage::Answer(
+                Answer::new(QuestionId::new("koji-3").expect("a valid id"), "no")
+                    .with_note("rebase first")
+                    .with_via("discord")
+                    .with_who("<@81234>"),
+            ),
+        ),
+        (
+            "shepherd-answer-bare",
+            ShepherdMessage::Answer(Answer::new(
+                QuestionId::new("koji-3").expect("a valid id"),
+                "yes",
+            )),
         ),
     ];
     for (name, value) in cases {

@@ -110,13 +110,15 @@ pub(super) async fn run_group(
                 | SupervisorError::IsADog(_)
                 | SupervisorError::InvalidEnv(_)
                 | SupervisorError::InvalidField(_)
-                | SupervisorError::Overrides(_)),
+                | SupervisorError::Overrides(_)
+                | SupervisorError::QuestionNotOpen(_)
+                | SupervisorError::InvalidAnswer(_)),
             ) => {
                 // A restart touches no log files, starts no reload, scales
-                // nothing and registers no batch, names no dog, field or
-                // override, so none of these nine can arrive here. Named
-                // rather than swept into a catch-all, so a variant this path
-                // can produce still fails to compile.
+                // nothing and registers no batch, names no dog, field,
+                // override or question, so none of these eleven can arrive
+                // here. Named rather than swept into a catch-all, so a
+                // variant this path can produce still fails to compile.
                 tracing::warn!(name, %err, "watch-triggered restart reported an unrelated failure");
             }
             Err(err @ SupervisorError::EngineStopped) => {

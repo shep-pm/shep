@@ -7,10 +7,10 @@
 //! are alias and visibility pins rather than grammar ones.
 
 use super::{
-    AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, DaemonArgs, DevArgs, DogArgs, DogsArgs,
-    EnableArgs, FlockArgs, FlushArgs, FoldArgs, ImportArgs, InitArgs, KvGetArgs, KvSetArgs,
-    KvUnsetArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs, ServeArgs,
-    SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs, TriggerArgs, WhisperArgs,
+    AdoptArgs, AnswerArgs, BarksArgs, BleatsArgs, CompletionArgs, DaemonArgs, DevArgs, DogArgs,
+    DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, ImportArgs, InitArgs, KvGetArgs,
+    KvSetArgs, KvUnsetArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs,
+    ServeArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs, TriggerArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -240,6 +240,13 @@ pub enum Commands {
     /// to the app verbatim, on its own shepherd-channel wire, for the app
     /// itself to recognize or refuse.
     Trigger(TriggerArgs),
+    /// Answer a question a sheep has asked, or list the open ones.
+    ///
+    /// A sheep asks over its shepherd channel and waits. With no arguments
+    /// this lists every open question. `shep answer web q1 yes` answers one:
+    /// a yes-no question takes `yes` or `no` and an optional note after it, a
+    /// text question takes the rest of the line as the answer.
+    Answer(AnswerArgs),
     /// Send a unix signal to matched sheep.
     ///
     /// Delivered to each sheep's own process, not to its process group — the

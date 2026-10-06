@@ -56,7 +56,13 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 4340 on 2026-09-30 for "Asking for the shepherd channel":
   // `shep-channel: true` is a new line a dog author has to be told about,
   // and the page had 15 words of headroom.
-  "writing-a-dog": 4450, // 4445
+  //
+  // Raised from 4450 on 2026-10-05 for "Questions": a dog that carries a
+  // question or answers one needs the request, the two events, that a
+  // `channel.ask` can name a question the shepherd dropped, and which
+  // refusal to retry. That is new dog-facing surface, not prose to trim
+  // back out.
+  "writing-a-dog": 4650, // 4600
   overrides: 3380, // 3250
   // Raised from 3240 on 2026-09-27 for "A sheep's dogs row": the sub-screen
   // and the per-sheep table pane are new operator-facing surface, not
@@ -80,7 +86,12 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.
-  "shepherd-channel": 1890, // 1804
+  //
+  // Raised from 1890 on 2026-10-05 for "Asking the operator": `ask`,
+  // `withdraw` and `answer` are three new messages an app author has to be
+  // told about, with a grammar each, so the page tracks the feature count.
+  // The section was cut once before the ceiling moved.
+  "shepherd-channel": 2300, // 2248
   "from-pm2": 1720, // 1659
   "boot-order": 1670, // 1586
   "talking-to-a-sheep": 1620, // 1534

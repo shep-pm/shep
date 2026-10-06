@@ -7,13 +7,15 @@
 //! payload each group renders: [`process`] for a sheep's own
 //! `ProcessInfo` rows, [`lambs`] for its lamb tree, [`dogs`] for the
 //! dog-specific ones, [`toolkit`] for the paint/cell rules both share,
-//! [`lifecycle`] for one-shot verb results, [`replies`] for a daemon
-//! action's reply, [`secrets`] for the KV store and `shep secret`.
+//! [`questions`] for what a sheep asked the operator, [`lifecycle`] for
+//! one-shot verb results, [`replies`] for a daemon action's reply,
+//! [`secrets`] for the KV store and `shep secret`.
 
 mod dogs;
 mod lambs;
 mod lifecycle;
 mod process;
+mod questions;
 mod replies;
 mod secrets;
 mod toolkit;
@@ -22,6 +24,7 @@ pub use dogs::*;
 pub use lambs::*;
 pub use lifecycle::*;
 pub use process::*;
+pub use questions::*;
 pub use replies::*;
 pub use secrets::*;
 pub(crate) use toolkit::*;
@@ -237,6 +240,8 @@ pub(crate) mod tests {
         assert_priorities_match_headers::<ImportEnvRows>(&["KEY", "STORE"]);
         assert_priorities_match_headers::<StartupSteps>(&["TARGET", "RESULT"]);
         assert_priorities_match_headers::<TriggeredRows>(&["ID", "NAME", "OUTCOME"]);
+        assert_priorities_match_headers::<QuestionRows>(&["SHEEP", "QUESTION", "TEXT"]);
+        assert_priorities_match_headers::<DescribedQuestionRows>(&["QUESTION", "TEXT"]);
         assert_priorities_match_headers::<SignalledRows>(&["ID", "NAME", "OUTCOME"]);
         assert_priorities_match_headers::<SentLineRows>(&["ID", "NAME", "OUTCOME"]);
         assert_priorities_match_headers::<BarkRows>(&["WHEN", "RULE", "SUBJECT"]);

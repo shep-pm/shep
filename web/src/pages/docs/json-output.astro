@@ -225,6 +225,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         <a href="/docs/shepherd-channel#naming-your-lambs">named it</a>.
       </li>
       <li>
+        <code>questions</code> is absent unless the sheep has one open, then
+        an array of <code>question</code>, <code>text</code>,{" "}
+        <code>takes</code> and <code>asked_at_ms</code>.
+      </li>
+      <li>
         <code>last_exit</code> is <code>null</code> until a sheep's process
         has stopped at least once under this daemon, and afterwards holds
         one of two shapes: <code>{'{"code": 1, "signal": null}'}</code> for a

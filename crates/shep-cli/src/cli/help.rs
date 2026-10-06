@@ -36,7 +36,10 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
         "Survive reboots",
         &["save", "muster", "startup", "unstartup"],
     ),
-    ("Talk to a sheep", &["trigger", "signal", "whisper"]),
+    (
+        "Talk to a sheep",
+        &["trigger", "signal", "whisper", "answer"],
+    ),
     (
         "The shepherd",
         &[
@@ -72,7 +75,7 @@ Getting started
 Run things       start add serve stop restart reload delete stock
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
-Talk to a sheep  trigger signal whisper
+Talk to a sheep  trigger signal whisper answer
 The shepherd     ping kill reopen flush set get unset secret
 Dogs and agents  dogs enable disable adopt rehome whistle
 Foreground runs  runtime dev

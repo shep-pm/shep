@@ -330,6 +330,24 @@ pub(crate) enum Command {
         /// task of its own (see [`Actor::begin_send_line`]).
         reply: oneshot::Sender<Result<Vec<LineReply>, SupervisorError>>,
     },
+    /// Answers one question one sheep has open, on its shepherd channel.
+    /// See [`Actor::handle_answer`].
+    Answer {
+        /// Which sheep. Refused unless it can name only one.
+        selector: ProcessSelector,
+        /// The question's id, unchecked: the store checks it.
+        question: String,
+        /// The answer, checked against what the question takes.
+        answer: String,
+        /// A note on a yes-or-no answer.
+        note: Option<String>,
+        /// The channel the answer came through.
+        via: Option<String>,
+        /// Who answered.
+        who: Option<String>,
+        /// Answers with the answered sheep's id and name, on the actor loop.
+        reply: oneshot::Sender<Result<(u32, String), SupervisorError>>,
+    },
     /// Graceful engine shutdown: kill ladder on every online sheep, then stop.
     Shutdown {
         /// Answers once every online sheep is terminal.
@@ -377,6 +395,28 @@ pub(crate) enum Msg {
         pid: u32,
         /// The label, empty to clear.
         label: shep_core::protocol::LambLabel,
+    },
+    /// The sheep's shepherd channel asked the operator a question.
+    ///
+    /// Keyed by the sending process's pid as [`Self::LambLabel`] is, so an
+    /// ask the previous process sent never lands on its successor.
+    Ask {
+        /// The sheep's id.
+        id: u32,
+        /// The pid of the process whose channel carried it.
+        root_pid: u32,
+        /// The question, stamped when the sheep task read it.
+        question: OpenQuestion,
+    },
+    /// The sheep's shepherd channel took back a question it asked. Keyed as
+    /// [`Self::Ask`] is.
+    Withdraw {
+        /// The sheep's id.
+        id: u32,
+        /// The pid of the process whose channel carried it.
+        root_pid: u32,
+        /// The question taken back.
+        question: QuestionId,
     },
     /// One swap of a reload ran out of time.
     ///

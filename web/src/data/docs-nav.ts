@@ -362,7 +362,7 @@ export const docsNav: DocsNavGroup[] = [
         label: "The shepherd channel",
         plain: "app IPC",
         summary:
-          "A plain file descriptor carrying newline JSON: readiness, custom metrics, and answering shep trigger.",
+          "A plain file descriptor carrying newline JSON: readiness, custom metrics, answering shep trigger, and asking the operator.",
         built: true,
         source: "docs/shepherd-channel.md",
         spec: { anchor: "7-readiness--health", label: "§7 Readiness & health" },

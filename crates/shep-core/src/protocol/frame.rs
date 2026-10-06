@@ -64,6 +64,7 @@ mod tests {
                 cpu_ms: None,
                 dog: None,
                 lambs: None,
+                questions: None,
                 last_exit: None,
                 smit: None,
                 instance: None,

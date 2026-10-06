@@ -1,6 +1,6 @@
 ---
-source: crates/shep-core/src/protocol/request/verbs.rs
-assertion_line: 975
+source: crates/shep-core/src/protocol/request/request_wire.rs
+assertion_line: 341
 expression: requests
 ---
 [
@@ -509,6 +509,22 @@ expression: requests
       "name": "web",
       "dog": "jobs",
       "table": null
+    }
+  },
+  {
+    "id": 38,
+    "deadline_ms": null,
+    "body": {
+      "kind": "answer",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      },
+      "question": "deploy-1",
+      "answer": "yes",
+      "note": "after the freeze",
+      "via": "discord",
+      "who": "ada"
     }
   }
 ]

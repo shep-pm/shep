@@ -11,7 +11,10 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use shep_channel::{CHANNEL_VERSION, ChildMessage, LambLabel, ShepherdMessage};
+use shep_channel::{
+    Answer, CHANNEL_VERSION, ChildMessage, LambLabel, QuestionId, QuestionText, ShepherdMessage,
+    Takes,
+};
 
 mod common;
 
@@ -57,6 +60,16 @@ fn child_kind(message: &ChildMessage) -> Kind {
             doc: "KindLambLabel names one of the app's own child processes.",
             wire: "lamb-label",
         },
+        ChildMessage::Ask { .. } => Kind {
+            ident: "KindAsk",
+            doc: "KindAsk is a question the app puts to the operator.",
+            wire: "ask",
+        },
+        ChildMessage::Withdraw { .. } => Kind {
+            ident: "KindWithdraw",
+            doc: "KindWithdraw takes back a question the app asked.",
+            wire: "withdraw",
+        },
     }
 }
 
@@ -74,6 +87,11 @@ fn shepherd_kind(message: &ShepherdMessage) -> Kind {
             ident: "KindAction",
             doc: "KindAction is the shepherd dispatching one custom action.",
             wire: "action",
+        },
+        ShepherdMessage::Answer(_) => Kind {
+            ident: "KindAnswer",
+            doc: "KindAnswer is the operator's answer to one question.",
+            wire: "answer",
         },
     }
 }
@@ -97,6 +115,14 @@ fn child_samples() -> Vec<ChildMessage> {
             pid: 4312,
             label: LambLabel::new("worker 1").expect("a valid label"),
         },
+        ChildMessage::Ask {
+            question: QuestionId::new("koji-3").expect("a valid id"),
+            text: QuestionText::new("Merge #12?").expect("a valid text"),
+            takes: Takes::YesNo,
+        },
+        ChildMessage::Withdraw {
+            question: QuestionId::new("koji-3").expect("a valid id"),
+        },
     ]
 }
 
@@ -109,6 +135,12 @@ fn shepherd_samples() -> Vec<ShepherdMessage> {
             params: Some("now".into()),
             id: 7,
         },
+        ShepherdMessage::Answer(
+            Answer::new(QuestionId::new("koji-3").expect("a valid id"), "no")
+                .with_note("rebase first")
+                .with_via("discord")
+                .with_who("<@81234>"),
+        ),
     ]
 }
 
@@ -116,7 +148,7 @@ fn shepherd_samples() -> Vec<ShepherdMessage> {
 /// metric of zero and an id of zero.
 #[rustfmt::skip]
 const CHILD_FIELDS: &[Field] = &[
-    Field { ident: "Kind",   ty: "string",   tag: "kind",             kinds: &["ready", "metric", "action-reply", "lamb-label"] },
+    Field { ident: "Kind",   ty: "string",   tag: "kind",             kinds: &["ready", "metric", "action-reply", "lamb-label", "ask", "withdraw"] },
     Field { ident: "Name",   ty: "*string",  tag: "name,omitempty",   kinds: &["metric"] },
     Field { ident: "Value",  ty: "*float64", tag: "value,omitempty",  kinds: &["metric"] },
     Field { ident: "Action", ty: "*string",  tag: "action,omitempty", kinds: &["action-reply"] },
@@ -124,16 +156,24 @@ const CHILD_FIELDS: &[Field] = &[
     Field { ident: "ID",     ty: "*uint64",  tag: "id,omitempty",     kinds: &["action-reply"] },
     Field { ident: "PID",    ty: "*uint32",  tag: "pid,omitempty",    kinds: &["lamb-label"] },
     Field { ident: "Label",  ty: "*string",  tag: "label,omitempty",  kinds: &["lamb-label"] },
+    Field { ident: "Question", ty: "*string",  tag: "question,omitempty", kinds: &["ask", "withdraw"] },
+    Field { ident: "Text",     ty: "*string",  tag: "text,omitempty",     kinds: &["ask"] },
+    Field { ident: "Takes",    ty: "*string",  tag: "takes,omitempty",    kinds: &["ask"] },
 ];
 
 /// `Params` is a pointer because an absent one and an empty one are
 /// different messages.
 #[rustfmt::skip]
 const SHEPHERD_FIELDS: &[Field] = &[
-    Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action"] },
+    Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action", "answer"] },
     Field { ident: "Name",   ty: "*string", tag: "name,omitempty",    kinds: &["action"] },
     Field { ident: "Params", ty: "*string", tag: "params,omitempty",  kinds: &["action"] },
     Field { ident: "ID",     ty: "*uint64", tag: "id,omitempty",      kinds: &["action"] },
+    Field { ident: "Question", ty: "*string", tag: "question,omitempty", kinds: &["answer"] },
+    Field { ident: "Answer",   ty: "*string", tag: "answer,omitempty",   kinds: &["answer"] },
+    Field { ident: "Note",     ty: "*string", tag: "note,omitempty",     kinds: &["answer"] },
+    Field { ident: "Via",      ty: "*string", tag: "via,omitempty",      kinds: &["answer"] },
+    Field { ident: "Who",      ty: "*string", tag: "who,omitempty",      kinds: &["answer"] },
 ];
 
 const CHILD_DOC: &str = "\

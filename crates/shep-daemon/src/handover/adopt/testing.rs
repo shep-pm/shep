@@ -43,6 +43,7 @@ pub(super) fn carried_slot(instance: u32, fds: CarriedFds) -> CarriedSheep {
         pending_reidentifies: Some(false),
         ready_failed: Some(false),
         restart_due: None,
+        questions: None,
         app: crate::testing::app_with("web", |_| {}).into_config(),
     }
 }

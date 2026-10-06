@@ -33,6 +33,7 @@ use assert_cmd::cargo::CommandCargoExt as _;
 use tempfile::TempDir;
 
 mod adopt;
+mod answer;
 mod assertions;
 mod available_dogs;
 mod constants;
