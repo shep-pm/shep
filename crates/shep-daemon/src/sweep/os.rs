@@ -35,12 +35,11 @@ impl LambSweep for StatsSweep {
     #[cfg(unix)]
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32> {
         let pids: Vec<u32> = snapshot.pids().collect();
-        let booted_secs = (crate::now_ms() / 1000).saturating_sub(sysinfo::System::uptime());
         unix::survivors_in(
             snapshot,
             &crate::proc_table::read_pids(&pids),
             std::process::id(),
-            booted_secs,
+            crate::proc_table::ProcInstant::earliest_start(),
         )
     }
 
@@ -70,7 +69,7 @@ mod unix {
     use nix::unistd::Pid;
 
     use super::{LambSignal, LambSnapshot, SignalError};
-    use crate::proc_table::PidReading;
+    use crate::proc_table::{PidReading, ProcInstant};
 
     /// The positive pid `kill` may name, or why `pid` is never a lamb.
     ///
@@ -82,23 +81,17 @@ mod unix {
         }
     }
 
-    /// How far before `booted_secs` a start time may read and still count:
-    /// both it and the start time are floored seconds.
-    const BOOT_SLACK_SECS: u64 = 2;
-
     /// The pids in `snapshot` that `readings` show are still the processes
     /// it saw.
     ///
-    /// A start time before `booted_secs` is not an epoch second at all: Linux
-    /// without a `btime` line makes sysinfo report one near the uptime, which
-    /// would pass every pid.
+    /// A start before `earliest` is not a real start: an epoch clock read
+    /// before boot would pass every pid.
     pub(super) fn survivors_in(
         snapshot: &LambSnapshot,
         readings: &HashMap<u32, PidReading>,
         own: u32,
-        booted_secs: u64,
+        earliest: ProcInstant,
     ) -> Vec<u32> {
-        let earliest = booted_secs.saturating_sub(BOOT_SLACK_SECS);
         snapshot
             .pids()
             .filter(|&pid| lamb_pid(pid, own).is_ok())
@@ -106,7 +99,7 @@ mod unix {
                 readings.get(pid).is_some_and(|reading| {
                     !reading.zombie
                         && reading
-                            .started_secs
+                            .started
                             .zip(snapshot.seen_at(*pid))
                             .is_some_and(|(started, seen)| earliest <= started && started <= seen)
                 })
@@ -135,16 +128,21 @@ mod unix {
         const OWN: u32 = 4_242;
         const TAKEN_AT: u64 = 1_700_000_000;
 
-        fn live(started_secs: u64) -> PidReading {
+        fn at(raw: u64) -> ProcInstant {
+            ProcInstant::from_raw(raw)
+        }
+
+        fn live(started: u64) -> PidReading {
             PidReading {
-                started_secs: Some(started_secs),
+                started_secs: None,
+                started: Some(at(started)),
                 zombie: false,
             }
         }
 
         #[test]
         fn a_survivor_is_alive_unreaped_and_no_younger_than_the_snapshot() {
-            let snapshot = LambSnapshot::new([10, 11, 12, 13, 14, 15], TAKEN_AT);
+            let snapshot = LambSnapshot::new([10, 11, 12, 13, 14, 15], at(TAKEN_AT));
             let readings = HashMap::from([
                 (10, live(TAKEN_AT - 60)),
                 (11, live(TAKEN_AT)),
@@ -152,28 +150,40 @@ mod unix {
                 (
                     13,
                     PidReading {
-                        started_secs: Some(TAKEN_AT - 60),
                         zombie: true,
+                        ..live(TAKEN_AT - 60)
                     },
                 ),
                 (
                     14,
                     PidReading {
-                        started_secs: None,
-                        zombie: false,
+                        started: None,
+                        ..live(TAKEN_AT - 60)
                     },
                 ),
             ]);
 
             // 12 started after the snapshot, 13 is a zombie, 14 has no start
             // time and 15 is gone.
-            assert_eq!(survivors_in(&snapshot, &readings, OWN, 0), vec![10, 11]);
+            assert_eq!(survivors_in(&snapshot, &readings, OWN, at(0)), vec![10, 11]);
+        }
+
+        // The sweep reads the clock-native start, not the epoch second a
+        // handover reads, which on Linux is two seconds coarse.
+        #[test]
+        fn a_survivor_is_judged_by_its_clock_start_not_its_epoch_second() {
+            let snapshot = LambSnapshot::new([10], at(TAKEN_AT));
+            let reused = PidReading {
+                started_secs: Some(TAKEN_AT - 60),
+                ..live(TAKEN_AT + 1)
+            };
+            assert!(survivors_in(&snapshot, &HashMap::from([(10, reused)]), OWN, at(0)).is_empty());
         }
 
         #[test]
         fn each_pid_is_checked_against_the_look_that_saw_it() {
-            let tick = LambSnapshot::new([10, 11], TAKEN_AT);
-            let fresh = LambSnapshot::new([11, 12], TAKEN_AT + 10);
+            let tick = LambSnapshot::new([10, 11], at(TAKEN_AT));
+            let fresh = LambSnapshot::new([11, 12], at(TAKEN_AT + 10));
             let readings = HashMap::from([
                 (10, live(TAKEN_AT + 5)),
                 (11, live(TAKEN_AT + 5)),
@@ -182,31 +192,34 @@ mod unix {
 
             // 10 was seen only by the tick, before it started: a recycled pid.
             assert_eq!(
-                survivors_in(&tick.merge(fresh), &readings, OWN, 0),
+                survivors_in(&tick.merge(fresh), &readings, OWN, at(0)),
                 vec![11, 12]
             );
         }
 
         #[test]
         fn init_pid_zero_and_the_shepherd_itself_are_never_survivors() {
-            let snapshot = LambSnapshot::new([0, 1, OWN, 10], TAKEN_AT);
+            let snapshot = LambSnapshot::new([0, 1, OWN, 10], at(TAKEN_AT));
             let readings =
                 HashMap::from([(0, live(0)), (1, live(0)), (OWN, live(0)), (10, live(0))]);
-            assert_eq!(survivors_in(&snapshot, &readings, OWN, 0), vec![10]);
+            assert_eq!(survivors_in(&snapshot, &readings, OWN, at(0)), vec![10]);
         }
 
         #[test]
         fn a_start_time_from_before_the_machine_booted_is_not_a_survivor() {
             let booted = TAKEN_AT - 3_600;
-            let snapshot = LambSnapshot::new([10, 11, 12], TAKEN_AT);
+            let snapshot = LambSnapshot::new([10, 11, 12], at(TAKEN_AT));
             let readings = HashMap::from([
                 (10, live(booted)),
-                (11, live(booted - BOOT_SLACK_SECS - 1)),
-                // An uptime-sized reading, as a Linux host with no `btime`
-                // line produces.
+                (11, live(booted - crate::proc_table::BOOT_SLACK_SECS - 1)),
+                // An uptime-sized epoch reading, as a Linux host with no
+                // `btime` line produces.
                 (12, live(90)),
             ]);
-            assert_eq!(survivors_in(&snapshot, &readings, OWN, booted), vec![10]);
+            assert_eq!(
+                survivors_in(&snapshot, &readings, OWN, ProcInstant::after_boot(booted)),
+                vec![10]
+            );
         }
 
         // Tests the guard without `kill`: a broken guard here must not
@@ -244,20 +257,30 @@ mod unix {
             StatsSweep::new(crate::testing::idle_stats())
         }
 
+        // Stamped at the child's own start it passes, one unit earlier it
+        // does not: the stamp and the start are read on one clock.
         #[test]
         fn the_real_table_refuses_init_our_own_pid_and_a_child_younger_than_the_snapshot() {
             let child = Child::sleeping();
             let child_pid = child.0.id();
-            let now = crate::now_ms() / 1000;
+            let started = crate::proc_table::read_pids(&[child_pid])
+                .get(&child_pid)
+                .and_then(|reading| reading.started)
+                .expect("a running child has a start");
             let pids = [1, std::process::id(), child_pid];
             let sweep = real_sweep();
 
-            let current = sweep.survivors(&LambSnapshot::new(pids, now));
-            let an_hour_ago = sweep.survivors(&LambSnapshot::new(pids, now - 3_600));
+            let at_start = sweep.survivors(&LambSnapshot::new(pids, started));
+            let now = sweep.survivors(&LambSnapshot::new(pids, ProcInstant::now()));
+            let just_before = sweep.survivors(&LambSnapshot::new(
+                pids,
+                at(started.raw().saturating_sub(1)),
+            ));
 
-            assert_eq!(current, vec![child_pid], "only the child is a lamb");
+            assert_eq!(at_start, vec![child_pid], "only the child is a lamb");
+            assert_eq!(now, vec![child_pid], "a walk now saw the child");
             assert!(
-                an_hour_ago.is_empty(),
+                just_before.is_empty(),
                 "a child that started after the snapshot is not the process it saw"
             );
         }
@@ -266,7 +289,7 @@ mod unix {
         fn a_reaped_child_is_no_longer_a_survivor() {
             let mut child = Child::sleeping();
             let child_pid = child.0.id();
-            let snapshot = LambSnapshot::new([child_pid], crate::now_ms() / 1000);
+            let snapshot = LambSnapshot::new([child_pid], ProcInstant::now());
             let _ = child.0.kill();
             let _ = child.0.wait();
 
@@ -293,6 +316,7 @@ mod unix {
 mod tests {
     use super::*;
     use crate::limits::sample::TreeIndex;
+    use crate::proc_table::ProcInstant;
     use crate::testing::{ScriptedSampler, rss};
 
     #[test]
@@ -310,7 +334,11 @@ mod tests {
         assert_eq!(sweep.snapshot(100).pids().collect::<Vec<_>>(), vec![101]);
         assert_eq!(sweep.last_snapshot(100), None, "no tick has run");
 
-        stats.record_lamb_snapshots(&TreeIndex::build(&table), 5, std::process::id());
-        assert_eq!(sweep.last_snapshot(100), Some(LambSnapshot::new([101], 5)));
+        let taken_at = ProcInstant::from_raw(5);
+        stats.record_lamb_snapshots(&TreeIndex::build(&table), taken_at, std::process::id());
+        assert_eq!(
+            sweep.last_snapshot(100),
+            Some(LambSnapshot::new([101], taken_at))
+        );
     }
 }

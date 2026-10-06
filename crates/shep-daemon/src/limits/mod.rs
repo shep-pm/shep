@@ -116,7 +116,7 @@ impl PollingEnforcer {
                 // size), each id building its own index over the whole host
                 // table.
                 let sampled_at = tokio::time::Instant::now();
-                let taken_at_secs = crate::now_ms() / 1000;
+                let taken_at = crate::proc_table::ProcInstant::now();
                 let table = sampler.sample();
                 let index = TreeIndex::build(&table);
 
@@ -125,7 +125,7 @@ impl PollingEnforcer {
                 // its window against.
                 stats.record_baseline(&index, tokio::time::Instant::now());
                 stats.prune_labels(&index, sampled_at);
-                stats.record_lamb_snapshots(&index, taken_at_secs, std::process::id());
+                stats.record_lamb_snapshots(&index, taken_at, std::process::id());
 
                 // Summed and self-disarmed in one locked section, so the
                 // next tick cannot re-report the same over-limit reading.
@@ -321,7 +321,7 @@ mod tests {
         ]]));
         let stats = Arc::new(StatsState::new(Arc::clone(&sampler)));
         stats.watch(9, 1);
-        let before = crate::now_ms() / 1000;
+        let before = crate::proc_table::ProcInstant::now();
         let (tx, mut rx) = mpsc::channel(1);
         let _enforcer = PollingEnforcer::start(Arc::clone(&sampler), tx, Arc::clone(&stats));
         tokio::task::yield_now().await;

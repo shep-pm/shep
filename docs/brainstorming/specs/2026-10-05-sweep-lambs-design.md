@@ -84,9 +84,12 @@ Windows gaps.
    drain. Worst case a stop takes 2 × `kill_timeout`, only when lambs outlive
    the sheep and ignore `SIGTERM`.
 4. A residual on pid reuse: a pid recycled within about a second of the
-   walk passes the check, two on Linux (sysinfo floors both the boot time
-   and the start ticks). Documented, no pidfds. Found in review: a start
-   time from before the machine booted is refused outright.
+   walk passes the check. Documented, no pidfds. Found in review: a start
+   time from before the machine booted is refused outright. Amended for
+   #690: on Linux a pid is dated in clock ticks since boot, so the residual
+   there is one tick, 10 ms at 100 Hz, not the two seconds sysinfo's
+   floored boot time and start ticks left
+   (`2026-10-05-sweep-followups-design.md`).
 5. No new bus event: a `tracing` info line per sweep that signalled anything,
    a warn when one needed `SIGKILL`.
 6. A nested shepherd started from inside a sheep is a lamb and is swept if it

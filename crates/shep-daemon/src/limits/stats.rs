@@ -23,6 +23,7 @@ use tokio::time::Instant;
 
 use super::labels::LambLabels;
 use super::sample::{MemorySampler, ProcessIdentity, TreeIndex};
+use crate::proc_table::ProcInstant;
 use crate::sweep::LambSnapshot;
 
 /// One sheep's live resource reading.
@@ -173,14 +174,14 @@ impl StatsState {
     /// Records the lambs of every watched root `index` shows descending from
     /// `shepherd`, from one periodic reading.
     ///
-    /// Replaced wholesale like [`Self::record_baseline`]. `taken_at_secs` is
-    /// read before the table `index` was built from. A root outside
+    /// Replaced wholesale like [`Self::record_baseline`]. `taken_at` is read
+    /// before the table `index` was built from. A root outside
     /// `shepherd`'s tree is no sheep of ours, so its children are never
     /// recorded for a sweep to signal.
     pub(crate) fn record_lamb_snapshots(
         &self,
         index: &TreeIndex,
-        taken_at_secs: u64,
+        taken_at: ProcInstant,
         shepherd: u32,
     ) {
         let ours = index.descendants_of(shepherd);
@@ -190,7 +191,7 @@ impl StatsState {
             .filter(|root_pid| ours.contains(root_pid))
             .map(|root_pid| {
                 let lambs = index.descendants_of(root_pid);
-                (root_pid, LambSnapshot::new(lambs, taken_at_secs))
+                (root_pid, LambSnapshot::new(lambs, taken_at))
             })
             .collect();
         *self
@@ -212,13 +213,13 @@ impl StatsState {
     /// One fresh walk of `root_pid`'s lambs, empty unless `root_pid`
     /// descends from `shepherd`. Blocking, like [`Self::sample_now`].
     pub(crate) fn lamb_snapshot_now(&self, root_pid: u32, shepherd: u32) -> LambSnapshot {
-        let taken_at_secs = crate::now_ms() / 1000;
+        let taken_at = ProcInstant::now();
         let table = self.sampler.sample();
         let index = TreeIndex::build(&table);
         if !index.descendants_of(shepherd).contains(&root_pid) {
-            return LambSnapshot::new([], taken_at_secs);
+            return LambSnapshot::default();
         }
-        LambSnapshot::new(index.descendants_of(root_pid), taken_at_secs)
+        LambSnapshot::new(index.descendants_of(root_pid), taken_at)
     }
 
     /// One fresh walk of every descendant of `roots`, the roots excluded.
@@ -227,14 +228,14 @@ impl StatsState {
     /// No shepherd-ancestry check: the lamb sweep calls this with lambs it
     /// already verified, which an exited sheep leaves reparented to init.
     pub(crate) fn lamb_walk_from(&self, roots: &[u32]) -> LambSnapshot {
-        let taken_at_secs = crate::now_ms() / 1000;
+        let taken_at = ProcInstant::now();
         let table = self.sampler.sample();
         let index = TreeIndex::build(&table);
         let lambs = roots
             .iter()
             .flat_map(|&root| index.descendants_of(root))
             .filter(|pid| !roots.contains(pid));
-        LambSnapshot::new(lambs, taken_at_secs)
+        LambSnapshot::new(lambs, taken_at)
     }
 
     /// [`Self::record_baseline`] over a reading this call takes itself.
@@ -413,6 +414,10 @@ mod tests {
     use super::super::MEMORY_POLL_INTERVAL;
     use super::*;
     use crate::testing::{ScriptedSampler, identity, rss, rss_cpu};
+
+    fn at(raw: u64) -> ProcInstant {
+        ProcInstant::from_raw(raw)
+    }
 
     /// The pid a scripted table names as the shepherd its sheep descend from.
     const SHEPHERD: u32 = 50;
@@ -602,18 +607,18 @@ mod tests {
         let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
         stats.watch(1, 100);
         stats.watch(2, 200);
-        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        stats.record_lamb_snapshots(&index, at(77), SHEPHERD);
         assert_eq!(
             stats.last_lamb_snapshot(100),
-            Some(LambSnapshot::new([101, 102], 77))
+            Some(LambSnapshot::new([101, 102], at(77)))
         );
 
         stats.unwatch(2);
-        stats.record_lamb_snapshots(&index, 78, SHEPHERD);
+        stats.record_lamb_snapshots(&index, at(78), SHEPHERD);
         assert_eq!(stats.last_lamb_snapshot(200), None);
         assert_eq!(
             stats.last_lamb_snapshot(100),
-            Some(LambSnapshot::new([101, 102], 78))
+            Some(LambSnapshot::new([101, 102], at(78)))
         );
     }
 
@@ -622,7 +627,7 @@ mod tests {
         let index = TreeIndex::build(&[rss(100, Some(SHEPHERD), 0), rss(101, Some(100), 0)]);
         let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
         stats.watch(1, 100);
-        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        stats.record_lamb_snapshots(&index, at(77), SHEPHERD);
         assert!(
             stats.last_lamb_snapshot(100).is_some(),
             "sanity: one was recorded"
@@ -637,7 +642,7 @@ mod tests {
         let index = TreeIndex::build(&[rss(100, Some(SHEPHERD), 0), rss(101, Some(100), 0)]);
         let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![vec![]])));
         stats.watch(1, 100);
-        stats.record_lamb_snapshots(&index, 77, SHEPHERD);
+        stats.record_lamb_snapshots(&index, at(77), SHEPHERD);
         assert!(
             stats.last_lamb_snapshot(100).is_some(),
             "sanity: one was recorded"
@@ -680,15 +685,16 @@ mod tests {
             rss(200, Some(SHEPHERD), 0),
         ];
         let stats = StatsState::new(Arc::new(ScriptedSampler::new(vec![table])));
-        let before = crate::now_ms() / 1000;
+        let before = ProcInstant::now();
 
         let snapshot = stats.lamb_snapshot_now(100, SHEPHERD);
+        let after = ProcInstant::now();
 
         assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![101, 102]);
         let taken = snapshot.seen_at(101).expect("101 was seen");
         assert!(
-            (before..=before + 60).contains(&taken),
-            "a wall-clock second near {before}, got {taken}"
+            before <= taken && taken <= after,
+            "{before:?} <= {taken:?} <= {after:?}"
         );
     }
 
@@ -706,11 +712,11 @@ mod tests {
         stats.watch(1, 100);
         stats.watch(2, 200);
 
-        stats.record_lamb_snapshots(&TreeIndex::build(&table), 77, SHEPHERD);
+        stats.record_lamb_snapshots(&TreeIndex::build(&table), at(77), SHEPHERD);
 
         assert_eq!(
             stats.last_lamb_snapshot(100),
-            Some(LambSnapshot::new([101], 77))
+            Some(LambSnapshot::new([101], at(77)))
         );
         assert_eq!(stats.last_lamb_snapshot(200), None);
         assert!(stats.lamb_snapshot_now(200, SHEPHERD).is_empty());

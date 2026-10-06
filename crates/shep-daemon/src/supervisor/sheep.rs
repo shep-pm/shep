@@ -230,7 +230,7 @@ async fn stop_snapshot(sweep: &Arc<dyn LambSweep>, root_pid: u32) -> LambSnapsho
         .await
         .unwrap_or_else(|error| {
             tracing::warn!(root_pid, %error, "lamb walk failed; sweeping the last tick's lambs only");
-            LambSnapshot::new([], 0)
+            LambSnapshot::default()
         });
     match sweep.last_snapshot(root_pid) {
         Some(last) => fresh.merge(last),

@@ -4,8 +4,12 @@ use crate::testing::capture_logs;
 
 const GRACE: Duration = Duration::from_secs(5);
 
+fn at(raw: u64) -> ProcInstant {
+    ProcInstant::from_raw(raw)
+}
+
 fn snapshot_of(pids: &[u32]) -> LambSnapshot {
-    LambSnapshot::new(pids.iter().copied(), 1_700_000_000)
+    LambSnapshot::new(pids.iter().copied(), at(1_700_000_000))
 }
 
 #[tokio::test(start_paused = true)]
@@ -232,8 +236,8 @@ fn a_refused_signal_is_logged_and_the_sweep_still_kills_the_rest() {
 // the tick's second, it would fail the start-time check and escape.
 #[test]
 fn a_merge_unions_the_pids_and_dates_each_by_the_latest_look_that_saw_it() {
-    let tick = LambSnapshot::new([7, 8], 100);
-    let fresh = LambSnapshot::new([8, 9], 200);
+    let tick = LambSnapshot::new([7, 8], at(100));
+    let fresh = LambSnapshot::new([8, 9], at(200));
 
     let merged = tick.clone().merge(fresh.clone());
     assert_eq!(
@@ -241,24 +245,24 @@ fn a_merge_unions_the_pids_and_dates_each_by_the_latest_look_that_saw_it() {
         vec![7, 8, 9],
         "every pid either look saw"
     );
-    assert_eq!(merged.seen_at(7), Some(100));
-    assert_eq!(merged.seen_at(8), Some(200));
-    assert_eq!(merged.seen_at(9), Some(200));
+    assert_eq!(merged.seen_at(7), Some(at(100)));
+    assert_eq!(merged.seen_at(8), Some(at(200)));
+    assert_eq!(merged.seen_at(9), Some(at(200)));
     assert_eq!(merged.seen_at(10), None);
     assert_eq!(fresh.merge(tick), merged, "the merge is symmetric");
 }
 
 #[test]
 fn a_snapshot_keeps_each_pid_once() {
-    let snapshot = LambSnapshot::new([9, 7, 9, 7], 5);
+    let snapshot = LambSnapshot::new([9, 7, 9, 7], at(5));
     assert_eq!(snapshot.pids().collect::<Vec<_>>(), vec![7, 9]);
-    assert_eq!(snapshot.seen_at(7), Some(5));
+    assert_eq!(snapshot.seen_at(7), Some(at(5)));
 }
 
 #[test]
 fn the_scripted_sweep_answers_with_its_canned_snapshots_behind_dyn() {
-    let fresh = LambSnapshot::new([7], 200);
-    let last = LambSnapshot::new([8], 100);
+    let fresh = LambSnapshot::new([7], at(200));
+    let last = LambSnapshot::new([8], at(100));
     let scripted = ScriptedSweep::new()
         .with_fresh(1, fresh.clone())
         .with_last(1, last.clone());

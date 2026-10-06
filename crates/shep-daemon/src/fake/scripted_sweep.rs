@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use crate::proc_table::ProcInstant;
 use crate::sweep::{LambSignal, LambSnapshot, LambSweep, SignalError};
 
 /// A sweep that finds no lambs, for a fixture's `Extras` to hold.
@@ -104,10 +105,7 @@ impl ScriptedSweep {
 
 impl LambSweep for ScriptedSweep {
     fn snapshot(&self, root_pid: u32) -> LambSnapshot {
-        self.fresh
-            .get(&root_pid)
-            .cloned()
-            .unwrap_or_else(|| LambSnapshot::new([], 0))
+        self.fresh.get(&root_pid).cloned().unwrap_or_default()
     }
 
     fn last_snapshot(&self, root_pid: u32) -> Option<LambSnapshot> {
@@ -132,9 +130,12 @@ impl LambSweep for ScriptedSweep {
         let mut walks = self.walks.lock().unwrap_or_else(PoisonError::into_inner);
         walks.push(roots.to_vec());
         let Some(last) = self.born.len().checked_sub(1) else {
-            return LambSnapshot::new([], 0);
+            return LambSnapshot::default();
         };
-        LambSnapshot::new(self.born[(walks.len() - 1).min(last)].clone(), 0)
+        LambSnapshot::new(
+            self.born[(walks.len() - 1).min(last)].clone(),
+            ProcInstant::from_raw(0),
+        )
     }
 
     fn signal(&self, pid: u32, signal: LambSignal) -> Result<(), SignalError> {
