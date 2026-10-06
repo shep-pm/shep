@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-10-06
+
+### Added
+
+- Add a lamb sweep that outlives the process group
+- Sweep a sheep's lambs before reporting its exit
+- Wait for a killed lamb to stop before the sweep returns
+- Drop a sheep's lamb snapshot when it is unwatched
+- Never trust a lamb start time from before boot
+- Sweep what a lamb starts while the sweep waits
+
+### Changed
+
+- Share the targeted process-table read
+
+### Fixed
+
+- Date lamb pids to the clock tick on Linux
+- Never sweep the lambs of a leader that still runs
+- Drop a sweep walk whose root exited mid-walk
+
+
 ## [0.12.3] - 2026-10-02
 
 
