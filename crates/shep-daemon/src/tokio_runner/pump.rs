@@ -4,9 +4,7 @@
 use std::io;
 use std::pin::Pin;
 
-use tokio::io::{
-    AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader, Lines,
-};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::time::{Instant, Sleep, sleep_until, timeout};
@@ -17,6 +15,7 @@ use crate::runner::{LogCtl, LogLine, RunnerError, StdinWrite};
 use super::FINAL_DRAIN;
 #[cfg(unix)]
 use super::READ_BUFFER;
+use super::line_reader::LineReader;
 use super::log_file::{LogFile, LogFiles, LogSink, PipeFds};
 
 /// What the pump does after handling one line result.
@@ -122,16 +121,24 @@ where
 /// ends: a ready `None` would be re-selected on every poll and spin the
 /// loop, while pending forever drops the branch out of contention.
 ///
-/// Cancel-safe, as a `select!` branch must be: a partially read line stays
-/// in the `Lines` buffer instead of being lost to another branch.
-async fn next_line<R>(lines: &mut Option<Lines<BufReader<R>>>) -> io::Result<Option<String>>
+/// Cancel-safe, as a `select!` branch must be: see [`LineReader::read_line`].
+async fn next_line_ref<R>(lines: &mut Option<LineReader<R>>) -> io::Result<Option<&str>>
 where
     R: AsyncRead + Unpin,
 {
     match lines {
-        Some(lines) => lines.next_line().await,
+        Some(lines) => lines.read_line().await,
         None => core::future::pending().await,
     }
+}
+
+/// [`next_line_ref`] with the line copied out, for a caller that keeps it
+/// past the next read. Cancel-safe for the same reason.
+async fn next_line<R>(lines: &mut Option<LineReader<R>>) -> io::Result<Option<String>>
+where
+    R: AsyncRead + Unpin,
+{
+    Ok(next_line_ref(lines).await?.map(str::to_owned))
 }
 
 /// Points `timer` at `deadline`, touching the timer wheel only when the
@@ -186,9 +193,9 @@ fn with_read_buffer<R: AsyncRead>(reader: R) -> BufReader<R> {
 /// no reader has neither a number nor bytes left to write.
 pub(super) struct Streams<O, E> {
     /// The stdout reader, until stdout ends.
-    pub(super) out: Option<Lines<BufReader<O>>>,
+    pub(super) out: Option<LineReader<O>>,
     /// The stderr reader, until stderr ends.
-    pub(super) err: Option<Lines<BufReader<E>>>,
+    pub(super) err: Option<LineReader<E>>,
 }
 
 /// Writes out the whole lines one stream's reader is already holding, and
@@ -204,7 +211,7 @@ pub(super) struct Streams<O, E> {
 /// The partial line at the end of the buffer is left behind. Nothing drained
 /// here goes on `logs_tx`: those bus subscribers go with the image.
 #[cfg(unix)]
-pub(super) async fn drain_ready<R>(lines: &mut Option<Lines<BufReader<R>>>, file: &mut LogFile)
+pub(super) async fn drain_ready<R>(lines: &mut Option<LineReader<R>>, file: &mut LogFile)
 where
     R: AsyncRead + Unpin,
 {
@@ -214,10 +221,10 @@ where
     while reader.get_ref().buffer().contains(&b'\n') {
         // A delimiter already in the buffer means no `read(2)`, so nothing
         // new arrives to replace what is written.
-        let Ok(Some(line)) = reader.next_line().await else {
+        let Ok(Some(line)) = reader.read_line().await else {
             return;
         };
-        file.append(&line).await;
+        file.append(line).await;
     }
 }
 
@@ -243,15 +250,15 @@ where
             // Bound before the `match`: the future borrows `streams`, and a
             // scrutinee's temporaries outlive the arms.
             tokio::select! {
-                result = next_line(&mut streams.out) => {
+                result = next_line_ref(&mut streams.out) => {
                     match result {
-                        Ok(Some(line)) => files.stream(false).append(&line).await,
+                        Ok(Some(line)) => files.stream(false).append(line).await,
                         Ok(None) | Err(_) => streams.out = None,
                     }
                 }
-                result = next_line(&mut streams.err) => {
+                result = next_line_ref(&mut streams.err) => {
                     match result {
-                        Ok(Some(line)) => files.stream(true).append(&line).await,
+                        Ok(Some(line)) => files.stream(true).append(line).await,
                         Ok(None) | Err(_) => streams.err = None,
                     }
                 }
@@ -305,8 +312,8 @@ pub(super) fn spawn_log_pump<O, E>(
             parked: false,
         };
         let mut streams = Streams {
-            out: stdout.map(|reader| with_read_buffer(reader).lines()),
-            err: stderr.map(|reader| with_read_buffer(reader).lines()),
+            out: stdout.map(|reader| LineReader::new(with_read_buffer(reader))),
+            err: stderr.map(|reader| LineReader::new(with_read_buffer(reader))),
         };
 
         let mut idle_flush = None;
@@ -447,10 +454,10 @@ pub(super) fn spawn_channel_pumps<S>(
     let (read_half, mut write_half) = tokio::io::split(daemon_end);
 
     tokio::spawn(async move {
-        let mut lines = BufReader::new(read_half).lines();
+        let mut lines = LineReader::new(BufReader::new(read_half));
         loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => match serde_json::from_str::<ChildMessage>(&line) {
+            match lines.read_line().await {
+                Ok(Some(line)) => match serde_json::from_str::<ChildMessage>(line) {
                     Ok(msg) => {
                         if from_child_tx.send(msg).await.is_err() {
                             break; // owning sheep task dropped from_child
