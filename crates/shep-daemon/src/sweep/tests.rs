@@ -112,10 +112,11 @@ async fn the_sweep_returns_only_once_a_killed_lamb_has_stopped_running() {
     assert_eq!(sweep.looks().len(), 3, "a look after KILL saw it gone");
 }
 
+// The second survivor list is the re-check after the walk: 7 still runs.
 #[tokio::test(start_paused = true)]
 async fn a_child_a_lamb_started_after_the_snapshot_is_termed_with_it() {
     let sweep = ScriptedSweep::new()
-        .with_survivors(vec![vec![7], vec![]])
+        .with_survivors(vec![vec![7], vec![7], vec![]])
         .with_born(vec![vec![9]]);
 
     let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
@@ -126,18 +127,68 @@ async fn a_child_a_lamb_started_after_the_snapshot_is_termed_with_it() {
         "walked from the survivor"
     );
     assert_eq!(
+        sweep.looks().get(1),
+        Some(&snapshot_of(&[7])),
+        "the re-check reads the roots, before the walk's finds are merged"
+    );
+    assert_eq!(
         sweep.signals(),
         vec![(7, LambSignal::Term), (9, LambSignal::Term)]
     );
     assert_eq!(report.termed, vec![7, 9]);
 }
 
+// 7 exits after the survivor read and its pid is reused before the walk:
+// the walk's 9 is a stranger's child.
+#[tokio::test(start_paused = true)]
+async fn a_walk_from_a_root_that_stopped_surviving_signals_none_of_its_finds() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7], vec![], vec![]])
+        .with_born(vec![vec![9]]);
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7]), GRACE).await;
+
+    assert!(
+        !sweep.signals().iter().any(|&(pid, _)| pid == 9),
+        "{:?}",
+        sweep.signals()
+    );
+    assert!(
+        !sweep.signals().iter().any(|&(pid, _)| pid == 7),
+        "a root that failed the re-check is not signalled on that look either"
+    );
+    assert!(
+        sweep.looks().iter().all(|look| look.seen_at(9).is_none()),
+        "the dropped find is never merged into a later look"
+    );
+    assert_eq!(report, SweepReport::default());
+}
+
+// One root of two fails the re-check: the look keeps the other, drops the
+// walk's finds, and the next look walks again.
+#[tokio::test(start_paused = true)]
+async fn a_failed_re_check_keeps_the_roots_that_passed_and_walks_again() {
+    let sweep = ScriptedSweep::new()
+        .with_survivors(vec![vec![7, 8], vec![8], vec![8], vec![8], vec![]])
+        .with_born(vec![vec![9], vec![10]]);
+
+    let report = sweep_lambs(&sweep, &snapshot_of(&[7, 8]), GRACE).await;
+
+    assert_eq!(
+        sweep.signals(),
+        vec![(8, LambSignal::Term), (10, LambSignal::Term)]
+    );
+    assert_eq!(sweep.walks(), vec![vec![7, 8], vec![8]]);
+    assert_eq!(report.termed, vec![8, 10]);
+}
+
 // The lamb exits on its TERM, orphaning a child it started mid-grace. The
 // look that found the child while its parent lived is what holds it.
 #[tokio::test(start_paused = true)]
 async fn a_child_born_mid_grace_outlives_its_parent_and_is_still_killed() {
+    // The third list is the re-check after the walk that found 9.
     let sweep = ScriptedSweep::new()
-        .with_survivors(vec![vec![7], vec![7], vec![9]])
+        .with_survivors(vec![vec![7], vec![7], vec![7], vec![9]])
         .with_born(vec![vec![], vec![9], vec![]]);
     let start = Instant::now();
 
@@ -158,7 +209,7 @@ async fn a_child_born_mid_grace_outlives_its_parent_and_is_still_killed() {
         sweep
             .looks()
             .iter()
-            .skip(2)
+            .skip(3)
             .all(|look| look.pids().any(|pid| pid == 9)),
         "every look after the find carries the orphan"
     );

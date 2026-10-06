@@ -162,6 +162,7 @@ pub(crate) trait LambSweep: Send + Sync {
     /// Called with survivors only. A survivor's children still point at it,
     /// so a walk from it finds what it started after the snapshot, and a
     /// survivor already passed the shepherd-ancestry check its snapshot did.
+    /// The caller re-checks the survivors after, in case one exited mid-walk.
     fn descendants(&self, roots: &[u32]) -> LambSnapshot;
 
     /// Sends `signal` to `pid` alone, never to a group.
@@ -186,7 +187,8 @@ pub(crate) struct SweepReport {
 ///
 /// Each look, every [`SWEEP_POLL_INTERVAL`], walks from the survivors and
 /// adds what they started since, so a child is held before its parent exits
-/// and orphans it. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
+/// and orphans it. A walk counts only if its roots survive a re-check, see
+/// [`walk_from`]. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
 /// the deadline. Returns as soon as no lamb is left, waiting up to
 /// [`KILL_SETTLE`] for a `SIGKILL` to land. An empty snapshot reads nothing.
 /// A failed delivery is logged and never stops the sweep.
@@ -202,15 +204,11 @@ pub(crate) async fn sweep_lambs(
     let mut termed = BTreeSet::new();
     let deadline = Instant::now() + grace;
     let killed = loop {
-        let mut alive = sweep.survivors(&snapshot);
-        if alive.is_empty() {
-            break alive;
+        let roots = sweep.survivors(&snapshot);
+        if roots.is_empty() {
+            break roots;
         }
-        let born = sweep.descendants(&alive);
-        alive.extend(born.pids());
-        alive.sort_unstable();
-        alive.dedup();
-        snapshot = snapshot.merge(born);
+        let alive = walk_from(sweep, &mut snapshot, roots);
         let first_seen: Vec<u32> = alive
             .iter()
             .copied()
@@ -238,6 +236,37 @@ pub(crate) async fn sweep_lambs(
         }
     }
     SweepReport { termed, killed }
+}
+
+/// `roots`, the survivors of `snapshot`, plus what a walk from them found,
+/// which is merged into `snapshot`.
+///
+/// The walk has no ancestry check, so its finds count only if every root
+/// survives a re-read after it. A root alive at both reads was alive
+/// throughout, and a live pid is never reused. Otherwise only the roots that
+/// passed are kept, the finds are dropped, and the next look walks again.
+fn walk_from(sweep: &dyn LambSweep, snapshot: &mut LambSnapshot, roots: Vec<u32>) -> Vec<u32> {
+    let born = sweep.descendants(&roots);
+    if born.is_empty() {
+        return roots;
+    }
+    let still = sweep.survivors(snapshot);
+    if !roots.iter().all(|root| still.contains(root)) {
+        tracing::debug!(
+            ?roots,
+            "a lamb exited during the walk from it; walking again next look"
+        );
+        return roots
+            .into_iter()
+            .filter(|root| still.contains(root))
+            .collect();
+    }
+    let mut alive = roots;
+    alive.extend(born.pids());
+    alive.sort_unstable();
+    alive.dedup();
+    *snapshot = core::mem::take(snapshot).merge(born);
+    alive
 }
 
 /// Re-reads `snapshot`'s survivors every `every` until none are left or
