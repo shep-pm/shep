@@ -13,7 +13,8 @@ use shep_core::protocol::{
     Envelope, Hello, HelloAck, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, RpcError, RpcErrorCode,
     codec, decode_frame, encode_frame,
 };
-use shep_core::transport::{ServerReadHalf, ServerStream, ServerWriteHalf};
+use shep_core::transport::{ServerReadHalf, ServerStream};
+use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -216,13 +217,31 @@ async fn handshake(
     send(out, &ack).await
 }
 
-async fn write_loop(
-    mut sink: FramedWrite<ServerWriteHalf, LengthDelimitedCodec>,
+async fn write_loop<W: AsyncWrite + Unpin>(
+    mut sink: FramedWrite<W, LengthDelimitedCodec>,
     mut rx: mpsc::Receiver<Bytes>,
 ) {
-    while let Some(bytes) = rx.recv().await {
-        if sink.send(bytes).await.is_err() {
-            break; // peer gone; nothing left to drain the queue
+    while let Some(first) = rx.recv().await {
+        // `send` is feed plus flush, one flush per frame. What is already
+        // queued shares one flush, taken before waiting again. The batch is
+        // capped: `try_recv` never yields, so a producer that refills the
+        // queue as fast as it drains would otherwise hold this task, and the
+        // flush, off the scheduler.
+        let mut next = Some(first);
+        let mut fed = 0;
+        while let Some(bytes) = next {
+            if sink.feed(bytes).await.is_err() {
+                return; // peer gone; nothing left to drain the queue
+            }
+            fed += 1;
+            next = if fed < CONN_QUEUE {
+                rx.try_recv().ok()
+            } else {
+                None
+            };
+        }
+        if sink.flush().await.is_err() {
+            return; // peer gone, surfaced by the flush
         }
     }
 }
@@ -796,3 +815,6 @@ mod tests {
         assert_eq!(after.status, ProcStatus::Online);
     }
 }
+
+#[cfg(test)]
+mod write_loop_tests;
