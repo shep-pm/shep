@@ -243,7 +243,7 @@ type InstalledSignals = (
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot, init_dirs};
+    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot_with_idle_sweep, init_dirs};
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::testing::{SharedRunner, test_paths};
     use shep_core::config::{AppConfig, normalize};
@@ -258,7 +258,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
         init_dirs(&paths).unwrap();
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![]),
             paths.clone(),
             BootOptions::default(),
@@ -289,7 +289,7 @@ mod tests {
         init_dirs(&paths).unwrap();
         // `handover` left `false`, or `exec_target` would replace the test
         // binary with a fresh copy of itself.
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![]),
             paths.clone(),
             BootOptions::default(),
@@ -372,7 +372,7 @@ mod tests {
         // sheep `Errored` with no pump, which this case could not tell apart
         // from a pump nobody reopened. `log_ctl_live` below is the other half.
         let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits(); 2]));
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             SharedRunner(Arc::clone(&runner)),
             paths.clone(),
             BootOptions::default(),

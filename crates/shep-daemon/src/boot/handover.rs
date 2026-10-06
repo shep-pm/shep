@@ -214,7 +214,7 @@ fn hand_over_carrying(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot, init_dirs};
+    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot_with_idle_sweep, init_dirs};
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::testing::{SharedRunner, capture_logs, test_paths};
     use shep_core::config::{AppConfig, normalize};
@@ -242,7 +242,7 @@ mod tests {
         init_dirs(&paths).unwrap();
         // A wedged log pump: the one thing the gate still refuses. The case is
         // about the gate firing at all, not about what fires it.
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![ProcScript::never_exits()])
                 .with_a_pump_that_never_reports(&["wedged"]),
             paths.clone(),
@@ -307,7 +307,7 @@ mod tests {
         init_dirs(&paths).unwrap();
         // No dog and no sheep, so the first gate passes: an empty flock is
         // carryable, and this case is about the second gate.
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(Vec::new()),
             paths.clone(),
             BootOptions::default(),
@@ -371,7 +371,7 @@ mod tests {
         );
         // The refusal: a wedged log pump, read after every pump that answered
         // has been reported to and parked, which is what makes a resume owed.
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             SharedRunner(Arc::clone(&runner)),
             paths.clone(),
             BootOptions::default(),

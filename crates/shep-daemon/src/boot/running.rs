@@ -171,7 +171,7 @@ fn unlink_if_present(path: &Path) -> Result<(), BootError> {
 mod tests {
     use super::*;
     use crate::boot::pidfile::read_pidfile;
-    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot, init_dirs};
+    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot_with_idle_sweep, init_dirs};
     use crate::dogs::DogSpec;
     use crate::fake::{ProcScript, ScriptedRunner};
     use crate::snapshot::{FlockSnapshot, SavedApp};
@@ -197,7 +197,7 @@ mod tests {
         }]);
         crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
             BootOptions {
@@ -245,7 +245,7 @@ mod tests {
         let paths = test_paths(&dir);
         init_dirs(&paths).unwrap();
 
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
             BootOptions {
@@ -293,7 +293,7 @@ mod tests {
         let paths = test_paths(&dir);
         init_dirs(&paths).unwrap();
 
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             // `worker` ignores signals, so its stop has a kill ladder to
             // burn while `db` answers at once. Without that the two `Stop`
             // events land in poll order, which matches stage order by
@@ -366,7 +366,7 @@ mod tests {
         let paths = test_paths(&dir);
         init_dirs(&paths).unwrap();
 
-        let daemon = boot(
+        let daemon = boot_with_idle_sweep(
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
             paths.clone(),
             BootOptions {

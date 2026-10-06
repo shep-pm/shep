@@ -204,7 +204,7 @@ mod windows_tests {
 mod tests {
     use super::*;
     use crate::boot::pidfile::write_pidfile;
-    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot, init_dirs};
+    use crate::boot::{BootOptions, SIGNAL_TEST_LOCK, boot_with_idle_sweep, init_dirs};
     use crate::fake::ScriptedRunner;
     use crate::testing::test_paths;
     use std::sync::Arc;
@@ -389,8 +389,12 @@ mod tests {
                             .build()
                             .unwrap();
                         rt.block_on(async {
-                            match boot(ScriptedRunner::new(vec![]), paths, BootOptions::default())
-                                .await
+                            match boot_with_idle_sweep(
+                                ScriptedRunner::new(vec![]),
+                                paths,
+                                BootOptions::default(),
+                            )
+                            .await
                             {
                                 Ok(daemon) => {
                                     // Checked inside this racer's own

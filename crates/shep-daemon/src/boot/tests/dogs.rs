@@ -27,7 +27,7 @@ async fn boot_restores_the_flock_before_it_lets_the_dogs_out() {
     let roll = roll_of(vec![AppConfig::minimal("web", "./srv")]);
     crate::snapshot::write_atomic(&paths.snapshot, &roll).unwrap();
 
-    let daemon = boot(
+    let daemon = boot_with_idle_sweep(
         // Two scripts: the restored sheep's spawn, then the dog's.
         ScriptedRunner::new(vec![ProcScript::never_exits(), ProcScript::never_exits()]),
         paths.clone(),
@@ -94,7 +94,7 @@ fn a_dog_that_will_not_start_does_not_fail_the_boot() {
 
     let mut boot_result = None;
     let logs = capture_logs(|| {
-        boot_result = Some(rt.block_on(boot(
+        boot_result = Some(rt.block_on(boot_with_idle_sweep(
             // No scripts queued: the dog's spawn is the first (and
             // only) one attempted, and finds nothing to pop.
             ScriptedRunner::new(vec![]),
@@ -159,7 +159,7 @@ fn a_dog_enabled_under_a_sheeps_name_does_not_start_and_does_not_fail_the_boot()
 
     let mut boot_result = None;
     let logs = capture_logs(|| {
-        boot_result = Some(rt.block_on(boot(
+        boot_result = Some(rt.block_on(boot_with_idle_sweep(
             // One script: the restored sheep's own spawn. `start_dog`
             // finds the name already registered and returns early
             // without ever touching the runner, so a second script
@@ -226,7 +226,7 @@ fn a_promoted_dog_that_takes_a_saved_sheeps_name_says_so() {
 
     let mut boot_result = None;
     let logs = capture_logs(|| {
-        boot_result = Some(rt.block_on(boot(
+        boot_result = Some(rt.block_on(boot_with_idle_sweep(
             // One script, and the dog is what consumes it: the restore
             // reads `metrics` as already running and starts nothing.
             ScriptedRunner::new(vec![ProcScript::never_exits()]),
