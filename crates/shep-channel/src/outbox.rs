@@ -26,6 +26,13 @@ use crate::{ChannelError, ChildMessage};
 /// kilobytes plus whatever names and bodies heap-allocate.
 pub(crate) const DEFAULT_CAPACITY: usize = 1024;
 
+/// The most messages one [`Outbox::take_batch`] hands the writer.
+///
+/// A starting guess, like the capacity. Messages in a batch are out of
+/// `push_lossy`'s reach, so this bounds how many metrics a blocked write
+/// can shield from eviction.
+pub(crate) const MAX_BATCH: usize = 64;
+
 /// How a wait on [`Outbox::drain`] ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Drain {
@@ -163,14 +170,17 @@ impl Outbox {
         Ok(())
     }
 
-    /// Moves everything queued into `batch`, waiting for something to
-    /// queue. `false` once closed and empty, with `batch` left empty.
+    /// Moves up to [`MAX_BATCH`] queued messages into `batch`, oldest
+    /// first, waiting for something to queue. `false` once closed and
+    /// empty, with `batch` left empty.
     ///
-    /// One lock round trip for a whole burst. `batch` is cleared first, so
-    /// the writer keeps one `Vec` and its allocation across rounds.
+    /// One lock round trip for a burst. `batch` is cleared first, so the
+    /// writer keeps one `Vec` and its allocation across rounds.
     ///
     /// Taken messages count as in flight until [`Outbox::wrote`], so a
-    /// `drain` in progress keeps waiting for them.
+    /// `drain` in progress keeps waiting for them. The cap keeps the rest
+    /// of a long burst in the queue, where `push_lossy` can still evict
+    /// a metric from it.
     pub(crate) fn take_batch(&self, batch: &mut Vec<ChildMessage>) -> bool {
         batch.clear();
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
@@ -183,7 +193,8 @@ impl Outbox {
         if inner.queue.is_empty() {
             return false;
         }
-        batch.extend(inner.queue.drain(..));
+        let taken = inner.queue.len().min(MAX_BATCH);
+        batch.extend(inner.queue.drain(..taken));
         inner.in_flight = inner.in_flight.saturating_add(batch.len());
         drop(inner);
         // Every slot opened at once, so one waiter would leave the rest
@@ -192,7 +203,7 @@ impl Outbox {
         true
     }
 
-    /// Everything queued, as [`Outbox::take_batch`] hands it over.
+    /// One batch, as [`Outbox::take_batch`] hands it over.
     #[cfg(test)]
     pub(crate) fn take(&self) -> Vec<ChildMessage> {
         let mut batch = Vec::new();
@@ -418,6 +429,36 @@ mod tests {
         assert!(outbox.take_batch(&mut batch));
 
         assert_eq!(batch, vec![metric(2.0)]);
+    }
+
+    /// A message the writer has taken can no longer be evicted, so a take
+    /// that emptied a full queue would shield a whole capacity of metrics
+    /// from `push_lossy` for as long as one write blocks. The rest stays
+    /// queued, in order, and still evictable.
+    #[test]
+    fn a_take_leaves_the_rest_of_a_large_burst_queued_and_evictable() {
+        let outbox = Outbox::new(MAX_BATCH + 2);
+        for value in 0..MAX_BATCH + 2 {
+            outbox.push_lossy(metric(value as f64));
+        }
+
+        let mut batch = Vec::new();
+        assert!(outbox.take_batch(&mut batch));
+
+        assert_eq!(batch.len(), MAX_BATCH);
+        assert_eq!(batch[0], metric(0.0), "the oldest message goes first");
+        assert_eq!(outbox.pending(), MAX_BATCH + 2);
+
+        outbox.wrote(batch.len());
+        for value in 0..MAX_BATCH + 2 {
+            outbox.push_lossy(metric(1000.0 + value as f64));
+        }
+        assert_eq!(outbox.dropped(), 2);
+        assert_eq!(
+            outbox.take()[0],
+            metric(1000.0),
+            "the left-behind metrics were not evictable"
+        );
     }
 
     /// A taken burst frees all of its room at once, so every blocked
