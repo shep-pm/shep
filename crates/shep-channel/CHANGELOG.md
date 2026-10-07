@@ -5,6 +5,19 @@ All notable changes to this crate are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.5] - 2026-10-07
+
+### Fixed
+
+- Cap a writer batch so a long burst stays evictable
+- Release an oversized scratch buffer after a large message
+- Add hysteresis to the scratch release and fix two stale messages
+
+### Performance
+
+- Reuse message buffers and write the outbox a burst at a time
+
+
 ## [0.12.4] - 2026-10-06
 
 

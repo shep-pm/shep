@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-10-07
+
+### Fixed
+
+- Cap the write loop's drain at CONN_QUEUE frames per flush
+- Release the line scratch before the pump waits for log room
+
+### Performance
+
+- Flush a connection's queued frames once, not per frame
+- Read log lines into a scratch buffer the pump keeps
+- Shrink the line scratch buffer after a very long line
+- Count running instances in one pass in FlockRegistry::roll
+
+
 ## [0.12.4] - 2026-10-06
 
 ### Added

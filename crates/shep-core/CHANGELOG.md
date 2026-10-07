@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-10-07
+
+### Fixed
+
+- Refuse a frame that leads with an event key and carries a reply key
+
+### Performance
+
+- Decode a server frame without buffering it first
+
+
 ## [0.12.4] - 2026-10-06
 
 
