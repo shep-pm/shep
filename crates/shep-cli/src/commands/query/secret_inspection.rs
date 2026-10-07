@@ -1,6 +1,7 @@
 use crate::cli::SelectorArgs;
 use crate::commands::query::read_roll;
 use crate::commands::rpc::{client_error, unexpected_response};
+use crate::commands::secret::host_environment;
 use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{DescribedSecret, SecretStatus, Streams, emit_described, write_outcome};
@@ -36,7 +37,8 @@ pub(super) async fn describe_selector(
     match client.request(Request::Describe { selector }).await {
         Ok(Response::Described(procs)) => {
             let secrets = if include_secrets {
-                let (rows, unreadable) = gather_secrets(paths, &procs);
+                let host_environment = host_environment(streams, paths);
+                let (rows, unreadable) = gather_secrets(paths, &host_environment, &procs);
                 if let Some(error) = unreadable {
                     let message = format!(
                         "the secret store at {} could not be read ({error}), so every \
@@ -117,8 +119,13 @@ pub(super) fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) 
 /// so a flock sharing one environment copies them once. Not one view for
 /// the whole flock either, because an app's Flockfile can pin an
 /// `environment` of its own and each has to resolve against that one.
+///
+/// `host_environment` is what a sheep with no `environment` of its own
+/// resolves against; the caller reads it, so it can report a `shep.toml`
+/// that would not read.
 pub(super) fn gather_secrets(
     paths: &ShepPaths,
+    host_environment: &str,
     procs: &[ProcessInfo],
 ) -> (Vec<DescribedSecret>, Option<secrets::SecretError>) {
     let (store, unreadable) = match secrets::all(&paths.secrets) {
@@ -127,7 +134,7 @@ pub(super) fn gather_secrets(
     };
     let providers = secrets::provider_cache_on_disk(&paths.secrets_cache);
 
-    let namers = crate::secret_readers::namers(paths, read_roll(paths).as_ref(), procs);
+    let namers = crate::secret_readers::namers(host_environment, read_roll(paths).as_ref(), procs);
     let mut views: BTreeMap<&str, SecretView> = BTreeMap::new();
     let mut json = Vec::new();
     for namer in &namers {

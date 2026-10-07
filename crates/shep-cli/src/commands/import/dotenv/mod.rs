@@ -41,7 +41,7 @@ use plan::{Class, ImportPlan, Planned};
 
 use crate::cli::ImportEnvArgs;
 use crate::commands::rpc::{UNRECOGNISED, unexpected_response};
-use crate::commands::secret::{daemon_config, exit_code_for};
+use crate::commands::secret::{exit_code_for, host_environment};
 use crate::exit::ExitCode;
 use crate::output::{ImportEnvRow, ImportEnvRows, Streams, emit, write_outcome};
 
@@ -197,11 +197,10 @@ async fn resolve_environment(
         name: args.app.clone(),
     };
     match client.request(request).await {
-        Ok(Response::SheepConfig(view)) => Ok(view
-            .config
-            .environment
-            .clone()
-            .unwrap_or_else(|| daemon_config(paths).daemon.environment)),
+        Ok(Response::SheepConfig(view)) => Ok(match view.config.environment.clone() {
+            Some(environment) => environment,
+            None => host_environment(streams, paths),
+        }),
         Ok(_) => Err(unexpected_response(streams)),
         Err(err) => Err(streams.fail(ExitCode::from(&err), &err.to_string())),
     }

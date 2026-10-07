@@ -129,6 +129,8 @@ pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
 /// parse.
 ///
 /// An absent file is the ordinary first run and carries no diagnostic.
+///
+/// Callers that only want `[daemon] environment` use [`host_environment`].
 pub(crate) fn daemon_config_diagnosed(paths: &ShepPaths) -> (DaemonConfig, Option<String>) {
     let file = paths.daemon_config.display();
     let text = match std::fs::read_to_string(&paths.daemon_config) {
@@ -143,6 +145,20 @@ pub(crate) fn daemon_config_diagnosed(paths: &ShepPaths) -> (DaemonConfig, Optio
         Ok(config) => (config, None),
         Err(err) => (DaemonConfig::default(), Some(format!("{file}: {err}"))),
     }
+}
+
+/// `[daemon] environment` as [`daemon_config_diagnosed`] reads it, with its
+/// diagnostic, if any, printed to `streams.err` before the default is used.
+///
+/// For the verbs that resolve a sheep's environment with no `--env` and that
+/// have a stream to say so on: a default silently standing in for a
+/// configured `staging` sends their secrets to the wrong slot.
+pub(crate) fn host_environment(streams: &mut Streams<'_>, paths: &ShepPaths) -> String {
+    let (config, diagnostic) = daemon_config_diagnosed(paths);
+    if let Some(diagnostic) = diagnostic {
+        streams.aside(ExitCode::InvalidConfig.code_str(), &diagnostic);
+    }
+    config.daemon.environment
 }
 
 /// `--stdin`'s value: `reader`'s bytes, with at most one trailing `\n`
@@ -583,6 +599,46 @@ mod tests {
         assert_eq!(code, ExitCode::InvalidConfig);
         assert!(!err.contains("could not read"), "{err}");
         assert!(!err.contains("invalid shep.toml"), "{err}");
+    }
+
+    /// fails if `import dotenv` and `describe` go back to a silent default:
+    /// the environment they fall to is the wrong slot for an operator whose
+    /// `[daemon] environment` is `staging` in a file that will not parse.
+    #[test]
+    fn host_environment_names_a_shep_toml_that_will_not_parse() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        std::fs::write(
+            &paths.daemon_config,
+            "[daemon]\nenvironment = \"staging\"\n[secrets\n",
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let environment = host_environment(&mut streams(&mut out, &mut err), &paths);
+
+        assert_eq!(environment, DaemonConfig::default().daemon.environment);
+        let err = String::from_utf8(err).unwrap();
+        assert!(err.contains("invalid shep.toml"), "{err}");
+    }
+
+    #[test]
+    fn host_environment_reads_a_good_shep_toml_without_comment() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        std::fs::write(
+            &paths.daemon_config,
+            "[daemon]\nenvironment = \"staging\"\n",
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let environment = host_environment(&mut streams(&mut out, &mut err), &paths);
+
+        assert_eq!(environment, "staging");
+        assert!(err.is_empty(), "{err:?}");
     }
 
     #[test]
