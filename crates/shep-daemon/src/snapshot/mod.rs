@@ -239,7 +239,7 @@ fn is_running(status: ProcStatus) -> bool {
 /// `Clone`/`PartialEq`/`Eq`.
 ///
 /// `#[non_exhaustive]`: a future roll-format refusal would need its own
-/// variant, distinct from [`Self::Parse`]'s catch-all.
+/// variant, distinct from [`Self::Parse`]'s version refusal.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum SnapshotError {
@@ -250,9 +250,10 @@ pub enum SnapshotError {
     Encode(serde_json::Error),
     /// The temp file, `fsync`, rename, or read failed
     Io(std::io::Error),
-    /// The roll on disk is not valid JSON, or its `version` is one this
-    /// daemon does not know how to restore (carries the parse/version
-    /// message)
+    /// The roll on disk is not valid JSON for a [`FlockSnapshot`]
+    Decode(serde_json::Error),
+    /// The roll on disk parsed, but its `version` is one this daemon does
+    /// not know how to restore (carries the version message)
     Parse(String),
 }
 
@@ -264,6 +265,7 @@ impl fmt::Display for SnapshotError {
             }
             Self::Encode(err) => write!(f, "muster roll failed to serialize: {err}"),
             Self::Io(err) => write!(f, "muster roll I/O failed: {err}"),
+            Self::Decode(err) => write!(f, "muster roll is unreadable: {err}"),
             Self::Parse(msg) => write!(f, "muster roll is unreadable: {msg}"),
         }
     }
@@ -272,7 +274,7 @@ impl fmt::Display for SnapshotError {
 impl core::error::Error for SnapshotError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Encode(err) => Some(err),
+            Self::Encode(err) | Self::Decode(err) => Some(err),
             Self::Io(err) => Some(err),
             Self::NoParent(_) | Self::Parse(_) => None,
         }
@@ -322,12 +324,12 @@ pub(crate) fn write_atomic(path: &Path, snapshot: &FlockSnapshot) -> Result<(), 
 ///
 /// # Errors
 /// - [`SnapshotError::Io`]: the roll could not be read.
-/// - [`SnapshotError::Parse`]: invalid JSON, or a schema version this daemon
-///   does not know.
+/// - [`SnapshotError::Decode`]: the roll is not valid JSON for a roll.
+/// - [`SnapshotError::Parse`]: a schema version this daemon does not know.
 pub fn read(path: &Path) -> Result<FlockSnapshot, SnapshotError> {
     let bytes = std::fs::read(path)?;
-    let snapshot: FlockSnapshot =
-        serde_json::from_slice(&bytes).map_err(|err| SnapshotError::Parse(err.to_string()))?;
+    // Named, not `?`: `From<serde_json::Error>` maps to `Encode`, the write path.
+    let snapshot: FlockSnapshot = serde_json::from_slice(&bytes).map_err(SnapshotError::Decode)?;
     if snapshot.version != SNAPSHOT_VERSION {
         return Err(SnapshotError::Parse(format!(
             "roll schema version {} is not one this daemon knows (expected {SNAPSHOT_VERSION})",
