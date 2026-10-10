@@ -534,6 +534,9 @@ mod tests {
 
     /// `shep secret get K` through the dispatcher, so `shep.toml` is read
     /// the way an operator's run reads it: the code, then stderr.
+    ///
+    /// Under [`Format::Table`], not JSON: the JSON envelope escapes a
+    /// Windows path's backslashes, so a path assertion would never match.
     fn run_get_verb(paths: &ShepPaths) -> (ExitCode, String) {
         use clap::Parser;
 
@@ -543,7 +546,11 @@ mod tests {
         };
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let code = secret(&mut streams(&mut out, &mut err), paths, &args);
+        let code = secret(
+            &mut streams_with(&mut out, &mut err, Format::Table),
+            paths,
+            &args,
+        );
         (code, String::from_utf8(err).unwrap())
     }
 
