@@ -18,10 +18,13 @@ use std::collections::BTreeMap;
 /// each sheep's lamb tree beneath it. `command` is the verb name the output
 /// envelope reports.
 ///
-/// `include_secrets` alone gates [`gather_secrets`]: `flock_display::fold` passes `false`
+/// `secrets_host` alone gates [`gather_secrets`], and is the host
+/// environment it resolves against: `flock_display::fold` passes `None`
 /// and stays byte-identical to before this section existed, because `flock_display::fold`
 /// is a group view across a selector's sheep, not the single-sheep
-/// diagnostic this feature was built for.
+/// diagnostic this feature was built for. The caller reads it, so a
+/// `shep.toml` that would not read is reported once per run rather than
+/// once per selector.
 ///
 /// Not routed through [`request_and_render`](crate::commands::rpc::request_and_render): `emit_described` renders one
 /// `Vec<ProcessInfo>` into two tables, which no single
@@ -31,14 +34,13 @@ pub(super) async fn describe_selector(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     command: &str,
-    include_secrets: bool,
+    secrets_host: Option<&str>,
     selector: SelectorSpec,
 ) -> ExitCode {
     match client.request(Request::Describe { selector }).await {
         Ok(Response::Described(procs)) => {
-            let secrets = if include_secrets {
-                let host_environment = host_environment(streams, paths);
-                let (rows, unreadable) = gather_secrets(paths, &host_environment, &procs);
+            let secrets = if let Some(host_environment) = secrets_host {
+                let (rows, unreadable) = gather_secrets(paths, host_environment, &procs);
                 if let Some(error) = unreadable {
                     let message = format!(
                         "the secret store at {} could not be read ({error}), so every \
@@ -171,12 +173,22 @@ pub async fn describe(
     // One pass per target, each its own detail view: `describe` answers with
     // a tree per sheep, so merging them would lose that shape.
     let mut failure: Option<ExitCode> = None;
+    let mut host: Option<String> = None;
     for raw in &args.selectors {
         let selector = match parse_selector_spec(streams, raw) {
             Ok(selector) => selector,
             Err(code) => return code,
         };
-        let code = describe_selector(client, streams, paths, "describe", true, selector).await;
+        let host = host.get_or_insert_with(|| host_environment(streams, paths));
+        let code = describe_selector(
+            client,
+            streams,
+            paths,
+            "describe",
+            Some(host.as_str()),
+            selector,
+        )
+        .await;
         if code != ExitCode::Success {
             failure = failure.or(Some(code));
         }
