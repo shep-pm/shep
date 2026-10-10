@@ -197,11 +197,9 @@ pub(crate) async fn flock_command(
         // The roll fallback is a table-format affordance: under `--format
         // json` a failed invocation leaves stdout empty and puts an error
         // envelope on stderr, absence included.
-        Err(_) if streams.fmt == Format::Json => {
-            match connect_client(streams, paths, guard).await {
-                Ok(client) => query::flock(&client, streams).await,
-                Err(code) => code,
-            }
+        Err(err) if streams.fmt == Format::Json => {
+            let code = ExitCode::from(&err);
+            streams.fail(code, &unreachable_message(&err))
         }
         Err(shep_client::ConnectError::Connect { .. }) => query::flock_from_roll(streams, paths),
         Err(err) => {
@@ -392,6 +390,36 @@ mod tests {
             "a refusal is not an absence: {text}"
         );
         assert!(text.contains("shep daemon reload"), "{text}");
+    }
+
+    /// `fake_daemon` serves one connection and then stops listening, so a
+    /// second connect would find nothing and report an absence in the
+    /// refusal's place.
+    #[tokio::test]
+    async fn flock_json_reports_the_refusal_it_got_not_a_second_connect_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        std::fs::create_dir_all(&paths.run).unwrap();
+        let refusal = shep_core::protocol::RpcError {
+            code: shep_core::protocol::RpcErrorCode::ProtocolMismatch,
+            message: "this daemon speaks protocol 1, this client speaks 2".to_string(),
+            daemon_version: Some("0.1.8".to_string()),
+        };
+        let daemon = shep_client::testing::fake_daemon(&paths.socket, Err(refusal)).await;
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = {
+            let mut streams = buffered_streams(&mut out, &mut err);
+            streams.fmt = Format::Json;
+            flock_command(&mut streams, &paths, VersionGuard::Enforce, &flock_args()).await
+        };
+        daemon.await.unwrap();
+
+        assert_eq!(code, ExitCode::ProtocolMismatch);
+        let text = String::from_utf8(err).unwrap();
+        assert!(text.contains("this daemon speaks protocol 1"), "{text}");
+        assert!(out.is_empty(), "{}", String::from_utf8_lossy(&out));
     }
 
     #[tokio::test]
