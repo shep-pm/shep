@@ -74,9 +74,13 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
 /// [`vet_binary`]: as given, with a leading `~/` expanded against `home`,
-/// then looked up on `path_var`. First hit wins; if none finds anything,
-/// `raw` comes back unchanged so `vet_binary` reports the same
-/// [`AdoptRefusal::Missing`](super::vet::AdoptRefusal::Missing) it always has.
+/// then looked up on `path_var`. First hit wins. A step moves on only when
+/// its lookup proves the path absent: one that fails, an unsearchable
+/// directory say, counts as a hit, so `vet_binary` reports it as
+/// [`AdoptRefusal::Inaccessible`](super::vet::AdoptRefusal::Inaccessible).
+/// If no step finds anything, `raw` comes back unchanged and `vet_binary`
+/// reports the same [`AdoptRefusal::Missing`](super::vet::AdoptRefusal::Missing)
+/// it always has.
 ///
 /// `home` and `path_var` are parameters, read once by [`adopt`], so this
 /// stays a pure function of its inputs: this crate forbids `unsafe`, and a
@@ -580,12 +584,18 @@ mod tests {
         std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o000);
         std::fs::set_permissions(&sealed, mode.clone()).unwrap();
 
+        // A process that bypasses mode bits (root) can still search the
+        // directory, so the lookup never fails and nothing is under test.
+        let hidden = std::fs::metadata(sealed.join("dog")).is_err();
         let raw = Path::new("~/sealed/dog");
         let resolved = resolve_adopt_path(raw, Some(home.path()), None);
 
         // Restored before any assert so the tempdir can be removed.
         std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o700);
         std::fs::set_permissions(&sealed, mode).unwrap();
+        if !hidden {
+            return;
+        }
         assert_eq!(resolved, sealed.join("dog"));
     }
 
