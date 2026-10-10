@@ -87,7 +87,10 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
             set(streams, paths, key, env.as_deref(), &value)
         }
         SecretCommand::Get { key, env } => {
-            let config = daemon_config(paths);
+            let (config, diagnostic) = daemon_config_diagnosed(paths);
+            if let Some(diagnostic) = diagnostic {
+                streams.aside(ExitCode::InvalidConfig.code_str(), &diagnostic);
+            }
             get(
                 streams,
                 paths,
@@ -113,9 +116,49 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
 ///
 /// `pub(crate)`: `commands::query`'s `describe` reads the same default
 /// host environment this verb's `get` falls back to, for the same reason.
+///
+/// Silent about why it fell back, for callers with no stream to say it on
+/// (the lookout pane draws over the terminal). [`daemon_config_diagnosed`]
+/// is the one for a caller that can.
 pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
-    let text = std::fs::read_to_string(&paths.daemon_config).ok();
-    DaemonConfig::load(text.as_deref(), &|_| None).unwrap_or_default()
+    daemon_config_diagnosed(paths).0
+}
+
+/// [`daemon_config`]'s config, plus a sentence naming the file and the
+/// failure when it fell back because the file was unreadable or would not
+/// parse.
+///
+/// An absent file is the ordinary first run and carries no diagnostic.
+///
+/// Callers that only want `[daemon] environment` use [`host_environment`].
+pub(crate) fn daemon_config_diagnosed(paths: &ShepPaths) -> (DaemonConfig, Option<String>) {
+    let file = paths.daemon_config.display();
+    let text = match std::fs::read_to_string(&paths.daemon_config) {
+        Ok(text) => Some(text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => {
+            let diagnostic = format!("could not read {file}: {err}");
+            return (DaemonConfig::default(), Some(diagnostic));
+        }
+    };
+    match DaemonConfig::load(text.as_deref(), &|_| None) {
+        Ok(config) => (config, None),
+        Err(err) => (DaemonConfig::default(), Some(format!("{file}: {err}"))),
+    }
+}
+
+/// `[daemon] environment` as [`daemon_config_diagnosed`] reads it, with its
+/// diagnostic, if any, printed to `streams.err` before the default is used.
+///
+/// For the verbs that resolve a sheep's environment with no `--env` and that
+/// have a stream to say so on: a default silently standing in for a
+/// configured `staging` sends their secrets to the wrong slot.
+pub(crate) fn host_environment(streams: &mut Streams<'_>, paths: &ShepPaths) -> String {
+    let (config, diagnostic) = daemon_config_diagnosed(paths);
+    if let Some(diagnostic) = diagnostic {
+        streams.aside(ExitCode::InvalidConfig.code_str(), &diagnostic);
+    }
+    config.daemon.environment
 }
 
 /// `--stdin`'s value: `reader`'s bytes, with at most one trailing `\n`
@@ -487,6 +530,122 @@ mod tests {
     ) -> (ExitCode, String) {
         let (code, out, _) = run_get(paths, key, environment, allow_read, Format::Table);
         (code, out)
+    }
+
+    /// `shep secret get K` through the dispatcher, so `shep.toml` is read
+    /// the way an operator's run reads it: the code, then stderr.
+    ///
+    /// Under [`Format::Table`], not JSON: the JSON envelope escapes a
+    /// Windows path's backslashes, so a path assertion would never match.
+    fn run_get_verb(paths: &ShepPaths) -> (ExitCode, String) {
+        use clap::Parser;
+
+        let cli = Cli::try_parse_from(["shep", "secret", "get", "K"]).unwrap();
+        let crate::cli::Commands::Secret(args) = cli.command else {
+            panic!("expected Commands::Secret");
+        };
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = secret(
+            &mut streams_with(&mut out, &mut err, Format::Table),
+            paths,
+            &args,
+        );
+        (code, String::from_utf8(err).unwrap())
+    }
+
+    /// fails if a `shep.toml` that will not parse goes back to reading as
+    /// the defaults with nothing said: the operator would see only that
+    /// reading is off, and never that their `allow_read = true` was never
+    /// read.
+    #[test]
+    fn get_names_a_shep_toml_that_will_not_parse() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        run_set(&paths, "K", None, "v").unwrap();
+        std::fs::write(&paths.daemon_config, "[secrets\nallow_read = true\n").unwrap();
+
+        let (code, err) = run_get_verb(&paths);
+
+        assert_eq!(code, ExitCode::InvalidConfig, "the gate stays shut");
+        assert!(
+            err.contains(&paths.daemon_config.display().to_string()),
+            "{err}"
+        );
+        assert!(err.contains("invalid shep.toml"), "{err}");
+    }
+
+    /// fails if a `shep.toml` that exists but cannot be read is treated as
+    /// absent. A directory in its place stands in for a permissions or disk
+    /// error: both are an `Err` from `read_to_string` that is not `NotFound`.
+    #[test]
+    fn get_names_a_shep_toml_that_cannot_be_read() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        std::fs::create_dir(&paths.daemon_config).unwrap();
+
+        let (code, err) = run_get_verb(&paths);
+
+        assert_eq!(code, ExitCode::InvalidConfig, "the gate stays shut");
+        assert!(
+            err.contains(&paths.daemon_config.display().to_string()),
+            "{err}"
+        );
+        assert!(err.contains("could not read"), "{err}");
+    }
+
+    /// fails if an absent `shep.toml` starts warning: no file is the
+    /// ordinary first run, and the refusal alone says how to open the gate.
+    #[test]
+    fn get_says_nothing_extra_about_an_absent_shep_toml() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+
+        let (code, err) = run_get_verb(&paths);
+
+        assert_eq!(code, ExitCode::InvalidConfig);
+        assert!(!err.contains("could not read"), "{err}");
+        assert!(!err.contains("invalid shep.toml"), "{err}");
+    }
+
+    /// fails if `import dotenv` and `describe` go back to a silent default:
+    /// the environment they fall to is the wrong slot for an operator whose
+    /// `[daemon] environment` is `staging` in a file that will not parse.
+    #[test]
+    fn host_environment_names_a_shep_toml_that_will_not_parse() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        std::fs::write(
+            &paths.daemon_config,
+            "[daemon]\nenvironment = \"staging\"\n[secrets\n",
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let environment = host_environment(&mut streams(&mut out, &mut err), &paths);
+
+        assert_eq!(environment, DaemonConfig::default().daemon.environment);
+        let err = String::from_utf8(err).unwrap();
+        assert!(err.contains("invalid shep.toml"), "{err}");
+    }
+
+    #[test]
+    fn host_environment_reads_a_good_shep_toml_without_comment() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = paths_in(home.path());
+        std::fs::write(
+            &paths.daemon_config,
+            "[daemon]\nenvironment = \"staging\"\n",
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let environment = host_environment(&mut streams(&mut out, &mut err), &paths);
+
+        assert_eq!(environment, "staging");
+        assert!(err.is_empty(), "{err:?}");
     }
 
     #[test]
