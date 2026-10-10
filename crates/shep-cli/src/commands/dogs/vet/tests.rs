@@ -62,6 +62,36 @@ fn a_binary_shep_has_never_seen_is_vetted_before_anything_is_written() {
     ));
 }
 
+/// A directory the operator cannot search hides the file without it being
+/// absent: "no file exists" would send them looking for a path that is there.
+#[test]
+fn a_path_behind_an_unsearchable_directory_is_not_reported_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let sealed = dir.path().join("sealed");
+    std::fs::create_dir(&sealed).unwrap();
+    let bin = sealed.join("dog");
+    std::fs::write(&bin, "#!/bin/sh\nexit 0\n").unwrap();
+    chmod(&bin, 0o755);
+    chmod(&sealed, 0o000);
+
+    // A process that bypasses mode bits (root) is not hidden from the file.
+    let hidden = std::fs::metadata(&bin).is_err();
+    let refusal = vet_binary_within(&bin, dir.path(), "probe", TEST_BUDGET);
+    // Restored before any assert so the tempdir can be removed.
+    chmod(&sealed, 0o700);
+    if !hidden {
+        return;
+    }
+
+    assert!(
+        matches!(
+            &refusal,
+            Err(AdoptRefusal::Inaccessible { reason }) if reason.contains("ermission denied")
+        ),
+        "a permission failure must name its cause, got {refusal:?}"
+    );
+}
+
 #[test]
 fn a_binary_any_user_can_rewrite_is_refused() {
     let dir = tempfile::tempdir().unwrap();
