@@ -52,12 +52,17 @@ fn read_rejects_corrupt_json_and_unknown_schema_versions() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("flock.json");
     std::fs::write(&path, b"{not json").unwrap();
-    assert!(matches!(read(&path), Err(SnapshotError::Parse { .. })));
+    let err = read(&path).unwrap_err();
+    assert!(matches!(err, SnapshotError::Decode(_)), "got {err:?}");
+    assert!(
+        core::error::Error::source(&err).is_some(),
+        "a corrupt roll keeps the serde_json diagnostic"
+    );
 
     let future = format!(
         "{{\"version\":{},\"saved_at_ms\":0,\"apps\":[]}}",
         SNAPSHOT_VERSION + 1
     );
     std::fs::write(&path, future.as_bytes()).unwrap();
-    assert!(matches!(read(&path), Err(SnapshotError::Parse { .. })));
+    assert!(matches!(read(&path), Err(SnapshotError::Parse(_))));
 }
