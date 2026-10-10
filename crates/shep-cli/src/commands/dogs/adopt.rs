@@ -84,13 +84,16 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
 /// one [`vet_binary`] call, so this changes what `adopt` can find, never
 /// what it vets.
 fn resolve_adopt_path(raw: &Path, home: Option<&Path>, path_var: Option<&OsStr>) -> PathBuf {
-    if raw.exists() {
+    // Only a lookup that proves absence moves on: one that fails, an
+    // unsearchable directory say, leaves `vet_binary` to report why.
+    let not_absent = |path: &Path| !matches!(path.try_exists(), Ok(false));
+    if not_absent(raw) {
         return raw.to_path_buf();
     }
     if let Some(expanded) = raw
         .to_str()
         .and_then(|value| expand_tilde_candidate(value, home))
-        && expanded.exists()
+        && not_absent(&expanded)
     {
         return expanded;
     }
@@ -562,6 +565,28 @@ mod tests {
         let raw = Path::new("~/.cargo/bin/shep-log-rotate");
         let resolved = resolve_adopt_path(raw, Some(home.path()), None);
         assert_eq!(resolved, binary);
+    }
+
+    /// `exists` answers `false` for a path it cannot search, which would hand
+    /// `vet_binary` the unexpanded `~/…` and a "no file exists" for a file
+    /// that is there.
+    #[test]
+    fn resolve_adopt_path_expands_a_tilde_path_it_cannot_search() {
+        let home = tempfile::tempdir().unwrap();
+        let sealed = home.path().join("sealed");
+        std::fs::create_dir(&sealed).unwrap();
+        std::fs::write(sealed.join("dog"), "").unwrap();
+        let mut mode = std::fs::metadata(&sealed).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o000);
+        std::fs::set_permissions(&sealed, mode.clone()).unwrap();
+
+        let raw = Path::new("~/sealed/dog");
+        let resolved = resolve_adopt_path(raw, Some(home.path()), None);
+
+        // Restored before any assert so the tempdir can be removed.
+        std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o700);
+        std::fs::set_permissions(&sealed, mode).unwrap();
+        assert_eq!(resolved, sealed.join("dog"));
     }
 
     /// `cargo install shep-log-rotate` puts the binary on `$PATH` under its
