@@ -45,16 +45,16 @@ pub(crate) struct SecretNamer {
 /// looks like.
 ///
 /// Takes the roll already parsed: the pane reads it once for this and for
-/// [`roll_age`].
+/// [`roll_age`]. Takes `host_environment` rather than reading it, so a caller
+/// with a stream can report a `shep.toml` that would not read.
 pub(crate) fn namers(
-    paths: &ShepPaths,
+    host_environment: &str,
     roll: Option<&FlockSnapshot>,
     procs: &[ProcessInfo],
 ) -> Vec<SecretNamer> {
     let Some(roll) = roll else {
         return Vec::new();
     };
-    let host_environment = daemon_config(paths).daemon.environment;
     // First entry wins on a duplicate name, which is the match `find`
     // would have taken.
     let mut configs: BTreeMap<&str, &AppConfig> = BTreeMap::new();
@@ -79,7 +79,7 @@ pub(crate) fn namers(
             environment: config
                 .environment
                 .clone()
-                .unwrap_or_else(|| host_environment.clone()),
+                .unwrap_or_else(|| host_environment.to_string()),
             references,
         });
     }
@@ -121,7 +121,8 @@ pub(crate) fn by_reference(
         .map(|proc| proc.name.as_str())
         .collect();
     let mut map: BTreeMap<String, Vec<Reader>> = BTreeMap::new();
-    for namer in namers(paths, roll, procs) {
+    let host_environment = daemon_config(paths).daemon.environment;
+    for namer in namers(&host_environment, roll, procs) {
         for reference in &namer.references {
             map.entry(reference.clone()).or_default().push(Reader {
                 name: namer.name.clone(),
@@ -216,7 +217,7 @@ mod tests {
 
         let roll = read_roll(&paths);
         let found = namers(
-            &paths,
+            &daemon_config(&paths).daemon.environment,
             roll.as_ref(),
             &[online("plain"), online("secretive")],
         );
@@ -239,7 +240,7 @@ mod tests {
 
         let roll = read_roll(&paths);
         let found = namers(
-            &paths,
+            &daemon_config(&paths).daemon.environment,
             roll.as_ref(),
             &[online("pinned"), online("floating")],
         );
@@ -264,7 +265,7 @@ mod tests {
 
         let roll = read_roll(&paths);
         let found = namers(
-            &paths,
+            &daemon_config(&paths).daemon.environment,
             roll.as_ref(),
             &[online("web"), online("web"), online("web")],
         );

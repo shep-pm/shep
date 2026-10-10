@@ -315,7 +315,7 @@ pub async fn fold(
         streams,
         paths,
         "fold",
-        false,
+        None,
         SelectorSpec::Fold(args.name.clone()),
     )
     .await
