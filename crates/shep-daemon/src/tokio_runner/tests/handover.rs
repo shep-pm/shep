@@ -198,8 +198,9 @@ async fn a_report_after_a_stream_ends_names_no_descriptor_for_it() {
     let mut pump = PumpHarness::start_over_pipes();
     pump.feed(false, "before-the-eof").await;
 
+    let out_fd = pump.pipes.out.expect("stdout has a pipe fd");
     drop(pump.out_writer);
-    let_the_pump_settle().await;
+    wait_for_fd_to_close(out_fd).await;
 
     // Sent through the field, not `report_fds`: dropping the writer
     // above moves out of the harness, so `&self` cannot be called.

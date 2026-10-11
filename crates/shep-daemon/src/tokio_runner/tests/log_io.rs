@@ -652,7 +652,7 @@ async fn a_stream_that_has_ended_is_still_reopened() {
     // stream early leaves behind, and what the pump holds in between the
     // two EOFs of an ordinary exit.
     drop(pump.out_writer);
-    let_the_pump_settle().await;
+    let_the_duplex_pump_settle().await;
 
     // Deleted rather than renamed, so the reopen is the only thing that
     // could put either path back.
