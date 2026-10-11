@@ -792,4 +792,89 @@ mod tests {
             "a refused migration strikes nothing"
         );
     }
+
+    // --- dogs.toml's lock, contended -----------------------------------
+
+    /// How many times [`a_boot_migration_and_a_dog_config_write_at_once_both_land`]
+    /// re-runs its race.
+    ///
+    /// A lost update needs both threads to read `dogs.toml` before either
+    /// renames, and on this write path (stage, `fsync`, rename) that window
+    /// is wide, so one round is usually enough. Twenty makes the failure a
+    /// certainty rather than a likelihood, which is what a test guarding a
+    /// race has to be to be worth having.
+    const ROUNDS_OF_CONTENTION: u32 = 20;
+
+    /// The pair this module's own doc comment names as `dogs.toml`'s two
+    /// writers: [`migrate_dog_sections`], which runs at
+    /// `commands/daemon/lifecycle.rs:150` (boot) and again at
+    /// `commands/daemon/reload.rs:148` (reload), and
+    /// [`shep_daemon::dogs::set_dog_section`], which a running shepherd
+    /// calls from behind `Request::SetDogConfig` whenever the config pane
+    /// edits a dog's section. Both are reachable at once: a `shep reload`
+    /// can race a config-pane write that lands while the predecessor is
+    /// still migrating, and a fresh boot's migration can race a write sent
+    /// the moment the socket comes up.
+    ///
+    /// Each call rewrites the whole file, so an unserialised pair loses one
+    /// of each other's writes: whichever rename lands second wins the file
+    /// wholesale. `ConfigLock` is what turns the read, the merge and the
+    /// rename into one transaction against the other writer, proven here by
+    /// forcing the interleaving with a barrier rather than asserting the
+    /// lock exists. Pointing `_dogs_lock` at a path unique to each thread,
+    /// so it locks nothing shared, turns this red at round 0.
+    ///
+    /// Two `migrate_dog_sections` calls racing each other, by contrast,
+    /// converge safely with no lock at all: both read and re-write the same
+    /// source, so two runs against the same files always compute the same
+    /// result. It is the *other* writer, changing content
+    /// `migrate_dog_sections` never reads back out, that a dropped lock
+    /// loses.
+    #[test]
+    fn a_boot_migration_and_a_dog_config_write_at_once_both_land() {
+        use std::sync::{Arc, Barrier};
+
+        for round in 0..ROUNDS_OF_CONTENTION {
+            let (_dir, paths) = home_with("[dog.metrics]\nbind = \"127.0.0.1:9615\"\n");
+
+            let gate = Arc::new(Barrier::new(2));
+            let migrating = {
+                let gate = Arc::clone(&gate);
+                let paths = paths.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    migrate_dog_sections(&paths)
+                })
+            };
+            let setting = {
+                let gate = Arc::clone(&gate);
+                let dogs_config = paths.dogs_config.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    shep_daemon::dogs::set_dog_section(
+                        &dogs_config,
+                        "watchdog",
+                        "every = \"30s\"\n",
+                    )
+                })
+            };
+            let moved = migrating.join().expect("thread").expect("migrate");
+            let set = setting.join().expect("thread");
+            assert!(
+                set.is_ok(),
+                "round {round}: set_dog_section failed: {set:?}"
+            );
+
+            let written = std::fs::read_to_string(&paths.dogs_config).expect("read");
+            let parsed = DogsConfig::load(Some(&written)).expect("valid");
+            assert!(
+                parsed.dog.contains_key("metrics"),
+                "round {round}: the migrated section must survive, got {written:?} (moved {moved:?})"
+            );
+            assert!(
+                parsed.dog.contains_key("watchdog"),
+                "round {round}: the config-pane write must survive, got {written:?}"
+            );
+        }
+    }
 }

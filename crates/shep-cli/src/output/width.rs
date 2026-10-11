@@ -212,6 +212,22 @@ mod tests {
         assert_eq!(sanitize_cell(styled), styled);
     }
 
+    /// [`sanitize_cell_without_ansi`]'s one difference from
+    /// [`sanitize_cell`]: a well-formed escape a coloured cell would keep
+    /// is dropped instead, since `bare` style colours nothing and a `table`
+    /// caller reaching this spelling has only the operator's terminal left
+    /// to drive.
+    #[test]
+    fn without_ansi_drops_a_well_formed_escape_sequence_kept_by_sanitize_cell() {
+        let styled = "\u{1b}[38;5;29m(o.o) online\u{1b}[0m";
+        assert_eq!(sanitize_cell_without_ansi(styled), "(o.o) online");
+        assert_eq!(
+            sanitize_cell(styled),
+            styled,
+            "the keep-ANSI spelling keeps it"
+        );
+    }
+
     /// A bare `\x1b` with no `[` drops both characters. An `\x1b[` that
     /// never reaches a final byte is not a well-formed CSI sequence, so it
     /// drops in full rather than passing through unverified.
