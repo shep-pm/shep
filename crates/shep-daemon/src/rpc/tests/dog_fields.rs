@@ -444,7 +444,7 @@ async fn an_unreadable_store_is_internal_for_a_field_edit_too() {
     );
 }
 
-/// The muster roll is a registry record `rpc.rs` writes, not
+/// The muster roll is a registry record `rpc/dispatch.rs` writes, not
 /// something the supervisor does. Nothing on the restore path reads
 /// the override store, so an edit that skipped it would survive a
 /// `shep daemon reload` and vanish on a cold restart.

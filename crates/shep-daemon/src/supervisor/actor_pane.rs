@@ -299,7 +299,7 @@ impl<R: ProcessRunner> Actor<R> {
             normalize(intended).map_err(|err| SupervisorError::InvalidEnv(err.to_string()))?;
 
         // `set` empty means every key was already held at this value, so
-        // there is nothing to write and nothing for `rpc.rs` to record:
+        // there is nothing to write and nothing for `rpc/dispatch.rs` to record:
         // `app` is `Some` only when the store moved.
         if dry_run || set.is_empty() {
             return Ok(Some(EnvBatch {

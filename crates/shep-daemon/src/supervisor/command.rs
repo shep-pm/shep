@@ -161,7 +161,7 @@ pub(crate) enum Command {
         /// reason.
         value: Option<EnvValue>,
         /// Answers the config now parked for the sheep's next spawn, which
-        /// `rpc.rs` hands to the registry, or `None` when no sheep has that
+        /// `rpc/dispatch.rs` hands to the registry, or `None` when no sheep has that
         /// name. An error only when the request is refused or the override
         /// store itself could not be read or written.
         reply: oneshot::Sender<Result<Option<ResolvedApp>, SupervisorError>>,

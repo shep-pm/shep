@@ -165,7 +165,7 @@ impl SupervisorHandle {
     /// operator override. Answers `Ok(None)` when no sheep has that name.
     ///
     /// The `Some` carries the config now parked for that sheep's next spawn.
-    /// `rpc.rs` hands it to [`crate::snapshot::FlockRegistry::record`], the
+    /// `rpc/dispatch.rs` hands it to [`crate::snapshot::FlockRegistry::record`], the
     /// way the `Scale` and `ApplyConfig` arms hand it theirs: the muster roll
     /// is written from the registry and nothing on the restore path reads the
     /// override store, so an edit that skipped this survives a
@@ -210,7 +210,7 @@ impl SupervisorHandle {
     /// [`Actor::handle_set_sheep_env_batch`] states what `force` and
     /// `dry_run` do and when the batch is refused whole. The `Some` carries
     /// [`EnvBatch`], whose `app` is the config now parked for that sheep's
-    /// next spawn and is `None` whenever nothing was written; `rpc.rs` hands
+    /// next spawn and is `None` whenever nothing was written; `rpc/dispatch.rs` hands
     /// it to the registry for [`Self::set_sheep_env`]'s reason.
     ///
     /// # Errors
