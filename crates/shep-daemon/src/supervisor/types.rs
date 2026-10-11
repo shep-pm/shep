@@ -82,7 +82,7 @@ impl Registration {
 /// operator-facing string with no value from a live flock in it.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldSet {
-    /// The app as it now stands, for `rpc.rs` to hand the registry: the
+    /// The app as it now stands, for `rpc/dispatch.rs` to hand the registry: the
     /// parked config when the field parked, the stored spec's when it
     /// reached. `Command::SetSheepEnv` answers with the same thing and for
     /// the same reason: the muster roll is written from the registry.
@@ -100,7 +100,7 @@ pub(crate) struct FieldSet {
 /// an [`AppConfig`], whose own manual `Debug` redacts `env`.
 #[derive(Debug, Clone)]
 pub(crate) struct EnvBatch {
-    /// The parked config, for `rpc.rs` to hand the registry. `None` when
+    /// The parked config, for `rpc/dispatch.rs` to hand the registry. `None` when
     /// nothing was written, which is a dry run or an unforced collision.
     pub(crate) app: Option<ResolvedApp>,
     /// Keys written.
@@ -192,7 +192,7 @@ pub(crate) struct Applied {
     /// though: a later refusal produces the same shape, and only the message
     /// tells them apart.
     pub(crate) refused: Option<String>,
-    /// The merged, normalized app. `rpc.rs` hands this to
+    /// The merged, normalized app. `rpc/dispatch.rs` hands this to
     /// `FlockRegistry::record`, so a reboot comes up on the applied config.
     /// The full merge, `NeedsRespawn` fields included, since a reboot spawns
     /// every process afresh.

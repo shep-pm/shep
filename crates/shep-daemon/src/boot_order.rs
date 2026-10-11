@@ -330,7 +330,7 @@ fn corrected_for_earlier_stages(
 /// send and a oneshot on the actor, neither of which carries a deadline of
 /// its own.
 ///
-/// `rpc.rs`'s ordered restart reaches this too, for the same question: a
+/// `rpc/dispatch.rs`'s ordered restart reaches this too, for the same question: a
 /// restart is done when the sheep it respawned has stopped being `Starting`.
 pub(crate) async fn await_stage(
     mut rx: broadcast::Receiver<SharedEvent>,

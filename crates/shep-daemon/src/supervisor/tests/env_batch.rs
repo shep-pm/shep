@@ -234,7 +234,7 @@ async fn a_refused_collision_reports_rather_than_validating() {
 
 /// The contract says `app` is `Some` only when something was written.
 /// A batch every key of which is already held writes nothing, so
-/// `rpc.rs` must not record a no-op and rewrite the muster roll for it.
+/// `rpc/dispatch.rs` must not record a no-op and rewrite the muster roll for it.
 #[tokio::test(start_paused = true)]
 async fn a_batch_that_changes_nothing_parks_nothing() {
     let h = env_batch_harness().await;

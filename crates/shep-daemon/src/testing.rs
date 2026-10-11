@@ -438,7 +438,7 @@ pub(crate) fn harness_identifying(
 }
 
 /// One row of a scripted identity table, shared by [`harness_identifying`]
-/// and `stats.rs`'s and `rpc.rs`'s test modules.
+/// and `stats.rs`'s and `rpc/dispatch.rs`'s test modules.
 pub(crate) fn identity(pid: u32, parent: Option<u32>, name: &str) -> ProcessIdentity {
     ProcessIdentity {
         pid,
