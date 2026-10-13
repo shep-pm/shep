@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-13
+
+### Added
+
+- Edit a dog's nested tables as dotted rows in the dog config pane
+- Let the bark dog replace its bus topics on a live connection
+- Add a bark rule that fires on a log line
+- Disable and enable a sheep by name
+- Move enable and disable to Run things in help
+- Lookout and the whistle show a disabled sheep
+- The roll keeps a sheep's disabled mark across a restart **(BREAKING)**
+
+### Fixed
+
+- Report flock's first connect error under json instead of reconnecting
+- Keep the OS cause when vetting an adopt path fails for a reason other than absence
+- Hand an unsearchable adopt path to the vet instead of reading it as absent
+- A dog write keeps the section's own shape, and a no-op unset rides
+- A table created inside an inline table is an inline table
+- A dog close with nothing left to write is not a refusal
+- Keep a list whose items can be null a read-only row
+- Wait out a handover that lands during set_topics
+- Review round 1 on disable and enable
+- Pass a disabled sheep by on a Flockfile re-run
+
+
 ## [0.12.5] - 2026-10-07
 
 

@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-13
+
+### Added
+
+- A channel metric can carry a type, labels and help text **(BREAKING)**
+- Add enable and disable requests, a Disabled error code and ProcessInfo.disabled
+
+
 ## [0.12.5] - 2026-10-07
 
 ### Fixed

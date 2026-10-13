@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-13
+
+### Added
+
+- A channel metric can carry a type, labels and help text **(BREAKING)**
+- Resolve secret references in a dog's section
+- Serve DogConfigResolved
+- Re-fire config.dog.<name> when a provider's push changes a secret a dog names
+- The roll keeps a sheep's disabled mark across a restart **(BREAKING)**
+
+### Fixed
+
+- Keep the serde_json error behind a corrupt muster roll
+- Carry the disabled mark through a handover and wake the roll writer on disable
+- Name the sink's item type at the write loop's flush
+
+
 ## [0.12.5] - 2026-10-07
 
 ### Fixed

@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-13
+
+### Added
+
+- Ask for the resolved section in dog_config
+
+### Fixed
+
+- Read a reference through the shared tokenizer on the fallback path
+
+
 ## [0.12.5] - 2026-10-07
 
 
