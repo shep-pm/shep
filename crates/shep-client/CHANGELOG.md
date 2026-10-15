@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.15.0] - 2026-10-15
 
+### Added
+
+- Let a sheep send a dog a note that is not a metric sample **(BREAKING)**
+
+### Fixed
+
+- --no-log-timestamps reaches a sheep the flock already has
+
 
 ## [0.14.0] - 2026-10-14
 

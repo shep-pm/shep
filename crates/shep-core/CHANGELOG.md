@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Let a sheep send a dog a note that is not a metric sample **(BREAKING)**
+- ProcessInfo carries whether a sheep's app turns the log stamp off
 
 ### Changed
 
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Trim tcp probe targets the way http ones are trimmed
 - Refuse a null or a datetime where a Flockfile key needs a table
+- Bleats keeps an app's own timestamp in the file tail of a stamps-off sheep
 
 
 ## [0.14.0] - 2026-10-14
