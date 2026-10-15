@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-15
+
+### Added
+
+- A stamps-off sheep says so on its listing row
+- Let a sheep send a dog a note that is not a metric sample **(BREAKING)**
+
+### Changed
+
+- One plain_entry fixture behind the supervisor tests' entry literals
+- Testing.rs hands its doubles and its loopback fake to submodules
+- Leave the loopback fake at crate::testing_http
+- Open every shutdown test through started_apps
+
+
 ## [0.14.0] - 2026-10-14
 
 ### Added

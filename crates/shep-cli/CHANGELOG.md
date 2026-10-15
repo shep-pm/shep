@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-15
+
+### Added
+
+- Copy a setting or a dog table from one sheep onto another
+- Let a sheep send a dog a note that is not a metric sample **(BREAKING)**
+
+### Changed
+
+- Fold page_lines_back onto tail_window_start
+- Re-export the dogs table's types beside the functions that return them
+- Name the dogs module at the reach its re-exported functions need
+- Restart and reload share one refusal tail
+- The two feed screens answer their keys from one place
+- The two feed screens claim their keys in one dispatcher
+
+### Fixed
+
+- Refuse a copy that would write through a value that is not a table
+- Read a dotted dog name and a dotted key against the tables
+- Read a copy's dog name as a table before a flock dog
+- Print the copy change list before asking, in every output form
+- Report a failed clock read in bark and keep its stamps moving
+- --no-log-timestamps reaches a sheep the flock already has
+- Report a parked stamp write and the shepherd's warning beside it
+- --no-log-timestamps reaches a sheep the token named
+
+
 ### Added
 
 - Copy a setting or a dog table from one sheep onto another

@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-15
+
+### Added
+
+- Let a sheep send a dog a note that is not a metric sample **(BREAKING)**
+
+### Changed
+
+- Apply table rows carry their reaches-running answer
+
+### Fixed
+
+- Trim tcp probe targets the way http ones are trimmed
+- Refuse a null or a datetime where a Flockfile key needs a table
+
+
 ## [0.14.0] - 2026-10-14
 
 
