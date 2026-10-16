@@ -15,10 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.15.1] - 2026-10-16
 
+### Added
+
+- A read log line keeps its own colour as runs over plain text
+- The feed colours a plain line by stream and keeps its own
+- The feed colours a plain line by stream and keeps its own colour
+
+### Changed
+
+- Give the bleats match box its own module
+- Hand pane_bleats.rs's match filters to their own module
+
 ### Fixed
 
 - Drop every em dash from a non-test string literal
 - Name both group keys on the config pane's tab row
+- A reset or a malformed colour reads as a plain line
+- Three ways a feed line's colour came out wrong
+- The embedded feed wears the ink, and an SGR keeps its own sub-parameters
 
 
 ## [0.15.0] - 2026-10-15
