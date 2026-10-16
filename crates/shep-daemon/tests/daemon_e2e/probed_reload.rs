@@ -45,6 +45,45 @@ fn probed_sheep(name: &str, port: u16, mute_file: &std::path::Path) -> AppConfig
     app
 }
 
+/// Boot a fixture, start one probed sheep on `port`, and wait for it to be
+/// serving and online — the setup both cases in this file share.
+///
+/// Returns the fixture (kept alive by the caller), the client, and the
+/// drainee's id and pid. The caller stages whatever the case needs on disk
+/// (`fs::write(&mute, ...)`) after this returns; nothing here depends on it.
+#[cfg(unix)]
+async fn boot_probed_sheep_and_subscribed(
+    port: u16,
+    mute: &std::path::Path,
+) -> (Fixture, Client, u32, u32) {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+    let mut client = fixture.connect().await;
+
+    let started = client
+        .request(Request::Start {
+            apps: vec![probed_sheep("web", port, mute)],
+        })
+        .await;
+    let Response::Started(infos) = started.result.unwrap() else {
+        panic!("expected started")
+    };
+    let drainee_id = infos[0].id;
+    let drainee_pid = infos[0].pid.expect("a real spawn reports a real pid");
+    await_serving(port, drainee_pid).await;
+    await_online(&mut client, drainee_id).await;
+
+    // Subscribed after the app is up: these cases read the event stream in
+    // emission order, and an earlier subscription would put `Start` in front.
+    let subscribed = client
+        .request(Request::Subscribe {
+            topics: vec!["process.*".to_string()],
+        })
+        .await;
+    assert_eq!(subscribed.result.unwrap(), Response::Subscribed);
+
+    (fixture, client, drainee_id, drainee_pid)
+}
+
 /// The control for the case below: without it, an implementation that
 /// abandoned every probed reload would pass the failure case and look correct.
 ///
@@ -58,30 +97,8 @@ async fn a_probed_reload_of_a_working_release_still_finishes() {
     let dir = tempfile::tempdir().unwrap();
     let mute = dir.path().join("mute");
 
-    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
-    let mut client = fixture.connect().await;
-
-    let started = client
-        .request(Request::Start {
-            apps: vec![probed_sheep("web", port, &mute)],
-        })
-        .await;
-    let Response::Started(infos) = started.result.unwrap() else {
-        panic!("expected started")
-    };
-    let drainee_id = infos[0].id;
-    let drainee_pid = infos[0].pid.expect("a real spawn reports a real pid");
-    await_serving(port, drainee_pid).await;
-    await_online(&mut client, drainee_id).await;
-
-    // Subscribed after the app is up: this case reads the event stream in
-    // emission order, and an earlier subscription would put `Start` in front.
-    let subscribed = client
-        .request(Request::Subscribe {
-            topics: vec!["process.*".to_string()],
-        })
-        .await;
-    assert_eq!(subscribed.result.unwrap(), Response::Subscribed);
+    let (fixture, mut client, _drainee_id, drainee_pid) =
+        boot_probed_sheep_and_subscribed(port, &mute).await;
 
     let accepted = client
         .request(Request::Reload {
@@ -136,30 +153,8 @@ async fn a_replacement_that_serves_nothing_is_refused_not_reported_reloaded() {
     let dir = tempfile::tempdir().unwrap();
     let mute = dir.path().join("mute");
 
-    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
-    let mut client = fixture.connect().await;
-
-    let started = client
-        .request(Request::Start {
-            apps: vec![probed_sheep("web", port, &mute)],
-        })
-        .await;
-    let Response::Started(infos) = started.result.unwrap() else {
-        panic!("expected started")
-    };
-    let drainee_id = infos[0].id;
-    let drainee_pid = infos[0].pid.expect("a real spawn reports a real pid");
-    await_serving(port, drainee_pid).await;
-    await_online(&mut client, drainee_id).await;
-
-    // Subscribed after the app is up: this case reads the event stream in
-    // emission order, and an earlier subscription would put `Start` in front.
-    let subscribed = client
-        .request(Request::Subscribe {
-            topics: vec!["process.*".to_string()],
-        })
-        .await;
-    assert_eq!(subscribed.result.unwrap(), Response::Subscribed);
+    let (fixture, mut client, drainee_id, _drainee_pid) =
+        boot_probed_sheep_and_subscribed(port, &mute).await;
 
     // The bad release, staged between the two spawns of one unchanged app.
     std::fs::write(&mute, b"").expect("the marker must be writable");
