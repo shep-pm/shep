@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-10-17
+
+### Changed
+
+- Make a dog verb's status carry whether its shepherd acted
+- Type the bool arguments a transposition would swap silently
+
+
 ## [0.15.1] - 2026-10-16
 
 ### Added
