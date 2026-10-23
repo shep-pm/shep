@@ -503,7 +503,7 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.tag }}
           persist-credentials: false
-      - uses: taiki-e/install-action@dfae9bf3d6f6c6f20ef4ebb3486c01a51341ff12 # v2.87.18
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-deb
       - name: Unpack the archive this release already carries
@@ -675,7 +675,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
+      - uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
         with:
           identifier: ${{ vars.WINGET_IDENTIFIER }}
           # Bare version: the action's default only strips a leading `v`,
