@@ -30,7 +30,7 @@ const SETTLE: Duration = Duration::from_secs(15);
 /// The environment a real sheep gets, in miniature.
 ///
 /// Not empty: the runner's `env_clear()` means an empty environment
-/// breaks `cmd`/`powershell` on Windows. `assemble`'s private `base_env`
+/// breaks `cmd`/`powershell` on Windows. `assemble`'s private `inherited_env`
 /// normally supplies this floor; a hand-built spec must reproduce it.
 fn realistic_env() -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();

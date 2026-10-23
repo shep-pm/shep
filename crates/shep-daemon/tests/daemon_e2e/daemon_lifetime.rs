@@ -226,7 +226,7 @@ impl Drop for PathGuard {
 async fn a_bare_interpreter_resolves_via_the_inherited_path() {
     // A throwaway-tempdir shim, not a bare `"sh"`: `execvp` falls back to
     // `_PATH_DEFPATH` when PATH is absent from the child's env, so a bare name
-    // would resolve even with `base_env()`'s seeding reverted.
+    // would resolve even with `inherited_env()`'s seeding reverted.
     use std::os::unix::fs::PermissionsExt as _;
 
     let shim_home = tempfile::tempdir().unwrap();

@@ -41,6 +41,7 @@ pub mod exit;
 // One advisory lock, keyed on the file it guards. Every store that
 // publishes a new value by `rename` holds it across the whole cycle.
 pub mod file_lock;
+pub mod inherited_env;
 pub mod kv;
 // One definition of the log-line timestamp for the writer and every reader:
 // the daemon stamps, and three different file readers in shep-cli strip.
