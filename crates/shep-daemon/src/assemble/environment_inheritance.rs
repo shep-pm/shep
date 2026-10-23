@@ -1,3 +1,7 @@
+use shep_core::inherited_env::DEFAULT_PATH;
+pub(super) use shep_core::inherited_env::INHERITED;
+#[cfg(any(test, doc))]
+pub(super) use shep_core::inherited_env::INHERITED_WINDOWS;
 use std::collections::BTreeMap;
 
 /// The env every spawned child starts from, before the app's own `env` map
@@ -29,77 +33,6 @@ pub(super) fn inherited_env(
     }
     env
 }
-
-/// The `PATH` a child gets when the daemon itself has none.
-#[cfg(unix)]
-const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-
-/// The `PATH` a child gets when the daemon itself has none.
-///
-/// Not expanded via `%SystemRoot%`: these literal paths are correct on
-/// every standard Windows install and need no variable to resolve.
-#[cfg(windows)]
-const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
-
-/// Variables inherited from the daemon's own environment, on top of `PATH`.
-const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
-
-/// Variables inherited from the daemon's own environment, on top of `PATH`.
-///
-/// Longer than the unix list because Windows children need it: many Win32
-/// APIs read `%SystemRoot%` directly, and `PATHEXT`/`COMSPEC` let a child
-/// resolve and run `.cmd` files at all. `TEMP`/`TMP` and the
-/// `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` trio are where most runtimes keep
-/// per-user state. Still a closed allowlist, not inherit-everything.
-///
-/// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
-/// non-console stdio handle (a pipe, which is what every spawned child gets)
-/// makes CPython up to 3.14 fall back to the legacy ANSI code page for
-/// `sys.stdout`/`sys.stderr` on Windows, and any non-ASCII byte an app prints
-/// then raises `UnicodeEncodeError`. CPython 3.15 turns UTF-8 mode on by
-/// default (PEP 686), so these two matter for an older interpreter and for
-/// anything that sets `PYTHONUTF8=0`. Neither has a unix equivalent to piggyback
-/// on. `LANG` is what decides a child's stdio encoding there and
-/// [`INHERITED_UNIX`] forwards it, which is not the same as setting one: a
-/// daemon started with no `LANG`, or with one naming a non-UTF-8 locale,
-/// hands that to its children. Windows has no variable in that role to
-/// forward at all. Setting either in the daemon's own environment now
-/// reaches every spawned app; an app can still set them itself, per-app, in
-/// its Flockfile `env`.
-pub(super) const INHERITED_WINDOWS: &[&str] = &[
-    "SystemRoot",
-    "windir",
-    "SystemDrive",
-    "COMSPEC",
-    "PATHEXT",
-    "TEMP",
-    "TMP",
-    "USERPROFILE",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "PROCESSOR_ARCHITECTURE",
-    "NUMBER_OF_PROCESSORS",
-    "OS",
-    "LANG",
-    "TZ",
-    "PYTHONUTF8",
-    "PYTHONIOENCODING",
-];
-
-/// The list [`build`](crate::assemble::spawn_spec::build) actually reads on this build. Picked with `cfg!`
-/// rather than `#[cfg(...)]` gating [`INHERITED_UNIX`]/[`INHERITED_WINDOWS`]
-/// themselves: both stay referenced on every target this way, so a test can
-/// run either platform's list (and [`inherited_env`]'s filtering) on any
-/// host, the same way this crate's unit-file renderers are pinned by text
-/// on a Mac without a systemd host, and `-D warnings` never calls the other
-/// platform's list dead code.
-pub(super) const INHERITED: &[&str] = if cfg!(windows) {
-    INHERITED_WINDOWS
-} else {
-    INHERITED_UNIX
-};
 
 /// [`inherited_env`]'s two arguments bundled into one: a key list plus a
 /// reader, so [`build`](crate::assemble::spawn_spec::build) takes one parameter for this instead of two, and a
