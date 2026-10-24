@@ -200,9 +200,35 @@ pub(crate) mod test_support {
 mod tests {
     use crate::commands::query::read_roll;
     use shep_core::config::AppConfig;
+    use shep_daemon::snapshot::SavedApp;
 
     use super::test_support::{online, paths_under, stopped, write_roll};
     use super::*;
+
+    /// A shepherd that has never written its roll answers "who names which
+    /// secret" with nothing, rather than failing or inventing a config.
+    #[test]
+    fn namers_with_no_roll_names_nothing() {
+        let found = namers("production", None, &[online("web")]);
+        assert!(
+            found.is_empty(),
+            "no roll on disk: nothing to name from: {found:?}"
+        );
+    }
+
+    /// The same gap seen from the reference side: `by_reference` still
+    /// reads `shep.toml` for the host environment, but with no roll even a
+    /// running sheep contributes no row.
+    #[test]
+    fn by_reference_with_no_roll_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_under(dir.path());
+        let map = by_reference(&paths, None, &[online("web")]);
+        assert!(
+            map.is_empty(),
+            "no roll on disk: no reference has readers: {map:?}"
+        );
+    }
 
     #[test]
     fn an_app_naming_no_reference_is_left_out() {
@@ -272,6 +298,45 @@ mod tests {
         );
 
         assert_eq!(found.len(), 1, "three instances, one config: {found:?}");
+    }
+
+    /// A roll written by an older build could hold two entries under one
+    /// name. `namers` keeps the first, which is the entry a `find` over
+    /// `roll.apps` would have matched: the second entry's environment and
+    /// references are ignored outright, not merged in.
+    #[test]
+    fn two_roll_entries_under_one_name_report_the_first_ones_environment_and_references() {
+        let mut first = AppConfig::minimal("web", "./srv");
+        first.environment = Some("staging".into());
+        first.env.insert("PW".into(), "{{secret:FIRST}}".into());
+        let mut second = AppConfig::minimal("web", "./srv");
+        second.environment = Some("production".into());
+        second.env.insert("PW".into(), "{{secret:SECOND}}".into());
+        let roll = FlockSnapshot::with_apps(vec![
+            SavedApp {
+                app: first,
+                instances_running: 1,
+                disabled: false,
+            },
+            SavedApp {
+                app: second,
+                instances_running: 1,
+                disabled: false,
+            },
+        ]);
+
+        let found = namers("production", Some(&roll), &[online("web")]);
+
+        assert_eq!(found.len(), 1, "one entry per name: {found:?}");
+        assert_eq!(
+            found[0].environment, "staging",
+            "the first entry's environment wins"
+        );
+        assert_eq!(
+            found[0].references,
+            BTreeSet::from(["FIRST".to_string()]),
+            "only the first entry's references are read"
+        );
     }
 
     #[test]
