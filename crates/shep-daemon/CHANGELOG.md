@@ -10,6 +10,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-24
+
+### Added
+
+- Resolve secret references in a sheep's per-dog table
+- Spawn each dog holding a connection to the shepherd **(BREAKING)**
+- Carry each dog's connection across a handover **(BREAKING)**
+- Carry each dog's connection across a handover **(BREAKING)**
+- Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
+- Refuse a dog's request outside its grants
+- Serve each Windows dog over its own user-only pipe
+- Add ResetSheepField and an override record's template **(BREAKING)**
+- Drop a sheep field's override with ResetSheepField
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
+
+### Changed
+
+- One seed and one blocking boot helper for boot tests
+- One flock fixture for the snapshot muster tests
+- Share one selector resolve and one log-pump collection
+- Share the dog check, the override write and the park loop
+- One helper each for an AppConfig's serde trip
+- One liveness fixture app for the registry liveness tests
+- One helper for each acknowledged log control round trip
+- Build adopt test blobs through Handover::new
+- One helper each for an abandoned reload and a committed swap
+- One call helper for every supervisor handle method
+- One accessor for a resolved app's readiness source
+- One accessor for a spawn identity's credentials
+- One helper clears a slot a refused respawn leaves
+- Take &str names and keys in the four pane setters
+- Read dogs.toml once for both dog section functions
+- One BootError::io constructor for path-carrying boot errors
+- Drop the Arc around the shutdown watch sender
+- Build watch glob sets from borrowed patterns
+- One within_deadline helper for the readiness wait
+- Drop the unreachable result check in instance_slots
+- Build the Windows path advisory through one helper
+- Share one field initialiser between the LogFile constructors
+- Build InvalidConfig and no-sheep refusals through two helpers
+- Share the rpc test start, describe, list and push fixtures
+- Share the reload-to-a-shared-path setup in the flush tests
+- One helper for readiness source, credentials and reset
+- Share one name-list helper in the scripted runner
+- Drop a one-use closure and share the failed-exec test setup
+- Project provider cache tables through one helper
+
+### Fixed
+
+- Build the dog link types cleanly where only unix hands a dog one
+- Build the dog link e2e test only on unix
+- A SHEP_DOG_FD naming no usable connection fails the dog's start
+- A dog's link counts as contact from its first frame
+- Allow the unused link row on non-unix
+- Freeze the dog link table while a handover copies it
+- Park each dog link on a frame boundary before a handover copies it
+- Bound a Windows dog's link by its grants too
+- Bind a dog by its grants from the moment it starts
+- Keep a dog's grants out of its own reach
+- Test an unset dog pipe with if defined, and fix the pipe-taken comment
+
+### Performance
+
+- Read the secret store once per start and per scale-up
+
+
 ## [0.16.1] - 2026-10-22
 
 

@@ -10,6 +10,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-24
+
+### Added
+
+- Resolve secret references in a sheep's per-dog table
+- Move the key/value store under `shep kv` **(BREAKING)**
+- Add manifest v1 types and the `--shep-manifest` flag
+- Answer `--shep-manifest` from `Probe` **(BREAKING)**
+- Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
+- Add RpcErrorCode::Forbidden and move the protocol to 12
+- Carry a dog's grants from shep.toml and say when a shepherd will not enforce them
+- Take an inherited dog connection socket
+- Answer `--shep-manifest` from `Probe` with manifest v1 **(BREAKING)**
+- Spawn each dog holding a connection to the shepherd **(BREAKING)**
+- Serve each Windows dog over its own user-only pipe
+- Add ResetSheepField and an override record's template **(BREAKING)**
+- Drop a sheep field's override with ResetSheepField
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
+
+### Fixed
+
+- An older shepherd's sheep_dog_table is NotFound for an unknown sheep
+- Refuse manifest version 0
+- Clear the typos and docs CI checks on the permissions module
+- Keep a dog's grants out of its own reach
+- Grant ResetSheepField with flock edit
+
+### Performance
+
+- Check a log stamp's shape instead of parsing it per line
+- Buffer the bark ring rewrite so a full ring costs one write per buffer
+- Buffer the bark ring rewrite to one write per buffer
+
+
 ## [0.16.1] - 2026-10-22
 
 

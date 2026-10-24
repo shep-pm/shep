@@ -13,6 +13,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-24
+
+### Added
+
+- One validator answers a dog schema and a proposed table
+- A dog table write goes through the shared validator
+- The table validator can answer only the keys a caller chose
+- Print a sheep's or a dog's settings with shep get **(BREAKING)**
+- Write a manifest dog's defaults into dogs.toml on adopt
+- Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
+- Carry a dog's grants from shep.toml and say when a shepherd will not enforce them
+- Move the key/value store under `shep kv` **(BREAKING)**
+- Read a dog's manifest on adopt and cache it by sha256
+- Warn on adopt and enable when a dog's dependencies are unmet
+- List adopted dogs in shep --help, their own help, and completions
+- Carry each dog's connection across a handover **(BREAKING)**
+- Write any setting of a sheep or a dog with `shep set` **(BREAKING)**
+- Write a dog's defaults into dogs.toml on adopt
+- List adopted dogs in shep --help and completions
+- Drop an override or remove a dog's key with `shep unset` **(BREAKING)**
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
+
+### Fixed
+
+- Arm bleats' Ctrl+C listener before its first request
+- Flush bleats' output before the interrupt grace ends it
+- Let Ctrl+C end a bleats run at any step
+- A table write is checked for the keys the edit changed
+- A table value must be the JSON type its schema names
+- A closed set spelled as a oneOf bounds a list element too
+- An unreported refusal does not stop the table walk
+- The table door enforces a union arm's required list
+- Name the dog a default-only read found, and match get's help to what it prints
+- Keep an empty dog table's header, and a dotted key whole on the way down
+- Name the sheep in the env refusal, and walk a dotted key as one key
+- Stay inside the toml_edit floor when seeding a dog's defaults
+- Judge dogs.toml before the defaults and warn without claiming a section
+- Migrate legacy dog settings before seeding defaults on adopt
+- Refuse a misspelt grant in adopt and enable
+- Bind a dog by its grants from the moment it starts
+- Keep a dog's grants out of its own reach
+- Keep a hidden store alias to one JSON object per invocation
+- Keep the manifest cache owner-only and skip a binary that changed mid-probe
+- Print a manifest's verb as one line, not as clap template text
+- Keep names a shell would read as code out of completion scripts
+- Make `shep set` write inline tables and datetimes, and name its refusals
+- Pad the Dogs group by display width, not byte length
+- Count clap's help subcommand as a name a dog cannot take
+- Refuse a value shep set cannot carry, and re-read before it overwrites
+- Plan a change when unset drops a table with nothing in it
+
+### Performance
+
+- Build lookout's visible rows once per selection move
+
+
 ## [0.16.1] - 2026-10-22
 
 ### Fixed
