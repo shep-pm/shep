@@ -30,6 +30,7 @@ fn write_dog(dir: &Path, manifest: &str) -> PathBuf {
 /// stderr, and the whole stdout the verb wrote.
 async fn adopt_otel(paths: &ShepPaths, binary: &Path) -> (ExitCode, String) {
     let args = AdoptArgs {
+        yes: true,
         name: Some("otel".to_string()),
         path: binary.to_path_buf(),
     };

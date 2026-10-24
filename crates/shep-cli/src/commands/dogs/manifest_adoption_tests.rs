@@ -40,6 +40,7 @@ fn runs(count: &Path) -> usize {
 /// stderr.
 async fn adopt_otel(paths: &ShepPaths, binary: &Path) -> (ExitCode, String) {
     let args = AdoptArgs {
+        yes: true,
         name: Some("otel".to_string()),
         path: binary.to_path_buf(),
     };
@@ -194,6 +195,7 @@ async fn adopt_stays_quiet_about_a_dependency_that_is_adopted_or_built_in() {
         renamed
     };
     let args = AdoptArgs {
+        yes: true,
         name: Some("log-rotate".to_string()),
         path: rotate,
     };
@@ -262,7 +264,7 @@ async fn enable_of_an_adopted_dog_gives_both_warnings_and_still_enables() {
 
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let code = enable(&mut streams(&mut out, &mut err), &paths, "otel").await;
+    let code = enable(&mut streams(&mut out, &mut err), &paths, "otel", true).await;
 
     assert_eq!(code, ExitCode::Success);
     let notices = String::from_utf8(err).unwrap();
@@ -277,7 +279,7 @@ async fn enable_of_a_built_in_dog_says_nothing_of_dependencies() {
     let mut out = Vec::new();
     let mut err = Vec::new();
 
-    let code = enable(&mut streams(&mut out, &mut err), &paths, "metrics").await;
+    let code = enable(&mut streams(&mut out, &mut err), &paths, "metrics", true).await;
 
     assert_eq!(code, ExitCode::Success);
     assert_eq!(String::from_utf8(err).unwrap(), "");

@@ -2,7 +2,7 @@
 //! dog may ask of the shepherd.
 
 use shep_core::permissions::Grants;
-use toml_edit::Item;
+use toml_edit::{Array, InlineTable, Item, Table, Value};
 
 use super::{ShepToml, ShepTomlError};
 
@@ -56,5 +56,54 @@ impl ShepToml {
         Grants::parse(names)
             .map(Some)
             .map_err(|err| bad(err.to_string()))
+    }
+
+    /// Records `grants` as everything `name` may ask of the shepherd, under
+    /// `[daemon.dog_grants.<name>]` beside `adopted_dogs`, replacing what was
+    /// there.
+    ///
+    /// Only the CLI writes this table: a dog's own section lives in
+    /// `dogs.toml` so that a dog can never grant itself anything. An empty
+    /// `grants` is written as `granted = []`, which grants nothing; leaving
+    /// the entry out would make the dog undeclared, with full access.
+    ///
+    /// # Errors
+    /// [`ShepTomlError::WrongShape`] when `daemon` or `dog_grants` holds
+    /// something other than a table.
+    pub fn set_granted(&mut self, name: &str, grants: &Grants) -> Result<(), ShepTomlError> {
+        let path = self.path.clone();
+        let item = self
+            .daemon_table_mut()?
+            .entry("dog_grants")
+            .or_insert_with(|| {
+                let mut table = Table::new();
+                // Only `[daemon.dog_grants.<name>]` is printed, not a bare
+                // `[daemon.dog_grants]` above it.
+                table.set_implicit(true);
+                Item::Table(table)
+            });
+        let found = item.type_name();
+        let names: Array = grants.names().collect();
+        match item {
+            Item::Table(table) => {
+                let mut entry = Table::new();
+                entry.insert("granted", Item::Value(Value::Array(names)));
+                table.insert(name, Item::Table(entry));
+            }
+            Item::Value(Value::InlineTable(table)) => {
+                let mut entry = InlineTable::new();
+                entry.insert("granted", Value::Array(names));
+                table.insert(name, Value::InlineTable(entry));
+            }
+            _ => {
+                return Err(ShepTomlError::WrongShape {
+                    path,
+                    key: "dog_grants",
+                    expected: "a table",
+                    found,
+                });
+            }
+        }
+        Ok(())
     }
 }

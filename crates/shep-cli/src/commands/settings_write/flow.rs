@@ -177,18 +177,7 @@ pub(super) fn ask(
         )
     };
     streams.aside("confirm", &question);
-    let mut answer = String::new();
-    match reader.read_line(&mut answer) {
-        Ok(0) => Answer::No,
-        Ok(_) => {
-            if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
-                Answer::Yes
-            } else {
-                Answer::No
-            }
-        }
-        Err(err) => Answer::Failed(err.to_string()),
-    }
+    confirm::read_answer(reader)
 }
 
 /// Sends the plan's write, and reports which keys wait for a respawn.

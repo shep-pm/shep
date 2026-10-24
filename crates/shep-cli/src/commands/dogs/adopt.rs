@@ -18,13 +18,16 @@ use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
+use super::consent::{Input, Review, Verdict, consent_from, review};
 use super::depends::warn_of_unmet_depends;
 use super::grants::warn_if_unenforced;
 use super::vet::{
     DogSchema, fail_adopt, report_channel_ask, report_dog_version, vet_binary, warn_group_writable,
     warn_unreadable_schema,
 };
-use super::{NO_SHEPHERD_ENABLE_STATUS, connect_or_absent, emit_dog_action, fail_config};
+use super::{
+    DECLINED_STATUS, NO_SHEPHERD_ENABLE_STATUS, connect_or_absent, emit_dog_action, fail_config,
+};
 
 /// `shep adopt <path> [--name <name>]`: vets a binary shep has never seen,
 /// records it, and starts it if a shepherd is running.
@@ -34,6 +37,16 @@ use super::{NO_SHEPHERD_ENABLE_STATUS, connect_or_absent, emit_dog_action, fail_
 /// defaulted name goes through the same [`collides_with_a_verb`] refusal an
 /// explicit `--name` would.
 pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArgs) -> ExitCode {
+    adopt_asking(streams, paths, args, &mut Input::stdin()).await
+}
+
+/// [`adopt`], asking at `input` rather than at this process's stdin.
+pub(super) async fn adopt_asking(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &AdoptArgs,
+    input: &mut Input,
+) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
     let candidate = resolve_adopt_path(&args.path, home.as_deref(), path_var.as_deref());
@@ -66,8 +79,30 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
     if vetted.schema == DogSchema::Unreadable {
         warn_unreadable_schema(streams, &name);
     }
+    // Before anything is written: a refusal here, for a dog that requires
+    // what this shep does not know or for want of a terminal, leaves
+    // `shep.toml` as it was.
+    let reviewed = match review(vetted.manifest.as_ref()) {
+        Ok(reviewed) => reviewed,
+        Err(refusal) => return refusal.report(streams, &name, "adopted"),
+    };
+    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, args.yes, input) {
+        Ok(verdict) => verdict,
+        Err(code) => return code,
+    };
     let (adopted, grants) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
         cfg.adopt_dog(&name, &path, channel)?;
+        // The answer was asked against a read taken before the question. A
+        // grant another shep wrote since was decided by someone with the
+        // same say, and stands.
+        let decided_meanwhile = cfg.granted(&name)?.is_some();
+        match &verdict {
+            Some(_) if decided_meanwhile => {}
+            Some(Verdict::Grant(Some(grants))) => cfg.set_granted(&name, grants)?,
+            // `adopt_dog` enables; a no leaves the dog adopted and off.
+            Some(Verdict::Declined) => cfg.disable_dog(&name),
+            Some(Verdict::Grant(None)) | None => {}
+        }
         Ok((cfg.adopted_dog_names(), cfg.granted(&name)?))
     }) {
         Ok(recorded) => recorded,
@@ -109,11 +144,49 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
     if let Some(manifest) = &vetted.manifest {
         warn_of_unmet_depends(streams, &name, manifest, &adopted);
     }
+    if verdict == Some(Verdict::Declined) {
+        // Nothing for a shepherd to start: the dog is adopted and disabled.
+        let source = DogSource::Adopted {
+            grants: None,
+            path: path.display().to_string(),
+            channel,
+        };
+        return emit_dog_action(streams, "adopt", &name, source, DECLINED_STATUS);
+    }
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,
         Err(code) => return code,
     };
     adopt_after_config(streams, &name, &path, channel, grants, client.as_ref()).await
+}
+
+/// Asks whether to grant `name` what it declares, unless `shep.toml` already
+/// holds a decision for it.
+///
+/// `None` is that earlier decision standing: a re-adopt of a dog that was
+/// granted something keeps it, and the answer to a changed declaration is a
+/// later step's. `Some` is this run's answer.
+///
+/// # Errors
+/// The [`ExitCode`] already reported to `streams`.
+fn ask_before_adopting(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    name: &str,
+    reviewed: &Review,
+    yes: bool,
+    input: &mut Input,
+) -> Result<Option<Verdict>, ExitCode> {
+    let cfg =
+        ShepToml::read_only(&paths.daemon_config).map_err(|err| fail_config(streams, &err))?;
+    if cfg
+        .granted(name)
+        .map_err(|err| fail_config(streams, &err))?
+        .is_some()
+    {
+        return Ok(None);
+    }
+    consent_from(streams, name, "adopt", reviewed, yes, input).map(Some)
 }
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
@@ -387,6 +460,7 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let args = AdoptArgs {
+            yes: true,
             name: Some("otel".to_string()),
             path: dir.path().join("nope"),
         };
@@ -458,6 +532,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let paths = ShepPaths::resolve(&|_| None, dir.path());
             let args = AdoptArgs {
+                yes: true,
                 name: Some("otel".to_string()),
                 path: write_dog(dir.path(), answer),
             };
@@ -539,6 +614,7 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let args = AdoptArgs {
+            yes: true,
             name: Some("otel".to_string()),
             path: binary,
         };
@@ -570,6 +646,7 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let args = AdoptArgs {
+            yes: true,
             path: binary,
             name: None,
         };
@@ -602,6 +679,7 @@ mod tests {
         // "stop" is a real verb; "ls" is `flock`'s own visible alias.
         for reserved in ["stop", "ls"] {
             let args = AdoptArgs {
+                yes: true,
                 path: binary.clone(),
                 name: Some(reserved.to_string()),
             };
@@ -630,6 +708,7 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let args = AdoptArgs {
+            yes: true,
             path: dir.path().join("nope"),
             name: Some("stop".to_string()),
         };

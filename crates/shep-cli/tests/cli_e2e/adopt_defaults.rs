@@ -21,6 +21,7 @@ fn adopt(home: &TempDir, binary: &Path) -> Output {
         .arg("--home")
         .arg(home.path())
         .arg("adopt")
+        .arg("--yes")
         .arg(binary)
         .arg("--name")
         .arg("otel")

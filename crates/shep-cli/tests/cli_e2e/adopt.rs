@@ -15,6 +15,7 @@ fn shep_adopt_finds_a_binary_on_path_by_bare_name() {
         .arg("--home")
         .arg(home.path())
         .arg("adopt")
+        .arg("--yes")
         .arg("shep-log-rotate")
         .arg("--name")
         .arg("lr")
@@ -50,6 +51,7 @@ fn shep_adopt_expands_a_leading_tilde_path() {
         .arg("--home")
         .arg(shep_home.path())
         .arg("adopt")
+        .arg("--yes")
         .arg("~/.cargo/bin/shep-log-rotate")
         .arg("--name")
         .arg("lr")
@@ -94,6 +96,7 @@ fn an_adopted_dog_runs_directly_with_its_own_argv_and_shep_home() {
 
     let adopted = shep(home.path())
         .arg("adopt")
+        .arg("--yes")
         .arg(&script)
         .arg("--name")
         .arg("deploy")

@@ -68,6 +68,7 @@ fn an_adopted_dog_that_asks_takes_a_trigger_and_stops_on_the_shutdown_message() 
     for (script, name) in [(&asking, "otel"), (&quiet, "quiet")] {
         let adopted = shep(home)
             .arg("adopt")
+            .arg("--yes")
             .arg(script)
             .arg("--name")
             .arg(name)

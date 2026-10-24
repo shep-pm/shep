@@ -202,7 +202,9 @@ namespace.
 
 A dog talks to the shepherd over its own connection and, by default, may ask
 for anything the CLI can. To keep an honest dog in bounds and make what it
-asks attributable, list what it may do in `shep.toml`:
+asks attributable, list what it may do in `shep.toml`. `shep adopt` and the
+first `shep enable` of a dog write the list for you after asking (below);
+the file holds:
 
 ```toml
 [daemon.dog_grants.otel]
@@ -230,6 +232,10 @@ granted = ["flock.read", "events:process."]
 - `Subscribe` is checked per topic against the `events:` prefixes, on the literal head of the pattern before its first glob character.
 - Grants are read at boot and sent with `EnableDog`. A name shep cannot read stops the boot, and `shep adopt` and `shep enable` refuse it with `invalid config` before they write or send anything. A shepherd below protocol 12 records them and enforces nothing; `shep adopt` and `shep enable` say so.
 - A reload re-reads the grants and checks each subscription a dog carried across it. One outside them is dropped whole, as a fresh `Subscribe` would be refused, and the dog hears no events on it until it asks again within its grants.
+- `shep adopt` and the first `shep enable` of a dog (no entry, not yet enabled) list the permissions its manifest declares with each reason, and ask `[y/N]`. The prompt says grants keep a dog's requests in bounds and do not confine it. A yes writes `granted` beside `adopted_dogs`; a no leaves the dog adopted and disabled with nothing granted, and the next `shep enable` asks again.
+- `--yes` grants everything declared and nothing else. With no terminal and no `--yes` the command changes nothing and exits 2 (usage).
+- A required permission this shep does not know refuses the adopt or enable (exit 4). An optional one is dropped with a warning and never granted.
+- A dog with no manifest prompts "declares nothing, runs with full access" and records no entry. A manifest that declares no permissions records `granted = []` without a question. A built-in dog has no manifest and is not asked.
 - Grants keep an honest dog in bounds. They are not a sandbox: a dog runs as the operator and could open the control socket like the CLI.
 
 ## When a dog starts

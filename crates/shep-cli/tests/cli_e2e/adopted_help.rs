@@ -29,6 +29,7 @@ fn adopt(home: &Path, binary: &Path, name: &str) -> Output {
         .arg("--home")
         .arg(home)
         .arg("adopt")
+        .arg("--yes")
         .arg(binary)
         .arg("--name")
         .arg(name)

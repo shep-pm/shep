@@ -314,7 +314,7 @@ async fn with_no_shepherd_a_sheep_is_refused_and_the_remedy_is_named() {
                 style: crate::style::Presentation::BARE,
                 fmt: Format::Table,
             };
-            toggle(&mut streams, &paths, verb, "api").await
+            toggle(&mut streams, &paths, verb, "api", true).await
         };
         let said = String::from_utf8(err).unwrap();
 
@@ -342,7 +342,7 @@ async fn a_dogs_name_still_edits_the_config_with_no_shepherd() {
             style: crate::style::Presentation::BARE,
             fmt: Format::Table,
         };
-        toggle(&mut streams, &paths, Toggle::Enable, "metrics").await
+        toggle(&mut streams, &paths, Toggle::Enable, "metrics", true).await
     };
 
     assert_eq!(code, ExitCode::Success, "{}", String::from_utf8_lossy(&err));
@@ -386,6 +386,7 @@ async fn enable_over_a_host_treats_a_dog_name_as_a_sheep_selector_and_reads_no_l
             async |_| Ok(client),
             Toggle::Enable,
             "mydog",
+            true,
         )
         .await
     };

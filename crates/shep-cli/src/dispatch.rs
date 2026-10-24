@@ -464,14 +464,15 @@ pub(crate) async fn run(
                     &AdoptArgs {
                         path: path.clone(),
                         name: Some(args.name.clone()),
+                        yes: args.yes,
                     },
                 )
                 .await
             }
-            None => toggle(&mut streams, &paths, Toggle::Enable, &args.name).await,
+            None => toggle(&mut streams, &paths, Toggle::Enable, &args.name, args.yes).await,
         },
         Commands::Disable(ref args) => {
-            toggle(&mut streams, &paths, Toggle::Disable, &args.name).await
+            toggle(&mut streams, &paths, Toggle::Disable, &args.name, false).await
         }
         Commands::Adopt(ref args) => dogs::adopt(&mut streams, &paths, args).await,
         Commands::Rehome(ref args) => dogs::rehome(&mut streams, &paths, &args.name).await,

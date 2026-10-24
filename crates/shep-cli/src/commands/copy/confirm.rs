@@ -71,6 +71,14 @@ pub(crate) fn confirm(
         if changes == 1 { "" } else { "s" }
     );
     streams.aside("confirm", &question);
+    read_answer(reader)
+}
+
+/// Reads one line from `reader` as a yes or a no.
+///
+/// A read error is reported as one rather than folded into "no": an operator
+/// who never saw the question is not the same as one who said no to it.
+pub(crate) fn read_answer(reader: &mut dyn BufRead) -> Answer {
     let mut answer = String::new();
     match reader.read_line(&mut answer) {
         Ok(0) => Answer::No,

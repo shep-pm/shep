@@ -311,7 +311,10 @@ export const BUDGETS: Record<string, number> = {
   "community-dogs": 300,
   terminology: 210,
   "pm2-verbs": 40,
-  "dog-grants": 330,
+  // Raised from 330 for the adopt and enable prompt: what the operator is
+  // asked, what a no, `--yes` and no terminal do, and the two unknown-
+  // permission cases are behaviour a reader cannot guess, not prose to trim.
+  "dog-grants": 430,
 };
 
 

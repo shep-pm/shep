@@ -29,6 +29,7 @@ use crate::output::{DogActionRow, DogActionStatus, Streams, emit, write_outcome}
 
 mod adopt;
 mod barks;
+mod consent;
 mod depends;
 mod disable;
 mod enable;
@@ -36,6 +37,10 @@ mod grants;
 mod remove;
 mod vet;
 
+#[cfg(all(test, unix))]
+mod adopt_consent_tests;
+#[cfg(test)]
+mod consent_tests;
 #[cfg(all(test, unix))]
 mod defaults_adoption_tests;
 #[cfg(all(test, unix))]
@@ -74,6 +79,11 @@ pub(crate) use vet::{VERSION_BUDGET, ask_schema, dog_env, read_manifest};
 /// `enable` never autostarts one.
 const NO_SHEPHERD_ENABLE_STATUS: DogActionStatus =
     DogActionStatus::NoShepherd("will start with the next shepherd");
+
+/// [`DogActionRow`]'s status when the operator declined to grant a dog its
+/// permissions: nothing was granted and the dog was not enabled.
+const DECLINED_STATUS: DogActionStatus =
+    DogActionStatus::NoShepherd("not enabled; nothing was granted");
 
 /// [`DogActionRow`]'s status when
 /// `disable` wrote the config and no shepherd answered: the mirror of

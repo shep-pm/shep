@@ -89,6 +89,7 @@ fn a_dog_keeps_its_own_connection_and_its_attribution_across_a_daemon_reload() {
     assert_success(&mustered);
     let adopted = shep(home)
         .arg("adopt")
+        .arg("--yes")
         .arg(&dog)
         .arg("--name")
         .arg("linkdog")

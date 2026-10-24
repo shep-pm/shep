@@ -27,7 +27,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <ShortVersion>
       <ul>
-        <li>Write <code>[daemon.dog_grants.&lt;name&gt;] granted = [...]</code> in <code>shep.toml</code>.</li>
+        <li><code>shep adopt</code> and the first <code>shep enable</code> list what a dog declares and ask. A yes writes <code>[daemon.dog_grants.&lt;name&gt;] granted = [...]</code> to <code>shep.toml</code>.</li>
         <li>A request outside the list is refused with a <code>forbidden</code> error naming the dog, the request and the permission.</li>
         <li>No entry means full access. An empty list means nothing.</li>
         <li>Grants are not a sandbox.</li>
@@ -35,8 +35,22 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
     </ShortVersion>
 
     <h2 id="granting">Granting</h2>
-    <CodeBlock>{`[daemon.dog_grants.otel]
+    <CodeBlock>{`$ shep adopt ~/.cargo/bin/shep-otel --name otel
+otel declares these permissions:
+  flock.read (required): reads the flock to report on it
+  events:process. (optional): hears when a sheep exits
+Grants keep otel's requests in bounds and do not confine it: it runs as you and can do anything you can.
+adopt otel and grant it these? [y/N] y
+
+# shep.toml
+[daemon.dog_grants.otel]
 granted = ["flock.read", "events:process."]`}</CodeBlock>
+    <ul>
+      <li>A no leaves the dog adopted and disabled with nothing granted. The first <code>shep enable</code> asks again.</li>
+      <li><code>--yes</code> grants everything declared. With no terminal and no <code>--yes</code>, nothing changes and the exit is 2.</li>
+      <li>A dog with no manifest prompts <code>declares nothing, runs with full access</code>, and a yes records no entry.</li>
+      <li>An unknown required permission refuses the command. An unknown optional one is dropped with a warning.</li>
+    </ul>
     <p>
       The shepherd reads the list at boot. A name it cannot read stops the
       boot, and <code>shep adopt</code> and <code>shep enable</code> refuse

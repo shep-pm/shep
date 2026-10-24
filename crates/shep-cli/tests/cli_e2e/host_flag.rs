@@ -242,6 +242,7 @@ fn an_adopted_dog_behind_host_is_refused_in_the_format_asked_for() {
     assert_success(
         &shep(home.path())
             .arg("adopt")
+            .arg("--yes")
             .arg(&binary)
             .args(["--name", "mydog"])
             .output()

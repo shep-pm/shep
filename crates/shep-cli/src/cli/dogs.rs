@@ -65,6 +65,10 @@ pub struct EnableArgs {
     /// this flag's value as the binary path
     #[arg(long, hide = true)]
     pub exec: Option<PathBuf>,
+    /// Grant a dog everything it declares without asking; a dog's first
+    /// enable asks, and with no terminal and no `--yes` refuses
+    #[arg(long)]
+    pub yes: bool,
 }
 
 /// Arguments to `shep disable`.
@@ -95,6 +99,10 @@ pub struct AdoptArgs {
     /// to the binary's file stem with a leading `shep-` stripped.
     #[arg(long)]
     pub name: Option<String>,
+    /// Grant the dog everything it declares without asking. With no
+    /// terminal and no `--yes`, adopt refuses rather than granting.
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[cfg(test)]

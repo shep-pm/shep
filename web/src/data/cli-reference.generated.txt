@@ -1113,6 +1113,10 @@ Options:
           ...): diagnostics distinct from a sheep's own line or a real error, both of which still
           print regardless.
 
+      --yes
+          Grant a dog everything it declares without asking; a dog's first enable asks, and with no
+          terminal and no `--yes` refuses
+
       --style <STYLE>
           How much this invocation dresses up its output: `full`, `plain`, or `bare`
           
@@ -1263,6 +1267,10 @@ Options:
           Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
           ...): diagnostics distinct from a sheep's own line or a real error, both of which still
           print regardless.
+
+      --yes
+          Grant the dog everything it declares without asking. With no terminal and no `--yes`,
+          adopt refuses rather than granting
 
       --style <STYLE>
           How much this invocation dresses up its output: `full`, `plain`, or `bare`

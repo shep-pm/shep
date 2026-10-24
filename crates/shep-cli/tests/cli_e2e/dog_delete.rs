@@ -55,6 +55,7 @@ fn deleting_an_adopted_dog_keeps_it_gone_across_a_shepherd_restart() {
 
     let adopted = shep(home)
         .arg("adopt")
+        .arg("--yes")
         .arg(&dog)
         .arg("--name")
         .arg("log-rotate")
@@ -184,6 +185,7 @@ fn rehome_still_removes_a_dog_and_answers_under_its_own_command() {
 
     let adopted = shep(home)
         .arg("adopt")
+        .arg("--yes")
         .arg(&dog)
         .arg("--name")
         .arg("otel")

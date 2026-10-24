@@ -97,7 +97,7 @@ async fn an_unknown_name_with_no_shepherd_exits_unreachable() {
             style: crate::style::Presentation::BARE,
             fmt: Format::Table,
         };
-        toggle(&mut streams, &paths, Toggle::Enable, "metrcs").await
+        toggle(&mut streams, &paths, Toggle::Enable, "metrcs", true).await
     };
 
     assert_eq!(code, ExitCode::DaemonUnreachable);

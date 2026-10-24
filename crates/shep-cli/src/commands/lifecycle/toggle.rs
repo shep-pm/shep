@@ -49,11 +49,15 @@ impl Toggle {
 ///
 /// A name the daemon config knows as a dog goes through the dog verbs. Any
 /// other token is a sheep selector and is sent to the shepherd.
+///
+/// `yes` is `--yes`, which only a dog's first enable reads: it grants the
+/// dog everything it declares without asking.
 pub(crate) async fn toggle(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     verb: Toggle,
     name: &str,
+    yes: bool,
 ) -> ExitCode {
     toggle_with(
         streams,
@@ -72,6 +76,7 @@ pub(crate) async fn toggle(
         },
         verb,
         name,
+        yes,
     )
     .await
 }
@@ -94,6 +99,7 @@ pub(crate) async fn toggle_on_host(
         async |streams| connect_client(streams, link, guard).await,
         verb,
         name,
+        false,
     )
     .await
 }
@@ -107,12 +113,13 @@ pub(crate) async fn toggle_with(
     connect: impl AsyncFnOnce(&mut Streams<'_>) -> Result<Client, ExitCode>,
     verb: Toggle,
     name: &str,
+    yes: bool,
 ) -> ExitCode {
     if let Some(paths) = local_dogs
         && names_a_dog(paths, name)
     {
         return match verb {
-            Toggle::Enable => dogs::enable(streams, paths, name).await,
+            Toggle::Enable => dogs::enable(streams, paths, name, yes).await,
             Toggle::Disable => dogs::disable(streams, paths, name).await,
         };
     }
