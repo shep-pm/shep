@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-24
+
+### Added
+
+- Read a sheep's per-dog table with its secrets resolved
+- A dog connects over the link its shepherd spawned it holding
+- Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
+
+### Fixed
+
+- An older shepherd's sheep_dog_table is NotFound for an unknown sheep
+- Build the dog link types cleanly where only unix hands a dog one
+- A SHEP_DOG_FD naming no usable connection fails the dog's start
+
+
 ## [0.16.1] - 2026-10-22
 
 
