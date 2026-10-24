@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Write a manifest dog's defaults into dogs.toml on adopt
 - Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
 - Carry a dog's grants from shep.toml and say when a shepherd will not enforce them
+- Move the key/value store under `shep kv` **(BREAKING)**
+- Read a dog's manifest on adopt and cache it by sha256
+- Warn on adopt and enable when a dog's dependencies are unmet
+- List adopted dogs in shep --help, their own help, and completions
+- Carry each dog's connection across a handover **(BREAKING)**
+- Write any setting of a sheep or a dog with `shep set` **(BREAKING)**
+- Write a dog's defaults into dogs.toml on adopt
+- List adopted dogs in shep --help and completions
+- Drop an override or remove a dog's key with `shep unset` **(BREAKING)**
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
 
 ### Fixed
 
@@ -44,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refuse a misspelt grant in adopt and enable
 - Bind a dog by its grants from the moment it starts
 - Keep a dog's grants out of its own reach
+- Keep a hidden store alias to one JSON object per invocation
+- Keep the manifest cache owner-only and skip a binary that changed mid-probe
+- Print a manifest's verb as one line, not as clap template text
+- Keep names a shell would read as code out of completion scripts
+- Make `shep set` write inline tables and datetimes, and name its refusals
+- Pad the Dogs group by display width, not byte length
+- Count clap's help subcommand as a name a dog cannot take
+- Refuse a value shep set cannot carry, and re-read before it overwrites
+- Plan a change when unset drops a table with nothing in it
 
 ### Performance
 

@@ -17,12 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read a sheep's per-dog table with its secrets resolved
 - A dog connects over the link its shepherd spawned it holding
 - Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
+- Resolve secret references in a sheep's per-dog table
+- Answer `--shep-manifest` from `Probe` **(BREAKING)**
+- Answer `--shep-manifest` from `Probe` with manifest v1 **(BREAKING)**
+- Spawn each dog holding a connection to the shepherd **(BREAKING)**
+- Serve each Windows dog over its own user-only pipe
+- Enforce a dog's grants on its own connection **(BREAKING)**
 
 ### Fixed
 
 - An older shepherd's sheep_dog_table is NotFound for an unknown sheep
 - Build the dog link types cleanly where only unix hands a dog one
 - A SHEP_DOG_FD naming no usable connection fails the dog's start
+- Test an unset dog pipe with if defined, and fix the pipe-taken comment
 
 
 ## [0.16.1] - 2026-10-22

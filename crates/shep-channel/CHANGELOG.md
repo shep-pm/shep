@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Take an inherited dog connection socket
+- Spawn each dog holding a connection to the shepherd **(BREAKING)**
 
 ### Fixed
 
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 
 - Run each action handler on its own thread
+- Run each custom action handler on its own thread
 
 
 ## [0.16.1] - 2026-10-22

@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Carry each dog's connection across a handover **(BREAKING)**
 - Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
 - Refuse a dog's request outside its grants
+- Serve each Windows dog over its own user-only pipe
+- Add ResetSheepField and an override record's template **(BREAKING)**
+- Drop a sheep field's override with ResetSheepField
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
 
 ### Changed
 
@@ -45,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drop the unreachable result check in instance_slots
 - Build the Windows path advisory through one helper
 - Share one field initialiser between the LogFile constructors
+- Build InvalidConfig and no-sheep refusals through two helpers
+- Share the rpc test start, describe, list and push fixtures
+- Share the reload-to-a-shared-path setup in the flush tests
+- One helper for readiness source, credentials and reset
+- Share one name-list helper in the scripted runner
+- Drop a one-use closure and share the failed-exec test setup
+- Project provider cache tables through one helper
 
 ### Fixed
 
@@ -58,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bound a Windows dog's link by its grants too
 - Bind a dog by its grants from the moment it starts
 - Keep a dog's grants out of its own reach
+- Test an unset dog pipe with if defined, and fix the pipe-taken comment
 
 ### Performance
 

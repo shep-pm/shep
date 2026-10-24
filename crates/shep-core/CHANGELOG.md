@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Carry a dog's grants on DogSource and map every request to a permission **(BREAKING)**
 - Add RpcErrorCode::Forbidden and move the protocol to 12
 - Carry a dog's grants from shep.toml and say when a shepherd will not enforce them
+- Take an inherited dog connection socket
+- Answer `--shep-manifest` from `Probe` with manifest v1 **(BREAKING)**
+- Spawn each dog holding a connection to the shepherd **(BREAKING)**
+- Serve each Windows dog over its own user-only pipe
+- Add ResetSheepField and an override record's template **(BREAKING)**
+- Drop a sheep field's override with ResetSheepField
+- Enforce a dog's grants on its own connection **(BREAKING)**
+- Drop an override with `shep unset` **(BREAKING)**
 
 ### Fixed
 
@@ -34,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Check a log stamp's shape instead of parsing it per line
 - Buffer the bark ring rewrite so a full ring costs one write per buffer
+- Buffer the bark ring rewrite to one write per buffer
 
 
 ## [0.16.1] - 2026-10-22
