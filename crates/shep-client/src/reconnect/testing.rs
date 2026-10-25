@@ -21,6 +21,22 @@ pub(super) const BOUND: Duration = Duration::from_secs(5);
 /// 50ms. Stated against the delay it has to outrun, not a round number.
 pub(super) const NEGATIVE_WINDOW: Duration = Duration::from_millis(400);
 
+/// Polls `condition` until it holds, yielding between polls, and
+/// reports whether it held before `bound` ran out.
+///
+/// Positive waits assert `true`; a window watching for something that
+/// must not happen asserts `false`. Under a paused clock the bound
+/// elapses once every task is idle, as it would with a real one.
+pub(super) async fn wait_until(bound: Duration, mut condition: impl FnMut() -> bool) -> bool {
+    tokio::time::timeout(bound, async {
+        while !condition() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
 /// An ack distinguishable per generation, so a test can tell which
 /// daemon answered rather than only that one did.
 pub(super) fn ack_from(pid: u32) -> HelloAck {
@@ -48,17 +64,12 @@ pub(super) async fn await_reconnect(
     shepherds: &Handovers,
     accepts: u32,
 ) {
-    let seen = tokio::time::timeout(BOUND, async {
-        loop {
-            if shepherds.accepted() >= accepts && client.link() == LinkState::Connected {
-                return;
-            }
-            tokio::task::yield_now().await;
-        }
+    let seen = wait_until(BOUND, || {
+        shepherds.accepted() >= accepts && client.link() == LinkState::Connected
     })
     .await;
     assert!(
-        seen.is_ok(),
+        seen,
         "no reconnect within {BOUND:?}: {} accepts, link {:?}",
         shepherds.accepted(),
         client.link()
@@ -85,17 +96,18 @@ pub(super) async fn subscribe_then_lose_it(client: &ReconnectingClient, shepherd
 /// Waits until `client`'s link reaches a refusal, or fails inside
 /// [`BOUND`].
 pub(super) async fn await_refusal(client: &ReconnectingClient) -> LinkState {
-    let seen = tokio::time::timeout(BOUND, async {
-        loop {
-            let link = client.link();
-            if matches!(link, LinkState::Refused { .. }) {
-                return link;
-            }
-            tokio::task::yield_now().await;
+    let mut refusal = None;
+    let refused = wait_until(BOUND, || {
+        let link = client.link();
+        let is_refusal = matches!(link, LinkState::Refused { .. });
+        if is_refusal {
+            refusal = Some(link);
         }
+        is_refusal
     })
     .await;
-    seen.unwrap_or_else(|_| panic!("the link never reached a refusal within {BOUND:?}"))
+    assert!(refused, "the link never reached a refusal within {BOUND:?}");
+    refusal.expect("a held condition recorded the refusal it saw")
 }
 
 /// Reconnects `client` inside [`BOUND`], failing the test rather than
@@ -109,4 +121,21 @@ pub(super) async fn reconnect_ok(client: &mut Client) -> Reconnected {
         .await
         .expect("the reconnect must not hang")
         .expect("the successor accepted this handshake")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_until_reports_a_condition_that_never_holds() {
+        // The poll loop yields forever, so the runtime is never idle and the
+        // paused clock never auto-advances: move it past the bound by hand.
+        let (held, ()) = tokio::join!(
+            wait_until(NEGATIVE_WINDOW, || false),
+            tokio::time::advance(NEGATIVE_WINDOW * 2)
+        );
+
+        assert!(!held, "a condition that never holds must report false");
+    }
 }

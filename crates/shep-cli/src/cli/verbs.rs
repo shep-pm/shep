@@ -164,6 +164,12 @@ pub enum Commands {
     /// it: the shepherd would delete the live entry while the adoption survived
     /// in the file the next boot reads. A sweep needs no such judgement and
     /// runs regardless.
+    ///
+    /// Over `--host`, the name of an adopted dog is refused, because the
+    /// adoption lives in the host's `shep.toml` and would bring the dog back
+    /// at the next boot. The refusal names the `ssh` line that runs `shep
+    /// delete` on the host. A built-in dog is left to the host's shepherd,
+    /// which refuses it as above.
     Delete(SelectorArgs),
     /// Set how many instances one app runs — the stocking rate.
     ///

@@ -638,24 +638,14 @@ mod tests {
         shepherds.cut().await;
         // Let the supervisor get as far as its first (dropped) reconnect,
         // so it is provably still running at the moment the handle goes.
-        let reached = tokio::time::timeout(BOUND, async {
-            while shepherds.accepted() < 2 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await;
-        assert!(reached.is_ok(), "the supervisor never retried at all");
+        let reached = wait_until(BOUND, || shepherds.accepted() >= 2).await;
+        assert!(reached, "the supervisor never retried at all");
 
         drop(client);
 
-        let grew = tokio::time::timeout(NEGATIVE_WINDOW, async {
-            while shepherds.accepted() < 3 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await;
+        let grew = wait_until(NEGATIVE_WINDOW, || shepherds.accepted() >= 3).await;
         assert!(
-            grew.is_err(),
+            !grew,
             "the supervisor kept reconnecting after its handle was dropped: {} accepts",
             shepherds.accepted()
         );

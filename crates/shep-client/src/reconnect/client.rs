@@ -250,14 +250,9 @@ mod tests {
         // supervisor got there; a supervisor that recorded the refusal and
         // then went round again would satisfy every assertion above and
         // still be the spin G8 forbids, so the window is the assertion.
-        let spun = tokio::time::timeout(NEGATIVE_WINDOW, async {
-            while shepherds.accepted() < 3 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await;
+        let spun = wait_until(NEGATIVE_WINDOW, || shepherds.accepted() >= 3).await;
         assert!(
-            spun.is_err(),
+            !spun,
             "the supervisor retried a refusal: {} accepts",
             shepherds.accepted()
         );
