@@ -8,32 +8,93 @@
 //!
 //! One connection and one handshake per call, over the local control
 //! transport, is cheap between calls a model makes seconds apart.
+//!
+//! A read tool that names a host makes the same one call over ssh instead:
+//! `ssh -T -- <dest> shep dial-stdio`, through
+//! [`Client::connect_ssh_with`](shep_client::Client::connect_ssh_with), with
+//! no prompts and a bound. Nothing past the handshake differs between the two
+//! targets, which is why they are one [`Shepherd`] and not two types.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use rmcp::model::CallToolResult;
-use shep_client::{Client, ConnectError, RequestError};
+use shep_client::{Client, ConnectError, RequestError, SshOptions};
 use shep_core::protocol::{HelloAck, ProcessInfo, Request, Response};
 
 use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 use crate::whistle::read::unexpected_response;
 
-/// The socket, and the one operation anything in `whistle` performs on it.
+/// How long a host call's ssh dial may take before the tool call gives up.
+///
+/// Twice `crate::commands::hosts::HOST_CONNECT_TIMEOUT`'s five seconds, which
+/// is the bound a fleet listing dials under: that one dials every listed host
+/// at once and abandons a slow one so the others still print, while a whistle
+/// call dials one host and has nothing else to print. The caller is a model
+/// waiting on one tool result, and a refusal that arrives at ten seconds is
+/// worth more to it than a timeout at five.
+pub const HOST_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The ssh settings every host call runs under: no prompts, and bounded.
+///
+/// A tool call has no terminal behind it and nobody watching it. ssh allowed
+/// to ask for a passphrase or a host-key answer sits until the timeout, and
+/// the model gets a timeout in place of the refusal ssh could have given in
+/// one line. The same settings `shep flock` over a `hosts` list dials under.
+#[must_use]
+pub fn host_ssh() -> SshOptions {
+    crate::commands::hosts::unattended(HOST_CONNECT_TIMEOUT)
+}
+
+/// Where this call's shepherd is: this machine's socket, or a host named out
+/// of `shep.toml`'s `hosts` list.
+#[derive(Debug, Clone)]
+enum Target {
+    /// The shepherd at this home's control socket.
+    Local(PathBuf),
+    /// The shepherd on `dest`, reached through `options`.
+    Host {
+        /// The destination, as the operator listed it.
+        dest: String,
+        /// How ssh is run.
+        options: SshOptions,
+    },
+}
+
+/// The socket, or the host, and the one operation anything in `whistle`
+/// performs on it.
 ///
 /// `super::read`'s five tools and `super::control`'s four both call
 /// [`Self::call`]/[`Self::call_with_ack`] through `Whistle::shepherd`, one
-/// held per `Whistle`.
+/// held per `Whistle`. A read tool that names a host holds one of these per
+/// call instead, built by [`Whistle::shepherd_for`](super::Whistle::shepherd_for).
 #[derive(Debug, Clone)]
 pub struct Shepherd {
-    socket: PathBuf,
+    target: Target,
 }
 
 impl Shepherd {
     /// Wraps a socket path. Connects to nothing until [`Self::call`].
     #[must_use]
     pub fn new(socket: PathBuf) -> Self {
-        Self { socket }
+        Self {
+            target: Target::Local(socket),
+        }
+    }
+
+    /// The shepherd on `dest`, dialled through `options`.
+    ///
+    /// `options` is [`host_ssh`] for every call a model makes; naming another
+    /// one is the seam a test uses to put a stand-in program in ssh's place.
+    #[must_use]
+    pub fn for_host(dest: &str, options: SshOptions) -> Self {
+        Self {
+            target: Target::Host {
+                dest: dest.to_owned(),
+                options,
+            },
+        }
     }
 
     /// Connects, sends one request, and drops the connection.
@@ -98,10 +159,16 @@ impl Shepherd {
     }
 
     /// Opens the connection one call uses and refuses a skewed shepherd.
+    ///
+    /// The local socket and a host differ here and only here: one is a
+    /// `Client::connect`, the other `Client::connect_ssh_with`, and every
+    /// step past the handshake is shared.
     async fn connect(&self) -> Result<(Client, HelloAck), CallToolResult> {
-        let client = Client::connect(&self.socket)
-            .await
-            .map_err(|err| connect_refusal(&err))?;
+        let dialled = match &self.target {
+            Target::Local(socket) => Client::connect(socket).await,
+            Target::Host { dest, options } => Client::connect_ssh_with(dest, options).await,
+        };
+        let client = dialled.map_err(|err| connect_refusal(&err))?;
         // `whistle` drives the daemon on every tool call, so it can never be
         // one of `RECOVERY_VERBS`.
         refuse_if_skewed(&client)?;
@@ -117,11 +184,26 @@ impl Shepherd {
 /// the real stderr, since stdout is whistle's MCP transport. The model
 /// sees a separate, in-band [`CallToolResult`] built here.
 ///
+/// A client reached over ssh is asked a different question, and
+/// [`crate::version_guard::skew_of`] states which: that host has its own
+/// install, so only a wire-protocol difference refuses, and the fix it names
+/// runs on whichever side of the gap is behind. `host_skew` is that answer in
+/// one line, and this module's own wording could only have guessed at it.
+///
 /// # Errors
 ///
 /// A [`CallToolResult`] with `is_error: true` when the shepherd's crate
-/// version differs from this binary's.
+/// version differs from this binary's, or when a host speaks another protocol.
 fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
+    if client.host().is_some() {
+        return match crate::version_guard::host_skew(
+            client,
+            crate::version_guard::VersionGuard::Enforce,
+        ) {
+            Ok(_notice) => Ok(()),
+            Err(message) => Err(own_refusal(ExitCode::VersionSkew.code_str(), message)),
+        };
+    }
     let mut sink = std::io::sink();
     let mut err = std::io::stderr();
     let mut streams = crate::output::Streams {

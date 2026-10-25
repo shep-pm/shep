@@ -83,6 +83,7 @@ impl Whistle {
             // multi-sheep walk fills it.
             Response::Restarted { accepted, .. } => Ok(Json(FlockListing {
                 flock: accepted.iter().map(SheepRow::from).collect(),
+                host: None,
             })),
             _ => Err(unexpected_response()),
         }
@@ -106,6 +107,7 @@ impl Whistle {
         match self.shepherd.call(Request::Stop { selector }).await? {
             Response::Stopped(flock) => Ok(Json(FlockListing {
                 flock: flock.iter().map(SheepRow::from).collect(),
+                host: None,
             })),
             _ => Err(unexpected_response()),
         }
@@ -132,6 +134,7 @@ impl Whistle {
             // multi-sheep walk fills it.
             Response::Restarted { accepted, .. } => Ok(Json(FlockListing {
                 flock: accepted.iter().map(SheepRow::from).collect(),
+                host: None,
             })),
             _ => Err(unexpected_response()),
         }
@@ -158,6 +161,7 @@ impl Whistle {
             // multi-sheep walk fills it.
             Response::Reloading { accepted, .. } => Ok(Json(FlockListing {
                 flock: accepted.iter().map(SheepRow::from).collect(),
+                host: None,
             })),
             _ => Err(unexpected_response()),
         }

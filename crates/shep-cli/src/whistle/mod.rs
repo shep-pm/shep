@@ -25,11 +25,13 @@ pub mod catalogue;
 use std::io::Write;
 
 use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{CallToolResult, Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt, tool_handler};
+use shep_client::SshOptions;
 use shep_core::paths::ShepPaths;
 
 use crate::cli::Format;
+use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 use crate::output;
 
@@ -42,6 +44,12 @@ use crate::output;
 pub struct Whistle {
     shepherd: shepherd::Shepherd,
     paths: ShepPaths,
+    /// The hosts a `host` argument may name: `shep.toml`'s top-level `hosts`
+    /// array, read once at startup, the way the gate is read.
+    hosts: Vec<String>,
+    /// How a host call runs ssh. One value for every host call this process
+    /// makes: see [`shepherd::host_ssh`].
+    ssh: SshOptions,
     control: gate::Control,
     router: ToolRouter<Self>,
 }
@@ -60,8 +68,8 @@ impl Whistle {
 
     /// A `Whistle` with a given gate and no reachable shepherd.
     ///
-    /// A `ShepPaths` rooted at a nonexistent path is enough, since nothing
-    /// here dials it.
+    /// A `ShepPaths` naming a nonexistent path is enough, since nothing here
+    /// dials it, and its `hosts` list reads as empty for the same reason.
     #[cfg(test)]
     #[must_use]
     pub fn for_test(control: gate::Control) -> Self {
@@ -69,6 +77,16 @@ impl Whistle {
             ShepPaths::resolve(&|_| None, std::path::Path::new("/nonexistent")),
             control,
         )
+    }
+
+    /// A `Whistle` at `paths` whose host calls run `ssh` as `ssh` says, for
+    /// the tests that name a stand-in program in ssh's place.
+    #[cfg(test)]
+    #[must_use]
+    pub fn for_test_with_ssh(paths: ShepPaths, control: gate::Control, ssh: SshOptions) -> Self {
+        let mut whistle = Self::new(paths, control);
+        whistle.ssh = ssh;
+        whistle
     }
 
     /// Builds the handler and its router.
@@ -81,12 +99,40 @@ impl Whistle {
             gate::Control::ReadOnly => Self::read_only_router(),
             gate::Control::Allowed => Self::read_only_router() + Self::control_router(),
         };
+        let hosts = listed_hosts(&paths);
         Self {
             shepherd: shepherd::Shepherd::new(paths.socket.clone()),
+            hosts,
+            ssh: shepherd::host_ssh(),
             paths,
             control,
             router,
         }
+    }
+
+    /// The shepherd one tool call acts on: the host `host` names, or this
+    /// machine's socket when it names nothing.
+    ///
+    /// `host` is accepted only as a name already in `shep.toml`'s `hosts`
+    /// list, and a name outside that list is refused here, before any dial.
+    /// The list is the whole of what keeps a model's `host` argument from
+    /// becoming an ssh destination no operator chose.
+    ///
+    /// # Errors
+    ///
+    /// A [`CallToolResult`] with `is_error: true` and code `unknown_host`
+    /// naming the hosts that are configured, when `host` is not one of them.
+    pub(crate) fn shepherd_for(
+        &self,
+        host: Option<&str>,
+    ) -> Result<shepherd::Shepherd, CallToolResult> {
+        let Some(name) = host else {
+            return Ok(self.shepherd.clone());
+        };
+        if self.hosts.iter().any(|listed| listed == name) {
+            return Ok(shepherd::Shepherd::for_host(name, self.ssh.clone()));
+        }
+        Err(unknown_host(&self.paths, &self.hosts, name))
     }
 
     /// The two prose states `get_info`'s instructions cycle between,
@@ -174,6 +220,43 @@ pub async fn whistle(err: &mut dyn Write, fmt: Format, paths: &ShepPaths) -> Exi
             ExitCode::Failure
         }
     }
+}
+
+/// The hosts `paths`' `shep.toml` lists, or none.
+///
+/// Read once, at startup, exactly as the gate is read: a host added to
+/// `shep.toml` while whistle runs is not a host a tool call can name until
+/// whistle restarts, and the refusal below says so rather than letting a
+/// model retry a name it was told.
+///
+/// A file that will not read or parse is no hosts, and silently. `whistle()`
+/// has already printed that file's parse failure for the gate, and a second
+/// copy of the same complaint would read as two problems.
+fn listed_hosts(paths: &ShepPaths) -> Vec<String> {
+    ShepToml::read_only(&paths.daemon_config)
+        .and_then(|doc| doc.host_names())
+        .unwrap_or_default()
+}
+
+/// The refusal for a `host` no operator listed.
+///
+/// Names the hosts that are listed, since the model that asked for `amp4`
+/// most likely means one of them, and names the file the list lives in,
+/// since the operator is the only one who can add it.
+fn unknown_host(paths: &ShepPaths, hosts: &[String], name: &str) -> CallToolResult {
+    let listed = match hosts {
+        [] => "nothing is listed".to_string(),
+        listed => format!("the list holds: {}", listed.join(", ")),
+    };
+    shepherd::own_refusal(
+        "unknown_host",
+        format!(
+            "`{name}` is not a host in {}, so nothing was dialled; {listed}. \
+             `shep host add <destination>` adds one, and a host added while \
+             whistle is running needs whistle restarted.",
+            paths.daemon_config.display(),
+        ),
+    )
 }
 
 /// A [`HelloAck`](shep_core::protocol::HelloAck) whose version the skew

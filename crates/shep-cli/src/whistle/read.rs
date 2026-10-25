@@ -49,6 +49,17 @@ pub struct TailParams {
     pub lines: Option<u32>,
 }
 
+/// `list_flock`'s arguments.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FlockParams {
+    /// A host to ask, named the way `shep host add` listed it. Absent asks
+    /// this machine.
+    ///
+    /// Only a host in `shep.toml`'s `hosts` list is accepted: see
+    /// [`Whistle::shepherd_for`].
+    pub host: Option<String>,
+}
+
 /// `list_barks`' arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct BarksParams {
@@ -82,10 +93,18 @@ impl Whistle {
         description = "List every process the shepherd is supervising, with its status, pid, restart count, uptime, CPU and memory. Read-only.",
         annotations(read_only_hint = true)
     )]
-    pub async fn list_flock(&self) -> Result<Json<FlockListing>, CallToolResult> {
-        let (_ack, flock) = self.shepherd.list_flock_with_ack().await?;
+    pub async fn list_flock(
+        &self,
+        Parameters(params): Parameters<FlockParams>,
+    ) -> Result<Json<FlockListing>, CallToolResult> {
+        let host = params.host;
+        let (_ack, flock) = self
+            .shepherd_for(host.as_deref())?
+            .list_flock_with_ack()
+            .await?;
         Ok(Json(FlockListing {
             flock: flock.iter().map(SheepRow::from).collect(),
+            host,
         }))
     }
 
@@ -103,6 +122,7 @@ impl Whistle {
         match self.shepherd.call(Request::Describe { selector }).await? {
             Response::Described(flock) => Ok(Json(FlockListing {
                 flock: flock.iter().map(SheepRow::from).collect(),
+                host: None,
             })),
             _ => Err(unexpected_response()),
         }
@@ -308,8 +328,11 @@ mod tests {
         .await;
 
         let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
-        let result = tokio::time::timeout(TEST_TIMEOUT, whistle.list_flock())
-            .await
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams { host: None })),
+        )
+        .await
             .expect("list_flock must return within the test timeout")
             .expect("a scripted daemon must not produce a tool error");
 
@@ -362,6 +385,44 @@ mod tests {
             ),
             other => panic!("expected Request::Describe, got {other:?}"),
         }
+    }
+
+    /// The bytes a local `list_flock` reply is made of, written down here and
+    /// not derived from the code: the whole point of the test below is that
+    /// adding a `host` argument changed none of them.
+    const LOCAL_LISTING: &str = r#"{"flock":[{"id":1,"name":"web","status":"online","pid":4242,"restarts":3,"uptime_ms":60000,"fold":"backend","depends_on":[],"out_file":"/home/ada/.shep/logs/web-0-out.log","err_file":"/home/ada/.shep/logs/web-0-err.log","cpu_percent":12.5,"memory_bytes":50331648,"cpu_ms":null,"dog":{"kind":"built_in"},"lambs":[{"pid":4243,"name":"node"}],"last_exit":{"code":1,"signal":null},"smit":"▲ main@a1b2c3","instance":null,"handshook":null,"dog_stale":null,"max_memory":null}]}"#;
+
+    /// fails if a local call grows a `host` key, or a row's shape moves: the
+    /// `host` field is `skip_serializing_if`, and this is what that attribute
+    /// is for.
+    #[tokio::test]
+    async fn list_flock_without_a_host_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let served = shep_client::testing::serve_one_request(
+            &socket,
+            matching_ack(),
+            Response::Flock(vec![shep_client::testing::sample_info()]),
+        )
+        .await;
+
+        let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams { host: None })),
+        )
+        .await
+        .expect("list_flock must return within the test timeout")
+        .expect("a scripted daemon must not produce a tool error");
+
+        assert_eq!(
+            serde_json::to_string(&result.0).unwrap(),
+            LOCAL_LISTING,
+            "a call that names no host answers with the bytes it answered with \
+             before a `host` argument existed"
+        );
+
+        served.await.expect("the fake daemon task must not panic");
     }
 
     /// The clamp both log-reading tools share, at the one place it now
