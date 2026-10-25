@@ -1,10 +1,69 @@
 use shep_client::PROTOCOL_VERSION;
+use shep_core::inherited_env::{INHERITED_UNIX, INHERITED_WINDOWS};
 use shep_core::protocol::MIN_SUPPORTED;
 
 use super::*;
 use crate::cli::AdoptArgs;
 use crate::commands::dogs::adopt;
 use crate::commands::dogs::test_support::streams;
+
+#[test]
+fn windows_inherited_vars_reach_the_dog_before_shep_vars() {
+    let expected = [
+        ("HOMEDRIVE", "C:"),
+        ("HOMEPATH", r"\Users\Ada"),
+        ("OS", "Windows_NT"),
+        ("LANG", "en_US.UTF-8"),
+        ("TZ", "Europe/Prague"),
+        ("PYTHONUTF8", "1"),
+        ("PYTHONIOENCODING", "utf-8"),
+    ];
+    let home = Path::new("dog-home");
+    let env = dog_env_with(home, "otel", INHERITED_WINDOWS, |key| {
+        expected
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| OsString::from(value))
+    });
+
+    assert_eq!(
+        &env[env.len() - 2..],
+        &[
+            ("SHEP_HOME".to_string(), home.as_os_str().to_owned()),
+            ("SHEP_DOG_NAME".to_string(), OsString::from("otel")),
+        ]
+    );
+    for (key, value) in expected {
+        assert_eq!(
+            env.iter().find(|(name, _)| name == key).map(|(_, v)| v),
+            Some(&OsString::from(value)),
+            "missing inherited Windows variable {key}"
+        );
+    }
+}
+
+#[test]
+fn inherited_values_and_home_keep_non_utf8_bytes_with_a_default_path() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let value = OsString::from_vec(vec![b'v', 0xff]);
+    for path in [None, Some(OsString::new()), Some(value.clone())] {
+        let env = dog_env_with(Path::new(&value), "otel", INHERITED_UNIX, |key| match key {
+            "PATH" => path.clone(),
+            "HOME" => Some(value.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            env,
+            vec![
+                ("PATH".to_string(), OsString::from(DEFAULT_PATH)),
+                ("HOME".to_string(), value.clone()),
+                ("SHEP_HOME".to_string(), value.clone()),
+                ("SHEP_DOG_NAME".to_string(), OsString::from("otel")),
+            ]
+        );
+    }
+}
 
 fn chmod(path: &Path, mode: u32) {
     let mut perms = std::fs::metadata(path).unwrap().permissions();

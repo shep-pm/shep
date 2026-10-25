@@ -26,4 +26,4 @@ pub use refs::{
     REDACTED_ENV, SecretRef, namespaces_of, references, references_in, sealed_keys, shown_env_value,
 };
 pub use resolve_mod::{Resolution, SecretView};
-pub use store::{all, get, is_name, set, unset};
+pub use store::{all, get, is_name, set, set_many, unset};

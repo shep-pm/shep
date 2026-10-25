@@ -83,7 +83,10 @@ mod tests {
         let src = "[".repeat(5000);
         assert_eq!(
             Flockfile::parse(&src, FlockFormat::Json5).unwrap_err(),
-            FlockfileError::Json5("nesting depth exceeds 64".to_string())
+            FlockfileError::Parse {
+                format: FlockFormat::Json5,
+                message: "nesting depth exceeds 64".to_string(),
+            }
         );
     }
 
@@ -123,7 +126,10 @@ mod tests {
         let src = format!("// don't nest\n{}", "[".repeat(5000));
         assert_eq!(
             Flockfile::parse(&src, FlockFormat::Json5).unwrap_err(),
-            FlockfileError::Json5("nesting depth exceeds 64".to_string())
+            FlockfileError::Parse {
+                format: FlockFormat::Json5,
+                message: "nesting depth exceeds 64".to_string(),
+            }
         );
     }
 
@@ -132,7 +138,10 @@ mod tests {
         let src = format!("/* it's fine */\n{}", "[".repeat(5000));
         assert_eq!(
             Flockfile::parse(&src, FlockFormat::Json5).unwrap_err(),
-            FlockfileError::Json5("nesting depth exceeds 64".to_string())
+            FlockfileError::Parse {
+                format: FlockFormat::Json5,
+                message: "nesting depth exceeds 64".to_string(),
+            }
         );
     }
 

@@ -61,3 +61,16 @@ a:hover {
   background: var(--butter);
   color: #17251c;
 }
+
+/*
+ * The landing sections' shared content width. Every landing section's
+ * centered column (the five scenes' shell, Lexicon, Features, Chalkboard,
+ * CtaFooter) carries this class instead of repeating the rule in its own
+ * scoped <style>; see --landing-width in tokens.css. Nav.astro's bar keeps
+ * its own rule because its padding differs, but reads the same token.
+ */
+.landing-inner {
+  max-width: var(--landing-width);
+  margin: 0 auto;
+  padding: 0 28px;
+}

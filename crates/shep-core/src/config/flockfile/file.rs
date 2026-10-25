@@ -20,8 +20,8 @@ impl Flockfile {
     /// Parses Flockfile source text in the given format.
     ///
     /// # Errors
-    /// - Format variants ([`FlockfileError::Toml`] etc.): backend parse
-    ///   failure, carrying the backend's message. Json5 additionally rejects
+    /// - [`FlockfileError::Parse`]: backend parse failure, carrying the
+    ///   format and the backend's message. Json5 additionally rejects
     ///   sources nested past a depth of 64 before reaching the backend
     ///   parser, whose recursive-descent stack-overflows on deep input
     ///   rather than returning an error.
@@ -29,7 +29,7 @@ impl Flockfile {
     /// - [`FlockfileError::UnknownKeys`]: an `app` entry named a key no
     ///   field claims. A typo at the top level never reaches this variant:
     ///   `RawFlockfile`'s `deny_unknown_fields` refuses it inside the
-    ///   backend, so it arrives as the format variant naming the key.
+    ///   backend, so it arrives as `Parse` naming the key.
     pub fn parse(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
         Ok(Self {
             apps: parse_nonempty_apps(source, format)?,
@@ -177,8 +177,11 @@ args = ["job.py"]
     #[test]
     fn parse_errors_carry_the_backend_message() {
         match Flockfile::parse("not toml [[", FlockFormat::Toml).unwrap_err() {
-            FlockfileError::Toml(msg) => assert!(!msg.is_empty()),
-            other => panic!("expected Toml error, got {other:?}"),
+            FlockfileError::Parse {
+                format: FlockFormat::Toml,
+                message,
+            } => assert!(!message.is_empty()),
+            other => panic!("expected Toml parse error, got {other:?}"),
         }
     }
 
@@ -318,8 +321,12 @@ env = { DB_HOST = "", NODE_ENV = "production" }
             FlockFormat::Toml,
         )
         .expect_err("a bare value under dogs must be refused");
-        let FlockfileError::Toml(message) = err else {
-            panic!("expected Toml, got {err:?}");
+        let FlockfileError::Parse {
+            format: FlockFormat::Toml,
+            message,
+        } = err
+        else {
+            panic!("expected Toml parse error, got {err:?}");
         };
         assert!(
             message.contains("table"),

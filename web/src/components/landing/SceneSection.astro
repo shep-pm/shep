@@ -14,7 +14,7 @@ const { id, columnWidth = "min(600px, 54vw)" } = Astro.props;
 ---
 
 <section id={id} class="scene">
-  <div class="inner">
+  <div class="inner landing-inner">
     <div class="column" style={`width:${columnWidth}`}>
       <slot />
     </div>
@@ -32,9 +32,6 @@ const { id, columnWidth = "min(600px, 54vw)" } = Astro.props;
   }
 
   .inner {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 0 28px;
     width: 100%;
   }
 

@@ -61,7 +61,7 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
     fs::set_permissions(&shim_path, perms).unwrap();
 
     // Points this process's own PATH at only the shim's directory, so
-    // base_env() has exactly one place to find "shep-test-interp".
+    // inherited_env() has exactly one place to find "shep-test-interp".
     let _path_guard = PathGuard::set(&shim_dir);
 
     let paths = ShepPaths {

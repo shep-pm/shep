@@ -118,3 +118,12 @@
   --illus-dog-nose: #e0552b;
   --illus-cream: #f4f0e2;
 }
+
+/*
+ * Layout tokens. --landing-width is the one page width every landing
+ * section shares: global.css's .landing-inner rule and Nav.astro's bar
+ * both read it, so changing the page width is one edit here.
+ */
+:root {
+  --landing-width: 1240px;
+}

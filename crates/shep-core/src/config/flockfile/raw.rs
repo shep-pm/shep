@@ -489,7 +489,10 @@ script = "./srv"
         assert!(
             matches!(
                 Flockfile::parse(src, FlockFormat::Json),
-                Err(FlockfileError::Json(_))
+                Err(FlockfileError::Parse {
+                    format: FlockFormat::Json,
+                    ..
+                })
             ),
             "bare `schema` (no $) must still be an unknown field"
         );

@@ -42,6 +42,20 @@ pub(super) fn check_name(
     }
 }
 
+/// Checks one value against [`MAX_VALUE_BYTES`], naming `key` in the refusal.
+///
+/// # Errors
+/// [`SecretError::ValueTooLong`] when `value` is over the limit.
+fn check_value(key: &str, value: &str) -> Result<(), SecretError> {
+    if value.len() > MAX_VALUE_BYTES {
+        return Err(SecretError::ValueTooLong {
+            key: key.to_string(),
+            len: value.len(),
+        });
+    }
+    Ok(())
+}
+
 /// Reads whichever version of the store `path` currently names: shorthand
 /// for [`crate::versioned_file::read_versioned`] at [`SECRETS_VERSION`].
 pub(super) fn read_file(path: &Path) -> Result<SecretFile, SecretError> {
@@ -112,12 +126,7 @@ pub fn get(path: &Path, key: &str, environment: &str) -> Result<Option<String>, 
 pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(), SecretError> {
     check_name(key, SecretError::InvalidKey)?;
     check_name(environment, SecretError::InvalidEnvironment)?;
-    if value.len() > MAX_VALUE_BYTES {
-        return Err(SecretError::ValueTooLong {
-            key: key.to_string(),
-            len: value.len(),
-        });
-    }
+    check_value(key, value)?;
 
     let _lock = FileLock::acquire(path)?;
     let mut file = read_file(path)?;
@@ -126,6 +135,55 @@ pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(),
         .entry(key.to_string())
         .or_default()
         .insert(environment.to_string(), value.to_string());
+    write_file(path, &file)
+}
+
+/// Stores every `(key, value)` pair for `environment` in one locked
+/// read-modify-write, so the batch lands whole or not at all.
+///
+/// Each pair replaces any previous value in its slot and every other
+/// environment is left alone. A key repeated in `entries` keeps its last
+/// value. An empty `entries` returns `Ok(())` before anything else, the
+/// environment name included, and never opens, locks or creates the store.
+///
+/// # Errors
+///
+/// - [`SecretError::InvalidEnvironment`]: the environment name is outside
+///   the grammar.
+/// - [`SecretError::InvalidKey`]: a key is outside the grammar.
+/// - [`SecretError::ValueTooLong`]: a value exceeds [`MAX_VALUE_BYTES`].
+/// - [`SecretError::FutureVersion`], [`SecretError::Decode`] and
+///   [`SecretError::Io`] exactly as [`set`] returns them.
+///
+/// The first three are checked for every entry before the lock is taken, so
+/// a refused batch never creates the store. The store is replaced by one
+/// rename, so a batch refused before it, or failing to stage or `fsync` the
+/// temp file, leaves the old store whole. An `Io` error from the directory
+/// flush that follows the rename can arrive after the whole batch is already
+/// in place, exactly as it can for [`set`].
+pub fn set_many(
+    path: &Path,
+    environment: &str,
+    entries: &[(&str, &str)],
+) -> Result<(), SecretError> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    check_name(environment, SecretError::InvalidEnvironment)?;
+    for &(key, value) in entries {
+        check_name(key, SecretError::InvalidKey)?;
+        check_value(key, value)?;
+    }
+
+    let _lock = FileLock::acquire(path)?;
+    let mut file = read_file(path)?;
+    file.version = SECRETS_VERSION;
+    for &(key, value) in entries {
+        file.entries
+            .entry(key.to_string())
+            .or_default()
+            .insert(environment.to_string(), value.to_string());
+    }
     write_file(path, &file)
 }
 
@@ -303,6 +361,72 @@ mod tests {
                 "{env:?}: {err:?}"
             );
         }
+    }
+
+    #[test]
+    fn set_many_writes_every_entry_and_leaves_other_environments_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        set(&path, "A", "staging", "kept").unwrap();
+        set(&path, "A", "production", "old").unwrap();
+
+        set_many(&path, "production", &[("A", "new"), ("B", "b"), ("C", "c")]).unwrap();
+
+        assert_eq!(
+            get(&path, "A", "production").unwrap().as_deref(),
+            Some("new")
+        );
+        assert_eq!(get(&path, "B", "production").unwrap().as_deref(), Some("b"));
+        assert_eq!(get(&path, "C", "production").unwrap().as_deref(), Some("c"));
+        assert_eq!(get(&path, "A", "staging").unwrap().as_deref(), Some("kept"));
+        assert_eq!(get(&path, "B", "staging").unwrap(), None);
+    }
+
+    #[test]
+    fn set_many_with_a_bad_entry_after_good_ones_leaves_the_store_unchanged() {
+        let too_long = "v".repeat(MAX_VALUE_BYTES + 1);
+        let dir = tempfile::tempdir().unwrap();
+        let absent = dir.path().join("absent.json");
+        let present = dir.path().join("present.json");
+        set(&present, "EXISTING", "production", "e").unwrap();
+        let before = std::fs::read(&present).unwrap();
+
+        let refused = |environment: &str, entries: &[(&str, &str)]| {
+            let err = set_many(&absent, environment, entries).unwrap_err();
+            assert!(
+                !absent.exists(),
+                "a refused batch must not create the store"
+            );
+            assert!(set_many(&present, environment, entries).is_err());
+            assert_eq!(std::fs::read(&present).unwrap(), before);
+            err
+        };
+
+        let err = refused("production", &[("GOOD", "g"), ("bad key", "v")]);
+        assert!(
+            matches!(&err, SecretError::InvalidKey(k) if k == "bad key"),
+            "{err:?}"
+        );
+        let err = refused("production", &[("GOOD", "g"), ("LONG", &too_long)]);
+        assert!(
+            matches!(&err, SecretError::ValueTooLong { key, .. } if key == "LONG"),
+            "{err:?}"
+        );
+        let err = refused("bad env", &[("GOOD", "g")]);
+        assert!(
+            matches!(&err, SecretError::InvalidEnvironment(e) if e == "bad env"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn set_many_of_nothing_creates_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        set_many(&path, "production", &[]).unwrap();
+        set_many(&path, "bad env", &[]).unwrap();
+        assert!(!path.exists());
+        assert!(!dir.path().join("secrets.json.lock").exists());
     }
 
     #[test]

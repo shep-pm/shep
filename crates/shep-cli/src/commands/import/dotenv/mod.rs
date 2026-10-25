@@ -127,18 +127,19 @@ pub async fn import_env(
         return emit_rows(streams, &plan, &environment);
     }
 
-    let mut written = 0_usize;
-    for planned in &plan.entries {
-        if planned.class == Class::Secret {
-            if let Err(err) =
-                secrets::set(&paths.secrets, &planned.key, &environment, &planned.value)
-            {
-                let message = format!("{err}{}", already_written(written));
-                return streams.fail(exit_code_for(&err), &message);
-            }
-            written += 1;
-        }
+    let secret_entries: Vec<(&str, &str)> = plan
+        .entries
+        .iter()
+        .filter(|planned| planned.class == Class::Secret)
+        .map(|planned| (planned.key.as_str(), planned.value.as_str()))
+        .collect();
+    // One locked write, so a refusal or a failed stage leaves the store as it
+    // was. Only a failed directory flush after the rename can leave it
+    // written, and `set` has the same gap.
+    if let Err(err) = secrets::set_many(&paths.secrets, &environment, &secret_entries) {
+        return streams.fail(exit_code_for(&err), &err.to_string());
     }
+    let written = secret_entries.len();
 
     let request = Request::SetSheepEnvBatch {
         name: args.app.clone(),
@@ -486,7 +487,7 @@ mod tests {
         assert!(already_written(1).contains("A re-run is clean"));
     }
 
-    /// fails if a failure before the first `secrets::set` ever claims the
+    /// fails if a failure before `secrets::set_many` writes ever claims the
     /// store holds something: "0 secret keys were already written" describes
     /// nothing and reads as if it described something.
     #[test]

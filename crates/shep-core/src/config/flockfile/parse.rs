@@ -84,7 +84,13 @@ mod tests {
         // never overflow the stack.
         let deep = "[".repeat(5000);
         let result = Flockfile::parse(&deep, FlockFormat::Yaml);
-        assert!(matches!(result, Err(FlockfileError::Yaml(_))));
+        assert!(matches!(
+            result,
+            Err(FlockfileError::Parse {
+                format: FlockFormat::Yaml,
+                ..
+            })
+        ));
     }
 
     #[test]

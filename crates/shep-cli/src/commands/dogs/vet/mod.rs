@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use shep_core::dogs::manifest::Manifest;
 use shep_core::dogs::{DogVersion, SCHEMA_FLAG, VERSION_FLAG, parse_version_answer};
+use shep_core::inherited_env::{DEFAULT_PATH, INHERITED};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{MIN_SUPPORTED, SelectorSpec};
 
@@ -236,42 +237,26 @@ fn lookup_refusal(err: std::io::Error) -> AdoptRefusal {
 /// `SHEP_HOME` and `SHEP_DOG_NAME` are in here rather than left to the
 /// caller so a third variable cannot reach one spawn and miss the other.
 ///
-/// Mirrors `shep_daemon::assemble::base_env`, which is private to a crate
-/// the CLI does not reach into. The lists are duplicated: if the daemon's
-/// allowlist grows, this one has to follow, or a candidate is vetted under
-/// conditions its supervised run will not have.
+/// Shares the allowlist with `shep_daemon::assemble::environment_inheritance::inherited_env`
+/// through [`shep_core::inherited_env`].
 pub(crate) fn dog_env(home: &Path, name: &str) -> Vec<(String, OsString)> {
-    #[cfg(unix)]
-    const INHERITED: &[&str] = &["HOME", "USER", "LANG", "TZ"];
-    #[cfg(unix)]
-    const DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-    #[cfg(windows)]
-    const INHERITED: &[&str] = &[
-        "SystemRoot",
-        "SystemDrive",
-        "windir",
-        "TEMP",
-        "TMP",
-        "USERPROFILE",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "COMSPEC",
-        "PATHEXT",
-        "NUMBER_OF_PROCESSORS",
-        "PROCESSOR_ARCHITECTURE",
-    ];
-    #[cfg(windows)]
-    const DEFAULT_PATH: &str = r"C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem";
+    dog_env_with(home, name, INHERITED, std::env::var_os)
+}
 
-    let path = std::env::var("PATH")
-        .ok()
+fn dog_env_with<'a>(
+    home: &Path,
+    name: &str,
+    keys: &[&'a str],
+    env_reader: impl Fn(&'a str) -> Option<OsString>,
+) -> Vec<(String, OsString)> {
+    let path = env_reader("PATH")
+        .and_then(|value| value.into_string().ok())
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| DEFAULT_PATH.to_string());
     let mut env = vec![("PATH".to_string(), OsString::from(path))];
     env.extend(
-        INHERITED
-            .iter()
-            .filter_map(|key| std::env::var_os(key).map(|v| ((*key).to_string(), v))),
+        keys.iter()
+            .filter_map(|key| env_reader(key).map(|v| ((*key).to_string(), v))),
     );
     // Last, and as `OsString`: a home that is not UTF-8 still reaches the
     // dog whole, and the two shep owns cannot be shadowed by an inherited

@@ -14,14 +14,13 @@ use core::fmt;
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FlockfileError {
-    /// TOML backend rejected the source (carries its message)
-    Toml(String),
-    /// YAML backend rejected the source
-    Yaml(String),
-    /// JSON backend rejected the source
-    Json(String),
-    /// JSON5 backend rejected the source
-    Json5(String),
+    /// The backend for `format` rejected the source
+    Parse {
+        /// The format whose backend refused the source.
+        format: FlockFormat,
+        /// The backend's own message.
+        message: String,
+    },
     /// The document parsed but declared no apps
     NoApps,
     /// An `app` entry named one or more keys no field claims.
@@ -30,9 +29,7 @@ pub enum FlockfileError {
     /// refused earlier, by `RawFlockfile`'s own `deny_unknown_fields`,
     /// which the backend's derived `Deserialize` enforces directly rather
     /// than through the `serde_ignored` callback this variant collects
-    /// from: it arrives as the format variant
-    /// ([`FlockfileError::Toml`], [`FlockfileError::Yaml`],
-    /// [`FlockfileError::Json`], [`FlockfileError::Json5`]) naming the key.
+    /// from: it arrives as [`FlockfileError::Parse`] naming the key.
     ///
     /// A Flockfile is hand-written, unlike the same [`AppConfig`](crate::config::AppConfig)/
     /// [`ProbeConfig`](crate::config::ProbeConfig) shape riding the wire,
@@ -49,31 +46,11 @@ pub enum FlockfileError {
 impl FlockfileError {
     /// The variant for `format`'s backend refusing the source, carrying
     /// `message`.
-    ///
-    /// The one place a backend refusal is built: a call site names the
-    /// `FlockFormat` it asked and the backend's own error, never a variant,
-    /// so a fifth format reaches this enum from one match instead of from
-    /// every call site.
     #[must_use]
     pub(super) fn backend(format: FlockFormat, message: impl fmt::Display) -> Self {
-        let message = message.to_string();
-        match format {
-            FlockFormat::Toml => Self::Toml(message),
-            FlockFormat::Yaml => Self::Yaml(message),
-            FlockFormat::Json => Self::Json(message),
-            FlockFormat::Json5 => Self::Json5(message),
-        }
-    }
-
-    /// The format label and message a backend variant carries, `None` for
-    /// the variants that name no backend.
-    fn backend_parts(&self) -> Option<(&'static str, &str)> {
-        match self {
-            Self::Toml(m) => Some(("TOML", m)),
-            Self::Yaml(m) => Some(("YAML", m)),
-            Self::Json(m) => Some(("JSON", m)),
-            Self::Json5(m) => Some(("JSON5", m)),
-            Self::NoApps | Self::UnknownKeys { .. } => None,
+        Self::Parse {
+            format,
+            message: message.to_string(),
         }
     }
 }
@@ -89,12 +66,12 @@ impl fmt::Display for FlockfileError {
                 }
                 write!(f, ": {}", keys.join(", "))
             }
-            Self::Toml(_) | Self::Yaml(_) | Self::Json(_) | Self::Json5(_) => {
-                // `backend_parts` names exactly these four variants, so the
-                // fallback is unreachable; it keeps `Display` exhaustive
-                // without a panic on an unreachable path.
-                let Some((label, message)) = self.backend_parts() else {
-                    return f.write_str("invalid Flockfile");
+            Self::Parse { format, message } => {
+                let label = match format {
+                    FlockFormat::Toml => "TOML",
+                    FlockFormat::Yaml => "YAML",
+                    FlockFormat::Json => "JSON",
+                    FlockFormat::Json5 => "JSON5",
                 };
                 write!(f, "invalid {label} Flockfile: {message}")
             }
@@ -109,39 +86,27 @@ mod tests {
     use super::*;
 
     /// Each backend refusal names its own format, in the one sentence shape
-    /// every format variant shares. The strings are what an operator reads
-    /// in `shep start` output, so they are pinned whole.
+    /// every format shares. The strings are what an operator reads in
+    /// `shep start` output, so they are pinned whole.
     #[test]
     fn each_backend_variant_displays_its_format_and_message() {
-        let cases: [(FlockFormat, FlockfileError, &str); 4] = [
-            (
-                FlockFormat::Toml,
-                FlockfileError::Toml("x".to_string()),
-                "invalid TOML Flockfile: x",
-            ),
-            (
-                FlockFormat::Yaml,
-                FlockfileError::Yaml("x".to_string()),
-                "invalid YAML Flockfile: x",
-            ),
-            (
-                FlockFormat::Json,
-                FlockfileError::Json("x".to_string()),
-                "invalid JSON Flockfile: x",
-            ),
-            (
-                FlockFormat::Json5,
-                FlockfileError::Json5("x".to_string()),
-                "invalid JSON5 Flockfile: x",
-            ),
+        let cases = [
+            (FlockFormat::Toml, "invalid TOML Flockfile: x"),
+            (FlockFormat::Yaml, "invalid YAML Flockfile: x"),
+            (FlockFormat::Json, "invalid JSON Flockfile: x"),
+            (FlockFormat::Json5, "invalid JSON5 Flockfile: x"),
         ];
-        for (format, variant, rendered) in cases {
+        for (format, rendered) in cases {
+            let err = FlockfileError::Parse {
+                format,
+                message: "x".to_string(),
+            };
             assert_eq!(
                 FlockfileError::backend(format, "x"),
-                variant,
+                err,
                 "{format:?}: backend built the wrong variant"
             );
-            assert_eq!(variant.to_string(), rendered);
+            assert_eq!(err.to_string(), rendered);
         }
     }
 }

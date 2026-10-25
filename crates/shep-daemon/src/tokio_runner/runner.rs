@@ -391,10 +391,10 @@ pub(super) fn what_exec_will_find(spec: &SpawnSpec) -> Preflight {
 /// How many `PATH` entries a preflight message names before summarising the
 /// rest.
 ///
-/// Four: [`base_env`](crate::assemble)'s fallback for a startup unit with no
-/// `PATH` is three entries, so the case an operator hits prints in full with
-/// one to spare. What gets cut off is an interactive shell's `PATH`, which is
-/// unreadable in a terminal error.
+/// Four: `assemble::environment_inheritance::inherited_env`'s fallback for a
+/// startup unit with no `PATH` is three entries, so the case an operator hits
+/// prints in full with one to spare. What gets cut off is an interactive
+/// shell's `PATH`, which is unreadable in a terminal error.
 const PATH_ENTRIES_IN_MESSAGE: usize = 4;
 
 /// What separates one `PATH` entry from the next.
