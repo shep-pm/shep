@@ -1,4 +1,4 @@
-# Comment blocks over IR-47's line limits, measured on main at bd2a6405a.
+# Comment blocks over IR-47's line limits, measured at a2342fd83.
 # Limits: `///` 6 body lines after the summary (12 when the block has an
 # `# Errors` section), `//!` 10 lines, `//` 4 in a row. Fenced code and an
 # `# Example` section never count; a line that is only its marker does.
@@ -6,6 +6,8 @@
 # A listed block may shrink but never past its recorded count; a block not
 # listed may not appear, and an entry whose block now fits must go.
 # Regenerate with `python3 scripts/check-doc-length.py --write-baseline`.
+# Merge main before measuring: a block main moved elsewhere reads as a new
+# block here and a stale entry there.
 
 19 benches/benches/bark_append.rs //! Times the one blocking file write the bark dog parks on a tokio worker:
 
@@ -223,7 +225,7 @@
 10 crates/shep-cli/src/commands/dogs/vet/manifest.rs /// What the cache already holds for `path`, and nothing else: this never
 
 14 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Vets `path` as a dog binary, before anything is written to `shep.toml`.
-11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// The whole environment a dog is run with here: what the daemon would give
+9 crates/shep-cli/src/commands/dogs/vet/mod.rs /// The whole environment a dog is run with here: what the daemon would give
 7 crates/shep-cli/src/commands/dogs/vet/mod.rs /// SIGKILLs the probe, and on unix everything it forked
 11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Asks `path` for its config schema with [`SCHEMA_FLAG`], and reads the
 11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// How long [`ask`] gives a binary to answer one probe flag, and separately
@@ -1645,7 +1647,7 @@
 11 crates/shep-core/src/config/flockfile/declared_app.rs /// One app as the document declared it: the validated config, plus the
 
 7 crates/shep-core/src/config/flockfile/error.rs /// Error type returned from [`Flockfile::parse`](crate::config::flockfile::Flockfile::parse).
-15 crates/shep-core/src/config/flockfile/error.rs /// An `app` entry named one or more keys no field claims.
+13 crates/shep-core/src/config/flockfile/error.rs /// An `app` entry named one or more keys no field claims.
 
 9 crates/shep-core/src/config/flockfile/file.rs /// The top-level `dogs` key does not exist: only `[app.dogs.<name>]`,
 
@@ -1718,6 +1720,8 @@
 
 11 crates/shep-core/src/file_lock.rs //! One exclusive advisory lock, keyed on the file it guards.
 18 crates/shep-core/src/file_lock.rs /// An exclusive advisory lock over one file, held for as long as the value
+
+21 crates/shep-core/src/inherited_env.rs /// Variables inherited from the daemon's own environment, on top of `PATH`.
 
 11 crates/shep-core/src/kv.rs //! `kv.json`: the shepherd's key/value store (spec §5).
 8 crates/shep-core/src/kv.rs /// Error type returned by this module.
@@ -1851,6 +1855,7 @@
 9 crates/shep-core/src/secrets/store.rs /// The grammar shared by keys, namespaces and environment names.
 17 crates/shep-core/src/secrets/store.rs /// Every key in the store with its per-environment values, in key order.
 13 crates/shep-core/src/secrets/store.rs /// Stores `value` under `key` for `environment`, replacing any previous
+22 crates/shep-core/src/secrets/store.rs /// Stores every `(key, value)` pair for `environment` in one locked
 
 8 crates/shep-core/src/selector.rs /// Whether `input` carries a glob metacharacter, and so was meant as a
 13 crates/shep-core/src/selector.rs /// Compiles a glob into a regex.
@@ -1877,7 +1882,6 @@
 10 crates/shep-daemon/examples/reuse_port_sheep.rs /// A listening socket on `127.0.0.1:port` with `SO_REUSEPORT` set
 
 9 crates/shep-daemon/src/assemble/environment_inheritance.rs /// The env every spawned child starts from, before the app's own `env` map
-21 crates/shep-daemon/src/assemble/environment_inheritance.rs /// Variables inherited from the daemon's own environment, on top of `PATH`.
 
 7 crates/shep-daemon/src/assemble/log_path_resolution.rs /// Anchors an explicit log path at the sheep's `cwd` when it is relative.
 
