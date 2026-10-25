@@ -76,6 +76,14 @@ impl GroupError {
 }
 
 #[cfg(unix)]
+impl GroupError {
+    /// Whether the failure was `EPERM`.
+    pub(crate) fn is_denied(&self) -> bool {
+        matches!(self, Self::Delivery { code, .. } if *code == Errno::EPERM as i32)
+    }
+}
+
+#[cfg(unix)]
 impl fmt::Display for GroupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

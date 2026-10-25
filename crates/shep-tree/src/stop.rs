@@ -82,10 +82,9 @@ impl Tree {
     /// and killed by its own pid as well as the group, which its descendants
     /// that stayed in it keep reachable.
     ///
-    /// If `child` exits within the grace, it is reaped before the final kill
-    /// names its group by pid. While any member lives the group keeps the pid
-    /// from being reused, but once the group is empty a new process could take
-    /// it. `std` has no wait that leaves the child unreaped to close that gap.
+    /// `child` is reaped only after the final kill. On unix an exit within the
+    /// grace is seen with `waitid` and `WNOWAIT`, so the zombie holds the pid
+    /// and the kill cannot name a stranger's group.
     ///
     /// # Errors
     ///
@@ -97,26 +96,38 @@ impl Tree {
         signal: Signal,
         grace: Duration,
     ) -> io::Result<ExitStatus> {
-        let mut status = None;
+        let mut exited = false;
         if self.send(child, signal) {
             let deadline = Instant::now() + grace;
-            loop {
-                if let Some(exited) = child.try_wait()? {
-                    status = Some(exited);
-                    break;
-                }
+            while !exited {
+                exited = Self::has_exited(child)?;
                 let left = deadline.saturating_duration_since(Instant::now());
-                if left.is_zero() {
+                if exited || left.is_zero() {
                     break;
                 }
                 std::thread::sleep(POLL.min(left));
             }
         }
-        self.kill(child, status.is_some())?;
-        match status {
-            Some(status) => Ok(status),
-            None => child.wait(),
-        }
+        self.kill(child, exited)?;
+        child.wait()
+    }
+
+    /// Whether `child` has exited, without reaping it on unix: the exited
+    /// child stays a zombie that holds its pid, so the kill that follows
+    /// cannot name a stranger's group.
+    #[cfg(unix)]
+    fn has_exited(child: &mut Child) -> io::Result<bool> {
+        use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+
+        let options = WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT;
+        Ok(waitid(WaitId::Pid(Pid::from_child(child)), options)?.is_some())
+    }
+
+    /// Whether `child` has exited. The job holds the tree by handle, not by
+    /// pid, so reaping first costs nothing here.
+    #[cfg(windows)]
+    fn has_exited(child: &mut Child) -> io::Result<bool> {
+        Ok(child.try_wait()?.is_some())
     }
 
     /// Delivers `signal` to the tree. `false` when there is nothing to wait
@@ -148,24 +159,23 @@ impl Tree {
         group
     }
 
-    /// Kills the tree. `reaped` is whether `child` has been waited on, so its
-    /// pid may be gone or reused: only the group is named then, and only a
-    /// descendant can still be in it.
+    /// Kills the tree. `child` is not yet reaped, so its pid is still its own.
+    ///
+    /// `exited` is whether `child` is a zombie. macOS answers `EPERM` to a
+    /// signal for a group whose only member is a zombie, which here means
+    /// nothing is left to kill.
     #[cfg(unix)]
-    fn kill(&self, child: &Child, reaped: bool) -> io::Result<()> {
-        let result = if reaped {
-            crate::group::signal_group(child.id(), Signal::Kill)
-        } else {
-            Self::deliver(child, Signal::Kill)
-        };
-        match result {
-            Err(error) if !error.is_gone() => Err(io::Error::other(error)),
+    fn kill(&self, child: &Child, exited: bool) -> io::Result<()> {
+        match Self::deliver(child, Signal::Kill) {
+            Err(error) if !(error.is_gone() || exited && error.is_denied()) => {
+                Err(io::Error::other(error))
+            }
             _ => Ok(()),
         }
     }
 
     #[cfg(windows)]
-    fn kill(&self, _child: &Child, _reaped: bool) -> io::Result<()> {
+    fn kill(&self, _child: &Child, _exited: bool) -> io::Result<()> {
         self.job.terminate(KILLED_EXIT_CODE)
     }
 }
@@ -216,6 +226,22 @@ mod tests {
 
         assert!(started.elapsed() >= grace, "the child was given its grace");
         assert_eq!(status.signal(), Some(9), "and then killed with SIGKILL");
+    }
+
+    #[test]
+    fn seeing_a_child_exit_leaves_it_unreaped_so_its_pid_stays_held() {
+        let (_tree, mut child, _) = spawn_ready("echo ready");
+        let _cleanup = Cleanup(child.id());
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !Tree::has_exited(&mut child).unwrap() {
+            assert!(Instant::now() < deadline, "the child never exited");
+            std::thread::sleep(POLL);
+        }
+
+        // A reaped pid is gone; an unreaped one still answers a signal.
+        assert!(crate::group::signal_process(child.id(), Signal::Kill).is_ok());
+        assert!(child.wait().is_ok());
     }
 
     #[test]
