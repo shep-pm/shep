@@ -162,10 +162,14 @@ impl Validators {
     /// Whether an `If-None-Match` names this file, by weak comparison
     /// (RFC 9110 §8.8.3.2): the `W/` marker is dropped from both sides and
     /// the opaque value compared. `*` names whatever is there.
+    ///
+    /// Reading the header as a comma-separated list is safe because no tag
+    /// this server writes can hold a comma: it is built from digits and a
+    /// dash.
     pub(super) fn none_match_agrees(&self, header: &str) -> bool {
         header.split(',').any(|item| {
             let item = item.trim();
-            item == "*" || strong_tag_of(item) == strong_tag_of(&self.etag)
+            item == "*" || tag_value(item) == tag_value(&self.etag)
         })
     }
 
@@ -197,9 +201,9 @@ impl Validators {
     }
 }
 
-/// An entity-tag with its `W/` weakness marker removed, which is the whole
+/// An entity-tag's opaque value, its `W/` weakness marker removed: the whole
 /// of weak comparison.
-fn strong_tag_of(tag: &str) -> &str {
+fn tag_value(tag: &str) -> &str {
     tag.strip_prefix("W/").unwrap_or(tag)
 }
 

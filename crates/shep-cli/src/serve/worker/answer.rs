@@ -169,8 +169,8 @@ pub(super) async fn answer(
 
 /// Answers a 404, or, if `cfg.spa` is set, the method is `GET`/`HEAD`, and
 /// the request's `Accept` header names `text/html`, serves the docroot's
-/// `index.html` with a 200 instead. Every 404 this worker would otherwise
-/// answer funnels through here, so the gate lives in one place.
+/// `index.html` instead. Every 404 this worker would otherwise answer
+/// funnels through here, so the gate lives in one place.
 ///
 /// The fallback goes through the same file path as an ordinary hit, so the
 /// `index.html` an SPA gets carries the same validators, and a conditional
