@@ -31,6 +31,14 @@ shep's local layer over [shep-pm/rust-house-style](https://github.com/shep-pm/ru
 - **IR-39** Each E2E test gets a fresh temp `SHEP_HOME`.
 - **IR-42** The daemon socket is a privilege boundary, so `SECURITY.md`
   matters more here than for most crates.
+- **IR-47** `scripts/check-doc-length.py` counts lines only: `///` at 6 body
+  lines after the summary (12 when the block has an `# Errors` section), `//!`
+  at 10, `//` at 4 in a row, with fenced code and an `# Example` section free
+  and a line that is only its marker counting. Blocks already over are listed in
+  `.github/doc-length-baseline.txt` by file and first line: a listed one may
+  shrink but never past its recorded count, an unlisted one may not appear, and
+  an entry whose block now fits must go. Sentence length, history and whether a
+  line earns its place stay with whoever reads the code.
 - **IR-48** Known offenders are listed in `.github/rust-file-size-baseline.txt`,
   each tied to its issue. #301 tracks them, with the regenerate command and two
   traps to read before splitting one.
