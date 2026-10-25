@@ -8,15 +8,17 @@
 //! also where the SPA fallback lives.
 //!
 //! Writing a reply and logging it is `response`'s: this module only picks
-//! which reply to write.
+//! which reply to write. For a file, which of the four replies a request
+//! gets (200, 206, 304, 416) is `serve::conditional`'s call, made from the
+//! metadata the open handle already carries.
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 use tokio::net::TcpStream;
 
 use super::ServeConfig;
 use super::response::{reply, respond};
 use crate::http::{Header, HttpRequest};
-use crate::serve::{fs, listing, mime, path};
+use crate::serve::{conditional, fs, listing, mime, path};
 
 /// A request target's path: everything before the first `?` or `#`, or the
 /// whole target when it carries neither.
@@ -130,10 +132,15 @@ pub(super) async fn answer(
             };
         }
 
-        if let Some((file, len)) = fs::open_regular(&resolved.join("index.html")).await {
-            let status =
-                serve_file(stream, request, mime::content_type("index.html"), file, len).await;
-            return (status, len);
+        if let Some((file, metadata)) = fs::open_regular(&resolved.join("index.html")).await {
+            return serve_file(
+                stream,
+                request,
+                mime::content_type("index.html"),
+                file,
+                &metadata,
+            )
+            .await;
         }
 
         if cfg.listing {
@@ -153,18 +160,21 @@ pub(super) async fn answer(
         return send_not_found(stream, cfg, request).await;
     }
 
-    let Some((file, len)) = fs::open_regular(&resolved).await else {
+    let Some((file, metadata)) = fs::open_regular(&resolved).await else {
         return send_not_found(stream, cfg, request).await;
     };
     let content_type = mime::content_type(logged_path.as_str());
-    let status = serve_file(stream, request, content_type, file, len).await;
-    (status, len)
+    serve_file(stream, request, content_type, file, &metadata).await
 }
 
 /// Answers a 404, or, if `cfg.spa` is set, the method is `GET`/`HEAD`, and
 /// the request's `Accept` header names `text/html`, serves the docroot's
 /// `index.html` with a 200 instead. Every 404 this worker would otherwise
 /// answer funnels through here, so the gate lives in one place.
+///
+/// The fallback goes through the same file path as an ordinary hit, so the
+/// `index.html` an SPA gets carries the same validators, and a conditional
+/// request against a fallback answers 304 rather than re-sending the page.
 async fn send_not_found(
     stream: &mut TcpStream,
     cfg: &ServeConfig,
@@ -176,42 +186,105 @@ async fn send_not_found(
             .headers
             .get("accept")
             .is_some_and(|accept| accept.contains("text/html"))
-        && let Some((file, len)) = fs::open_regular(&cfg.root.join("index.html")).await
+        && let Some((file, metadata)) = fs::open_regular(&cfg.root.join("index.html")).await
     {
-        let status = serve_file(stream, request, mime::content_type("index.html"), file, len).await;
-        if status == 200 {
-            return (200, len);
-        }
+        return serve_file(
+            stream,
+            request,
+            mime::content_type("index.html"),
+            file,
+            &metadata,
+        )
+        .await;
     }
     reply(stream, 404, "text/plain", b"not found\n", vec![]).await
 }
 
-/// Streams `file` (already open, `len` bytes long per its own metadata)
-/// as the body of a 200. The head goes through [`respond`]; the body
-/// does not, since a streamed file has no `&[u8]` to hand it.
+/// Streams `file` (already open, its `metadata` read from that same handle)
+/// as the body of whichever reply the request's own `Range` and validator
+/// headers pick: a 200, a 206, a 304 or a 416.
 ///
-/// `file.take(len)`, not a bare copy: `len` came from the open handle's
-/// own metadata, so a file that grew between the open and this copy still
-/// matches the `Content-Length` already declared. A file that shrank still
-/// sends fewer bytes than declared; `Connection: close` turns that into a
-/// visible truncation rather than a hang.
+/// Returns the status answered and the body byte count for
+/// [`super::handle_connection`]'s access-log line, which is the length the
+/// head declared, the same number every in-memory reply reports.
+///
+/// A slice is reached by seeking and then `take`ing, never by reading the
+/// file whole. The byte count came from the open handle's own metadata, so a
+/// file that grew between the open and this copy still matches the
+/// `Content-Length` already declared. A file that shrank still sends fewer
+/// bytes than declared; `Connection: close` turns that into a visible
+/// truncation rather than a hang.
 async fn serve_file(
     stream: &mut TcpStream,
     request: &HttpRequest,
     content_type: &str,
-    file: tokio::fs::File,
-    len: u64,
-) -> u16 {
-    match respond(stream, 200, content_type, len, vec![]).await {
-        Ok(()) => {
-            if request.method == "GET" {
-                let mut body = file.take(len);
-                let _ = tokio::io::copy(&mut body, stream).await;
-            }
-            200
-        }
-        Err(_err) => 500,
+    mut file: tokio::fs::File,
+    metadata: &std::fs::Metadata,
+) -> (u16, u64) {
+    let len = metadata.len();
+    let validators = conditional::Validators::new(len, metadata.modified().ok());
+    let outcome = conditional::decide(&request.headers, len, &validators);
+
+    // `(start, stop)`, `stop` exclusive, or `None` for a reply with no body.
+    let body = match outcome {
+        conditional::Outcome::Whole => Some((0_u64, len)),
+        conditional::Outcome::Partial { start, end } => Some((start, end + 1)),
+        conditional::Outcome::Unsatisfiable | conditional::Outcome::NotModified => None,
+    };
+    let status = match outcome {
+        conditional::Outcome::Whole => 200,
+        conditional::Outcome::Partial { .. } => 206,
+        conditional::Outcome::Unsatisfiable => 416,
+        conditional::Outcome::NotModified => 304,
+    };
+    let body_len = body.map_or(0, |(start, stop)| stop - start);
+
+    // The seek happens before the head, so a slice this server cannot reach
+    // is refused rather than declared and then left short.
+    let mut slice = match body {
+        Some((start, stop)) if request.method == "GET" => match file.seek(SeekFrom::Start(start)).await {
+            Ok(_here) => Some(file.take(stop - start)),
+            Err(_err) => return (500, 0),
+        },
+        _ => None,
+    };
+
+    let last_modified = validators.last_modified();
+    let content_range = match outcome {
+        conditional::Outcome::Partial { start, end } => Some(format!("bytes {start}-{end}/{len}")),
+        conditional::Outcome::Unsatisfiable => Some(format!("bytes */{len}")),
+        _ => None,
+    };
+    let mut headers = vec![
+        Header {
+            name: "Accept-Ranges",
+            value: "bytes",
+        },
+        Header {
+            name: "ETag",
+            value: validators.etag(),
+        },
+    ];
+    if let Some(value) = &last_modified {
+        headers.push(Header {
+            name: "Last-Modified",
+            value: value.as_str(),
+        });
     }
+    if let Some(value) = &content_range {
+        headers.push(Header {
+            name: "Content-Range",
+            value: value.as_str(),
+        });
+    }
+
+    if respond(stream, status, content_type, body_len, headers).await.is_err() {
+        return (500, 0);
+    }
+    if let Some(slice) = &mut slice {
+        let _ = tokio::io::copy(slice, stream).await;
+    }
+    (status, body_len)
 }
 
 /// Reads `dir`'s entries, dropping a leading-dot name unless `hidden` is
@@ -243,6 +316,9 @@ async fn read_listing(dir: &std::path::Path, hidden: bool) -> std::io::Result<Ve
 // Windows coverage is in `tests/cli_e2e.rs`.
 #[cfg(all(test, unix))]
 mod tests {
+    use std::path::Path;
+    use std::time::{Duration, SystemTime};
+
     use super::super::testing::*;
 
     /// The traversal table again, end to end over a real socket, so it
@@ -609,5 +685,310 @@ mod tests {
             response.headers["location"],
             "/%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D1%8B/"
         );
+    }
+
+    /// A modification time no freshly written tempdir file can carry:
+    /// 2027-01-15T00:00:00Z.
+    fn later_than_the_write() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
+    }
+
+    /// Moves `path`'s mtime to `when` with its contents untouched, so a
+    /// "changed after the first GET" case runs on no clock.
+    fn touch_at(path: &Path, when: SystemTime) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(when).unwrap();
+    }
+
+    /// A docroot holding one ten-byte file, the fixture every range case
+    /// reads its expected bytes out of by hand.
+    async fn ten_byte_server() -> (tempfile::TempDir, RunningServer) {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("clip.txt", "0123456789")]);
+        let server = serve_on_free_port(config(&root)).await;
+        (outer, server)
+    }
+
+    /// fails if a single byte range is answered with the whole file.
+    #[tokio::test]
+    async fn a_single_byte_range_answers_206_with_that_slice_and_a_content_range() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let response = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=2-5")]).await;
+        assert_eq!(response.status, 206);
+        assert_eq!(response.body, "2345");
+        assert_eq!(response.headers["content-range"], "bytes 2-5/10");
+        assert_eq!(response.headers["content-length"], "4");
+    }
+
+    /// fails if an open-ended range or a suffix range is answered from the
+    /// front of the file.
+    #[tokio::test]
+    async fn an_open_ended_range_and_a_suffix_range_answer_the_two_ends() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let tail = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=7-")]).await;
+        assert_eq!(tail.status, 206);
+        assert_eq!(tail.body, "789");
+        assert_eq!(tail.headers["content-range"], "bytes 7-9/10");
+        assert_eq!(tail.headers["content-length"], "3");
+
+        let suffix = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=-3")]).await;
+        assert_eq!(suffix.status, 206);
+        assert_eq!(suffix.body, "789");
+        assert_eq!(suffix.headers["content-range"], "bytes 7-9/10");
+    }
+
+    /// fails if a range past the end is answered with a 200 of the whole
+    /// file, or a 206 of nothing.
+    #[tokio::test]
+    async fn a_range_past_the_end_is_416_naming_a_length_it_does_not_have() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let response = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=999-")]).await;
+        assert_eq!(response.status, 416);
+        assert_eq!(response.headers["content-range"], "bytes */10");
+        assert!(response.body.is_empty(), "{response:?}");
+        assert_eq!(response.headers["content-length"], "0");
+    }
+
+    /// fails if a header naming two ranges is refused, or honoured as if
+    /// this server could write a multipart body.
+    #[tokio::test]
+    async fn a_header_naming_two_ranges_is_ignored_and_answered_with_the_whole_file() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let response =
+            get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=0-1,4-5")]).await;
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, "0123456789");
+        assert_eq!(response.headers["content-length"], "10");
+        assert!(!response.headers.contains_key("content-range"), "{response:?}");
+    }
+
+    /// fails if `Accept-Ranges` is dropped from a file reply, which is what
+    /// tells a client it may ask for a slice next time, or if a refusal
+    /// claims one.
+    #[tokio::test]
+    async fn every_file_reply_says_the_server_takes_ranges() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let cases: [(&str, &[(&str, &str)], u16); 4] = [
+            ("/clip.txt", &[], 200),
+            ("/clip.txt", &[("Range", "bytes=2-5")], 206),
+            ("/clip.txt", &[("Range", "bytes=999-")], 416),
+            ("/clip.txt", &[("Range", "bytes=0-1,4-5")], 200),
+        ];
+        for (target, extra, want) in cases {
+            let response = get_with_headers(server.addr(), target, extra).await;
+            assert_eq!(response.status, want, "{target} {extra:?}");
+            assert_eq!(
+                response.headers["accept-ranges"], "bytes",
+                "{target} {extra:?}: {response:?}"
+            );
+        }
+
+        let missing = get(server.addr(), "/nope.txt").await;
+        assert_eq!(missing.status, 404);
+        assert!(
+            !missing.headers.contains_key("accept-ranges"),
+            "a refusal offers no ranges: {missing:?}"
+        );
+    }
+
+    /// fails if a repeat GET re-reads a file the client already holds: the
+    /// weak ETag the first reply gave must earn a 304 with no body.
+    #[tokio::test]
+    async fn a_repeat_get_with_the_etag_it_was_given_answers_304() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("app.js", "console.log(1)")]);
+        let server = serve_on_free_port(config(&root)).await;
+
+        let first = get(server.addr(), "/app.js").await;
+        assert_eq!(first.status, 200);
+        let etag = first.headers["etag"].clone();
+        assert!(etag.starts_with("W/\""), "{etag}: built from metadata");
+        assert!(first.headers.contains_key("last-modified"), "{first:?}");
+
+        let again = get_with_headers(server.addr(), "/app.js", &[("If-None-Match", &etag)]).await;
+        assert_eq!(again.status, 304);
+        assert!(again.body.is_empty(), "{again:?}");
+        assert!(!again.headers.contains_key("content-length"), "{again:?}");
+        assert_eq!(again.headers["etag"], etag, "a 304 repeats its validator");
+        assert_eq!(
+            again.headers["x-content-type-options"], "nosniff",
+            "a 304 is a reply like any other"
+        );
+    }
+
+    /// fails if `Last-Modified` is written in a form this same server cannot
+    /// read back.
+    #[tokio::test]
+    async fn a_repeat_get_with_the_last_modified_it_was_given_answers_304() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("app.js", "console.log(1)")]);
+        let server = serve_on_free_port(config(&root)).await;
+
+        let first = get(server.addr(), "/app.js").await;
+        let last_modified = first.headers["last-modified"].clone();
+
+        let again = get_with_headers(
+            server.addr(),
+            "/app.js",
+            &[("If-Modified-Since", &last_modified)],
+        )
+        .await;
+        assert_eq!(again.status, 304);
+        assert!(again.body.is_empty(), "{again:?}");
+        assert_eq!(again.headers["last-modified"], last_modified);
+    }
+
+    /// fails if a file touched after the first GET keeps answering 304 off
+    /// the validator the client holds.
+    #[tokio::test]
+    async fn a_file_touched_after_the_first_get_answers_200_again() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("app.css", "body{}")]);
+        let server = serve_on_free_port(config(&root)).await;
+
+        let first = get(server.addr(), "/app.css").await;
+        let etag = first.headers["etag"].clone();
+        let last_modified = first.headers["last-modified"].clone();
+
+        touch_at(&root.join("app.css"), later_than_the_write());
+
+        let by_tag = get_with_headers(server.addr(), "/app.css", &[("If-None-Match", &etag)]).await;
+        assert_eq!(by_tag.status, 200, "the tag no longer names this file");
+        assert_eq!(by_tag.body, "body{}");
+        assert_ne!(by_tag.headers["etag"], etag);
+
+        let by_date = get_with_headers(
+            server.addr(),
+            "/app.css",
+            &[("If-Modified-Since", &last_modified)],
+        )
+        .await;
+        assert_eq!(by_date.status, 200, "the file is newer than the copy held");
+        assert_eq!(by_date.body, "body{}");
+    }
+
+    /// fails if `If-Modified-Since` is consulted after an `If-None-Match`
+    /// that did not match (RFC 9110 §13.2.2).
+    #[tokio::test]
+    async fn if_none_match_outranks_if_modified_since() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("app.js", "console.log(1)")]);
+        let server = serve_on_free_port(config(&root)).await;
+
+        let first = get(server.addr(), "/app.js").await;
+        let last_modified = first.headers["last-modified"].clone();
+
+        let response = get_with_headers(
+            server.addr(),
+            "/app.js",
+            &[("If-None-Match", "W/\"not-this-file\""), ("If-Modified-Since", &last_modified)],
+        )
+        .await;
+        assert_eq!(response.status, 200, "the newer validator is the one that answers");
+        assert_eq!(response.body, "console.log(1)");
+    }
+
+    /// fails if a stale `If-Range` still gets its slice, which would hand
+    /// the client bytes stitched onto a copy it no longer holds.
+    #[tokio::test]
+    async fn a_stale_if_range_ignores_the_range_and_sends_the_whole_file() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let stale = get_with_headers(
+            server.addr(),
+            "/clip.txt",
+            &[("If-Range", "Sun, 06 Nov 1994 08:49:37 GMT"), ("Range", "bytes=2-5")],
+        )
+        .await;
+        assert_eq!(stale.status, 200);
+        assert_eq!(stale.body, "0123456789");
+        assert!(!stale.headers.contains_key("content-range"), "{stale:?}");
+
+        // positive control: the file's own `Last-Modified` does apply it.
+        let first = get(server.addr(), "/clip.txt").await;
+        let last_modified = first.headers["last-modified"].clone();
+        let slice = get_with_headers(
+            server.addr(),
+            "/clip.txt",
+            &[("If-Range", &last_modified), ("Range", "bytes=2-5")],
+        )
+        .await;
+        assert_eq!(slice.status, 206);
+        assert_eq!(slice.body, "2345");
+    }
+
+    /// fails if a HEAD grows a body on a 206 or a 304, or answers a range
+    /// with a different head than the GET would.
+    #[tokio::test]
+    async fn a_head_answers_the_same_status_and_headers_as_the_get_with_no_body() {
+        let (_outer, server) = ten_byte_server().await;
+
+        let got = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=2-5")]).await;
+        let headed =
+            request_with_headers(server.addr(), "HEAD", "/clip.txt", &[("Range", "bytes=2-5")]).await;
+        assert_eq!(headed.status, 206);
+        assert!(headed.body.is_empty(), "{headed:?}");
+        assert_eq!(headed.headers["content-range"], "bytes 2-5/10");
+        assert_eq!(headed.headers["content-length"], "4");
+        assert_eq!(headed.headers["etag"], got.headers["etag"]);
+
+        let etag = got.headers["etag"].clone();
+        let not_modified = request_with_headers(
+            server.addr(),
+            "HEAD",
+            "/clip.txt",
+            &[("If-None-Match", &etag)],
+        )
+        .await;
+        assert_eq!(not_modified.status, 304);
+        assert!(not_modified.body.is_empty(), "{not_modified:?}");
+        assert!(
+            !not_modified.headers.contains_key("content-length"),
+            "{not_modified:?}"
+        );
+    }
+
+    /// fails if the `--spa` fallback answers with a bare 200 a browser has
+    /// nothing to cache against.
+    #[tokio::test]
+    async fn the_spa_fallback_carries_the_same_validators_as_a_real_hit() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("www");
+        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
+        let server = serve_on_free_port(config_with_spa(&root)).await;
+
+        let first = get_with_accept(server.addr(), "/deep/link", "text/html").await;
+        assert_eq!(first.status, 200);
+        assert!(first.body.contains("<h1>home</h1>"));
+        let etag = first.headers["etag"].clone();
+        assert_eq!(first.headers["accept-ranges"], "bytes");
+
+        let again = get_with_headers(
+            server.addr(),
+            "/deep/link",
+            &[("If-None-Match", &etag), ("Accept", "text/html")],
+        )
+        .await;
+        assert_eq!(again.status, 304);
+        assert!(again.body.is_empty(), "{again:?}");
+
+        let slice = get_with_headers(
+            server.addr(),
+            "/deep/link",
+            &[("Accept", "text/html"), ("Range", "bytes=0-3")],
+        )
+        .await;
+        assert_eq!(slice.status, 206);
+        assert_eq!(slice.body, "<h1>");
     }
 }

@@ -79,11 +79,13 @@ pub async fn contain(root: &Path, segments: &[String], follow_symlinks: bool) ->
 /// for a symlink after the check fails the open with `ELOOP` rather than
 /// being followed. `O_NONBLOCK` stops an open on a fifo from blocking
 /// forever on a writer. Metadata comes from the open handle (`fstat`),
-/// never a second stat of the path.
+/// never a second stat of the path, and it is handed back whole: length
+/// and modification time are both validators a conditional request is
+/// answered from, and one `fstat` carries both.
 ///
 /// # Errors
 /// `None` if the open failed, or if the result is not a regular file.
-pub async fn open_regular(path: &Path) -> Option<(tokio::fs::File, u64)> {
+pub async fn open_regular(path: &Path) -> Option<(tokio::fs::File, std::fs::Metadata)> {
     let mut options = tokio::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -103,7 +105,7 @@ pub async fn open_regular(path: &Path) -> Option<(tokio::fs::File, u64)> {
     if !metadata.is_file() {
         return None;
     }
-    Some((file, metadata.len()))
+    Some((file, metadata))
 }
 
 // unix only: the cases build symlinks with `std::os::unix::fs::symlink`.
