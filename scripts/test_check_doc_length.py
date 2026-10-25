@@ -255,9 +255,9 @@ class BaselineRules(unittest.TestCase):
     def write_baseline(self, *entries: str) -> None:
         self.baseline.write_text("\n".join(entries) + "\n")
 
-    def check(self, *lines: str) -> list[str]:
+    def check(self, *lines: str, narrowed: bool = True) -> list[str]:
         blocks = check_doc_length.blocks_in(FAKE, "\n".join(lines) + "\n")
-        failures, _, _ = check_doc_length.check(blocks, self.baseline)
+        failures, _, _ = check_doc_length.check(blocks, self.baseline, narrowed)
         return failures
 
     def test_a_block_within_its_limit_needs_no_entry(self):
@@ -317,6 +317,15 @@ class BaselineRules(unittest.TestCase):
         # other files' entries are not that run's business.
         self.write_baseline("9 crates/other/src/lib.rs /// Summary.")
         self.assertEqual(self.check(*doc_fixture(1)), [])
+
+    def test_a_full_run_reports_an_entry_for_a_file_that_no_longer_exists(self):
+        # A whole-repository run reads every tracked file, so an entry naming a
+        # file that is gone, renamed or moved out of the tree is stale, and a
+        # baseline that quietly keeps such entries stops recording anything.
+        self.write_baseline("9 crates/other/src/lib.rs /// Summary.")
+        failures = self.check(*doc_fixture(1), narrowed=False)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("is stale: no block over its limit matches it", failures[0])
 
     def test_an_entry_only_covers_the_block_its_first_line_names(self):
         self.write_baseline("9 crates/fake/src/lib.rs /// A different block.")

@@ -301,12 +301,14 @@ def write_baseline(path: Path, blocks: list[Block]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def check(blocks: list[Block], baseline_path: Path) -> tuple[list[str], int, int]:
+def check(blocks: list[Block], baseline_path: Path, narrowed: bool = False) -> tuple[list[str], int, int]:
     """Every failure to report, plus the number of blocks and of baselined blocks.
 
-    A stale entry is only reported for a file `blocks` covers: narrowing the run
-    to the files a change touched is the point of the positional form, and the
-    entries for every other file are not that run's business.
+    `narrowed` says the run read only the files `blocks` came from. A whole
+    repository run reads every tracked file, so every entry left unmatched is
+    stale, including one naming a file main deleted or renamed. A narrowed run
+    leaves the entries of the files it never read alone: the positional form
+    exists to check the files a change touched.
     """
     offenders = [block for block in blocks if block.over]
     checked = {block.path for block in blocks}
@@ -333,7 +335,7 @@ def check(blocks: list[Block], baseline_path: Path) -> tuple[list[str], int, int
 
     for entry_list in remaining.values():
         for entry in entry_list:
-            if entry.path in checked:
+            if not narrowed or entry.path in checked:
                 failures.append(f"{entry.describe()} is stale: no block over its limit matches it")
 
     return failures, len(blocks), baselined
@@ -367,6 +369,7 @@ def main(argv: list[str]) -> int:
     if write and files:
         raise SystemExit("--write-baseline measures the whole repository: no file arguments with it")
 
+    narrowed = bool(files)
     if not files:
         files = tracked_rust_files()
 
@@ -376,7 +379,7 @@ def main(argv: list[str]) -> int:
         print(f"Wrote {sum(1 for block in blocks if block.over)} baselined block(s) to {baseline_path}")
         return 0
 
-    failures, total, baselined = check(blocks, baseline_path)
+    failures, total, baselined = check(blocks, baseline_path, narrowed)
     for failure in failures:
         print(failure, file=sys.stderr)
 
