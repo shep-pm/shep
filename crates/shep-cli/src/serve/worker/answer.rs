@@ -242,10 +242,12 @@ async fn serve_file(
     // The seek happens before the head, so a slice this server cannot reach
     // is refused rather than declared and then left short.
     let mut slice = match body {
-        Some((start, stop)) if request.method == "GET" => match file.seek(SeekFrom::Start(start)).await {
-            Ok(_here) => Some(file.take(stop - start)),
-            Err(_err) => return (500, 0),
-        },
+        Some((start, stop)) if request.method == "GET" => {
+            match file.seek(SeekFrom::Start(start)).await {
+                Ok(_here) => Some(file.take(stop - start)),
+                Err(_err) => return (500, 0),
+            }
+        }
         _ => None,
     };
 
@@ -278,7 +280,10 @@ async fn serve_file(
         });
     }
 
-    if respond(stream, status, content_type, body_len, headers).await.is_err() {
+    if respond(stream, status, content_type, body_len, headers)
+        .await
+        .is_err()
+    {
         return (500, 0);
     }
     if let Some(slice) = &mut slice {

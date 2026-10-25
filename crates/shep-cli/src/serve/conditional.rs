@@ -2,8 +2,8 @@
 //! carries, and the status a request's own headers answer with.
 //!
 //! Pure: it reads the request's header map and the metadata the open handle
-//! already gave [`super::worker::answer`], and decides between a 200, a 206,
-//! a 304 and a 416. Writing any of them is `worker::response`'s.
+//! already gave `worker::answer`, and decides between a 200, a 206, a 304 and
+//! a 416. Writing any of them is `worker::response`'s.
 //!
 //! Two deliberate limits. A header naming several ranges is ignored and
 //! answered as a full 200, which RFC 9110 §14.1.2 permits and which saves a
@@ -240,10 +240,10 @@ pub(super) fn decide(
         if validators.none_match_agrees(if_none_match) {
             return Outcome::NotModified;
         }
-    } else if let Some(if_modified_since) = headers.get("if-modified-since") {
-        if validators.not_newer_than(if_modified_since) {
-            return Outcome::NotModified;
-        }
+    } else if let Some(if_modified_since) = headers.get("if-modified-since")
+        && validators.not_newer_than(if_modified_since)
+    {
+        return Outcome::NotModified;
     }
 
     let range = match headers.get("if-range") {
@@ -390,7 +390,9 @@ mod tests {
     #[test]
     fn last_modified_is_an_imf_fixdate() {
         assert_eq!(
-            Validators::new(13, Some(example_mtime())).last_modified().as_deref(),
+            Validators::new(13, Some(example_mtime()))
+                .last_modified()
+                .as_deref(),
             Some("Sun, 06 Nov 1994 08:49:37 GMT")
         );
         assert_eq!(Validators::new(13, None).last_modified(), None);
@@ -514,7 +516,10 @@ mod tests {
         let built = Validators::new(10, Some(example_mtime()));
         assert_eq!(
             decide(
-                &headers(&[("if-range", "Sun, 01 Jan 1970 00:00:01 GMT"), ("range", "bytes=2-5")]),
+                &headers(&[
+                    ("if-range", "Sun, 01 Jan 1970 00:00:01 GMT"),
+                    ("range", "bytes=2-5")
+                ]),
                 10,
                 &built
             ),

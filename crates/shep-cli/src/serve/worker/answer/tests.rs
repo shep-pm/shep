@@ -6,6 +6,7 @@
 //! cases assert file modes on served files and build symlinks. Windows
 //! coverage is in `tests/cli_e2e.rs`.
 
+use std::net::SocketAddr;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -64,8 +65,7 @@ async fn a_symlink_out_of_the_docroot_is_a_404_and_not_a_body() {
     let root = outer.path().join("www");
     write_tree(&root, &[("ok.txt", "served")]);
     std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-    std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt"))
-        .unwrap();
+    std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt")).unwrap();
     let server = serve_on_free_port(config(&root)).await;
 
     assert_eq!(
@@ -112,8 +112,7 @@ async fn follow_symlinks_does_not_let_a_symlink_escape_the_root() {
     let root = outer.path().join("www");
     write_tree(&root, &[("index.html", "<h1>home</h1>")]);
     std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-    std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt"))
-        .unwrap();
+    std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt")).unwrap();
 
     let server = serve_on_free_port(config_with_follow_symlinks(&root)).await;
     let response = get(server.addr(), "/escape.txt").await;
@@ -400,6 +399,17 @@ async fn ten_byte_server() -> (tempfile::TempDir, RunningServer) {
     (outer, server)
 }
 
+/// The reply to `extra` on `/clip.txt` answers `want` and says the server
+/// takes ranges.
+async fn takes_ranges(addr: SocketAddr, extra: &[(&str, &str)], want: u16) {
+    let response = get_with_headers(addr, "/clip.txt", extra).await;
+    assert_eq!(response.status, want, "{extra:?}: {response:?}");
+    assert_eq!(
+        response.headers["accept-ranges"], "bytes",
+        "{extra:?}: {response:?}"
+    );
+}
+
 /// fails if a single byte range is answered with the whole file.
 #[tokio::test]
 async fn a_single_byte_range_answers_206_with_that_slice_and_a_content_range() {
@@ -454,7 +464,10 @@ async fn a_header_naming_two_ranges_is_ignored_and_answered_with_the_whole_file(
     assert_eq!(response.status, 200);
     assert_eq!(response.body, "0123456789");
     assert_eq!(response.headers["content-length"], "10");
-    assert!(!response.headers.contains_key("content-range"), "{response:?}");
+    assert!(
+        !response.headers.contains_key("content-range"),
+        "{response:?}"
+    );
 }
 
 /// fails if `Accept-Ranges` is dropped from a file reply, which is what
@@ -463,23 +476,14 @@ async fn a_header_naming_two_ranges_is_ignored_and_answered_with_the_whole_file(
 #[tokio::test]
 async fn every_file_reply_says_the_server_takes_ranges() {
     let (_outer, server) = ten_byte_server().await;
+    let addr = server.addr();
 
-    let cases: [(&str, &[(&str, &str)], u16); 4] = [
-        ("/clip.txt", &[], 200),
-        ("/clip.txt", &[("Range", "bytes=2-5")], 206),
-        ("/clip.txt", &[("Range", "bytes=999-")], 416),
-        ("/clip.txt", &[("Range", "bytes=0-1,4-5")], 200),
-    ];
-    for (target, extra, want) in cases {
-        let response = get_with_headers(server.addr(), target, extra).await;
-        assert_eq!(response.status, want, "{target} {extra:?}");
-        assert_eq!(
-            response.headers["accept-ranges"], "bytes",
-            "{target} {extra:?}: {response:?}"
-        );
-    }
+    takes_ranges(addr, &[], 200).await;
+    takes_ranges(addr, &[("Range", "bytes=2-5")], 206).await;
+    takes_ranges(addr, &[("Range", "bytes=999-")], 416).await;
+    takes_ranges(addr, &[("Range", "bytes=0-1,4-5")], 200).await;
 
-    let missing = get(server.addr(), "/nope.txt").await;
+    let missing = get(addr, "/nope.txt").await;
     assert_eq!(missing.status, 404);
     assert!(
         !missing.headers.contains_key("accept-ranges"),
@@ -581,10 +585,16 @@ async fn if_none_match_outranks_if_modified_since() {
     let response = get_with_headers(
         server.addr(),
         "/app.js",
-        &[("If-None-Match", "W/\"not-this-file\""), ("If-Modified-Since", &last_modified)],
+        &[
+            ("If-None-Match", "W/\"not-this-file\""),
+            ("If-Modified-Since", &last_modified),
+        ],
     )
     .await;
-    assert_eq!(response.status, 200, "the newer validator is the one that answers");
+    assert_eq!(
+        response.status, 200,
+        "the newer validator is the one that answers"
+    );
     assert_eq!(response.body, "console.log(1)");
 }
 
@@ -597,7 +607,10 @@ async fn a_stale_if_range_ignores_the_range_and_sends_the_whole_file() {
     let stale = get_with_headers(
         server.addr(),
         "/clip.txt",
-        &[("If-Range", "Sun, 06 Nov 1994 08:49:37 GMT"), ("Range", "bytes=2-5")],
+        &[
+            ("If-Range", "Sun, 06 Nov 1994 08:49:37 GMT"),
+            ("Range", "bytes=2-5"),
+        ],
     )
     .await;
     assert_eq!(stale.status, 200);
@@ -624,8 +637,13 @@ async fn a_head_answers_the_same_status_and_headers_as_the_get_with_no_body() {
     let (_outer, server) = ten_byte_server().await;
 
     let got = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=2-5")]).await;
-    let headed =
-        request_with_headers(server.addr(), "HEAD", "/clip.txt", &[("Range", "bytes=2-5")]).await;
+    let headed = request_with_headers(
+        server.addr(),
+        "HEAD",
+        "/clip.txt",
+        &[("Range", "bytes=2-5")],
+    )
+    .await;
     assert_eq!(headed.status, 206);
     assert!(headed.body.is_empty(), "{headed:?}");
     assert_eq!(headed.headers["content-range"], "bytes 2-5/10");
