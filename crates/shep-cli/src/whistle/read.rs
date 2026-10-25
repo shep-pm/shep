@@ -5,6 +5,10 @@
 //! and `tail_bleats` each send a request frame the shepherd answers;
 //! `tail_bleats` also reads up to two log files by path, and `list_barks`
 //! reads its file with no shepherd contact at all.
+//!
+//! `list_flock` and `describe_sheep` also take an optional `host`, which sends
+//! the same frame to that host's own shepherd over ssh. The other three read
+//! this machine, and nothing else.
 
 use std::io;
 use std::path::Path;
@@ -37,6 +41,13 @@ use crate::dog::metrics::sample_host_off_worker;
 pub struct SheepName {
     /// The sheep's name, exactly as `list_flock` reports it.
     pub name: String,
+    /// A host to ask, named the way `shep host add` listed it. Absent asks
+    /// this machine.
+    ///
+    /// `describe_sheep` answers from that host's own shepherd. The four control
+    /// tools share this struct and refuse a `host` rather than act locally on a
+    /// call that named another machine: see `super::control`'s `local_name`.
+    pub host: Option<String>,
 }
 
 /// `tail_bleats`' arguments.
@@ -90,7 +101,7 @@ impl Whistle {
     /// restart count, uptime, CPU and memory.
     #[tool(
         name = "list_flock",
-        description = "List every process the shepherd is supervising, with its status, pid, restart count, uptime, CPU and memory. Read-only.",
+        description = "List every process the shepherd is supervising, with its status, pid, restart count, uptime, CPU and memory. Read-only. Pass `host` to ask a host listed in shep.toml's hosts list instead of this machine.",
         annotations(read_only_hint = true)
     )]
     pub async fn list_flock(
@@ -111,18 +122,19 @@ impl Whistle {
     /// One sheep in detail, its process-tree members included.
     #[tool(
         name = "describe_sheep",
-        description = "Describe one sheep by name, including its log file paths and the child processes (lambs) it has spawned. Read-only.",
+        description = "Describe one sheep by name, including its log file paths and the child processes (lambs) it has spawned. Read-only. Pass `host` to ask a host listed in shep.toml's hosts list instead of this machine.",
         annotations(read_only_hint = true)
     )]
     pub async fn describe_sheep(
         &self,
-        Parameters(SheepName { name }): Parameters<SheepName>,
+        Parameters(SheepName { name, host }): Parameters<SheepName>,
     ) -> Result<Json<FlockListing>, CallToolResult> {
         let selector = SelectorSpec::Name(name);
-        match self.shepherd.call(Request::Describe { selector }).await? {
+        let shepherd = self.shepherd_for(host.as_deref())?;
+        match shepherd.call(Request::Describe { selector }).await? {
             Response::Described(flock) => Ok(Json(FlockListing {
                 flock: flock.iter().map(SheepRow::from).collect(),
-                host: None,
+                host,
             })),
             _ => Err(unexpected_response()),
         }
@@ -313,11 +325,7 @@ mod tests {
 
     fn whistle_at(socket: std::path::PathBuf, barks_path: std::path::PathBuf) -> Whistle {
         Whistle::new(
-            test_paths(
-                socket,
-                barks_path,
-                dir_placeholder("no-shep.toml"),
-            ),
+            test_paths(socket, barks_path, dir_placeholder("no-shep.toml")),
             gate::Control::ReadOnly,
         )
     }
@@ -329,27 +337,23 @@ mod tests {
     }
 
     /// Writes a `shep.toml` into `dir` listing `hosts`, and a `Whistle` at it
-    /// whose host calls run `ssh` as `ssh` says.
+    /// whose host calls run `program` in place of `ssh`.
     ///
     /// The list is written to the file rather than handed to the `Whistle`, so
     /// these tests read the same `hosts` array `shep host add` writes.
     #[cfg(unix)]
-    fn whistle_with_hosts(
-        dir: &Path,
-        hosts: &[&str],
-        ssh: shep_client::SshOptions,
-    ) -> Whistle {
+    fn whistle_with_hosts(dir: &Path, hosts: &[&str], program: &Path) -> Whistle {
         let quoted: Vec<String> = hosts.iter().map(|host| format!("\"{host}\"")).collect();
         let config = dir.join("shep.toml");
         std::fs::write(&config, format!("hosts = [{}]\n", quoted.join(", "))).unwrap();
-        Whistle::for_test_with_ssh(
+        Whistle::for_test_with_ssh_program(
             test_paths(
                 shep_client::testing::control_address(dir),
                 dir.join("barks.jsonl"),
                 config,
             ),
             gate::Control::ReadOnly,
-            ssh,
+            program,
         )
     }
 
@@ -387,8 +391,8 @@ mod tests {
     /// `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs` uses.
     #[cfg(unix)]
     fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
         use shep_core::protocol::{HelloReply, Reply};
+        use std::os::unix::fs::PermissionsExt as _;
 
         // The ack has to carry this binary's own version: `Shepherd::connect`
         // refuses a skew, and `matching_ack`'s local-socket version is the one
@@ -447,8 +451,8 @@ mod tests {
             whistle.list_flock(Parameters(FlockParams { host: None })),
         )
         .await
-            .expect("list_flock must return within the test timeout")
-            .expect("a scripted daemon must not produce a tool error");
+        .expect("list_flock must return within the test timeout")
+        .expect("a scripted daemon must not produce a tool error");
 
         let names: Vec<&str> = result.0.flock.iter().map(|row| row.name.as_str()).collect();
         assert_eq!(
@@ -483,6 +487,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.describe_sheep(Parameters(SheepName {
                 name: "all".to_string(),
+                host: None,
             })),
         )
         .await
@@ -516,11 +521,7 @@ mod tests {
             dir.path(),
             Response::Flock(vec![shep_client::testing::sample_info()]),
         );
-        let whistle = whistle_with_hosts(
-            dir.path(),
-            &["amp2", "amp3"],
-            shep_client::SshOptions::default().program(program),
-        );
+        let whistle = whistle_with_hosts(dir.path(), &["amp2", "amp3"], &program);
 
         let outcome = tokio::time::timeout(
             TEST_TIMEOUT,
@@ -572,11 +573,7 @@ mod tests {
         let mut remote = shep_client::testing::sample_info();
         remote.name = "queue".to_string();
         let program = ssh_stand_in(dir.path(), Response::Flock(vec![remote]));
-        let whistle = whistle_with_hosts(
-            dir.path(),
-            &["amp2"],
-            shep_client::SshOptions::default().program(program),
-        );
+        let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
 
         let result = tokio::time::timeout(
             TEST_TIMEOUT,
@@ -601,6 +598,163 @@ mod tests {
              caller asked for it: {:?}",
             result.0.host
         );
+    }
+
+    /// ssh is never allowed to ask anything. A tool call has no terminal
+    /// behind it and nobody watching it: a passphrase or host-key prompt would
+    /// sit until the timeout, and the model would read a timeout as a slow host
+    /// instead of the one-line refusal ssh gives when prompts are off.
+    ///
+    /// The whole command line is pinned, not just the option: `--` is what
+    /// keeps a destination from being read as an ssh option.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_host_call_never_prompts() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = ssh_stand_in(dir.path(), Response::Flock(Vec::new()));
+        let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+        tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams {
+                host: Some("amp2".to_string()),
+            })),
+        )
+        .await
+        .expect("list_flock must return within the test timeout")
+        .expect("the stand-in must not produce a tool error");
+
+        let args = std::fs::read_to_string(stand_in_file(dir.path(), "args.txt")).unwrap();
+        let seen: Vec<String> = args.lines().map(str::to_owned).collect();
+        assert_eq!(
+            seen,
+            vec![
+                "-T",
+                "-o",
+                "BatchMode=yes",
+                "--",
+                "amp2",
+                "shep",
+                "dial-stdio"
+            ],
+            "no terminal, no prompts, and the host's own shep on the other end"
+        );
+    }
+
+    /// A host that cannot be reached is refused in ssh's own words, which
+    /// already name it. The failure this pins is wording: the local socket's
+    /// "no shepherd is running: " prefix doubled onto "no shepherd is running
+    /// on `amp2`" reads as two complaints about one link.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_host_that_cannot_be_reached_is_refused_in_the_words_that_name_it() {
+        let dir = tempfile::tempdir().unwrap();
+        use std::os::unix::fs::PermissionsExt as _;
+        let program = dir.path().join("ssh");
+        // Exiting with the code a remote `shep dial-stdio` uses when its own
+        // shepherd is not running is what makes `SshCause::NoShepherd`, the one
+        // cause whose words already say "no shepherd is running".
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\nexit {}\n", shep_core::exit::DAEMON_UNREACHABLE),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+        let outcome = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams {
+                host: Some("amp2".to_string()),
+            })),
+        )
+        .await
+        .expect("list_flock must return within the test timeout");
+        let refusal = match outcome {
+            Ok(_) => panic!("a host that cannot be reached is a refusal, not a flock"),
+            Err(refusal) => refusal,
+        };
+
+        let structured = refusal
+            .structured_content
+            .expect("a refusal carries structured content a model can branch on");
+        assert_eq!(structured["code"], "no_shepherd", "{structured}");
+        let message = structured["message"]
+            .as_str()
+            .expect("a string")
+            .to_string();
+        assert!(
+            message.contains("amp2"),
+            "the refusal names the host: {message}"
+        );
+        assert_eq!(
+            message.matches("no shepherd is running").count(),
+            1,
+            "the phrase appears once, not once per layer: {message}"
+        );
+    }
+
+    /// Reads `path` until it holds bytes, or `after` runs out.
+    ///
+    /// The stand-in writes the request frame it read, and its answer to that
+    /// request is already on its way out, so a tool call can finish before the
+    /// file lands.
+    #[cfg(unix)]
+    async fn written_within(after: Duration, path: &Path) -> Vec<u8> {
+        let deadline = tokio::time::Instant::now() + after;
+        loop {
+            if let Ok(bytes) = std::fs::read(path)
+                && !bytes.is_empty()
+            {
+                return bytes;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                panic!("nothing was written to {} within {after:?}", path.display());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// The name-selector rule holds over a host link exactly as it holds over
+    /// the socket: the request the stand-in received is `SelectorSpec::Name`, so
+    /// `all`, `/regex/`, `id:` and `fold:` are still not in the grammar a model
+    /// can reach, and a string `"all"` still means an app called `all`.
+    ///
+    /// Asserts on the frame the stand-in received, not on the reply it sent.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn describe_sheep_takes_a_host_and_still_only_ever_builds_a_name_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = ssh_stand_in(
+            dir.path(),
+            Response::Described(vec![shep_client::testing::sample_info()]),
+        );
+        let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.describe_sheep(Parameters(SheepName {
+                name: "all".to_string(),
+                host: Some("amp2".to_string()),
+            })),
+        )
+        .await
+        .expect("describe_sheep must return within the test timeout")
+        .expect("a stand-in shepherd must not produce a tool error");
+        assert_eq!(result.0.flock.len(), 1);
+        assert_eq!(result.0.host.as_deref(), Some("amp2"));
+
+        let bytes = written_within(TEST_TIMEOUT, &stand_in_file(dir.path(), "request.bin")).await;
+        let envelope: shep_core::protocol::Envelope =
+            shep_core::protocol::decode_frame(&bytes).unwrap();
+        match envelope.body {
+            Request::Describe { selector } => assert_eq!(
+                selector,
+                SelectorSpec::Name("all".to_string()),
+                "a literal name, never `SelectorSpec::All`: {selector:?}"
+            ),
+            other => panic!("expected Request::Describe, got {other:?}"),
+        }
     }
 
     /// The bytes a local `list_flock` reply is made of, written down here and

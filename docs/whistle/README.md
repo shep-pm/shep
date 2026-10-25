@@ -44,6 +44,35 @@ A worked launcher config, for an MCP host that spawns its own servers:
 }
 ```
 
+## Reading another host
+
+`list_flock` and `describe_sheep` take an optional `host`. It is accepted only
+as a name already in `shep.toml`'s top-level `hosts` array — the same list
+`shep host add` writes and `shep flock` lists over. A name outside it is refused
+as `unknown_host`, naming the hosts that are listed, and no ssh runs.
+
+The dial is `ssh -T -- <host> shep dial-stdio` with `BatchMode=yes` and a
+10-second bound. A tool call has no terminal behind it, so a prompt would sit
+until the timeout and read to a model as a slow host.
+
+The reply names the host it came from:
+
+```json
+{ "flock": [{ "name": "queue", "status": "online" }], "host": "amp2" }
+```
+
+With no `host` in the call there is no `host` in the reply: a local listing is
+the JSON it always was.
+
+The list is read once, at startup, the way `allow_control` is. A host added
+while whistle runs needs whistle restarted.
+
+The other seven tools stay on this machine. A control tool handed a `host` is
+refused as `host_not_supported` rather than acting locally: `stop_sheep` asked
+for `amp2` does not stop a sheep here. A host running another shep version
+still answers its flock; a host speaking another wire protocol is refused,
+naming which side to upgrade.
+
 ## What the gate is, and is not
 
 **`allow_control` is a fat-finger catch, not a security boundary.** whistle

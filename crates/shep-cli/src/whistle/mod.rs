@@ -79,13 +79,20 @@ impl Whistle {
         )
     }
 
-    /// A `Whistle` at `paths` whose host calls run `ssh` as `ssh` says, for
-    /// the tests that name a stand-in program in ssh's place.
+    /// A `Whistle` at `paths` whose host calls run `program` in place of `ssh`.
+    ///
+    /// The program is the only seam: the settings the dial runs under stay the
+    /// ones every real host call runs under, so a test cannot pass its way out
+    /// of pinning them.
     #[cfg(test)]
     #[must_use]
-    pub fn for_test_with_ssh(paths: ShepPaths, control: gate::Control, ssh: SshOptions) -> Self {
+    pub fn for_test_with_ssh_program(
+        paths: ShepPaths,
+        control: gate::Control,
+        program: &std::path::Path,
+    ) -> Self {
         let mut whistle = Self::new(paths, control);
-        whistle.ssh = ssh;
+        whistle.ssh = shepherd::host_ssh().program(program);
         whistle
     }
 

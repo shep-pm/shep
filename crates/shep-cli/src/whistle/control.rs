@@ -7,6 +7,10 @@
 //! `ToolAnnotations` is wire-visible: an agent host reads it to decide
 //! whether to ask a human first, so a mutating tool must never claim
 //! `readOnlyHint: true`.
+//!
+//! All four act on this machine's flock. `read::SheepName` carries the `host`
+//! field `describe_sheep` needs, and these four refuse it rather than act
+//! locally on a call that named another machine: see [`local_name`].
 
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::CallToolResult;
@@ -42,8 +46,9 @@ impl Whistle {
     )]
     pub async fn start_sheep(
         &self,
-        Parameters(SheepName { name }): Parameters<SheepName>,
+        Parameters(SheepName { name, host }): Parameters<SheepName>,
     ) -> Result<Json<FlockListing>, CallToolResult> {
+        let name = local_name(name, host)?;
         let flock = match self
             .shepherd
             .call(Request::Describe {
@@ -101,8 +106,9 @@ impl Whistle {
     )]
     pub async fn stop_sheep(
         &self,
-        Parameters(SheepName { name }): Parameters<SheepName>,
+        Parameters(SheepName { name, host }): Parameters<SheepName>,
     ) -> Result<Json<FlockListing>, CallToolResult> {
+        let name = local_name(name, host)?;
         let selector = SelectorSpec::Name(name);
         match self.shepherd.call(Request::Stop { selector }).await? {
             Response::Stopped(flock) => Ok(Json(FlockListing {
@@ -125,8 +131,9 @@ impl Whistle {
     )]
     pub async fn restart_sheep(
         &self,
-        Parameters(SheepName { name }): Parameters<SheepName>,
+        Parameters(SheepName { name, host }): Parameters<SheepName>,
     ) -> Result<Json<FlockListing>, CallToolResult> {
+        let name = local_name(name, host)?;
         let selector = SelectorSpec::Name(name);
         match self.shepherd.call(Request::Restart { selector }).await? {
             // One name, so the shepherd refuses it whole through the error
@@ -152,8 +159,9 @@ impl Whistle {
     )]
     pub async fn reload_sheep(
         &self,
-        Parameters(SheepName { name }): Parameters<SheepName>,
+        Parameters(SheepName { name, host }): Parameters<SheepName>,
     ) -> Result<Json<FlockListing>, CallToolResult> {
+        let name = local_name(name, host)?;
         let selector = SelectorSpec::Name(name);
         match self.shepherd.call(Request::Reload { selector }).await? {
             // One name, so the shepherd refuses it whole through the error
@@ -165,6 +173,29 @@ impl Whistle {
             })),
             _ => Err(unexpected_response()),
         }
+    }
+}
+
+/// The name a control tool acts on, refused when a `host` came with it.
+///
+/// `read::SheepName` carries `host` because `describe_sheep` takes one, and
+/// these four tools share that struct. A control tool that ignored the field
+/// would act on this machine while the model asked for another one, which is
+/// the failure `crate::remote` exists to prevent. Refusing it is the only
+/// answer that is not a surprise.
+///
+/// # Errors
+/// A [`CallToolResult`] with `is_error: true` and code `host_not_supported`.
+fn local_name(name: String, host: Option<String>) -> Result<String, CallToolResult> {
+    match host {
+        Some(host) => Err(shepherd::own_refusal(
+            "host_not_supported",
+            format!(
+                "`{host}` was not touched: the four control tools act on this \
+                 machine's flock only, and a host is read-only here"
+            ),
+        )),
+        None => Ok(name),
     }
 }
 
@@ -310,6 +341,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.start_sheep(Parameters(SheepName {
                 name: "web".to_string(),
+                host: None,
             })),
         )
         .await
@@ -367,6 +399,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.start_sheep(Parameters(SheepName {
                 name: "web".to_string(),
+                host: None,
             })),
         )
         .await
@@ -419,6 +452,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.start_sheep(Parameters(SheepName {
                 name: "web".to_string(),
+                host: None,
             })),
         )
         .await
@@ -470,6 +504,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.start_sheep(Parameters(SheepName {
                 name: "api".to_string(),
+                host: None,
             })),
         )
         .await
@@ -512,6 +547,7 @@ mod tests {
             TEST_TIMEOUT,
             whistle.reload_sheep(Parameters(SheepName {
                 name: "api".to_string(),
+                host: None,
             })),
         )
         .await
@@ -545,6 +581,7 @@ mod tests {
         let result = whistle
             .restart_sheep(Parameters(SheepName {
                 name: "web".to_string(),
+                host: None,
             }))
             .await
             .err()
@@ -565,5 +602,52 @@ mod tests {
              connection, and this listener never accepts one"
         );
         daemon.abort();
+    }
+
+    /// All four, in one test: they share `read::SheepName`, and the field that
+    /// `describe_sheep` needs is the field these must not ignore.
+    ///
+    /// Nothing is bound at the socket here. A tool that acted anyway would fail
+    /// with a connect refusal, not this code.
+    #[tokio::test]
+    async fn every_control_tool_refuses_a_host_it_cannot_act_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = shep_client::testing::control_address(dir.path());
+        let whistle = whistle_at(socket);
+        let asked = || SheepName {
+            name: "web".to_string(),
+            host: Some("amp2".to_string()),
+        };
+
+        let outcomes = [
+            whistle.start_sheep(Parameters(asked())).await,
+            whistle.stop_sheep(Parameters(asked())).await,
+            whistle.restart_sheep(Parameters(asked())).await,
+            whistle.reload_sheep(Parameters(asked())).await,
+        ];
+        for outcome in outcomes {
+            // `Json<T>` carries no `Debug`, so this cannot be `expect_err`.
+            let refusal = match outcome {
+                Ok(_) => panic!("a control tool given a host is a refusal, not an action"),
+                Err(refusal) => refusal,
+            };
+            assert_eq!(refusal.is_error, Some(true));
+            let structured = refusal
+                .structured_content
+                .expect("a refusal carries structured content a model can branch on");
+            assert_eq!(
+                structured["code"], "host_not_supported",
+                "a code that says why, not a generic failure: {structured}"
+            );
+            let message = structured["message"]
+                .as_str()
+                .expect("a string")
+                .to_string();
+            assert!(
+                message.contains("amp2") && message.contains("this machine's flock only"),
+                "the refusal names the host it refused and the machine it would \
+                 otherwise have acted on: {message}"
+            );
+        }
     }
 }

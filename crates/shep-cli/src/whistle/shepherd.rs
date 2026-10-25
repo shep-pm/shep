@@ -15,6 +15,7 @@
 //! no prompts and a bound. Nothing past the handshake differs between the two
 //! targets, which is why they are one [`Shepherd`] and not two types.
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ use crate::whistle::read::unexpected_response;
 /// call dials one host and has nothing else to print. The caller is a model
 /// waiting on one tool result, and a refusal that arrives at ten seconds is
 /// worth more to it than a timeout at five.
-pub const HOST_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const HOST_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The ssh settings every host call runs under: no prompts, and bounded.
 ///
@@ -85,8 +86,9 @@ impl Shepherd {
 
     /// The shepherd on `dest`, dialled through `options`.
     ///
-    /// `options` is [`host_ssh`] for every call a model makes; naming another
-    /// one is the seam a test uses to put a stand-in program in ssh's place.
+    /// `options` is [`host_ssh`] for every call this process makes. The seam a
+    /// test uses is [`Whistle::for_test_with_ssh_program`](super::Whistle::for_test_with_ssh_program),
+    /// which keeps those settings and swaps only the program.
     #[must_use]
     pub fn for_host(dest: &str, options: SshOptions) -> Self {
         Self {
@@ -185,7 +187,7 @@ impl Shepherd {
 /// sees a separate, in-band [`CallToolResult`] built here.
 ///
 /// A client reached over ssh is asked a different question, and
-/// [`crate::version_guard::skew_of`] states which: that host has its own
+/// `crate::version_guard::skew_of` states which: that host has its own
 /// install, so only a wire-protocol difference refuses, and the fix it names
 /// runs on whichever side of the gap is behind. `host_skew` is that answer in
 /// one line, and this module's own wording could only have guessed at it.
@@ -200,7 +202,15 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
             client,
             crate::version_guard::VersionGuard::Enforce,
         ) {
-            Ok(_notice) => Ok(()),
+            Ok(None) => Ok(()),
+            Ok(Some(notice)) => {
+                // stderr only, as every other word this module writes is:
+                // stdout is the transport. The model gets the flock either
+                // way; the operator is the one who can install one version on
+                // both hosts.
+                let _ = writeln!(std::io::stderr(), "whistle: {notice}");
+                Ok(())
+            }
             Err(message) => Err(own_refusal(ExitCode::VersionSkew.code_str(), message)),
         };
     }
@@ -235,10 +245,19 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
 ///
 /// `ConnectError`'s `Display` already prints the path, so this wrapper adds
 /// only the words that say what is missing rather than what failed.
+///
+/// A host dial's failure passes through unaltered: its `Display` already names
+/// the host and which half failed ("no shepherd is running on `amp2`", "ssh
+/// could not reach `amp2`"), and prefixing it with the local wording would
+/// say "no shepherd is running" twice.
 fn connect_refusal(err: &ConnectError) -> CallToolResult {
+    let message = match err {
+        ConnectError::Ssh { .. } => err.to_string(),
+        other => format!("no shepherd is running: {other}"),
+    };
     CallToolResult::structured_error(serde_json::json!({
         "code": "no_shepherd",
-        "message": format!("no shepherd is running: {err}"),
+        "message": message,
     }))
 }
 
