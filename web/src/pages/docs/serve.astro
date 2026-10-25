@@ -105,15 +105,18 @@ $ curl -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/link.html
       if that matters.
     </p>
     <p class="fine">
-      What isn't here: range requests, conditional requests, ETags,
-      compression, keep-alive, TLS, or HTTP/2
-      <NotBuilt note="range/conditional requests are v1.1 candidates" />,
-      tracked as <a href="https://github.com/shep-pm/shep/issues/349">issue 349</a>.{" "}
-      <code>shep serve</code> takes no configuration from the environment:
-      pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,{" "}
+      Every file reply says <code>Accept-Ranges: bytes</code> and carries a weak{" "}
+      <code>ETag</code> and a <code>Last-Modified</code> from the file's{" "}
+      metadata: <code>If-None-Match</code> or <code>If-Modified-Since</code>{" "}
+      earns a <code>304</code>, a single byte range a <code>206</code> of that{" "}
+      slice, a range past the end a <code>416</code>, and a header naming two{" "}
+      ranges the whole file.
+    </p>
+    <p class="fine">
+      What isn't here: compression, keep-alive, TLS, or HTTP/2
+      <NotBuilt />. <code>shep serve</code> takes no configuration from the{" "}
+      environment: pass <code>--port</code>, <code>--bind</code>, <code>--spa</code>,{" "}
       <code>--auth</code> and the flags above on the command line instead.
-      The visible cost today is no video seeking and a full re-read per
-      request.
     </p>
 </article>
 </DocsLayout>
