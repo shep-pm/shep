@@ -21,6 +21,8 @@ Blocks already over their limit are listed in
 `.github/rust-file-size-baseline.txt` lists the files already over 1000 lines.
 A listed block may shrink but never past its recorded count, a block not on the
 list may not appear, and an entry whose block now fits has to come off the list.
+A block main moved elsewhere reads as both a new block and a stale entry, so a
+branch measures itself after merging main.
 
 Exits 0 when every block is within its limit or baselined, 1 otherwise.
 
@@ -112,13 +114,19 @@ class BaselineEntry:
     path: str
     first_line: str
     line: int
+    source: str
 
     @property
     def key(self) -> tuple[str, str]:
         return (self.path, self.first_line)
 
+    @property
+    def location(self) -> str:
+        """Where this entry sits in the baseline file, which is the line to edit."""
+        return f"{self.source}:{self.line}"
+
     def describe(self) -> str:
-        return f"{self.path}:{self.line}: baseline entry `{self.recorded} {self.first_line}`"
+        return f"{self.location}: entry `{self.recorded} {self.path} {self.first_line}`"
 
 
 def marker(line: str) -> str | None:
@@ -228,6 +236,14 @@ def tracked_rust_files() -> list[str]:
     return [entry for entry in listing.stdout.splitlines() if entry]
 
 
+def relative(path: Path) -> str:
+    """The path as a reader types it: relative to the repository root when it sits inside it."""
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def parse_baseline(path: Path) -> list[BaselineEntry]:
     """Read the baseline. One block per line: `<lines> <path> <first line>`.
 
@@ -248,7 +264,7 @@ def parse_baseline(path: Path) -> list[BaselineEntry]:
             recorded_int = int(recorded)
         except ValueError:
             raise SystemExit(f"{path}:{number}: not a baseline entry: {line}")
-        entries.append(BaselineEntry(recorded_int, file_path, first_line, number))
+        entries.append(BaselineEntry(recorded_int, file_path, first_line, number, relative(path)))
     return entries
 
 
@@ -262,7 +278,7 @@ def write_baseline(path: Path, blocks: list[Block]) -> None:
         check=True,
     ).stdout.strip()
     lines = [
-        f"# Comment blocks over IR-47's line limits, measured on main at {sha}.",
+        f"# Comment blocks over IR-47's line limits, measured at {sha}.",
         "# Limits: `///` 6 body lines after the summary (12 when the block has an",
         "# `# Errors` section), `//!` 10 lines, `//` 4 in a row. Fenced code and an",
         "# `# Example` section never count; a line that is only its marker does.",
@@ -270,6 +286,8 @@ def write_baseline(path: Path, blocks: list[Block]) -> None:
         "# A listed block may shrink but never past its recorded count; a block not",
         "# listed may not appear, and an entry whose block now fits must go.",
         "# Regenerate with `python3 scripts/check-doc-length.py --write-baseline`.",
+        "# Merge main before measuring: a block main moved elsewhere reads as a new",
+        "# block here and a stale entry there.",
         "",
     ]
     ordered = sorted(blocks, key=lambda b: (b.path, b.line))
@@ -307,7 +325,8 @@ def check(blocks: list[Block], baseline_path: Path) -> tuple[list[str], int, int
             failures.append(f"{block.describe()} is not in the baseline")
         elif block.measured > entry.recorded:
             failures.append(
-                f"{block.describe()} grew past the {entry.recorded} lines its baseline entry allows"
+                f"{block.describe()} grew past the {entry.recorded} lines its baseline entry "
+                f"allows ({entry.location})"
             )
         else:
             baselined += 1
@@ -368,7 +387,12 @@ def main(argv: list[str]) -> int:
             "Cut the block to its limit, or make the case for it in the pull "
             "request and add it to the baseline by hand: a baseline entry is a "
             "debt this repository agreed to carry, not a way to keep a long "
-            "comment.",
+            "comment.\n"
+            "\n"
+            "When main moved a block under this run, so that an entry names a "
+            "file the block no longer sits in, re-measure the whole tree with "
+            "`python3 scripts/check-doc-length.py --write-baseline` after "
+            "merging main, and review the baseline diff like any other change.",
             file=sys.stderr,
         )
         return 1

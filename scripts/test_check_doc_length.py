@@ -288,6 +288,24 @@ class BaselineRules(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("is stale: no block over its limit matches it", failures[0])
 
+    def test_a_stale_entry_is_reported_at_its_own_line_in_the_baseline(self):
+        # The line a maintainer has to delete lives in the baseline file, not in
+        # the `.rs` file the entry names, and the message has to say which.
+        self.write_baseline(
+            "# a note",
+            "",
+            "9 crates/fake/src/lib.rs /// Summary.",
+        )
+        failures = self.check(*doc_fixture(5))
+        self.assertEqual(len(failures), 1)
+        self.assertIn(f"{self.baseline}:3: entry `9 {FAKE} /// Summary.`", failures[0])
+
+    def test_a_grown_block_names_the_baseline_line_that_records_its_size(self):
+        self.write_baseline("7 crates/fake/src/lib.rs /// Summary.")
+        failures = self.check(*doc_fixture(9))
+        self.assertEqual(len(failures), 1)
+        self.assertIn(f"grew past the 7 lines its baseline entry allows ({self.baseline}:1)", failures[0])
+
     def test_an_entry_only_covers_the_file_it_names(self):
         self.write_baseline("9 crates/other/src/lib.rs /// Summary.")
         failures = self.check(*doc_fixture(7))
