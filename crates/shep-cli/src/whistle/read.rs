@@ -286,12 +286,17 @@ mod tests {
     /// A [`shep_core::protocol::HelloAck`] whose version matches this
     /// binary, since `sample_ack`'s fixed `"9.9.9"` would be refused by
     /// the guard in `Shepherd::call_with_ack`.
-    /// A `ShepPaths` naming only the two fields any test here reads: the
-    /// socket and the barks file. The rest carry an empty placeholder.
-    fn test_paths(socket: std::path::PathBuf, barks: std::path::PathBuf) -> ShepPaths {
+    /// A `ShepPaths` naming only the three fields any test here reads: the
+    /// socket, the barks file and the `shep.toml` the hosts list is read from.
+    /// The rest carry an empty placeholder.
+    fn test_paths(
+        socket: std::path::PathBuf,
+        barks: std::path::PathBuf,
+        daemon_config: std::path::PathBuf,
+    ) -> ShepPaths {
         ShepPaths {
             home: std::path::PathBuf::new(),
-            daemon_config: std::path::PathBuf::new(),
+            daemon_config,
             dogs_config: std::path::PathBuf::new(),
             snapshot: std::path::PathBuf::new(),
             logs: std::path::PathBuf::new(),
@@ -307,7 +312,116 @@ mod tests {
     }
 
     fn whistle_at(socket: std::path::PathBuf, barks_path: std::path::PathBuf) -> Whistle {
-        Whistle::new(test_paths(socket, barks_path), gate::Control::ReadOnly)
+        Whistle::new(
+            test_paths(
+                socket,
+                barks_path,
+                dir_placeholder("no-shep.toml"),
+            ),
+            gate::Control::ReadOnly,
+        )
+    }
+
+    /// A path nothing is ever written to, for the `daemon_config` of a
+    /// `Whistle` whose test wants no hosts listed at all.
+    fn dir_placeholder(name: &str) -> std::path::PathBuf {
+        std::path::Path::new("/nonexistent").join(name)
+    }
+
+    /// Writes a `shep.toml` into `dir` listing `hosts`, and a `Whistle` at it
+    /// whose host calls run `ssh` as `ssh` says.
+    ///
+    /// The list is written to the file rather than handed to the `Whistle`, so
+    /// these tests read the same `hosts` array `shep host add` writes.
+    #[cfg(unix)]
+    fn whistle_with_hosts(
+        dir: &Path,
+        hosts: &[&str],
+        ssh: shep_client::SshOptions,
+    ) -> Whistle {
+        let quoted: Vec<String> = hosts.iter().map(|host| format!("\"{host}\"")).collect();
+        let config = dir.join("shep.toml");
+        std::fs::write(&config, format!("hosts = [{}]\n", quoted.join(", "))).unwrap();
+        Whistle::for_test_with_ssh(
+            test_paths(
+                shep_client::testing::control_address(dir),
+                dir.join("barks.jsonl"),
+                config,
+            ),
+            gate::Control::ReadOnly,
+            ssh,
+        )
+    }
+
+    /// One value as the length-prefixed frame a shepherd would put on the wire.
+    #[cfg(unix)]
+    fn framed<T: serde::Serialize>(value: &T) -> Vec<u8> {
+        let payload = shep_core::protocol::encode_frame(value).unwrap();
+        let mut bytes = u32::try_from(payload.len()).unwrap().to_be_bytes().to_vec();
+        bytes.extend_from_slice(&payload);
+        bytes
+    }
+
+    /// The three files a stand-in ssh writes, named the way the script names
+    /// them.
+    #[cfg(unix)]
+    fn stand_in_file(dir: &Path, name: &str) -> std::path::PathBuf {
+        dir.join(format!("ssh-{name}"))
+    }
+
+    /// Writes an executable stand-in for `ssh` into `dir` and returns its path.
+    ///
+    /// It records the arguments it was run with, waits for the one request the
+    /// client sends, writes that frame to disk for a test that wants the request
+    /// back, and answers it with `response`. Answering only once the request has
+    /// arrived is what the fixture is for: `shep_client::actor`'s loop picks
+    /// between a command and an incoming frame, so a reply already sitting in the
+    /// pipe when the request is sent can be read before anything is waiting for
+    /// it, and dropped.
+    ///
+    /// The request is read as the daemon's codec frames it, twice: the
+    /// client's `Hello` first, then the one request. The ack goes out between
+    /// them, so the canned answer cannot sit in the pipe waiting.
+    ///
+    /// Unix only: the stand-in is a `/bin/sh` script, the same shape
+    /// `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs` uses.
+    #[cfg(unix)]
+    fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+        use shep_core::protocol::{HelloReply, Reply};
+
+        // The ack has to carry this binary's own version: `Shepherd::connect`
+        // refuses a skew, and `matching_ack`'s local-socket version is the one
+        // a host link is held to as well.
+        let ack = matching_ack();
+        // `shep_client::actor`'s `next_id` starts at 1, and every test here
+        // sends one request.
+        let reply = Reply {
+            id: 1,
+            result: Ok(response),
+        };
+        let handshake: HelloReply = Ok(ack);
+        std::fs::write(stand_in_file(dir, "ack.bin"), framed(&handshake)).unwrap();
+        std::fs::write(stand_in_file(dir, "reply.bin"), framed(&reply)).unwrap();
+
+        let script = format!(
+            "#!/bin/sh\n\
+             read_frame() {{ set -- $(dd bs=1 count=4 2>/dev/null | od -An -tu1); \
+             dd bs=1 count=$(( $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 )) 2>/dev/null; }}\n\
+             printf '%s\\n' \"$@\" > '{}'\n\
+             read_frame > /dev/null\n\
+             cat '{}'\n\
+             read_frame > '{}'\n\
+             cat '{}'\n",
+            stand_in_file(dir, "args.txt").display(),
+            stand_in_file(dir, "ack.bin").display(),
+            stand_in_file(dir, "request.bin").display(),
+            stand_in_file(dir, "reply.bin").display(),
+        );
+        let program = dir.join("ssh");
+        std::fs::write(&program, script).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        program
     }
 
     /// `shep flock` prints dogs in the same table; a model asking what is
@@ -385,6 +499,108 @@ mod tests {
             ),
             other => panic!("expected Request::Describe, got {other:?}"),
         }
+    }
+
+    /// A host no operator listed is refused out of the list, and the stand-in
+    /// that would have been ssh is the proof: it records being run, and here it
+    /// was not run.
+    ///
+    /// The failure this pins is the dangerous one. A `host` a model invented
+    /// that reached ssh would be a destination nobody chose, dialled from the
+    /// machine whistle was launched on.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn list_flock_with_an_unlisted_host_is_refused_before_ssh_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = ssh_stand_in(
+            dir.path(),
+            Response::Flock(vec![shep_client::testing::sample_info()]),
+        );
+        let whistle = whistle_with_hosts(
+            dir.path(),
+            &["amp2", "amp3"],
+            shep_client::SshOptions::default().program(program),
+        );
+
+        let outcome = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams {
+                host: Some("build-01".to_string()),
+            })),
+        )
+        .await
+        .expect("list_flock must return within the test timeout");
+        let refusal = match outcome {
+            Ok(_) => panic!("a host no operator listed is a refusal, not a flock"),
+            Err(refusal) => refusal,
+        };
+
+        assert_eq!(refusal.is_error, Some(true));
+        let structured = refusal
+            .structured_content
+            .expect("a refusal carries structured content a model can branch on");
+        assert_eq!(
+            structured["code"], "unknown_host",
+            "a distinct code, so a model can tell this from a host that was \
+             unreachable: {structured}"
+        );
+        let message = structured["message"]
+            .as_str()
+            .expect("a string")
+            .to_string();
+        for listed in ["amp2", "amp3"] {
+            assert!(
+                message.contains(listed),
+                "the refusal names the hosts the operator did list, since one of \
+                 them is what the caller most likely meant: {message}"
+            );
+        }
+        assert!(
+            !stand_in_file(dir.path(), "args.txt").exists(),
+            "the stand-in ssh wrote no record, so nothing was dialled"
+        );
+    }
+
+    /// A listed host is dialled, and the answer is that host's flock, not
+    /// this machine's: nothing is bound at the local socket in this test, so a
+    /// call that went local would fail with "no shepherd is running" rather
+    /// than answer with `queue`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn list_flock_with_a_listed_host_answers_from_that_shepherd_and_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut remote = shep_client::testing::sample_info();
+        remote.name = "queue".to_string();
+        let program = ssh_stand_in(dir.path(), Response::Flock(vec![remote]));
+        let whistle = whistle_with_hosts(
+            dir.path(),
+            &["amp2"],
+            shep_client::SshOptions::default().program(program),
+        );
+
+        let result = tokio::time::timeout(
+            TEST_TIMEOUT,
+            whistle.list_flock(Parameters(FlockParams {
+                host: Some("amp2".to_string()),
+            })),
+        )
+        .await
+        .expect("list_flock must return within the test timeout")
+        .expect("a stand-in shepherd must not produce a tool error");
+
+        let names: Vec<&str> = result.0.flock.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["queue"],
+            "the flock on the host answers, not this machine's: {names:?}"
+        );
+        assert_eq!(
+            result.0.host.as_deref(),
+            Some("amp2"),
+            "and the reply says which shepherd it came from, spelled as the \
+             caller asked for it: {:?}",
+            result.0.host
+        );
     }
 
     /// The bytes a local `list_flock` reply is made of, written down here and
