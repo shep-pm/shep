@@ -19,6 +19,7 @@
 use core::fmt;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -434,6 +435,9 @@ pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
 /// decided by the live flock as well, since an unpromoted dog is already up
 /// on every restore but the boot's own.
 ///
+/// `notify_socket` is the boot's resolved `$NOTIFY_SOCKET`, which each stage
+/// extends the start deadline through; the `Muster` request passes `None`.
+///
 /// # Errors
 /// - [`SnapshotError`]: the roll exists but could not be read or parsed.
 pub(crate) async fn muster(
@@ -443,6 +447,7 @@ pub(crate) async fn muster(
     events: &Bus,
     dogs: &[String],
     boot_first_dogs: &[String],
+    notify_socket: Option<&OsStr>,
 ) -> Result<Vec<String>, SnapshotError> {
     let saved = match read(path) {
         Ok(saved) => saved,
@@ -531,6 +536,7 @@ pub(crate) async fn muster(
         supervisor,
         events,
         BatchPolicy::PerApp,
+        notify_socket,
     )
     .await
     {
