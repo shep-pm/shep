@@ -20,6 +20,9 @@ test-fakes = []
 
 [dependencies]
 shep-core.workspace = true
+# A sheep's group signal on unix and its job object on Windows. The same code
+# a dog or a build script can use, so the daemon carries no copy of it.
+shep-tree.workspace = true
 # `fs` for tokio_runner.rs's log-file append, `signal` for the daemon's
 # shutdown listeners in boot.rs, and `net`/`io-util` for the RPC server's
 # framed connections.
@@ -80,9 +83,9 @@ command-fds.workspace = true
 # the reaping across it. This crate keeps only what the flock puts in it.
 shep-handover.workspace = true
 
-# The job object that stands in for a unix process group. Confined to
-# `sys_windows.rs`, which is this crate's only unsafe surface on Windows
-# exactly as `sys.rs` is on unix.
+# `sys_windows.rs`, this crate's only unsafe surface on Windows exactly as
+# `sys.rs` is on unix: the std-handle seal and the shepherd's pipe descriptor.
+# The job object a sheep lives in is `shep-tree`'s.
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
 getrandom.workspace = true
