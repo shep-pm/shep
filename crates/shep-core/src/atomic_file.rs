@@ -116,13 +116,26 @@ pub fn sync_dir(dir: &Path) -> std::io::Result<()> {
 /// - [`std::io::Error`] if the `fsync`, the rename, or the directory flush
 ///   failed. `path` keeps its old contents unless the rename succeeded.
 pub fn publish(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    install(tmp, path)?;
+    sync_dir(parent_of(path))
+}
+
+// Split from `publish` for a store whose caller must tell "nothing was
+// replaced" from "replaced, flush failed": only the first leaves the old
+// contents in place.
+/// Installs `tmp` at `path` without the directory flush [`publish`] ends on.
+///
+/// # Errors
+/// - [`std::io::Error`] if the `fsync` or the rename failed; `path` keeps
+///   its old contents.
+pub(crate) fn install(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
     tmp.as_file().sync_all()?;
 
     // `persist` is `rename(2)`. On failure the `NamedTempFile` comes back
     // inside the error and its `Drop` removes the staging file, so a failed
     // replace does not leave one behind.
     tmp.persist(path).map_err(|err| err.error)?;
-    sync_dir(parent_of(path))
+    Ok(())
 }
 
 /// Replaces `path` with `value` as pretty-printed JSON and one trailing
@@ -140,6 +153,22 @@ pub fn write_json<T>(path: &Path, prefix: &str, value: &T) -> std::io::Result<()
 where
     T: serde::Serialize + ?Sized,
 {
+    publish(stage_json(path, prefix, value)?, path)
+}
+
+/// Writes `value` as [`write_json`] does into a staging file beside `path`,
+/// stopping short of installing it.
+///
+/// # Errors
+/// As [`write_json`], minus the `fsync` and the rename.
+pub(crate) fn stage_json<T>(
+    path: &Path,
+    prefix: &str,
+    value: &T,
+) -> std::io::Result<tempfile::NamedTempFile>
+where
+    T: serde::Serialize + ?Sized,
+{
     use std::io::Write as _;
 
     let mut tmp = create_staging_file(parent_of(path), prefix, ".tmp")?;
@@ -147,8 +176,7 @@ where
     let json = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
     tmp.write_all(json.as_bytes())?;
     tmp.write_all(b"\n")?;
-
-    publish(tmp, path)
+    Ok(tmp)
 }
 
 #[cfg(test)]
