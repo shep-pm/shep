@@ -18,10 +18,10 @@ shep lookout   /home/ada/.shep                                                  
     cwd  (unset) -> /srv/api                                                                                                                                    
     err_file  (unset) -> /var/log/api/err.log                                             ▲ respawn  the sheep must stop and start again                        
                                                                                                                          pick the timing when you close the pane
-  env                                                                                                                                                           
-   DATABASE_URL               (set)                                                       ──────────────────────────────────────────────────────────────────────
-   NODE_ENV                   (set)                                                       VALIDATION                                                            
-   + add a key                      ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜d                                   
+                                                                                                                                                                
+                                                                                          ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+                                    ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜d                                   
                                     ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌P_HOME}} expand                     
                                     ▐  cwd and err_file take hold when the process starts again.                           ▌: warned                            
                                     ▐                                                                                      ▌                                    
@@ -31,7 +31,7 @@ shep lookout   /home/ada/.shep                                                  
                                     ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌n rule                              
                                     ▐                                                                                      ▌s this path spells {{instance}} out 
   ──────────────────────────────────▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌────────────────────────────────────
-  = read-only, set it in the Flockfi▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ou, not yet written   › opens screen
+  = read-only, set it in the Flockfi▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ou, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

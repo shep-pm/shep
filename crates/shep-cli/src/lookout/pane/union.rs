@@ -411,6 +411,11 @@ impl ConfigPane {
     /// whole arm before anything goes out.
     #[must_use]
     pub(in crate::lookout) fn incomplete_union(&self) -> Option<String> {
+        self.incomplete_own_union()
+            .or_else(|| self.dogs_tab.tables().find_map(Self::incomplete_own_union))
+    }
+
+    fn incomplete_own_union(&self) -> Option<String> {
         self.edits.iter().find_map(|(key, _)| {
             let EditKey::Field(union) = key else {
                 return None;

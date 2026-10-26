@@ -59,17 +59,21 @@ fn app_on_retro() -> App {
         sent: Sent::SheepConfig { name: "web".into() },
         result: Ok(Response::SheepConfig(Box::new(web_with_retro()))),
     });
-    pane_to(&mut app, "dogs");
-    let ask = ask_dogs(&mut app, KeyPress::Confirm);
-    let _ = app.update(Msg::SheepDogs {
-        sheep: "web".into(),
+    let ask = ask_dogs(&mut app);
+    answer(
+        &mut app,
+        "web",
         ask,
-        dogs: vec![SheepDogEntry {
-            name: "kelpie".into(),
-            adopted_path: Some("/opt/kelpie".into()),
-            schema: Some(step_schema()),
+        vec![ListedDog {
+            entry: SheepDogEntry {
+                name: "kelpie".into(),
+                adopted_path: Some("/opt/kelpie".into()),
+                schema: Some(step_schema()),
+            },
+            asked: true,
         }],
-    });
+    );
+    cursor_on(&mut app, "kelpie");
     let _ = app.update(Msg::Key(KeyPress::Confirm));
     pane_to(&mut app, "retro");
     app
@@ -169,7 +173,7 @@ fn esc_holds_the_pane_while_a_picked_tag_lacks_a_field_it_requires() {
     assert!(notice.grave);
     assert!(notice.text.contains("path is required"), "{}", notice.text);
     assert!(app.config_pane().is_some(), "the pane stays open");
-    assert_eq!(app.config_pane().unwrap().edits().len(), 1);
+    assert_eq!(table_edits(&app), 1);
 
     press(&mut app, KeyPress::SelectDown);
     press(&mut app, KeyPress::Confirm);

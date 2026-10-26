@@ -10,13 +10,15 @@ use ratatui::text::{Line, Span};
 use super::super::super::pane::{ConfigPane, PaneRow};
 use super::super::super::theme::Palette;
 use super::super::scroll::{self, Attempt};
+use super::dogs::dogs_body_lines;
 use super::entry_row::{arm_line, choice_line, entry_line};
 use super::env::pending_and_env_lines;
 use super::field_row::{field_line, section_header, table_line};
 
 /// The active group's fields, laid out through [`scroll::to_cursor`]
 /// exactly as [`body_from`] already does for the groupless fallback, then
-/// [`pending_and_env_lines`] appended after.
+/// [`pending_and_env_lines`] appended after. A sheep's `dogs` tab draws its
+/// own body instead: see [`dogs_body_lines`].
 pub(super) fn grouped_body_lines(
     pane: &ConfigPane,
     palette: Palette,
@@ -24,6 +26,9 @@ pub(super) fn grouped_body_lines(
     budget: usize,
     show_lands: bool,
 ) -> Vec<Line<'static>> {
+    if pane.shows_dogs() {
+        return dogs_body_lines(pane, palette, width, budget, show_lands);
+    }
     // The cursor's own row has to draw somewhere in this budget, per the
     // rule every screen in this file holds. When it is on an env row or
     // `+ add a key`, the field body has nothing to align to and its own
@@ -187,7 +192,7 @@ pub(super) fn body_from(
                 drawn += 1;
                 continue;
             }
-            PaneRow::Env(_) | PaneRow::AddEnv => continue,
+            PaneRow::Env(_) | PaneRow::AddEnv | PaneRow::Dog(_) | PaneRow::Under { .. } => continue,
         };
         let group = pane
             .fields()
@@ -250,6 +255,28 @@ pub(super) fn body_from(
     }
 }
 
+/// One row of the field body, drawn by the drawer for its kind. Empty for a
+/// row the field body does not hold.
+pub(super) fn row_line(
+    pane: &ConfigPane,
+    row: PaneRow,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+    show_lands: bool,
+) -> Line<'static> {
+    match row {
+        PaneRow::Field(index) => field_line(pane, index, selected, width, palette, show_lands),
+        PaneRow::Table(index) => table_line(pane, index, selected, width, palette, show_lands),
+        PaneRow::Entry(index) => entry_line(pane, index, selected, width, palette, show_lands),
+        PaneRow::Choice { .. } => choice_line(pane, row, selected, width, palette),
+        PaneRow::Arm { .. } => arm_line(pane, row, selected, width, palette, show_lands),
+        PaneRow::Env(_) | PaneRow::AddEnv | PaneRow::Dog(_) | PaneRow::Under { .. } => {
+            Line::default()
+        }
+    }
+}
+
 /// The cursor's own row, alone, for a body too short to hold the chrome its
 /// group costs.
 ///
@@ -272,23 +299,8 @@ pub(super) fn cursor_only(
 ) -> Vec<Line<'static>> {
     let rows = pane.field_rows();
     let mut lines = Vec::new();
-    match rows.get(cursor_row).copied() {
-        Some(PaneRow::Field(index)) => {
-            lines.push(field_line(pane, index, true, width, palette, show_lands));
-        }
-        Some(PaneRow::Table(index)) => {
-            lines.push(table_line(pane, index, true, width, palette, show_lands));
-        }
-        Some(PaneRow::Entry(index)) => {
-            lines.push(entry_line(pane, index, true, width, palette, show_lands));
-        }
-        Some(row @ PaneRow::Choice { .. }) => {
-            lines.push(choice_line(pane, row, true, width, palette));
-        }
-        Some(row @ PaneRow::Arm { .. }) => {
-            lines.push(arm_line(pane, row, true, width, palette, show_lands));
-        }
-        Some(PaneRow::Env(_) | PaneRow::AddEnv) | None => {}
+    if let Some(row) = rows.get(cursor_row).copied() {
+        lines.push(row_line(pane, row, true, width, palette, show_lands));
     }
     let hidden_below = rows.len().saturating_sub(cursor_row + 1);
     if cursor_row > 0 && lines.len() < budget {
@@ -340,6 +352,22 @@ mod tests {
             "process's last field is visible: {text:?}"
         );
         assert!(!text.iter().any(|line| line.contains("below")), "{text:?}");
+    }
+
+    #[test]
+    fn the_env_rows_draw_on_the_process_tab_and_on_no_other() {
+        let mut pane = web_pane();
+        for digit in 1..=9 {
+            pane.set_group(digit);
+            let text = text_of(&pane_lines(&pane, fixtures::plain(), 160, 0)).join("\n");
+            for needle in ["DB_HOST", "LOG_LEVEL", "+ add a key"] {
+                assert_eq!(
+                    text.contains(needle),
+                    digit == 1,
+                    "tab {digit}, {needle}:\n{text}"
+                );
+            }
+        }
     }
 
     /// Guards against the class of bug where chrome eats the budget and

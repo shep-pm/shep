@@ -1,6 +1,7 @@
 use super::MIN_REDRAW;
 use super::app::{App, Body, Effect, InputMode, Msg, Pasted, RevealedValue, RowKey, Sent};
 use super::batch_dispatch::{enable_refusal_message, send_batch};
+use super::pane::SheepDogEntry;
 use super::wiring::HEARTBEAT;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
@@ -433,19 +434,40 @@ where
                     })
                 }));
             }
-            // Off this task for `Effect::LoadDogPane`'s reason, with every
-            // dog asked once, all at the same time.
-            // A probe that panicked lists no dog, which leaves every table
-            // read-only rather than editable through a schema nobody read.
-            Effect::LoadSheepDogs { sheep, ask } => {
-                let (config, home) = (paths.daemon_config.clone(), paths.home.clone());
+            // Off this task for `Effect::LoadDogPane`'s reason. A listing
+            // that panicked lists no dog, which leaves every table read-only
+            // rather than editable through a schema nobody read.
+            Effect::ListSheepDogs { sheep, ask } => {
+                let config = paths.daemon_config.clone();
                 let handle = tokio::task::spawn_blocking(move || {
-                    let budget = crate::commands::dogs::VERSION_BUDGET;
-                    super::probe_sheep_dogs::probe_sheep_dogs(&config, &home, budget)
+                    super::probe_sheep_dogs::list_sheep_dogs(&config)
                 });
                 inflight.push(Box::pin(async move {
                     let dogs = handle.await.unwrap_or_default();
-                    Msg::SheepDogs { sheep, ask, dogs }
+                    Msg::SheepDogNames { sheep, ask, dogs }
+                }));
+            }
+            // One dog, asked when its row is opened. A probe that panicked
+            // answers with no schema, which leaves the table read-only.
+            Effect::LoadSheepDog {
+                sheep,
+                dog,
+                adopted_path,
+            } => {
+                let home = paths.home.clone();
+                let name = dog.clone();
+                let path = adopted_path.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    let budget = crate::commands::dogs::VERSION_BUDGET;
+                    super::probe_sheep_dogs::probe_sheep_dog(&home, &name, path, budget)
+                });
+                inflight.push(Box::pin(async move {
+                    let entry = handle.await.unwrap_or(SheepDogEntry {
+                        name: dog,
+                        adopted_path,
+                        schema: None,
+                    });
+                    Msg::SheepDog { sheep, entry }
                 }));
             }
             // `dogs::enable_in_config`/`dogs::disable_in_config` take

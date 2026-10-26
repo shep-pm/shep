@@ -1400,7 +1400,7 @@ The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row n
                                                                                           out_file  relative paths follow it too                                [0m
                                                                                           watch_options  globs are rooted here                                  [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1445,12 +1445,12 @@ The same pane with two edits filed: cwd, which needs a respawn, and max_memory, 
 [0m[38;5;221m    cwd  (unset) -> /srv/api                                                          [0m  [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;221m    max_memory  (unset) -> 256 B                                                      [0m  [0m[38;5;245m  VALIDATION[0m                                                            [0m
                                                                                         [0m[7m[38;5;29m  █ [0m512M, 2G                                                            [0m
-[0m[38;5;245m  env[0m                                                                                   [0m[7m[38;5;29m  █ [0ma bare number is bytes                                              [0m
-   DATABASE_URL               (set)                                                     [0m[7m[38;5;166m  █ [0mrefused: a two-letter unit                                          [0m
-   NODE_ENV                   (set)                                                     [0m[7m[38;5;166m  █ [0mrefused: a lowercase unit                                           [0m
- [0m[38;5;245m  + add a key              [0m                                                            [0m[7m[38;5;166m  █ [0mrefused: a fraction                                                 [0m
+                                                                                        [0m[7m[38;5;29m  █ [0ma bare number is bytes                                              [0m
+                                                                                        [0m[7m[38;5;166m  █ [0mrefused: a two-letter unit                                          [0m
+                                                                                        [0m[7m[38;5;166m  █ [0mrefused: a lowercase unit                                           [0m
+                                                                                        [0m[7m[38;5;166m  █ [0mrefused: a fraction                                                 [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1583,7 +1583,7 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
 
 
 === sheep_dogs_row  (160x48) ===
-api's editing pane, cursor on its dogs row: jobs, legacy names the tables the sheep already carries, and the › glyph is the only thing on the row saying Enter opens a screen rather than a value.
+api's editing pane on its dogs tab, listed with every dog collapsed: deploy carries no table (unset), jobs carries one (set) and legacy carries a table no schema describes (read-only), so it names key names alone. No dog has been probed.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
                                                                                                                                                                 [0m
@@ -1591,24 +1591,11 @@ api's editing pane, cursor on its dogs row: jobs, legacy names the tables the sh
   [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
-[0m[38;5;221m[48;5;235m>[0m[38;5;245m[48;5;235m› dogs                       jobs, legacy                                    now       [0m[7m[38;5;221m FOCUSED [0m dogs[0m[38;5;245m  opaque[0m                                                  [0m
-                                                                                          Settings for one dog on this sheep alone, opaque to shep              [0m
-[0m[38;5;245m  env[0m                                                                                                                                                           [0m
-   DATABASE_URL               (set)                                                     [0m[38;5;245m  now     [0mjobs, legacy                                                  [0m
-   NODE_ENV                   (set)                                                     [0m[38;5;245m  default [0m{}                                                            [0m
- [0m[38;5;245m  + add a key              [0m                                                            [0m[38;5;245m  example [0m(none)                                                        [0m
-                                                                                                                                                                [0m
-                                                                                          ● now  the running sheep picks it up without stopping                 [0m
-                                                                                                                         pick the timing when you close the pane[0m
-                                                                                                                                                                [0m
-                                                                                        [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
-                                                                                        [0m[38;5;245m  VALIDATION[0m                                                            [0m
-                                                                                        [0m[7m[38;5;29m  █ [0ma table of dog name to a table of settings                          [0m
-                                                                                        [0m[7m[38;5;29m  █ [0ma dog name shep does not know about yet                             [0m
-                                                                                        [0m[7m[38;5;166m  █ [0mrefused: a value that is not a table                                [0m
-                                                                                        [0m[7m[38;5;166m  █ [0mrefused: an empty dog name                                          [0m
+[0m[38;5;245m>▸ deploy            -          (no table)                                             [0m                                                                         [0m
+ ▸ jobs              set        concurrency, hours, merge, models                                                                                               [0m
+[0m[38;5;245m ▸ legacy            read-only  url  (publishes no sheep schema)                       [0m                                                                         [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1632,18 +1619,43 @@ api's editing pane, cursor on its dogs row: jobs, legacy names the tables the sh
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
-[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit  [0m[38;5;245m[48;5;235m control enabled[0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                            [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === sheep_dogs_list  (160x48) ===
-Enter on the dogs row, probed and opened: jobs carries a schema and a table (set), deploy carries a schema and no table (unset), and legacy carries a table no schema describes (read-only), so it names key names alone. The cursor is parked on jobs, the row this frame exists to show set.
+Enter on jobs, probed and opened: its table draws inline under its row while deploy and legacy stay collapsed. The cursor is parked on jobs, the row this frame exists to show open.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
                                                                                                                                                                 [0m
-[0m[38;5;245m  api › dogs                                                                                                                                                    [0m
-[0m[38;5;245m  deploy            -          (no table)                                                                                                                       [0m
-> jobs              set        concurrency, hours, merge, models                                                                                                [0m
-[0m[38;5;245m  legacy            read-only  url  (publishes no sheep schema)                                                                                                 [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+[0m[38;5;245m ▸ deploy            -          (no table)                                             [0m                                                                         [0m
+>▾ jobs              set        concurrency, hours, merge, models                                                                                               [0m
+     concurrency                2                                                                                                                               [0m
+   [0m[38;5;245m  ▾ hours                                                                  table     [0m                                                                        [0m
+       end                      17:00                                                                                                                           [0m
+       start                    09:00                                                                                                                           [0m
+     merge                      ask                                                                                                                             [0m
+   [0m[38;5;245m  ▾ models                                                                 table     [0m                                                                        [0m
+   [0m[38;5;245m    ▸ worker                                                               table     [0m                                                                        [0m
+[0m[38;5;245m ▸ legacy            read-only  url  (publishes no sheep schema)                       [0m                                                                         [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1673,30 +1685,31 @@ Enter on the dogs row, probed and opened: jobs carries a schema and a table (set
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-[0m[38;5;221m[48;5;235mesc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                            [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === sheep_dogs_remove  (160x48) ===
-The same sub-screen with jobs's table removal armed by d: the title asks remove api's jobs table? instead of naming the sheep, and any key but enter would cancel it.
+The same tab with jobs's table removal armed by d: the body asks remove api's jobs table? above the rows, and any key but enter would cancel it.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
                                                                                                                                                                 [0m
-[0m[38;5;221m  remove api's jobs table? enter confirms, any other key cancels                                                                                                [0m
-[0m[38;5;245m  deploy            -          (no table)                                                                                                                       [0m
-> jobs              set        concurrency, hours, merge, models                                                                                                [0m
-[0m[38;5;245m  legacy            read-only  url  (publishes no sheep schema)                                                                                                 [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+[0m[38;5;221m  remove api's jobs table? enter confirms, any other key cancels                        [0m                                                                        [0m
+[0m[38;5;245m ▸ deploy            -          (no table)                                             [0m                                                                         [0m
+>▾ jobs              set        concurrency, hours, merge, models                                                                                               [0m
+     concurrency                2                                                                                                                               [0m
+   [0m[38;5;245m  ▾ hours                                                                  table     [0m                                                                        [0m
+       end                      17:00                                                                                                                           [0m
+       start                    09:00                                                                                                                           [0m
+     merge                      ask                                                                                                                             [0m
+   [0m[38;5;245m  ▾ models                                                                 table     [0m                                                                        [0m
+   [0m[38;5;245m    ▸ worker                                                               table     [0m                                                                        [0m
+[0m[38;5;245m ▸ legacy            read-only  url  (publishes no sheep schema)                       [0m                                                                         [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1725,45 +1738,32 @@ The same sub-screen with jobs's table removal armed by d: the title asks remove 
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-[0m[38;5;221m[48;5;235mesc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                            [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === sheep_dog_table  (160x48) ===
-Enter on jobs opens its table pane as a tree: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame.
+jobs opened inline on the dogs tab: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
                                                                                                                                                                 [0m
-[0m[38;5;245m  api › jobs  (dog table)                                                                                                                                       [0m
-   concurrency                2                                                         [0m[7m[38;5;221m FOCUSED [0m models.worker.token[0m[38;5;245m  text[0m                                     [0m
- [0m[38;5;245m  ▾ hours                                                                    table     [0m  token                                                                 [0m
-     end                      17:00                                                                                                                             [0m
-     start                    09:00                                                     [0m[38;5;245m  now     [0m<set>                                                         [0m
-   merge                      ask                                                       [0m[38;5;245m  default [0m(none)                                                        [0m
- [0m[38;5;245m  ▾ models                                                                   table       example [0m(none)                                                        [0m
- [0m[38;5;245m    ▾ worker                                                                 table     [0m                                                                        [0m
-       model                  small                                                                                                                             [0m
-[0m[38;5;221m[48;5;235m>[0m[48;5;235m      token                  <set>                                                     [0m                                                                        [0m
-[0m[38;5;245m  shep publishes the change; jobs decides what to reload                                                                                                        [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+[0m[38;5;245m ▸ deploy            -          (no table)                                             [0m [0m[7m[38;5;221m FOCUSED [0m models.worker.token[0m[38;5;245m  text[0m                                     [0m
+ ▾ jobs              set        concurrency, hours, merge, models                         token                                                                 [0m
+     concurrency                2                                                                                                                               [0m
+   [0m[38;5;245m  ▾ hours                                                                  table       now     [0m<set>                                                         [0m
+       end                      17:00                                                   [0m[38;5;245m  default [0m(none)                                                        [0m
+       start                    09:00                                                   [0m[38;5;245m  example [0m(none)                                                        [0m
+     merge                      ask                                                                                                                             [0m
+   [0m[38;5;245m  ▾ models                                                                 table     [0m                                                                        [0m
+   [0m[38;5;245m    ▾ worker                                                               table     [0m                                                                        [0m
+         model                  small                                                                                                                           [0m
+[0m[38;5;221m[48;5;235m>[0m  [0m[48;5;235m      token                  <set>                                                   [0m                                                                        [0m
+[0m[38;5;245m ▸ legacy            read-only  url  (publishes no sheep schema)                       [0m                                                                         [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -1795,24 +1795,24 @@ Enter on jobs opens its table pane as a tree: hours and models open at the first
 
 
 === sheep_dog_union  (160x48) ===
-Enter on kelpie opens its table pane over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm.
+kelpie opened inline on the dogs tab over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
                                                                                                                                                                 [0m
-[0m[38;5;245m  api › kelpie  (dog table)                                                                                                                                     [0m
- [0m[38;5;245m  ▾ skills                                                                   table     [0m[7m[38;5;221m FOCUSED [0m skills.implement.path[0m[38;5;245m  text[0m                                   [0m
-     ▾ implement              kind = path                                                 The skill folder, from the repo root.                                 [0m
-       kind                   path                                                                                                                              [0m
-[0m[38;5;221m[48;5;235m>[0m[48;5;235m      path                   skills/mine                                               [0m  A skill kept in the repo.                                             [0m
-     ▸ retro                  (unset)                                                                                                                           [0m
-     ▸ review                 kind = plugin                                             [0m[38;5;245m  now     [0mskills/mine                                                   [0m
-                                                                                        [0m[38;5;245m  default [0m(none)                                                        [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+ ▾ kelpie            set        skills                                                  [0m[7m[38;5;221m FOCUSED [0m skills.implement.path[0m[38;5;245m  text[0m                                   [0m
+   [0m[38;5;245m  ▾ skills                                                                 table     [0m  The skill folder, from the repo root.                                 [0m
+       ▾ implement              kind = path                                                                                                                     [0m
+         kind                   path                                                      A skill kept in the repo.                                             [0m
+[0m[38;5;221m[48;5;235m>[0m  [0m[48;5;235m      path                   skills/mine                                             [0m                                                                        [0m
+       ▸ retro                  (unset)                                                 [0m[38;5;245m  now     [0mskills/mine                                                   [0m
+       ▸ review                 kind = plugin                                           [0m[38;5;245m  default [0m(none)                                                        [0m
                                                                                         [0m[38;5;245m  example [0m(none)                                                        [0m
-[0m[38;5;245m  shep publishes the change; kelpie decides what to reload                                                                                                      [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
-                                                                                                                                                                [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
@@ -2078,10 +2078,10 @@ esc pressed with cwd and err_file edited and listen_timeout already parked from 
 [0m[38;5;245m    cwd  (unset) -> /srv/api                                                                                                                                    [0m
 [0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                             ▲ respawn  the sheep must stop and start again                        [0m
 [0m[38;5;245m                                                                                                                         pick the timing when you close the pane[0m
-[0m[38;5;245m  env                                                                                                                                                           [0m
-[0m[38;5;245m   DATABASE_URL               (set)                                                       ──────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m   NODE_ENV                   (set)                                                       VALIDATION                                                            [0m
-[0m[38;5;245m   + add a key                      [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245md                                   [0m
+[0m[38;5;245m                                                                                                                                                                [0m
+[0m[38;5;245m                                                                                          ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                          VALIDATION                                                            [0m
+[0m[38;5;245m                                    [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245md                                   [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245mP_HOME}} expand                     [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m: warned                            [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
@@ -2091,7 +2091,7 @@ esc pressed with cwd and err_file edited and listen_timeout already parked from 
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245mn rule                              [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245ms this path spells {{instance}} out [0m
 [0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245mou, not yet written   › opens screen[0m
+[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245mou, not yet written                 [0m
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m                                                                                                                                                                [0m
@@ -2131,9 +2131,9 @@ The same dialog at 90 columns, exactly the floor its border needs: 86 interior c
 [0m[38;5;245m    cwd  (unset) -> /srv/api                                                              [0m
 [0m[38;5;245m    err_file  (unset) -> /var/log/api…    ▲ respawn  the sheep must stop and start again  [0m
 [0m[38;5;245m                                                   pick the timing when you close the pane[0m
-[0m[38;5;245m  env                                                                                     [0m
-[0m[38;5;245m   DATABASE_URL               (set)       ────────────────────────────────────────────────[0m
-[0m[38;5;245m   NODE_ENV                   (set)       VALIDATION                                      [0m
+[0m[38;5;245m                                                                                          [0m
+[0m[38;5;245m                                          ────────────────────────────────────────────────[0m
+[0m[38;5;245m                                          VALIDATION                                      [0m
 [0m[38;5;245m [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m [0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[7m[38;5;221m  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                [0m[38;5;238m▌[0m[38;5;245m…[0m
 [0m[38;5;245m [0m[38;5;238m▐[0m[48;5;235m  cwd and err_file take hold when the process starts again.                           [0m[38;5;238m▌[0m[38;5;245m [0m
@@ -2185,13 +2185,13 @@ The same dialog one column under the floor, at 89: the border is dropped and the
 [0m[38;5;245m  pending edits                                                                          [0m
 [0m[38;5;245m    cwd  (unset) -> /srv/api                                                             [0m
 [0m[38;5;245m    err_file  (unset) -> /var/log/api/err.log                                            [0m
-[0m[38;5;245m                                                                                         [0m
-[0m[38;5;245m  env                                                                                    [0m
-[0m[38;5;245m   DATABASE_URL               (set)                                                      [0m
-[0m[38;5;245m   NODE_ENV                   (set)                                                      [0m
-[0m[38;5;245m   + add a key                                                                           [0m
 [0m[38;5;245m  ───────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…[0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
+[0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
 [0m[38;5;245m                                                                                         [0m
@@ -2248,7 +2248,7 @@ esc pressed with no edit of the operator's own, only listen_timeout already park
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245m too                                [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  c   continue         write them and leave it running. They wait for a respawn.      [0m[38;5;238m▌[0m[38;5;245mre                                  [0m
 [0m[38;5;245m  ──────────────────────────────────[0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m────────────────────────────────────[0m
-[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245mou, not yet written   › opens screen[0m
+[0m[38;5;245m  = read-only, set it in the Flockfi[0m[38;5;238m▐[0m[48;5;235m  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        [0m[38;5;238m▌[0m[38;5;245mou, not yet written                 [0m
 [0m[38;5;245m                                    [0m[38;5;238m▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                                                                                                                                                [0m
 [0m[38;5;245m                                                                                                                                                                [0m

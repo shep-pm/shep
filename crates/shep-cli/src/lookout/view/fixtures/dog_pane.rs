@@ -8,7 +8,7 @@ use crate::lookout::pane::{EntryBody, PaneRow};
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
 use super::settings::settings_snapshot;
-use super::sheep_pane::select_field;
+use super::sheep_pane::{resolved, select_field};
 
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
 /// a comment, two scalars, and a sink holding a webhook credential.
@@ -237,21 +237,27 @@ pub fn select_node(app: &mut App, path: &str) {
     let index = pane
         .rows()
         .iter()
-        .position(|row| match *row {
-            PaneRow::Field(index) => pane.fields().fields()[index].key == path,
-            PaneRow::Table(index) => pane.table_path(index) == Some(path),
-            PaneRow::Entry(index) => pane
-                .entry_row(index)
-                .is_some_and(|entry| match &entry.body {
-                    EntryBody::Node { path: at, .. } => at == path,
-                    EntryBody::Leaf { field, .. } => field.key == path,
-                    EntryBody::New { field } => {
-                        format!("{}[+]", pane.fields().fields()[*field].key) == path
-                    }
-                }),
-            PaneRow::Choice { .. } | PaneRow::Arm { .. } | PaneRow::Env(_) | PaneRow::AddEnv => {
-                false
-            }
+        .position(|row| {
+            resolved(pane, row).is_some_and(|(pane, row)| match row {
+                PaneRow::Field(index) => pane.fields().fields()[index].key == path,
+                PaneRow::Table(index) => pane.table_path(index) == Some(path),
+                PaneRow::Entry(index) => {
+                    pane.entry_row(index)
+                        .is_some_and(|entry| match &entry.body {
+                            EntryBody::Node { path: at, .. } => at == path,
+                            EntryBody::Leaf { field, .. } => field.key == path,
+                            EntryBody::New { field } => {
+                                format!("{}[+]", pane.fields().fields()[*field].key) == path
+                            }
+                        })
+                }
+                PaneRow::Choice { .. }
+                | PaneRow::Arm { .. }
+                | PaneRow::Env(_)
+                | PaneRow::AddEnv
+                | PaneRow::Dog(_)
+                | PaneRow::Under { .. } => false,
+            })
         })
         .unwrap_or_else(|| panic!("no node {path} is drawn"));
     app.update(Msg::Key(KeyPress::SelectFirst));

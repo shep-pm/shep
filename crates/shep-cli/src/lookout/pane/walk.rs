@@ -62,8 +62,8 @@ impl ConfigPane {
         }
     }
 
-    /// One row per field of the active group, in display order, then this
-    /// sheep's own env keys and the row that adds one. A field carrying no
+    /// One row per field of the active group, in display order, then, on a
+    /// sheep's `process` tab, its own env keys and the row that adds one. A field carrying no
     /// group at all (every field on a dog pane, whose schema declares
     /// none) is visible regardless of which group is active, which is
     /// what keeps a dog's flat list undisturbed by a control meant for a
@@ -76,6 +76,9 @@ impl ConfigPane {
     /// dog's schema is somebody else's and can declare a field named
     /// `env` of its own, which stays.
     ///
+    /// A sheep's `dogs` tab draws no field at all: its rows are the dogs,
+    /// and the table of each one that is open. See [`Self::dog_rows`].
+    ///
     /// A dog's pane draws its outline instead: a table's row, then what is
     /// under it while it is open. See [`Self::open_table`].
     #[must_use]
@@ -87,6 +90,9 @@ impl ConfigPane {
         }
         let group = self.group();
         let is_sheep = matches!(self.target, PaneTarget::Sheep { .. });
+        if self.shows_dogs() {
+            return self.dog_rows();
+        }
         let mut rows: Vec<PaneRow> = self
             .fields
             .fields()
@@ -96,11 +102,18 @@ impl ConfigPane {
             .filter(|(_, field)| field.group.as_deref().is_none_or(|g| g == group))
             .map(|(index, _)| PaneRow::Field(index))
             .collect();
-        if is_sheep {
+        if self.shows_env() {
             rows.extend((0..self.env_keys.len()).map(PaneRow::Env));
             rows.push(PaneRow::AddEnv);
         }
         rows
+    }
+
+    /// Whether the env rows and the row that adds one belong to the tab the
+    /// pane is on: a sheep's `process` tab, and no other.
+    #[must_use]
+    pub fn shows_env(&self) -> bool {
+        matches!(self.target, PaneTarget::Sheep { .. }) && self.group() == GROUP_ORDER[0]
     }
 
     /// [`Self::rows`]'s own [`PaneRow::Field`] and [`PaneRow::Table`] entries, alone: what the
@@ -136,16 +149,19 @@ impl ConfigPane {
     pub(in crate::lookout) fn move_by(&mut self, delta: isize) {
         let len = self.rows().len();
         self.view.move_by(delta, len);
+        self.push_focus();
     }
 
     pub(in crate::lookout) fn move_to_first(&mut self) {
         let len = self.rows().len();
         self.view.move_to(0, len);
+        self.push_focus();
     }
 
     pub(in crate::lookout) fn move_to_last(&mut self) {
         let len = self.rows().len();
         self.view.move_to(len.saturating_sub(1), len);
+        self.push_focus();
     }
 
     /// Adopts a previous pane's cursor and offset, clamped to this one's
@@ -155,6 +171,18 @@ impl ConfigPane {
         self.view = view;
         let len = self.rows().len();
         self.view.clamp(len);
+    }
+
+    /// Lands on the `index`th group, as carried from a pane this one replaces.
+    pub(in crate::lookout) fn adopt_group(&mut self, index: usize) {
+        if index < GROUP_ORDER.len() {
+            self.group = index;
+        }
+    }
+
+    /// The active group's position in [`GROUP_ORDER`].
+    pub(in crate::lookout) fn group_index(&self) -> usize {
+        self.group
     }
 
     /// Switches to `key`'s own group, then walks the cursor onto it, the
@@ -190,7 +218,9 @@ impl ConfigPane {
             | PaneRow::Choice { .. }
             | PaneRow::Arm { .. }
             | PaneRow::Env(_)
-            | PaneRow::AddEnv => false,
+            | PaneRow::AddEnv
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => false,
         }) {
             let len = self.rows().len();
             self.view.move_to(row_index, len);
@@ -223,6 +253,26 @@ mod tests {
         );
         pane.move_to_first();
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
+    }
+
+    #[test]
+    fn the_cursor_reaches_an_env_row_from_the_process_tab_and_no_other() {
+        let mut pane = ConfigPane::sheep(web());
+        for digit in 1..=9 {
+            pane.set_group(digit);
+            let on_env = |row: &PaneRow| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv);
+            assert_eq!(
+                pane.rows().iter().any(on_env),
+                digit == 1,
+                "tab {digit} lists env rows"
+            );
+            pane.move_to_last();
+            assert_eq!(
+                pane.cursor().as_ref().is_some_and(on_env),
+                digit == 1,
+                "tab {digit}: the last row"
+            );
+        }
     }
 
     #[test]

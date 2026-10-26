@@ -15,10 +15,10 @@ expression: "text.join(\"\\n\")"
    restart_delay              (unset)                               example (none)
    stop_exit_codes            []                                  
                                                                     ● now  the running sheep picks it up without stoppi…
-  env                                                                            pick the timing when you close the pane
-   DB_HOST                    (set)                               
-   LOG_LEVEL                  (set)                                 ────────────────────────────────────────────────────
-   + add a key                                                      VALIDATION
+                                                                                 pick the timing when you close the pane
+                                                                  
+                                                                    ────────────────────────────────────────────────────
+                                                                    VALIDATION
                                                                     █ a whole number
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed…

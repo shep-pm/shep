@@ -148,10 +148,10 @@ pub(super) const fn pane_hint(control: Control, screen: PaneScreen) -> &'static 
             "esc back   j/k select   g/G first/last   r refresh   e edit   d remove   K/J move   u undo   q quit"
         }
         (Control::ReadOnly, PaneScreen::Dogs) => {
-            "esc back   j/k select   g/G first/last   r refresh   enter open   q quit"
+            "esc close   j/k select   g/G first/last   r refresh   enter open   q quit"
         }
         (Control::Allowed, PaneScreen::Dogs) => {
-            "esc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit"
+            "esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit"
         }
     }
 }
@@ -182,15 +182,15 @@ pub(super) enum PaneScreen {
     Fields,
     /// The list sub-screen.
     List,
-    /// The dogs sub-screen under a sheep's `dogs` row.
+    /// A sheep's `dogs` tab with the cursor on a dog's own row.
     Dogs,
 }
 
 /// Which screen `pane` is showing.
 pub(super) fn pane_screen(pane: &ConfigPane) -> PaneScreen {
-    if pane.list().is_some() {
+    if pane.focus().list().is_some() {
         PaneScreen::List
-    } else if pane.dogs().is_some() {
+    } else if pane.shows_dogs() && pane.focused_dog().is_none() {
         PaneScreen::Dogs
     } else {
         PaneScreen::Fields

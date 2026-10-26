@@ -4,6 +4,7 @@
  * 1. Landing page > Lexicon"). Content comes from web/src/data/lexicon.ts.
  */
 import type { LexiconSignpost } from "../../data/lexicon";
+import "../../styles/plank.css";
 
 interface Props extends LexiconSignpost {}
 
@@ -13,7 +14,7 @@ const { term, meaning, cli, bg, fg, tilt } = Astro.props;
 <div class="signpost-wrap">
   {/* background-color, never the background shorthand: the shorthand
       would reset the stylesheet's plank background-image layers. */}
-  <div class="card" style={`background-color:${bg};transform:rotate(${tilt});`}>
+  <div class="card plank" style={`background-color:${bg};transform:rotate(${tilt});`}>
     <div class="screws">
       <span></span>
       <span></span>
@@ -37,33 +38,11 @@ const { term, meaning, cli, bg, fg, tilt } = Astro.props;
     border-radius: 20px;
     box-shadow: 6px 6px 0 var(--shadow);
     padding: 22px 24px;
-    /*
-     * Painted wooden sign: the data-driven background color stays as the
-     * paint, and two low-alpha layers draw the boards over it — a dark
-     * seam every 54px, and a soft highlight right under each seam so the
-     * boards read bevelled. (A third vertical saw-mark layer was tried
-     * and cut: crossing lines read as graph paper, not wood.) The seam and
-     * highlight layers share the 54px period so they can't drift apart
-     * down a tall card. 54px is two MEASURED meaning lines (27px rendered
-     * pitch — trust the browser, not the 15px x 1.5 arithmetic), and the
-     * 4px y offset was solved against real line boxes so seams land in the
-     * leading between meaning lines instead of striking through glyphs; a
-     * faint seam may still cross the bold term, where the heavy strokes
-     * shrug it off. (Features.astro's
-     * cards use the same recipe over cream — change one, change the other.)
-     */
-    background-image:
-      repeating-linear-gradient(
-        180deg,
-        rgba(23, 37, 28, 0) 0 51px,
-        rgba(23, 37, 28, 0.12) 51px 54px
-      ),
-      repeating-linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.12) 0 4px,
-        rgba(255, 255, 255, 0) 8px 54px
-      );
-    background-position-y: 4px;
+    /* Painted wooden sign: the data-driven background color stays as the
+       paint, and the plank layers (plank.css) draw the boards over it. The
+       54px period is two measured meaning lines. */
+    --plank-period: 54px;
+    --plank-offset: 4px;
   }
 
   .screws {

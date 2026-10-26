@@ -124,15 +124,20 @@ impl App {
         self.on_dog_pane(name, adopted_path, result)
     }
 
-    /// `Msg::SheepDogs`'s arm. The probe's own handling lives in
+    /// `Msg::SheepDogNames`'s arm. The listing's own handling lives in
     /// [`crate::lookout::app::pane_dogs`], for the same reason.
-    pub(super) fn on_sheep_dogs_answer(
+    pub(super) fn on_sheep_dog_names_answer(
         &mut self,
         sheep: String,
         ask: u64,
-        dogs: Vec<SheepDogEntry>,
+        dogs: Vec<ListedDog>,
     ) -> Effect {
-        self.on_sheep_dogs(&sheep, ask, dogs)
+        self.on_sheep_dog_names(&sheep, ask, dogs)
+    }
+
+    /// `Msg::SheepDog`'s arm, handled in [`crate::lookout::app::pane_dogs`].
+    pub(super) fn on_sheep_dog_answer(&mut self, sheep: &str, entry: SheepDogEntry) -> Effect {
+        self.on_sheep_dog(sheep, entry)
     }
 
     /// `Msg::DogWritten`'s arm.

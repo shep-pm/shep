@@ -19,13 +19,13 @@ shep lookout   /home/ada/.shep                                             6 in 
   pending edits                                                                          
     cwd  (unset) -> /srv/api                                                             
     err_file  (unset) -> /var/log/api/err.log                                            
-                                                                                         
-  env                                                                                    
-   DATABASE_URL               (set)                                                      
-   NODE_ENV                   (set)                                                      
-   + add a key                                                                           
   ───────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
                                                                                          
                                                                                          
                                                                                          

@@ -85,7 +85,10 @@ impl App {
                 adopted_path,
                 result,
             } => self.on_dog_pane_answer(name, adopted_path, result),
-            Msg::SheepDogs { sheep, ask, dogs } => self.on_sheep_dogs_answer(sheep, ask, dogs),
+            Msg::SheepDogNames { sheep, ask, dogs } => {
+                self.on_sheep_dog_names_answer(sheep, ask, dogs)
+            }
+            Msg::SheepDog { sheep, entry } => self.on_sheep_dog_answer(&sheep, entry),
             Msg::DogWritten {
                 edit,
                 ticket,

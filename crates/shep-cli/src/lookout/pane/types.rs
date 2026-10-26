@@ -67,10 +67,9 @@ impl PaneTarget {
 
 /// Why a row cannot be edited in place.
 ///
-/// Three different facts, and an operator has to be able to tell them
-/// apart: one says the field is beyond editing anywhere, one says only
-/// that this screen has no widget for its shape and a Flockfile still can,
-/// and one says the row opens a screen of its own for the editing.
+/// Two different facts, and an operator has to be able to tell them apart:
+/// one says the field is beyond editing anywhere, and one says only that
+/// this screen has no widget for its shape and a Flockfile still can.
 /// Collapsing them into `Field::editable` alone is what made six rows claim
 /// the wrong one.
 ///
@@ -85,14 +84,11 @@ pub enum Lock {
     /// `shep start <Flockfile>` writes these perfectly well, and
     /// [`ConfigPane::cost`] still reports what doing so would cost.
     NoWidget,
-    /// The row opens a screen of its own rather than editing in place: a
-    /// sheep's `dogs` row, whose tables `enter` lists one dog at a time.
-    SubScreen,
 }
 
 /// One row of the pane.
 ///
-/// Seven variants, not one: the env sub-screen is gone, and its keys now
+/// Nine variants, not one: the env sub-screen is gone, and its keys now
 /// walk the same cursor as every field, so this enum has to name a row in
 /// either territory. A dog's nested table is a row of its own too. Named rather than left as a bare index anyway, a
 /// `usize` travelling between [`ConfigPane::rows`], the viewport and the
@@ -132,6 +128,18 @@ pub enum PaneRow {
     Env(usize),
     /// The row that adds a new env key.
     AddEnv,
+    /// A dog on a sheep's `dogs` tab, by its index among the dogs the tab
+    /// lists. It opens and closes like a table; its value is the dog's table.
+    Dog(usize),
+    /// A row of an open dog's table, inline under that dog's own row: `at`
+    /// indexes the rows of the table pane [`ConfigPane::dogs_tab`] holds for
+    /// the dog.
+    Under {
+        /// Index among the dogs the tab lists.
+        dog: usize,
+        /// Index into the rows of that dog's table pane.
+        at: usize,
+    },
 }
 
 /// One step from a dog section's root to a field inside an entry of an array

@@ -167,8 +167,7 @@ pub(super) fn legend_line(palette: Palette, width: u16) -> Line<'static> {
             "  {}",
             fit(
                 "= read-only, set it in the Flockfile   ~ no widget for this shape   \
-                 ! parked, awaits a respawn   * yours   -> changed by you, not yet written   \
-                 \u{203a} opens screen",
+                 ! parked, awaits a respawn   * yours   -> changed by you, not yet written",
                 body_width(width)
             )
         ),
@@ -222,12 +221,14 @@ mod tests {
     use crate::lookout::view::fixtures;
 
     #[test]
-    fn the_legend_explains_the_glyph_for_a_row_that_opens_its_own_screen() {
-        // 160 is the width the pane is pinned at: the whole legend, the
-        // new entry last, has to survive it uncut.
+    fn the_legend_explains_every_glyph_a_field_row_draws() {
+        // 160 is the width the pane is pinned at: the whole legend has to
+        // survive it uncut.
         let text = text_of(&[legend_line(fixtures::plain(), 160)]);
         assert!(
-            text[0].trim_end().ends_with("\u{203a} opens screen"),
+            text[0]
+                .trim_end()
+                .ends_with("-> changed by you, not yet written"),
             "{:?}",
             text[0]
         );

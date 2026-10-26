@@ -14,11 +14,12 @@ use crate::commands::settings::{SettingField, load_settings};
 use crate::commands::shep_toml::ShepToml;
 use crate::lookout::app::{ActionVerb, App, Effect, KeyPress, Msg, RevealedValue, RowKey, Sent};
 use crate::lookout::frames::fixtures::{
-    close_dialog_config_view, dogs_probe, edit_pane_config_view, flock_without_api,
-    kelpie_config_view, kelpie_probe, move_settings_cursor_to, restarted_api,
+    close_dialog_config_view, dogs_listing, edit_pane_config_view, flock_without_api, jobs_entry,
+    kelpie_config_view, kelpie_entry, move_settings_cursor_to, restarted_api,
     settings_snapshot_for_gallery, settings_snapshot_with_dog_drift, sheep_dogs_config_view,
 };
 use crate::lookout::frames::scene::Scene;
+use crate::lookout::pane::ListedDog;
 use crate::lookout::secrets::{SecretRow, SecretsModel, Source};
 use crate::lookout::view::fixtures::{
     entries_dog_schema, entries_dog_section, select_field, select_node,
@@ -246,8 +247,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
         | Scene::SheepDogsRemove
         | Scene::SheepDogTable => {
             // `e` on `api` (id 2), replied with a config carrying `jobs`'s
-            // table and `legacy`'s, then the cursor walked onto the `dogs`
-            // row the same way an operator's own `tab`/`j` would reach it.
+            // table and `legacy`'s, then `9` for the `dogs` tab.
             app.update(Msg::Key(KeyPress::Edit));
             app.update(Msg::Replied {
                 sent: Sent::SheepConfig {
@@ -255,27 +255,32 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
                 },
                 result: Ok(Response::SheepConfig(Box::new(sheep_dogs_config_view()))),
             });
-            select_field(app, "dogs");
+            // The `dogs` tab, listed with every dog collapsed. The cursor
+            // starts on `deploy`, sorted before `jobs` by name.
+            let Effect::ListSheepDogs { ask, .. } = app.update(Msg::Key(KeyPress::Group(9))) else {
+                panic!("the dogs tab lists its dogs");
+            };
+            app.update(Msg::SheepDogNames {
+                sheep: "api".to_string(),
+                ask,
+                dogs: dogs_listing(),
+            });
             if which != Scene::SheepDogsRow {
-                // `Enter` probes every dog, then the probe's own answer
-                // opens the sub-screen, cursor first on `deploy`, sorted
-                // before `jobs` by name, then one row down onto `jobs`.
-                let Effect::LoadSheepDogs { ask, .. } = app.update(Msg::Key(KeyPress::Confirm))
-                else {
-                    panic!("Enter on the dogs row probes");
-                };
-                app.update(Msg::SheepDogs {
-                    sheep: "api".to_string(),
-                    ask,
-                    dogs: dogs_probe(),
-                });
+                // One row down onto `jobs`, opened: the probe it raises
+                // answers, and its table draws under it.
                 app.update(Msg::Key(KeyPress::SelectDown));
+                let Effect::LoadSheepDog { .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
+                    panic!("opening jobs probes it");
+                };
+                app.update(Msg::SheepDog {
+                    sheep: "api".to_string(),
+                    entry: jobs_entry(),
+                });
                 match which {
                     Scene::SheepDogsRemove => {
                         app.update(Msg::Key(KeyPress::Remove));
                     }
                     Scene::SheepDogTable => {
-                        app.update(Msg::Key(KeyPress::Confirm));
                         // `models.worker` starts closed, so walk down to
                         // the secret the way an operator opens the table.
                         select_field(app, "models.worker.token");
@@ -295,14 +300,16 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
                 },
                 result: Ok(Response::SheepConfig(Box::new(kelpie_config_view()))),
             });
-            select_field(app, "dogs");
-            let Effect::LoadSheepDogs { ask, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
-                panic!("Enter on the dogs row probes");
+            let Effect::ListSheepDogs { ask, .. } = app.update(Msg::Key(KeyPress::Group(9))) else {
+                panic!("the dogs tab lists its dogs");
             };
-            app.update(Msg::SheepDogs {
+            app.update(Msg::SheepDogNames {
                 sheep: "api".to_string(),
                 ask,
-                dogs: kelpie_probe(),
+                dogs: vec![ListedDog {
+                    entry: kelpie_entry(),
+                    asked: true,
+                }],
             });
             app.update(Msg::Key(KeyPress::Confirm));
             select_field(app, "skills.implement");
@@ -400,7 +407,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
 #[cfg(test)]
 mod tests {
     use crate::lookout::frames::build::probe::{
-        dog_row_for, marked_row_name_starts_with, row_for, selected_line,
+        dog_row_for, marked_row_name_starts_with, row_for, selected_line, tab_dog_row_for,
     };
     use crate::lookout::frames::render::render_text;
     use crate::lookout::frames::scene;
@@ -675,47 +682,51 @@ mod tests {
         const TOKEN: &str = "sk-live-51Hx9Qa";
         const LEGACY_CREDENTIAL: &str = "hunter2";
 
-        // SheepDogsRow: the field row names both dogs and carries neither's
-        // value.
+        // SheepDogsRow: one row per state, collapsed, key names only for the
+        // ones that carry a table.
         let row_scene = render_text(&scene(Scene::SheepDogsRow).1);
-        let dogs_row = row_scene
-            .lines()
-            .find(|line| line.contains("dogs") && line.contains("jobs, legacy"))
-            .expect("the dogs row names both dogs");
         assert!(
-            dogs_row.contains('\u{203a}'),
-            "the lock glyph: {dogs_row:?}"
+            tab_dog_row_for(&row_scene, "deploy")
+                .is_some_and(|row| row.contains('-') && row.contains("(no table)")),
+            "deploy is unset: {row_scene:?}"
         );
         assert!(
-            !dogs_row.contains("2"),
-            "no table value leaks: {dogs_row:?}"
+            tab_dog_row_for(&row_scene, "jobs")
+                .is_some_and(|row| row.contains("set") && row.contains("concurrency")),
+            "jobs is set, by key name: {row_scene:?}"
         );
+        assert!(
+            tab_dog_row_for(&row_scene, "legacy")
+                .is_some_and(|row| row.contains("read-only") && row.contains("url")),
+            "legacy is read-only, by key name: {row_scene:?}"
+        );
+        for dog in ["deploy", "jobs", "legacy"] {
+            assert!(
+                tab_dog_row_for(&row_scene, dog).is_some_and(|row| row.contains('\u{25b8}')),
+                "{dog} is collapsed: {row_scene:?}"
+            );
+        }
+        assert!(!row_scene.contains("\u{25be} hours"), "no table is drawn");
         assert!(!row_scene.contains(TOKEN), "{row_scene:?}");
         assert!(!row_scene.contains(LEGACY_CREDENTIAL), "{row_scene:?}");
 
-        // SheepDogsList: one row per state, key names only for the ones
-        // that carry a table.
+        // SheepDogsList: `jobs` open onto its table, its siblings collapsed.
         let list = render_text(&scene(Scene::SheepDogsList).1);
         assert!(
-            dog_row_for(&list, "deploy")
-                .is_some_and(|row| row.contains('-') && row.contains("(no table)")),
-            "deploy is unset: {list:?}"
+            tab_dog_row_for(&list, "jobs").is_some_and(|row| row.contains('\u{25be}')),
+            "jobs is open: {list:?}"
         );
-        assert!(
-            dog_row_for(&list, "jobs")
-                .is_some_and(|row| row.contains("set") && row.contains("concurrency")),
-            "jobs is set, by key name: {list:?}"
-        );
-        assert!(
-            dog_row_for(&list, "legacy")
-                .is_some_and(|row| row.contains("read-only") && row.contains("url")),
-            "legacy is read-only, by key name: {list:?}"
-        );
+        for dog in ["deploy", "legacy"] {
+            assert!(
+                tab_dog_row_for(&list, dog).is_some_and(|row| row.contains('\u{25b8}')),
+                "{dog} is collapsed: {list:?}"
+            );
+        }
+        assert!(list.contains("\u{25be} hours"), "jobs's table is inline");
         assert!(!list.contains(TOKEN), "{list:?}");
         assert!(!list.contains(LEGACY_CREDENTIAL), "{list:?}");
 
-        // SheepDogsRemove: the title asks the question instead of naming
-        // the sheep.
+        // SheepDogsRemove: the body asks the question above the rows.
         let remove = render_text(&scene(Scene::SheepDogsRemove).1);
         assert!(
             remove.contains("remove api's jobs table? enter confirms"),
