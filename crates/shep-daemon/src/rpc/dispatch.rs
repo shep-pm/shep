@@ -155,6 +155,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                         &ctx.supervisor,
                         &ctx.events,
                         BatchPolicy::AllOrNothing,
+                        None,
                     )
                     .await
                     {
@@ -361,6 +362,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 &ctx.events,
                 &ctx.dog_names,
                 &ctx.boot_first_dogs,
+                None,
             )
             .await
             {

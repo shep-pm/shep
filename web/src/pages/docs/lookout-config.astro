@@ -100,54 +100,60 @@ set in production · length 18 bytes · named by 1 of the flock                 
 esc/S close   ←/→ tab   z collapse   v reveal for 10s   ↵ set a value   D delete   y copy   q quit                                               control enabled`;
 
 const sheepDogsRow = `shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
-
- ██ api  (sheep config)
-   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  FIELD                       VALUE                                           LANDS
->› dogs                       jobs, legacy                                    now        FOCUSED  dogs  opaque
-                                                                                          Settings for one dog on this sheep alone, opaque to shep
-  env
-   DATABASE_URL               (set)                                                       now     jobs, legacy
-   NODE_ENV                   (set)                                                       default {}
-   + add a key                                                                            example (none)
-
-                                                                                          ● now  the running sheep picks it up without stopping
-                                                                                                                         pick the timing when you close the pane
-
-                                                                                          ──────────────────────────────────────────────────────────────────────
-                                                                                          VALIDATION
-                                                                                          █ a table of dog name to a table of settings
-                                                                                          █ a dog name shep does not know about yet
-                                                                                          █ refused: a value that is not a table
-                                                                                          █ refused: an empty dog name
+  FIELD                       VALUE                                           LANDS                                                                             
+>▸ deploy            -          (no table)                                                                                                                      
+ ▸ jobs              set        concurrency, hours, merge, models                                                                                               
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
 
-esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled`;
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled`;
 
 const sheepDogsList = `shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▸ deploy            -          (no table)                                                                                                                      
+>▾ jobs              set        concurrency, hours, merge, models                                                                                               
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table                                                                             
+       end                      17:00                                                                                                                           
+       start                    09:00                                                                                                                           
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▸ worker                                                               table                                                                             
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
 
-  api › dogs
-  deploy            -          (no table)
-> jobs              set        concurrency, hours, merge, models
-  legacy            read-only  url  (publishes no sheep schema)
-
-esc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                              control enabled`;
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled`;
 
 const sheepDogTable = `shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
-
-  api › jobs  (dog table)
-   concurrency                2                                                          FOCUSED  models.worker.token  text
-   ▾ hours                                                                    table       token
-     end                      17:00
-     start                    09:00                                                       now     <set>
-   merge                      ask                                                         default (none)
-   ▾ models                                                                   table       example (none)
-     ▾ worker                                                                 table
-       model                  small
->      token                  <set>
-  shep publishes the change; jobs decides what to reload
+                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▸ deploy            -          (no table)                                               FOCUSED  models.worker.token  text                                     
+ ▾ jobs              set        concurrency, hours, merge, models                         token                                                                 
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table       now     <set>                                                         
+       end                      17:00                                                     default (none)                                                        
+       start                    09:00                                                     example (none)                                                        
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▾ worker                                                               table                                                                             
+         model                  small                                                                                                                           
+>        token                  <set>                                                                                                                           
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
 
 esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled`;
 ---
@@ -545,10 +551,10 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       any time after.
     </p>
     <p>
-      A sheep's env keys sit in the field list itself, beneath whichever
-      group is on screen, rather than behind their own row. No value ever
-      appears there, because the shepherd never sends one: every key reads
-      {" "}
+      A sheep's env keys sit in the field list itself, beneath the{" "}
+      <code>process</code> tab's fields and on no other tab, rather than
+      behind their own row. No value ever appears there, because the
+      shepherd never sends one: every key reads{" "}
       <code>(set)</code>. <code>e</code> or <code>Enter</code> on a
       key types a new value for it, and filing an empty one removes the
       key. Either on the <code>+ new</code> row takes{" "}
@@ -571,28 +577,26 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       whichever instance the cursor was over.
     </p>
 
-    <h2 id="a-sheeps-dogs-row">A sheep's dogs row</h2>
+    <h2 id="a-sheeps-dogs-tab">A sheep's dogs tab</h2>
     <p>
-      <code>dogs</code> has a tab of its own, last in the row, reached with{" "}
-      <code>9</code>, <code>Tab</code> or <code>Shift-Tab</code>. It names its dogs,{" "}
-      <code>jobs, legacy</code>, or <code>none</code>, never a value. Enter
-      or <code>e</code> probes every adopted dog and opens a sub-screen.
+      <code>dogs</code> is the last tab, reached with <code>9</code>. It
+      lists every dog that can hold a table on this sheep, collapsed. A row
+      names its state and its table's keys, never a value. Listing spawns
+      nothing: a dog's schema is asked for when its row is first opened.
     </p>
-    <CodeBlock label="160×48, cursor on the dogs row">{sheepDogsRow}</CodeBlock>
+    <CodeBlock label="160×48, the dogs tab, every dog collapsed">{sheepDogsRow}</CodeBlock>
     <p>
-      A row is set, unset, or read-only. Read-only means no dog published a
-      schema for that table, so it names keys only, same as{" "}
-      <code>dogs</code> above it. <code>d</code> arms removing a table.
+      Read-only means no dog published a schema for that table, so it names
+      keys only and opens nothing. <code>d</code> arms removing a table.
       Enter confirms, any other key cancels.
     </p>
-    <CodeBlock label="jobs set, deploy unset, legacy read-only">{sheepDogsList}</CodeBlock>
     <p>
-      Enter or <code>e</code> on a set or unset row opens that dog's table
-      over the sheep. It refuses while the sheep pane holds unwritten
-      edits: <code>Esc</code> goes back to the pane, where{" "}
-      <code>u</code> undoes them one at a time and a second{" "}
-      <code>Esc</code> writes them.
+      Enter, <code>e</code> or <code>→</code> on a set or unset row opens that
+      dog's table inline, under its row. <code>Enter</code> or{" "}
+      <code>←</code> closes it, and its edits stay filed.{" "}
+      <code>Esc</code> writes the sheep's edits and every dog's table together.
     </p>
+    <CodeBlock label="jobs opened on api's dogs tab">{sheepDogsList}</CodeBlock>
     <p>
       A nested struct in the schema is a table row with its keys indented
       under it. The first level starts open. <code>→</code> opens a table,{" "}
@@ -602,7 +606,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       the sheep pane's list sub-screen. A list of choices opens to a checklist
       under its row, and <code>Space</code> or <code>Enter</code> toggles a
       name. <code>Esc</code> writes the whole
-      table and lands on the dashboard, not back on the sub-screen. If the
+      table and lands on the dashboard. If the
       table changed since the pane opened, nothing is written: the pane
       reloads it under your edits, and <code>Esc</code> again writes.
     </p>

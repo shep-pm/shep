@@ -134,9 +134,6 @@ impl App {
             if let Some(list) = pane.list_mut() {
                 list.set_rows(body);
             }
-            if let Some(dogs) = pane.dogs_mut() {
-                dogs.set_rows(body);
-            }
         }
         if let Some(pane) = self.bleats_pane_mut() {
             // Every row `view::bleats_full::lines` spends before the first

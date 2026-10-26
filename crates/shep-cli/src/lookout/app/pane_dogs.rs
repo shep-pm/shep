@@ -1,198 +1,171 @@
-//! The dogs sub-screen under a sheep pane: the probe that fills it, its
-//! keys, and the table write it and the per-sheep table pane both send.
+//! The dogs tab under a sheep pane: the listing that fills it, a dog's row
+//! opening to its table, the keys on both, and the table write the tab's
+//! removal sends.
+//!
+//! An open dog's table is a pane of its own, held by the tab. A key that
+//! lands inside one runs against that pane through [`App::in_table`], which
+//! seats it as the body for the length of the handler, so every handler
+//! written for a pane edits a table inline as it did on a pane of its own.
 
 use super::*;
 
 impl App {
-    /// `Enter` or `e` on a sheep pane's `dogs` row: probe every dog for its
-    /// per-sheep schema, as a new ask. [`None`] on any other row, and on any
-    /// other pane.
-    pub(super) fn dogs_row_effect(&mut self) -> Option<Effect> {
-        let pane = self.config_pane()?;
-        let PaneTarget::Sheep { name } = pane.target() else {
-            return None;
-        };
-        let PaneRow::Field(index) = pane.cursor()? else {
-            return None;
-        };
-        if pane.fields().fields().get(index)?.key != "dogs" {
-            return None;
-        }
-        let sheep = name.clone();
-        if self.refuse_over_host() {
-            return Some(Effect::None);
-        }
-        self.sheep_dogs_ask += 1;
-        Some(Effect::LoadSheepDogs {
-            sheep,
-            ask: self.sheep_dogs_ask,
-        })
-    }
-
-    /// One [`Msg::SheepDogs`]: opens the sub-screen over the pane that
-    /// asked.
-    ///
-    /// Guarded on the pane's own sheep the way [`Self::on_dog_section`] is
-    /// guarded on its dog: an answer for a sheep the operator has left opens
-    /// nothing. Nor does one landing over an editor or a sub-screen opened
-    /// while the probe ran, which would leave two things owning the keys, or
-    /// one a newer ask has superseded.
-    pub(super) fn on_sheep_dogs(
-        &mut self,
-        sheep: &str,
-        ask: u64,
-        dogs: Vec<SheepDogEntry>,
-    ) -> Effect {
-        let latest = ask == self.sheep_dogs_ask;
-        let Some(pane) = self.config_pane_mut() else {
-            return Effect::None;
-        };
-        let asked = latest && matches!(pane.target(), PaneTarget::Sheep { name } if name == sheep);
-        let busy = pane.typing().is_some()
-            || pane.env_typing().is_some()
-            || pane.list().is_some()
-            || pane.dogs().is_some();
-        if asked && !busy {
-            pane.open_dogs(dogs);
-            self.notice = None;
-        }
-        Effect::None
-    }
-
-    /// The dogs sub-screen's own keymap, in force while the pane holds one.
-    ///
-    /// `Escape` closes the sub-screen and leaves the sheep pane up. `Enter`
-    /// or `e` opens the dog's table pane; `d` arms a removal, which `Enter`
-    /// confirms and every other key but a quit cancels, the secrets pane's
-    /// rule. An armed removal eats the first `Escape`, as it does there.
-    pub(super) fn on_dogs_key(&mut self, key: KeyPress) -> Effect {
-        // Disarms as it asks: every key but Enter and a quit cancels an
-        // armed removal before its own arm runs.
-        let was_armed = !matches!(key, KeyPress::Confirm | KeyPress::Quit)
-            && self.dogs_mut().is_some_and(DogsPane::disarm);
-        match key {
-            KeyPress::Quit => return Effect::Quit,
-            KeyPress::Escape => {
-                if !was_armed && let Some(pane) = self.config_pane_mut() {
-                    pane.close_dogs();
-                }
-            }
-            KeyPress::SelectUp
-            | KeyPress::SelectDown
-            | KeyPress::SelectFirst
-            | KeyPress::SelectLast => {
-                if let Some(dogs) = self.dogs_mut() {
-                    match key {
-                        KeyPress::SelectUp => dogs.move_by(-1),
-                        KeyPress::SelectDown => dogs.move_by(1),
-                        KeyPress::SelectFirst => dogs.move_to_first(),
-                        KeyPress::SelectLast => dogs.move_to_last(),
-                        _ => unreachable!(),
-                    }
-                }
-            }
-            KeyPress::Refresh => return self.reread_pane(),
-            KeyPress::Confirm => {
-                if self
-                    .config_pane()
-                    .and_then(ConfigPane::dogs)
-                    .is_some_and(|dogs| dogs.armed().is_some())
-                {
-                    return self.confirm_table_removal();
-                }
-                return self.open_sheep_dog_pane();
-            }
-            KeyPress::Edit => return self.open_sheep_dog_pane(),
-            KeyPress::Remove => return self.arm_table_removal(),
-            KeyPress::Help => {
-                self.open_keymap();
-            }
-            KeyPress::Action(_)
-            | KeyPress::Cycle
-            | KeyPress::Settings
-            | KeyPress::FilterStart
-            | KeyPress::TextChar(_)
-            | KeyPress::TextBackspace
-            | KeyPress::TextEdit(_)
-            | KeyPress::TextApply
-            | KeyPress::TextAbandon
-            | KeyPress::StepUp
-            | KeyPress::StepDown
-            | KeyPress::FoldView
-            | KeyPress::Secrets
-            | KeyPress::Reveal
-            | KeyPress::Copy
-            | KeyPress::TabPrev
-            | KeyPress::TabNext
-            | KeyPress::SecretDelete
-            | KeyPress::Collapse
-            | KeyPress::Continue
-            | KeyPress::Undo
-            | KeyPress::NextGroup
-            | KeyPress::PrevGroup
-            | KeyPress::Group(_) => {}
-            KeyPress::StreamCycle
-            | KeyPress::LevelCycle
-            | KeyPress::PageDown
-            | KeyPress::PageUp
-            | KeyPress::FollowToggle
-            | KeyPress::WrapToggle
-            | KeyPress::MatchNext
-            | KeyPress::MatchPrev
-            | KeyPress::Bleats => {}
-        }
-        Effect::None
-    }
-
-    /// Opens the per-sheep table pane on the dog under the cursor, over the
-    /// table the sheep pane already holds. Nothing is asked of the shepherd.
-    ///
-    /// Refused while the sheep pane holds unwritten edits: the new pane
-    /// replaces it, and its edits would go with it unwritten.
-    fn open_sheep_dog_pane(&mut self) -> Effect {
+    /// The ask for the dogs listing, the first time the `dogs` tab is up.
+    /// [`Effect::None`] on any other tab, and once it has been asked.
+    pub(super) fn dogs_tab_effect(&mut self) -> Effect {
         let Some(pane) = self.config_pane() else {
             return Effect::None;
         };
-        let PaneTarget::Sheep { name: sheep } = pane.target() else {
-            return Effect::None;
-        };
-        let Some(row) = pane.dogs().and_then(DogsPane::cursor_row) else {
-            return Effect::None;
-        };
-        let dog = row.name().to_owned();
-        let Some(schema) = row.entry().schema.clone() else {
-            self.notice = Some(Notice::grave(format!(
-                "{dog} publishes no sheep schema, so its table is not edited here"
-            )));
-            return Effect::None;
-        };
-        if !pane.edits().is_empty() {
-            self.notice = Some(Notice::grave(format!(
-                "{sheep} has unwritten edits: esc back to its pane to write or undo them before {dog} opens"
-            )));
+        if !pane.shows_dogs() || !pane.dogs_tab().needs_listing() {
             return Effect::None;
         }
-        let opened =
-            ConfigPane::sheep_dog(sheep.clone(), dog.clone(), &schema, pane.sheep_table(&dog));
-        self.body = Body::ConfigPane(opened);
-        self.release_text_mode_if_unowned();
+        let sheep = pane.target().name().to_owned();
+        if self.refuse_over_host() {
+            return Effect::None;
+        }
+        if let Some(pane) = self.config_pane_mut() {
+            pane.dogs_tab_mut().start_listing();
+        }
+        self.sheep_dogs_ask += 1;
+        Effect::ListSheepDogs {
+            sheep,
+            ask: self.sheep_dogs_ask,
+        }
+    }
+
+    /// One [`Msg::SheepDogNames`]: lists the dogs on the tab that asked, every
+    /// row closed.
+    ///
+    /// Guarded on the pane's own sheep the way [`Self::on_dog_section`] is
+    /// guarded on its dog, and on the ask: closing the pane moves it on, so
+    /// an answer outlives neither the pane nor a newer ask.
+    pub(super) fn on_sheep_dog_names(
+        &mut self,
+        sheep: &str,
+        ask: u64,
+        dogs: Vec<ListedDog>,
+    ) -> Effect {
+        let latest = ask == self.sheep_dogs_ask;
+        if let Some(pane) = self.config_pane_mut()
+            && latest
+            && matches!(pane.target(), PaneTarget::Sheep { name } if name == sheep)
+        {
+            pane.list_dogs(dogs);
+        }
         Effect::None
     }
 
-    /// `d` on the sub-screen: arms the removal of the table under the
-    /// cursor. A row with no table arms nothing and says nothing; a closed
-    /// gate refuses in its own words.
-    fn arm_table_removal(&mut self) -> Effect {
+    /// One [`Msg::SheepDog`]: the dog's schema has come, so its row, if it
+    /// was waiting, opens. A dog that publishes no sheep schema opens
+    /// nothing and says so.
+    pub(super) fn on_sheep_dog(&mut self, sheep: &str, entry: SheepDogEntry) -> Effect {
+        let Some(pane) = self.config_pane_mut() else {
+            return Effect::None;
+        };
+        if !matches!(pane.target(), PaneTarget::Sheep { name } if name == sheep) {
+            return Effect::None;
+        }
+        if let Some(DogToggle::NoSchema(dog)) = pane.answer_dog(entry) {
+            self.notice = Some(no_schema_notice(&dog));
+        }
+        Effect::None
+    }
+
+    /// The `dogs` tab's own keys, ahead of the pane's: an armed removal, a
+    /// dog's row, and a key landing inside an open table. [`None`] for every
+    /// key the pane's keymap answers the same way here as on any tab:
+    /// movement, `Escape`, `r`, the tab keys.
+    ///
+    /// `d` arms a removal, which `Enter` confirms and every other key but a
+    /// quit cancels, the secrets pane's rule. An armed removal eats the first
+    /// `Escape`, as it does there.
+    pub(super) fn on_dogs_tab_key(&mut self, key: KeyPress) -> Option<Effect> {
+        let pane = self.config_pane()?;
+        if !pane.shows_dogs() {
+            return None;
+        }
+        let armed = pane.dogs_tab().armed().is_some();
+        if armed && !matches!(key, KeyPress::Confirm | KeyPress::Quit) {
+            self.config_pane_mut()?.dogs_tab_mut().disarm();
+            if key == KeyPress::Escape {
+                return Some(Effect::None);
+            }
+        }
+        match self.config_pane()?.cursor()? {
+            PaneRow::Dog(dog) => self.on_dog_row_key(key, dog),
+            PaneRow::Under { .. } if lands_in_table(key) => Some(
+                self.in_table(|app| app.on_pane_key(key))
+                    .unwrap_or(Effect::None),
+            ),
+            _ => None,
+        }
+    }
+
+    /// A key with the cursor on `dog`'s row.
+    fn on_dog_row_key(&mut self, key: KeyPress, dog: usize) -> Option<Effect> {
+        let armed = self.config_pane()?.dogs_tab().armed().is_some();
+        let effect = match key {
+            KeyPress::Confirm if armed => self.confirm_table_removal(),
+            KeyPress::Confirm | KeyPress::Edit => self.toggle_dog_row(dog, None),
+            KeyPress::TabNext => self.toggle_dog_row(dog, Some(true)),
+            KeyPress::TabPrev => self.toggle_dog_row(dog, Some(false)),
+            KeyPress::Remove => self.arm_table_removal(dog),
+            // `space` files nothing on a row that holds no value.
+            KeyPress::Cycle => Effect::None,
+            _ => return None,
+        };
+        Some(effect)
+    }
+
+    /// Opens the row at `dog` if it is closed, else closes it; with `want`
+    /// set, only toward that state. An adopted dog's first opening sends its
+    /// probe.
+    fn toggle_dog_row(&mut self, dog: usize, want: Option<bool>) -> Effect {
+        let Some(pane) = self.config_pane() else {
+            return Effect::None;
+        };
+        let Some(row) = pane.dogs_tab().rows().get(dog) else {
+            return Effect::None;
+        };
+        if want.is_some_and(|open| open == row.is_open()) {
+            return Effect::None;
+        }
+        let probes = !row.is_open() && row.needs_probe();
+        let sheep = pane.target().name().to_owned();
+        // An adopted dog's binary is on the shepherd's machine.
+        if probes && self.refuse_over_host() {
+            return Effect::None;
+        }
+        let Some(pane) = self.config_pane_mut() else {
+            return Effect::None;
+        };
+        match pane.toggle_dog(dog) {
+            DogToggle::Ask { dog, adopted_path } => Effect::LoadSheepDog {
+                sheep,
+                dog,
+                adopted_path,
+            },
+            DogToggle::NoSchema(dog) => {
+                self.notice = Some(no_schema_notice(&dog));
+                Effect::None
+            }
+            DogToggle::Closed | DogToggle::Opened | DogToggle::Waiting => Effect::None,
+        }
+    }
+
+    /// `d` on `dog`'s row: arms the removal of its table. A row with no
+    /// table arms nothing and says nothing; a closed gate refuses in its own
+    /// words.
+    fn arm_table_removal(&mut self, dog: usize) -> Effect {
         let has_table = self
             .config_pane()
-            .and_then(ConfigPane::dogs)
-            .and_then(DogsPane::cursor_row)
-            .is_some_and(|row| row.state() != DogTableState::Unset);
+            .and_then(|pane| pane.dogs_tab().rows().get(dog))
+            .is_some_and(DogRow::has_table);
         if !has_table || self.authorize_write().is_none() {
             return Effect::None;
         }
-        if let Some(dogs) = self.dogs_mut() {
-            dogs.arm_removal();
+        if let Some(pane) = self.config_pane_mut() {
+            pane.dogs_tab_mut().arm_removal(dog);
         }
         Effect::None
     }
@@ -205,13 +178,11 @@ impl App {
         let PaneTarget::Sheep { name } = pane.target().clone() else {
             return Effect::None;
         };
-        let Some(dogs) = pane.dogs_mut() else {
+        let tab = pane.dogs_tab_mut();
+        let Some(dog) = tab.armed().map(str::to_owned) else {
             return Effect::None;
         };
-        let Some(dog) = dogs.armed().map(str::to_owned) else {
-            return Effect::None;
-        };
-        dogs.disarm();
+        tab.disarm();
         let Some(authority) = self.authorize_write() else {
             return Effect::None;
         };
@@ -225,39 +196,36 @@ impl App {
         })
     }
 
-    /// A sheep's re-read landing under one of its dogs' table panes: the
-    /// pane takes that table's current value in place, cursor, open tables
-    /// and edits kept. `false`, and nothing touched, when no such pane is up.
-    pub(super) fn refresh_sheep_dog_pane(&mut self, view: &SheepConfigView) -> bool {
-        let Some(pane) = self.config_pane_mut() else {
-            return false;
-        };
-        let PaneTarget::SheepDog { sheep, dog, .. } = pane.target() else {
-            return false;
-        };
-        if *sheep != view.name {
-            return false;
-        }
-        let table = view
-            .config
-            .dogs
-            .get(dog)
-            .map(|table| table.as_map().clone())
-            .unwrap_or_default();
-        pane.adopt_table(table);
-        self.release_text_mode_if_unowned();
-        true
+    /// Runs `run` with the open table the cursor is inside seated as the
+    /// body, then puts it back and moves the sheep pane's cursor to the row
+    /// the table's own is on. [`None`] when the cursor is not in a table.
+    pub(super) fn in_table<R>(&mut self, run: impl FnOnce(&mut Self) -> R) -> Option<R> {
+        let dog = self.config_pane()?.focused_dog()?;
+        self.in_dog_table(dog, run)
     }
 
-    /// The open sub-screen, for the keys that move or arm on it.
-    fn dogs_mut(&mut self) -> Option<&mut DogsPane> {
-        self.config_pane_mut()?.dogs_mut()
+    /// [`Self::in_table`] for the table of the dog at `dog`.
+    pub(super) fn in_dog_table<R>(
+        &mut self,
+        dog: usize,
+        run: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        let table = self.config_pane_mut()?.dogs_tab_mut().take_table(dog)?;
+        let sheep = core::mem::replace(&mut self.body, Body::ConfigPane(*table));
+        let out = run(self);
+        if let Body::ConfigPane(table) = core::mem::replace(&mut self.body, sheep)
+            && let Some(pane) = self.config_pane_mut()
+        {
+            pane.dogs_tab_mut().seat_table(dog, Box::new(table));
+            pane.pull_focus(dog);
+        }
+        Some(out)
     }
 
     /// One `Request::SetSheepDogSettings` reply, for a removal or for a
-    /// table pane's close.
+    /// table's write on close.
     ///
-    /// A success re-reads the sheep, so an open sub-screen shows the table
+    /// A success re-reads the sheep, so an open tab shows the table
     /// gone; [`Self::on_sheep_config`] drops the answer when no pane is
     /// waiting for it. Neither arm can print a value: the reply carries
     /// none, and `removed` comes off the request.
@@ -293,6 +261,32 @@ impl App {
     }
 }
 
+/// Whether a key with the cursor inside an open table is the table's to
+/// answer. Movement, `Escape`, `r`, the help overlay and the tab keys are the
+/// sheep pane's, because the table is only part of what they walk.
+fn lands_in_table(key: KeyPress) -> bool {
+    !matches!(
+        key,
+        KeyPress::Quit
+            | KeyPress::Escape
+            | KeyPress::Refresh
+            | KeyPress::Help
+            | KeyPress::SelectUp
+            | KeyPress::SelectDown
+            | KeyPress::SelectFirst
+            | KeyPress::SelectLast
+            | KeyPress::NextGroup
+            | KeyPress::PrevGroup
+            | KeyPress::Group(_)
+    )
+}
+
+fn no_schema_notice(dog: &str) -> Notice {
+    Notice::grave(format!(
+        "{dog} publishes no sheep schema, so its table is not edited here"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -300,123 +294,265 @@ mod tests {
 
     use super::*;
     use crate::lookout::app::testing::*;
+    use crate::lookout::pane::DogTableState;
 
-    /// `d` there would file `dogs = null`, and the close would then drop
-    /// every table the sheep carries in one write.
-    #[test]
-    fn d_or_space_on_the_dogs_row_files_nothing_and_points_at_enter() {
-        for key in [KeyPress::Remove, KeyPress::Cycle] {
-            let mut app = app_in_web(Control::Allowed);
-            assert_eq!(app.update(Msg::Key(key)), Effect::None);
-            assert!(app.config_pane().unwrap().edits().is_empty(), "{key:?}");
-            assert_eq!(
-                app.notice().expect("refused").to_string(),
-                "dogs opens its own screen: press enter"
-            );
+    fn dog_names(app: &App) -> Vec<&str> {
+        app.config_pane()
+            .expect("a pane")
+            .dogs_tab()
+            .rows()
+            .iter()
+            .map(DogRow::name)
+            .collect()
+    }
+
+    fn row<'a>(app: &'a App, dog: &str) -> &'a DogRow {
+        app.config_pane()
+            .expect("a pane")
+            .dogs_tab()
+            .rows()
+            .iter()
+            .find(|row| row.name() == dog)
+            .unwrap_or_else(|| panic!("{dog} is not listed"))
+    }
+
+    fn cursor_dog(app: &App) -> Option<&str> {
+        let pane = app.config_pane()?;
+        match pane.cursor()? {
+            PaneRow::Dog(index) => pane.dogs_tab().rows().get(index).map(DogRow::name),
+            _ => None,
         }
     }
 
     #[test]
-    fn enter_or_e_on_the_dogs_row_probes_and_the_answer_opens_the_list() {
-        for key in [KeyPress::Confirm, KeyPress::Edit] {
-            let mut app = app_in_web(Control::ReadOnly);
-            let ask = ask_dogs(&mut app, key);
-            assert!(
-                app.config_pane().unwrap().dogs().is_none(),
-                "not on the key"
-            );
-            let waiting = app.notice().expect("the probe's wait is said");
-            assert!(!waiting.grave, "{waiting:?}");
-            answer(&mut app, "web", ask);
-            let names: Vec<&str> = dogs(&app).rows().iter().map(|row| row.name()).collect();
-            assert_eq!(names, ["deploy", "jobs", "legacy"], "{key:?}");
-            assert!(app.notice().is_none(), "the list replaces the wait");
-        }
-    }
-
-    #[test]
-    fn an_answer_for_a_sheep_the_pane_has_left_opens_nothing() {
+    fn the_dogs_tab_opens_with_every_dog_collapsed_and_no_probe_sent() {
         let mut app = app_in_web(Control::Allowed);
-        let ask = ask_dogs(&mut app, KeyPress::Confirm);
-        answer(&mut app, "api", ask);
-        assert!(app.config_pane().unwrap().dogs().is_none(), "another sheep");
-
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
-        answer(&mut app, "web", ask);
+        let ask = ask_dogs(&mut app);
+        let effect = app.update(Msg::SheepDogNames {
+            sheep: "web".into(),
+            ask,
+            dogs: listing(),
+        });
+        assert_eq!(effect, Effect::None, "the listing probes no dog");
+        assert_eq!(dog_names(&app), ["deploy", "jobs", "legacy"]);
+        for dog in ["deploy", "jobs", "legacy"] {
+            assert!(!row(&app, dog).is_open(), "{dog} starts collapsed");
+        }
         assert!(
-            app.config_pane().is_none(),
-            "a late answer re-opens nothing"
+            app.config_pane()
+                .expect("a pane")
+                .rows()
+                .iter()
+                .all(|row| matches!(row, PaneRow::Dog(_))),
+            "no table is drawn yet"
         );
-        assert!(app.notice().is_none(), "silently: nothing went wrong");
     }
 
     #[test]
-    fn j_and_k_move_and_esc_closes_only_the_sub_screen() {
-        let mut app = app_in_dogs(Control::Allowed);
-        assert_eq!(
-            dogs(&app).cursor_row().map(|row| row.name()),
-            Some("deploy")
-        );
-        let _ = app.update(Msg::Key(KeyPress::SelectDown));
-        assert_eq!(dogs(&app).cursor_row().map(|row| row.name()), Some("jobs"));
-        let _ = app.update(Msg::Key(KeyPress::SelectUp));
-        assert_eq!(
-            dogs(&app).cursor_row().map(|row| row.name()),
-            Some("deploy")
-        );
-        assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
-        let pane = app.config_pane().expect("the sheep pane stays");
-        assert!(pane.dogs().is_none());
-        assert_eq!(pane.target().name(), "web");
-    }
-
-    #[test]
-    fn enter_on_a_dog_with_a_schema_opens_its_table_without_asking_again() {
+    fn opening_a_dog_sends_one_probe_and_its_table_draws_inline() {
         let mut app = app_in_dogs(Control::Allowed);
         cursor_on(&mut app, "jobs");
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
-        let pane = app.config_pane().expect("a pane");
         assert_eq!(
-            pane.target(),
-            &PaneTarget::SheepDog {
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::LoadSheepDog {
                 sheep: "web".into(),
                 dog: "jobs".into(),
+                adopted_path: Some("/opt/jobs".into()),
             }
         );
-        assert_eq!(pane.value("concurrency"), "2");
+        assert_eq!(
+            app.update(Msg::SheepDog {
+                sheep: "web".into(),
+                entry: jobs_entry(),
+            }),
+            Effect::None
+        );
+        assert!(row(&app, "jobs").is_open());
+        let pane = app.config_pane().expect("a pane");
+        assert!(
+            pane.rows()
+                .iter()
+                .any(|row| matches!(row, PaneRow::Under { .. })),
+            "the table's rows sit under the dog's"
+        );
+        assert_eq!(
+            row(&app, "jobs")
+                .table()
+                .expect("built")
+                .value("concurrency"),
+            "2"
+        );
+
+        // Closed and opened again, the answer is kept: no second probe.
+        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+        assert!(!row(&app, "jobs").is_open());
+        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+        assert!(row(&app, "jobs").is_open());
+    }
+
+    /// `SetSheepDogSettings` replaces the table, so the one write carries
+    /// the secret the operator never touched exactly as it was.
+    #[test]
+    fn an_edit_inside_an_inline_table_writes_the_whole_table_once() {
+        let mut app = app_in_jobs_table();
+        type_concurrency(&mut app, "4");
+        let effect = close_jobs_table(&mut app);
+        assert!(!format!("{effect:?}").contains(TOKEN), "{effect:?}");
+        let batch = wire_batch(effect);
+        let [
+            Sent::SetSheepDogTable {
+                name,
+                dog,
+                table: Some(table),
+                ..
+            },
+        ] = batch.as_slice()
+        else {
+            panic!("one table write: {batch:?}");
+        };
+        assert_eq!((name.as_str(), dog.as_str()), ("web", "jobs"));
+        assert_eq!(
+            serde_json::Value::Object(table.as_map().clone()),
+            json!({ "concurrency": 4, "token": TOKEN })
+        );
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "esc lands on the dashboard"
+        );
     }
 
     #[test]
-    fn a_read_only_dog_opens_nothing_and_says_why() {
+    fn closing_with_a_table_open_and_no_edits_sends_nothing() {
+        let mut app = app_in_jobs_table();
+        assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
+        assert!(matches!(app.body(), Body::FlockTable));
+    }
+
+    #[test]
+    fn a_table_closed_after_an_edit_still_writes_it() {
+        let mut app = app_in_jobs_table();
+        type_concurrency(&mut app, "4");
+        cursor_on(&mut app, "jobs");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(!row(&app, "jobs").is_open());
+        let batch = wire_batch(close_jobs_table(&mut app));
+        let [Sent::SetSheepDogTable { dog, .. }] = batch.as_slice() else {
+            panic!("one table write: {batch:?}");
+        };
+        assert_eq!(dog, "jobs");
+    }
+
+    #[test]
+    fn a_landed_table_write_says_so_and_names_no_value() {
+        let mut app = app_in_jobs_table();
+        type_concurrency(&mut app, "4");
+        let mut batch = wire_batch(close_jobs_table(&mut app));
+        let effect = app.update(Msg::Replied {
+            sent: batch.remove(0),
+            result: Ok(Response::SheepDogSettingsSet {
+                name: "web".into(),
+                dog: "jobs".into(),
+            }),
+        });
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig { name: "web".into() })
+        );
+        let notice = app.notice().expect("reported").to_string();
+        assert_eq!(notice, "web: its jobs table is written, and jobs is told");
+    }
+
+    #[test]
+    fn a_dog_with_no_sheep_schema_opens_nothing_and_says_why() {
         let mut app = app_in_dogs(Control::Allowed);
         cursor_on(&mut app, "legacy");
         assert_eq!(app.update(Msg::Key(KeyPress::Edit)), Effect::None);
-        assert!(app.config_pane().unwrap().dogs().is_some(), "still listed");
+        assert!(!row(&app, "legacy").is_open());
         let notice = app.notice().expect("a refusal").to_string();
         assert!(notice.contains("no sheep schema"), "{notice}");
         assert!(!notice.contains(PASSWORD), "{notice}");
     }
 
     #[test]
-    fn enter_on_a_dog_refuses_while_the_sheep_pane_holds_edits() {
-        let mut app = app_in_web(Control::Allowed);
-        pane_to(&mut app, "autorestart");
-        let _ = app.update(Msg::Key(KeyPress::Cycle));
-        assert_eq!(app.config_pane().unwrap().edits().len(), 1);
-        pane_to(&mut app, "dogs");
-        let ask = ask_dogs(&mut app, KeyPress::Confirm);
-        answer(&mut app, "web", ask);
-        cursor_on(&mut app, "jobs");
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
-        let pane = app.config_pane().expect("the sheep pane stays");
-        assert!(matches!(pane.target(), PaneTarget::Sheep { .. }));
-        assert_eq!(pane.edits().len(), 1, "the edit is still filed");
+    fn a_probe_that_finds_no_schema_leaves_the_row_closed_and_says_why() {
+        let mut app = app_in_dogs(Control::Allowed);
+        cursor_on(&mut app, "deploy");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::SheepDog {
+            sheep: "web".into(),
+            entry: SheepDogEntry {
+                name: "deploy".into(),
+                adopted_path: Some("/opt/deploy".into()),
+                schema: None,
+            },
+        });
+        assert!(!row(&app, "deploy").is_open());
         let notice = app.notice().expect("a refusal").to_string();
-        assert_eq!(
-            notice,
-            "web has unwritten edits: esc back to its pane to write or undo them before jobs opens"
+        assert!(
+            notice.contains("deploy publishes no sheep schema"),
+            "{notice}"
         );
+    }
+
+    #[test]
+    fn a_probe_answer_for_another_sheep_opens_nothing() {
+        let mut app = app_in_dogs(Control::Allowed);
+        cursor_on(&mut app, "jobs");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::SheepDog {
+            sheep: "api".into(),
+            entry: jobs_entry(),
+        });
+        assert!(row(&app, "jobs").table().is_none());
+    }
+
+    #[test]
+    fn the_dogs_tab_lists_once_per_pane() {
+        let mut app = app_in_web(Control::Allowed);
+        let _ = ask_dogs(&mut app);
+        let _ = app.update(Msg::Key(KeyPress::Group(1)));
+        assert_eq!(app.update(Msg::Key(KeyPress::Group(9))), Effect::None);
+    }
+
+    #[test]
+    fn an_answer_for_a_sheep_the_pane_has_left_lists_nothing() {
+        let mut app = app_in_web(Control::Allowed);
+        let ask = ask_dogs(&mut app);
+        answer(&mut app, "api", ask, listing());
+        assert!(!app.config_pane().unwrap().dogs_tab().is_listed());
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(app.config_pane().is_none());
+        answer(&mut app, "web", ask, listing());
+        assert!(app.config_pane().is_none(), "a late answer opens nothing");
+        assert!(app.notice().is_none(), "silently: nothing went wrong");
+    }
+
+    #[test]
+    fn an_answer_for_a_closed_pane_lists_nothing_on_its_reopening() {
+        let mut app = app_in_web(Control::Allowed);
+        let ask = ask_dogs(&mut app);
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let _ = app.update(Msg::Replied {
+            sent: Sent::SheepConfig { name: "web".into() },
+            result: Ok(Response::SheepConfig(Box::new(web_view(true)))),
+        });
+        assert!(app.config_pane().is_some(), "reopened");
+        answer(&mut app, "web", ask, listing());
+        assert!(!app.config_pane().unwrap().dogs_tab().is_listed());
+    }
+
+    /// `d` there would file `dogs = null`, and the close would then drop
+    /// every table the sheep carries in one write; `space` files nothing on
+    /// a row that holds no value.
+    #[test]
+    fn space_on_a_dog_row_files_nothing() {
+        let mut app = app_in_dogs(Control::Allowed);
+        cursor_on(&mut app, "jobs");
+        assert_eq!(app.update(Msg::Key(KeyPress::Cycle)), Effect::None);
+        assert!(app.config_pane().unwrap().edits().is_empty());
+        assert!(app.notice().is_none(), "{:?}", app.notice());
     }
 
     #[test]
@@ -424,7 +560,7 @@ mod tests {
         let mut app = app_in_dogs(Control::Allowed);
         cursor_on(&mut app, "jobs");
         assert_eq!(app.update(Msg::Key(KeyPress::Remove)), Effect::None);
-        assert_eq!(dogs(&app).armed(), Some("jobs"));
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), Some("jobs"));
         let sent = app.update(Msg::Key(KeyPress::Confirm));
         let Effect::Send(Sent::SetSheepDogTable {
             ref name,
@@ -444,7 +580,7 @@ mod tests {
                 table: None,
             }
         );
-        assert_eq!(dogs(&app).armed(), None);
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), None);
     }
 
     #[test]
@@ -453,17 +589,17 @@ mod tests {
         cursor_on(&mut app, "jobs");
         let _ = app.update(Msg::Key(KeyPress::Remove));
         let _ = app.update(Msg::Key(KeyPress::SelectDown));
-        assert_eq!(dogs(&app).armed(), None);
-        assert_eq!(
-            dogs(&app).cursor_row().map(|row| row.name()),
-            Some("legacy")
-        );
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), None);
+        assert_eq!(cursor_dog(&app), Some("legacy"));
 
         let _ = app.update(Msg::Key(KeyPress::Remove));
-        assert_eq!(dogs(&app).armed(), Some("legacy"));
+        assert_eq!(
+            app.config_pane().unwrap().dogs_tab().armed(),
+            Some("legacy")
+        );
         let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert_eq!(dogs(&app).armed(), None);
-        assert!(app.config_pane().unwrap().dogs().is_some(), "still up");
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), None);
+        assert!(app.config_pane().is_some(), "the pane stays up");
     }
 
     #[test]
@@ -471,9 +607,8 @@ mod tests {
         let mut app = app_in_dogs(Control::Allowed);
         cursor_on(&mut app, "deploy");
         let _ = app.update(Msg::Key(KeyPress::Remove));
-        assert_eq!(dogs(&app).armed(), None);
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), None);
         assert!(app.notice().is_none(), "{:?}", app.notice());
-        assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
     }
 
     #[test]
@@ -481,7 +616,7 @@ mod tests {
         let mut app = app_in_dogs(Control::ReadOnly);
         cursor_on(&mut app, "jobs");
         assert_eq!(app.update(Msg::Key(KeyPress::Remove)), Effect::None);
-        assert_eq!(dogs(&app).armed(), None);
+        assert_eq!(app.config_pane().unwrap().dogs_tab().armed(), None);
         assert_eq!(
             app.notice().map(ToString::to_string),
             Some(READ_ONLY_REFUSAL.to_string())
@@ -489,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn a_landed_removal_notices_and_the_re_read_refreshes_the_list() {
+    fn a_landed_removal_notices_and_the_re_read_refreshes_the_tab() {
         let mut app = app_in_dogs(Control::Allowed);
         cursor_on(&mut app, "jobs");
         let _ = app.update(Msg::Key(KeyPress::Remove));
@@ -514,13 +649,8 @@ mod tests {
             sent: Sent::SheepConfig { name: "web".into() },
             result: Ok(Response::SheepConfig(Box::new(web_view(false)))),
         });
-        let jobs = dogs(&app)
-            .rows()
-            .iter()
-            .find(|row| row.name() == "jobs")
-            .expect("jobs still has a schema");
-        assert_eq!(jobs.state(), DogTableState::Unset);
-        assert_eq!(dogs(&app).cursor_row().map(|row| row.name()), Some("jobs"));
+        assert_eq!(row(&app, "jobs").state(), DogTableState::Unset);
+        assert_eq!(cursor_dog(&app), Some("jobs"));
     }
 
     #[test]
@@ -554,89 +684,39 @@ mod tests {
         assert_eq!(notice, "web: its jobs table was not sent");
     }
 
-    /// `Msg` derives `Debug`, and a probe answer carries each dog's schema,
-    /// defaults included (IR-41).
+    /// `Msg` derives `Debug`, and a listing or a probe answer carries each
+    /// dog's schema, defaults included (IR-41).
     #[test]
-    fn a_probe_answers_debug_names_no_schema() {
-        let msg = Msg::SheepDogs {
+    fn the_listing_and_probe_answers_debug_name_no_schema() {
+        let entry = SheepDogEntry {
+            name: "jobs".into(),
+            adopted_path: None,
+            schema: Some(json!({ "default": TOKEN })),
+        };
+        let listed = Msg::SheepDogNames {
             sheep: "web".into(),
             ask: 1,
-            dogs: vec![SheepDogEntry {
-                name: "jobs".into(),
-                adopted_path: None,
-                schema: Some(json!({ "default": TOKEN })),
+            dogs: vec![ListedDog {
+                entry: entry.clone(),
+                asked: true,
             }],
         };
-        assert!(!format!("{msg:?}").contains(TOKEN), "{msg:?}");
-    }
-
-    /// `SetSheepDogSettings` replaces the table, so the one write carries
-    /// the secret the operator never touched exactly as it was.
-    #[test]
-    fn closing_a_table_pane_sends_the_whole_table_once_and_lands_on_the_dashboard() {
-        let mut app = app_in_jobs_table();
-        type_concurrency(&mut app, "4");
-        let effect = close_jobs_table(&mut app);
-        assert!(!format!("{effect:?}").contains(TOKEN), "{effect:?}");
-        let batch = wire_batch(effect);
-        let [
-            Sent::SetSheepDogTable {
-                name,
-                dog,
-                table: Some(table),
-                ..
-            },
-        ] = batch.as_slice()
-        else {
-            panic!("one table write: {batch:?}");
+        assert!(!format!("{listed:?}").contains(TOKEN), "{listed:?}");
+        let probed = Msg::SheepDog {
+            sheep: "web".into(),
+            entry,
         };
-        assert_eq!((name.as_str(), dog.as_str()), ("web", "jobs"));
-        assert_eq!(
-            serde_json::Value::Object(table.as_map().clone()),
-            json!({ "concurrency": 4, "token": TOKEN })
-        );
-        assert!(
-            matches!(app.body(), Body::FlockTable),
-            "esc lands on the dashboard"
-        );
-    }
-
-    #[test]
-    fn closing_a_table_pane_with_no_edits_sends_nothing() {
-        let mut app = app_in_jobs_table();
-        assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
-        assert!(matches!(app.body(), Body::FlockTable));
-    }
-
-    #[test]
-    fn a_landed_table_write_says_so_and_names_no_value() {
-        let mut app = app_in_jobs_table();
-        type_concurrency(&mut app, "4");
-        let mut batch = wire_batch(close_jobs_table(&mut app));
-        let effect = app.update(Msg::Replied {
-            sent: batch.remove(0),
-            result: Ok(Response::SheepDogSettingsSet {
-                name: "web".into(),
-                dog: "jobs".into(),
-            }),
-        });
-        assert_eq!(
-            effect,
-            Effect::Send(Sent::SheepConfig { name: "web".into() })
-        );
-        let notice = app.notice().expect("reported").to_string();
-        assert_eq!(notice, "web: its jobs table is written, and jobs is told");
+        assert!(!format!("{probed:?}").contains(TOKEN), "{probed:?}");
     }
 
     /// The sheep is the table's owner, so `r` re-reads the sheep and the
-    /// pane takes its table from the answer, cursor and edits kept.
+    /// open table takes its values from the answer, cursor and edits kept.
     #[test]
-    fn r_re_reads_the_sheep_and_rebuilds_the_table_keeping_the_cursor() {
+    fn r_re_reads_the_sheep_and_rebuilds_the_open_table_keeping_the_cursor() {
         let mut app = app_in_jobs_table();
         type_concurrency(&mut app, "4");
         pane_to(&mut app, "token");
         let cursor = app.config_pane().unwrap().view().cursor();
-        assert_ne!(cursor, 0, "a cursor a reset would move");
         assert_eq!(
             app.update(Msg::Key(KeyPress::Refresh)),
             Effect::Send(Sent::SheepConfig { name: "web".into() })
@@ -651,22 +731,72 @@ mod tests {
             sent: Sent::SheepConfig { name: "web".into() },
             result: Ok(Response::SheepConfig(Box::new(view))),
         });
-        let pane = app.config_pane().expect("still open");
-        assert!(
-            matches!(pane.target(), PaneTarget::SheepDog { .. }),
-            "{pane:?}"
+        assert!(row(&app, "jobs").is_open());
+        assert_eq!(
+            row(&app, "jobs")
+                .table()
+                .expect("built")
+                .value("concurrency"),
+            "9"
         );
-        assert_eq!(pane.value("concurrency"), "9");
-        assert_eq!(pane.view().cursor(), cursor);
-        assert_eq!(pane.edits().len(), 1, "the operator's edit survives");
+        assert_eq!(app.config_pane().unwrap().view().cursor(), cursor);
+        assert_eq!(table_edits(&app), 1, "the operator's edit survives");
     }
 
-    /// Called directly: `on_sheep_config` already drops a reply for a sheep
-    /// nobody asked about, so through `Msg` this guard is never the one
-    /// that holds. Without it, closing the pane would write `api`'s table
-    /// to `web`.
+    /// A table another writer added above `jobs` shifts every row. The
+    /// highlighted row and the row the table acts on must stay one row.
     #[test]
-    fn a_re_read_of_another_sheep_leaves_the_table_pane_alone() {
+    fn a_re_read_that_shifts_the_rows_keeps_the_cursor_on_its_field() {
+        let mut app = app_in_jobs_table();
+        pane_to(&mut app, "token");
+        let _ = app.update(Msg::Key(KeyPress::Refresh));
+        let mut view = web_view(true);
+        let alpha = json!({ "on": true });
+        view.config.dogs.insert(
+            "alpha".into(),
+            alpha.as_object().cloned().expect("a table").into(),
+        );
+        let _ = app.update(Msg::Replied {
+            sent: Sent::SheepConfig { name: "web".into() },
+            result: Ok(Response::SheepConfig(Box::new(view))),
+        });
+        assert_eq!(dog_names(&app)[0], "alpha", "the new table sorts first");
+        let pane = app.config_pane().expect("a pane");
+        let Some(PaneRow::Under { dog, at }) = pane.cursor() else {
+            panic!("the cursor stays inside jobs's table: {:?}", pane.cursor());
+        };
+        let jobs = &pane.dogs_tab().rows()[dog];
+        assert_eq!(jobs.name(), "jobs");
+        let table = jobs.table().expect("built");
+        assert_eq!(table.view().cursor(), at, "the table acts on the shown row");
+        assert_eq!(
+            table.cursor_field().map(|field| field.key.as_str()),
+            Some("token")
+        );
+    }
+
+    /// The probe answer lands after the cursor moved to another dog; the
+    /// table it draws shifts the rows below it.
+    #[test]
+    fn a_probe_answer_after_the_cursor_moved_keeps_it_on_its_dog() {
+        let mut app = app_in_dogs(Control::Allowed);
+        cursor_on(&mut app, "jobs");
+        assert!(matches!(
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::LoadSheepDog { .. }
+        ));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(cursor_dog(&app), Some("legacy"));
+        let _ = app.update(Msg::SheepDog {
+            sheep: "web".into(),
+            entry: jobs_entry(),
+        });
+        assert!(row(&app, "jobs").is_open());
+        assert_eq!(cursor_dog(&app), Some("legacy"));
+    }
+
+    #[test]
+    fn a_re_read_of_another_sheep_leaves_the_open_table_alone() {
         let mut app = app_in_jobs_table();
         let mut view = web_view(true);
         view.name = "api".into();
@@ -675,68 +805,17 @@ mod tests {
             "jobs".into(),
             other.as_object().cloned().expect("a table").into(),
         );
-        assert!(!app.refresh_sheep_dog_pane(&view));
-        assert_eq!(app.config_pane().unwrap().value("concurrency"), "2");
-    }
-
-    /// An answer opens nothing over an editor opened while the probe ran,
-    /// and rebuilds nothing under a list already up: either would take the
-    /// keys from what holds them.
-    #[test]
-    fn an_answer_over_an_editor_or_an_open_list_opens_nothing() {
-        let mut app = app_in_web(Control::Allowed);
-        let ask = ask_dogs(&mut app, KeyPress::Confirm);
-        pane_to(&mut app, "cwd");
-        let _ = app.update(Msg::Key(KeyPress::Edit));
-        assert!(app.config_pane().unwrap().typing().is_some(), "an editor");
-        answer(&mut app, "web", ask);
-        let pane = app.config_pane().unwrap();
-        assert!(pane.dogs().is_none() && pane.typing().is_some(), "{pane:?}");
-
-        let mut app = app_in_web(Control::Allowed);
-        let ask = ask_dogs(&mut app, KeyPress::Confirm);
-        answer(&mut app, "web", ask);
-        cursor_on(&mut app, "legacy");
-        answer(&mut app, "web", ask);
-        assert_eq!(
-            dogs(&app).cursor_row().map(|row| row.name()),
-            Some("legacy")
-        );
-    }
-
-    /// Two quick Enters ask twice, and either answer can land first. Only
-    /// the second ask's may open the list: the first, landing after the
-    /// list closed again, would reopen it with the older schemas.
-    #[test]
-    fn only_the_newest_asks_answer_opens_the_list() {
-        let mut app = app_in_web(Control::Allowed);
-        let first = ask_dogs(&mut app, KeyPress::Confirm);
-        let second = ask_dogs(&mut app, KeyPress::Confirm);
-        answer(&mut app, "web", first);
-        assert!(app.config_pane().unwrap().dogs().is_none(), "superseded");
-        answer(&mut app, "web", second);
-        assert!(app.config_pane().unwrap().dogs().is_some(), "the newest");
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        answer(&mut app, "web", first);
-        assert!(app.config_pane().unwrap().dogs().is_none(), "late");
-    }
-
-    /// A probe outlives its pane: Enter, close, reopen the same sheep, and
-    /// the first pane's answer lands on the second, which asked nothing.
-    #[test]
-    fn an_answer_for_a_closed_pane_opens_nothing_on_its_reopening() {
-        let mut app = app_in_web(Control::Allowed);
-        let ask = ask_dogs(&mut app, KeyPress::Confirm);
-        let _ = app.update(Msg::Key(KeyPress::Escape));
-        assert!(app.config_pane().is_none());
-        let _ = app.update(Msg::Key(KeyPress::Edit));
         let _ = app.update(Msg::Replied {
-            sent: Sent::SheepConfig { name: "web".into() },
-            result: Ok(Response::SheepConfig(Box::new(web_view(true)))),
+            sent: Sent::SheepConfig { name: "api".into() },
+            result: Ok(Response::SheepConfig(Box::new(view))),
         });
-        assert!(app.config_pane().is_some(), "reopened");
-        answer(&mut app, "web", ask);
-        assert!(app.config_pane().unwrap().dogs().is_none());
+        assert_eq!(
+            row(&app, "jobs")
+                .table()
+                .expect("built")
+                .value("concurrency"),
+            "2"
+        );
     }
 
     #[test]

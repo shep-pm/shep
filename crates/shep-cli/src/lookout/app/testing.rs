@@ -237,6 +237,7 @@ pub(super) fn web_view(with_jobs: bool) -> SheepConfigView {
     SheepConfigView::new(config, Vec::new(), Vec::new())
 }
 
+/// `web`'s pane, open on its `process` tab.
 pub(super) fn app_in_web(control: Control) -> App {
     let mut app = fixtures::with_selection(
         ProcessInfo::builder(9, "web", ProcStatus::Online)
@@ -249,7 +250,6 @@ pub(super) fn app_in_web(control: Control) -> App {
         sent: Sent::SheepConfig { name: "web".into() },
         result: Ok(Response::SheepConfig(Box::new(web_view(true)))),
     });
-    pane_to(&mut app, "dogs");
     app
 }
 
@@ -263,77 +263,106 @@ pub(super) fn jobs_schema() -> serde_json::Value {
     })
 }
 
-pub(super) fn probe() -> Vec<SheepDogEntry> {
-    vec![
-        SheepDogEntry {
-            name: "jobs".into(),
-            adopted_path: Some("/opt/jobs".into()),
-            schema: Some(jobs_schema()),
-        },
-        SheepDogEntry {
-            name: "deploy".into(),
-            adopted_path: Some("/opt/deploy".into()),
-            schema: Some(json!({ "type": "object", "properties": {} })),
-        },
-        SheepDogEntry {
-            name: "legacy".into(),
-            adopted_path: None,
-            schema: None,
-        },
-    ]
-}
-
-/// `key` on `web`'s dogs row, and the ask the probe it raised carries.
-pub(super) fn ask_dogs(app: &mut App, key: KeyPress) -> u64 {
-    match app.update(Msg::Key(key)) {
-        Effect::LoadSheepDogs { sheep, ask } if sheep == "web" => ask,
-        other => panic!("no probe for web: {other:?}"),
+/// What `jobs` answers when its row is opened.
+pub(super) fn jobs_entry() -> SheepDogEntry {
+    SheepDogEntry {
+        name: "jobs".into(),
+        adopted_path: Some("/opt/jobs".into()),
+        schema: Some(jobs_schema()),
     }
 }
 
-/// The probe's answer for `sheep`, as ask `ask`.
-pub(super) fn answer(app: &mut App, sheep: &str, ask: u64) {
-    let _ = app.update(Msg::SheepDogs {
+/// The listing: two adopted dogs, neither asked yet.
+pub(super) fn listing() -> Vec<ListedDog> {
+    let adopted = |name: &str| ListedDog {
+        entry: SheepDogEntry {
+            name: name.into(),
+            adopted_path: Some(format!("/opt/{name}").into()),
+            schema: None,
+        },
+        asked: false,
+    };
+    vec![adopted("jobs"), adopted("deploy")]
+}
+
+/// The key that brings `web`'s `dogs` tab up, and the ask the listing it
+/// raised carries.
+pub(super) fn ask_dogs(app: &mut App) -> u64 {
+    match app.update(Msg::Key(KeyPress::Group(9))) {
+        Effect::ListSheepDogs { sheep, ask } if sheep == "web" => ask,
+        other => panic!("no listing for web: {other:?}"),
+    }
+}
+
+/// The listing's answer for `sheep`, as ask `ask`.
+pub(super) fn answer(app: &mut App, sheep: &str, ask: u64, dogs: Vec<ListedDog>) {
+    let _ = app.update(Msg::SheepDogNames {
         sheep: sheep.into(),
         ask,
-        dogs: probe(),
+        dogs,
     });
 }
 
-/// `app_in_web`, with the probe answered and the sub-screen up. Rows
-/// sort by name: `deploy`, `jobs`, `legacy`.
+/// `app_in_web`, on the `dogs` tab with [`listing`] answered. Rows sort by
+/// name: `deploy`, `jobs`, `legacy`.
 pub(super) fn app_in_dogs(control: Control) -> App {
     let mut app = app_in_web(control);
-    let ask = ask_dogs(&mut app, KeyPress::Confirm);
-    answer(&mut app, "web", ask);
+    let ask = ask_dogs(&mut app);
+    answer(&mut app, "web", ask, listing());
     app
 }
 
-pub(super) fn dogs(app: &App) -> &DogsPane {
-    app.config_pane()
-        .and_then(ConfigPane::dogs)
-        .expect("the sub-screen is up")
+/// The dog row `dog` names, among the pane's rows.
+fn dog_row(app: &App, dog: &str) -> Option<usize> {
+    let pane = app.config_pane()?;
+    pane.rows().iter().position(
+        |row| matches!(row, PaneRow::Dog(index) if pane.dogs_tab().rows()[*index].name() == dog),
+    )
 }
 
+/// Walks the cursor onto `dog`'s own row.
 pub(super) fn cursor_on(app: &mut App, dog: &str) {
     let _ = app.update(Msg::Key(KeyPress::SelectFirst));
-    while dogs(app).cursor_row().map(|row| row.name()) != Some(dog) {
-        let before = dogs(app).view().cursor();
+    let row = dog_row(app, dog).unwrap_or_else(|| panic!("{dog} is not listed"));
+    for _ in 0..row {
         let _ = app.update(Msg::Key(KeyPress::SelectDown));
-        assert_ne!(dogs(app).view().cursor(), before, "{dog} is not listed");
     }
+    assert_eq!(
+        dog_row(app, dog),
+        Some(app.config_pane().unwrap().view().cursor())
+    );
 }
 
-/// `app_in_dogs`, with `jobs`'s table pane open over `web`.
+/// `app_in_dogs`, with `jobs` opened and its table up inline, the cursor on
+/// the table's first row.
 pub(super) fn app_in_jobs_table() -> App {
     let mut app = app_in_dogs(Control::Allowed);
     cursor_on(&mut app, "jobs");
-    let _ = app.update(Msg::Key(KeyPress::Confirm));
     assert!(matches!(
-        app.config_pane().map(ConfigPane::target),
-        Some(PaneTarget::SheepDog { .. })
+        app.update(Msg::Key(KeyPress::Confirm)),
+        Effect::LoadSheepDog { ref dog, .. } if dog == "jobs"
+    ));
+    let _ = app.update(Msg::SheepDog {
+        sheep: "web".into(),
+        entry: jobs_entry(),
+    });
+    let _ = app.update(Msg::Key(KeyPress::SelectDown));
+    assert!(matches!(
+        app.config_pane().and_then(ConfigPane::cursor),
+        Some(PaneRow::Under { .. })
     ));
     app
+}
+
+/// How many edits the open dog tables hold between them.
+pub(super) fn table_edits(app: &App) -> usize {
+    let pane = app.config_pane().expect("the pane is up");
+    pane.dogs_tab()
+        .rows()
+        .iter()
+        .filter_map(DogRow::table)
+        .map(|table| table.edits().len())
+        .sum()
 }
 
 pub(super) fn type_concurrency(app: &mut App, typed: &str) {

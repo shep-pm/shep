@@ -1,7 +1,7 @@
 use super::super::*;
 
 impl App {
-    /// The operator's `Enter` on the config pane. Seven meanings, picked in
+    /// The operator's `Enter` on the config pane. Six meanings, picked in
     /// this order:
     ///
     /// - The cursor is on a table of a dog's pane, or on a list of choices:
@@ -12,8 +12,6 @@ impl App {
     ///   gate, like an edit.
     /// - The cursor is on a name in a list of choices: toggles it, as
     ///   `space` does.
-    /// - The cursor is on a sheep's `dogs` row: probes the dogs for the
-    ///   sub-screen that lists them. A read, so no gate.
     /// - The cursor is on an env row or `+ add a key`: opens the env
     ///   editor, in place, on the same row.
     /// - The cursor is on an array field: opens the list sub-screen.
@@ -40,17 +38,6 @@ impl App {
                 }
             }
             return Effect::None;
-        }
-        if let Some(probe) = self.dogs_row_effect() {
-            // Each adopted dog's binary answers in its own time, up to
-            // `VERSION_BUDGET` apiece, so the wait says what it is. Not over
-            // a host, which raised its refusal in place of the probe.
-            if probe != Effect::None {
-                self.notice = Some(Notice::info(
-                    "asking each dog for its per-sheep schema".to_owned(),
-                ));
-            }
-            return probe;
         }
         let Some(pane) = self.config_pane() else {
             return Effect::None;

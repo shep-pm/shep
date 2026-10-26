@@ -80,6 +80,7 @@ Workspace crates under `crates/`. Each Cargo.toml `description` states its role.
 | shep-macros | shep-macros | `#[dog_config]` attribute, re-exported as `shep_client::dogs::dog_config` |
 | shep-channel | shep-channel | Client an app links to speak the shepherd channel |
 | shep-handover | shep-handover | `execve` in place for any process: carries named descriptors and a state blob, depends on no other shep crate |
+| shep-tree | shep-tree | Signal a process group, own a Windows job, stop a child and its tree in a sync ladder; depends on no other shep crate |
 | shep-cli-redirect | shep-cli | Empty placeholder holding the `shep-cli` name on crates.io |
 
 Also at the top level:
@@ -141,7 +142,7 @@ Most common drift: panicking constructors, `std::error::Error` instead of
 `#[track_caller]`, input grammars wider than the spec.
 
 - Every new public item needs docs and a deliberate `Debug` decision: redacted for anything carrying env or secrets, with an exact-string test (IR-41).
-- `#![forbid(unsafe_code)]` is live in core, client, cli and macros. Unsafe lives only in shep-daemon's `sys.rs` and `sys_windows.rs`, shep-channel's `endpoint.rs` and shep-handover's `sys.rs`, each with its own `allow(unsafe_code)` and a `// SAFETY:` comment per block (IR-22/23).
+- `#![forbid(unsafe_code)]` is live in core, client, cli and macros. Unsafe lives only in shep-daemon's `sys.rs` and `sys_windows.rs`, shep-channel's `endpoint.rs`, shep-handover's `sys.rs` and shep-tree's `job.rs`, each with its own `allow(unsafe_code)` and a `// SAFETY:` comment per block (IR-22/23).
 - A dev-dependency on another workspace crate names a path only: no `workspace = true`, no version. A versioned one deadlocks publishing. `scripts/check-dev-deps.py` enforces it in CI.
 - Open design decisions are listed at the bottom of map.md and in goals.md's open questions. Those are the maintainer's calls.
 

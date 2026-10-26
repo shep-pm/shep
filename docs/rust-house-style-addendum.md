@@ -7,7 +7,7 @@ shep's local layer over [shep-pm/rust-house-style](https://github.com/shep-pm/ru
 ## Rules made specific
 
 - **IR-7** `#![forbid(unsafe_code)]` in shep-core, shep-client, shep-macros and
-  `shep`. shep-daemon, shep-channel and shep-handover deny it and allow it only
+  `shep`. shep-daemon, shep-channel, shep-handover and shep-tree deny it and allow it only
   in the modules IR-22 names.
 - **IR-9** `doc-valid-idents` lists `"PID"`, `"SIGKILL"`, `"systemd"`, `"OTel"`.
 - **IR-13** Each request type registers its response type once, in shep-core.
@@ -22,7 +22,8 @@ shep's local layer over [shep-pm/rust-house-style](https://github.com/shep-pm/ru
 - **IR-21** The panicking conveniences allowed in binary crates live only in
   `shep`.
 - **IR-22, IR-23** Unsafe lives only in shep-daemon's `sys.rs` and
-  `sys_windows.rs`, shep-channel's `endpoint.rs` and shep-handover's `sys.rs`.
+  `sys_windows.rs`, shep-channel's `endpoint.rs`, shep-handover's `sys.rs` and shep-tree's
+  `job.rs`.
   Each has its own `allow(unsafe_code)` and a `// SAFETY:` comment per block.
 - **IR-29** The canonical `# Security` writeup sits on the daemon/socket type.
 - **IR-33** shep-daemon's fixtures are a paused clock and a two-tier fake

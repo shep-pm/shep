@@ -268,7 +268,9 @@ sites, both in `endpoint.rs`: taking the descriptor the shepherd names in
 `SHEP_CHANNEL_FD`, which a process-global guard makes reachable at most once
 per process, and `PeekNamedPipe` on Windows. `shep-handover` denies it
 crate-wide and permits one site in `sys.rs`, adopting a descriptor an `execve`
-carried. The workspace's unsafe surface is four files across three crates.
+carried. `shep-tree` denies it crate-wide and permits `job.rs`, the Windows job
+object, on Windows only. The workspace's unsafe surface is five files
+across four crates.
 
 ## License
 

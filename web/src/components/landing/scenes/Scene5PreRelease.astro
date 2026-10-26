@@ -10,10 +10,11 @@
  * original design handoff record and was not edited to match.
  */
 import SceneSection from "../SceneSection.astro";
+import "../../../styles/scene.css";
 ---
 
 <SceneSection id="scene-5" columnWidth="min(580px, 50vw)">
-  <div class="card">
+  <div class="card tilt-card">
     <div class="kicker-row">
       <span class="chip">pre-release</span>
       <span class="kicker-label">and honest about it</span>
@@ -35,12 +36,9 @@ import SceneSection from "../SceneSection.astro";
 
 <style>
   .card {
-    background: var(--paper-2);
-    border: 4px solid var(--bark);
-    border-radius: 26px;
-    box-shadow: 9px 9px 0 var(--shadow);
-    padding: 32px;
-    transform: rotate(-0.8deg);
+    --card-bg: var(--paper-2);
+    --card-border: var(--bark);
+    --card-tilt: -0.8deg;
   }
 
   .kicker-row {

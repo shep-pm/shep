@@ -82,11 +82,10 @@ impl App {
     /// Split out of [`Self::on_sheep_config`] so that method can route a
     /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
     /// without repeating its guard or its error arms.
-    fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
-        if self.refresh_sheep_dog_pane(&view) {
-            return;
-        }
+    pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
         let carried = self.config_pane().map(|pane| pane.view().clone());
+        // The tab too, so a re-read lands where the operator was reading.
+        let carried_group = self.config_pane().map(ConfigPane::group_index);
         // An env row's own cursor is carried by key, not index: a
         // set re-reads the whole config, and a removal shortens the
         // list, so an index that survived would name a different
@@ -99,9 +98,15 @@ impl App {
             .config_pane()
             .and_then(ConfigPane::list)
             .map(|list| (list.key().to_owned(), list.view().clone()));
-        // The dogs sub-screen rides across too, rebuilt from the new
-        // tables with its probe answers, so a removal shows at once.
-        let carried_dogs = self.config_pane().and_then(ConfigPane::dogs).cloned();
+        // The dogs tab rides across too, its open tables refreshed from the
+        // new ones with their edits kept, so a removal shows at once.
+        let carried_dogs = self
+            .config_pane()
+            .filter(|pane| matches!(pane.target(), PaneTarget::Sheep { .. }))
+            .map(|pane| pane.dogs_tab().clone());
+        // The cursor among the dogs is carried by name: a re-read can list a
+        // table above it.
+        let carried_dog = self.config_pane().and_then(ConfigPane::dog_anchor);
         // The pending set survives the rebuild: the values are
         // the shepherd's and the edits are the operator's. An open
         // editor is dropped. See `ConfigPane::adopt_edits`.
@@ -111,17 +116,23 @@ impl App {
             .unwrap_or_default();
         let mut pane = ConfigPane::sheep(view);
         pane.adopt_edits(carried_edits);
+        if let Some(group) = carried_group {
+            pane.adopt_group(group);
+        }
+        if let Some(dogs) = carried_dogs {
+            pane.adopt_dogs_tab(dogs);
+        }
         if let Some(carried) = carried {
             pane.adopt_view(carried);
+        }
+        if let Some(dog) = carried_dog {
+            pane.restore_dog_anchor(&dog);
         }
         if let Some(env_key) = carried_env_key {
             pane.adopt_env_cursor(env_key.as_deref());
         }
         if let Some((key, carried)) = carried_list {
             pane.adopt_list_view(&key, carried);
-        }
-        if let Some(dogs) = carried_dogs {
-            pane.adopt_dogs(&dogs);
         }
         self.body = Body::ConfigPane(pane);
         // The rebuilt pane carries no editor, so the keyboard must not
@@ -200,8 +211,8 @@ impl App {
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
         }
-        if self.config_pane().is_some_and(|pane| pane.dogs().is_some()) {
-            return self.on_dogs_key(key);
+        if let Some(effect) = self.on_dogs_tab_key(key) {
+            return effect;
         }
         if key == KeyPress::Quit {
             return Effect::Quit;
@@ -233,12 +244,14 @@ impl App {
                     self.notice = Some(Notice::grave(text));
                     return Effect::None;
                 }
+                // Tables are read again first: the dialog's `c`, `R` and `L`
+                // write them too. See [`Self::on_close_reread`].
+                if let Some(effect) = self.reread_before_closing() {
+                    return effect;
+                }
                 if let Some(dialog) = self.close_offer() {
                     self.close_dialog = Some(dialog);
                     return Effect::None;
-                }
-                if let Some(effect) = self.reread_before_closing() {
-                    return effect;
                 }
                 let writes = self.take_pane_writes();
                 self.close_pane();
@@ -335,23 +348,28 @@ impl App {
             // `tab` and `shift-tab` walk the groups; a digit jumps straight
             // to one. All reset the cursor to the group's first field, so
             // `j`/`k` never start on a row the new tab does not draw.
+            //
+            // The `dogs` tab lists its dogs the first time it comes up.
             KeyPress::NextGroup => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.next_group();
                     pane.move_to_first();
                 }
+                return self.dogs_tab_effect();
             }
             KeyPress::PrevGroup => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.prev_group();
                     pane.move_to_first();
                 }
+                return self.dogs_tab_effect();
             }
             KeyPress::Group(digit) => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.set_group(digit);
                     pane.move_to_first();
                 }
+                return self.dogs_tab_effect();
             }
         }
         Effect::None
@@ -419,9 +437,8 @@ impl App {
         self.config_for = None;
         self.dog_target = None;
         self.closing = false;
-        // A dogs probe still out belongs to this pane. Retired here, not on
-        // a refresh, so a pane reopened on the same sheep does not open the
-        // list for an Enter it never saw.
+        // A listing still out belongs to this pane. Retired here, not on a
+        // refresh, so a pane reopened on the same sheep does not take it.
         self.sheep_dogs_ask += 1;
         self.release_text_mode_if_unowned();
     }
@@ -451,7 +468,6 @@ impl App {
             Lock::NoWidget => {
                 format!("{key} has no editor in this pane; a Flockfile still sets it")
             }
-            Lock::SubScreen => format!("{key} opens its own screen: press enter"),
         }
     }
 

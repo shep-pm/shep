@@ -1358,7 +1358,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1402,12 +1402,12 @@ shep lookout   /home/ada/.shep                                                  
     cwd  (unset) -> /srv/api                                                              ──────────────────────────────────────────────────────────────────────
     max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
                                                                                           █ 512M, 2G                                                            
-  env                                                                                     █ a bare number is bytes                                              
-   DATABASE_URL               (set)                                                       █ refused: a two-letter unit                                          
-   NODE_ENV                   (set)                                                       █ refused: a lowercase unit                                           
-   + add a key                                                                            █ refused: a fraction                                                 
+                                                                                          █ a bare number is bytes                                              
+                                                                                          █ refused: a two-letter unit                                          
+                                                                                          █ refused: a lowercase unit                                           
+                                                                                          █ refused: a fraction                                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1537,7 +1537,7 @@ shep lookout   /home/ada/.shep                                            6 in t
 esc close   j/k select   g/G first/last   r refresh   space cycle   e e… control enabled
 
 === sheep_dogs_row  (160x48) ===
-api's editing pane, cursor on its dogs row: jobs, legacy names the tables the sheep already carries, and the › glyph is the only thing on the row saying Enter opens a screen rather than a value.
+api's editing pane on its dogs tab, listed with every dog collapsed: deploy carries no table (unset), jobs carries one (set) and legacy carries a table no schema describes (read-only), so it names key names alone. No dog has been probed.
 
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
@@ -1545,24 +1545,11 @@ shep lookout   /home/ada/.shep                                                  
    process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                           LANDS                                                                             
->› dogs                       jobs, legacy                                    now        FOCUSED  dogs  opaque                                                  
-                                                                                          Settings for one dog on this sheep alone, opaque to shep              
-  env                                                                                                                                                           
-   DATABASE_URL               (set)                                                       now     jobs, legacy                                                  
-   NODE_ENV                   (set)                                                       default {}                                                            
-   + add a key                                                                            example (none)                                                        
-                                                                                                                                                                
-                                                                                          ● now  the running sheep picks it up without stopping                 
-                                                                                                                         pick the timing when you close the pane
-                                                                                                                                                                
-                                                                                          ──────────────────────────────────────────────────────────────────────
-                                                                                          VALIDATION                                                            
-                                                                                          █ a table of dog name to a table of settings                          
-                                                                                          █ a dog name shep does not know about yet                             
-                                                                                          █ refused: a value that is not a table                                
-                                                                                          █ refused: an empty dog name                                          
+>▸ deploy            -          (no table)                                                                                                                      
+ ▸ jobs              set        concurrency, hours, merge, models                                                                                               
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1586,17 +1573,42 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled
 
 === sheep_dogs_list  (160x48) ===
-Enter on the dogs row, probed and opened: jobs carries a schema and a table (set), deploy carries a schema and no table (unset), and legacy carries a table no schema describes (read-only), so it names key names alone. The cursor is parked on jobs, the row this frame exists to show set.
+Enter on jobs, probed and opened: its table draws inline under its row while deploy and legacy stay collapsed. The cursor is parked on jobs, the row this frame exists to show open.
 
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
-  api › dogs                                                                                                                                                    
-  deploy            -          (no table)                                                                                                                       
-> jobs              set        concurrency, hours, merge, models                                                                                                
-  legacy            read-only  url  (publishes no sheep schema)                                                                                                 
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▸ deploy            -          (no table)                                                                                                                      
+>▾ jobs              set        concurrency, hours, merge, models                                                                                               
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table                                                                             
+       end                      17:00                                                                                                                           
+       start                    09:00                                                                                                                           
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▸ worker                                                               table                                                                             
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1626,29 +1638,30 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-esc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                              control enabled
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled
 
 === sheep_dogs_remove  (160x48) ===
-The same sub-screen with jobs's table removal armed by d: the title asks remove api's jobs table? instead of naming the sheep, and any key but enter would cancel it.
+The same tab with jobs's table removal armed by d: the body asks remove api's jobs table? above the rows, and any key but enter would cancel it.
 
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
   remove api's jobs table? enter confirms, any other key cancels                                                                                                
-  deploy            -          (no table)                                                                                                                       
-> jobs              set        concurrency, hours, merge, models                                                                                                
-  legacy            read-only  url  (publishes no sheep schema)                                                                                                 
+ ▸ deploy            -          (no table)                                                                                                                      
+>▾ jobs              set        concurrency, hours, merge, models                                                                                               
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table                                                                             
+       end                      17:00                                                                                                                           
+       start                    09:00                                                                                                                           
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▸ worker                                                               table                                                                             
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1677,44 +1690,31 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-esc back   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                              control enabled
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled
 
 === sheep_dog_table  (160x48) ===
-Enter on jobs opens its table pane as a tree: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame.
+jobs opened inline on the dogs tab: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame.
 
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
-  api › jobs  (dog table)                                                                                                                                       
-   concurrency                2                                                          FOCUSED  models.worker.token  text                                     
-   ▾ hours                                                                    table       token                                                                 
-     end                      17:00                                                                                                                             
-     start                    09:00                                                       now     <set>                                                         
-   merge                      ask                                                         default (none)                                                        
-   ▾ models                                                                   table       example (none)                                                        
-     ▾ worker                                                                 table                                                                             
-       model                  small                                                                                                                             
->      token                  <set>                                                                                                                             
-  shep publishes the change; jobs decides what to reload                                                                                                        
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▸ deploy            -          (no table)                                               FOCUSED  models.worker.token  text                                     
+ ▾ jobs              set        concurrency, hours, merge, models                         token                                                                 
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table       now     <set>                                                         
+       end                      17:00                                                     default (none)                                                        
+       start                    09:00                                                     example (none)                                                        
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▾ worker                                                               table                                                                             
+         model                  small                                                                                                                           
+>        token                  <set>                                                                                                                           
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -1745,24 +1745,24 @@ shep lookout   /home/ada/.shep                                                  
 esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
 
 === sheep_dog_union  (160x48) ===
-Enter on kelpie opens its table pane over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm.
+kelpie opened inline on the dogs tab over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm.
 
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
-  api › kelpie  (dog table)                                                                                                                                     
-   ▾ skills                                                                   table      FOCUSED  skills.implement.path  text                                   
-     ▾ implement              kind = path                                                 The skill folder, from the repo root.                                 
-       kind                   path                                                                                                                              
->      path                   skills/mine                                                 A skill kept in the repo.                                             
-     ▸ retro                  (unset)                                                                                                                           
-     ▸ review                 kind = plugin                                               now     skills/mine                                                   
-                                                                                          default (none)                                                        
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▾ kelpie            set        skills                                                   FOCUSED  skills.implement.path  text                                   
+     ▾ skills                                                                 table       The skill folder, from the repo root.                                 
+       ▾ implement              kind = path                                                                                                                     
+         kind                   path                                                      A skill kept in the repo.                                             
+>        path                   skills/mine                                                                                                                     
+       ▸ retro                  (unset)                                                   now     skills/mine                                                   
+       ▸ review                 kind = plugin                                             default (none)                                                        
                                                                                           example (none)                                                        
-  shep publishes the change; kelpie decides what to reload                                                                                                      
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -2023,10 +2023,10 @@ shep lookout   /home/ada/.shep                                                  
     cwd  (unset) -> /srv/api                                                                                                                                    
     err_file  (unset) -> /var/log/api/err.log                                             ▲ respawn  the sheep must stop and start again                        
                                                                                                                          pick the timing when you close the pane
-  env                                                                                                                                                           
-   DATABASE_URL               (set)                                                       ──────────────────────────────────────────────────────────────────────
-   NODE_ENV                   (set)                                                       VALIDATION                                                            
-   + add a key                      ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜d                                   
+                                                                                                                                                                
+                                                                                          ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+                                    ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜d                                   
                                     ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌P_HOME}} expand                     
                                     ▐  cwd and err_file take hold when the process starts again.                           ▌: warned                            
                                     ▐                                                                                      ▌                                    
@@ -2036,7 +2036,7 @@ shep lookout   /home/ada/.shep                                                  
                                     ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌n rule                              
                                     ▐                                                                                      ▌s this path spells {{instance}} out 
   ──────────────────────────────────▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌────────────────────────────────────
-  = read-only, set it in the Flockfi▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ou, not yet written   › opens screen
+  = read-only, set it in the Flockfi▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ou, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -2075,9 +2075,9 @@ shep lookout   /home/ada/.shep                                              6 in
     cwd  (unset) -> /srv/api                                                              
     err_file  (unset) -> /var/log/api…    ▲ respawn  the sheep must stop and start again  
                                                    pick the timing when you close the pane
-  env                                                                                     
-   DATABASE_URL               (set)       ────────────────────────────────────────────────
-   NODE_ENV                   (set)       VALIDATION                                      
+                                                                                          
+                                          ────────────────────────────────────────────────
+                                          VALIDATION                                      
  ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
  ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌…
  ▐  cwd and err_file take hold when the process starts again.                           ▌ 
@@ -2128,13 +2128,13 @@ shep lookout   /home/ada/.shep                                             6 in 
   pending edits                                                                          
     cwd  (unset) -> /srv/api                                                             
     err_file  (unset) -> /var/log/api/err.log                                            
-                                                                                         
-  env                                                                                    
-   DATABASE_URL               (set)                                                      
-   NODE_ENV                   (set)                                                      
-   + add a key                                                                           
   ───────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a…
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
+                                                                                         
                                                                                          
                                                                                          
                                                                                          
@@ -2190,7 +2190,7 @@ shep lookout   /home/ada/.shep                                                  
                                     ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
                                     ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  
   ──────────────────────────────────▐                                                                                      ▌────────────────────────────────────
-  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written   › opens screen
+  = read-only, set it in the Flockfi▐  esc  keep editing, write nothing   ·   this prompt expires in 10s ██████████        ▌ou, not yet written                 
                                     ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟                                    
                                                                                                                                                                 
                                                                                                                                                                 

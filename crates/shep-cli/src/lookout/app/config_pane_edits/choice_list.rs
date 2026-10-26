@@ -48,22 +48,27 @@ fn app_in_kinds_table() -> App {
         sent: Sent::SheepConfig { name: "web".into() },
         result: Ok(Response::SheepConfig(Box::new(web_with_kinds()))),
     });
-    pane_to(&mut app, "dogs");
-    let ask = ask_dogs(&mut app, KeyPress::Confirm);
-    let _ = app.update(Msg::SheepDogs {
-        sheep: "web".into(),
+    let ask = ask_dogs(&mut app);
+    answer(
+        &mut app,
+        "web",
         ask,
-        dogs: vec![SheepDogEntry {
-            name: "jobs".into(),
-            adopted_path: Some("/opt/jobs".into()),
-            schema: Some(kinds_schema()),
+        vec![ListedDog {
+            entry: SheepDogEntry {
+                name: "jobs".into(),
+                adopted_path: Some("/opt/jobs".into()),
+                schema: Some(kinds_schema()),
+            },
+            asked: true,
         }],
-    });
+    );
+    cursor_on(&mut app, "jobs");
     let _ = app.update(Msg::Key(KeyPress::Confirm));
-    assert!(matches!(
-        app.config_pane().map(ConfigPane::target),
-        Some(PaneTarget::SheepDog { .. })
-    ));
+    assert!(
+        app.config_pane()
+            .is_some_and(|pane| pane.dogs_tab().rows().iter().any(DogRow::is_open)),
+        "the dog's table is open inline"
+    );
     app
 }
 

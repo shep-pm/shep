@@ -4,20 +4,20 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
-  api › kelpie  (dog table)                                                                                                                                     
-   ▾ skills                                                                   table      FOCUSED  skills.implement.path  text                                   
-     ▾ implement              kind = path                                                 The skill folder, from the repo root.                                 
-       kind                   path                                                                                                                              
->      path                   skills/mine                                                 A skill kept in the repo.                                             
-     ▸ retro                  (unset)                                                                                                                           
-     ▸ review                 kind = plugin                                               now     skills/mine                                                   
-                                                                                          default (none)                                                        
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▾ kelpie            set        skills                                                   FOCUSED  skills.implement.path  text                                   
+     ▾ skills                                                                 table       The skill folder, from the repo root.                                 
+       ▾ implement              kind = path                                                                                                                     
+         kind                   path                                                      A skill kept in the repo.                                             
+>        path                   skills/mine                                                                                                                     
+       ▸ retro                  (unset)                                                   now     skills/mine                                                   
+       ▸ review                 kind = plugin                                             default (none)                                                        
                                                                                           example (none)                                                        
-  shep publishes the change; kelpie decides what to reload                                                                                                      
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

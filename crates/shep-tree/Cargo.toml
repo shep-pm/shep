@@ -1,0 +1,31 @@
+[package]
+name = "shep-tree"
+description = "Signal a process group, own a Windows job and stop a child and everything it started, for any process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/shep-tree"
+keywords = ["shep", "process-manager", "process-group", "job-object", "signal"]
+categories = ["os"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# Depends on no other shep crate, and on no async runtime: a dog or a sheep
+# can use it from a plain thread.
+#
+# `signal` is `kill(2)`; nix's `process` feature, which `signal` enables,
+# supplies `Pid`.
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal"] }
+
+# `Win32_Foundation` is `HANDLE` and `CloseHandle`, `Win32_System_JobObjects`
+# the job object calls in `job.rs`.
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[lints]
+workspace = true

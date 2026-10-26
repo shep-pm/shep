@@ -32,7 +32,7 @@ pub use self::running::RunningDaemon;
 pub use self::socket::READY_FD_ENV;
 
 use core::time::Duration;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 #[cfg(all(test, windows))]
 use std::path::Path;
 use std::path::PathBuf;
@@ -438,8 +438,15 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
             &events,
             &dog_names,
             &options.boot_first_dogs,
+            options.notify_socket.as_deref(),
         )
         .await?;
+        // The last stage's extension may be spent by now, and the setup below
+        // still runs before `READY=1`.
+        crate::boot_order::extend_start_deadline(
+            options.notify_socket.as_deref(),
+            crate::boot_order::STAGE_SLACK,
+        );
     }
 
     // After the restore, so no saved sheep's id moves, and before the enabled
@@ -483,12 +490,12 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     //    socket; the field stays on `BootOptions` for both platforms.
     //
     //    Reported here, after the restore, which is the honest answer to
-    //    `Type=notify` and is also what puts the staged restore inside
-    //    systemd's `TimeoutStartSec`. The restore holds each stage until its
-    //    members are ready, so the wait is a sum over stages: past the 90s
-    //    default the shepherd is killed mid-restore and restarted on
-    //    `RestartSec`. `startup::unit`'s `systemd_unit` carries the numbers
-    //    and the argument for leaving the timeout to the operator.
+    //    `Type=notify`. The restore holds each stage until its members are
+    //    ready, so it can outlast `TimeoutStartSec`; `restore_flock` has each
+    //    stage extend that deadline by its own bound, before its spawns and
+    //    again before its wait, and the restore extends it once more for the
+    //    setup that follows. The unit is killed only by a stage that overruns
+    //    its own bound.
     #[cfg(unix)]
     if let Some(target) = options.notify_socket.as_deref()
         && let Err(err) = crate::notify::notify(target)
@@ -568,6 +575,7 @@ async fn restore_flock(
     events: &Bus,
     dogs: &[String],
     boot_first_dogs: &[String],
+    notify_socket: Option<&OsStr>,
 ) -> Result<(), BootError> {
     snapshot::muster(
         &paths.snapshot,
@@ -576,6 +584,7 @@ async fn restore_flock(
         events,
         dogs,
         boot_first_dogs,
+        notify_socket,
     )
     .await?;
     Ok(())

@@ -317,6 +317,7 @@ async fn a_parked_env_edit_reaches_the_roll_before_a_hard_stop_can_lose_it() {
         &events,
         &[],
         &[],
+        None,
     )
     .await
     .unwrap();

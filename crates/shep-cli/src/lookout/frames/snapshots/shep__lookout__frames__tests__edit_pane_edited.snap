@@ -21,12 +21,12 @@ shep lookout   /home/ada/.shep                                                  
     cwd  (unset) -> /srv/api                                                              ──────────────────────────────────────────────────────────────────────
     max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
                                                                                           █ 512M, 2G                                                            
-  env                                                                                     █ a bare number is bytes                                              
-   DATABASE_URL               (set)                                                       █ refused: a two-letter unit                                          
-   NODE_ENV                   (set)                                                       █ refused: a lowercase unit                                           
-   + add a key                                                                            █ refused: a fraction                                                 
+                                                                                          █ a bare number is bytes                                              
+                                                                                          █ refused: a two-letter unit                                          
+                                                                                          █ refused: a lowercase unit                                           
+                                                                                          █ refused: a fraction                                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

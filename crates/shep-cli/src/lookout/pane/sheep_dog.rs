@@ -83,7 +83,7 @@ impl ConfigPane {
             edits: Edits::default(),
             env_typing: None,
             list: None,
-            dogs: None,
+            dogs_tab: Box::default(),
             section: None,
             dog_table: Some(Box::new(SheepDogTable {
                 paths,

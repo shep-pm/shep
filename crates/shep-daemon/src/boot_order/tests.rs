@@ -104,6 +104,7 @@ async fn a_later_stage_does_not_start_until_the_earlier_one_is_online() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::PerApp,
+        None,
     )
     .await
     .expect("`PerApp` never refuses a stage");
@@ -136,6 +137,7 @@ async fn one_stage_starts_its_members_in_the_order_the_caller_handed_them() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::AllOrNothing,
+        None,
     )
     .await
     .expect("both scripts spawn");
@@ -172,6 +174,7 @@ async fn a_member_that_exits_does_not_hold_its_stage() {
             &h.ctx.supervisor,
             &h.ctx.events,
             BatchPolicy::PerApp,
+            None,
         ),
     )
     .await
@@ -208,6 +211,7 @@ async fn a_refused_stage_names_what_earlier_stages_already_started() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::AllOrNothing,
+        None,
     )
     .await
     .expect_err("a refused preflight ends an `AllOrNothing` batch");
@@ -261,6 +265,7 @@ async fn a_stage_that_fails_part_way_names_what_it_left_running() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::AllOrNothing,
+        None,
     )
     .await
     .expect_err("a failed spawn ends an `AllOrNothing` batch");
@@ -344,6 +349,7 @@ async fn stopping_walks_the_stages_backwards() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::PerApp,
+        None,
     )
     .await
     .expect("`PerApp` never refuses a stage");
@@ -384,6 +390,7 @@ async fn a_shutdown_stops_dependents_before_their_dependencies() {
         &h.ctx.supervisor,
         &h.ctx.events,
         BatchPolicy::PerApp,
+        None,
     )
     .await
     .expect("`PerApp` never refuses a stage");

@@ -265,9 +265,7 @@ impl App {
         if self.mode != InputMode::Text {
             return;
         }
-        let owned = self
-            .config_pane()
-            .is_some_and(|pane| pane.typing().is_some() || pane.env_typing().is_some());
+        let owned = self.config_pane().is_some_and(ConfigPane::owns_text);
         if !owned {
             self.mode = InputMode::Normal;
         }

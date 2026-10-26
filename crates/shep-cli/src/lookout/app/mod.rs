@@ -45,7 +45,7 @@ use shep_core::status::ProcStatus;
 use super::field::{FieldKind, FieldSet};
 use super::level::{Classifier, Level};
 use super::pane::{
-    ConfigPane, DogTableState, DogsPane, FieldValue, Lock, PaneEdit, PaneRow, PaneTarget,
+    ConfigPane, DogRow, DogToggle, FieldValue, ListedDog, Lock, PaneEdit, PaneRow, PaneTarget,
     ReloadKind, SectionWrite, SheepDogEntry,
 };
 use super::pane_bleats::BleatsPane;
@@ -287,10 +287,9 @@ pub struct App {
     /// settings screen's one edit. Monotonic and never reused, so a reply
     /// can only name the write it belongs to.
     next_write_ticket: u64,
-    /// The newest [`Effect::LoadSheepDogs`] asked. Only its own answer may
-    /// open the dogs sub-screen: two quick `Enter`s ask twice, and the
-    /// older answer landing after the list closed would reopen it. Closing
-    /// the pane moves it on too, so no answer outlives the pane that asked.
+    /// The newest [`Effect::ListSheepDogs`] asked. Only its own answer may
+    /// list the dogs tab: closing the pane moves it on, so no answer
+    /// outlives the pane that asked.
     sheep_dogs_ask: u64,
     link: Link,
     notice: Option<Notice>,
@@ -562,9 +561,9 @@ mod tests {
                 KeyPress::Edit,
             ),
             (
-                "a sheep's dog list",
+                "a sheep's dogs tab",
                 app_in_web(Control::Allowed),
-                KeyPress::Confirm,
+                KeyPress::Group(9),
             ),
             (
                 "a dog toggle",

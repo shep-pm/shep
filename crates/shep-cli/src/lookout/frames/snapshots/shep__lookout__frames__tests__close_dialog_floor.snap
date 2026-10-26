@@ -18,9 +18,9 @@ shep lookout   /home/ada/.shep                                              6 in
     cwd  (unset) -> /srv/api                                                              
     err_file  (unset) -> /var/log/api…    ▲ respawn  the sheep must stop and start again  
                                                    pick the timing when you close the pane
-  env                                                                                     
-   DATABASE_URL               (set)       ────────────────────────────────────────────────
-   NODE_ENV                   (set)       VALIDATION                                      
+                                                                                          
+                                          ────────────────────────────────────────────────
+                                          VALIDATION                                      
  ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜ 
  ▐  2 EDITS NEED A RESPAWN, 1 FIELD ALREADY DID api is online, pid 48219                ▌…
  ▐  cwd and err_file take hold when the process starts again.                           ▌ 

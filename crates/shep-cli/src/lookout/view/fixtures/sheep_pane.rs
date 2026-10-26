@@ -100,7 +100,9 @@ pub fn select_env_key(app: &mut App, key: &str) {
             | crate::lookout::pane::PaneRow::Entry(_)
             | crate::lookout::pane::PaneRow::Choice { .. }
             | crate::lookout::pane::PaneRow::Arm { .. }
-            | crate::lookout::pane::PaneRow::AddEnv => false,
+            | crate::lookout::pane::PaneRow::AddEnv
+            | crate::lookout::pane::PaneRow::Dog(_)
+            | crate::lookout::pane::PaneRow::Under { .. } => false,
         })
         .unwrap_or_else(|| panic!("no env key named {key}"));
     app.update(Msg::Key(KeyPress::SelectFirst));
@@ -244,12 +246,11 @@ pub fn file_edit(app: &mut App, key: &str, value: &str) {
 #[track_caller]
 pub fn select_field(app: &mut App, key: &str) {
     let pane = app.config_pane().expect("the pane is open");
+    // A key the sheep has no field for may sit in an open dog's table.
     let group = pane
         .fields()
         .by_key(key)
-        .unwrap_or_else(|| panic!("no field named {key}"))
-        .group
-        .clone();
+        .and_then(|field| field.group.clone());
     if let Some(group) = group
         && let Some(position) = shep_core::config::GROUP_ORDER
             .iter()
@@ -265,18 +266,16 @@ pub fn select_field(app: &mut App, key: &str) {
         let table = pane
             .rows()
             .iter()
-            .position(|row| match row {
-                crate::lookout::pane::PaneRow::Table(index) => {
-                    pane.table_path(*index).is_some_and(|path| {
-                        key.starts_with(&format!("{path}.")) && !pane.open_tables().contains(path)
-                    })
-                }
-                crate::lookout::pane::PaneRow::Field(_)
-                | crate::lookout::pane::PaneRow::Entry(_)
-                | crate::lookout::pane::PaneRow::Choice { .. }
-                | crate::lookout::pane::PaneRow::Arm { .. }
-                | crate::lookout::pane::PaneRow::Env(_)
-                | crate::lookout::pane::PaneRow::AddEnv => false,
+            .position(|row| {
+                resolved(pane, row).is_some_and(|(pane, row)| match row {
+                    crate::lookout::pane::PaneRow::Table(index) => {
+                        pane.table_path(index).is_some_and(|path| {
+                            key.starts_with(&format!("{path}."))
+                                && !pane.open_tables().contains(path)
+                        })
+                    }
+                    _ => false,
+                })
             })
             .unwrap_or_else(|| panic!("{key} is not in the active group's rows"));
         walk_to_row(app, table);
@@ -286,19 +285,34 @@ pub fn select_field(app: &mut App, key: &str) {
     walk_to_row(app, index);
 }
 
+/// A row of the pane as the pane it belongs to sees it: a row inside an
+/// open dog's table is that table's own.
+pub(super) fn resolved<'a>(
+    pane: &'a crate::lookout::pane::ConfigPane,
+    row: &crate::lookout::pane::PaneRow,
+) -> Option<(
+    &'a crate::lookout::pane::ConfigPane,
+    crate::lookout::pane::PaneRow,
+)> {
+    match *row {
+        crate::lookout::pane::PaneRow::Under { dog, at } => {
+            let table = pane.dogs_tab().rows().get(dog)?.table()?;
+            Some((table, *table.rows().get(at)?))
+        }
+        row => Some((pane, row)),
+    }
+}
+
 /// The index of `key`'s row in the open pane's rows, if it is drawn.
 fn row_of(app: &App, key: &str) -> Option<usize> {
     let pane = app.config_pane().expect("the pane is open");
-    pane.rows().iter().position(|row| match row {
-        crate::lookout::pane::PaneRow::Field(field_index) => {
-            pane.fields().fields()[*field_index].key == key
-        }
-        crate::lookout::pane::PaneRow::Table(_)
-        | crate::lookout::pane::PaneRow::Entry(_)
-        | crate::lookout::pane::PaneRow::Choice { .. }
-        | crate::lookout::pane::PaneRow::Arm { .. }
-        | crate::lookout::pane::PaneRow::Env(_)
-        | crate::lookout::pane::PaneRow::AddEnv => false,
+    pane.rows().iter().position(|row| {
+        resolved(pane, row).is_some_and(|(pane, row)| match row {
+            crate::lookout::pane::PaneRow::Field(field_index) => {
+                pane.fields().fields()[field_index].key == key
+            }
+            _ => false,
+        })
     })
 }
 

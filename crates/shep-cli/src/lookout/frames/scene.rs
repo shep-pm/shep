@@ -166,20 +166,20 @@ pub enum Scene {
     /// The fresh pane at 88 columns: the panel is gone, so `LANDS` is
     /// back, since nothing else on screen carries cost.
     EditPaneNarrow,
-    /// A sheep config pane's `dogs` row, cursor parked on it: dog names only,
-    /// `jobs, legacy`, and the `\u{203a}` lock glyph, not yet opened.
+    /// A sheep config pane's `dogs` tab, listed and every dog collapsed:
+    /// `deploy` unset, `jobs` set, `legacy` read-only, cursor on `deploy`.
     SheepDogsRow,
-    /// `Enter` on the `dogs` row, probed and opened: `jobs` set, `deploy`
-    /// unset, `legacy` read-only, cursor on `jobs`.
+    /// `jobs` opened on that tab: its table draws inline under its row,
+    /// the other dogs still collapsed, cursor on `jobs`.
     SheepDogsList,
-    /// The same sub-screen with `jobs`'s table removal armed: the title
-    /// asks the question instead of naming the sheep.
+    /// The same tab with `jobs`'s table removal armed: the body asks the
+    /// question first.
     SheepDogsRemove,
-    /// `Enter` on `jobs`: its table pane, dotted rows for the nested
-    /// `hours` and `models.worker` tables, `models.worker.token` drawn
-    /// `<set>`.
+    /// `jobs` opened, the cursor walked down to the secret: dotted rows for
+    /// the nested `hours` and `models.worker` tables, `models.worker.token`
+    /// drawn `<set>`.
     SheepDogTable,
-    /// `Enter` on `kelpie`, whose `skills` table holds one tagged union per
+    /// `kelpie` opened on the `dogs` tab, whose `skills` table holds one tagged union per
     /// step: `implement` open onto its tag and `path`, `review` set and
     /// closed, `retro` unset, the cursor on `path`.
     SheepDogUnion,
@@ -456,19 +456,19 @@ impl Scene {
                 "The same fresh pane at 88 columns: narrow enough that the explanation panel is gone, so LANDS is back, since nothing else on screen carries cost."
             }
             Self::SheepDogsRow => {
-                "api's editing pane, cursor on its dogs row: jobs, legacy names the tables the sheep already carries, and the \u{203a} glyph is the only thing on the row saying Enter opens a screen rather than a value."
+                "api's editing pane on its dogs tab, listed with every dog collapsed: deploy carries no table (unset), jobs carries one (set) and legacy carries a table no schema describes (read-only), so it names key names alone. No dog has been probed."
             }
             Self::SheepDogsList => {
-                "Enter on the dogs row, probed and opened: jobs carries a schema and a table (set), deploy carries a schema and no table (unset), and legacy carries a table no schema describes (read-only), so it names key names alone. The cursor is parked on jobs, the row this frame exists to show set."
+                "Enter on jobs, probed and opened: its table draws inline under its row while deploy and legacy stay collapsed. The cursor is parked on jobs, the row this frame exists to show open."
             }
             Self::SheepDogsRemove => {
-                "The same sub-screen with jobs's table removal armed by d: the title asks remove api's jobs table? instead of naming the sheep, and any key but enter would cancel it."
+                "The same tab with jobs's table removal armed by d: the body asks remove api's jobs table? above the rows, and any key but enter would cancel it."
             }
             Self::SheepDogTable => {
-                "Enter on jobs opens its table pane as a tree: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame."
+                "jobs opened inline on the dogs tab: hours and models open at the first level, models.worker opened onto token, the one field jobs's schema marks secret, drawn <set> with no value on screen anywhere in the frame."
             }
             Self::SheepDogUnion => {
-                "Enter on kelpie opens its table pane over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm."
+                "kelpie opened inline on the dogs tab over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm."
             }
             Self::DogEntries => {
                 "A dog's pane over a paddock-shaped schema at 160x48: clients and models each read as a count and nothing more, clients is open onto alpha, b-2 and #2, named by name, then id, then their index, and alpha is open onto its fields, key drawn <set> with no credential on screen anywhere in the frame. The cursor is on key, which opens an editor like any other field."
@@ -642,10 +642,9 @@ impl Scene {
             // 88: short of `panel_width`'s `LEFT_MIN` floor (`88 - 50 <
             // 40`), so the panel does not draw at all and `LANDS` returns.
             Self::EditPaneNarrow => (88, 48),
-            // The editing pane's own design target: the dogs row, its
-            // sub-screen and the per-sheep table pane all sit inside that
-            // same pane, so they share its size rather than earning a
-            // narrower one of their own.
+            // The editing pane's own design target: the dogs tab and the
+            // per-sheep tables under it sit inside that same pane, so they
+            // share its size rather than earning a narrower one of their own.
             Self::SheepDogsRow
             | Self::SheepDogsList
             | Self::SheepDogsRemove

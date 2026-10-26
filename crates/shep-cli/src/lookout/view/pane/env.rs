@@ -44,7 +44,12 @@ pub(super) fn pending_and_env_lines(
     } else {
         2 + pane.edits().len()
     };
-    let env_len = 2 + pane.env_key_names().len() + 1;
+    let shows_env = pane.shows_env();
+    let env_len = if shows_env {
+        2 + pane.env_key_names().len() + 1
+    } else {
+        0
+    };
     if pending_len + env_len > budget
         && let Some(PaneRow::Env(_) | PaneRow::AddEnv) = pane.cursor()
     {
@@ -68,6 +73,9 @@ pub(super) fn pending_and_env_lines(
         }
     }
 
+    if !shows_env {
+        return lines;
+    }
     if remaining > 0 {
         lines.push(Line::default());
         remaining -= 1;
@@ -117,7 +125,9 @@ pub(super) fn cursor_env_row_line(
             | PaneRow::Table(_)
             | PaneRow::Entry(_)
             | PaneRow::Choice { .. }
-            | PaneRow::Arm { .. },
+            | PaneRow::Arm { .. }
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. },
         )
         | None => {
             unreachable!("callers check the cursor is on an env row first")

@@ -85,6 +85,10 @@ name = "shep-handover"
 version_group = "shep"
 
 [[package]]
+name = "shep-tree"
+version_group = "shep"
+
+[[package]]
 name = "shep-daemon"
 version_group = "shep"
 

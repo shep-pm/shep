@@ -1,37 +1,42 @@
-//! The dogs sub-screen: one row per dog that can hold a table on this
-//! sheep, what state its table is in, and the table's key names.
+//! A sheep's `dogs` tab: one row per dog that can hold a table on this
+//! sheep, what state its table is in, and under an open dog its table.
 //!
-//! Never a value. A set table's secrets are marked by a schema the row does
-//! not read, and a read-only table has no schema at all, so a row names
-//! keys and stops there; the dog's own pane is where values are drawn,
-//! masked.
+//! A closed row names its table's keys and never a value. A set table's
+//! secrets are marked by a schema the row does not read, and a read-only
+//! table has no schema at all, so a row stops at key names; the open table
+//! below it is where values are drawn, masked.
 
 use ratatui::text::{Line, Span};
 
-use super::super::super::pane::{ConfigPane, DogTableState, DogsPane};
+use super::super::super::pane::{ConfigPane, DogTableState, PaneRow};
 use super::super::super::theme::Palette;
 use super::super::flock::{fit, mark};
 use super::super::scroll::{self, Attempt};
+use super::body::row_line;
+use super::field_row::open_glyph;
 use super::layout::body_width;
 
 /// The widest a dog's name column grows before it is cut.
 const NAME_W: u16 = 16;
 /// `read-only`, the widest state word.
 const STATE_W: u16 = 9;
+/// How far an open table's rows sit in from the dog's own.
+const INDENT: u16 = 2;
 
-/// The sub-screen: a title naming the sheep, or the armed removal's
-/// question in its place, then the rows, laid out through
-/// [`scroll::to_cursor`] so the cursor is drawn at every height.
-pub(super) fn dogs_lines(
+/// The tab's body: the armed removal's question when there is one, then the
+/// rows, laid out through [`scroll::to_cursor`] so the cursor is drawn at
+/// every height.
+pub(super) fn dogs_body_lines(
     pane: &ConfigPane,
-    dogs: &DogsPane,
     palette: Palette,
     width: u16,
     budget: usize,
+    show_lands: bool,
 ) -> Vec<Line<'static>> {
-    let sheep = pane.target().name();
-    let title = match dogs.armed() {
-        Some(dog) => Line::from(Span::styled(
+    let mut lines = Vec::new();
+    if let Some(dog) = pane.dogs_tab().armed() {
+        let sheep = pane.target().name();
+        lines.push(Line::from(Span::styled(
             format!(
                 "  {}",
                 fit(
@@ -40,69 +45,119 @@ pub(super) fn dogs_lines(
                 )
             ),
             palette.attention(),
-        )),
-        None => Line::from(Span::styled(
-            format!(
-                "  {}",
-                fit(&format!("{sheep} \u{203a} dogs"), body_width(width))
-            ),
-            palette.muted(),
-        )),
-    };
-    let mut lines = vec![title];
-    let body_budget = budget.saturating_sub(1);
+        )));
+    }
+    let body_budget = budget.saturating_sub(lines.len());
     if body_budget == 0 {
         return lines;
     }
-    if dogs.rows().is_empty() {
+    let rows = pane.rows();
+    if rows.is_empty() {
+        let text = if pane.dogs_tab().is_listed() {
+            "no dog publishes a sheep schema, and this sheep carries no table"
+        } else {
+            "listing dogs..."
+        };
         lines.push(Line::from(Span::styled(
-            format!(
-                "  {}",
-                fit(
-                    "no dog publishes a sheep schema, and this sheep carries no table",
-                    body_width(width)
-                )
-            ),
+            format!("  {}", fit(text, body_width(width))),
             palette.muted(),
         )));
         return lines;
     }
-    let cursor_row = dogs.view().cursor().min(dogs.rows().len() - 1);
+    let cursor_row = pane.view().cursor().min(rows.len() - 1);
     lines.extend(scroll::to_cursor(
         cursor_row,
-        dogs.view().offset(),
-        |offset| dogs_body_from(dogs, palette, width, body_budget, offset),
-        || vec![dog_line(dogs, cursor_row, true, width, palette)],
+        pane.view().offset(),
+        |offset| dogs_body_from(pane, &rows, palette, width, body_budget, offset, show_lands),
+        || {
+            vec![tab_row_line(
+                pane,
+                rows[cursor_row],
+                true,
+                width,
+                palette,
+                show_lands,
+            )]
+        },
     ));
     lines
 }
 
-/// One row: the selection mark, the dog's name, its table's state, and
-/// what the table holds, by key name only.
+/// One row of the tab: a dog's own, or one of its open table's.
+fn tab_row_line(
+    pane: &ConfigPane,
+    row: PaneRow,
+    selected: bool,
+    width: u16,
+    palette: Palette,
+    show_lands: bool,
+) -> Line<'static> {
+    match row {
+        PaneRow::Dog(index) => dog_line(pane, index, selected, width, palette),
+        PaneRow::Under { dog, at } => {
+            let Some(table) = pane.dogs_tab().rows().get(dog).and_then(|row| row.table()) else {
+                return Line::default();
+            };
+            let Some(inner) = table.rows().get(at).copied() else {
+                return Line::default();
+            };
+            let mut line = row_line(
+                table,
+                inner,
+                selected,
+                width.saturating_sub(INDENT),
+                palette,
+                show_lands,
+            );
+            // After the selection mark, so the mark stays in its column.
+            line.spans.insert(
+                1.min(line.spans.len()),
+                Span::raw(" ".repeat(usize::from(INDENT))),
+            );
+            line
+        }
+        PaneRow::Field(_)
+        | PaneRow::Table(_)
+        | PaneRow::Entry(_)
+        | PaneRow::Choice { .. }
+        | PaneRow::Arm { .. }
+        | PaneRow::Env(_)
+        | PaneRow::AddEnv => Line::default(),
+    }
+}
+
+/// One dog's row: the selection mark, whether it is open, its name, its
+/// table's state, and what the table holds, by key name only.
 fn dog_line(
-    dogs: &DogsPane,
+    pane: &ConfigPane,
     index: usize,
     selected: bool,
     width: u16,
     palette: Palette,
 ) -> Line<'static> {
-    let Some(row) = dogs.rows().get(index) else {
+    let Some(row) = pane.dogs_tab().rows().get(index) else {
         return Line::default();
     };
     let body = body_width(width);
-    let name_w = NAME_W.min(body);
-    let state_w = STATE_W.min(body.saturating_sub(name_w + 2));
-    let rest_w = body.saturating_sub(name_w + state_w + 4);
-    let (state, rest, muted) = match row.state() {
-        DogTableState::Set => ("set", row.keys().join(", "), false),
-        DogTableState::Unset => ("-", "(no table)".to_owned(), true),
-        DogTableState::ReadOnly => (
-            "read-only",
-            format!("{}  (publishes no sheep schema)", row.keys().join(", ")),
-            true,
-        ),
+    let name_w = NAME_W.min(body.saturating_sub(2));
+    let state_w = STATE_W.min(body.saturating_sub(name_w + 4));
+    let rest_w = body.saturating_sub(name_w + state_w + 6);
+    let keys = row.keys().join(", ");
+    let (state, rest, muted) = if row.is_waiting() {
+        ("asking", String::new(), true)
+    } else {
+        match row.state() {
+            DogTableState::Set => ("set", keys, false),
+            DogTableState::Unset => ("-", "(no table)".to_owned(), true),
+            DogTableState::ReadOnly => (
+                "read-only",
+                format!("{keys}  (publishes no sheep schema)"),
+                true,
+            ),
+            DogTableState::NoSchema => ("-", "(publishes no sheep schema)".to_owned(), true),
+        }
     };
-    let mut text = format!("{} ", mark(selected));
+    let mut text = format!("{} ", open_glyph(row.is_open()));
     text.push_str(&fit(row.name(), name_w));
     if state_w > 0 {
         text.push_str("  ");
@@ -112,6 +167,7 @@ fn dog_line(
         text.push_str("  ");
         text.push_str(&fit(&rest, rest_w));
     }
+    let text = format!("{}{text}", mark(selected));
     if muted {
         Line::from(Span::styled(text, palette.muted()))
     } else {
@@ -122,22 +178,31 @@ fn dog_line(
 /// Lays the rows out from `offset`, spending at most `budget` lines, both
 /// markers reserved before a row is admitted, as the list sub-screen does.
 fn dogs_body_from(
-    dogs: &DogsPane,
+    pane: &ConfigPane,
+    rows: &[PaneRow],
     palette: Palette,
     width: u16,
     budget: usize,
     offset: usize,
+    show_lands: bool,
 ) -> Attempt {
-    let total = dogs.rows().len();
-    let cursor_row = dogs.view().cursor().min(total.saturating_sub(1));
+    let total = rows.len();
+    let cursor_row = pane.view().cursor().min(total.saturating_sub(1));
     let above = usize::from(offset > 0);
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut drawn = 0usize;
-    for index in offset..total {
+    for (index, row) in rows.iter().enumerate().skip(offset) {
         if lines.len() + 1 + above + usize::from(index + 1 < total) > budget {
             break;
         }
-        lines.push(dog_line(dogs, index, index == cursor_row, width, palette));
+        lines.push(tab_row_line(
+            pane,
+            *row,
+            index == cursor_row,
+            width,
+            palette,
+            show_lands,
+        ));
         drawn += 1;
     }
     let hidden_below = total.saturating_sub(offset + drawn);
@@ -168,16 +233,38 @@ mod tests {
     use shep_core::config::AppConfig;
     use shep_core::protocol::SheepConfigView;
 
-    use super::super::pane_lines;
-    use super::*;
-    use crate::lookout::pane::SheepDogEntry;
-    use crate::lookout::view::fixtures::{plain, render_all};
+    use super::super::draw::pane_lines;
+    use super::super::fixtures::{marked, text_of};
+    use crate::lookout::pane::{ConfigPane, ListedDog, SheepDogEntry};
+    use crate::lookout::view::fixtures;
 
     const TOKEN: &str = "sk-live-51Hx9Qa";
+    const PASSWORD: &str = "hunter2-legacy";
 
-    /// `web` with a `jobs` table holding a credential and a `legacy` table
-    /// no schema describes, and the sub-screen open over them.
-    fn web_with_dogs_open() -> ConfigPane {
+    fn schema() -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "concurrency": { "type": "integer" },
+                "token": { "type": "string", "x-shep-secret": true },
+            },
+        })
+    }
+
+    fn listed(name: &str, schema: Option<serde_json::Value>) -> ListedDog {
+        ListedDog {
+            entry: SheepDogEntry {
+                name: name.to_owned(),
+                adopted_path: None,
+                schema,
+            },
+            asked: true,
+        }
+    }
+
+    /// `web` on its `dogs` tab: `jobs` set, `deploy` unset, `legacy`
+    /// read-only, every row collapsed.
+    fn web_dogs() -> ConfigPane {
         let mut config = AppConfig {
             name: "web".into(),
             ..AppConfig::default()
@@ -185,62 +272,95 @@ mod tests {
         let table = |value: serde_json::Value| value.as_object().cloned().expect("a table");
         config.dogs.insert(
             "jobs".into(),
-            table(json!({ "concurrency": 2, "token": TOKEN })).into(),
+            table(json!({ "concurrency": 7, "token": TOKEN })).into(),
         );
         config.dogs.insert(
             "legacy".into(),
-            table(json!({ "url": format!("https://ops:{TOKEN}@example.test") })).into(),
+            table(json!({ "url": format!("https://ops:{PASSWORD}@example.test") })).into(),
         );
         let mut pane = ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()));
-        pane.open_dogs(vec![
-            SheepDogEntry {
-                name: "jobs".into(),
-                adopted_path: None,
-                schema: Some(json!({ "type": "object", "properties": {} })),
-            },
-            SheepDogEntry {
-                name: "deploy".into(),
-                adopted_path: None,
-                schema: Some(json!({ "type": "object", "properties": {} })),
-            },
+        pane.set_group(9);
+        pane.list_dogs(vec![
+            listed("jobs", Some(schema())),
+            listed(
+                "deploy",
+                Some(json!({ "type": "object", "properties": {} })),
+            ),
+            listed("legacy", None),
         ]);
         pane
     }
 
+    fn drawn(pane: &ConfigPane, width: u16, height: u16) -> String {
+        text_of(&pane_lines(pane, fixtures::plain(), width, height)).join("\n")
+    }
+
     #[test]
-    fn a_row_names_its_state_and_its_keys_and_never_a_value() {
-        let text = render_all(&pane_lines(&web_with_dogs_open(), plain(), 120, 0));
-        assert!(text.contains("web \u{203a} dogs"), "{text}");
+    fn a_collapsed_row_names_its_state_and_key_names_and_never_a_value() {
+        let text = drawn(&web_dogs(), 120, 0);
         let row = |dog: &str| {
             text.lines()
                 .find(|line| line.contains(dog))
-                .unwrap_or_else(|| panic!("{dog} has no row: {text}"))
-                .to_owned()
+                .unwrap_or_else(|| panic!("{dog} is drawn: {text}"))
         };
         assert!(row("deploy").contains("(no table)"), "{text}");
-        assert!(row("jobs").contains("set"), "{text}");
-        assert!(row("jobs").contains("concurrency, token"), "{text}");
-        assert!(row("legacy").contains("read-only"), "{text}");
-        assert!(row("legacy").contains("url"), "{text}");
-        assert!(!text.contains(TOKEN), "{text}");
-        assert!(!text.contains('2'), "no value, not even a number: {text}");
-    }
-
-    #[test]
-    fn an_armed_removal_asks_in_the_title() {
-        let mut pane = web_with_dogs_open();
-        let dogs = pane.dogs_mut().expect("open");
-        dogs.move_by(1);
-        assert!(dogs.arm_removal());
-        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
         assert!(
-            text.contains("remove web's jobs table? enter confirms"),
+            row("jobs").contains("set") && row("jobs").contains("concurrency, token"),
             "{text}"
         );
+        assert!(
+            row("legacy").contains("read-only") && row("legacy").contains("url"),
+            "{text}"
+        );
+        for secret in [TOKEN, PASSWORD, "7"] {
+            assert!(!text.contains(secret), "{secret} leaked: {text}");
+        }
     }
 
     #[test]
-    fn no_dog_and_no_table_says_so_under_the_title() {
+    fn an_open_dog_draws_its_table_under_its_row_with_the_secret_masked() {
+        let mut pane = web_dogs();
+        let jobs = pane
+            .dogs_tab()
+            .rows()
+            .iter()
+            .position(|row| row.name() == "jobs")
+            .expect("listed");
+        pane.toggle_dog(jobs);
+        let text = drawn(&pane, 120, 0);
+        let lines: Vec<&str> = text.lines().collect();
+        let head = lines
+            .iter()
+            .position(|line| line.contains("\u{25be}") && line.contains("jobs"))
+            .unwrap_or_else(|| panic!("jobs is open: {text}"));
+        let concurrency = lines[head + 1];
+        assert!(
+            concurrency.contains("concurrency") && concurrency.contains('7'),
+            "{concurrency:?}"
+        );
+        let indent = |line: &str| line.len() - line.trim_start().len();
+        assert!(indent(concurrency) > indent(lines[head]), "{text}");
+        let token = lines[head + 2];
+        assert!(
+            token.contains("token") && token.contains("<set>"),
+            "{token:?}"
+        );
+        assert!(!text.contains(TOKEN), "{text}");
+    }
+
+    #[test]
+    fn the_cursor_row_is_drawn_at_every_height() {
+        let mut pane = web_dogs();
+        pane.set_rows(3);
+        pane.move_to_last();
+        for height in 3..=8 {
+            let text = drawn(&pane, 120, height);
+            assert_eq!(marked(&text), 1, "height {height}: {text}");
+        }
+    }
+
+    #[test]
+    fn a_tab_with_no_dogs_says_so() {
         let mut pane = ConfigPane::sheep(SheepConfigView::new(
             AppConfig {
                 name: "web".into(),
@@ -249,25 +369,9 @@ mod tests {
             Vec::new(),
             Vec::new(),
         ));
-        pane.open_dogs(Vec::new());
-        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
-        assert_eq!(
-            text.lines().map(str::trim).collect::<Vec<_>>(),
-            [
-                "web \u{203a} dogs",
-                "no dog publishes a sheep schema, and this sheep carries no table",
-            ],
-            "{text}"
-        );
-    }
-
-    #[test]
-    fn the_cursor_is_drawn_at_a_height_that_cannot_hold_every_row() {
-        let mut pane = web_with_dogs_open();
-        pane.dogs_mut().expect("open").move_to_last();
-        let text = render_all(&pane_lines(&pane, plain(), 120, 3));
-        assert!(text.contains("> legacy"), "{text}");
-        assert!(text.contains("... 2 above"), "{text}");
-        assert_eq!(text.lines().count(), 3, "{text}");
+        pane.set_group(9);
+        assert!(drawn(&pane, 120, 0).contains("listing dogs..."));
+        pane.list_dogs(Vec::new());
+        assert!(drawn(&pane, 120, 0).contains("no dog publishes a sheep schema"));
     }
 }

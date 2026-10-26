@@ -11,7 +11,7 @@ use shep_core::protocol::{DogSource, ExitInfo, ProcessInfo, SheepConfigView};
 use shep_core::status::ProcStatus;
 
 use super::super::app::{App, KeyPress, Msg, RowKey, SettingsRow};
-use super::super::pane::SheepDogEntry;
+use super::super::pane::{ListedDog, SheepDogEntry};
 use super::super::tail::{Stream, Tail, TailLine};
 use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
 use crate::style::StyleSource;
@@ -666,39 +666,41 @@ pub(super) fn jobs_table() -> Map<String, Value> {
     .expect("an object")
 }
 
-/// The probe answer the gallery's dogs scenes open with: `jobs` carries
-/// [`jobs_schema`] and the sheep already has [`jobs_table`] for it (set),
-/// `deploy` carries a schema and no table (unset), and `legacy` carries a
-/// table the probe names no schema for (read-only): one row of each state
-/// [`DogsPane`](crate::lookout::pane::DogsPane) draws.
-pub(super) fn dogs_probe() -> Vec<SheepDogEntry> {
-    vec![
-        SheepDogEntry {
-            name: "jobs".to_string(),
-            adopted_path: Some(PathBuf::from("/opt/jobs")),
-            schema: Some(jobs_schema()),
-        },
-        SheepDogEntry {
-            name: "deploy".to_string(),
-            adopted_path: Some(PathBuf::from("/opt/deploy")),
-            schema: Some(json!({ "type": "object", "properties": {} })),
-        },
-        SheepDogEntry {
-            name: "legacy".to_string(),
-            adopted_path: None,
-            schema: None,
-        },
-    ]
+/// The listing the gallery's dogs scenes open with: two adopted dogs, not
+/// yet asked. The sheep carries [`jobs_table`] for `jobs` (set), nothing for
+/// `deploy` (unset), and a table for `legacy` that no dog lists (read-only):
+/// one row of each state the `dogs` tab draws.
+pub(super) fn dogs_listing() -> Vec<ListedDog> {
+    ["jobs", "deploy"]
+        .into_iter()
+        .map(|name| ListedDog {
+            entry: SheepDogEntry {
+                name: name.to_string(),
+                adopted_path: Some(PathBuf::from(format!("/opt/{name}"))),
+                schema: None,
+            },
+            asked: false,
+        })
+        .collect()
 }
 
-/// The probe answer of the `kelpie` scenes: one dog, carrying the recorded
-/// copy of shep-kelpie's own `--schema` answer.
-pub(super) fn kelpie_probe() -> Vec<SheepDogEntry> {
-    vec![SheepDogEntry {
+/// What `jobs` answers when its row is opened: [`jobs_schema`].
+pub(super) fn jobs_entry() -> SheepDogEntry {
+    SheepDogEntry {
+        name: "jobs".to_string(),
+        adopted_path: Some(PathBuf::from("/opt/jobs")),
+        schema: Some(jobs_schema()),
+    }
+}
+
+/// What `kelpie` answers when its row is opened: the recorded copy of
+/// shep-kelpie's own `--schema` answer.
+pub(super) fn kelpie_entry() -> SheepDogEntry {
+    SheepDogEntry {
         name: "kelpie".to_string(),
         adopted_path: Some(PathBuf::from("/opt/kelpie")),
         schema: Some(crate::lookout::testing::kelpie_sheep_schema()),
-    }]
+    }
 }
 
 /// `api`'s config for the `kelpie` scenes: [`edit_pane_config_view`]'s own
@@ -721,10 +723,10 @@ pub(super) fn kelpie_config_view() -> SheepConfigView {
     view
 }
 
-/// `api`'s config for the dogs sub-screen and per-sheep table scenes:
+/// `api`'s config for the `dogs` tab and per-sheep table scenes:
 /// [`edit_pane_config_view`]'s own fields, plus [`jobs_table`] and a
-/// `legacy` table naming a credential in a plain URL, so the sub-screen has
-/// a set, an unset (from [`dogs_probe`]) and a read-only row to draw.
+/// `legacy` table naming a credential in a plain URL, so the tab has
+/// a set, an unset (from [`dogs_listing`]) and a read-only row to draw.
 pub(super) fn sheep_dogs_config_view() -> SheepConfigView {
     let mut view = edit_pane_config_view();
     view.config
