@@ -423,7 +423,8 @@ async fn a_single_byte_range_answers_206_with_that_slice_and_a_content_range() {
 }
 
 /// fails if an open-ended range or a suffix range is answered from the
-/// front of the file.
+/// front of the file, or if a range whose end runs past the file declares
+/// bytes the file cannot fill.
 #[tokio::test]
 async fn an_open_ended_range_and_a_suffix_range_answer_the_two_ends() {
     let (_outer, server) = ten_byte_server().await;
@@ -438,6 +439,12 @@ async fn an_open_ended_range_and_a_suffix_range_answer_the_two_ends() {
     assert_eq!(suffix.status, 206);
     assert_eq!(suffix.body, "789");
     assert_eq!(suffix.headers["content-range"], "bytes 7-9/10");
+
+    let clamped = get_with_headers(server.addr(), "/clip.txt", &[("Range", "bytes=8-999")]).await;
+    assert_eq!(clamped.status, 206);
+    assert_eq!(clamped.body, "89");
+    assert_eq!(clamped.headers["content-range"], "bytes 8-9/10");
+    assert_eq!(clamped.headers["content-length"], "2");
 }
 
 /// fails if a range past the end is answered with a 200 of the whole

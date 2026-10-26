@@ -209,11 +209,14 @@ async fn send_not_found(
 /// head declared, the same number every in-memory reply reports.
 ///
 /// A slice is reached by seeking and then `take`ing, never by reading the
-/// file whole. The byte count came from the open handle's own metadata, so a
+/// file whole. The length every reply is built from, `Content-Range`'s
+/// suffix included, is the one the open handle's own `fstat` reported, so a
 /// file that grew between the open and this copy still matches the
-/// `Content-Length` already declared. A file that shrank still sends fewer
-/// bytes than declared; `Connection: close` turns that into a visible
-/// truncation rather than a hang.
+/// `Content-Length` already declared. A file another process truncated in
+/// that window sends fewer bytes than declared: `Connection: close` turns
+/// that into a visible truncation rather than a hang. Re-reading the length
+/// before the head would narrow the window and not close it, so one `fstat`
+/// per request is what this server spends.
 async fn serve_file(
     stream: &mut TcpStream,
     request: &HttpRequest,
@@ -239,8 +242,11 @@ async fn serve_file(
     };
     let body_len = body.map_or(0, |(start, stop)| stop - start);
 
-    // The seek happens before the head, so a slice this server cannot reach
-    // is refused rather than declared and then left short.
+    // The seek runs before the head so the copy starts at the right offset.
+    // It is not the reachability check: seeking past EOF succeeds and the
+    // read then yields nothing (see the case in `crate::serve::fs`). What
+    // refuses a slice the file cannot fill is `conditional::decide`, against
+    // the length the open handle reported.
     let mut slice = match body {
         Some((start, stop)) if request.method == "GET" => {
             match file.seek(SeekFrom::Start(start)).await {

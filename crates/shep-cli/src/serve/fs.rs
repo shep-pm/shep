@@ -114,6 +114,8 @@ pub async fn open_regular(path: &Path) -> Option<(tokio::fs::File, std::fs::Meta
 mod tests {
     use std::time::Duration;
 
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+
     use super::*;
 
     /// fails if a symlinked leaf that points outside the root is served.
@@ -180,6 +182,23 @@ mod tests {
 
         assert!(open_regular(&ordinary).await.is_some(), "positive control");
         assert!(open_regular(&link).await.is_none());
+    }
+
+    /// The fact `serve_file`'s reachability comment rests on: seeking past
+    /// the end of the handle [`open_regular`] hands back succeeds, and the
+    /// read that follows yields nothing. A slice the file cannot fill is
+    /// caught by the length this tuple carries, never by the seek failing.
+    #[tokio::test]
+    async fn a_seek_past_the_end_of_an_opened_file_succeeds_and_reads_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clip.txt");
+        std::fs::write(&path, b"0123456789").unwrap();
+        let (mut file, metadata) = open_regular(&path).await.unwrap();
+
+        assert_eq!(metadata.len(), 10, "the length is the check");
+        assert_eq!(file.seek(SeekFrom::Start(999)).await.unwrap(), 999);
+        let mut buf = [0_u8; 8];
+        assert_eq!(file.read(&mut buf).await.unwrap(), 0);
     }
 
     /// fails if a fifo in the docroot can hang the task that opens it.
