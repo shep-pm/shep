@@ -182,7 +182,9 @@ mod tests {
             sent: Sent::SheepConfig {
                 name: "web".to_string(),
             },
-            result: Ok(Response::SheepConfig(Box::new(fixtures::sheep_config_view()))),
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
         });
         let frame = first_frame(&mut app);
         assert!(
@@ -204,9 +206,14 @@ mod tests {
             sent: Sent::SheepConfig {
                 name: "web".to_string(),
             },
-            result: Ok(Response::SheepConfig(Box::new(fixtures::sheep_config_view()))),
+            result: Ok(Response::SheepConfig(Box::new(
+                fixtures::sheep_config_view(),
+            ))),
         });
-        assert_eq!(app.config_pane().expect("the pane is open").group(), "watch");
+        assert_eq!(
+            app.config_pane().expect("the pane is open").group(),
+            "watch"
+        );
 
         let frame = first_frame(&mut app);
         assert!(
@@ -288,7 +295,10 @@ mod tests {
         );
 
         let frame = first_frame(&mut app);
-        assert!(frame.contains("STATUS"), "the flock table is drawn:\n{frame}");
+        assert!(
+            frame.contains("STATUS"),
+            "the flock table is drawn:\n{frame}"
+        );
         assert!(
             frame.contains("no sheep named ghost"),
             "and the notice names what was not found:\n{frame}"
@@ -320,7 +330,40 @@ mod tests {
         assert_eq!(effect, Effect::None);
         let notice = app.notice().expect("a refusal").to_string();
         assert_eq!(notice, "web: no dog named nope", "{notice}");
-        assert_eq!(app.config_pane().expect("the tab stays open").group(), "dogs");
+        assert_eq!(
+            app.config_pane().expect("the tab stays open").group(),
+            "dogs"
+        );
+    }
+
+    /// Over `--host` the pane still opens on the tab the command line named.
+    /// The listing a dog's table needs is read off this machine's files, so
+    /// the tab says that instead of opening it, exactly as `tab` over a host
+    /// does.
+    #[test]
+    fn a_dog_ask_over_a_host_stops_at_the_tab() {
+        let mut app = awaiting(Focus::new("web".into(), Some("dogs"), Some("jobs".into())));
+        app.set_remote_host("build-01");
+        let _ = app.update(Msg::Snapshot {
+            rows: flock(),
+            at: Instant::now(),
+        });
+        let effect = app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(web_view(true)))),
+        });
+        assert_eq!(effect, Effect::None, "no listing ask over a host");
+        assert_eq!(
+            app.config_pane().expect("the tab still opens").group(),
+            "dogs"
+        );
+        assert_eq!(
+            app.notice().map(ToString::to_string).as_deref(),
+            Some(NOT_OVER_HOST),
+            "and the tab says why it has no rows"
+        );
     }
 
     /// The ask is spent on the first answer, so a later poll cannot reopen a
@@ -425,9 +468,11 @@ mod tests {
     fn a_dog_is_not_a_sheep() {
         let mut app = awaiting(Focus::new("otel".into(), None, None));
         let _ = app.update(Msg::Snapshot {
-            rows: vec![ProcessInfo::builder(90, "otel", ProcStatus::Online)
-                .dog(Some(DogSource::BuiltIn { grants: None }))
-                .build()],
+            rows: vec![
+                ProcessInfo::builder(90, "otel", ProcStatus::Online)
+                    .dog(Some(DogSource::BuiltIn { grants: None }))
+                    .build(),
+            ],
             at: Instant::now(),
         });
         assert!(matches!(app.body(), Body::FlockTable));

@@ -71,10 +71,12 @@ impl App {
         let Some(dog) = self.take_focus_dog() else {
             return Effect::None;
         };
-        let Some(index) = self
-            .config_pane()
-            .and_then(|pane| pane.dogs_tab().rows().iter().position(|row| row.name() == dog))
-        else {
+        let Some(index) = self.config_pane().and_then(|pane| {
+            pane.dogs_tab()
+                .rows()
+                .iter()
+                .position(|row| row.name() == dog)
+        }) else {
             self.notice = Some(Notice::grave(format!("{sheep}: no dog named {dog}")));
             return Effect::None;
         };

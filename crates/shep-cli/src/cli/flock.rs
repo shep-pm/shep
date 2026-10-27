@@ -89,8 +89,8 @@ pub struct LookoutArgs {
     /// The config pane's group to open on, one of
     /// [`shep_core::config::GROUP_ORDER`].
     pub tab: Option<String>,
-    /// The dog whose table to open, which [`Self::from_arg_matches`] admits
-    /// only with [`DOG_TAB`] as its tab.
+    /// The dog whose table to open, which [`clap::FromArgMatches::from_arg_matches`]
+    /// admits only with [`DOG_TAB`] as its tab.
     pub dog: Option<String>,
 }
 
@@ -151,7 +151,9 @@ impl clap::Args for LookoutArgs {
 
 impl clap::FromArgMatches for LookoutArgs {
     fn from_arg_matches(matches: &clap::ArgMatches) -> Result<Self, clap::Error> {
-        Self::finish(<LookoutSpec as clap::FromArgMatches>::from_arg_matches(matches)?)
+        Self::finish(<LookoutSpec as clap::FromArgMatches>::from_arg_matches(
+            matches,
+        )?)
     }
 
     fn from_arg_matches_mut(matches: &mut clap::ArgMatches) -> Result<Self, clap::Error> {
@@ -331,8 +333,9 @@ mod tests {
         use clap::Parser;
 
         for group in shep_core::config::GROUP_ORDER {
-            let Commands::Lookout(args) =
-                Cli::try_parse_from(["shep", "lookout", "web", group]).unwrap().command
+            let Commands::Lookout(args) = Cli::try_parse_from(["shep", "lookout", "web", group])
+                .unwrap()
+                .command
             else {
                 panic!("lookout parses to its own variant")
             };
@@ -345,11 +348,7 @@ mod tests {
             vec!["shep", "lookout", "web", ""],
         ] {
             let err = Cli::try_parse_from(&argv).expect_err(&format!("{argv:?}"));
-            assert_eq!(
-                err.kind(),
-                clap::error::ErrorKind::InvalidValue,
-                "{argv:?}"
-            );
+            assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue, "{argv:?}");
             assert!(err.to_string().contains("possible values"), "{err}");
         }
     }
@@ -369,7 +368,11 @@ mod tests {
                 continue;
             }
             let err = parsed.expect_err(&format!("{argv:?}"));
-            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation, "{argv:?}");
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "{argv:?}"
+            );
             let rendered = err.to_string();
             assert!(rendered.contains("jobs"), "{rendered}");
             assert!(rendered.contains(tab), "{rendered}");
@@ -405,7 +408,8 @@ mod tests {
             "--read-only",
         ])
         .unwrap()
-        .command else {
+        .command
+        else {
             panic!("lookout parses to its own variant")
         };
         assert!(args.read_only);
