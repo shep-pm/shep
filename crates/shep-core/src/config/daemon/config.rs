@@ -73,14 +73,20 @@ impl fmt::Debug for DaemonConfig {
 }
 
 #[derive(Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
 pub(super) struct RawDaemonConfig {
     daemon: DaemonSection,
     whistle: WhistleSection,
     secrets: SecretsSection,
     style: StyleSection,
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "next-command")))]
     interpreters: BTreeMap<String, String>,
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "next-command")))]
     hosts: Vec<String>,
+    /// Each dog's own `[dog.<name>]` table. Left out of the schema: its keys
+    /// belong to the dog, whose own `--schema` describes them.
+    #[cfg_attr(feature = "schema", schemars(skip))]
     dog: BTreeMap<String, toml::Table>,
 }
 

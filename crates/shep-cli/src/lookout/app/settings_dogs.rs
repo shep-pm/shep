@@ -76,7 +76,7 @@ impl App {
     /// `space` on a [`SettingsRow::Dog`] row: arms the opposite of the file's
     /// `enabled` bit, refusing in [`LINK_GONE`]'s words while the link is gone.
     ///
-    /// The link check is this row's own, unlike [`Self::cycle_scalar`]: a
+    /// The link check is this row's own, unlike [`Self::cycle_key`]: a
     /// confirmed toggle ends in a request to the shepherd. Replaces a
     /// [`Pending::Sent`] for that method's reason.
     pub(super) fn cycle_dog(&mut self, index: usize) -> Effect {
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn a_scalar_still_edits_while_the_link_is_gone() {
-        let mut app = fixtures::app_in_settings_with_control(); // on log_level
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
             why: fixtures::FROZEN_WHY.to_string(),

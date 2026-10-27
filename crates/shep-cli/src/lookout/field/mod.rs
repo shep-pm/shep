@@ -13,10 +13,16 @@ mod fixtures;
 mod flatten;
 mod init;
 mod schema;
+mod shep_toml;
 mod union;
 
 pub use bounds::Bounds;
-pub(crate) use flatten::{Child, Flattened, Outline, flatten_values, flattened, segment};
+pub(crate) use flatten::{
+    Child, Flattened, Outline, flatten_values, flattened, flattened_with_maps, segment,
+};
+#[cfg(test)]
+pub(crate) use shep_toml::PER_DOG_KEYS;
+pub(crate) use shep_toml::shep_toml_shape;
 pub(crate) use union::KEY_SEP;
 pub use union::Union;
 
@@ -169,6 +175,9 @@ pub struct Field {
     /// Checked on the keystroke that applies an edit, by
     /// [`crate::dog_settings::refusal`].
     pub bounds: Bounds,
+    /// `x-shep-apply`: what applying an edit costs, as one of shep-core's
+    /// `APPLY_*` names. `None` for a field whose schema names none.
+    pub apply: Option<String>,
 }
 
 /// One field this field interacts with, and how.
@@ -319,6 +328,10 @@ fn field_from(key: &str, schema: &Value, defs: &Map<String, Value>) -> Field {
         refuses: strings(init, "refuses"),
         neighbours: neighbours(init),
         bounds: bounds_of(schema, defs),
+        apply: schema
+            .get(shep_core::config::APPLY_KEY)
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     }
 }
 

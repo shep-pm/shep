@@ -2,12 +2,29 @@
 //! shows.
 
 use super::*;
+use crate::commands::settings::{STYLE_LEVEL_KEY, Shape, dotted};
+use crate::lookout::field::{Child, Field, FieldKind, shep_toml_shape};
+use std::collections::BTreeSet;
 
 /// One row the settings screen's cursor can sit on.
+///
+/// The indexes are into [`shep_toml_shape`]: a table of its outline, or a
+/// field of its field set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsRow {
-    /// One of the six scalar fields, in [`Settings::rows`]'s fixed order.
-    Scalar(SettingField),
+    /// A section, which folds.
+    Table(usize),
+    /// One key, or a map, which folds over its entries.
+    Field(usize),
+    /// One entry of the map at field `map`, by its place in key order.
+    Entry {
+        /// The map's field.
+        map: usize,
+        /// Which entry, in key order.
+        index: usize,
+    },
+    /// The row under a map's entries that adds one.
+    AddEntry(usize),
     /// Index into [`SettingsSnapshot::dogs`].
     Dog(usize),
 }
@@ -16,11 +33,9 @@ pub enum SettingsRow {
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub(super) snapshot: SettingsSnapshot,
-    /// The six scalars' shape: which they are, in what order, under which
-    /// section. The screen reads its rows, labels and section headers off
-    /// this rather than off a `match` per question, so a config pane and
-    /// this screen answer them the same way.
-    fields: FieldSet,
+    /// The dotted keys of the tables and maps the operator folded. Everything
+    /// else is open, so a key added to the schema shows up unfolded.
+    pub(super) folded: BTreeSet<String>,
     /// The cursor and, once a terminal has said how tall the body is, the
     /// scroll offset. Clamped on every read rather than kept pre-clamped: a
     /// refresh can shrink the dog list out from under a cursor already
@@ -41,12 +56,11 @@ pub struct Settings {
 /// The settings screen's own in-flight edit.
 #[derive(Debug, Clone)]
 pub(super) enum Pending {
-    /// A free-text edit under construction. Only [`SettingField::Socket`] and
-    /// [`SettingField::MaxCronSleep`] reach this, seeded with the field's
-    /// on-disk value.
+    /// A free-text edit under construction, seeded with the key's on-disk
+    /// value.
     Typing {
-        /// Which scalar.
-        field: SettingField,
+        /// Where the text goes.
+        target: Target,
         /// What the operator has typed so far.
         buffer: TextBox,
     },
@@ -83,6 +97,61 @@ pub(super) enum Pending {
     },
 }
 
+/// What a free-text edit writes to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Target {
+    /// The value at `path`, parsed as `shape`.
+    Value {
+        /// The key's segments.
+        path: Vec<String>,
+        /// What the typed text becomes.
+        shape: Shape,
+    },
+    /// A new entry of the map at `path`, typed as `name=value`.
+    NewEntry {
+        /// The map's segments.
+        path: Vec<String>,
+    },
+}
+
+impl Target {
+    /// What the status bar calls the edit.
+    pub(super) fn label(&self) -> String {
+        match self {
+            Self::Value { path, .. } => dotted(path),
+            Self::NewEntry { path } => format!("new {} entry", dotted(path)),
+        }
+    }
+
+    /// The edit `text` stands for, or why it stands for none.
+    pub(super) fn edit(&self, text: &str) -> Result<SettingEdit, &'static str> {
+        match self {
+            Self::Value { path, .. } if text.is_empty() => {
+                Ok(SettingEdit::Unset { path: path.clone() })
+            }
+            Self::Value { path, shape } => Ok(SettingEdit::Set {
+                path: path.clone(),
+                shape: *shape,
+                value: text.to_owned(),
+            }),
+            Self::NewEntry { path } => {
+                let (name, value) = text.split_once('=').ok_or("type name=value")?;
+                let (name, value) = (name.trim(), value.trim());
+                if name.is_empty() || value.is_empty() {
+                    return Err("type name=value");
+                }
+                let mut path = path.clone();
+                path.push(name.to_owned());
+                Ok(SettingEdit::Set {
+                    path,
+                    shape: Shape::Text,
+                    value: value.to_owned(),
+                })
+            }
+        }
+    }
+}
+
 /// What the settings screen's status line shows for its one in-flight edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettingsPrompt<'a> {
@@ -94,11 +163,11 @@ pub struct SettingsPrompt<'a> {
 }
 
 impl Settings {
-    /// A freshly opened screen, cursor on the first row.
+    /// A freshly opened screen, cursor on the first row, every section open.
     pub(super) fn new(snapshot: SettingsSnapshot) -> Self {
         Self {
             snapshot,
-            fields: settings_field_set(),
+            folded: BTreeSet::new(),
             view: Viewport::new(),
             pending: None,
         }
@@ -145,91 +214,69 @@ impl Settings {
         )
     }
 
-    /// The field and buffer of an in-flight free-text edit, or `None`.
+    /// The label and buffer of an in-flight free-text edit, or `None`.
     #[must_use]
-    pub fn typing(&self) -> Option<(&SettingField, &TextBox)> {
+    pub fn typing(&self) -> Option<(String, &TextBox)> {
         match &self.pending {
-            Some(Pending::Typing { field, buffer }) => Some((field, buffer)),
+            Some(Pending::Typing { target, buffer }) => Some((target.label(), buffer)),
             _ => None,
         }
     }
 
-    /// The next candidate for `field`, or `None` for the two free-text fields.
+    /// The next candidate for `field`, or `None` for a key that is not a
+    /// cycle: only a boolean and a closed set of names are.
     ///
     /// Advances from a candidate already armed for this field, so a second
     /// `space` walks one step further along the cycle. From nothing armed the
-    /// base is what the file says, which for `[style] level` is
-    /// [`SettingsSnapshot::style_level_in_file`] rather than the level in
-    /// force: cycling the resolved level could propose a write that changes
-    /// nothing.
-    pub(super) fn next_candidate(&self, field: SettingField) -> Option<String> {
+    /// base is what the file says, which for `[style] level` is the file's
+    /// value rather than the level in force: cycling the resolved level could
+    /// propose a write that changes nothing.
+    pub(super) fn next_candidate(&self, field: &Field) -> Option<String> {
         let armed_here = match &self.pending {
             Some(Pending::Armed {
-                edit:
-                    SettingEdit::Set {
-                        field: armed_field,
-                        value,
-                    },
+                edit: SettingEdit::Set { value, .. },
                 ..
-            }) if *armed_field == field => Some(value.as_str()),
+            }) if self.armed_for(field) => Some(value.clone()),
             _ => None,
         };
-        let in_file = (field == SettingField::StyleLevel)
-            .then_some(self.snapshot.style_level_in_file.as_deref())
-            .flatten();
-        let base: String = match (armed_here, in_file) {
-            (Some(value), _) | (None, Some(value)) => value.to_string(),
-            // A `[style]` document declaring nothing falls back to
-            // `StyleLevel`'s compiled default, as `style::resolve` does.
-            (None, None) if field == SettingField::StyleLevel => STYLE_LEVEL_ORDER[0].to_string(),
-            (None, None) => self.current_value(field)?.to_string(),
-        };
-        Some(match field {
-            SettingField::LogLevel => next_log_level(&base),
-            SettingField::LogJson | SettingField::AllowControl => next_bool(&base),
-            SettingField::StyleLevel => next_style_level(&base),
-            SettingField::Socket | SettingField::MaxCronSleep => return None,
-        })
-    }
-
-    /// The snapshot's own rendered value for one of the four cycled scalars.
-    /// `None` for the two free-text ones.
-    fn current_value(&self, field: SettingField) -> Option<&str> {
-        Some(match field {
-            SettingField::LogLevel => self.snapshot.log_level.value.as_str(),
-            SettingField::LogJson => self.snapshot.log_json.value.as_str(),
-            SettingField::AllowControl => self.snapshot.allow_control.value.as_str(),
-            SettingField::StyleLevel => self.snapshot.style_level.value.as_str(),
-            SettingField::Socket | SettingField::MaxCronSleep => return None,
-        })
-    }
-
-    /// Which layer `field`'s value came from. Only [`confirm_text`]'s `[style]`
-    /// arm acts on it.
-    pub(super) fn source_of(&self, field: SettingField) -> StyleSource {
-        match field {
-            SettingField::LogLevel => self.snapshot.log_level.source,
-            SettingField::LogJson => self.snapshot.log_json.source,
-            SettingField::Socket => self.snapshot.socket.source,
-            SettingField::MaxCronSleep => self.snapshot.max_cron_sleep.source,
-            SettingField::AllowControl => self.snapshot.allow_control.source,
-            SettingField::StyleLevel => self.snapshot.style_level.source,
-        }
-    }
-
-    /// The rendered value [`App::confirm_setting`] seeds [`Pending::Typing`]'s
-    /// buffer with. Only the two free-text fields reach it.
-    pub(super) fn text_seed(&self, field: SettingField) -> &str {
-        match field {
-            SettingField::Socket => self.snapshot.socket.value.as_str(),
-            SettingField::MaxCronSleep => self.snapshot.max_cron_sleep.value.as_str(),
-            SettingField::LogLevel
-            | SettingField::LogJson
-            | SettingField::AllowControl
-            | SettingField::StyleLevel => {
-                unreachable!("text_seed only ever reaches the two free-text fields")
+        let base = armed_here
+            .or_else(|| {
+                self.snapshot.file_value(&field.key).map(|value| {
+                    value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned)
+                })
+            })
+            .or_else(|| {
+                field.default_value.as_ref().map(|value| {
+                    value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned)
+                })
+            })
+            // The schema carries no default for `[style] level`; `full` is
+            // what `style::resolve` falls back to.
+            .or_else(|| {
+                (field.key == STYLE_LEVEL_KEY).then(|| crate::style::StyleLevel::Full.to_string())
+            });
+        match &field.kind {
+            FieldKind::Bool => Some((base.as_deref() != Some("true")).to_string()),
+            FieldKind::Choice(names) => {
+                let at = base
+                    .and_then(|base| names.iter().position(|name| *name == base))
+                    .map_or(0, |index| index + 1);
+                names.get(at % names.len().max(1)).cloned()
             }
+            _ => None,
         }
+    }
+
+    /// Whether the armed candidate is an edit of `field`.
+    fn armed_for(&self, field: &Field) -> bool {
+        matches!(
+            &self.pending,
+            Some(Pending::Armed { edit, .. }) if edit.key() == field.key
+        )
     }
 
     /// What the screen reads off disk, and renders every row's value and source
@@ -243,48 +290,147 @@ impl Settings {
         &self.snapshot
     }
 
-    /// Every row the cursor can sit on: the six scalars in their fixed
-    /// order, then one row per candidate dog.
+    /// Every row the cursor can sit on: the sections and their keys in the
+    /// order the screen draws them, a map's entries under it, then one row
+    /// per candidate dog.
     #[must_use]
     pub fn rows(&self) -> Vec<SettingsRow> {
-        let mut rows: Vec<SettingsRow> = self
-            .fields
-            .fields()
-            .iter()
-            .filter_map(|f| SettingField::from_key(&f.key))
-            .map(SettingsRow::Scalar)
-            .collect();
+        let shape = shep_toml_shape();
+        let mut rows = Vec::new();
+        self.push_children(&shape.outline.roots, &mut rows);
         rows.extend((0..self.snapshot.dogs.len()).map(SettingsRow::Dog));
         rows
     }
 
-    /// How many rows [`Self::rows`] would build, without building them.
-    ///
-    /// Every cursor move asks for this and nothing else, and `rows` allocates a
-    /// `Vec` to answer it.
-    #[must_use]
-    pub fn rows_len(&self) -> usize {
-        self.fields
-            .fields()
-            .iter()
-            .filter(|f| SettingField::from_key(&f.key).is_some())
-            .count()
-            + self.snapshot.dogs.len()
+    fn push_children(&self, children: &[Child], rows: &mut Vec<SettingsRow>) {
+        let shape = shep_toml_shape();
+        for child in children {
+            match *child {
+                Child::Table(index) => {
+                    rows.push(SettingsRow::Table(index));
+                    let table = &shape.outline.tables[index];
+                    if !self.folded.contains(&table.path) {
+                        self.push_children(&table.children, rows);
+                    }
+                }
+                Child::Leaf(index) => {
+                    rows.push(SettingsRow::Field(index));
+                    let field = &shape.fields.fields()[index];
+                    if field.kind == FieldKind::Map && !self.folded.contains(&field.key) {
+                        let entries = self.snapshot.entries(&field.key).len();
+                        rows.extend((0..entries).map(|entry| SettingsRow::Entry {
+                            map: index,
+                            index: entry,
+                        }));
+                        rows.push(SettingsRow::AddEntry(index));
+                    }
+                }
+            }
+        }
     }
 
-    /// The field model behind the scalar rows.
+    /// How many rows [`Self::rows`] would build.
     #[must_use]
-    pub fn fields(&self) -> &FieldSet {
-        &self.fields
+    pub fn rows_len(&self) -> usize {
+        self.rows().len()
     }
 
     /// The row the cursor sits on. `None` only if [`Self::rows`] is empty,
-    /// which the six unconditional scalars make unreachable.
+    /// which the schema's sections make unreachable.
     #[must_use]
     pub fn cursor(&self) -> Option<SettingsRow> {
         let rows = self.rows();
         rows.get(self.view.cursor().min(rows.len().saturating_sub(1)))
             .copied()
+    }
+
+    /// Folds the table or map under the cursor if it is open, opens it if it
+    /// is folded. Answers whether the cursor was on one.
+    pub(super) fn toggle_fold(&mut self) -> bool {
+        let shape = shep_toml_shape();
+        let key = match self.cursor() {
+            Some(SettingsRow::Table(index)) => shape.outline.tables[index].path.clone(),
+            Some(SettingsRow::Field(index))
+                if shape.fields.fields()[index].kind == FieldKind::Map =>
+            {
+                shape.fields.fields()[index].key.clone()
+            }
+            _ => return false,
+        };
+        if !self.folded.remove(&key) {
+            self.folded.insert(key);
+        }
+        true
+    }
+
+    /// Where an editor opened on the cursor's row writes, and what it opens
+    /// with. `None` on a row that cycles, folds or is not a key.
+    pub(super) fn editor_at_cursor(&self) -> Option<(Target, String)> {
+        let shape = shep_toml_shape();
+        let fields = shape.fields.fields();
+        match self.cursor()? {
+            SettingsRow::Field(index) => {
+                let field = &fields[index];
+                if !field.editable || !is_typed(&field.kind) {
+                    return None;
+                }
+                let path = shape.paths.get(&field.key)?.clone();
+                let kind = Shape::of(&field.kind)?;
+                Some((
+                    Target::Value { path, shape: kind },
+                    self.snapshot.seed(field),
+                ))
+            }
+            SettingsRow::Entry { map, index } => {
+                let key = &fields[map].key;
+                let (name, value) = self.snapshot.entries(key).into_iter().nth(index)?;
+                Some((
+                    Target::Value {
+                        path: vec![key.clone(), name],
+                        shape: Shape::Text,
+                    },
+                    value,
+                ))
+            }
+            SettingsRow::AddEntry(map) => Some((
+                Target::NewEntry {
+                    path: shape.paths.get(&fields[map].key)?.clone(),
+                },
+                String::new(),
+            )),
+            SettingsRow::Table(_) | SettingsRow::Dog(_) => None,
+        }
+    }
+
+    /// The edit that removes the cursor's row from `shep.toml`, or `None`
+    /// where there is nothing to remove: a section, a dog, or a key the file
+    /// never wrote.
+    pub(super) fn removal_at_cursor(&self) -> Option<SettingEdit> {
+        let shape = shep_toml_shape();
+        let fields = shape.fields.fields();
+        match self.cursor()? {
+            SettingsRow::Field(index) => {
+                let field = &fields[index];
+                self.snapshot.file_value(&field.key)?;
+                Some(SettingEdit::Unset {
+                    path: shape.paths.get(&field.key)?.clone(),
+                })
+            }
+            SettingsRow::Entry { map, index } => {
+                let key = &fields[map].key;
+                let (name, _) = self.snapshot.entries(key).into_iter().nth(index)?;
+                Some(SettingEdit::Unset {
+                    path: vec![key.clone(), name],
+                })
+            }
+            SettingsRow::Table(_) | SettingsRow::AddEntry(_) | SettingsRow::Dog(_) => None,
+        }
+    }
+
+    /// Whether the table or map at the dotted `key` shows what is inside it.
+    #[must_use]
+    pub fn is_open(&self, key: &str) -> bool {
+        !self.folded.contains(key)
     }
 
     /// Moves the cursor by `delta` rows, clamped to [`Self::rows`], never
@@ -317,142 +463,74 @@ impl Settings {
     }
 }
 
-/// [`LogLevel`]'s own declared order, wrapping from `Trace` back to `Off`.
-pub(crate) const LOG_LEVEL_ORDER: [LogLevel; 6] = [
-    LogLevel::Off,
-    LogLevel::Error,
-    LogLevel::Warn,
-    LogLevel::Info,
-    LogLevel::Debug,
-    LogLevel::Trace,
-];
-
-/// One step along [`LOG_LEVEL_ORDER`] from `current`. An unparseable value
-/// reads as `Warn`, so it still produces a legal next one.
-fn next_log_level(current: &str) -> String {
-    let index = LogLevel::from_name(current)
-        .and_then(|level| {
-            LOG_LEVEL_ORDER
-                .iter()
-                .position(|candidate| *candidate == level)
-        })
-        .unwrap_or(2);
-    LOG_LEVEL_ORDER[(index + 1) % LOG_LEVEL_ORDER.len()]
-        .as_str()
-        .to_string()
+/// Whether a key of this kind is typed into an editor, rather than flipped,
+/// walked through a closed set, or folded.
+fn is_typed(kind: &FieldKind) -> bool {
+    matches!(
+        kind,
+        FieldKind::Integer
+            | FieldKind::Number
+            | FieldKind::Text
+            | FieldKind::Suggested(_)
+            | FieldKind::List(_)
+    )
 }
 
-/// Flips `"true"`/`"false"`. Anything else reads as `false`.
-fn next_bool(current: &str) -> String {
-    (current != "true").to_string()
-}
-
-/// [`StyleLevel`]'s own declared order, wrapping from `Bare` back to `Full`.
-pub(crate) const STYLE_LEVEL_ORDER: [StyleLevel; 3] =
-    [StyleLevel::Full, StyleLevel::Plain, StyleLevel::Bare];
-
-/// One step along [`STYLE_LEVEL_ORDER`] from `current`. An unparseable value
-/// reads as `Full`.
-fn next_style_level(current: &str) -> String {
-    let index = StyleLevel::parse(current)
-        .and_then(|level| {
-            STYLE_LEVEL_ORDER
-                .iter()
-                .position(|candidate| *candidate == level)
-        })
-        .unwrap_or(0);
-    STYLE_LEVEL_ORDER[(index + 1) % STYLE_LEVEL_ORDER.len()].to_string()
-}
-
-/// The confirm sentence for `field`'s candidate `value`, verbatim. `value` is
-/// what a `next_*` function produced, never re-derived here.
-///
-/// Only [`SettingField::StyleLevel`] reads `source`: the other three can only
-/// warn about the shepherd's env and flags, which lookout cannot see.
-pub(super) fn confirm_text(field: SettingField, value: &str, source: StyleSource) -> String {
-    match field {
-        SettingField::LogLevel => format!(
-            "set log_level to {value}? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level"
-        ),
-        SettingField::LogJson => format!(
-            "set log_json to {value}? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_JSON or --log-json"
-        ),
-        SettingField::AllowControl => {
-            let word = if value == "true" { "on" } else { "off" };
-            format!("turn whistle control tools {word}? needs shep whistle restarted")
-        }
-        SettingField::StyleLevel => style_confirm_text(value, source),
-        SettingField::Socket | SettingField::MaxCronSleep => unreachable!(
-            "Settings::next_candidate never arms these two -- they are task 8's Pending::Typing"
-        ),
-    }
-}
-
-/// The `[style] level` half of [`confirm_text`].
-///
-/// Under `Env` or `Flag` the write lands and the level in force does not move,
-/// so the sentence names the layer that keeps winning.
-fn style_confirm_text(value: &str, source: StyleSource) -> String {
-    match source {
-        StyleSource::Config | StyleSource::Default => {
-            format!("set style level to {value}? the next command reads it")
-        }
-        StyleSource::Env => format!(
-            "set style level to {value}? it goes in the file, but $SHEP_STYLE is set and keeps winning until it is unset"
-        ),
-        StyleSource::Flag => format!(
-            "set style level to {value}? it goes in the file, but --style was passed to this lookout and keeps winning for as long as it runs"
-        ),
-    }
-}
-
-/// The confirm sentence for a free-text edit, verbatim.
-///
-/// Only [`SettingField::Socket`] and [`SettingField::MaxCronSleep`] reach it;
-/// the other four go through [`confirm_text`] and, not being optional, are
-/// never [`SettingEdit::Unset`].
-pub(super) fn confirm_text_for_edit(edit: &SettingEdit) -> String {
-    match edit {
-        SettingEdit::Set {
-            field: SettingField::Socket,
-            value,
-        } => format!(
-            "set socket to {value}? needs the shepherd stopped and started; a reload will not move it, and it will not apply if the shepherd was booted with SHEP_SOCKET or --socket"
-        ),
-        SettingEdit::Set {
-            field: SettingField::MaxCronSleep,
-            value,
-        } => format!(
-            "set max_cron_sleep to {value}? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_MAX_CRON_SLEEP or --max-cron-sleep"
-        ),
-        SettingEdit::Unset {
-            field: SettingField::Socket,
-        } => "unset socket? it goes back to the default under $SHEP_HOME, and needs the shepherd stopped and started"
-            .to_string(),
-        SettingEdit::Unset {
-            field: SettingField::MaxCronSleep,
-        } => "unset max_cron_sleep? it goes back to the daemon's own default, and needs shep daemon reload"
-            .to_string(),
-        SettingEdit::Set { .. } | SettingEdit::Unset { .. } => unreachable!(
-            "on_settings_text_key only ever builds an edit for socket or max_cron_sleep"
-        ),
-    }
-}
-
-/// What `Msg::SettingWritten`'s `Err` arm reopens [`Pending::Typing`] with: the
-/// field and the text the operator typed. `None` for the four cycled fields,
-/// which have no editor to reopen.
-pub(super) fn typed_text_of(edit: &SettingEdit) -> Option<(SettingField, TextBox)> {
-    match edit {
-        SettingEdit::Set {
-            field: field @ (SettingField::Socket | SettingField::MaxCronSleep),
-            value,
-        } => Some((*field, TextBox::from(value.as_str()))),
-        SettingEdit::Unset {
-            field: field @ (SettingField::Socket | SettingField::MaxCronSleep),
-        } => Some((*field, TextBox::new())),
+/// What a refused write reopens the editor with: where the text goes and the
+/// text the operator typed. `None` for an edit that had no editor to reopen:
+/// a flip, a walk through names, or a removed entry.
+pub(super) fn reopened_editor(edit: &SettingEdit) -> Option<(Target, TextBox)> {
+    let shape = shep_toml_shape();
+    let field = shape.fields.by_key(&edit.key());
+    match (edit, field) {
+        (
+            SettingEdit::Set {
+                path,
+                shape: kind,
+                value,
+            },
+            Some(field),
+        ) if is_typed(&field.kind) => Some((
+            Target::Value {
+                path: path.clone(),
+                shape: *kind,
+            },
+            TextBox::from(value.as_str()),
+        )),
+        (
+            SettingEdit::Set {
+                path,
+                shape: kind,
+                value,
+            },
+            None,
+        ) if is_entry(path) => Some((
+            Target::Value {
+                path: path.clone(),
+                shape: *kind,
+            },
+            TextBox::from(value.as_str()),
+        )),
+        (SettingEdit::Unset { path }, Some(field)) if is_typed(&field.kind) => Some((
+            Target::Value {
+                path: path.clone(),
+                shape: Shape::of(&field.kind)?,
+            },
+            TextBox::new(),
+        )),
         _ => None,
     }
+}
+
+/// Whether `path` names one entry of a map.
+fn is_entry(path: &[String]) -> bool {
+    let [map, _] = path else {
+        return false;
+    };
+    shep_toml_shape()
+        .fields
+        .by_key(map)
+        .is_some_and(|field| field.kind == FieldKind::Map)
 }
 
 impl App {
@@ -498,7 +576,63 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lookout::field::PER_DOG_KEYS;
     use crate::lookout::view::fixtures;
+
+    /// Every leaf of `shep.toml`'s schema, as a dotted key, walked straight
+    /// off the JSON: a section is a property that resolves to an object with
+    /// properties, anything else (a map, a list, a scalar) is one leaf.
+    fn schema_leaves(node: &serde_json::Value, defs: &serde_json::Value, at: &str) -> Vec<String> {
+        let mut leaves = Vec::new();
+        let properties = node["properties"].as_object().into_iter().flatten();
+        for (name, property) in properties {
+            let key = if at.is_empty() {
+                name.clone()
+            } else {
+                format!("{at}.{name}")
+            };
+            let target = property["$ref"]
+                .as_str()
+                .and_then(|reference| reference.strip_prefix("#/$defs/"))
+                .map_or(property, |def| &defs[def]);
+            if target["properties"].is_object() {
+                leaves.extend(schema_leaves(target, defs, &key));
+            } else {
+                leaves.push(key);
+            }
+        }
+        leaves
+    }
+
+    /// A key added to `DaemonConfig` shows up in the schema, so this fails
+    /// until the screen draws it. The four per-dog keys are the exception:
+    /// the dog's own row carries them.
+    #[test]
+    fn the_tree_has_a_row_for_every_leaf_of_the_schema_but_the_per_dog_keys() {
+        let schema = shep_core::config::daemon_config_schema_json().to_value();
+        let mut expected = schema_leaves(&schema, &schema["$defs"], "");
+        expected.retain(|key| !PER_DOG_KEYS.contains(&key.as_str()));
+        expected.sort();
+
+        let app = fixtures::app_in_settings();
+        let settings = app.settings().unwrap();
+        let fields = crate::lookout::field::shep_toml_shape().fields.fields();
+        let mut drawn: Vec<String> = settings
+            .rows()
+            .into_iter()
+            .filter_map(|row| match row {
+                SettingsRow::Field(index) => Some(fields[index].key.clone()),
+                _ => None,
+            })
+            .collect();
+        drawn.sort();
+
+        assert!(
+            expected.len() > 10,
+            "the walk found the schema: {expected:?}"
+        );
+        assert_eq!(drawn, expected);
+    }
 
     #[test]
     fn set_style_round_trips_exactly() {
@@ -529,7 +663,11 @@ mod tests {
             .map_err(|err| err.to_string());
         let _ = app.update(Msg::Settings { result });
 
-        let row = &app.settings().unwrap().snapshot().style_level;
+        let field = crate::lookout::field::shep_toml_shape()
+            .fields
+            .by_key("style.level")
+            .unwrap();
+        let row = app.settings().unwrap().snapshot().view(field);
         assert_eq!(
             row.source,
             StyleSource::Flag,

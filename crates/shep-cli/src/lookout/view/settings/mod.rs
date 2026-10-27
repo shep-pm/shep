@@ -1,18 +1,17 @@
-//! The settings screen: `[daemon]`, `[whistle]`, `[style]`, then `[dogs]`,
-//! drawn straight into the buffer since this screen owns the whole body
-//! between the title and the status bar.
+//! The settings screen: the `shep.toml` tree, then `[dogs]`, drawn straight
+//! into the buffer since this screen owns the whole body between the title and
+//! the status bar.
 //!
 //! Every row goes through [`fit`]: a value cut short ends in `…` rather
 //! than spilling into the next column.
 //!
-//! Four scalars (`log_level`, `log_json`, `allow_control`, `style level`)
-//! cycle; `socket` and `max_cron_sleep` are free text via
-//! [`Settings::typing`], the only two fields an empty buffer can unset. The
-//! dogs table's RUNNING column ([`dog_rows`]) joins the file's own
+//! A boolean and a closed set of names cycle; every other key is free text
+//! via [`Settings::typing`], where an empty buffer unsets it. The dogs
+//! table's RUNNING column ([`dog_rows`]) joins the file's own
 //! `enabled`/`SOURCE` against the live flock.
 //!
-//! `dogs` holds the dogs table and its columns, `scalars` the six scalar
-//! rows and their widths; this module lays the screen out around them.
+//! `dogs` holds the dogs table and its columns, `tree` the rows above it and
+//! their widths; this module lays the screen out around them.
 
 // `pub(super)`, not private to `settings`: the two re-exported functions
 // below hand back this module's `DogColumn` and `DogRow`, and a private
@@ -21,7 +20,7 @@
 // the same way (`pub(super) mod columns;` behind a re-exported
 // `columns_for`).
 pub(super) mod dogs;
-mod scalars;
+mod tree;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -31,13 +30,11 @@ use super::super::app::{App, Settings, SettingsRow};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
 use super::scroll::Attempt;
-use crate::commands::settings::SettingField;
 
 use dogs::{DOGS_CAPTION, dog_header_line, dog_line};
-use scalars::{scalar_line, scalar_view};
+use tree::tree_line;
 
 pub use dogs::{columns_for, dog_rows};
-pub(super) use scalars::field_label;
 
 /// The width the rows themselves are laid out in: the terminal minus
 /// [`GUTTER`].
@@ -45,27 +42,18 @@ const fn body_width(width: u16) -> u16 {
     width.saturating_sub(GUTTER)
 }
 
-/// A `[section]` header, indented to match every scalar row's own
-/// mark-and-gap prefix, same as [`dog_header_line`]'s own reasoning.
+/// The `[dogs]` header, indented to match every row's own mark-and-gap
+/// prefix, same as [`dog_header_line`]'s own reasoning.
 fn section_header(label: &str, palette: Palette) -> Line<'static> {
     Line::from(Span::styled(format!("  {label}"), palette.muted()))
 }
 
-/// Which `[section]` a scalar field's row lives under.
-fn section_for(settings: &Settings, field: SettingField) -> &str {
-    settings
-        .fields()
-        .by_key(field.key())
-        .and_then(|f| f.group.as_deref())
-        .unwrap_or("")
-}
-
-/// Every line of the screen's body, top to bottom: `[daemon]`'s four rows,
-/// `[whistle]`'s one, `[style]`'s one, then `[dogs]`'s caption and table.
+/// Every line of the screen's body, top to bottom: the tree, one line a row,
+/// then `[dogs]`'s caption and table.
 ///
-/// Walks [`Settings::rows`] rather than hand-listing the six scalars again:
-/// the cursor, which [`Settings::rows`] alone defines, would otherwise land
-/// on a row this function drew somewhere else.
+/// Walks [`Settings::rows`] rather than listing the tree again: the cursor,
+/// which [`Settings::rows`] alone defines, would otherwise land on a row this
+/// function drew somewhere else.
 ///
 /// Takes `app` as well as `settings`: [`dog_rows`] needs the live flock,
 /// which lives on `App`, not on `Settings`.
@@ -94,9 +82,9 @@ fn content_lines(
     } else {
         usize::from(height)
     };
-    // Six scalars are unconditional, so an empty screen is unreachable
-    // today. Handled rather than indexed on faith, because the fallback
-    // below has a row to draw and this does not.
+    // The schema's sections are unconditional, so an empty screen is
+    // unreachable today. Handled rather than indexed on faith, because the
+    // fallback below has a row to draw and this does not.
     if total_rows == 0 {
         return body_from(app, settings, palette, width, budget, 0).lines;
     }
@@ -114,7 +102,7 @@ fn content_lines(
 /// The last resort, reached only when every offset down to the cursor's own
 /// left it undrawn. `MIN_HEIGHT` is six rows, four of body, and a dog row
 /// needs the blank line, the `[dogs]` header, the caption and the column
-/// header above it before it may be drawn at all: six lines for one row.
+/// header above it before it may be drawn at all: five lines for one row.
 /// A screen that declares a minimum height should draw something at it,
 /// and the selected row is the something.
 ///
@@ -132,18 +120,13 @@ fn cursor_only(
     let table_width = body_width(width);
     let mut lines = Vec::new();
     match rows.get(cursor_row) {
-        Some(SettingsRow::Scalar(field)) => lines.push(scalar_line(
-            *field,
-            scalar_view(settings.snapshot(), *field),
-            true,
-            table_width,
-        )),
         Some(SettingsRow::Dog(index)) => {
             let dogs = dog_rows(app, table_width);
             if let Some(dog) = dogs.get(*index) {
                 lines.push(dog_line(dog, columns_for(table_width), table_width, true));
             }
         }
+        Some(row) => lines.push(tree_line(settings, *row, true, table_width, palette)),
         None => {}
     }
 
@@ -182,7 +165,6 @@ fn body_from(
     budget: usize,
     offset: usize,
 ) -> Attempt {
-    let snapshot = settings.snapshot();
     let cursor = settings.cursor();
     let rows = settings.rows();
     let total_rows = rows.len();
@@ -198,47 +180,29 @@ fn body_from(
     };
 
     let mut lines: Vec<Line<'static>> = Vec::new();
-    let mut current_section: Option<&str> = None;
-    // A section's header, and the blank line ahead of it for every
-    // section after the first, held here rather than pushed straight
-    // away: pushed alongside the first row of its section that survives
-    // the offset skip, so the view still names a section it opens in.
-    let mut pending_header: Vec<Line<'static>> = Vec::new();
     let mut drawn = 0usize;
-    let mut row_index = 0usize;
     let mut full = false;
+    // The tree rows sort first in `Settings::rows`, ahead of every
+    // `SettingsRow::Dog`, and cost one line apiece.
+    let tree_len = rows
+        .iter()
+        .take_while(|row| !matches!(row, SettingsRow::Dog(_)))
+        .count();
 
-    // The scalar rows sort first in `Settings::rows`, ahead of every
-    // `SettingsRow::Dog`, so `break` here stops once the scalars end.
-    for row in rows.iter().copied() {
-        let SettingsRow::Scalar(field) = row else {
-            break;
-        };
-        let index = row_index;
-        row_index += 1;
-        let section = section_for(settings, field);
-        if current_section != Some(section) {
-            let mut header = Vec::new();
-            if current_section.is_some() {
-                header.push(Line::default());
-            }
-            header.push(section_header(section, palette));
-            pending_header = header;
-            current_section = Some(section);
-        }
+    for (index, row) in rows.iter().copied().enumerate().take(tree_len) {
         if index < offset {
             continue;
         }
-        if !room(lines.len(), pending_header.len() + 1, index) {
+        if !room(lines.len(), 1, index) {
             full = true;
             break;
         }
-        lines.append(&mut pending_header);
-        lines.push(scalar_line(
-            field,
-            scalar_view(snapshot, field),
+        lines.push(tree_line(
+            settings,
+            row,
             cursor == Some(row),
             body_width(width),
+            palette,
         ));
         drawn += 1;
     }
@@ -268,7 +232,7 @@ fn body_from(
         } else {
             let mut pending_dogs_header = dogs_header;
             for (index, dog) in dogs.iter().enumerate() {
-                let global_index = row_index + index;
+                let global_index = tree_len + index;
                 if global_index < offset {
                     continue;
                 }
@@ -320,7 +284,7 @@ fn body_from(
                 format!("  {}", fit(&text, table_width)),
                 palette.attention(),
             )));
-        } else if let Some((field, buffer)) = settings.typing() {
+        } else if let Some((label, buffer)) = settings.typing() {
             // The cursor is a character, not a style: the ANSI gallery
             // renders foregrounds only.
             lines.push(Line::default());
@@ -329,7 +293,7 @@ fn body_from(
                     "  {}",
                     fit(
                         &buffer.line(
-                            &format!("editing {}: ", field_label(*field)),
+                            &format!("editing {label}: "),
                             "   enter applies   esc cancels",
                             table_width,
                         ),
@@ -420,7 +384,7 @@ mod tests {
         let marked: Vec<&String> = rendered.iter().filter(|l| l.starts_with('>')).collect();
         assert_eq!(marked.len(), 1, "exactly one row is marked: {rendered:?}");
         assert!(
-            marked[0].contains("log_level"),
+            marked[0].contains("daemon"),
             "the cursor opens on the first row: {rendered:?}"
         );
     }
@@ -435,16 +399,14 @@ mod tests {
     }
 
     /// `Viewport` scrolls in data rows while the height it is handed counts
-    /// lines, so the section headers, blank separators, `[dogs]` caption
-    /// and dog column header all have to be counted here too.
+    /// lines, so the blank separator, `[dogs]` caption and dog column
+    /// header all have to be counted here too.
     #[test]
     fn a_short_terminal_scrolls_and_says_what_it_hid() {
         let mut app = fixtures::app_in_settings();
         let height = 10;
         app.note_body_rows(height);
-        // Walk to the last row. Six scalars plus however many dogs the
-        // fixture carries; `SelectLast` lands on the last one whatever the
-        // count.
+        // Walk to the last row, whatever the tree and the dogs add up to.
         app.update(Msg::Key(KeyPress::SelectLast));
         let text = body_at(&app, height);
         assert!(
@@ -463,10 +425,6 @@ mod tests {
         );
         let settings = app.settings().unwrap();
         assert_eq!(settings.view().cursor(), settings.rows().len() - 1);
-        // `Viewport` sees ten rows of room for nine rows of data and scrolls
-        // nothing. The scroll in the frame above is the renderer's, which is
-        // the only layer that knows what the chrome costs.
-        assert_eq!(settings.view().offset(), 0);
     }
 
     /// The whole screen at `height`, through the same `note_body_rows` and
@@ -506,30 +464,6 @@ mod tests {
         }
     }
 
-    /// `settings_short` exercises this only in its mild form: it opens at
-    /// `[style]`, whose one row is the section, so the header sits where it
-    /// would anyway. This opens inside `[daemon]`, three rows past that
-    /// header, which still has to be drawn.
-    #[test]
-    fn a_window_opening_mid_section_still_draws_the_header_it_scrolled_past() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
-        let text = screen_at(&mut app, 6);
-        let body: Vec<&str> = text.lines().map(str::trim_end).collect();
-        assert!(
-            body.iter().any(|line| line.trim() == "[daemon]"),
-            "the section above the window is named: {text}"
-        );
-        assert!(
-            !text.contains("log_level"),
-            "and the rows between its header and the window are gone: {text}"
-        );
-        assert_eq!(marked(&text), 1, "{text}");
-        assert!(
-            body.iter().any(|line| line.starts_with("> max_cron_sleep")),
-            "the marked row is the cursor's: {text}"
-        );
-    }
-
     /// The marker is pushed last, so a clip drops it first before it can
     /// say anything was cut.
     #[test]
@@ -549,14 +483,15 @@ mod tests {
             "the last line says how many rows were cut: {text:?}"
         );
         assert!(
-            text.iter().any(|l| l.starts_with("> log_level")),
+            text.iter()
+                .any(|l| l.starts_with("> ") && l.contains("daemon")),
             "the cursor's own row is drawn: {text:?}"
         );
     }
 
     #[test]
     fn the_editor_line_names_its_field_and_shows_the_buffer() {
-        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let mut app = fixtures::app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let settings = app.settings().unwrap();
         let palette = app.palette();
@@ -566,8 +501,10 @@ mod tests {
             .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect())
             .collect();
         assert!(
-            rendered.iter().any(|line| line.contains("editing socket:")
-                && line.contains("/home/ada/.shep/run/shep.sock")),
+            rendered
+                .iter()
+                .any(|line| line.contains("editing daemon.socket:")
+                    && line.contains("/home/ada/.shep/run/shep.sock")),
             "got: {rendered:?}"
         );
     }

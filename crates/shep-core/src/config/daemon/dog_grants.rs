@@ -14,6 +14,7 @@ use crate::permissions::Grants;
 /// `reviewed` are the CLI's record of the upgrade path, read here so the
 /// strict table accepts them.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct DogGrantsSection {
     /// The granted permission names, such as `flock.read` or
@@ -23,14 +24,17 @@ pub struct DogGrantsSection {
     /// naming it, so a typo is caught where it is made rather than silently
     /// granting nothing.
     #[serde(deserialize_with = "strict_grants")]
+    #[cfg_attr(feature = "schema", schemars(with = "Vec<String>"))]
     pub granted: Grants,
     /// Permissions a newer binary declared that the operator has not
     /// approved. The dog runs on `granted` alone until they are.
     #[serde(default, deserialize_with = "strict_grants")]
+    #[cfg_attr(feature = "schema", schemars(with = "Vec<String>"))]
     pub waiting: Grants,
     /// Permissions the operator took away, so a binary that still declares
     /// them is not read as asking for something new.
     #[serde(default, deserialize_with = "strict_grants")]
+    #[cfg_attr(feature = "schema", schemars(with = "Vec<String>"))]
     pub revoked: Grants,
     /// `false` for a list written at upgrade that the operator has not yet
     /// looked at. Absent means reviewed.

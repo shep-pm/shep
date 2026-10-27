@@ -7,7 +7,8 @@ impl App {
     ///
     /// `TextApply` arms rather than writes: an empty buffer becomes
     /// [`SettingEdit::Unset`], anything else [`SettingEdit::Set`], and the next
-    /// `Enter` sends it. `TextAbandon` leaves the screen open.
+    /// `Enter` sends it. A new map entry that is not `name=value` keeps the
+    /// editor open. `TextAbandon` leaves the screen open.
     pub(in crate::lookout::app) fn on_settings_text_key(&mut self, key: KeyPress) -> Effect {
         let now = self.now;
         let Some(settings) = self.settings_mut() else {
@@ -31,21 +32,24 @@ impl App {
                 }
             }
             KeyPress::TextApply => {
-                if let Some(Pending::Typing { field, buffer }) = settings.pending.take() {
-                    let edit = if buffer.is_empty() {
-                        SettingEdit::Unset { field }
-                    } else {
-                        SettingEdit::Set {
-                            field,
-                            value: buffer.as_str().to_string(),
+                if let Some(Pending::Typing { target, buffer }) = settings.pending.take() {
+                    match target.edit(buffer.as_str()) {
+                        Ok(edit) => {
+                            let text = confirm_text(&edit, settings.snapshot.style.1);
+                            settings.pending = Some(Pending::Armed {
+                                edit,
+                                text,
+                                at: now,
+                            });
                         }
-                    };
-                    let text = confirm_text_for_edit(&edit);
-                    settings.pending = Some(Pending::Armed {
-                        edit,
-                        text,
-                        at: now,
-                    });
+                        // Stays in the editor, with the text, until it says
+                        // something that stands for an edit.
+                        Err(why) => {
+                            settings.pending = Some(Pending::Typing { target, buffer });
+                            self.notice = Some(Notice::grave(why));
+                            return Effect::None;
+                        }
+                    }
                 }
                 self.mode = InputMode::Normal;
             }
@@ -68,16 +72,16 @@ mod tests {
 
     #[test]
     fn enter_on_a_text_row_opens_the_editor_seeded_with_the_current_value() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
-        let (field, buffer) = app.settings().unwrap().typing().expect("the editor opens");
-        assert_eq!(*field, SettingField::MaxCronSleep);
+        let (label, buffer) = app.settings().unwrap().typing().expect("the editor opens");
+        assert_eq!(label, "daemon.max_cron_sleep");
         assert_eq!(buffer.as_str(), "30s");
     }
 
     #[test]
     fn typing_then_enter_arms_rather_than_writing() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         for _ in 0..3 {
             let _ = app.update(Msg::Key(KeyPress::TextBackspace));
@@ -101,19 +105,22 @@ mod tests {
 
     #[test]
     fn an_empty_editor_arms_an_unset() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         for _ in 0..8 {
             let _ = app.update(Msg::Key(KeyPress::TextBackspace));
         }
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
-        assert!(text.starts_with("unset max_cron_sleep?"), "got: {text}");
+        assert!(
+            text.starts_with("unset daemon.max_cron_sleep?"),
+            "got: {text}"
+        );
     }
 
     #[test]
     fn the_socket_confirm_rules_out_the_reload_it_would_otherwise_imply() {
-        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let mut app = fixtures::app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
@@ -125,7 +132,7 @@ mod tests {
     /// and the typed text has to survive it.
     #[test]
     fn a_refused_write_reopens_the_editor_with_the_text_intact() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         for _ in 0..3 {
             let _ = app.update(Msg::Key(KeyPress::TextBackspace));
@@ -165,7 +172,7 @@ mod tests {
 
     #[test]
     fn escape_abandons_the_editor_and_keeps_the_screen_open() {
-        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let mut app = fixtures::app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextAbandon));
         assert!(app.settings().unwrap().typing().is_none());
@@ -174,11 +181,54 @@ mod tests {
 
     #[test]
     fn a_closed_scalar_has_no_editor() {
-        let mut app = fixtures::app_in_settings_with_control(); // on log_level
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         assert!(
             app.settings().unwrap().typing().is_none(),
             "log_level is a cycle, not a text field"
+        );
+    }
+
+    #[test]
+    fn a_list_opens_seeded_with_its_items_comma_separated() {
+        let mut app = fixtures::app_in_settings_on("hosts");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let (label, buffer) = app.settings().unwrap().typing().expect("the editor opens");
+        assert_eq!(label, "hosts");
+        assert_eq!(buffer.as_str(), "ada@box");
+    }
+
+    #[test]
+    fn enter_on_a_map_entry_edits_that_entry() {
+        let mut app = fixtures::app_in_settings_on("interpreters.py");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let (label, buffer) = app.settings().unwrap().typing().expect("the editor opens");
+        assert_eq!(label, "interpreters.py");
+        assert_eq!(buffer.as_str(), "python3");
+    }
+
+    #[test]
+    fn a_new_entry_needs_a_name_and_a_value() {
+        let mut app = fixtures::app_in_settings_on("interpreters+");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for c in "rb".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        assert!(
+            app.settings().unwrap().typing().is_some(),
+            "a bare name keeps the editor open"
+        );
+        assert!(app.settings().unwrap().pending().is_none());
+
+        for c in "=ruby".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let text = app.settings().unwrap().pending().unwrap().text.to_string();
+        assert!(
+            text.starts_with("set interpreters.rb to ruby?"),
+            "got: {text}"
         );
     }
 }
