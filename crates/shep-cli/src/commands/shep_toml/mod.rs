@@ -543,154 +543,6 @@ impl ShepToml {
         Ok(())
     }
 
-    /// `[style] level`, or `None` when the document never wrote it, as the
-    /// raw string on disk.
-    ///
-    /// `[style]` is the one settings field whose value in force can come
-    /// from a layer above the file (`--style`, `$SHEP_STYLE`), so the
-    /// resolved level and the level the document declares are two different
-    /// facts.
-    #[must_use]
-    pub fn style_level(&self) -> Option<String> {
-        self.table("style")?
-            .get("level")?
-            .as_str()
-            .map(String::from)
-    }
-
-    /// `[daemon] log_json`, or `None` when the document never wrote it.
-    ///
-    /// A key written to its own default is still `Some`.
-    /// [`shep_core::config::DaemonConfig::load`]'s `#[serde(default)]`
-    /// loses that distinction, so this reader and its four siblings below
-    /// read the document itself.
-    #[must_use]
-    pub fn daemon_log_json(&self) -> Option<bool> {
-        self.table("daemon")?.get("log_json")?.as_bool()
-    }
-
-    /// `[daemon] log_level`, or `None` when the document never wrote it,
-    /// as the raw string on disk. Whether it names a real `LogLevel` is
-    /// [`shep_core::config::DaemonConfig::load`]'s question, not this
-    /// reader's.
-    #[must_use]
-    pub fn daemon_log_level(&self) -> Option<String> {
-        self.table("daemon")?
-            .get("log_level")?
-            .as_str()
-            .map(String::from)
-    }
-
-    /// `[daemon] socket`, or `None` when the document never wrote it.
-    #[must_use]
-    pub fn daemon_socket(&self) -> Option<PathBuf> {
-        self.table("daemon")?
-            .get("socket")?
-            .as_str()
-            .map(PathBuf::from)
-    }
-
-    /// `[daemon] max_cron_sleep`, or `None` when the document never wrote
-    /// it, as the raw string on disk rather than a parsed `UpDuration`:
-    /// parsing here would put a second opinion about the grammar next to
-    /// `DaemonConfig`'s.
-    #[must_use]
-    pub fn daemon_max_cron_sleep(&self) -> Option<String> {
-        self.table("daemon")?
-            .get("max_cron_sleep")?
-            .as_str()
-            .map(String::from)
-    }
-
-    /// `[whistle] allow_control`, or `None` when the document never wrote
-    /// it.
-    #[must_use]
-    pub fn whistle_allow_control(&self) -> Option<bool> {
-        self.table("whistle")?.get("allow_control")?.as_bool()
-    }
-
-    /// Writes `[daemon] log_json = <value>`, creating `[daemon]` when this
-    /// document has none yet.
-    ///
-    /// # Errors
-    /// [`ShepTomlError::WrongShape`] if `daemon` is already there as
-    /// something other than a table.
-    pub fn set_daemon_log_json(&mut self, value: bool) -> Result<(), ShepTomlError> {
-        self.section_table_mut("daemon")?
-            .insert("log_json", Item::Value(value.into()));
-        Ok(())
-    }
-
-    /// Writes `[daemon] log_level = "<value>"`, creating `[daemon]` when
-    /// this document has none yet. `value` is written as given, unchecked:
-    /// [`shep_core::config::DaemonConfig::load`] is what refuses a name
-    /// that is not a real `LogLevel`.
-    ///
-    /// # Errors
-    /// [`ShepTomlError::WrongShape`] if `daemon` is already there as
-    /// something other than a table.
-    pub fn set_daemon_log_level(&mut self, value: &str) -> Result<(), ShepTomlError> {
-        self.section_table_mut("daemon")?
-            .insert("log_level", Item::Value(value.into()));
-        Ok(())
-    }
-
-    /// Writes `[daemon] socket = "<value>"`, creating `[daemon]` when this
-    /// document has none yet.
-    ///
-    /// # Errors
-    /// [`ShepTomlError::WrongShape`] if `daemon` is already there as
-    /// something other than a table.
-    pub fn set_daemon_socket(&mut self, value: &Path) -> Result<(), ShepTomlError> {
-        self.section_table_mut("daemon")?.insert(
-            "socket",
-            Item::Value(value.to_string_lossy().into_owned().into()),
-        );
-        Ok(())
-    }
-
-    /// Writes `[daemon] max_cron_sleep = "<value>"`, creating `[daemon]`
-    /// when this document has none yet. `value` is written as given,
-    /// unchecked: [`shep_core::config::DaemonConfig::load`] is what refuses
-    /// a duration below the floor or one that does not parse at all.
-    ///
-    /// # Errors
-    /// [`ShepTomlError::WrongShape`] if `daemon` is already there as
-    /// something other than a table.
-    pub fn set_daemon_max_cron_sleep(&mut self, value: &str) -> Result<(), ShepTomlError> {
-        self.section_table_mut("daemon")?
-            .insert("max_cron_sleep", Item::Value(value.into()));
-        Ok(())
-    }
-
-    /// Writes `[whistle] allow_control = <value>`, creating `[whistle]`
-    /// when this document has none yet.
-    ///
-    /// # Errors
-    /// [`ShepTomlError::WrongShape`] if `whistle` is already there as
-    /// something other than a table.
-    pub fn set_whistle_allow_control(&mut self, value: bool) -> Result<(), ShepTomlError> {
-        self.section_table_mut("whistle")?
-            .insert("allow_control", Item::Value(value.into()));
-        Ok(())
-    }
-
-    /// Removes `[daemon] socket` if it is set, and does nothing when
-    /// `[daemon]` is absent or is not a table. No `Result`: removing a key
-    /// from something that is not a table is already a no-op.
-    pub fn unset_daemon_socket(&mut self) {
-        if let Some(daemon) = self.doc.get_mut("daemon").and_then(Item::as_table_mut) {
-            daemon.remove("socket");
-        }
-    }
-
-    /// Removes `[daemon] max_cron_sleep` if it is set.
-    pub fn unset_daemon_max_cron_sleep(&mut self) {
-        if let Some(daemon) = self.doc.get_mut("daemon").and_then(Item::as_table_mut) {
-            daemon.remove("max_cron_sleep");
-        }
-    }
-
     /// Writes the starter `[interpreters]` mapping, a script extension to
     /// the interpreter shep runs it with, under
     /// `INTERPRETERS_STARTER_COMMENT`.
@@ -924,8 +776,10 @@ impl core::error::Error for ShepTomlError {
 }
 
 mod grants;
+mod path;
 
 pub(crate) use grants::GrantRecord;
+pub(crate) use path::PathError;
 
 #[cfg(all(test, unix))]
 mod tests;

@@ -2,7 +2,6 @@ use super::super::super::app::{App, Body, Control, InputMode, Link, Settings, re
 use super::super::super::pane_bleats::BleatsPane;
 use super::super::cell;
 use super::super::flock::fit;
-use super::super::settings::field_label;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
 use super::key_hint::{
     BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, hint_for, pane_editor, pane_hint, pane_screen,
@@ -140,14 +139,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // A question awaiting an answer outranks everything, including the
         // filter box: `/` cancels a confirm before it opens the box.
         (confirm_prompt(&action), palette.attention())
-    } else if let Some((field, buffer)) = app.settings().and_then(Settings::typing) {
+    } else if let Some((label, buffer)) = app.settings().and_then(Settings::typing) {
         // Checked ahead of the filter-box branch below: both share
-        // `InputMode::Text`, but this types into `socket` or
-        // `max_cron_sleep`, not `App::filter`. `field_label` is shared with
-        // `view::settings` so the two panes agree on the field's name.
+        // `InputMode::Text`, but this types into a `shep.toml` key, not
+        // `App::filter`.
         (
             buffer.line(
-                &format!("editing {}  ", field_label(*field)),
+                &format!("editing {label}  "),
                 "   enter applies   esc cancels",
                 left_width,
             ),
@@ -313,7 +311,6 @@ mod tests {
     };
     use super::super::testing::*;
     use super::*;
-    use crate::commands::settings::SettingField;
     use crate::lookout::app::{ActionVerb, KeyPress, Msg};
     use crate::lookout::theme::Palette;
     use shep_core::protocol::BusEvent;
@@ -420,11 +417,11 @@ mod tests {
     /// settings editor's own state, not the dashboard's untouched filter.
     #[test]
     fn the_bar_shows_the_settings_editor_rather_than_the_filter_box() {
-        let mut app = app_in_settings_on(SettingField::Socket);
+        let mut app = app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let bar = rendered(&status_line(&app, 120));
         assert!(
-            bar.contains("editing socket  "),
+            bar.contains("editing daemon.socket  "),
             "names the field being typed: {bar:?}"
         );
         assert!(

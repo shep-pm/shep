@@ -49,6 +49,7 @@ impl App {
                     }
                 }
                 KeyPress::Cycle => return self.cycle_setting(),
+                KeyPress::Remove => return self.remove_setting(),
                 KeyPress::Confirm => return self.confirm_setting(),
                 // Re-reads `shep.toml`, so another process's write shows up, and
                 // the cursor survives. An armed candidate eats this key too.
@@ -87,7 +88,6 @@ impl App {
                 | KeyPress::TextEdit(_)
                 | KeyPress::TextApply
                 | KeyPress::TextAbandon
-                | KeyPress::Remove
                 | KeyPress::StepUp
                 | KeyPress::StepDown
                 | KeyPress::FoldView
@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cursor_moves_through_the_scalars_and_into_the_dogs() {
+    fn the_cursor_moves_through_the_tree_and_into_the_dogs() {
         let mut app = fixtures::app_in_settings();
         let rows = app.settings().unwrap().rows();
         for _ in 0..rows.len() - 1 {
@@ -230,6 +230,10 @@ mod tests {
         assert_eq!(
             app.settings().unwrap().cursor(),
             Some(*rows.last().unwrap())
+        );
+        assert!(
+            matches!(rows.last(), Some(SettingsRow::Dog(_))),
+            "the dogs table sits below the tree"
         );
     }
 
@@ -247,59 +251,61 @@ mod tests {
     ///
     /// The refusal is checked per keypress rather than at the end, because
     /// `on_settings_key` clears `self.notice` on every key.
-    #[test]
-    fn no_key_route_writes_the_config_while_the_gate_is_closed() {
-        use KeyPress::{Confirm, Cycle, SelectDown, TextApply, TextChar};
+    ///
+    /// Each route names the key its cursor starts on (`None` for the last
+    /// row, a dog) and the keys pressed from there.
+    fn write_routes() -> Vec<(&'static str, Option<&'static str>, Vec<KeyPress>)> {
+        use KeyPress::{Confirm, Cycle, Remove, SelectLast, TextApply, TextChar};
 
-        // `Settings::rows` puts the six scalars first, then the fixture's two
-        // dogs: two `SelectDown`s reach `socket`, six the first dog row.
-        let routes: &[(&str, &[KeyPress])] = &[
-            ("space on a cycled scalar", &[Cycle, Confirm]),
+        let typed = |text: &str| -> Vec<KeyPress> {
+            let mut keys = vec![Confirm];
+            keys.extend(text.chars().map(TextChar));
+            keys.extend([TextApply, Confirm]);
+            keys
+        };
+        vec![
             (
-                "the socket editor",
-                &[
-                    SelectDown,
-                    SelectDown,
-                    Confirm,
-                    TextChar('/'),
-                    TextChar('x'),
-                    TextApply,
-                    Confirm,
-                ],
+                "space on a cycled key",
+                Some("daemon.log_level"),
+                vec![Cycle, Confirm],
             ),
+            ("the socket editor", Some("daemon.socket"), typed("/x")),
             (
                 "the max_cron_sleep editor",
-                &[
-                    SelectDown,
-                    SelectDown,
-                    SelectDown,
-                    Confirm,
-                    TextChar('9'),
-                    TextChar('s'),
-                    TextApply,
-                    Confirm,
-                ],
+                Some("daemon.max_cron_sleep"),
+                typed("9s"),
+            ),
+            ("a list editor", Some("hosts"), typed(",bob@host")),
+            ("an entry editor", Some("interpreters.py"), typed("2")),
+            (
+                "the add-an-entry editor",
+                Some("interpreters+"),
+                typed("rb=ruby"),
+            ),
+            (
+                "remove on an entry",
+                Some("interpreters.py"),
+                vec![Remove, Confirm],
             ),
             (
                 "the whistle gate",
-                &[
-                    SelectDown, SelectDown, SelectDown, SelectDown, Cycle, Confirm,
-                ],
+                Some("whistle.allow_control"),
+                vec![Cycle, Confirm],
             ),
-            (
-                "space on a dog row",
-                &[
-                    SelectDown, SelectDown, SelectDown, SelectDown, SelectDown, SelectDown, Cycle,
-                    Confirm,
-                ],
-            ),
-        ];
+            ("space on a dog row", None, vec![SelectLast, Cycle, Confirm]),
+        ]
+    }
 
-        for (what, keys) in routes {
+    #[test]
+    fn no_key_route_writes_the_config_while_the_gate_is_closed() {
+        for (what, start, keys) in write_routes() {
             let mut app = fixtures::app_in_settings(); // Control::ReadOnly
+            if let Some(key) = start {
+                fixtures::select_setting(&mut app, key);
+            }
             let mut refused = false;
-            for key in *keys {
-                let effect = app.update(Msg::Key(*key));
+            for key in keys {
+                let effect = app.update(Msg::Key(key));
                 assert!(
                     !matches!(
                         effect,
@@ -325,36 +331,14 @@ mod tests {
     /// everything would pass it and be useless.
     #[test]
     fn every_one_of_those_routes_writes_once_the_gate_is_open() {
-        use KeyPress::{Confirm, Cycle, SelectDown, TextApply, TextChar};
-
-        let routes: &[(&str, &[KeyPress])] = &[
-            ("space on a cycled scalar", &[Cycle, Confirm]),
-            (
-                "the socket editor",
-                &[
-                    SelectDown,
-                    SelectDown,
-                    Confirm,
-                    TextChar('/'),
-                    TextChar('x'),
-                    TextApply,
-                    Confirm,
-                ],
-            ),
-            (
-                "space on a dog row",
-                &[
-                    SelectDown, SelectDown, SelectDown, SelectDown, SelectDown, SelectDown, Cycle,
-                    Confirm,
-                ],
-            ),
-        ];
-
-        for (what, keys) in routes {
+        for (what, start, keys) in write_routes() {
             let mut app = fixtures::app_in_settings_with_control();
+            if let Some(key) = start {
+                fixtures::select_setting(&mut app, key);
+            }
             let mut wrote = false;
-            for key in *keys {
-                let effect = app.update(Msg::Key(*key));
+            for key in keys {
+                let effect = app.update(Msg::Key(key));
                 wrote |= matches!(
                     effect,
                     Effect::WriteSetting { .. } | Effect::WriteDog { .. }
@@ -368,6 +352,7 @@ mod tests {
     fn a_read_only_lookout_opens_the_screen_and_refuses_the_edit_key() {
         let mut app = fixtures::app_in_settings(); // Control::ReadOnly
         assert!(app.settings().is_some(), "reading shep.toml is not gated");
+        fixtures::select_setting(&mut app, "daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let notice = app.notice().expect("the refusal has to say why");
         assert!(notice.is_grave());

@@ -25,5 +25,6 @@ pub(super) fn text_field(key: &str) -> Field {
         refuses: Vec::new(),
         neighbours: Vec::new(),
         bounds: Bounds::default(),
+        apply: None,
     }
 }

@@ -33,14 +33,14 @@ mod tests {
 
     #[test]
     fn space_arms_a_candidate_without_changing_the_row() {
-        let mut app = fixtures::app_in_settings_with_control();
-        let before = app.settings().unwrap().snapshot().log_level.value.clone();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
+        let before = app.settings().unwrap().snapshot().clone();
 
         assert_eq!(app.update(Msg::Key(KeyPress::Cycle)), Effect::None);
 
         assert_eq!(
-            app.settings().unwrap().snapshot().log_level.value,
-            before,
+            app.settings().unwrap().snapshot(),
+            &before,
             "arming is a question, so the row still shows what the file says"
         );
         assert!(app.settings().unwrap().pending().is_some());
@@ -50,7 +50,7 @@ mod tests {
     /// clears: a settings edit is local file I/O.
     #[test]
     fn a_lost_link_leaves_a_scalar_confirm_armed() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Frozen {
             at_local: "12:00:00".into(),
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn escape_cancels_the_confirm_before_it_closes_the_screen() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let _ = app.update(Msg::Key(KeyPress::Escape));
         assert!(app.settings().unwrap().pending().is_none());
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn movement_cancels_an_armed_candidate_rather_than_also_moving() {
-        let mut app = fixtures::app_in_settings_with_control(); // cursor on log_level
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let before = app.settings().unwrap().cursor();
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(
@@ -150,7 +150,7 @@ mod tests {
     /// for, on a keypress they spent undoing something else.
     #[test]
     fn edit_cancels_an_armed_candidate_rather_than_probing_a_schema() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(
             app.settings().unwrap().pending().is_some(),
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn refresh_cancels_an_armed_candidate_rather_than_silently_dropping_it() {
-        let mut app = fixtures::app_in_settings_with_control(); // cursor on log_level
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(
             app.settings().unwrap().pending().is_some(),
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn escape_cancels_an_armed_candidate_rather_than_closing_the_screen() {
-        let mut app = fixtures::app_in_settings_with_control(); // cursor on log_level
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(
             app.settings().unwrap().pending().is_some(),

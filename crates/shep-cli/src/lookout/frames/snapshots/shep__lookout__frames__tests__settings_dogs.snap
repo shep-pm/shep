@@ -4,17 +4,23 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            2 in the flock
                                                                                                                         
-  [daemon]                                                                                                              
-> log_level        warn                            shep.toml    needs shep daemon reload                                
-  log_json         false                           the default  needs shep daemon reload                                
-  socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                  
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                
-                                                                                                                        
-  [whistle]                                                                                                             
-  allow_control    false                           the default  needs shep whistle restarted                            
-                                                                                                                        
-  [style]                                                                                                               
-  level            full                            shep.toml    the next command reads it                               
+> ▾ daemon                                                                                                              
+    boot_first_dogs   none                            the default  needs shep daemon reload                             
+    environment       production                      shep.toml    needs shep daemon reload                             
+    log_json          false                           the default  needs shep daemon reload                             
+    log_level         warn                            shep.toml    needs shep daemon reload                             
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               
+  ▾ whistle                                                                                                             
+    allow_control     false                           the default  needs shep whistle restarted                         
+  ▾ secrets                                                                                                             
+    allow_read        false                           the default  the next command reads it                            
+  ▾ style                                                                                                               
+    level             full                            shep.toml    the next command reads it                            
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            
+    py                python3                         shep.toml    the next command reads it                            
+    + add an entry                                                                                                      
+  hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; a dog needs no reload                                                                      
@@ -22,12 +28,6 @@ shep lookout   /home/ada/.shep                                                  
   otel                                                                no       /usr/local/bin/shep-otel  online         
   ledger                                                              yes      /opt/ledger/bin/dog       not running    
   bark                                                                yes      built-in                  silent         
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

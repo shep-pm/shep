@@ -215,12 +215,12 @@ impl App {
         run: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         let table = self.config_pane_mut()?.dogs_tab_mut().take_table(dog)?;
-        let sheep = core::mem::replace(&mut self.body, Body::ConfigPane(*table));
+        let sheep = core::mem::replace(&mut self.body, Body::ConfigPane(table));
         let out = run(self);
         if let Body::ConfigPane(table) = core::mem::replace(&mut self.body, sheep)
             && let Some(pane) = self.config_pane_mut()
         {
-            pane.dogs_tab_mut().seat_table(dog, Box::new(table));
+            pane.dogs_tab_mut().seat_table(dog, table);
             pane.pull_focus(dog);
         }
         Some(out)

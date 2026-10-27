@@ -13,8 +13,9 @@ use shep_core::status::ProcStatus;
 use super::super::app::{App, KeyPress, Msg, RowKey, SettingsRow};
 use super::super::pane::{ListedDog, SheepDogEntry};
 use super::super::tail::{Stream, Tail, TailLine};
-use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
-use crate::style::StyleSource;
+use crate::commands::settings::{DogView, SettingsSnapshot};
+use crate::lookout::field::shep_toml_shape;
+use crate::style::{StyleLevel, StyleSource};
 
 use super::Scene;
 
@@ -478,49 +479,52 @@ pub(super) fn dog_sheep(
         .build()
 }
 
-/// Walks the settings screen's cursor onto `field`'s row with real
-/// `SelectDown` keypresses.
+/// Walks the settings screen's cursor onto the row of the key `key`
+/// (dotted, as `shep.toml` names it) with real `SelectDown` keypresses.
 ///
 /// # Panics
 ///
-/// If the settings screen is not open.
+/// If the settings screen is not open, or `key` is not a row of the tree.
 #[track_caller]
-pub(super) fn move_settings_cursor_to(app: &mut App, field: SettingField) {
+pub(super) fn move_settings_cursor_to(app: &mut App, key: &str) {
+    let field = shep_toml_shape()
+        .fields
+        .fields()
+        .iter()
+        .position(|field| field.key == key)
+        .expect("key is a field of the settings tree");
     let target = app
         .settings()
         .expect("the settings screen must already be open")
         .rows()
         .iter()
-        .position(|row| *row == SettingsRow::Scalar(field))
-        .expect("field is one of the six scalar rows Settings::rows always carries");
+        .position(|row| *row == SettingsRow::Field(field))
+        .expect("the field is a row of the open tree");
     for _ in 0..target {
         app.update(Msg::Key(KeyPress::SelectDown));
     }
 }
 
-/// A settings snapshot with `log_level`, `socket`, `max_cron_sleep` and
-/// `style_level` declared in `shep.toml`, and `log_json`/`allow_control`
-/// left at their compiled defaults: the mixed state
-/// [`Scene::SettingsSet`] shows, reused by [`Scene::SettingsConfirm`] and
-/// [`Scene::SettingsTyping`].
+/// A settings snapshot with `log_level`, `socket`, `max_cron_sleep`,
+/// `environment` and `style.level` declared in `shep.toml`, and every other
+/// key left at its compiled default: the mixed state [`Scene::SettingsSet`]
+/// shows, reused by [`Scene::SettingsConfirm`] and [`Scene::SettingsTyping`].
 pub(super) fn settings_snapshot_for_gallery() -> SettingsSnapshot {
-    let config = |value: &str| ScalarView {
-        value: value.to_string(),
-        source: StyleSource::Config,
-    };
-    let default = |value: &str| ScalarView {
-        value: value.to_string(),
-        source: StyleSource::Default,
-    };
+    let document = json!({
+        "daemon": {
+            "log_level": "warn",
+            "socket": "/home/ada/.shep/run/shep.sock",
+            "max_cron_sleep": "30s",
+            "environment": "production",
+        },
+        "style": { "level": "full" },
+        "interpreters": { "py": "python3" },
+    });
     SettingsSnapshot {
-        log_level: config("warn"),
-        log_json: default("false"),
-        socket: config("/home/ada/.shep/run/shep.sock"),
-        max_cron_sleep: config("30s"),
-        allow_control: default("false"),
-        style_level: config("full"),
+        document: document.as_object().cloned().unwrap_or_default(),
+        socket_default: PathBuf::from("/home/ada/.shep/run/shep.sock"),
         // The document declares it, so the file and resolved value agree.
-        style_level_in_file: Some("full".to_string()),
+        style: (StyleLevel::Full, StyleSource::Config),
         dogs: vec![
             DogView {
                 name: "bark".to_string(),
@@ -536,7 +540,7 @@ pub(super) fn settings_snapshot_for_gallery() -> SettingsSnapshot {
     }
 }
 
-/// [`settings_snapshot_for_gallery`]'s scalars, with `dogs` replaced by
+/// [`settings_snapshot_for_gallery`]'s keys, with `dogs` replaced by
 /// the three-way drift [`Scene::SettingsDogs`] shows: `otel` running
 /// while the file disables it, `ledger` enabled and absent from the
 /// flock, and `bark` enabled with `handshook: Some(false)`, so the join

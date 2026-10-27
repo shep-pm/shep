@@ -4,30 +4,30 @@ expression: render_text(terminal.backend().buffer())
 ---
 shep lookout   /home/ada/.shep                                                                            3 in the flock
                                                                                                                         
-  [daemon]                                                                                                              
-> log_level        warn                            shep.toml    needs shep daemon reload                                
-  log_json         false                           shep.toml    needs shep daemon reload                                
-  socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                  
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                
-                                                                                                                        
-  [whistle]                                                                                                             
-  allow_control    false                           shep.toml    needs shep whistle restarted                            
-                                                                                                                        
-  [style]                                                                                                               
-  level            full                            shep.toml    the next command reads it                               
+> ▾ daemon                                                                                                              
+    boot_first_dogs   none                            the default  needs shep daemon reload                             
+    environment       production                      shep.toml    needs shep daemon reload                             
+    log_json          false                           shep.toml    needs shep daemon reload                             
+    log_level         warn                            shep.toml    needs shep daemon reload                             
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               
+  ▾ whistle                                                                                                             
+    allow_control     false                           shep.toml    needs shep whistle restarted                         
+  ▾ secrets                                                                                                             
+    allow_read        false                           shep.toml    the next command reads it                            
+  ▾ style                                                                                                               
+    level             full                            shep.toml    the next command reads it                            
+  ▾ interpreters      2 entries                       shep.toml    the next command reads it                            
+    js                node                            shep.toml    the next command reads it                            
+    py                python3                         shep.toml    the next command reads it                            
+    + add an entry                                                                                                      
+  hosts               ada@box                         shep.toml    the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; a dog needs no reload                                                                      
   NAME                                                                IN FILE  SOURCE                    RUNNING        
   bark                                                                no       built-in                  not running    
   metrics                                                             yes      built-in                  not running    
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

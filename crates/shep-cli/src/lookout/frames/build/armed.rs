@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use shep_client::RequestError;
 use shep_core::protocol::{Response, RpcError, RpcErrorCode};
 
-use crate::commands::settings::{SettingField, load_settings};
+use crate::commands::settings::load_settings;
 use crate::commands::shep_toml::ShepToml;
 use crate::lookout::app::{ActionVerb, App, Effect, KeyPress, Msg, RevealedValue, RowKey, Sent};
 use crate::lookout::frames::fixtures::{
@@ -180,8 +180,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
             app.update(Msg::Settings {
                 result: Ok(settings_snapshot_for_gallery()),
             });
-            // The cursor already sits on `log_level`, `Settings::rows`'s
-            // first row, so arming it needs no `SelectDown` at all.
+            move_settings_cursor_to(app, "daemon.log_level");
             app.update(Msg::Key(KeyPress::Cycle));
         }
         Scene::SettingsTyping => {
@@ -189,7 +188,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
             app.update(Msg::Settings {
                 result: Ok(settings_snapshot_for_gallery()),
             });
-            move_settings_cursor_to(app, SettingField::Socket);
+            move_settings_cursor_to(app, "daemon.socket");
             // Opens the editor, seeded with the on-disk value.
             app.update(Msg::Key(KeyPress::Confirm));
             // Trims the seeded value back to a partial path, so the frame
@@ -494,16 +493,17 @@ mod tests {
     #[test]
     #[cfg(unix)] // inherited, not measured per test: see the `build` module's docs
     fn every_settings_scene_shows_the_layer_it_is_named_for() {
-        // SettingsFresh: a bare `shep.toml`, every scalar reads the default.
+        // SettingsFresh: a first run's `shep.toml`, which declares only the
+        // starter `[interpreters]`; every other key reads the default.
         let fresh = render_text(&scene(Scene::SettingsFresh).1);
         assert_eq!(
             fresh.matches("the default").count(),
-            6,
-            "all six scalars read the default: {fresh:?}"
+            10,
+            "every key outside [interpreters] reads the default: {fresh:?}"
         );
         assert!(
-            !fresh.contains("shep.toml  "),
-            "a fresh home has declared nothing: {fresh:?}"
+            fresh.matches("shep.toml  ").count() > 0,
+            "the starter interpreters are declared: {fresh:?}"
         );
 
         // SettingsSet: `shep.toml` and the default sit side by side.
@@ -520,7 +520,7 @@ mod tests {
         // SettingsTyping: names the field being typed, not the filter box.
         let typing = render_text(&scene(Scene::SettingsTyping).1);
         assert!(
-            typing.contains("editing socket"),
+            typing.contains("editing daemon.socket"),
             "names the field being typed: {typing:?}"
         );
         assert!(
@@ -569,7 +569,7 @@ mod tests {
         //  dogs caption cost the same height a row does."
         let short = render_text(&scene(Scene::SettingsShort).1);
         assert!(
-            short.contains("... 5 above"),
+            short.contains("... 13 above"),
             "the marker names how many rows are off the top: {short:?}"
         );
         assert!(
@@ -584,8 +584,8 @@ mod tests {
             "and the rows above it are the ones that went: {short:?}"
         );
         assert!(
-            short.contains("[style]") && short.contains("[dogs]"),
-            "what survives is whole sections, headers and all: {short:?}"
+            short.contains("interpreters") && short.contains("[dogs]"),
+            "what survives is the tail of the tree and the dogs table, headers and all: {short:?}"
         );
     }
 

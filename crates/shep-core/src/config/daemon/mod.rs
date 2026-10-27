@@ -10,6 +10,8 @@ mod dog_grants;
 mod dog_grants_state_tests;
 mod error;
 mod overrides;
+#[cfg(feature = "schema")]
+mod schema;
 mod sections;
 #[cfg(test)]
 mod testing;
@@ -17,4 +19,9 @@ pub use config::DaemonConfig;
 pub use dog_grants::DogGrantsSection;
 pub use error::DaemonConfigError;
 pub use overrides::{DaemonOverrides, parse_daemon_bool};
+#[cfg(feature = "schema")]
+pub use schema::{
+    APPLY_KEY, APPLY_NEXT_COMMAND, APPLY_RELOAD, APPLY_RESTART, APPLY_WHISTLE,
+    daemon_config_schema_json,
+};
 pub use sections::{DaemonSection, LogLevel, SecretsSection, StyleSection, WhistleSection};

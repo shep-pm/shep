@@ -4,31 +4,31 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            6 in the flock
                                                                                                                         
-  [daemon]                                                                                                              
-> log_level        warn                            the default  needs shep daemon reload                                
-  log_json         false                           the default  needs shep daemon reload                                
-  socket           /home/ada/.shep/run/shep.sock   the default  needs the shepherd stopped and started                  
-  max_cron_sleep   not set                         the default  needs shep daemon reload                                
-                                                                                                                        
-  [whistle]                                                                                                             
-  allow_control    false                           the default  needs shep whistle restarted                            
-                                                                                                                        
-  [style]                                                                                                               
-  level            full                            the default  the next command reads it                               
-                                                                                                                        
-  [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  bark                                                                no       built-in                  not running    
-  metrics                                                             no       built-in                  not running    
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+> ▾ daemon                                                                                                              
+    boot_first_dogs   none                            the default  needs shep daemon reload                             
+    environment       production                      the default  needs shep daemon reload                             
+    log_json          false                           the default  needs shep daemon reload                             
+    log_level         warn                            the default  needs shep daemon reload                             
+    max_cron_sleep    not set                         the default  needs shep daemon reload                             
+    socket            /home/ada/.shep/run/shep.sock   the default  needs the shepherd stopped and started               
+  ▾ whistle                                                                                                             
+    allow_control     false                           the default  needs shep whistle restarted                         
+  ▾ secrets                                                                                                             
+    allow_read        false                           the default  the next command reads it                            
+  ▾ style                                                                                                               
+    level             full                            the default  the next command reads it                            
+  ▾ interpreters      8 entries                       shep.toml    the next command reads it                            
+    cjs               node                            shep.toml    the next command reads it                            
+    js                node                            shep.toml    the next command reads it                            
+    mjs               node                            shep.toml    the next command reads it                            
+    php               php                             shep.toml    the next command reads it                            
+    pl                perl                            shep.toml    the next command reads it                            
+    py                python3                         shep.toml    the next command reads it                            
+    rb                ruby                            shep.toml    the next command reads it                            
+    sh                sh                              shep.toml    the next command reads it                            
+    + add an entry                                                                                                      
+  hosts               none                            the default  the next command reads it                            
+  ... 2 below                                                                                                           
                                                                                                                         
                                                                                                                         
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled
