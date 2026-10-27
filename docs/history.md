@@ -695,5 +695,21 @@ can be added later without asking past contributors to rewrite their entries.
 A future `shep install` would reverse the print-only call, and this entry is
 the record of the call it reverses.
 
+**`shep lookout <sheep> [tab] [dog]` opens on the screen the operator named**
+(issue #1194). The verb took no positional at all before it: lookout opened the
+flock table and every pane was a keystroke away from there. The parse now takes
+up to three. The tab's possible values are `shep_core::config::GROUP_ORDER`
+itself, the same list `lookout::view::pane::chrome` draws its tab row from, so
+the CLI cannot grow a tab the pane does not draw, and a third positional is
+refused by clap unless the tab before it is `dogs`, the only group with a dog's
+table on it. The ask is held until the first `ListFlock` answer rather than
+applied at startup, because a shepherd still restoring its flock may not have
+that sheep yet: the answer either opens the pane or leaves the dashboard up
+with a notice naming what was not found, and the ask is spent on that answer
+either way, so a later poll cannot reopen a screen the operator has closed. No
+wire change and no protocol move: the reads are `ListFlock`, `SheepConfig`, and
+the dogs listing that reads this machine's `dogs.toml`, which is why the third
+form stops at the tab over `--host`.
+
 Project memory (cross-session state) tracks decisions; docs above are the
 source of truth.

@@ -1921,7 +1921,31 @@ The values on screen stay exactly as they were, and it does not exit — you do.
 Needs a terminal: with stdout redirected it refuses rather than writing escape sequences into a
 file.
 
-Usage: shep lookout [OPTIONS]
+Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG]
+
+Arguments:
+  [SHEEP]
+          Open on one sheep's own screen
+          
+          The name is the one `shep describe` takes. A fold, a fold selector or a `fold/app`
+          selector is not one sheep and is not accepted here. With no tab, lookout opens that
+          sheep's status page, the screen Enter opens from the dashboard.
+
+  [TAB]
+          Open that sheep's config pane on one tab
+          
+          The tabs are the ones the pane itself draws, in the order it draws them. With a tab,
+          lookout opens the config pane `e` opens, already sitting on it.
+          
+          [possible values: process, logging, inputs, restart, readiness, shutdown, watch, cron,
+          dogs]
+
+  [DOG]
+          Open one dog's table, on the dogs tab
+          
+          The dog is one this shepherd lists, or one the sheep already carries a table for. Refused
+          unless the tab before it is `dogs`: a dog's table is that tab's own, and no other tab has
+          one.
 
 Options:
       --format <FORMAT>

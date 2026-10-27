@@ -1,4 +1,4 @@
-use super::app::{App, Control};
+use super::app::{App, Control, Focus};
 use super::source::{
     ClientFlock, HostShepherd, Local, LocalReader, NoLocal, Shepherd, UnixShepherd,
 };
@@ -125,6 +125,15 @@ where
     app.set_style(style);
     if let Some(dest) = host {
         app.set_remote_host(dest);
+    }
+    // Held, not applied: the first flock answer is what says whether the
+    // sheep is there at all.
+    if let Some(sheep) = args.sheep.as_deref() {
+        app.set_focus(Focus::new(
+            sheep.to_owned(),
+            args.tab.as_deref(),
+            args.dog.clone(),
+        ));
     }
 
     // Hook first, then the guard, then raw mode, then the alternate screen,

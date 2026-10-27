@@ -1,5 +1,6 @@
-//! The config pane: asking for a sheep's config, the keyboard over it, and
-//! closing it.
+//! The config pane: asking for a sheep's config, and closing it. The keyboard
+//! over an open pane is [`crate::lookout::app::config_pane_keys`], and the
+//! edits it files are in [`crate::lookout::app::config_pane_edits`].
 
 use super::*;
 
@@ -56,6 +57,7 @@ impl App {
                     if let Some(pane) = self.sheep_pane_mut() {
                         pane.adopt_config(*view);
                     }
+                    Effect::None
                 }
                 // `None` only if something outside this file set
                 // `config_target` without `config_for`, which nothing does:
@@ -71,10 +73,14 @@ impl App {
             // stopped`, naming neither the sheep nor the screen it came
             // from.
             other => {
+                // The tab and the dog that were waiting on this read go with
+                // it: a pane that never opened spent neither, and left set
+                // they would open the next one the operator asked for.
+                self.focus_ask = None;
                 self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
+                Effect::None
             }
         }
-        Effect::None
     }
 
     /// Opens the config pane on `view`, or refreshes one already open in
@@ -82,7 +88,12 @@ impl App {
     /// Split out of [`Self::on_sheep_config`] so that method can route a
     /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
     /// without repeating its guard or its error arms.
-    pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
+    ///
+    /// A tab the command line asked for is spent here, ahead of the carried
+    /// one: the operator named it, and nothing has been read since. The
+    /// effect is the `dogs` tab's own listing, raised the same way `tab`
+    /// raises it from a keyboard.
+    pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) -> Effect {
         let carried = self.config_pane().map(|pane| pane.view().clone());
         // The tab too, so a re-read lands where the operator was reading.
         let carried_group = self.config_pane().map(ConfigPane::group_index);
@@ -119,6 +130,15 @@ impl App {
         if let Some(group) = carried_group {
             pane.adopt_group(group);
         }
+        // Ahead of the carried group: the command line named this one, and no
+        // keystroke has moved a tab since.
+        if let Some(tab) = self.take_focus_tab()
+            && let Some(index) = shep_core::config::GROUP_ORDER
+                .iter()
+                .position(|group| *group == tab)
+        {
+            pane.adopt_group(index);
+        }
         if let Some(dogs) = carried_dogs {
             pane.adopt_dogs_tab(dogs);
         }
@@ -142,6 +162,9 @@ impl App {
         // the body it was drawn over, and every key from here goes to
         // `on_keymap_key` instead of the pane the operator asked for.
         self.keymap_open = false;
+        // The `dogs` tab has no rows until its listing lands, and a pane that
+        // opened on it needs the ask `tab` would have raised.
+        self.dogs_tab_effect()
     }
 
     /// `e`'s own handler: open a dog's pane directly, else ask the shepherd.
@@ -182,197 +205,21 @@ impl App {
     /// The one place [`Self::config_target`] and [`Self::config_for`] are
     /// set for a sheep-config read, so the two can never disagree about
     /// which request is outstanding.
+    ///
+    /// An ask for one sheep retires the tab and the dog the command line was
+    /// waiting on for another. The read in flight for that other sheep is
+    /// dropped by [`Self::on_sheep_config`]'s guard the moment this one is
+    /// outstanding, and a leftover ask would spend `shep lookout web watch`'s
+    /// tab, or open `shep lookout web dogs jobs`' table, on a pane whose
+    /// operator never named either. An ask for the same sheep keeps them: that
+    /// is the read they were waiting on.
     pub(super) fn ask_for_sheep_config(&mut self, name: String, for_screen: ConfigFor) -> Effect {
+        if self.focus_ask.as_ref().is_some_and(|ask| ask.sheep != name) {
+            self.focus_ask = None;
+        }
         self.config_target = Some(name.clone());
         self.config_for = Some(for_screen);
         Effect::Send(Sent::SheepConfig { name })
-    }
-
-    /// The config pane's own keymap, in force for as long as
-    /// [`Self::config_pane`] is `Some`.
-    ///
-    /// Movement walks fields, `r` re-reads, `space` cycles the row under
-    /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
-    /// and `Escape` asks the close dialog's question if there is one to
-    /// ask, else writes everything filed and leaves. A dog's table is read
-    /// again before that write: see [`Self::reread_before_closing`]. `h`
-    /// raises the keymap overlay; see `KeyPress::Help`'s arm below.
-    /// Everything else is named rather than wildcarded, so a stray variant
-    /// cannot fall silently into an arm that ignores it.
-    ///
-    /// Nothing is armed here and no key is eaten. A keystroke that edits
-    /// files into the pane's own set and sends nothing, so a stray one
-    /// costs an `u` rather than a write to a running sheep.
-    pub(super) fn on_pane_key(&mut self, key: KeyPress) -> Effect {
-        self.notice = None;
-        if self.close_dialog.is_some() {
-            return self.on_close_dialog_key(key);
-        }
-        if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
-            return self.on_list_key(key);
-        }
-        if let Some(effect) = self.on_dogs_tab_key(key) {
-            return effect;
-        }
-        if key == KeyPress::Quit {
-            return Effect::Quit;
-        }
-        match key {
-            // Unreachable: the guard above already returned. Kept rather
-            // than folded into a silent group or replaced with a wildcard,
-            // because every other arm here is named on purpose (a stray
-            // `KeyPress` variant should not fall through unnoticed), and a
-            // wildcard would defeat that for every variant, not just this
-            // one. If the guard above is ever removed, this is what Quit
-            // still does.
-            KeyPress::Quit => return Effect::Quit,
-            // Backs out one level at a time: the close dialog's own
-            // question first, if there is one, else the pane. `Escape`
-            // closes rather than cascading to a filter clear or a quit,
-            // exactly as it does on the settings screen.
-            //
-            // The dialog is asked before anything is taken: `esc` used to
-            // write first and ask second, which missed the very edit that
-            // made this pane's `Escape` worth asking about. Now nothing
-            // leaves the pane until the question is answered, one way or
-            // another.
-            //
-            // One press, not two: the field's help draws unconditionally
-            // now, so nothing waits behind a second `esc` for it.
-            KeyPress::Escape => {
-                if let Some(text) = self.config_pane().and_then(ConfigPane::incomplete_union) {
-                    self.notice = Some(Notice::grave(text));
-                    return Effect::None;
-                }
-                // Tables are read again first: the dialog's `c`, `R` and `L`
-                // write them too. See [`Self::on_close_reread`].
-                if let Some(effect) = self.reread_before_closing() {
-                    return effect;
-                }
-                if let Some(dialog) = self.close_offer() {
-                    self.close_dialog = Some(dialog);
-                    return Effect::None;
-                }
-                let writes = self.take_pane_writes();
-                self.close_pane();
-                if !writes.is_empty() {
-                    return Effect::SendAll(writes);
-                }
-            }
-            KeyPress::SelectUp
-            | KeyPress::SelectDown
-            | KeyPress::SelectFirst
-            | KeyPress::SelectLast => {
-                if let Some(pane) = self.config_pane_mut() {
-                    match key {
-                        KeyPress::SelectUp => pane.move_by(-1),
-                        KeyPress::SelectDown => pane.move_by(1),
-                        KeyPress::SelectFirst => pane.move_to_first(),
-                        KeyPress::SelectLast => pane.move_to_last(),
-                        _ => unreachable!(),
-                    }
-                }
-            }
-            // Re-reads the same sheep, so an override applied from another
-            // window shows up. The cursor survives it: see
-            // `Self::on_sheep_config`.
-            KeyPress::Refresh => return self.reread_pane(),
-            KeyPress::Cycle => return self.cycle_field(),
-            KeyPress::Confirm => return self.confirm_field(),
-            // `e` does exactly what `Enter` does here: an operator who
-            // opened the pane with `e` should not have to learn a second
-            // key to use it. Except on a table, which `Enter` opens and
-            // closes and which holds nothing for `e` to edit.
-            KeyPress::Edit => {
-                if self.config_pane().is_some_and(|pane| !pane.cursor_on_table()) {
-                    return self.confirm_field();
-                }
-            }
-            // On a dog's pane `←` and `→` close and open the table under the
-            // cursor; a sheep pane has no tables and they do nothing.
-            KeyPress::TabPrev => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.close_table();
-                }
-            }
-            KeyPress::TabNext => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.open_table();
-                }
-            }
-            KeyPress::Help => {
-                self.open_keymap();
-            }
-            // `d` restores the field under the cursor to its default. Does
-            // nothing on an env row or `+ add a key`: unsetting a key
-            // entirely is a different act from restoring a default, and
-            // the spec does not ask for it.
-            KeyPress::Remove => return self.restore_default(),
-            KeyPress::Action(_)
-            | KeyPress::Settings
-            | KeyPress::FilterStart
-            | KeyPress::TextChar(_)
-            | KeyPress::TextBackspace
-            | KeyPress::TextEdit(_)
-            | KeyPress::TextApply
-            | KeyPress::TextAbandon
-            | KeyPress::StepUp
-            | KeyPress::StepDown
-            | KeyPress::FoldView
-            | KeyPress::Secrets
-            | KeyPress::Reveal
-            | KeyPress::Copy
-            | KeyPress::SecretDelete
-            | KeyPress::Collapse
-            // Bound only in the close dialog; with none up, `c` is a stray
-            // key the same way an action key is.
-            | KeyPress::Continue => {}
-            KeyPress::StreamCycle
-            | KeyPress::LevelCycle
-            | KeyPress::PageDown
-            | KeyPress::PageUp
-            | KeyPress::FollowToggle
-            | KeyPress::WrapToggle
-            | KeyPress::MatchNext
-            | KeyPress::MatchPrev
-            | KeyPress::Bleats => {}
-            // Drops the newest edit and nothing else. No control gate: a
-            // key that unfiles something cannot write, and refusing it
-            // behind a closed gate would leave an edit the gate already
-            // refused to file.
-            KeyPress::Undo => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.undo_edit();
-                }
-            }
-            // `tab` and `shift-tab` walk the groups; a digit jumps straight
-            // to one. All reset the cursor to the group's first field, so
-            // `j`/`k` never start on a row the new tab does not draw.
-            //
-            // The `dogs` tab lists its dogs the first time it comes up.
-            KeyPress::NextGroup => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.next_group();
-                    pane.move_to_first();
-                }
-                return self.dogs_tab_effect();
-            }
-            KeyPress::PrevGroup => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.prev_group();
-                    pane.move_to_first();
-                }
-                return self.dogs_tab_effect();
-            }
-            KeyPress::Group(digit) => {
-                if let Some(pane) = self.config_pane_mut() {
-                    pane.set_group(digit);
-                    pane.move_to_first();
-                }
-                return self.dogs_tab_effect();
-            }
-        }
-        Effect::None
     }
 
     /// One write ticket, and the counter moved past it.
@@ -440,6 +287,9 @@ impl App {
         // A listing still out belongs to this pane. Retired here, not on a
         // refresh, so a pane reopened on the same sheep does not take it.
         self.sheep_dogs_ask += 1;
+        // So does the rest of what the command line asked for. The operator
+        // closed the pane it was opening; the next one is theirs.
+        self.focus_ask = None;
         self.release_text_mode_if_unowned();
     }
 
