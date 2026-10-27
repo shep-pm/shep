@@ -66,8 +66,8 @@
 //!   start times and liveness (reads unix only), and the clock they share
 //! - [`privilege`]: `user`/`group` config to numeric uid/gid, one portable
 //!   `resolve()` over a unix impl and a non-unix stub that refuses outright
-//! - [`notify`]: one `READY=1` datagram to `$NOTIFY_SOCKET`, sent by [`boot`]
-//!   once the muster restore has finished (unix only)
+//! - [`notify`]: `READY=1` and `EXTEND_TIMEOUT_USEC` datagrams to
+//!   `$NOTIFY_SOCKET`, sent by [`boot`] (unix only)
 //! - [`tokio_runner`]: real [`ProcessRunner`](runner::ProcessRunner) over
 //!   `tokio::process` (unix only)
 //!

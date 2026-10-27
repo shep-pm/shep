@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-10-26
+
+
+## [0.18.1] - 2026-10-26
+
+
+## [0.18.0] - 2026-10-26
+
+### Added
+
+- Write import's secrets in one locked pass
+
+### Changed
+
+- Read the versioned stores through one function
+- Build and show a Flockfile backend error in one place
+- Check secret key and environment names through one function
+- Report a Flockfile backend refusal as one Parse variant **(BREAKING)**
+
+### Fixed
+
+- Vet a dog under the environment the daemon gives it
+- Let an empty set_many batch skip the environment check
+- Vet a dog under the environment the daemon gives it ([#1100](https://github.com/shep-pm/shep/pull/1100))
+
+
 ## [0.17.0] - 2026-10-25
 
 ### Added

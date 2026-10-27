@@ -37,16 +37,12 @@ pub(crate) struct UnitSpec {
 /// No `TimeoutStartSec`, so systemd's own default applies, 90s on a stock
 /// installation. Readiness is reported after the restore, and the restore
 /// walks the muster roll in dependency order, holding each stage until its
-/// members are ready. The budget is therefore a sum over stages rather than
-/// the longest spawn in the roll: roughly thirty stages at the default 3s
-/// `listen_timeout`, and three or four at a `listen_timeout` of half a
-/// minute. Past it systemd kills the shepherd mid-restore and starts it again
-/// on `RestartSec`, which is a boot loop rather than a slow boot.
-///
-/// Documented rather than fixed. Raising it here is a one-line change and the
-/// right one for a flock deep enough to need it, but the number belongs to
-/// the operator's flock and not to this renderer, and a wrong one trades the
-/// loop for a shepherd systemd waits on forever.
+/// members are ready. The shepherd sends `EXTEND_TIMEOUT_USEC` around each
+/// stage, set to that stage's own bound, so the deadline follows the walk and
+/// no number here has to cover the sum of the stages. systemd only moves a
+/// deadline later, so a `TimeoutStartSec` the operator sets higher is never
+/// cut. A single stage that overruns its own bound still lets systemd kill the
+/// shepherd and start it again on `RestartSec`.
 ///
 /// `RestartPreventExitStatus` is [`ExitCode::DaemonAlreadyRunning`]: a
 /// shepherd started by hand already holds this home, and restarting into its

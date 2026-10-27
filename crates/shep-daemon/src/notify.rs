@@ -1,17 +1,21 @@
 //! Readiness reporting to an init system that supervises this process
 //! directly.
 //!
-//! Sends the eight bytes `READY=1\n` to `$NOTIFY_SOCKET`: the whole of the
-//! `sd_notify` protocol shep speaks. No dependency and no unsafe; both
-//! address shapes systemd hands a service (a filesystem path, an
-//! `@`-prefixed abstract name) are reachable from `std` alone since 1.70.
+//! Sends two `sd_notify` messages to `$NOTIFY_SOCKET`, the whole of the
+//! protocol shep speaks: the eight bytes `READY=1\n`, and
+//! `EXTEND_TIMEOUT_USEC=<n>\n`. No dependency and no unsafe; both address
+//! shapes systemd hands a service (a filesystem path, an `@`-prefixed
+//! abstract name) are reachable from `std` alone since 1.70.
 //!
-//! [`crate::boot::boot`] sends this last, after the muster restore
-//! finishes, so a unit reports ready only once the flock is up. Absent is
-//! the ordinary case: nothing sets `$NOTIFY_SOCKET` outside a real systemd
-//! unit, and [`notify_ready`] answers `Ok(false)` rather than failing.
+//! [`crate::boot::boot`] sends `READY=1` last, after the muster restore
+//! finishes, so a unit reports ready only once the flock is up. The restore
+//! sends [`extend_timeout`] before each stage, so the unit's start deadline
+//! follows the walk. Absent is the ordinary case: nothing sets
+//! `$NOTIFY_SOCKET` outside a real systemd unit, and [`notify_ready`]
+//! answers `Ok(false)` rather than failing.
 
 use core::fmt;
+use core::time::Duration;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixDatagram;
@@ -28,7 +32,7 @@ use std::path::Path;
 /// [`BootOptions::notify_socket`](crate::boot::BootOptions::notify_socket).
 pub const NOTIFY_SOCKET_ENV: &str = "NOTIFY_SOCKET";
 
-/// The one message this module sends.
+/// The readiness message.
 ///
 /// Matched literally by systemd: `ready=1`, `READY=true`, or a missing
 /// newline all leave the unit hanging until `TimeoutStartSec`, and none of
@@ -69,30 +73,54 @@ pub fn notify_ready() -> Result<bool, NotifyError> {
 /// # Errors
 /// As [`notify_ready`].
 pub fn notify(target: &OsStr) -> Result<(), NotifyError> {
+    send(target, READY)
+}
+
+/// Asks the init system to hold this unit's start deadline until `timeout`
+/// from now, at one already-resolved address.
+///
+/// systemd only ever moves the deadline later: a `timeout` shorter than what
+/// `TimeoutStartSec` has left changes nothing. Whole microseconds, so a
+/// sub-microsecond remainder is dropped.
+///
+/// # Errors
+/// As [`notify_ready`].
+pub fn extend_timeout(target: &OsStr, timeout: Duration) -> Result<(), NotifyError> {
+    send(
+        target,
+        format!("EXTEND_TIMEOUT_USEC={}\n", timeout.as_micros()).as_bytes(),
+    )
+}
+
+/// Sends `message` to one already-resolved address, which [`notify()`] describes.
+///
+/// # Errors
+/// As [`notify_ready`].
+fn send(target: &OsStr, message: &[u8]) -> Result<(), NotifyError> {
     match target.as_bytes().strip_prefix(&[ABSTRACT_PREFIX]) {
-        Some(name) => send_to_abstract(name),
+        Some(name) => send_to_abstract(name, message),
         None => {
             let socket = UnixDatagram::unbound()?;
-            socket.send_to(READY, Path::new(target))?;
+            socket.send_to(message, Path::new(target))?;
             Ok(())
         }
     }
 }
 
-/// Sends [`READY`] to the abstract-namespace address `name` (the address
+/// Sends `message` to the abstract-namespace address `name` (the address
 /// without its `@`).
 ///
 /// # Errors
 /// - [`NotifyError::Io`]: the name was not a valid abstract address, the
 ///   socket could not be opened, or the datagram not sent.
 #[cfg(target_os = "linux")]
-fn send_to_abstract(name: &[u8]) -> Result<(), NotifyError> {
+fn send_to_abstract(name: &[u8], message: &[u8]) -> Result<(), NotifyError> {
     use std::os::linux::net::SocketAddrExt;
     use std::os::unix::net::SocketAddr;
 
     let addr = SocketAddr::from_abstract_name(name)?;
     let socket = UnixDatagram::unbound()?;
-    socket.send_to_addr(READY, &addr)?;
+    socket.send_to_addr(message, &addr)?;
     Ok(())
 }
 
@@ -102,7 +130,7 @@ fn send_to_abstract(name: &[u8]) -> Result<(), NotifyError> {
 /// - [`NotifyError::Unsupported`]: always. Linux is the only platform with
 ///   an abstract socket namespace to reach.
 #[cfg(not(target_os = "linux"))]
-fn send_to_abstract(_name: &[u8]) -> Result<(), NotifyError> {
+fn send_to_abstract(_name: &[u8], _message: &[u8]) -> Result<(), NotifyError> {
     Err(NotifyError::Unsupported)
 }
 
@@ -156,7 +184,6 @@ impl From<std::io::Error> for NotifyError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::time::Duration;
 
     #[test]
     fn ready_reaches_a_listening_socket_verbatim() {
@@ -174,6 +201,23 @@ mod tests {
         let mut buf = [0u8; 64];
         let read = listener.recv(&mut buf).unwrap();
         assert_eq!(&buf[..read], b"READY=1\n");
+    }
+
+    #[test]
+    fn an_extension_reaches_a_listening_socket_verbatim() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify.sock");
+        let listener = UnixDatagram::bind(&path).unwrap();
+        // Bounded, for the reason the case above gives.
+        listener
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        extend_timeout(path.as_os_str(), Duration::from_millis(95_500)).unwrap();
+
+        let mut buf = [0u8; 64];
+        let read = listener.recv(&mut buf).unwrap();
+        assert_eq!(&buf[..read], b"EXTEND_TIMEOUT_USEC=95500000\n");
     }
 
     #[test]
