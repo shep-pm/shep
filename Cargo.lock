@@ -2258,6 +2258,7 @@ name = "shep-tree"
 version = "0.18.2"
 dependencies = [
  "nix 0.29.0",
+ "rustix",
  "windows-sys 0.61.2",
 ]
 
