@@ -4,14 +4,15 @@
 //! the table they name. A write built on the table read at open undoes
 //! every change made since. So `Escape` reads the table again first. An
 //! unchanged table is written and the pane closes. A moved one stays on
-//! screen under the operator's edits.
+//! screen under the operator's edits. A sheep pane holds one such table per
+//! open dog, and the one read covers them all.
 
 use super::super::dog_pane::moved_entries;
 use super::super::*;
 
 impl App {
-    /// `Escape` on a dog or per-sheep table pane holding edits: reads the
-    /// table again and holds the pane for the answer.
+    /// `Escape` on a dog pane, or a sheep pane whose dogs hold tables with
+    /// edits filed: reads the table again and holds the pane for the answer.
     ///
     /// [`None`] for every other pane, and for one with nothing filed. Those
     /// close at once. A second `Escape` while the read is out asks nothing
@@ -22,11 +23,12 @@ impl App {
     /// be told apart from.
     pub(in crate::lookout::app) fn reread_before_closing(&mut self) -> Option<Effect> {
         let pane = self.config_pane()?;
-        let whole_table = matches!(
-            pane.target(),
-            PaneTarget::Dog { .. } | PaneTarget::SheepDog { .. }
-        );
-        if !whole_table || pane.edits().is_empty() {
+        let holds_whole_table = match pane.target() {
+            PaneTarget::Dog { .. } => !pane.edits().is_empty(),
+            PaneTarget::Sheep { .. } => !pane.dogs_tab().edited().is_empty(),
+            PaneTarget::SheepDog { .. } => false,
+        };
+        if !holds_whole_table {
             return None;
         }
         if self.closing {
@@ -38,7 +40,8 @@ impl App {
 
     /// The answer to [`Self::reread_before_closing`]'s read.
     ///
-    /// The table the pane holds: the write goes out and the pane closes. A
+    /// The tables the pane holds: the write goes out and the pane closes, or
+    /// the close dialog asks its question first. A
     /// moved table: the pane takes it under the same edits and writes
     /// nothing. The next `Escape` writes. A failed read changes nothing.
     pub(in crate::lookout::app) fn on_close_reread(
@@ -51,13 +54,16 @@ impl App {
             return Effect::None;
         };
         let why = match (result, pane.target().clone()) {
-            (Ok(Response::SheepConfig(view)), PaneTarget::SheepDog { sheep, dog }) => {
-                let fresh = view.config.dogs.get(&dog).map(DogTable::as_map);
-                if pane.holds_table(fresh) {
-                    return self.write_and_close();
+            (Ok(Response::SheepConfig(view)), PaneTarget::Sheep { name: sheep }) => {
+                let moved = pane.moved_tables(&view);
+                if moved.is_empty() {
+                    return self.offer_or_write_and_close();
                 }
-                self.refresh_sheep_dog_pane(&view);
-                return self.hold(format!("{sheep}: its {dog} table"), 0);
+                // The pane is rebuilt under the same edits, the open tables
+                // taking the sheep's current ones.
+                self.open_or_refresh_config_pane(*view);
+                let tables = if moved.len() == 1 { "table" } else { "tables" };
+                return self.hold(format!("{sheep}: its {} {tables}", moved.join(", ")), 0);
             }
             (Ok(Response::DogSection { toml }), PaneTarget::Dog { .. }) => {
                 if pane.holds_section(toml.as_str()) {
@@ -85,6 +91,16 @@ impl App {
         } else {
             ""
         }
+    }
+
+    /// Asks the close dialog's question when the pane has one, else
+    /// [`Self::write_and_close`]. The tables it would write are fresh.
+    fn offer_or_write_and_close(&mut self) -> Effect {
+        if let Some(dialog) = self.close_offer() {
+            self.close_dialog = Some(dialog);
+            return Effect::None;
+        }
+        self.write_and_close()
     }
 
     /// Sends everything the pane has filed and closes it, unless a filed
@@ -186,10 +202,10 @@ mod tests {
         let app = closing_jobs();
         let pane = app.config_pane().expect("the pane waits on the answer");
         assert!(
-            matches!(pane.target(), PaneTarget::SheepDog { .. }),
+            matches!(pane.target(), PaneTarget::Sheep { .. }),
             "{pane:?}"
         );
-        assert_eq!(pane.edits().len(), 1, "nothing has left the pane yet");
+        assert_eq!(table_edits(&app), 1, "nothing has left the pane yet");
     }
 
     /// A second writer rotated `token` and added `retries` while the pane
@@ -202,10 +218,10 @@ mod tests {
         assert_eq!(answer_web(&mut app, web_with_jobs(&moved)), Effect::None);
         let pane = app.config_pane().expect("the pane stays up");
         assert!(
-            matches!(pane.target(), PaneTarget::SheepDog { .. }),
+            matches!(pane.target(), PaneTarget::Sheep { .. }),
             "{pane:?}"
         );
-        assert_eq!(pane.edits().len(), 1, "the edit rides the new table");
+        assert_eq!(table_edits(&app), 1, "the edit rides the new table");
         let notice = app.notice().expect("the hold is said");
         assert!(notice.is_grave());
         assert_eq!(
@@ -225,13 +241,57 @@ mod tests {
         );
     }
 
+    /// The dialog's `c` writes the tables too, so it asks only after the
+    /// re-read found them unmoved.
+    #[test]
+    fn the_close_dialog_waits_for_the_re_read_and_a_moved_table_skips_it() {
+        let mut app = app_in_jobs_table();
+        type_concurrency(&mut app, "4");
+        crate::lookout::view::fixtures::file_edit(&mut app, "cwd", "/srv/second");
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Escape)),
+            Effect::Send(Sent::SheepConfig { name: "web".into() }),
+            "the tables are read before the dialog asks"
+        );
+        assert!(
+            app.close_dialog().is_none(),
+            "no question while the read is out"
+        );
+        let moved = json!({ "concurrency": 2, "token": ROTATED });
+        assert_eq!(answer_web(&mut app, web_with_jobs(&moved)), Effect::None);
+        assert!(app.close_dialog().is_none(), "a moved table holds the pane");
+        assert!(
+            app.notice()
+                .is_some_and(|notice| notice.to_string().contains("nothing was written"))
+        );
+
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Escape)),
+            Effect::Send(Sent::SheepConfig { name: "web".into() })
+        );
+        assert_eq!(answer_web(&mut app, web_with_jobs(&moved)), Effect::None);
+        assert!(
+            app.close_dialog().is_some(),
+            "an unmoved table lets the dialog ask"
+        );
+        let batch = wire_batch(app.update(Msg::Key(KeyPress::Continue)));
+        assert!(
+            batch.iter().any(|sent| matches!(
+                sent,
+                Sent::SetSheepDogTable { dog, table: Some(table), .. }
+                    if dog == "jobs" && table.as_map().get("token") == Some(&json!(ROTATED))
+            )),
+            "{batch:?}"
+        );
+    }
+
     /// A second writer removed the table: writing the pane's copy back
     /// would restore its `token` as well as the edit.
     #[test]
     fn a_table_removed_while_the_pane_was_open_holds_it() {
         let mut app = closing_jobs();
         assert_eq!(answer_web(&mut app, web_view(false)), Effect::None);
-        assert_eq!(app.config_pane().expect("still up").edits().len(), 1);
+        assert_eq!(table_edits(&app), 1);
         let notice = app.notice().expect("the hold is said").to_string();
         assert!(notice.contains("nothing was written"), "{notice}");
 
@@ -252,7 +312,7 @@ mod tests {
             })),
         });
         assert_eq!(effect, Effect::None);
-        assert_eq!(app.config_pane().expect("still up").edits().len(), 1);
+        assert_eq!(table_edits(&app), 1);
         let notice = app.notice().expect("reported");
         assert!(notice.is_grave());
         assert_eq!(
@@ -272,7 +332,7 @@ mod tests {
             }),
         });
         assert_eq!(effect, Effect::None);
-        assert_eq!(app.config_pane().expect("still up").edits().len(), 1);
+        assert_eq!(table_edits(&app), 1);
         assert_eq!(
             app.notice().map(ToString::to_string).as_deref(),
             Some(
@@ -299,7 +359,7 @@ mod tests {
             Effect::Send(Sent::SheepConfig { name: "web".into() })
         );
         assert_eq!(answer_web(&mut app, web_view(true)), Effect::None);
-        assert_eq!(app.config_pane().expect("still up").edits().len(), 1);
+        assert_eq!(table_edits(&app), 1);
     }
 
     #[test]

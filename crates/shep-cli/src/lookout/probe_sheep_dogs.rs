@@ -1,59 +1,76 @@
-//! Asking every dog this shepherd knows for its per-sheep schema.
+//! Which dogs can hold a table on a sheep, and one dog's per-sheep schema.
 //!
-//! Run off the UI task when the dogs sub-screen opens. A built-in dog is
-//! this binary and answers in-process; an adopted one is spawned with the
-//! schema flag, all of them at once, so the wait is the slowest dog's rather
-//! than the sum. Nothing here is stored.
+//! Both run off the UI task. Listing is cheap: a built-in dog is this binary
+//! and answers in-process, and an adopted one is only named. Its binary is
+//! spawned with the schema flag when its row is opened, never before.
+//! Nothing here is stored.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::{Map, Value};
 use shep_core::dogs::SHEEP_SCHEMA_KEY;
 
-use super::pane::SheepDogEntry;
+use super::pane::{ListedDog, SheepDogEntry};
 use crate::commands::dogs::{DogSchema, ask_schema};
 use crate::commands::settings::dog_candidates;
 use crate::commands::shep_toml::ShepToml;
 
-/// One entry per dog `daemon_config` names or shep builds in, each with its
-/// per-sheep schema where it publishes one. Each adopted dog has `budget`
-/// to answer, `VERSION_BUDGET` outside a test.
+/// One entry per dog `daemon_config` names or shep builds in. A built-in
+/// answers with its per-sheep schema where it publishes one; an adopted
+/// dog is named and left unasked, for [`probe_sheep_dog`].
 ///
 /// A `shep.toml` that cannot be read lists no dog, which leaves every table
 /// the sheep carries read-only: without a schema nothing is edited.
-pub(super) fn probe_sheep_dogs(
-    daemon_config: &Path,
-    home: &Path,
-    budget: Duration,
-) -> Vec<SheepDogEntry> {
+pub(super) fn list_sheep_dogs(daemon_config: &Path) -> Vec<ListedDog> {
     let Ok(doc) = ShepToml::read_only(daemon_config) else {
         return Vec::new();
     };
-    let candidates = dog_candidates(&doc);
-    std::thread::scope(|scope| {
-        let asks: Vec<_> = candidates
-            .into_iter()
-            .map(|dog| {
-                scope.spawn(move || {
-                    let answer = match (crate::dog::builtin_schema(&dog.name), &dog.adopted_path) {
-                        (Some(schema), _) => Some(schema),
-                        (None, Some(path)) => match ask_schema(path, home, &dog.name, budget) {
-                            DogSchema::Published(schema) => Some(schema),
-                            DogSchema::Silent | DogSchema::Unreadable => None,
-                        },
-                        (None, None) => None,
-                    };
-                    SheepDogEntry {
-                        schema: answer.as_ref().and_then(sheep_schema),
-                        name: dog.name,
-                        adopted_path: dog.adopted_path,
-                    }
-                })
-            })
-            .collect();
-        asks.into_iter().filter_map(|ask| ask.join().ok()).collect()
-    })
+    dog_candidates(&doc)
+        .into_iter()
+        .map(|dog| match crate::dog::builtin_schema(&dog.name) {
+            Some(schema) => ListedDog {
+                entry: SheepDogEntry {
+                    schema: sheep_schema(&schema),
+                    name: dog.name,
+                    adopted_path: dog.adopted_path,
+                },
+                asked: true,
+            },
+            None => ListedDog {
+                asked: dog.adopted_path.is_none(),
+                entry: SheepDogEntry {
+                    name: dog.name,
+                    adopted_path: dog.adopted_path,
+                    schema: None,
+                },
+            },
+        })
+        .collect()
+}
+
+/// `dog`'s per-sheep schema, asked of its binary with the schema flag. The
+/// binary has `budget` to answer, `VERSION_BUDGET` outside a test. A dog
+/// that stays silent, or answers something unreadable, has none.
+pub(super) fn probe_sheep_dog(
+    home: &Path,
+    dog: &str,
+    adopted_path: Option<PathBuf>,
+    budget: Duration,
+) -> SheepDogEntry {
+    let answer = match (crate::dog::builtin_schema(dog), &adopted_path) {
+        (Some(schema), _) => Some(schema),
+        (None, Some(path)) => match ask_schema(path, home, dog, budget) {
+            DogSchema::Published(schema) => Some(schema),
+            DogSchema::Silent | DogSchema::Unreadable => None,
+        },
+        (None, None) => None,
+    };
+    SheepDogEntry {
+        schema: answer.as_ref().and_then(sheep_schema),
+        name: dog.to_owned(),
+        adopted_path,
+    }
 }
 
 /// `pub(crate)`: `shep set` validates a dog's table on a sheep against the
@@ -122,14 +139,54 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("shep.toml");
         std::fs::write(&config, "[daemon\n").unwrap();
-        assert!(probe_sheep_dogs(&config, dir.path(), Duration::from_secs(1)).is_empty());
+        assert!(list_sheep_dogs(&config).is_empty());
     }
 
-    /// An adopted dog is its own binary, asked with the schema flag. The
-    /// built-ins publish no sheep schema, so they list with none.
+    /// An adopted dog is listed unasked: its binary is not run to list it.
+    /// A built-in answers in-process, with no sheep schema when it
+    /// publishes none.
     #[cfg(unix)]
     #[test]
-    fn an_adopted_dog_is_asked_and_a_built_in_answers_with_none() {
+    fn listing_names_an_adopted_dog_and_never_runs_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let script = dir.path().join("shep-jobs");
+        std::fs::write(&script, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let config = dir.path().join("shep.toml");
+        std::fs::write(
+            &config,
+            format!(
+                "[daemon.adopted_dogs]\njobs = {:?}\n",
+                script.display().to_string()
+            ),
+        )
+        .unwrap();
+
+        let dogs = list_sheep_dogs(&config);
+        let jobs = dogs
+            .iter()
+            .find(|dog| dog.entry.name == "jobs")
+            .expect("jobs");
+        assert!(!jobs.asked);
+        assert_eq!(jobs.entry.adopted_path.as_deref(), Some(script.as_path()));
+        assert_eq!(jobs.entry.schema, None);
+        let bark = dogs
+            .iter()
+            .find(|dog| dog.entry.name == "bark")
+            .expect("a built-in");
+        assert!(bark.asked);
+        assert_eq!(bark.entry.schema, None);
+        assert!(!marker.exists(), "listing ran the adopted binary");
+    }
+
+    /// An adopted dog is its own binary, asked with the schema flag.
+    #[cfg(unix)]
+    #[test]
+    fn an_adopted_dog_is_asked_and_a_silent_one_has_no_schema() {
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();
@@ -151,23 +208,11 @@ mod tests {
         for bin in [&script, &quiet, &broken] {
             std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let config = dir.path().join("shep.toml");
-        std::fs::write(
-            &config,
-            format!(
-                "[daemon.adopted_dogs]\njobs = {:?}\nquiet = {:?}\nbroken = {:?}\n",
-                script.display().to_string(),
-                quiet.display().to_string(),
-                broken.display().to_string()
-            ),
-        )
-        .unwrap();
 
         // Thirty seconds, not the real one: a first spawn of a new script
         // on a loaded machine outruns a second, and this is not the bound.
-        let mut dogs = probe_sheep_dogs(&config, dir.path(), Duration::from_secs(30));
-        dogs.sort_by(|a, b| a.name.cmp(&b.name));
-        let jobs = dogs.iter().find(|dog| dog.name == "jobs").expect("jobs");
+        let budget = Duration::from_secs(30);
+        let jobs = probe_sheep_dog(dir.path(), "jobs", Some(script.clone()), budget);
         assert_eq!(jobs.adopted_path.as_deref(), Some(script.as_path()));
         assert_eq!(
             jobs.schema,
@@ -176,14 +221,9 @@ mod tests {
                 "$defs": { "Settings": { "type": "object" } },
             }))
         );
-        let bark = dogs
-            .iter()
-            .find(|dog| dog.name == "bark")
-            .expect("a built-in");
-        assert_eq!(bark.schema, None);
-        for silent in ["quiet", "broken"] {
-            let dog = dogs.iter().find(|dog| dog.name == silent).expect(silent);
-            assert_eq!(dog.schema, None, "{silent} answers no schema");
+        for (name, bin) in [("quiet", quiet), ("broken", broken)] {
+            let dog = probe_sheep_dog(dir.path(), name, Some(bin), budget);
+            assert_eq!(dog.schema, None, "{name} answers no schema");
         }
     }
 }

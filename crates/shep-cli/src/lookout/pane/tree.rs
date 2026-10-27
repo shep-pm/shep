@@ -141,7 +141,7 @@ impl ConfigPane {
                     open: None,
                 })
             }
-            PaneRow::Env(_) | PaneRow::AddEnv => None,
+            PaneRow::Env(_) | PaneRow::AddEnv | PaneRow::Dog(_) | PaneRow::Under { .. } => None,
         }
     }
 
@@ -173,9 +173,12 @@ impl ConfigPane {
                 EntryBody::Node { path, .. } => Some(path),
                 EntryBody::Leaf { .. } | EntryBody::New { .. } => None,
             },
-            PaneRow::Choice { .. } | PaneRow::Arm { .. } | PaneRow::Env(_) | PaneRow::AddEnv => {
-                None
-            }
+            PaneRow::Choice { .. }
+            | PaneRow::Arm { .. }
+            | PaneRow::Env(_)
+            | PaneRow::AddEnv
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => None,
         }
     }
 
@@ -198,7 +201,7 @@ impl ConfigPane {
             PaneRow::Choice { field, .. } | PaneRow::Arm { field, .. } => {
                 Some(PaneRow::Field(field))
             }
-            PaneRow::Env(_) | PaneRow::AddEnv => None,
+            PaneRow::Env(_) | PaneRow::AddEnv | PaneRow::Dog(_) | PaneRow::Under { .. } => None,
         }
     }
 

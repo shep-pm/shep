@@ -4,24 +4,24 @@ expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                                                                    6 in the flock
                                                                                                                                                                 
-  api › jobs  (dog table)                                                                                                                                       
-   concurrency                2                                                          FOCUSED  models.worker.token  text                                     
-   ▾ hours                                                                    table       token                                                                 
-     end                      17:00                                                                                                                             
-     start                    09:00                                                       now     <set>                                                         
-   merge                      ask                                                         default (none)                                                        
-   ▾ models                                                                   table       example (none)                                                        
-     ▾ worker                                                                 table                                                                             
-       model                  small                                                                                                                             
->      token                  <set>                                                                                                                             
-  shep publishes the change; jobs decides what to reload                                                                                                        
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
+ ██ api  (sheep config)                                                                                                                                         
+   process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  FIELD                       VALUE                                           LANDS                                                                             
+ ▸ deploy            -          (no table)                                               FOCUSED  models.worker.token  text                                     
+ ▾ jobs              set        concurrency, hours, merge, models                         token                                                                 
+     concurrency                2                                                                                                                               
+     ▾ hours                                                                  table       now     <set>                                                         
+       end                      17:00                                                     default (none)                                                        
+       start                    09:00                                                     example (none)                                                        
+     merge                      ask                                                                                                                             
+     ▾ models                                                                 table                                                                             
+       ▾ worker                                                               table                                                                             
+         model                  small                                                                                                                           
+>        token                  <set>                                                                                                                           
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

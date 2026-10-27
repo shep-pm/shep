@@ -63,8 +63,16 @@ pub(super) fn read_file(path: &Path) -> Result<SecretFile, SecretError> {
 }
 
 /// Rewrites `path` to hold exactly `file`.
+///
+/// # Errors
+/// - [`SecretError::Io`]: staging, the `fsync` or the rename failed; the old
+///   store is intact.
+/// - [`SecretError::Unsynced`]: only the directory flush after the rename
+///   failed; the new store is in place.
 pub(super) fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretError> {
-    crate::atomic_file::write_json(path, "secrets", file).map_err(SecretError::Io)
+    let staged = crate::atomic_file::stage_json(path, "secrets", file)?;
+    crate::atomic_file::install(staged, path)?;
+    crate::atomic_file::sync_dir(crate::atomic_file::parent_of(path)).map_err(SecretError::Unsynced)
 }
 
 /// Every key in the store with its per-environment values, in key order.
@@ -122,7 +130,9 @@ pub fn get(path: &Path, key: &str, environment: &str) -> Result<Option<String>, 
 ///   build understands. Nothing is written.
 /// - [`SecretError::Decode`]: the existing file could not be parsed.
 /// - [`SecretError::Io`]: the lock, the temp file, the `fsync` or the
-///   `rename` failed.
+///   `rename` failed. Nothing is written.
+/// - [`SecretError::Unsynced`]: the value is stored, but the directory flush
+///   after the `rename` failed.
 pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(), SecretError> {
     check_name(key, SecretError::InvalidKey)?;
     check_name(environment, SecretError::InvalidEnvironment)?;
@@ -152,15 +162,14 @@ pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(),
 ///   the grammar.
 /// - [`SecretError::InvalidKey`]: a key is outside the grammar.
 /// - [`SecretError::ValueTooLong`]: a value exceeds [`MAX_VALUE_BYTES`].
-/// - [`SecretError::FutureVersion`], [`SecretError::Decode`] and
-///   [`SecretError::Io`] exactly as [`set`] returns them.
+/// - [`SecretError::FutureVersion`], [`SecretError::Decode`],
+///   [`SecretError::Io`] and [`SecretError::Unsynced`] exactly as [`set`]
+///   returns them.
 ///
 /// The first three are checked for every entry before the lock is taken, so
 /// a refused batch never creates the store. The store is replaced by one
-/// rename, so a batch refused before it, or failing to stage or `fsync` the
-/// temp file, leaves the old store whole. An `Io` error from the directory
-/// flush that follows the rename can arrive after the whole batch is already
-/// in place, exactly as it can for [`set`].
+/// rename, so every error but `Unsynced` leaves the old store whole.
+/// `Unsynced` means the whole batch is in place.
 pub fn set_many(
     path: &Path,
     environment: &str,
@@ -195,7 +204,8 @@ pub fn set_many(
 /// # Errors
 ///
 /// The same set [`set`] returns, minus [`SecretError::ValueTooLong`]:
-/// `InvalidKey`, `InvalidEnvironment`, `FutureVersion`, `Decode`, `Io`.
+/// `InvalidKey`, `InvalidEnvironment`, `FutureVersion`, `Decode`, `Io`,
+/// `Unsynced`. `Unsynced` means the removal is in place.
 pub fn unset(path: &Path, key: &str, environment: &str) -> Result<bool, SecretError> {
     check_name(key, SecretError::InvalidKey)?;
     check_name(environment, SecretError::InvalidEnvironment)?;
@@ -452,5 +462,32 @@ mod tests {
         set(&path, "K", "production", "v").unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    /// fails if a failed directory flush after the rename reads as a batch
+    /// that wrote nothing: the store already holds every pair by then.
+    #[test]
+    #[cfg(unix)]
+    fn a_failed_directory_flush_after_the_rename_says_the_batch_landed() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        // Writable and searchable, not readable: the rename lands, the
+        // `open` the flush needs is refused.
+        let write_only = std::fs::Permissions::from_mode(0o300);
+        std::fs::set_permissions(dir.path(), write_only).unwrap();
+        if std::fs::File::open(dir.path()).is_ok() {
+            return; // root ignores the mode, so there is no failure to make
+        }
+
+        let outcome = set_many(&path, "production", &[("A", "1"), ("B", "2")]);
+
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            matches!(outcome, Err(SecretError::Unsynced(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(get(&path, "A", "production").unwrap().as_deref(), Some("1"));
+        assert_eq!(get(&path, "B", "production").unwrap().as_deref(), Some("2"));
     }
 }

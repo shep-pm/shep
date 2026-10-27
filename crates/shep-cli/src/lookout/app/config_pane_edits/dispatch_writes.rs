@@ -19,7 +19,27 @@ impl App {
     /// each of which replaces a whole table, so a batch of edits to one is
     /// one write. See `ConfigPane::edited_section_with` and
     /// `ConfigPane::edited_table_with`.
+    ///
+    /// A sheep pane's open dog tables are written with it, each as its own
+    /// whole-table request.
     pub(in crate::lookout::app) fn take_pane_writes(&mut self) -> Vec<Sent> {
+        let mut writes = self.take_seated_writes();
+        let edited = self
+            .config_pane()
+            .map(|pane| pane.dogs_tab().edited())
+            .unwrap_or_default();
+        for dog in edited {
+            writes.extend(
+                self.in_dog_table(dog, Self::take_seated_writes)
+                    .unwrap_or_default(),
+            );
+        }
+        writes
+    }
+
+    /// [`Self::take_pane_writes`] for the pane that is the body, without the
+    /// tables a sheep pane holds.
+    fn take_seated_writes(&mut self) -> Vec<Sent> {
         // `WriteAuthority::granted`, not `Self::authorize_write`: the gate
         // is checked on the keystroke that files an edit, so a read-only
         // pane reaches here with an empty set and must not be told off for

@@ -13,6 +13,17 @@ const POLL: Duration = Duration::from_millis(10);
 #[cfg(windows)]
 const KILLED_EXIT_CODE: u32 = 1;
 
+/// How far a child has got towards being gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Exit {
+    Running,
+    /// Exited and not yet reaped: on unix a zombie that still holds its pid.
+    #[cfg(unix)]
+    Exited,
+    /// Reaped, so its pid may name a stranger.
+    Reaped,
+}
+
 /// A child and everything it starts, held together so they stop together.
 ///
 /// On unix the tree is the child's process group; on Windows it is a job
@@ -82,10 +93,9 @@ impl Tree {
     /// and killed by its own pid as well as the group, which its descendants
     /// that stayed in it keep reachable.
     ///
-    /// If `child` exits within the grace, it is reaped before the final kill
-    /// names its group by pid. While any member lives the group keeps the pid
-    /// from being reused, but once the group is empty a new process could take
-    /// it. `std` has no wait that leaves the child unreaped to close that gap.
+    /// `child` is reaped only after the final kill. On unix an exit within the
+    /// grace is seen with `waitid` and `WNOWAIT`, so the zombie holds the pid
+    /// and the kill cannot name a stranger's group.
     ///
     /// # Errors
     ///
@@ -97,26 +107,54 @@ impl Tree {
         signal: Signal,
         grace: Duration,
     ) -> io::Result<ExitStatus> {
-        let mut status = None;
-        if self.send(child, signal) {
+        let mut state = Self::probe(child)?;
+        if state != Exit::Reaped && self.send(child, signal) {
             let deadline = Instant::now() + grace;
-            loop {
-                if let Some(exited) = child.try_wait()? {
-                    status = Some(exited);
-                    break;
-                }
+            while state == Exit::Running {
                 let left = deadline.saturating_duration_since(Instant::now());
                 if left.is_zero() {
                     break;
                 }
                 std::thread::sleep(POLL.min(left));
+                state = Self::probe(child)?;
             }
         }
-        self.kill(child, status.is_some())?;
-        match status {
-            Some(status) => Ok(status),
-            None => child.wait(),
+        self.kill(child, state)?;
+        child.wait()
+    }
+
+    /// How far `child` has got, without reaping it on unix: an exited child
+    /// stays a zombie that holds its pid, so the kill that follows cannot
+    /// name a stranger's group.
+    #[cfg(unix)]
+    fn probe(child: &mut Child) -> io::Result<Exit> {
+        use rustix::io::Errno;
+        use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+
+        let options = WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT;
+        match waitid(WaitId::Pid(Pid::from_child(child)), options) {
+            Ok(Some(_)) => Ok(Exit::Exited),
+            Ok(None) => Ok(Exit::Running),
+            // The caller already reaped `child`: `try_wait` answers from
+            // std's cached status.
+            Err(Errno::CHILD) => Ok(if child.try_wait()?.is_some() {
+                Exit::Reaped
+            } else {
+                Exit::Running
+            }),
+            Err(errno) => Err(errno.into()),
         }
+    }
+
+    /// How far `child` has got. The job holds the tree by handle, not by pid,
+    /// so reaping first costs nothing here.
+    #[cfg(windows)]
+    fn probe(child: &mut Child) -> io::Result<Exit> {
+        Ok(if child.try_wait()?.is_some() {
+            Exit::Reaped
+        } else {
+            Exit::Running
+        })
     }
 
     /// Delivers `signal` to the tree. `false` when there is nothing to wait
@@ -148,24 +186,28 @@ impl Tree {
         group
     }
 
-    /// Kills the tree. `reaped` is whether `child` has been waited on, so its
-    /// pid may be gone or reused: only the group is named then, and only a
-    /// descendant can still be in it.
+    /// Kills the tree. Once `child` is reaped its pid may name a stranger, so
+    /// only the group is named then, and only a descendant can still be in it.
+    ///
+    /// macOS answers `EPERM` to a signal for a group whose only member is a
+    /// zombie, which means nothing is left to kill: `child` is probed again
+    /// rather than trusting `state`, which it may have outrun.
     #[cfg(unix)]
-    fn kill(&self, child: &Child, reaped: bool) -> io::Result<()> {
-        let result = if reaped {
+    fn kill(&self, child: &mut Child, state: Exit) -> io::Result<()> {
+        let result = if state == Exit::Reaped {
             crate::group::signal_group(child.id(), Signal::Kill)
         } else {
             Self::deliver(child, Signal::Kill)
         };
         match result {
+            Err(error) if error.is_denied() && Self::probe(child)? != Exit::Running => Ok(()),
             Err(error) if !error.is_gone() => Err(io::Error::other(error)),
             _ => Ok(()),
         }
     }
 
     #[cfg(windows)]
-    fn kill(&self, _child: &Child, _reaped: bool) -> io::Result<()> {
+    fn kill(&self, _child: &mut Child, _state: Exit) -> io::Result<()> {
         self.job.terminate(KILLED_EXIT_CODE)
     }
 }
@@ -216,6 +258,56 @@ mod tests {
 
         assert!(started.elapsed() >= grace, "the child was given its grace");
         assert_eq!(status.signal(), Some(9), "and then killed with SIGKILL");
+    }
+
+    #[test]
+    fn seeing_a_child_exit_leaves_it_unreaped_so_its_pid_stays_held() {
+        let (_tree, mut child, _) = spawn_ready("echo ready");
+        let _cleanup = Cleanup(child.id());
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Tree::probe(&mut child).unwrap() == Exit::Running {
+            assert!(Instant::now() < deadline, "the child never exited");
+            std::thread::sleep(POLL);
+        }
+
+        // A reaped pid is gone; an unreaped one still answers a signal.
+        assert!(crate::group::signal_process(child.id(), Signal::Kill).is_ok());
+        assert!(child.wait().is_ok());
+    }
+
+    #[test]
+    fn a_child_that_exited_by_itself_is_stopped_without_error() {
+        // On macOS the group signal to a zombie-only group is `EPERM`.
+        let (tree, mut child, _) = spawn_ready("echo ready");
+        let _cleanup = Cleanup(child.id());
+        while Tree::probe(&mut child).unwrap() == Exit::Running {
+            std::thread::sleep(POLL);
+        }
+
+        let status = tree
+            .stop(&mut child, Signal::Term, Duration::from_secs(30))
+            .unwrap();
+
+        assert!(status.success());
+    }
+
+    #[test]
+    fn a_child_the_caller_already_reaped_is_stopped_with_its_status() {
+        let (tree, mut child, _) = spawn_ready("echo ready");
+        let _cleanup = Cleanup(child.id());
+        let reaped = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            std::thread::sleep(POLL);
+        };
+
+        let status = tree
+            .stop(&mut child, Signal::Term, Duration::from_secs(30))
+            .unwrap();
+
+        assert_eq!(status, reaped);
     }
 
     #[test]

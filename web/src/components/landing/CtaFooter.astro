@@ -1,5 +1,6 @@
 ---
 import { REPO } from "../../data/repo";
+import "../../styles/plank.css";
 /*
  * Closing CTA. Copy verbatim from docs/shep-design/README.md,
  * "Screens > 1. Landing page > CTA footer", except "1030 tests" -> "Over a
@@ -18,7 +19,7 @@ import { REPO } from "../../data/repo";
 
 <section class="cta">
   <div class="inner landing-inner">
-    <div class="board">
+    <div class="board plank">
       <div class="row">
         <div class="copy">
           <h2>Build it and tell me<br />what breaks.</h2>
@@ -53,27 +54,17 @@ import { REPO } from "../../data/repo";
   }
 
   /* Same whitewashed-plank language as the feature cards (the recipe note
-     lives in SignpostCard.astro): ink copy was unreadable straight over
+     lives in plank.css): ink copy was unreadable straight over
      the hills and the walking flock. 48px period, two 24px body lines. */
   .board {
     position: relative;
-    background: var(--paper-2);
+    background-color: var(--paper-2);
     border: 4px solid var(--line);
     border-radius: 26px;
     box-shadow: 9px 9px 0 var(--shadow);
     padding: 44px 46px;
-    background-image:
-      repeating-linear-gradient(
-        180deg,
-        rgba(23, 37, 28, 0) 0 45px,
-        rgba(23, 37, 28, 0.12) 45px 48px
-      ),
-      repeating-linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.12) 0 4px,
-        rgba(255, 255, 255, 0) 8px 48px
-      );
-    background-position-y: 10px;
+    --plank-period: 48px;
+    --plank-offset: 10px;
   }
 
   .board::before,

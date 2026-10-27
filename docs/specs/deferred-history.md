@@ -1176,11 +1176,12 @@ used to name:
 - **Dotfiles are refused by default**, where pm2's `serve` publishes them —
   the reverse of the listing flip and the same argument. `--hidden` opts
   in; `.well-known/acme-challenge` is the use case it exists for.
-- **No range requests, no conditional requests, no ETags, no compression,
-  no keep-alive, no TLS, no HTTP/2, no `PM2_SERVE_*` compatibility.** None
-  are named in spec §9's serve sentence; shep reads only `SHEP_`-prefixed
-  variables. Range and conditional requests are v1.1 candidates — the
-  visible cost today is no video seeking and a full re-read per request.
+- **No compression, no keep-alive, no TLS, no HTTP/2, no `PM2_SERVE_*`
+  compatibility.** None are named in spec §9's serve sentence; shep reads only
+  `SHEP_`-prefixed variables. Range and conditional requests shipped later,
+  under #349: single byte ranges answered `206`, `416` for one past the end,
+  and `ETag` plus `Last-Modified` built from the metadata the open handle
+  already carries.
 - **Exit code 11 (`flock_empty`) exists, and code 2 is clap's alone.**
   `runtime`'s fail-fast status collided with clap's usage-error code; an
   orchestrator cannot act on a status that means both "bad flag" and "dead

@@ -222,12 +222,14 @@ fn a_dog_pane_is_flat_in_schema_order_and_marks_the_secret() {
     assert_eq!(pane.cost("poll"), None);
 }
 
-/// The sheep's `dogs` row opens a screen, so neither `space` nor `d`
-/// should tell the operator to go and edit a Flockfile instead.
+/// The `dogs` tab walks dogs, so the sheep's `dogs` field has no row to
+/// refuse an edit on.
 #[test]
-fn a_sheeps_dogs_row_opens_a_screen_rather_than_lacking_a_widget() {
-    let pane = ConfigPane::sheep(web());
-    assert_eq!(pane.lock("dogs"), Some(Lock::SubScreen));
+fn the_dogs_tab_draws_no_field_row() {
+    let mut pane = ConfigPane::sheep(web());
+    pane.set_group(9);
+    assert_eq!(pane.group(), "dogs");
+    assert!(pane.rows().is_empty(), "{:?}", pane.rows());
     assert_eq!(pane.lock("args"), None);
 }
 

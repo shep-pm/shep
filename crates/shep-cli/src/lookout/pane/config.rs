@@ -28,10 +28,8 @@ use super::sheep_dog::SheepDogTable;
 // type's own field indexes into.
 #[cfg(doc)]
 use super::super::field::ValueKind;
-use super::dogs::dog_names;
-use super::{
-    DogsPane, EnvTyping, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep,
-};
+use super::dogs::{DogsTab, dog_names};
+use super::{EnvTyping, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep};
 #[cfg(doc)]
 use shep_core::config::GROUP_ORDER;
 #[cfg(doc)]
@@ -95,14 +93,13 @@ pub struct ConfigPane {
     pub(super) env_typing: Option<EnvTyping>,
     /// The open list sub-screen. Never open at the same time as
     /// [`Self::env_typing`]: each opens on a row of its own kind, and
-    /// `Escape` closes whichever is up before the pane. `Box`, like
-    /// [`Self::dogs`]: one is open at a time, and inline it would put a
-    /// whole sub-screen in every move of the pane.
+    /// `Escape` closes whichever is up before the pane. `Box`: one is open
+    /// at a time, and inline it would put a whole sub-screen in every move
+    /// of the pane.
     pub(super) list: Option<Box<ListPane>>,
-    /// The open dogs sub-screen, over a sheep's `dogs` row. Never open at
-    /// the same time as [`Self::list`] or an editor: it opens only on a
-    /// field list with nothing else up.
-    pub(super) dogs: Option<Box<DogsPane>>,
+    /// The dogs a sheep's `dogs` tab lists, and the tables opened under
+    /// them. Empty for any other target.
+    pub(super) dogs_tab: Box<DogsTab>,
     /// The dog's `[<name>]` table as TOML text, with the schema its rows
     /// were built from, and [`None`] for a sheep.
     ///
@@ -184,7 +181,7 @@ impl ConfigPane {
             edits: Edits::default(),
             env_typing: None,
             list: None,
-            dogs: None,
+            dogs_tab: Box::default(),
             section: None,
             dog_table: None,
             reshapes: Arc::default(),
@@ -252,7 +249,7 @@ impl ConfigPane {
             edits: Edits::default(),
             env_typing: None,
             list: None,
-            dogs: None,
+            dogs_tab: Box::default(),
             section: Some(Box::new(DogSection {
                 toml: section,
                 schema,
@@ -346,7 +343,11 @@ impl ConfigPane {
             },
             PaneRow::Choice { field, .. } => self.fields.fields().get(field)?,
             PaneRow::Arm { field, .. } => self.fields.fields().get(field)?,
-            PaneRow::Table(_) | PaneRow::Env(_) | PaneRow::AddEnv => return None,
+            PaneRow::Table(_)
+            | PaneRow::Env(_)
+            | PaneRow::AddEnv
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => return None,
         };
         if let Some(arm) = self.arm_field(self.cursor()?) {
             return self.lock(&arm.key).map(|lock| (field.key.as_str(), lock));
@@ -364,7 +365,12 @@ impl ConfigPane {
                 EntryBody::Node { .. } | EntryBody::New { .. } => None,
             },
             PaneRow::Arm { .. } => self.arm_field(self.cursor()?),
-            PaneRow::Table(_) | PaneRow::Choice { .. } | PaneRow::Env(_) | PaneRow::AddEnv => None,
+            PaneRow::Table(_)
+            | PaneRow::Choice { .. }
+            | PaneRow::Env(_)
+            | PaneRow::AddEnv
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => None,
         }
     }
 
@@ -398,7 +404,12 @@ impl ConfigPane {
                 EntryBody::Node { .. } | EntryBody::New { .. } => None,
             },
             PaneRow::Arm { .. } => self.arm_field(self.cursor()?).map(|field| &field.kind),
-            PaneRow::Table(_) | PaneRow::Choice { .. } | PaneRow::Env(_) | PaneRow::AddEnv => None,
+            PaneRow::Table(_)
+            | PaneRow::Choice { .. }
+            | PaneRow::Env(_)
+            | PaneRow::AddEnv
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => None,
         }
     }
 
@@ -523,16 +534,11 @@ impl ConfigPane {
     ///
     /// [`Lock::Refused`] outranks [`Lock::NoWidget`]: a Structural field
     /// that also happened to have no widget is still refused by shep, which
-    /// is the fact that survives the pane gaining every widget it lacks. A
-    /// sheep's `dogs` is [`Lock::SubScreen`] ahead of its own missing
-    /// widget, since Enter there does open something.
+    /// is the fact that survives the pane gaining every widget it lacks.
     #[must_use]
     pub fn lock(&self, key: &str) -> Option<Lock> {
         if self.cost(key) == Some(ApplyGroup::Structural) {
             return Some(Lock::Refused);
-        }
-        if key == "dogs" && matches!(self.target, PaneTarget::Sheep { .. }) {
-            return Some(Lock::SubScreen);
         }
         if let Some(place) = self.place(key) {
             return self.lock(place.union()).or_else(|| {

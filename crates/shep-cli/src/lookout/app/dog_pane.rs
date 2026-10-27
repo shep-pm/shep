@@ -113,7 +113,7 @@ impl App {
         // The settings screen is what a dog pane opens over, and this one
         // assignment is what closes it: `Body` holds one variant, so the pane
         // replaces it once there is something to look at.
-        self.body = Body::ConfigPane(pane);
+        self.body = Body::ConfigPane(Box::new(pane));
         self.release_text_mode_if_unowned();
         // Same as `Self::open_or_refresh_config_pane`: an overlay open when
         // this reply landed must not survive the body change under it.

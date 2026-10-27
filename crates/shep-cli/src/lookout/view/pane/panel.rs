@@ -190,6 +190,7 @@ pub(in crate::lookout::view) fn panel_lines(
     palette: Palette,
     width: u16,
 ) -> Vec<Line<'static>> {
+    let pane = pane.focus();
     let index = match pane.cursor() {
         Some(PaneRow::Field(index)) => index,
         Some(PaneRow::Table(index)) => return panel_for_table(pane, index, palette, width),
@@ -200,7 +201,10 @@ pub(in crate::lookout::view) fn panel_lines(
                 panel_for_field(field, pane, palette, width)
             });
         }
-        Some(PaneRow::Env(_) | PaneRow::AddEnv) | None => return Vec::new(),
+        Some(PaneRow::Env(_) | PaneRow::AddEnv | PaneRow::Dog(_) | PaneRow::Under { .. })
+        | None => {
+            return Vec::new();
+        }
     };
     let Some(field) = pane.fields().fields().get(index) else {
         return Vec::new();

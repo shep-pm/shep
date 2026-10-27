@@ -428,7 +428,7 @@ shep_host_memory_total_bytes 51539607552`}</CodeBlock>
       <div class="row"><span>A label name matches <code>[a-zA-Z_][a-zA-Z0-9_]*</code>, at most 64 bytes, no <code>__</code> prefix</span> <span data-label="Refused as"><code>invalid_label</code></span></div>
       <div class="row"><span>No label named <code>sheep</code>, <code>id</code>, <code>fold</code>, <code>dog</code> or <code>source</code></span> <span data-label="Refused as"><code>reserved_label</code></span></div>
       <div class="row"><span>At most 16 labels, 256-byte label values, 512-byte help text</span> <span data-label="Refused as"><code>too_long</code></span></div>
-      <div class="row"><span>At most 256 series per sender, oldest kept</span> <span data-label="Refused as"><code>series_cap</code></span></div>
+      <div class="row"><span>At most 1024 series per sender, oldest kept</span> <span data-label="Refused as"><code>series_cap</code></span></div>
       <div class="row"><span>A name keeps the kind its first sample set</span> <span data-label="Refused as"><code>type_conflict</code></span></div>
     </div>
     <p>

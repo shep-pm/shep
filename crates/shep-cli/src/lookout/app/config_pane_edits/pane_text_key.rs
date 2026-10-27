@@ -14,6 +14,14 @@ impl App {
         if key == KeyPress::Quit {
             return Effect::Quit;
         }
+        if self
+            .config_pane()
+            .is_some_and(|pane| pane.focused_dog().is_some())
+        {
+            return self
+                .in_table(|app| app.on_pane_text_key(key))
+                .unwrap_or(Effect::None);
+        }
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_text_key(key);
         }

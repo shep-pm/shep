@@ -347,16 +347,25 @@ pub enum Msg {
         /// The dog's schema, or why there is no pane for it.
         result: Result<serde_json::Value, String>,
     },
-    /// An [`Effect::LoadSheepDogs`] probe has answered: every dog this
-    /// shepherd knows, with its per-sheep schema where it publishes one.
-    /// Dropped unless the pane that asked is still up on that sheep.
-    SheepDogs {
-        /// The sheep whose `dogs` row asked.
+    /// An [`Effect::ListSheepDogs`] has answered: every dog this shepherd
+    /// knows, a built-in with its per-sheep schema where it publishes one
+    /// and an adopted dog by name alone. Dropped unless the pane that asked
+    /// is still up on that sheep.
+    SheepDogNames {
+        /// The sheep whose `dogs` tab asked.
         sheep: String,
-        /// The [`Effect::LoadSheepDogs`] this answers.
+        /// The [`Effect::ListSheepDogs`] this answers.
         ask: u64,
-        /// One entry per dog probed, in no particular order.
-        dogs: Vec<SheepDogEntry>,
+        /// One entry per dog, in no particular order.
+        dogs: Vec<ListedDog>,
+    },
+    /// An [`Effect::LoadSheepDog`] probe has answered. Dropped unless the
+    /// pane that asked is still up on that sheep, and lists the dog.
+    SheepDog {
+        /// The sheep whose `dogs` tab asked.
+        sheep: String,
+        /// What the dog answered.
+        entry: SheepDogEntry,
     },
     /// An [`Effect::WriteDog`] has landed. `Ok` carries the [`DogSource`] the
     /// write resolved, which [`Sent::Dog`] then rides to the shepherd, so the
@@ -519,18 +528,29 @@ pub enum Effect {
         /// The adopted binary, or [`None`] for a built-in.
         adopted_path: Option<PathBuf>,
     },
-    /// Probe every dog this shepherd knows for its per-sheep schema; the
-    /// answer lands as [`Msg::SheepDogs`]. Raised by `Enter` on a sheep
-    /// pane's `dogs` row.
+    /// List the dogs that can hold a table on a sheep; the answer lands as
+    /// [`Msg::SheepDogNames`]. Raised the first time a sheep pane's `dogs`
+    /// tab comes up. Spawns no dog.
     ///
-    /// `spawn_blocking`, for [`Self::LoadDogPane`]'s reason, and every
-    /// adopted dog is asked at once, so the wait is the slowest one's. Asked
-    /// fresh each time and never stored, like a dog's own schema.
-    LoadSheepDogs {
-        /// The sheep whose `dogs` row asked.
+    /// `spawn_blocking`, for [`Self::LoadDogPane`]'s reason.
+    ListSheepDogs {
+        /// The sheep whose `dogs` tab asked.
         sheep: String,
         /// Which ask this is, carried back on the answer.
         ask: u64,
+    },
+    /// Probe one dog for its per-sheep schema; the answer lands as
+    /// [`Msg::SheepDog`]. Raised by opening that dog's row, once per row.
+    ///
+    /// `spawn_blocking`, for [`Self::LoadDogPane`]'s reason. Never stored,
+    /// like a dog's own schema.
+    LoadSheepDog {
+        /// The sheep whose `dogs` tab asked.
+        sheep: String,
+        /// The dog.
+        dog: String,
+        /// The adopted binary, or [`None`] for a built-in.
+        adopted_path: Option<PathBuf>,
     },
     /// Apply one dog's file half; the result lands as [`Msg::DogWritten`].
     ///

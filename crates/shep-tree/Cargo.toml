@@ -18,9 +18,11 @@ all-features = true
 # can use it from a plain thread.
 #
 # `signal` is `kill(2)`; nix's `process` feature, which `signal` enables,
-# supplies `Pid`.
+# supplies `Pid`. `rustix` is `waitid`, which sees a child exit without reaping
+# it (`stop.rs`).
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["signal"] }
+rustix.workspace = true
 
 # `Win32_Foundation` is `HANDLE` and `CloseHandle`, `Win32_System_JobObjects`
 # the job object calls in `job.rs`.

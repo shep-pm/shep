@@ -227,6 +227,7 @@ fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about
                     &events,
                     &dogs,
                     &[],
+                    None,
                 )
                 .await
                 .expect("the roll parses");

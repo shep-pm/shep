@@ -1,0 +1,37 @@
+/*
+ * Whitewashed-plank background shared by the feature cards (Features.astro),
+ * the closing CTA board (CtaFooter.astro) and the lexicon signposts
+ * (SignpostCard.astro). Two low-alpha layers draw the boards over whatever
+ * background-color the element sets: a dark seam at the bottom of each
+ * period, and a soft highlight right under each seam so the boards read
+ * bevelled. (A third vertical saw-mark layer was tried and cut: crossing
+ * lines read as graph paper, not wood.)
+ *
+ * Each element sets its own, in its scoped rule:
+ *   --plank-period  seam to seam. Both layers share it so they can't drift
+ *                   apart down a tall card. Pick two MEASURED body lines
+ *                   (trust the browser, not the font-size x line-height
+ *                   arithmetic): 48px for two 24.2px lines, 54px for two
+ *                   27px lines.
+ *   --plank-offset  y offset of both layers, solved against real line boxes
+ *                   so seams land in the leading between lines instead of
+ *                   striking through glyphs. A faint seam may still cross a
+ *                   bold title, where the heavy strokes shrug it off.
+ *
+ * Set background-color on the element, never the background shorthand: the
+ * shorthand would reset these layers.
+ */
+.plank {
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      rgba(23, 37, 28, 0) 0 calc(var(--plank-period) - 3px),
+      rgba(23, 37, 28, 0.12) calc(var(--plank-period) - 3px) var(--plank-period)
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.12) 0 4px,
+      rgba(255, 255, 255, 0) 8px var(--plank-period)
+    );
+  background-position-y: var(--plank-offset);
+}

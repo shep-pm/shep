@@ -5,21 +5,32 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// The `[daemon]` section
+///
+/// Each field carries `x-shep-apply` when the schema is generated: what an
+/// edit to it costs, as one of the `APPLY_*` names in [`crate::config`]'s
+/// schema module. The settings screen reads it so a field added later says
+/// what it needs without the screen learning the field.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
 pub struct DaemonSection {
     /// Emit the daemon's own logs as JSON lines
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub log_json: bool,
     /// Lowest severity of the daemon's own records that reaches its log
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub log_level: LogLevel,
     /// The environment every sheep resolves in unless it sets its own.
     ///
     /// A shepherd supervising real processes on a host is production unless
     /// somebody says otherwise.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub environment: String,
     /// Control-socket path override (default: `$SHEP_HOME/run/shep.sock`)
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "restart")))]
     pub socket: Option<PathBuf>,
     /// Dogs to autostart with the daemon (`shep enable` writes this)
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub enabled_dogs: Vec<String>,
     /// Where an adopted dog's binary lives, keyed by dog name
     /// (`shep adopt` writes this; `shep rehome` removes it).
@@ -29,6 +40,7 @@ pub struct DaemonSection {
     /// `[dog.<name>]`: that table is the dog's own opaque configuration,
     /// and a shep-owned key inside it would collide with a third-party
     /// dog's schema.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub adopted_dogs: BTreeMap<String, PathBuf>,
     /// Adopted dogs whose `--version` answer asked for the shepherd channel,
     /// so they are spawned with `channel` and `shutdown_with_message` set.
@@ -37,6 +49,7 @@ pub struct DaemonSection {
     /// operator's flag, and `shep rehome` removes it. Here rather than in
     /// `dogs.toml` for the reason [`Self::adopted_dogs`] gives. A name
     /// absent from [`Self::adopted_dogs`] is inert here.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub channel_dogs: Vec<String>,
     /// What the operator granted each dog, keyed by dog name.
     ///
@@ -44,6 +57,7 @@ pub struct DaemonSection {
     /// checks every request on a dog's own connection against its entry.
     /// Here rather than in `dogs.toml` for the reason [`Self::adopted_dogs`]
     /// gives. A name absent from [`Self::enabled_dogs`] is inert here.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub dog_grants: BTreeMap<String, DogGrantsSection>,
     /// Dogs that run before every sheep, rather than after the flock.
     ///
@@ -60,6 +74,7 @@ pub struct DaemonSection {
     /// third-party dog's schema.
     ///
     /// A name absent from [`Self::enabled_dogs`] is inert here.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub boot_first_dogs: Vec<String>,
     /// Longest a cron worker sleeps before re-deriving its next occurrence.
     ///
@@ -68,6 +83,7 @@ pub struct DaemonSection {
     /// is cheaper and drifts further. Unset means the daemon's own default.
     /// There is no upper bound: a very long value only degrades to sleeping
     /// straight through to the occurrence, which still fires.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub max_cron_sleep: Option<UpDuration>,
 }
 
@@ -103,6 +119,8 @@ impl Default for DaemonSection {
 /// detail firing per dropped restart and per child metric sample, a
 /// firehose on a busy flock.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+// Serialize only so the schema can print `warn` as the field's default.
+#[cfg_attr(feature = "schema", derive(serde::Serialize, schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     /// Nothing at all: the daemon writes no records of its own.
@@ -141,9 +159,11 @@ pub(super) const MIN_CRON_SLEEP: UpDuration = UpDuration::from_millis(1_000);
 /// `[whistle]` section would refuse the whole file to boot. `Debug` is
 /// derived, not redacted: one boolean, nothing to leak.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
 pub struct WhistleSection {
     /// Whether `shep whistle` offers its control tools. Default `false`.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "whistle")))]
     pub allow_control: bool,
 }
 
@@ -156,9 +176,11 @@ pub struct WhistleSection {
 ///
 /// `Debug` is derived rather than redacted: one boolean, no secret.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
 pub struct SecretsSection {
     /// Whether `shep secret get` prints a value. Default `false`.
+    #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "next-command")))]
     pub allow_read: bool,
 }
 
@@ -170,9 +192,13 @@ pub struct SecretsSection {
 /// `Debug` is derived rather than redacted: one optional string, no
 /// secret, nothing a `{:?}` could leak.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
 pub struct StyleSection {
     /// `full`, `plain` or `bare`. Absent means the CLI decides.
+    #[cfg_attr(feature = "schema", schemars(
+        extend("x-shep-apply" = "next-command", "enum" = ["full", "plain", "bare"])
+    ))]
     pub level: Option<String>,
 }
 

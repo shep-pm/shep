@@ -109,7 +109,7 @@ pub struct TokioProc {
     /// Held for the proc's whole life: the handle is the group, so dropping it
     /// leaves nothing to address the tree by.
     #[cfg(windows)]
-    job: crate::sys_windows::Job,
+    job: shep_tree::job::Job,
 }
 
 /// Where this proc's exit comes from: tokio, or a targeted `waitpid`.
@@ -213,7 +213,7 @@ impl RunningProcess for TokioProc {
     ///
     /// Stronger than the unix rung, which a grandchild escapes by calling
     /// `setsid` and leaves to the lamb sweep. A job member cannot leave its
-    /// job or spawn outside it, since `sys_windows::Job::create` grants no
+    /// job or spawn outside it, since `shep_tree::job::Job::create` grants no
     /// breakaway.
     #[cfg(windows)]
     fn kill_tree(&mut self) -> Result<(), RunnerError> {
@@ -280,7 +280,8 @@ pub(super) fn signallable_pid(pid: u32) -> Result<i32, RunnerError> {
 // (`probes/os.rs`, the reason this is `pub(crate)`): a wrapper script that
 // forks without exec'ing leaves its child in the sheep's group, and a
 // leader-only signal would leave that child running orphaned.
-/// Sends `sig` to the whole process group led by `pid`.
+/// Sends `sig` to the whole process group led by `pid`, through
+/// [`shep_tree::group::signal_group`].
 ///
 /// `-pid` names the group `spawn`'s `process_group(0)` establishes. A
 /// descendant that calls `setsid` lands in its own session, which this
@@ -289,13 +290,36 @@ pub(super) fn signallable_pid(pid: u32) -> Result<i32, RunnerError> {
 ///
 /// # Errors
 ///
-/// [`RunnerError::SignalFailed`] if `pid` is not a signallable process id, or
-/// the `kill(2)` itself failed (typically `ESRCH`: no group led by `pid`).
+/// [`RunnerError::SignalFailed`] if `pid` is not a signallable process id,
+/// `sig` is not one `shep-tree` sends, or the `kill(2)` itself failed
+/// (typically `ESRCH`: no group led by `pid`).
 #[cfg(unix)]
 pub(crate) fn signal_group(pid: u32, sig: Signal) -> Result<(), RunnerError> {
-    let pid = signallable_pid(pid)?;
-    signal::kill(Pid::from_raw(-pid), sig)
+    // Before the signal is looked at, so a pid that must never reach
+    // `kill(2)` is refused whatever it is asked to carry.
+    signallable_pid(pid)?;
+    shep_tree::group::signal_group(pid, to_tree_signal(sig)?)
         .map_err(|error| RunnerError::SignalFailed(error.to_string()))
+}
+
+/// Maps a nix [`Signal`] to the [`shep_tree::Signal`] that names it.
+///
+/// # Errors
+///
+/// [`RunnerError::SignalFailed`] for a signal the ladder never sends to a
+/// group, which `shep-tree` has no name for.
+#[cfg(unix)]
+fn to_tree_signal(sig: Signal) -> Result<shep_tree::Signal, RunnerError> {
+    match sig {
+        Signal::SIGTERM => Ok(shep_tree::Signal::Term),
+        Signal::SIGINT => Ok(shep_tree::Signal::Int),
+        Signal::SIGQUIT => Ok(shep_tree::Signal::Quit),
+        Signal::SIGUSR2 => Ok(shep_tree::Signal::Usr2),
+        Signal::SIGKILL => Ok(shep_tree::Signal::Kill),
+        other => Err(RunnerError::SignalFailed(format!(
+            "{other} cannot be sent to a process group"
+        ))),
+    }
 }
 
 /// Maps [`StopSignal`] to the nix [`Signal`] it names.
@@ -746,7 +770,7 @@ impl ProcessRunner for TokioRunner {
         // stop` would report success over a running process.
         #[cfg(windows)]
         let job = {
-            let job = crate::sys_windows::Job::create().map_err(|error| {
+            let job = shep_tree::job::Job::create().map_err(|error| {
                 RunnerError::SpawnFailed(format!("job object for {}: {error}", spec.name))
             })?;
             let handle = child.raw_handle().ok_or_else(|| {

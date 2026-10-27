@@ -12,8 +12,8 @@
 //!
 //! `config` holds the pane and everything it answers; `edit`, `env` and
 //! `list` hold what it does when a key lands, and `choices` the checklist a
-//! list of choices opens to; `dogs` holds a sheep's dogs
-//! sub-screen and `sheep_dog` the pane over one dog's table on it; `types`
+//! list of choices opens to; `dogs` holds a sheep's dogs tab
+//! and `sheep_dog` the pane over one dog's table on it; `types`
 //! and `fields` hold what the rest read and write; `section_write` turns a
 //! filed set back into a dog's TOML text; `walk` holds the rows and the
 //! cursor's walk through them.
@@ -50,8 +50,9 @@ mod walk;
 
 pub(in crate::lookout) use config::toml_table;
 pub use config::{ConfigPane, ReloadKind};
+pub(in crate::lookout) use dogs::DogToggle;
 pub(crate) use dogs::dog_names;
-pub use dogs::{DogTableState, DogsPane, SheepDogEntry};
+pub use dogs::{DogRow, DogTableState, ListedDog, SheepDogEntry};
 pub use edit::PaneTyping;
 pub(in crate::lookout) use entries::EntryBody;
 pub use env::EnvTyping;

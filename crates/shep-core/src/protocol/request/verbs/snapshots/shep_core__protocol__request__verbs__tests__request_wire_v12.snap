@@ -536,5 +536,16 @@ expression: requests
       "name": "web",
       "dog": "deploy"
     }
+  },
+  {
+    "id": 41,
+    "deadline_ms": null,
+    "body": {
+      "kind": "reset",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      }
+    }
   }
 ]

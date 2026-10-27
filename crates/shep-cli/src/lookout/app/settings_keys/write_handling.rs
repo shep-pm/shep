@@ -1,25 +1,23 @@
 use super::super::*;
 
 impl App {
-    /// The operator's `Enter` on the settings screen. On a free-text row with
-    /// nothing pending it opens [`Pending::Typing`] and switches
-    /// [`InputMode::Text`] on; on an armed candidate it sends and moves to
-    /// [`Pending::Sent`]; anything else is untouched.
+    /// The operator's `Enter` on the settings screen. On a section it folds;
+    /// on a typed key or a map entry with nothing pending it opens
+    /// [`Pending::Typing`] and switches [`InputMode::Text`] on; on an armed
+    /// candidate it sends and moves to [`Pending::Sent`]; anything else is
+    /// untouched.
     ///
     /// Both acting cases go through [`Self::authorize_write`]. Opening the
     /// editor is gated as well as applying it, so the refusal arrives before a
     /// whole socket path is typed.
     pub(super) fn confirm_setting(&mut self) -> Effect {
-        let Some(settings) = self.settings() else {
+        let Some(settings) = self.settings_mut() else {
             return Effect::None;
         };
-        let opens_editor = settings.pending.is_none()
-            && matches!(
-                settings.cursor(),
-                Some(SettingsRow::Scalar(
-                    SettingField::Socket | SettingField::MaxCronSleep
-                ))
-            );
+        if settings.pending.is_none() && settings.toggle_fold() {
+            return Effect::None;
+        }
+        let opens_editor = settings.pending.is_none() && settings.editor_at_cursor().is_some();
         if !opens_editor && !settings.is_armed() {
             return Effect::None;
         }
@@ -30,11 +28,11 @@ impl App {
             return Effect::None;
         };
         if opens_editor {
-            let Some(SettingsRow::Scalar(field)) = settings.cursor() else {
+            let Some((target, seed)) = settings.editor_at_cursor() else {
                 return Effect::None;
             };
-            let buffer = TextBox::from(settings.text_seed(field));
-            settings.pending = Some(Pending::Typing { field, buffer });
+            let buffer = TextBox::from(seed.as_str());
+            settings.pending = Some(Pending::Typing { target, buffer });
             self.mode = InputMode::Text;
             return Effect::None;
         }
@@ -72,12 +70,11 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::settings::ScalarView;
     use crate::lookout::view::fixtures;
 
     #[test]
     fn the_daemon_confirm_names_both_layers_lookout_cannot_see() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
         assert!(text.contains("shep daemon reload"), "got: {text}");
@@ -87,7 +84,7 @@ mod tests {
 
     #[test]
     fn the_whistle_confirm_names_a_whistle_restart_and_not_a_reload() {
-        let mut app = fixtures::app_in_settings_on(SettingField::AllowControl);
+        let mut app = fixtures::app_in_settings_on("whistle.allow_control");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
         assert!(text.contains("shep whistle restarted"), "got: {text}");
@@ -99,7 +96,7 @@ mod tests {
 
     #[test]
     fn the_style_confirm_promises_nothing_beyond_the_next_command() {
-        let mut app = fixtures::app_in_settings_on(SettingField::StyleLevel);
+        let mut app = fixtures::app_in_settings_on("style.level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
         assert!(text.contains("the next command reads it"), "got: {text}");
@@ -130,25 +127,20 @@ mod tests {
 
     #[test]
     fn enter_sends_the_armed_edit() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let effect = app.update(Msg::Key(KeyPress::Confirm));
-        assert!(matches!(
-            effect,
-            Effect::WriteSetting {
-                edit: SettingEdit::Set {
-                    field: SettingField::LogLevel,
-                    ..
-                },
-                ..
-            }
-        ));
+        let Effect::WriteSetting { edit, .. } = effect else {
+            panic!("Enter must send");
+        };
+        assert!(matches!(edit, SettingEdit::Set { .. }));
+        assert_eq!(edit.key(), "daemon.log_level");
         assert!(app.settings().unwrap().pending().unwrap().sent);
     }
 
     #[test]
     fn a_written_edit_updates_the_row_and_its_source() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
         else {
@@ -175,10 +167,7 @@ mod tests {
 
         // The re-read, which `run_ui` drives through `load_settings`.
         let mut updated = fixtures::settings_snapshot();
-        updated.log_level = ScalarView {
-            value: candidate,
-            source: StyleSource::Config,
-        };
+        updated.document["daemon"]["log_level"] = serde_json::json!(candidate);
         let _ = app.update(Msg::Settings {
             result: Ok(updated.clone()),
         });
@@ -188,7 +177,7 @@ mod tests {
 
     #[test]
     fn an_unset_write_returns_the_row_to_the_default() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         for _ in 0..8 {
             let _ = app.update(Msg::Key(KeyPress::TextBackspace));
@@ -198,12 +187,7 @@ mod tests {
         else {
             panic!("Enter must send");
         };
-        assert!(matches!(
-            edit,
-            SettingEdit::Unset {
-                field: SettingField::MaxCronSleep
-            }
-        ));
+        assert_eq!(edit, fixtures::setting_unset("daemon.max_cron_sleep"));
 
         let effect = app.update(Msg::SettingWritten {
             edit,
@@ -213,10 +197,10 @@ mod tests {
         assert_eq!(effect, Effect::LoadSettings);
 
         let mut updated = fixtures::settings_snapshot();
-        updated.max_cron_sleep = ScalarView {
-            value: "30s".to_string(),
-            source: StyleSource::Default,
-        };
+        updated.document["daemon"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_cron_sleep");
         let _ = app.update(Msg::Settings {
             result: Ok(updated.clone()),
         });
@@ -245,7 +229,7 @@ mod tests {
     /// no single test sends.
     #[test]
     fn a_refused_write_closes_the_overlay_before_reopening_the_editor() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
@@ -290,7 +274,7 @@ mod tests {
     /// Pins `Msg::Settings`'s `opening` check.
     #[test]
     fn the_cursor_survives_a_landed_writes_reload() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let before = app.settings().unwrap().cursor();
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
@@ -311,7 +295,7 @@ mod tests {
 
     #[test]
     fn the_cursor_survives_a_refresh() {
-        let mut app = fixtures::app_in_settings_on(SettingField::MaxCronSleep);
+        let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
         let before = app.settings().unwrap().cursor();
         assert_eq!(
             app.update(Msg::Key(KeyPress::Refresh)),
@@ -325,8 +309,8 @@ mod tests {
 
     #[test]
     fn a_refused_write_says_why_and_leaves_the_row_alone() {
-        let mut app = fixtures::app_in_settings_with_control();
-        let before = app.settings().unwrap().snapshot().log_level.clone();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
+        let before = app.settings().unwrap().snapshot().clone();
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting { edit, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm))
         else {
@@ -338,7 +322,7 @@ mod tests {
             result: Err("max_cron_sleep is 500ms, below the 1s floor".into()),
         });
 
-        assert_eq!(app.settings().unwrap().snapshot().log_level, before);
+        assert_eq!(app.settings().unwrap().snapshot(), &before);
         let notice = app.notice().unwrap();
         assert!(notice.is_grave());
         assert!(notice.to_string().contains("below the 1s floor"));
@@ -350,7 +334,7 @@ mod tests {
     /// the screen is actually showing a prompt for.
     #[test]
     fn a_superseded_reply_does_not_resolve_the_edit_that_replaced_it() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting {
             edit: first,
@@ -361,7 +345,7 @@ mod tests {
             panic!("Enter must send the first edit");
         };
 
-        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        fixtures::select_setting(&mut app, "whistle.allow_control");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting {
             edit: second,
@@ -405,7 +389,7 @@ mod tests {
     /// exists to keep out by the other door.
     #[test]
     fn a_superseded_refusal_does_not_reopen_the_editor_over_a_live_edit() {
-        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let mut app = fixtures::app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         let Effect::WriteSetting {
@@ -417,7 +401,7 @@ mod tests {
             panic!("Enter must send the socket edit");
         };
 
-        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        fixtures::select_setting(&mut app, "daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting {
             edit: level,
@@ -476,7 +460,7 @@ mod tests {
             panic!("a landed file half must raise the daemon half");
         };
 
-        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        fixtures::select_setting(&mut app, "daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting { ticket: scalar, .. } = app.update(Msg::Key(KeyPress::Confirm))
         else {
@@ -510,7 +494,7 @@ mod tests {
     /// still not touch whatever the reopened screen has armed since.
     #[test]
     fn a_reply_for_a_write_the_screen_walked_away_from_touches_nothing() {
-        let mut app = fixtures::app_in_settings_on(SettingField::Socket);
+        let mut app = fixtures::app_in_settings_on("daemon.socket");
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         let _ = app.update(Msg::Key(KeyPress::TextApply));
         let Effect::WriteSetting {
@@ -528,6 +512,7 @@ mod tests {
         let _ = app.update(Msg::Settings {
             result: Ok(fixtures::settings_snapshot()),
         });
+        fixtures::select_setting(&mut app, "daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let Effect::WriteSetting { ticket: level, .. } = app.update(Msg::Key(KeyPress::Confirm))
         else {

@@ -274,7 +274,7 @@ mod tests {
     /// always draws, so an armed edit is never invisible.
     #[test]
     fn an_armed_settings_candidate_survives_a_body_too_short_to_hold_it() {
-        let mut app = super::super::fixtures::app_in_settings_with_control();
+        let mut app = super::super::fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         let text = app.settings().unwrap().pending().unwrap().text.to_string();
 

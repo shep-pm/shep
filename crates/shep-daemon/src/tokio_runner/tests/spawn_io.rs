@@ -753,6 +753,18 @@ fn a_zero_pid_is_refused_before_it_can_reach_the_daemons_own_group() {
     );
 }
 
+/// A signal `shep-tree` has no name for is refused before any `kill(2)`, so
+/// a harmless one aimed at a pid that may exist is still never delivered.
+#[cfg(unix)]
+#[test]
+fn a_signal_shep_tree_cannot_name_is_refused_before_delivery() {
+    let err = signal_group(2, Signal::SIGHUP).unwrap_err();
+    assert_eq!(
+        err,
+        RunnerError::SignalFailed("SIGHUP cannot be sent to a process group".to_string())
+    );
+}
+
 /// The refusal has to come from the conversion: `Pid::from_raw` is an `i32`,
 /// so a pid past `i32::MAX` has no `kill(2)` form to hand a syscall at all.
 #[cfg(unix)]

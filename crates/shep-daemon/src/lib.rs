@@ -66,8 +66,8 @@
 //!   start times and liveness (reads unix only), and the clock they share
 //! - [`privilege`]: `user`/`group` config to numeric uid/gid, one portable
 //!   `resolve()` over a unix impl and a non-unix stub that refuses outright
-//! - [`notify`]: one `READY=1` datagram to `$NOTIFY_SOCKET`, sent by [`boot`]
-//!   once the muster restore has finished (unix only)
+//! - [`notify`]: `READY=1` and `EXTEND_TIMEOUT_USEC` datagrams to
+//!   `$NOTIFY_SOCKET`, sent by [`boot`] (unix only)
 //! - [`tokio_runner`]: real [`ProcessRunner`](runner::ProcessRunner) over
 //!   `tokio::process` (unix only)
 //!
@@ -282,9 +282,9 @@ pub mod boot;
 pub mod sys;
 
 // The Windows counterpart to `sys`, and this crate's only unsafe surface
-// there: a job object per sheep, standing in for the unix process group.
-// `pub` because `seal_std_handles`' caller lives in shep-cli; `Job` stays
-// `pub(crate)`, so nothing outside this crate can name a job object.
+// there: the std-handle seal and the shepherd's pipe descriptor. `pub`
+// because `seal_std_handles`' caller lives in shep-cli. A sheep's job object
+// is `shep-tree`'s.
 #[cfg(windows)]
 pub mod sys_windows;
 

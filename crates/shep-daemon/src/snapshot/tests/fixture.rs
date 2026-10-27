@@ -85,6 +85,7 @@ impl TestFlock {
             &self.events,
             &[],
             &[],
+            None,
         )
         .await
     }

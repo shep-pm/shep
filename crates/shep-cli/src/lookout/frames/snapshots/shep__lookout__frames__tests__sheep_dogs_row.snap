@@ -8,24 +8,11 @@ shep lookout   /home/ada/.shep                                                  
    process   logging   inputs   restart   readiness   shutdown   watch   cron   dogs     tab/S-tab next / prev group   1…9 jump                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   FIELD                       VALUE                                           LANDS                                                                             
->› dogs                       jobs, legacy                                    now        FOCUSED  dogs  opaque                                                  
-                                                                                          Settings for one dog on this sheep alone, opaque to shep              
-  env                                                                                                                                                           
-   DATABASE_URL               (set)                                                       now     jobs, legacy                                                  
-   NODE_ENV                   (set)                                                       default {}                                                            
-   + add a key                                                                            example (none)                                                        
-                                                                                                                                                                
-                                                                                          ● now  the running sheep picks it up without stopping                 
-                                                                                                                         pick the timing when you close the pane
-                                                                                                                                                                
-                                                                                          ──────────────────────────────────────────────────────────────────────
-                                                                                          VALIDATION                                                            
-                                                                                          █ a table of dog name to a table of settings                          
-                                                                                          █ a dog name shep does not know about yet                             
-                                                                                          █ refused: a value that is not a table                                
-                                                                                          █ refused: an empty dog name                                          
+>▸ deploy            -          (no table)                                                                                                                      
+ ▸ jobs              set        concurrency, hours, merge, models                                                                                               
+ ▸ legacy            read-only  url  (publishes no sheep schema)                                                                                                
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written   › opens screen
+  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -49,4 +36,17 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit   control enabled
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+esc close   j/k select   g/G first/last   r refresh   enter open   d remove   q quit                                                             control enabled

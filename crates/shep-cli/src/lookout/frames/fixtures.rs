@@ -11,10 +11,11 @@ use shep_core::protocol::{DogSource, ExitInfo, ProcessInfo, SheepConfigView};
 use shep_core::status::ProcStatus;
 
 use super::super::app::{App, KeyPress, Msg, RowKey, SettingsRow};
-use super::super::pane::SheepDogEntry;
+use super::super::pane::{ListedDog, SheepDogEntry};
 use super::super::tail::{Stream, Tail, TailLine};
-use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
-use crate::style::StyleSource;
+use crate::commands::settings::{DogView, SettingsSnapshot};
+use crate::lookout::field::shep_toml_shape;
+use crate::style::{StyleLevel, StyleSource};
 
 use super::Scene;
 
@@ -478,49 +479,52 @@ pub(super) fn dog_sheep(
         .build()
 }
 
-/// Walks the settings screen's cursor onto `field`'s row with real
-/// `SelectDown` keypresses.
+/// Walks the settings screen's cursor onto the row of the key `key`
+/// (dotted, as `shep.toml` names it) with real `SelectDown` keypresses.
 ///
 /// # Panics
 ///
-/// If the settings screen is not open.
+/// If the settings screen is not open, or `key` is not a row of the tree.
 #[track_caller]
-pub(super) fn move_settings_cursor_to(app: &mut App, field: SettingField) {
+pub(super) fn move_settings_cursor_to(app: &mut App, key: &str) {
+    let field = shep_toml_shape()
+        .fields
+        .fields()
+        .iter()
+        .position(|field| field.key == key)
+        .expect("key is a field of the settings tree");
     let target = app
         .settings()
         .expect("the settings screen must already be open")
         .rows()
         .iter()
-        .position(|row| *row == SettingsRow::Scalar(field))
-        .expect("field is one of the six scalar rows Settings::rows always carries");
+        .position(|row| *row == SettingsRow::Field(field))
+        .expect("the field is a row of the open tree");
     for _ in 0..target {
         app.update(Msg::Key(KeyPress::SelectDown));
     }
 }
 
-/// A settings snapshot with `log_level`, `socket`, `max_cron_sleep` and
-/// `style_level` declared in `shep.toml`, and `log_json`/`allow_control`
-/// left at their compiled defaults: the mixed state
-/// [`Scene::SettingsSet`] shows, reused by [`Scene::SettingsConfirm`] and
-/// [`Scene::SettingsTyping`].
+/// A settings snapshot with `log_level`, `socket`, `max_cron_sleep`,
+/// `environment` and `style.level` declared in `shep.toml`, and every other
+/// key left at its compiled default: the mixed state [`Scene::SettingsSet`]
+/// shows, reused by [`Scene::SettingsConfirm`] and [`Scene::SettingsTyping`].
 pub(super) fn settings_snapshot_for_gallery() -> SettingsSnapshot {
-    let config = |value: &str| ScalarView {
-        value: value.to_string(),
-        source: StyleSource::Config,
-    };
-    let default = |value: &str| ScalarView {
-        value: value.to_string(),
-        source: StyleSource::Default,
-    };
+    let document = json!({
+        "daemon": {
+            "log_level": "warn",
+            "socket": "/home/ada/.shep/run/shep.sock",
+            "max_cron_sleep": "30s",
+            "environment": "production",
+        },
+        "style": { "level": "full" },
+        "interpreters": { "py": "python3" },
+    });
     SettingsSnapshot {
-        log_level: config("warn"),
-        log_json: default("false"),
-        socket: config("/home/ada/.shep/run/shep.sock"),
-        max_cron_sleep: config("30s"),
-        allow_control: default("false"),
-        style_level: config("full"),
+        document: document.as_object().cloned().unwrap_or_default(),
+        socket_default: PathBuf::from("/home/ada/.shep/run/shep.sock"),
         // The document declares it, so the file and resolved value agree.
-        style_level_in_file: Some("full".to_string()),
+        style: (StyleLevel::Full, StyleSource::Config),
         dogs: vec![
             DogView {
                 name: "bark".to_string(),
@@ -536,7 +540,7 @@ pub(super) fn settings_snapshot_for_gallery() -> SettingsSnapshot {
     }
 }
 
-/// [`settings_snapshot_for_gallery`]'s scalars, with `dogs` replaced by
+/// [`settings_snapshot_for_gallery`]'s keys, with `dogs` replaced by
 /// the three-way drift [`Scene::SettingsDogs`] shows: `otel` running
 /// while the file disables it, `ledger` enabled and absent from the
 /// flock, and `bark` enabled with `handshook: Some(false)`, so the join
@@ -666,39 +670,41 @@ pub(super) fn jobs_table() -> Map<String, Value> {
     .expect("an object")
 }
 
-/// The probe answer the gallery's dogs scenes open with: `jobs` carries
-/// [`jobs_schema`] and the sheep already has [`jobs_table`] for it (set),
-/// `deploy` carries a schema and no table (unset), and `legacy` carries a
-/// table the probe names no schema for (read-only): one row of each state
-/// [`DogsPane`](crate::lookout::pane::DogsPane) draws.
-pub(super) fn dogs_probe() -> Vec<SheepDogEntry> {
-    vec![
-        SheepDogEntry {
-            name: "jobs".to_string(),
-            adopted_path: Some(PathBuf::from("/opt/jobs")),
-            schema: Some(jobs_schema()),
-        },
-        SheepDogEntry {
-            name: "deploy".to_string(),
-            adopted_path: Some(PathBuf::from("/opt/deploy")),
-            schema: Some(json!({ "type": "object", "properties": {} })),
-        },
-        SheepDogEntry {
-            name: "legacy".to_string(),
-            adopted_path: None,
-            schema: None,
-        },
-    ]
+/// The listing the gallery's dogs scenes open with: two adopted dogs, not
+/// yet asked. The sheep carries [`jobs_table`] for `jobs` (set), nothing for
+/// `deploy` (unset), and a table for `legacy` that no dog lists (read-only):
+/// one row of each state the `dogs` tab draws.
+pub(super) fn dogs_listing() -> Vec<ListedDog> {
+    ["jobs", "deploy"]
+        .into_iter()
+        .map(|name| ListedDog {
+            entry: SheepDogEntry {
+                name: name.to_string(),
+                adopted_path: Some(PathBuf::from(format!("/opt/{name}"))),
+                schema: None,
+            },
+            asked: false,
+        })
+        .collect()
 }
 
-/// The probe answer of the `kelpie` scenes: one dog, carrying the recorded
-/// copy of shep-kelpie's own `--schema` answer.
-pub(super) fn kelpie_probe() -> Vec<SheepDogEntry> {
-    vec![SheepDogEntry {
+/// What `jobs` answers when its row is opened: [`jobs_schema`].
+pub(super) fn jobs_entry() -> SheepDogEntry {
+    SheepDogEntry {
+        name: "jobs".to_string(),
+        adopted_path: Some(PathBuf::from("/opt/jobs")),
+        schema: Some(jobs_schema()),
+    }
+}
+
+/// What `kelpie` answers when its row is opened: the recorded copy of
+/// shep-kelpie's own `--schema` answer.
+pub(super) fn kelpie_entry() -> SheepDogEntry {
+    SheepDogEntry {
         name: "kelpie".to_string(),
         adopted_path: Some(PathBuf::from("/opt/kelpie")),
         schema: Some(crate::lookout::testing::kelpie_sheep_schema()),
-    }]
+    }
 }
 
 /// `api`'s config for the `kelpie` scenes: [`edit_pane_config_view`]'s own
@@ -721,10 +727,10 @@ pub(super) fn kelpie_config_view() -> SheepConfigView {
     view
 }
 
-/// `api`'s config for the dogs sub-screen and per-sheep table scenes:
+/// `api`'s config for the `dogs` tab and per-sheep table scenes:
 /// [`edit_pane_config_view`]'s own fields, plus [`jobs_table`] and a
-/// `legacy` table naming a credential in a plain URL, so the sub-screen has
-/// a set, an unset (from [`dogs_probe`]) and a read-only row to draw.
+/// `legacy` table naming a credential in a plain URL, so the tab has
+/// a set, an unset (from [`dogs_listing`]) and a read-only row to draw.
 pub(super) fn sheep_dogs_config_view() -> SheepConfigView {
     let mut view = edit_pane_config_view();
     view.config

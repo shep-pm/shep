@@ -100,7 +100,9 @@ impl ConfigPane {
                 | PaneRow::Table(_)
                 | PaneRow::Entry(_)
                 | PaneRow::Choice { .. }
-                | PaneRow::Arm { .. },
+                | PaneRow::Arm { .. }
+                | PaneRow::Dog(_)
+                | PaneRow::Under { .. },
             )
             | None => None,
         };
@@ -178,7 +180,9 @@ impl ConfigPane {
             | PaneRow::Table(_)
             | PaneRow::Entry(_)
             | PaneRow::Choice { .. }
-            | PaneRow::Arm { .. } => None,
+            | PaneRow::Arm { .. }
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. } => None,
         }
     }
 
@@ -202,6 +206,8 @@ impl ConfigPane {
                     | PaneRow::Entry(_)
                     | PaneRow::Choice { .. }
                     | PaneRow::Arm { .. }
+                    | PaneRow::Dog(_)
+                    | PaneRow::Under { .. }
                     | PaneRow::AddEnv => false,
                 })
             })
@@ -225,6 +231,8 @@ impl ConfigPane {
             | PaneRow::Entry(_)
             | PaneRow::Choice { .. }
             | PaneRow::Arm { .. }
+            | PaneRow::Dog(_)
+            | PaneRow::Under { .. }
             | PaneRow::AddEnv => None,
         }
     }
