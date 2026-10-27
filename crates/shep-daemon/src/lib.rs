@@ -282,9 +282,9 @@ pub mod boot;
 pub mod sys;
 
 // The Windows counterpart to `sys`, and this crate's only unsafe surface
-// there: a job object per sheep, standing in for the unix process group.
-// `pub` because `seal_std_handles`' caller lives in shep-cli; `Job` stays
-// `pub(crate)`, so nothing outside this crate can name a job object.
+// there: the std-handle seal and the shepherd's pipe descriptor. `pub`
+// because `seal_std_handles`' caller lives in shep-cli. A sheep's job object
+// is `shep-tree`'s.
 #[cfg(windows)]
 pub mod sys_windows;
 
