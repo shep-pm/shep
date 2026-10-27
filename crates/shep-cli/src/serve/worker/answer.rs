@@ -8,15 +8,17 @@
 //! also where the SPA fallback lives.
 //!
 //! Writing a reply and logging it is `response`'s: this module only picks
-//! which reply to write.
+//! which reply to write. For a file, which of the four replies a request
+//! gets (200, 206, 304, 416) is `serve::conditional`'s call, made from the
+//! metadata the open handle already carries.
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 use tokio::net::TcpStream;
 
 use super::ServeConfig;
 use super::response::{reply, respond};
 use crate::http::{Header, HttpRequest};
-use crate::serve::{fs, listing, mime, path};
+use crate::serve::{conditional, fs, listing, mime, path};
 
 /// A request target's path: everything before the first `?` or `#`, or the
 /// whole target when it carries neither.
@@ -130,10 +132,15 @@ pub(super) async fn answer(
             };
         }
 
-        if let Some((file, len)) = fs::open_regular(&resolved.join("index.html")).await {
-            let status =
-                serve_file(stream, request, mime::content_type("index.html"), file, len).await;
-            return (status, len);
+        if let Some((file, metadata)) = fs::open_regular(&resolved.join("index.html")).await {
+            return serve_file(
+                stream,
+                request,
+                mime::content_type("index.html"),
+                file,
+                &metadata,
+            )
+            .await;
         }
 
         if cfg.listing {
@@ -153,18 +160,21 @@ pub(super) async fn answer(
         return send_not_found(stream, cfg, request).await;
     }
 
-    let Some((file, len)) = fs::open_regular(&resolved).await else {
+    let Some((file, metadata)) = fs::open_regular(&resolved).await else {
         return send_not_found(stream, cfg, request).await;
     };
     let content_type = mime::content_type(logged_path.as_str());
-    let status = serve_file(stream, request, content_type, file, len).await;
-    (status, len)
+    serve_file(stream, request, content_type, file, &metadata).await
 }
 
 /// Answers a 404, or, if `cfg.spa` is set, the method is `GET`/`HEAD`, and
 /// the request's `Accept` header names `text/html`, serves the docroot's
-/// `index.html` with a 200 instead. Every 404 this worker would otherwise
-/// answer funnels through here, so the gate lives in one place.
+/// `index.html` instead. Every 404 this worker would otherwise answer
+/// funnels through here, so the gate lives in one place.
+///
+/// The fallback goes through the same file path as an ordinary hit, so the
+/// `index.html` an SPA gets carries the same validators, and a conditional
+/// request against a fallback answers 304 rather than re-sending the page.
 async fn send_not_found(
     stream: &mut TcpStream,
     cfg: &ServeConfig,
@@ -176,42 +186,116 @@ async fn send_not_found(
             .headers
             .get("accept")
             .is_some_and(|accept| accept.contains("text/html"))
-        && let Some((file, len)) = fs::open_regular(&cfg.root.join("index.html")).await
+        && let Some((file, metadata)) = fs::open_regular(&cfg.root.join("index.html")).await
     {
-        let status = serve_file(stream, request, mime::content_type("index.html"), file, len).await;
-        if status == 200 {
-            return (200, len);
-        }
+        return serve_file(
+            stream,
+            request,
+            mime::content_type("index.html"),
+            file,
+            &metadata,
+        )
+        .await;
     }
     reply(stream, 404, "text/plain", b"not found\n", vec![]).await
 }
 
-/// Streams `file` (already open, `len` bytes long per its own metadata)
-/// as the body of a 200. The head goes through [`respond`]; the body
-/// does not, since a streamed file has no `&[u8]` to hand it.
+/// Streams `file` (already open, its `metadata` read from that same handle)
+/// as the body of whichever reply the request's own `Range` and validator
+/// headers pick: a 200, a 206, a 304 or a 416.
 ///
-/// `file.take(len)`, not a bare copy: `len` came from the open handle's
-/// own metadata, so a file that grew between the open and this copy still
-/// matches the `Content-Length` already declared. A file that shrank still
-/// sends fewer bytes than declared; `Connection: close` turns that into a
-/// visible truncation rather than a hang.
+/// Returns the status answered and the body byte count for
+/// [`super::handle_connection`]'s access-log line, which is the length the
+/// head declared, the same number every in-memory reply reports.
+///
+/// A slice is reached by seeking and then `take`ing, never by reading the
+/// file whole. The length every reply is built from, `Content-Range`'s
+/// suffix included, is the one the open handle's own `fstat` reported, so a
+/// file that grew between the open and this copy still matches the
+/// `Content-Length` already declared. A file another process truncated in
+/// that window sends fewer bytes than declared: `Connection: close` turns
+/// that into a visible truncation rather than a hang. Re-reading the length
+/// before the head would narrow the window and not close it, so one `fstat`
+/// per request is what this server spends.
 async fn serve_file(
     stream: &mut TcpStream,
     request: &HttpRequest,
     content_type: &str,
-    file: tokio::fs::File,
-    len: u64,
-) -> u16 {
-    match respond(stream, 200, content_type, len, vec![]).await {
-        Ok(()) => {
-            if request.method == "GET" {
-                let mut body = file.take(len);
-                let _ = tokio::io::copy(&mut body, stream).await;
+    mut file: tokio::fs::File,
+    metadata: &std::fs::Metadata,
+) -> (u16, u64) {
+    let len = metadata.len();
+    let validators = conditional::Validators::new(len, metadata.modified().ok());
+    let outcome = conditional::decide(&request.headers, len, &validators);
+
+    // `(start, stop)`, `stop` exclusive, or `None` for a reply with no body.
+    let body = match outcome {
+        conditional::Outcome::Whole => Some((0_u64, len)),
+        conditional::Outcome::Partial { start, end } => Some((start, end + 1)),
+        conditional::Outcome::Unsatisfiable | conditional::Outcome::NotModified => None,
+    };
+    let status = match outcome {
+        conditional::Outcome::Whole => 200,
+        conditional::Outcome::Partial { .. } => 206,
+        conditional::Outcome::Unsatisfiable => 416,
+        conditional::Outcome::NotModified => 304,
+    };
+    let body_len = body.map_or(0, |(start, stop)| stop - start);
+
+    // The seek runs before the head so the copy starts at the right offset.
+    // It is not the reachability check: seeking past EOF succeeds and the
+    // read then yields nothing (see the case in `crate::serve::fs`). What
+    // refuses a slice the file cannot fill is `conditional::decide`, against
+    // the length the open handle reported.
+    let mut slice = match body {
+        Some((start, stop)) if request.method == "GET" => {
+            match file.seek(SeekFrom::Start(start)).await {
+                Ok(_here) => Some(file.take(stop - start)),
+                Err(_err) => return (500, 0),
             }
-            200
         }
-        Err(_err) => 500,
+        _ => None,
+    };
+
+    let last_modified = validators.last_modified();
+    let content_range = match outcome {
+        conditional::Outcome::Partial { start, end } => Some(format!("bytes {start}-{end}/{len}")),
+        conditional::Outcome::Unsatisfiable => Some(format!("bytes */{len}")),
+        _ => None,
+    };
+    let mut headers = vec![
+        Header {
+            name: "Accept-Ranges",
+            value: "bytes",
+        },
+        Header {
+            name: "ETag",
+            value: validators.etag(),
+        },
+    ];
+    if let Some(value) = &last_modified {
+        headers.push(Header {
+            name: "Last-Modified",
+            value: value.as_str(),
+        });
     }
+    if let Some(value) = &content_range {
+        headers.push(Header {
+            name: "Content-Range",
+            value: value.as_str(),
+        });
+    }
+
+    if respond(stream, status, content_type, body_len, headers)
+        .await
+        .is_err()
+    {
+        return (500, 0);
+    }
+    if let Some(slice) = &mut slice {
+        let _ = tokio::io::copy(slice, stream).await;
+    }
+    (status, body_len)
 }
 
 /// Reads `dir`'s entries, dropping a leading-dot name unless `hidden` is
@@ -242,372 +326,4 @@ async fn read_listing(dir: &std::path::Path, hidden: bool) -> std::io::Result<Ve
 // unix only: the cases assert file modes on served files.
 // Windows coverage is in `tests/cli_e2e.rs`.
 #[cfg(all(test, unix))]
-mod tests {
-    use super::super::testing::*;
-
-    /// The traversal table again, end to end over a real socket, so it
-    /// covers the handler's ordering and not only the resolver. Each case
-    /// asserts the exact status, since `assert_ne!(status, 200)` passes
-    /// against a server that 500s on everything.
-    #[tokio::test]
-    async fn every_traversal_shape_is_refused_over_a_real_socket() {
-        // The docroot is a child of the tempdir, and the negative control
-        // is its sibling: `tempdir().path()` alone is shared and never
-        // cleaned up.
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(
-            &root,
-            &[
-                ("index.html", "<h1>home</h1>"),
-                ("assets/app.css", "body{}"),
-            ],
-        );
-        std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-        let server = serve_on_free_port(config(&root)).await;
-
-        // positive control first: the server serves.
-        assert_eq!(get(server.addr(), "/index.html").await.status, 200);
-        assert_eq!(get(server.addr(), "/assets/app.css").await.status, 200);
-
-        for (target, want) in [
-            ("/../secret.txt", 400),
-            ("/../../etc/passwd", 400),
-            ("/%2e%2e/secret.txt", 400),
-            ("/..%2fsecret.txt", 400),
-            ("/x%00.png", 400),
-            ("/a%0d%0aSet-Cookie:%20x", 400),
-            ("/C:/Windows/System32/config/SAM", 400),
-            ("/etc/passwd", 404),
-            ("/nope.txt", 404),
-            ("/.env", 404),
-        ] {
-            let response = get(server.addr(), target).await;
-            assert_eq!(response.status, want, "{target} answered {response:?}");
-            assert!(!response.body.contains("nope"), "{target} leaked the file");
-            assert_eq!(
-                response.headers["x-content-type-options"], "nosniff",
-                "{target}: every response carries it, refusals included"
-            );
-        }
-    }
-    /// fails if a symlink out of the docroot is served over the socket.
-    #[tokio::test]
-    async fn a_symlink_out_of_the_docroot_is_a_404_and_not_a_body() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("ok.txt", "served")]);
-        std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-        std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt"))
-            .unwrap();
-        let server = serve_on_free_port(config(&root)).await;
-
-        assert_eq!(
-            get(server.addr(), "/ok.txt").await.status,
-            200,
-            "positive control"
-        );
-
-        let response = get(server.addr(), "/escape.txt").await;
-        assert_eq!(response.status, 404);
-        assert!(!response.body.contains("nope"), "{response:?}");
-    }
-
-    /// fails if the follow-symlinks flag on `ServeConfig` does not reach
-    /// `fs::contain` through the worker.
-    #[tokio::test]
-    async fn a_symlinked_deploy_layout_is_served_only_with_follow_symlinks() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(
-            &root,
-            &[("releases/2026-08-15/index.html", "<h1>home</h1>")],
-        );
-        std::os::unix::fs::symlink(root.join("releases/2026-08-15"), root.join("current")).unwrap();
-
-        let refusing = serve_on_free_port(config(&root)).await;
-        assert_eq!(
-            get(refusing.addr(), "/current/index.html").await.status,
-            404
-        );
-
-        let following = serve_on_free_port(config_with_follow_symlinks(&root)).await;
-        let response = get(following.addr(), "/current/index.html").await;
-        assert_eq!(response.status, 200);
-        assert!(response.body.contains("<h1>home</h1>"));
-    }
-
-    /// fails if `--follow-symlinks` is mistaken for "trust every path"
-    /// instead of "permit a symlink component, still enforce
-    /// containment".
-    #[tokio::test]
-    async fn follow_symlinks_does_not_let_a_symlink_escape_the_root() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-        std::os::unix::fs::symlink(outer.path().join("secret.txt"), root.join("escape.txt"))
-            .unwrap();
-
-        let server = serve_on_free_port(config_with_follow_symlinks(&root)).await;
-        let response = get(server.addr(), "/escape.txt").await;
-        assert_eq!(response.status, 404);
-        assert!(
-            !response.body.contains("nope"),
-            "the escape must not be served"
-        );
-    }
-
-    /// fails if auth is checked after path resolution. An unauthenticated
-    /// client must not be able to tell a refused traversal (400) from a
-    /// missing file (404) apart.
-    #[tokio::test]
-    async fn an_unauthenticated_request_is_401_whatever_the_path_says() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        std::fs::write(outer.path().join("secret.txt"), "nope").unwrap();
-        let server = serve_on_free_port(config_with_auth(&root)).await;
-
-        for target in ["/index.html", "/../secret.txt", "/nope.txt"] {
-            let response = get(server.addr(), target).await;
-            assert_eq!(response.status, 401, "{target}");
-            assert!(
-                response.headers.contains_key("www-authenticate"),
-                "{target}"
-            );
-        }
-        // positive control: with the credential, the same three answer
-        // 200/400/404, not 401.
-        assert_eq!(get_auth(server.addr(), "/index.html").await.status, 200);
-        assert_eq!(get_auth(server.addr(), "/../secret.txt").await.status, 400);
-        assert_eq!(get_auth(server.addr(), "/nope.txt").await.status, 404);
-    }
-
-    /// fails if a POST is served, or if the 405 forgets to say what is
-    /// allowed.
-    #[tokio::test]
-    async fn a_method_other_than_get_or_head_is_405_with_an_allow_header() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = request_with_method(server.addr(), "POST", "/index.html").await;
-        assert_eq!(response.status, 405);
-        assert_eq!(response.headers["allow"], "GET, HEAD");
-        assert!(!response.body.contains("<h1>home</h1>"), "{response:?}");
-    }
-
-    /// fails if a refusal reply loses its status, its own header, or the
-    /// byte count it declared.
-    #[tokio::test]
-    async fn a_refusal_reply_carries_its_status_headers_and_body_length() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        let guarded = serve_on_free_port(config_with_auth(&root)).await;
-        let open = serve_on_free_port(config(&root)).await;
-
-        let unauthorized = get(guarded.addr(), "/index.html").await;
-        assert_eq!(unauthorized.status, 401);
-        assert_eq!(unauthorized.body, "unauthorized\n");
-        assert_eq!(
-            unauthorized.headers["www-authenticate"],
-            "Basic realm=\"shep\""
-        );
-        assert_eq!(unauthorized.headers["content-length"], "13");
-
-        let refused = "method not allowed; this server answers GET and HEAD\n";
-        let not_allowed = request_with_method(open.addr(), "POST", "/index.html").await;
-        assert_eq!(not_allowed.status, 405);
-        assert_eq!(not_allowed.body, refused);
-        assert_eq!(not_allowed.headers["allow"], "GET, HEAD");
-        assert_eq!(not_allowed.headers["content-length"], "53");
-    }
-
-    /// fails if a HEAD grows a body, or loses its Content-Length.
-    #[tokio::test]
-    async fn a_head_carries_the_length_and_no_body() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = request_with_method(server.addr(), "HEAD", "/index.html").await;
-        assert_eq!(response.status, 200);
-        assert_eq!(
-            response.headers["content-length"],
-            "<h1>home</h1>".len().to_string()
-        );
-        assert!(response.body.is_empty(), "{response:?}");
-    }
-
-    /// fails if a directory without a trailing slash is served in place,
-    /// which breaks every relative link in the page it serves.
-    #[tokio::test]
-    async fn a_directory_without_a_trailing_slash_redirects_to_one() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("docs/index.html", "<h1>docs</h1>")]);
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = get(server.addr(), "/docs").await;
-        assert_eq!(response.status, 301);
-        assert_eq!(response.headers["location"], "/docs/");
-    }
-
-    /// fails if listing is on by default.
-    #[tokio::test]
-    async fn a_directory_with_no_index_is_404_unless_listing_is_on() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("empty/.keep", "")]);
-
-        let plain = serve_on_free_port(config(&root)).await;
-        assert_eq!(get(plain.addr(), "/empty/").await.status, 404);
-
-        let listing_on = serve_on_free_port(config_with_listing(&root)).await;
-        let response = get(listing_on.addr(), "/empty/").await;
-        assert_eq!(response.status, 200);
-        assert!(response.body.contains("Index of"), "{response:?}");
-    }
-
-    /// fails if the SPA fallback fires for an asset request: a missing
-    /// `/assets/app.js` must 404, not answer HTML with a 200.
-    #[tokio::test]
-    async fn the_spa_fallback_serves_index_for_navigations_and_404s_for_assets() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("index.html", "<h1>home</h1>")]);
-        let server = serve_on_free_port(config_with_spa(&root)).await;
-
-        let nav = get_with_accept(server.addr(), "/deep/link", "text/html").await;
-        assert_eq!(nav.status, 200);
-        assert!(nav.body.contains("<h1>home</h1>"));
-
-        let asset = get_with_accept(server.addr(), "/assets/missing.js", "*/*").await;
-        assert_eq!(asset.status, 404);
-    }
-
-    /// fails if `nosniff` is dropped, or if the MIME table is not reaching
-    /// the response.
-    #[tokio::test]
-    async fn a_css_file_is_served_as_css_with_nosniff() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("app.css", "body{}")]);
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = get(server.addr(), "/app.css").await;
-        assert_eq!(response.status, 200);
-        assert_eq!(response.headers["content-type"], "text/css; charset=utf-8");
-        assert_eq!(response.headers["x-content-type-options"], "nosniff");
-        assert_eq!(response.body, "body{}");
-    }
-
-    /// fails if a body larger than any buffer is truncated or read whole
-    /// into memory. 2 MiB is enough to cross every buffer in this path and
-    /// small enough to write in a test.
-    #[tokio::test]
-    async fn a_file_larger_than_the_buffers_is_served_whole() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        std::fs::create_dir_all(&root).unwrap();
-        let big = "a".repeat(2 * 1024 * 1024);
-        std::fs::write(root.join("big.txt"), &big).unwrap();
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = get(server.addr(), "/big.txt").await;
-        assert_eq!(response.status, 200);
-        assert_eq!(response.headers["content-length"], big.len().to_string());
-        assert_eq!(response.body.len(), big.len());
-    }
-
-    /// fails if a dotfile is served, or if `--hidden` stops serving one.
-    #[tokio::test]
-    async fn a_dotfile_is_404_unless_hidden_is_set() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(
-            &root,
-            &[
-                (".env", "SECRET=1"),
-                (".git/config", "[core]"),
-                ("index.html", "<h1>home</h1>"),
-                (".well-known/acme-challenge/x", "token"),
-            ],
-        );
-
-        let plain = serve_on_free_port(config(&root)).await;
-        assert_eq!(get(plain.addr(), "/.env").await.status, 404);
-        assert_eq!(get(plain.addr(), "/.git/config").await.status, 404);
-        assert_eq!(
-            get(plain.addr(), "/index.html").await.status,
-            200,
-            "positive control"
-        );
-
-        let hidden = serve_on_free_port(config_with_hidden(&root)).await;
-        assert_eq!(
-            get(hidden.addr(), "/.well-known/acme-challenge/x")
-                .await
-                .status,
-            200
-        );
-    }
-
-    /// fails if a listing names a file the server will not serve, or
-    /// drops `nosniff` on its own response.
-    #[tokio::test]
-    async fn a_listing_omits_hidden_entries_and_carries_nosniff() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[(".env", "SECRET=1"), ("app.js", "console.log(1)")]);
-        let server = serve_on_free_port(config_with_listing(&root)).await;
-
-        let response = get(server.addr(), "/").await;
-        assert_eq!(response.status, 200);
-        assert!(!response.body.contains(".env"), "{response:?}");
-        assert!(response.body.contains("app.js"), "{response:?}");
-        assert_eq!(response.headers["x-content-type-options"], "nosniff");
-    }
-
-    /// fails if a listing goes out as plain text, or declares a length
-    /// that disagrees with the HTML it sent.
-    #[tokio::test]
-    async fn a_directory_listing_reply_is_html_and_counts_its_bytes() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("a.txt", "a"), ("b.txt", "bb")]);
-        let server = serve_on_free_port(config_with_listing(&root)).await;
-
-        let response = get(server.addr(), "/").await;
-        assert_eq!(response.status, 200);
-        assert_eq!(response.headers["content-type"], "text/html; charset=utf-8");
-        assert!(
-            response.body.contains("<h1>Index of /</h1>"),
-            "{response:?}"
-        );
-        assert!(response.body.contains("a.txt"), "{response:?}");
-        let declared = response.body.len().to_string();
-        assert_eq!(response.headers["content-length"], declared);
-    }
-
-    /// fails if a directory whose name is not ASCII answers 500 instead
-    /// of a percent-encoded redirect.
-    #[tokio::test]
-    async fn a_directory_with_a_non_ascii_name_redirects_rather_than_500ing() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("www");
-        write_tree(&root, &[("документы/index.html", "<h1>docs</h1>")]);
-        let server = serve_on_free_port(config(&root)).await;
-
-        let response = get(server.addr(), "/документы").await;
-        assert_eq!(response.status, 301);
-        assert_eq!(
-            response.headers["location"],
-            "/%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D1%8B/"
-        );
-    }
-}
+mod tests;
