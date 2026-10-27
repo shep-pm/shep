@@ -606,7 +606,7 @@ mod tests {
     /// pins for the dashboard's own confirm.
     #[test]
     fn h_cancels_an_armed_settings_candidate_instead_of_opening_the_overlay() {
-        let mut app = fixtures::app_in_settings_with_control();
+        let mut app = fixtures::app_in_settings_on("daemon.log_level");
         let _ = app.update(Msg::Key(KeyPress::Cycle));
         assert!(app.settings().unwrap().pending().is_some());
         let _ = app.update(Msg::Key(KeyPress::Help));

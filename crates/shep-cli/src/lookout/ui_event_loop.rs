@@ -624,8 +624,12 @@ mod tests {
             })
             .await
             .unwrap();
-        // `space` arms the first row (`[daemon] log_level`), `Enter` sends
-        // it, and `q` is the key that must still be answered.
+        // Four `j` reach `[daemon] log_level` (under `[daemon]`, after
+        // `boot_first_dogs`, `environment` and `log_json`), `space` arms it,
+        // `Enter` sends it, and `q` is the key that must still be answered.
+        for _ in 0..4 {
+            msg_tx.send(Msg::Key(KeyPress::SelectDown)).await.unwrap();
+        }
         msg_tx.send(Msg::Key(KeyPress::Cycle)).await.unwrap();
         msg_tx.send(Msg::Key(KeyPress::Confirm)).await.unwrap();
         msg_tx.send(Msg::Key(KeyPress::Quit)).await.unwrap();

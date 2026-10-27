@@ -469,6 +469,18 @@ pub enum Request {
         /// Which sheep. No default: this destroys log data.
         selector: SelectorSpec,
     },
+    /// Zero the restart count of every matched sheep and hand back its
+    /// restart budget.
+    ///
+    /// Changes counters only: nothing is signalled, started or stopped.
+    ///
+    /// Answers [`Response::Reset`]. Not a protocol bump, as
+    /// [`Self::TailLog`] was not: a shepherd that has never heard of this
+    /// one decodes [`Self::Unrecognized`] and refuses by name.
+    Reset {
+        /// Which sheep. No default.
+        selector: SelectorSpec,
+    },
     /// Read the end of one sheep's out or err log, so a client on another
     /// host reads what the shepherd's own disk holds.
     ///

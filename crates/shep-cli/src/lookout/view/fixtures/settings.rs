@@ -6,31 +6,40 @@ use std::time::Instant;
 use shep_core::protocol::{DogSource, ProcessInfo};
 use shep_core::status::ProcStatus;
 
-use crate::commands::settings::{DogView, ScalarView, SettingField, SettingsSnapshot};
-use crate::lookout::app::{App, Control, KeyPress, Msg, SettingsRow};
-use crate::style::StyleSource;
+use crate::commands::settings::{DogView, SettingEdit, SettingsSnapshot, Shape};
+use crate::lookout::app::{App, Control, KeyPress, Msg, Settings, SettingsRow};
+use crate::lookout::field::shep_toml_shape;
+use crate::style::{StyleLevel, StyleSource};
 
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
 
-/// A plausible settings snapshot: every scalar rendered as if `shep.toml`
-/// declared it, and two candidate dogs, one enabled, for the tests that
-/// need a screen with real rows rather than a fresh home's all-default one.
+/// A plausible settings snapshot: a `shep.toml` that declares one key in
+/// every kind of row the tree draws (a boolean, a closed set, a duration, a
+/// path, a list, a map of entries), and two candidate dogs, one enabled, for
+/// the tests that need a screen with real rows rather than a fresh home's
+/// all-default one.
 pub fn settings_snapshot() -> SettingsSnapshot {
-    let config = |value: &str| ScalarView {
-        value: value.to_string(),
-        source: StyleSource::Config,
-    };
+    let document = serde_json::json!({
+        "daemon": {
+            "log_level": "warn",
+            "log_json": false,
+            "socket": "/home/ada/.shep/run/shep.sock",
+            "max_cron_sleep": "30s",
+            "environment": "production",
+        },
+        "whistle": { "allow_control": false },
+        "secrets": { "allow_read": false },
+        "style": { "level": "full" },
+        "interpreters": { "js": "node", "py": "python3" },
+        "hosts": ["ada@box"],
+    });
     SettingsSnapshot {
-        log_level: config("warn"),
-        log_json: config("false"),
-        socket: config("/home/ada/.shep/run/shep.sock"),
-        max_cron_sleep: config("30s"),
-        allow_control: config("false"),
-        style_level: config("full"),
+        document: document.as_object().cloned().unwrap_or_default(),
+        socket_default: PathBuf::from("/home/ada/.shep/run/shep.sock"),
         // The document declares it, so the file and the resolved value
         // agree.
-        style_level_in_file: Some("full".to_string()),
+        style: (StyleLevel::Full, StyleSource::Config),
         dogs: vec![
             DogView {
                 name: "bark".to_string(),
@@ -57,21 +66,50 @@ pub fn app_in_settings() -> App {
     app
 }
 
-/// [`app_in_settings_with_control`] with the cursor already moved onto
-/// `field`'s row, by real `SelectDown` keypresses rather than poking the
-/// cursor index directly.
-pub fn app_in_settings_on(field: SettingField) -> App {
-    let mut app = app_in_settings_with_control();
-    let target = app
-        .settings()
-        .unwrap()
+/// The dotted key a settings row stands for: a section's path, a key's own,
+/// a map's entry as `map.name`, and the row that adds one as `map+`.
+fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
+    let shape = shep_toml_shape();
+    let fields = shape.fields.fields();
+    Some(match row {
+        SettingsRow::Table(index) => shape.outline.tables[index].path.clone(),
+        SettingsRow::Field(index) => fields[index].key.clone(),
+        SettingsRow::Entry { map, index } => {
+            let key = &fields[map].key;
+            let (name, _) = settings.snapshot().entries(key).into_iter().nth(index)?;
+            format!("{key}.{name}")
+        }
+        SettingsRow::AddEntry(map) => format!("{}+", fields[map].key),
+        SettingsRow::Dog(_) => return None,
+    })
+}
+
+/// Moves the settings cursor onto the row named by the dotted `key` (see
+/// [`key_of`]), from the first row, by real keypresses rather than poking
+/// the cursor index directly.
+///
+/// # Panics
+///
+/// If the settings screen is not open, or `key` is not a row of it.
+#[track_caller]
+pub fn select_setting(app: &mut App, key: &str) {
+    app.update(Msg::Key(KeyPress::SelectFirst));
+    let settings = app.settings().expect("the settings screen is open");
+    let target = settings
         .rows()
-        .iter()
-        .position(|row| *row == SettingsRow::Scalar(field))
-        .expect("field is one of the six scalar rows Settings::rows always carries");
+        .into_iter()
+        .position(|row| key_of(settings, row).as_deref() == Some(key))
+        .unwrap_or_else(|| panic!("{key} is a row of the settings tree"));
     for _ in 0..target {
         app.update(Msg::Key(KeyPress::SelectDown));
     }
+}
+
+/// [`app_in_settings_with_control`] with the cursor already on the row named
+/// by the dotted `key`.
+pub fn app_in_settings_on(key: &str) -> App {
+    let mut app = app_in_settings_with_control();
+    select_setting(&mut app, key);
     app
 }
 
@@ -93,17 +131,26 @@ pub fn app_in_settings_at() -> (App, Instant) {
 /// is `bare`. The cursor sits on the style row, moved there by real
 /// keypresses the same way [`app_in_settings_on`] moves it.
 ///
-/// The one state where a scalar's value in force and its value on disk
-/// disagree. Every other field's layers belong to the shepherd's process,
+/// The one state where a key's value in force and its value on disk
+/// disagree. Every other key's layers belong to the shepherd's process,
 /// where lookout can see neither.
 pub fn app_in_settings_with_shadowed_style(source: StyleSource) -> App {
-    let mut app = app_in_settings_on(SettingField::StyleLevel);
+    let mut app = app_in_settings_on("style.level");
     let mut snapshot = settings_snapshot();
-    snapshot.style_level = ScalarView {
-        value: "bare".to_string(),
-        source,
-    };
-    snapshot.style_level_in_file = Some("full".to_string());
+    snapshot.style = (StyleLevel::Bare, source);
+    app.update(Msg::Settings {
+        result: Ok(snapshot),
+    });
+    app
+}
+
+/// The settings screen over a `shep.toml` that says nothing about `[style]`,
+/// so `full` is in force by default. The cursor sits on the style row.
+pub fn app_in_settings_with_silent_style() -> App {
+    let mut app = app_in_settings_on("style.level");
+    let mut snapshot = settings_snapshot();
+    snapshot.document.remove("style");
+    snapshot.style = (StyleLevel::Full, StyleSource::Default);
     app.update(Msg::Settings {
         result: Ok(snapshot),
     });
@@ -119,7 +166,7 @@ pub fn app_in_settings_with_control() -> App {
     app
 }
 
-/// [`settings_snapshot`]'s own scalars, with `dogs` replaced, for the
+/// [`settings_snapshot`]'s own keys, with `dogs` replaced, for the
 /// dogs-table tests, which need particular names, `enabled` bits, and a
 /// matching or mismatching flock.
 fn settings_snapshot_with_dogs(dogs: Vec<DogView>) -> SettingsSnapshot {
@@ -206,9 +253,9 @@ fn settings_snapshot_for_toggle_tests() -> SettingsSnapshot {
 /// [`settings_snapshot_for_toggle_tests`], the control gate open, and the
 /// cursor moved onto `name`'s dog row by real `SelectDown` keypresses.
 ///
-/// The six scalar rows always sort first in `Settings::rows`, so the dog at
-/// index `i` of [`settings_snapshot_for_toggle_tests`]'s own list sits at
-/// row `6 + i`.
+/// The tree rows always sort first in `Settings::rows`, so the dog at index
+/// `i` of [`settings_snapshot_for_toggle_tests`]'s own list sits at the row
+/// the `Dog(i)` variant names.
 pub fn app_in_settings_on_dog(name: &str) -> App {
     let mut app = app_with(flock_of(3, 0), plain());
     app.set_control_for_tests(Control::Allowed);
@@ -221,7 +268,14 @@ pub fn app_in_settings_on_dog(name: &str) -> App {
         .iter()
         .position(|dog| dog.name == name)
         .expect("name is one of settings_snapshot_for_toggle_tests's own dogs");
-    for _ in 0..(6 + dog_index) {
+    let target = app
+        .settings()
+        .unwrap()
+        .rows()
+        .into_iter()
+        .position(|row| row == SettingsRow::Dog(dog_index))
+        .expect("the dog is a row");
+    for _ in 0..target {
         app.update(Msg::Key(KeyPress::SelectDown));
     }
     app
@@ -232,4 +286,33 @@ pub fn app_in_settings_on_dog(name: &str) -> App {
 /// what the test is asserting on without checking the dogs list.
 pub fn app_in_settings_on_enabled_dog(name: &str) -> App {
     app_in_settings_on_dog(name)
+}
+
+/// The edit that writes `value` at the dotted `key`, shaped as the tree
+/// shapes that key.
+///
+/// # Panics
+///
+/// If `key` is not a row of the settings tree.
+#[track_caller]
+pub fn setting_set(key: &str, value: &str) -> SettingEdit {
+    let shape = shep_toml_shape();
+    let field = shape.fields.by_key(key).expect("key is a row");
+    SettingEdit::Set {
+        path: shape.paths[key].clone(),
+        shape: Shape::of(&field.kind).expect("the key is typed in place"),
+        value: value.to_string(),
+    }
+}
+
+/// The edit that removes the dotted `key`.
+///
+/// # Panics
+///
+/// If `key` is not a row of the settings tree.
+#[track_caller]
+pub fn setting_unset(key: &str) -> SettingEdit {
+    SettingEdit::Unset {
+        path: shep_toml_shape().paths[key].clone(),
+    }
 }

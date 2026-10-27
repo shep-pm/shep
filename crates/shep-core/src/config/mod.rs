@@ -21,6 +21,11 @@ pub mod template;
 pub use app::{AppConfig, DogTable, ProbeConfig, ProbeKind};
 pub use apply::{ApplyGroup, ResetDepth, apply_group, reaches_running};
 pub use cron::{CronParseError, CronSchedule, CronScheduleError};
+#[cfg(feature = "schema")]
+pub use daemon::{
+    APPLY_KEY, APPLY_NEXT_COMMAND, APPLY_RELOAD, APPLY_RESTART, APPLY_WHISTLE,
+    daemon_config_schema_json,
+};
 pub use daemon::{DaemonConfig, DaemonConfigError, DaemonOverrides, LogLevel, parse_daemon_bool};
 pub use dogs::{DogsConfig, DogsConfigError};
 pub use flockfile::{

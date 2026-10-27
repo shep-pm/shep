@@ -59,6 +59,9 @@ fn flock_control_holds_every_request_that_moves_a_sheep() {
         Request::Restart {
             selector: sheep("web"),
         },
+        Request::Reset {
+            selector: sheep("web"),
+        },
         Request::Reload {
             selector: sheep("web"),
         },

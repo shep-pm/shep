@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use shep_client::RequestError;
-use shep_core::config::{DogTable, LogLevel};
+use shep_core::config::DogTable;
 use shep_core::protocol::{
     BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
     Response, SelectorSpec, SheepConfigView, SheepRefusal,
@@ -42,7 +42,7 @@ use shep_core::protocol::{
 use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
 
-use super::field::{FieldKind, FieldSet};
+use super::field::FieldKind;
 use super::level::{Classifier, Level};
 use super::pane::{
     ConfigPane, DogRow, DogToggle, FieldValue, ListedDog, Lock, PaneEdit, PaneRow, PaneTarget,
@@ -55,9 +55,11 @@ use super::tail::Stream;
 use super::textbox::{TextBox, TextEdit};
 use super::theme::Palette;
 use super::viewport::Viewport;
-use crate::commands::settings::{SettingEdit, SettingField, SettingsSnapshot, settings_field_set};
+use crate::commands::settings::{SettingEdit, SettingsSnapshot};
 use crate::style::{StyleLevel, StyleSource};
 use crate::vocabulary::Reported;
+pub(in crate::lookout) use settings_confirm::apply_needs;
+use settings_confirm::confirm_text;
 
 mod action;
 mod bleats;
@@ -88,6 +90,7 @@ mod secrets_pane;
 mod secrets_write;
 mod selection;
 mod settings;
+mod settings_confirm;
 mod settings_dogs;
 mod settings_keys;
 mod sheep_pane;
@@ -129,7 +132,7 @@ pub(crate) enum Body {
     Settings(Settings),
     /// An open config pane, for a sheep or a dog, opened by
     /// [`KeyPress::Edit`].
-    ConfigPane(ConfigPane),
+    ConfigPane(Box<ConfigPane>),
     /// The bleats feed given the whole screen, opened by
     /// [`KeyPress::Bleats`].
     Bleats(BleatsPane),

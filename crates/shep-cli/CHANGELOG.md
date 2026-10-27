@@ -13,6 +13,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-10-26
+
+### Fixed
+
+- Give an inline table's open list every key
+
+
+## [0.18.1] - 2026-10-26
+
+### Added
+
+- Hold up to 1024 series a sender
+
+
+## [0.18.0] - 2026-10-26
+
+### Added
+
+- Write import's secrets in one locked pass
+- Extend the systemd start deadline before each boot stage
+- Draw a sheep's env rows on the process tab only
+- List every dog inline on the dogs tab and open one to its table
+- Env on the process tab only, every dog's table inline on the dogs tab
+
+### Changed
+
+- Key bleats path sets on borrowed strs, share the log-line arm
+- Build the silence note's remedy from VERSION_SKEW_REMEDY
+- One tail clamp, one unexpected_response, one control-tool list
+- Build the five settings scalar views through one helper
+- Convert ExitCode to the process code through one From impl
+- Drop the pass-through refuse in startup step execution
+- One load_flockfile body for both flockfile tiers of resolve
+- One From for ResetMode, three dropped redundant borrows
+- Write every JSON envelope through one helper
+- Trim lookout's event loop bookkeeping
+- Keep the argument-count allow on run_ui
+- Parse shep.toml once in shep whistle
+- Name lookout's unset and default texts once
+- Share lookout's chart CPU block and swapped-body frame
+- Box the dogs tab so the config pane stays a small body variant
+- Keep the dogs tab's tests in a file of their own
+- One exit-code conversion, one flockfile load, no refuse wrapper
+
+### Fixed
+
+- Refuse a lookout secret write when no environment tab is showing
+- Keep the typed value open when a secret write refuses on no tab
+- Measure the terminal's width on Windows too
+- Vet a dog under the environment the daemon gives it
+- Refuse a dog's name over --host in delete
+- Vet a dog under the environment the daemon gives it ([#1100](https://github.com/shep-pm/shep/pull/1100))
+- Re-read tables before the close dialog and anchor the dog cursor by name
+- Cover each stage's wait and the post-restore setup with a deadline extension
+
+
 ## [0.17.0] - 2026-10-25
 
 ### Added

@@ -282,17 +282,24 @@ CPU 20s         ▆▅█▅      MEM/CEIL   █████░░░░░
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled`;
 
 const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
-  [daemon]
-> log_level        warn           shep.toml
-  log_json         false          the default
-  socket           /home/ada/.s…  shep.toml
-  max_cron_sleep   30s            shep.toml
 
-  [whistle]
-  allow_control    false          the default
-
-  [style]
-  level            full           shep.toml
+> ▾ daemon
+    boot_first_dogs   none        the default
+    environment       production  shep.toml
+    log_json          false       the default
+    log_level         warn        shep.toml
+    max_cron_sleep    30s         shep.toml
+    socket            /home/ada…  shep.toml
+  ▾ whistle
+    allow_control     false       the default
+  ▾ secrets
+    allow_read        false       the default
+  ▾ style
+    level             full        shep.toml
+  ▾ interpreters      1 entry     shep.toml
+    py                python3     shep.toml
+    + add an entry
+  hosts               none        the default
 
   [dogs]
   space arms, Enter applies; a dog needs no …
@@ -300,6 +307,9 @@ const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
   otel               no       online
   ledger             yes      not running
   bark               yes      silent
+
+
+
 esc/s close   j/k select   g… control enabled`;
 
 ---
@@ -667,7 +677,7 @@ esc/s close   j/k select   g… control enabled`;
       The settings screen has its own drop order, and each of its two tables
       keeps whichever fact is not said anywhere else on the screen.
     </p>
-    <CodeBlock label="45×24">{settingsNarrow}</CodeBlock>
+    <CodeBlock label="45×30">{settingsNarrow}</CodeBlock>
     <p>
       Below 33 columns or 6 rows, lookout refuses to draw rather than risk
       overlapping garbage. The refusal message is short enough to survive

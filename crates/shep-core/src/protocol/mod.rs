@@ -23,7 +23,8 @@
 //! and forced nothing either, on the terms [`Request::PutSecrets`] set
 //! above. [`Request::TailLog`] and [`Response::LogTail`] rode in on the
 //! same terms: an older shepherd decodes [`Request::Unrecognized`] and
-//! answers [`RpcErrorCode::Unsupported`] by name. Version 10 bumped on a third new `AppConfig` field, `dogs`, for
+//! answers [`RpcErrorCode::Unsupported`] by name, and
+//! [`Request::Reset`] and [`Response::Reset`] after them. Version 10 bumped on a third new `AppConfig` field, `dogs`, for
 //! the reason version 5 did, and version 11 on a fourth, `log_timestamps`. Version 12 bumped on
 //! `grants`, a new field of both [`DogSource`] variants: an older shepherd
 //! reads a grant it was sent as nothing and enforces none, so the

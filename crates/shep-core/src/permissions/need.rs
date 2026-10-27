@@ -69,6 +69,7 @@ pub fn need<'r>(request: &'r Request, caller: &str) -> Need<'r> {
         Request::Start { .. }
         | Request::Stop { .. }
         | Request::Restart { .. }
+        | Request::Reset { .. }
         | Request::Reload { .. }
         | Request::Signal { .. }
         | Request::SendLine { .. }

@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{EnvValue, Request, Response};
-use shep_core::secrets;
+use shep_core::secrets::{self, SecretError};
 
 use plan::{Class, ImportPlan, Planned};
 
@@ -133,11 +133,13 @@ pub async fn import_env(
         .filter(|planned| planned.class == Class::Secret)
         .map(|planned| (planned.key.as_str(), planned.value.as_str()))
         .collect();
-    // One locked write, so a refusal or a failed stage leaves the store as it
-    // was. Only a failed directory flush after the rename can leave it
-    // written, and `set` has the same gap.
-    if let Err(err) = secrets::set_many(&paths.secrets, &environment, &secret_entries) {
-        return streams.fail(exit_code_for(&err), &err.to_string());
+    // One locked write, so every error but `Unsynced` leaves the store as it
+    // was. `Unsynced` means the batch is in place and only its durability is
+    // unconfirmed, so the import goes on and says so.
+    match secrets::set_many(&paths.secrets, &environment, &secret_entries) {
+        Ok(()) => {}
+        Err(err @ SecretError::Unsynced(_)) => streams.aside("unsynced", &err.to_string()),
+        Err(err) => return streams.fail(exit_code_for(&err), &err.to_string()),
     }
     let written = secret_entries.len();
 

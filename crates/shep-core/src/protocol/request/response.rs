@@ -358,6 +358,9 @@ pub enum Response {
     /// One row per sheep, not per file emptied: several sheep can share one
     /// log path, and the daemon truncates each distinct path once.
     Flushed(Vec<ProcessInfo>),
+    /// Answer to `Reset`: one row per matched sheep after the reset, running
+    /// or not, exactly as [`Self::Reopened`].
+    Reset(Vec<ProcessInfo>),
     /// Answer to `TailLog`: the end of one sheep's log file, or the reason
     /// there is none to read.
     LogTail(LogTail),

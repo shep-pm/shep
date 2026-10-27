@@ -24,6 +24,7 @@ mod draw;
 mod entry_row;
 mod env;
 mod field_row;
+pub(super) use field_row::open_glyph;
 #[cfg(test)]
 mod fixtures;
 mod layout;
