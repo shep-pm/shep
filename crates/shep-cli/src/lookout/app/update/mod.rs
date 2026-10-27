@@ -52,6 +52,9 @@ impl App {
             grouping: Grouping::Flat,
             collapsed_folds: HashSet::new(),
             keymap_open: false,
+            focus: None,
+            focus_tab: None,
+            focus_dog: None,
         }
     }
 

@@ -27,6 +27,8 @@
 //! - A screen apiece: [`settings`], [`secrets_pane`], [`config_pane`],
 //!   [`sheep_pane`], [`bleats`], [`dog_pane`], and the sub-screens in
 //!   [`pane_list`] and [`pane_dogs`].
+//! - [`focus`] is the screen the command line asked for, which the first
+//!   flock answer either opens or reports as unopenable.
 
 use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -76,6 +78,7 @@ mod dog_pane_entry_add;
 #[cfg(test)]
 mod dog_pane_entry_removal;
 mod feed_keys;
+mod focus;
 mod keys;
 mod lambs;
 mod msg;
@@ -101,6 +104,7 @@ mod update;
 pub use action::*;
 pub use close_dialog::*;
 pub(crate) use config_pane::*;
+pub(crate) use focus::Focus;
 pub use msg::*;
 pub(crate) use over_host::NOT_OVER_HOST;
 pub use rows::*;
@@ -435,6 +439,21 @@ pub struct App {
     /// one. A third mode would also have to answer what a letter means in
     /// it, and the answer is nothing.
     keymap_open: bool,
+    /// What `shep lookout <sheep> [tab] [dog]` asked for, held until the
+    /// first flock answer can say whether the sheep is there.
+    ///
+    /// Taken whole by [`App::resolve_focus`] on that answer, whether or not
+    /// it can be honoured: a shepherd still restoring the flock is a reason
+    /// to report a missing sheep, not a reason to reopen a pane on every
+    /// poll.
+    focus: Option<Focus>,
+    /// The tab [`Self::focus`] asked for, spent by the config pane that
+    /// opens. Cleared with the pane, so a later `e` opens on the pane's own
+    /// first tab rather than on an ask the operator has walked past.
+    focus_tab: Option<&'static str>,
+    /// The dog [`Self::focus`] asked for, spent by the `dogs` tab's listing
+    /// that names it. Cleared with the pane for [`Self::focus_tab`]'s reason.
+    focus_dog: Option<String>,
 }
 
 /// What a partly refused walk should say, or `None` when nothing was

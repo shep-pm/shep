@@ -46,13 +46,39 @@ impl App {
         dogs: Vec<ListedDog>,
     ) -> Effect {
         let latest = ask == self.sheep_dogs_ask;
+        let mut listed = false;
         if let Some(pane) = self.config_pane_mut()
             && latest
             && matches!(pane.target(), PaneTarget::Sheep { name } if name == sheep)
         {
             pane.list_dogs(dogs);
+            listed = true;
         }
-        Effect::None
+        if !listed {
+            return Effect::None;
+        }
+        self.open_focused_dog(sheep)
+    }
+
+    /// The dog `shep lookout <sheep> dogs <dog>` asked for, opened as soon as
+    /// the tab's listing names it, so the operator sees its table without a
+    /// keystroke between the two reads.
+    ///
+    /// A dog the listing does not name is reported and the tab stays open as
+    /// it is: the ask is spent either way, the same rule
+    /// [`App::resolve_focus`]'s sheep follows.
+    fn open_focused_dog(&mut self, sheep: &str) -> Effect {
+        let Some(dog) = self.take_focus_dog() else {
+            return Effect::None;
+        };
+        let Some(index) = self
+            .config_pane()
+            .and_then(|pane| pane.dogs_tab().rows().iter().position(|row| row.name() == dog))
+        else {
+            self.notice = Some(Notice::grave(format!("{sheep}: no dog named {dog}")));
+            return Effect::None;
+        };
+        self.toggle_dog_row(index, Some(true))
     }
 
     /// One [`Msg::SheepDog`]: the dog's schema has come, so its row, if it

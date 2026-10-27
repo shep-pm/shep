@@ -56,6 +56,7 @@ impl App {
                     if let Some(pane) = self.sheep_pane_mut() {
                         pane.adopt_config(*view);
                     }
+                    Effect::None
                 }
                 // `None` only if something outside this file set
                 // `config_target` without `config_for`, which nothing does:
@@ -71,10 +72,15 @@ impl App {
             // stopped`, naming neither the sheep nor the screen it came
             // from.
             other => {
+                // The tab and the dog that were waiting on this read go with
+                // it: a pane that never opened spent neither, and left set
+                // they would open the next one the operator asked for.
+                self.focus_tab = None;
+                self.focus_dog = None;
                 self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
+                Effect::None
             }
         }
-        Effect::None
     }
 
     /// Opens the config pane on `view`, or refreshes one already open in
@@ -82,7 +88,12 @@ impl App {
     /// Split out of [`Self::on_sheep_config`] so that method can route a
     /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
     /// without repeating its guard or its error arms.
-    pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) {
+    ///
+    /// A tab the command line asked for is spent here, ahead of the carried
+    /// one: the operator named it, and nothing has been read since. The
+    /// effect is the `dogs` tab's own listing, raised the same way `tab`
+    /// raises it from a keyboard.
+    pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) -> Effect {
         let carried = self.config_pane().map(|pane| pane.view().clone());
         // The tab too, so a re-read lands where the operator was reading.
         let carried_group = self.config_pane().map(ConfigPane::group_index);
@@ -119,6 +130,15 @@ impl App {
         if let Some(group) = carried_group {
             pane.adopt_group(group);
         }
+        // Ahead of the carried group: the command line named this one, and no
+        // keystroke has moved a tab since.
+        if let Some(tab) = self.take_focus_tab()
+            && let Some(index) = shep_core::config::GROUP_ORDER
+                .iter()
+                .position(|group| *group == tab)
+        {
+            pane.adopt_group(index);
+        }
         if let Some(dogs) = carried_dogs {
             pane.adopt_dogs_tab(dogs);
         }
@@ -142,6 +162,9 @@ impl App {
         // the body it was drawn over, and every key from here goes to
         // `on_keymap_key` instead of the pane the operator asked for.
         self.keymap_open = false;
+        // The `dogs` tab has no rows until its listing lands, and a pane that
+        // opened on it needs the ask `tab` would have raised.
+        self.dogs_tab_effect()
     }
 
     /// `e`'s own handler: open a dog's pane directly, else ask the shepherd.
@@ -440,6 +463,10 @@ impl App {
         // A listing still out belongs to this pane. Retired here, not on a
         // refresh, so a pane reopened on the same sheep does not take it.
         self.sheep_dogs_ask += 1;
+        // So does the rest of what the command line asked for. The operator
+        // closed the pane it was opening; the next one is theirs.
+        self.focus_tab = None;
+        self.focus_dog = None;
         self.release_text_mode_if_unowned();
     }
 

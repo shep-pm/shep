@@ -21,6 +21,12 @@ impl App {
         self.record_samples(at);
         self.reseat(previous);
         self.forget_missing_target();
+        // The command line's ask outranks the ordinary poll's feed refresh:
+        // it is the one thing here that can change which screen is up, and
+        // the feed re-reads on the next poll anyway.
+        if let Some(effect) = self.resolve_focus() {
+            return effect;
+        }
         // Unconditional: the selected row's log paths can change even
         // when the selection does not, and this is the feed's cadence.
         Effect::RefreshFeed
