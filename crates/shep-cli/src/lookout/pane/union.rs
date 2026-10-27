@@ -108,6 +108,7 @@ pub(super) fn arm_fields(fields: &FieldSet) -> BTreeMap<String, Field> {
                 default_value: None,
                 value_kind: None,
                 bounds: Bounds::default(),
+                apply: None,
                 ..field.clone()
             },
         );

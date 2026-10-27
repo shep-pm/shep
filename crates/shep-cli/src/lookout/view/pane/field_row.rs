@@ -186,7 +186,7 @@ fn key_cell(pane: &ConfigPane, index: usize, field: &Field) -> String {
 }
 
 /// The glyph in front of a row that opens and closes.
-pub(super) fn open_glyph(open: bool) -> char {
+pub(in crate::lookout::view) fn open_glyph(open: bool) -> char {
     if open { '\u{25be}' } else { '\u{25b8}' }
 }
 

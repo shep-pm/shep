@@ -887,68 +887,68 @@ An action key pressed while the link is coming back. The refusal names the same 
 
 
 === settings_fresh  (120x30) ===
-The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every scalar's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in.
+The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every other key's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
                                                                                                                         [0m
-[0m[38;5;245m  [daemon][0m                                                                                                              [0m
-> log_level        warn                            the default  needs shep daemon reload                                [0m
-  log_json         false                           the default  needs shep daemon reload                                [0m
-  socket           /home/ada/.shep/run/shep.sock   the default  needs the shepherd stopped and started                  [0m
-  max_cron_sleep   not set                         the default  needs shep daemon reload                                [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [whistle][0m                                                                                                             [0m
-  allow_control    false                           the default  needs shep whistle restarted                            [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [style][0m                                                                                                               [0m
-  level            full                            the default  the next command reads it                               [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [dogs][0m                                                                                                                [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
-[0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
-  bark                                                                no       built-in                  not running    [0m
-  metrics                                                             no       built-in                  not running    [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
+> ▾ daemon                                                                                                              [0m
+    boot_first_dogs   none                            the default  needs shep daemon reload                             [0m
+    environment       production                      the default  needs shep daemon reload                             [0m
+    log_json          false                           the default  needs shep daemon reload                             [0m
+    log_level         warn                            the default  needs shep daemon reload                             [0m
+    max_cron_sleep    not set                         the default  needs shep daemon reload                             [0m
+    socket            /home/ada/.shep/run/shep.sock   the default  needs the shepherd stopped and started               [0m
+[0m[38;5;245m  ▾ whistle                                                                                                             [0m
+    allow_control     false                           the default  needs shep whistle restarted                         [0m
+[0m[38;5;245m  ▾ secrets                                                                                                             [0m
+    allow_read        false                           the default  the next command reads it                            [0m
+[0m[38;5;245m  ▾ style                                                                                                               [0m
+    level             full                            the default  the next command reads it                            [0m
+  ▾ interpreters      8 entries                       shep.toml    the next command reads it                            [0m
+    cjs               node                            shep.toml    the next command reads it                            [0m
+    js                node                            shep.toml    the next command reads it                            [0m
+    mjs               node                            shep.toml    the next command reads it                            [0m
+    php               php                             shep.toml    the next command reads it                            [0m
+    pl                perl                            shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+    rb                ruby                            shep.toml    the next command reads it                            [0m
+    sh                sh                              shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
+[0m[38;5;245m  ... 2 below[0m                                                                                                           [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_set  (120x30) ===
-The settings screen with some scalars declared. `shep.toml` and `the default` sit side by side in the SOURCE column, so what the operator wrote and what shep assumes are both visible at once.
+The settings screen with some keys declared. `shep.toml` and `the default` sit side by side in the SOURCE column, so what the operator wrote and what shep assumes are both visible at once.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
                                                                                                                         [0m
-[0m[38;5;245m  [daemon][0m                                                                                                              [0m
-> log_level        warn                            shep.toml    needs shep daemon reload                                [0m
-  log_json         false                           the default  needs shep daemon reload                                [0m
-  socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                  [0m
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [whistle][0m                                                                                                             [0m
-  allow_control    false                           the default  needs shep whistle restarted                            [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [style][0m                                                                                                               [0m
-  level            full                            shep.toml    the next command reads it                               [0m
+> ▾ daemon                                                                                                              [0m
+    boot_first_dogs   none                            the default  needs shep daemon reload                             [0m
+    environment       production                      shep.toml    needs shep daemon reload                             [0m
+    log_json          false                           the default  needs shep daemon reload                             [0m
+    log_level         warn                            shep.toml    needs shep daemon reload                             [0m
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             [0m
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               [0m
+[0m[38;5;245m  ▾ whistle                                                                                                             [0m
+    allow_control     false                           the default  needs shep whistle restarted                         [0m
+[0m[38;5;245m  ▾ secrets                                                                                                             [0m
+    allow_read        false                           the default  the next command reads it                            [0m
+[0m[38;5;245m  ▾ style                                                                                                               [0m
+    level             full                            shep.toml    the next command reads it                            [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
 [0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
   bark                                                                no       built-in                  not running    [0m
   metrics                                                             yes      built-in                  not running    [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -961,17 +961,23 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                                        6 in the flock[0m
                                                                                                                                                                                     [0m
-[0m[38;5;245m  [daemon][0m                                                                                                                                                                          [0m
-> log_level        warn                            shep.toml    needs shep daemon reload                                                                                            [0m
-  log_json         false                           the default  needs shep daemon reload                                                                                            [0m
-  socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                                                                              [0m
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                                                                            [0m
-                                                                                                                                                                                    [0m
-[0m[38;5;245m  [whistle][0m                                                                                                                                                                         [0m
-  allow_control    false                           the default  needs shep whistle restarted                                                                                        [0m
-                                                                                                                                                                                    [0m
-[0m[38;5;245m  [style][0m                                                                                                                                                                           [0m
-  level            full                            shep.toml    the next command reads it                                                                                           [0m
+[0m[38;5;245m  ▾ daemon                                                                                                                                                                          [0m
+    boot_first_dogs   none                            the default  needs shep daemon reload                                                                                         [0m
+    environment       production                      shep.toml    needs shep daemon reload                                                                                         [0m
+    log_json          false                           the default  needs shep daemon reload                                                                                         [0m
+>   log_level         warn                            shep.toml    needs shep daemon reload                                                                                         [0m
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                                                                                         [0m
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                                                                           [0m
+[0m[38;5;245m  ▾ whistle                                                                                                                                                                         [0m
+    allow_control     false                           the default  needs shep whistle restarted                                                                                     [0m
+[0m[38;5;245m  ▾ secrets                                                                                                                                                                         [0m
+    allow_read        false                           the default  the next command reads it                                                                                        [0m
+[0m[38;5;245m  ▾ style                                                                                                                                                                           [0m
+    level             full                            shep.toml    the next command reads it                                                                                        [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                                                                                        [0m
+    py                python3                         shep.toml    the next command reads it                                                                                        [0m
+[0m[38;5;245m    + add an entry                                                                                                                                                                  [0m
+  hosts               none                            the default  the next command reads it                                                                                        [0m
                                                                                                                                                                                     [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                                                                            [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                                                                                  [0m
@@ -979,16 +985,10 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
   bark                                                                                                                            no       built-in                  not running    [0m
   metrics                                                                                                                         yes      built-in                  not running    [0m
                                                                                                                                                                                     [0m
-[0m[38;5;221m  set log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels          [0m
+[0m[38;5;221m  set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   [0m
                                                                                                                                                                                     [0m
                                                                                                                                                                                     [0m
-                                                                                                                                                                                    [0m
-                                                                                                                                                                                    [0m
-                                                                                                                                                                                    [0m
-                                                                                                                                                                                    [0m
-                                                                                                                                                                                    [0m
-                                                                                                                                                                                    [0m
-[0m[38;5;221m[48;5;235mset log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key ca…[0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mset daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_typing  (120x30) ===
@@ -996,17 +996,23 @@ The socket editor open mid-path. The status bar names the field being typed, not
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            6 in the flock[0m
                                                                                                                         [0m
-[0m[38;5;245m  [daemon][0m                                                                                                              [0m
-  log_level        warn                            shep.toml    needs shep daemon reload                                [0m
-  log_json         false                           the default  needs shep daemon reload                                [0m
-> socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                  [0m
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [whistle][0m                                                                                                             [0m
-  allow_control    false                           the default  needs shep whistle restarted                            [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [style][0m                                                                                                               [0m
-  level            full                            shep.toml    the next command reads it                               [0m
+[0m[38;5;245m  ▾ daemon                                                                                                              [0m
+    boot_first_dogs   none                            the default  needs shep daemon reload                             [0m
+    environment       production                      shep.toml    needs shep daemon reload                             [0m
+    log_json          false                           the default  needs shep daemon reload                             [0m
+    log_level         warn                            shep.toml    needs shep daemon reload                             [0m
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             [0m
+>   socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               [0m
+[0m[38;5;245m  ▾ whistle                                                                                                             [0m
+    allow_control     false                           the default  needs shep whistle restarted                         [0m
+[0m[38;5;245m  ▾ secrets                                                                                                             [0m
+    allow_read        false                           the default  the next command reads it                            [0m
+[0m[38;5;245m  ▾ style                                                                                                               [0m
+    level             full                            shep.toml    the next command reads it                            [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
@@ -1014,16 +1020,10 @@ The socket editor open mid-path. The status bar names the field being typed, not
   bark                                                                no       built-in                  not running    [0m
   metrics                                                             yes      built-in                  not running    [0m
                                                                                                                         [0m
-[0m[38;5;221m  editing socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                                  [0m
+[0m[38;5;221m  editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           [0m
                                                                                                                         [0m
                                                                                                                         [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-[0m[38;5;221m[48;5;235mediting socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                                    [0m[38;5;245m[48;5;235m control enabled[0m
+[0m[38;5;221m[48;5;235mediting daemon.socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                             [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_dogs  (120x30) ===
@@ -1031,17 +1031,23 @@ The dogs table showing the drift it exists to reveal: otel running while disable
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
                                                                                                                         [0m
-[0m[38;5;245m  [daemon][0m                                                                                                              [0m
-> log_level        warn                            shep.toml    needs shep daemon reload                                [0m
-  log_json         false                           the default  needs shep daemon reload                                [0m
-  socket           /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started                  [0m
-  max_cron_sleep   30s                             shep.toml    needs shep daemon reload                                [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [whistle][0m                                                                                                             [0m
-  allow_control    false                           the default  needs shep whistle restarted                            [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [style][0m                                                                                                               [0m
-  level            full                            shep.toml    the next command reads it                               [0m
+> ▾ daemon                                                                                                              [0m
+    boot_first_dogs   none                            the default  needs shep daemon reload                             [0m
+    environment       production                      shep.toml    needs shep daemon reload                             [0m
+    log_json          false                           the default  needs shep daemon reload                             [0m
+    log_level         warn                            shep.toml    needs shep daemon reload                             [0m
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             [0m
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               [0m
+[0m[38;5;245m  ▾ whistle                                                                                                             [0m
+    allow_control     false                           the default  needs shep whistle restarted                         [0m
+[0m[38;5;245m  ▾ secrets                                                                                                             [0m
+    allow_read        false                           the default  the next command reads it                            [0m
+[0m[38;5;245m  ▾ style                                                                                                               [0m
+    level             full                            shep.toml    the next command reads it                            [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
@@ -1052,30 +1058,31 @@ The dogs table showing the drift it exists to reveal: otel running while disable
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
-                                                                                                                        [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
-=== settings_narrow  (45x24) ===
-The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the scalar rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
+=== settings_narrow  (45x30) ===
+The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep 2 in the flock[0m
-[0m[38;5;245m  [daemon][0m                                   [0m
-> log_level        warn           shep.toml  [0m
-  log_json         false          the default[0m
-  socket           /home/ada/.s…  shep.toml  [0m
-  max_cron_sleep   30s            shep.toml  [0m
                                              [0m
-[0m[38;5;245m  [whistle][0m                                  [0m
-  allow_control    false          the default[0m
-                                             [0m
-[0m[38;5;245m  [style][0m                                    [0m
-  level            full           shep.toml  [0m
+> ▾ daemon                                   [0m
+    boot_first_dogs   none        the default[0m
+    environment       production  shep.toml  [0m
+    log_json          false       the default[0m
+    log_level         warn        shep.toml  [0m
+    max_cron_sleep    30s         shep.toml  [0m
+    socket            /home/ada…  shep.toml  [0m
+[0m[38;5;245m  ▾ whistle                                  [0m
+    allow_control     false       the default[0m
+[0m[38;5;245m  ▾ secrets                                  [0m
+    allow_read        false       the default[0m
+[0m[38;5;245m  ▾ style                                    [0m
+    level             full        shep.toml  [0m
+  ▾ interpreters      1 entry     shep.toml  [0m
+    py                python3     shep.toml  [0m
+[0m[38;5;245m    + add an entry                           [0m
+  hosts               none        the default[0m
                                              [0m
 [0m[38;5;245m  [dogs][0m                                     [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no …[0m
@@ -1086,18 +1093,18 @@ The same screen at 45 columns. Both of its tables have dropped a column rather t
                                              [0m
                                              [0m
                                              [0m
-                                             [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_short  (120x14) ===
-The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 5 above` says how much is off the top. The scroll is counted in LINES rather than in rows: a section header and the dogs caption cost the same height a row does.
+The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the dogs caption and column header cost the same height a row does.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
-[0m[38;5;245m  ... 5 above[0m                                                                                                           [0m
-                                                                                                                        [0m
-[0m[38;5;245m  [style][0m                                                                                                               [0m
-  level            full                            shep.toml    the next command reads it                               [0m
+[0m[38;5;245m  ... 13 above[0m                                                                                                          [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
 [0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
@@ -1105,7 +1112,6 @@ The same screen at 14 rows, which is fewer than it has to draw. The cursor is on
   otel                                                                no       /usr/local/bin/shep-otel  online         [0m
   ledger                                                              yes      /opt/ledger/bin/dog       not running    [0m
 > bark                                                                yes      built-in                  silent         [0m
-                                                                                                                        [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 

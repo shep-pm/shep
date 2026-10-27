@@ -105,13 +105,28 @@ pub(crate) enum Child {
 /// [`FieldKind::List`], filed whole.
 #[must_use]
 pub(crate) fn flattened(schema: &Value) -> Flattened {
-    flatten_schema(schema, true, false)
+    flatten_schema(schema, true, false, false)
+}
+
+/// [`flattened`], with a map of scalars left as an editable
+/// [`FieldKind::Map`] row instead of read-only [`FieldKind::Opaque`].
+///
+/// For the one caller whose writes go by path into the document itself,
+/// where an entry of a map has a path of its own: `[interpreters]`.
+#[must_use]
+pub(crate) fn flattened_with_maps(schema: &Value) -> Flattened {
+    flatten_schema(schema, true, false, true)
 }
 
 /// [`flattened`], with `shapes` filled in only when `with_shapes` is set.
 /// `secret_above` marks every leaf, for an entry shape whose field sits
-/// under a secret.
-fn flatten_schema(schema: &Value, with_shapes: bool, secret_above: bool) -> Flattened {
+/// under a secret. `keep_maps` leaves a [`FieldKind::Map`] leaf alone.
+fn flatten_schema(
+    schema: &Value,
+    with_shapes: bool,
+    secret_above: bool,
+    keep_maps: bool,
+) -> Flattened {
     let defs = schema
         .get("$defs")
         .and_then(Value::as_object)
@@ -132,6 +147,7 @@ fn flatten_schema(schema: &Value, with_shapes: bool, secret_above: bool) -> Flat
         tables: Vec::new(),
         shapes: BTreeMap::new(),
         with_shapes,
+        keep_maps,
     };
     let mut roots = walker.walk(
         &properties,
@@ -223,6 +239,8 @@ struct Walker<'a> {
     shapes: BTreeMap<String, Flattened>,
     /// Whether an [`FieldKind::Entries`] leaf gets a shape of its own.
     with_shapes: bool,
+    /// Whether a [`FieldKind::Map`] leaf stays one.
+    keep_maps: bool,
 }
 
 impl<'a> Walker<'a> {
@@ -279,7 +297,7 @@ impl<'a> Walker<'a> {
             // one.
             field.secret |= inherited;
             let secret_list = field.secret && matches!(field.kind, FieldKind::List(_));
-            if looped || secret_list || field.kind == FieldKind::Map {
+            if looped || secret_list || (field.kind == FieldKind::Map && !self.keep_maps) {
                 field.kind = FieldKind::Opaque;
                 field.editable = false;
             }
@@ -296,7 +314,7 @@ impl<'a> Walker<'a> {
                     || marked(resolved)
                     || super::schema::entry_slot_marked(property_schema, self.defs);
                 self.shapes
-                    .insert(dotted.clone(), flatten_schema(&item, false, above));
+                    .insert(dotted.clone(), flatten_schema(&item, false, above, false));
             }
             children.push(Child::Leaf(self.fields.len()));
             self.fields.push(field);

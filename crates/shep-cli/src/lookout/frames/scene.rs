@@ -405,10 +405,10 @@ impl Scene {
                 "An action key pressed while the link is coming back. The refusal names the same reconnect attempt the banner above it does, rather than the exhausted-ladder sentence. Phase 16 review Minor #8 caught the two disagreeing on one frame."
             }
             Self::SettingsFresh => {
-                "The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every scalar's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in."
+                "The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], so every other key's SOURCE column reads `the default` and its VALUE is the compiled fallback. The state most operators open this screen in."
             }
             Self::SettingsSet => {
-                "The settings screen with some scalars declared. `shep.toml` and `the default` sit side by side in the SOURCE column, so what the operator wrote and what shep assumes are both visible at once."
+                "The settings screen with some keys declared. `shep.toml` and `the default` sit side by side in the SOURCE column, so what the operator wrote and what shep assumes are both visible at once."
             }
             Self::SettingsConfirm => {
                 "A [daemon] confirm armed on log_level, naming the variable and the flag it cannot see: SHEP_LOG_LEVEL and --log-level, and the shep daemon reload the edit needs."
@@ -420,10 +420,10 @@ impl Scene {
                 "The dogs table showing the drift it exists to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent."
             }
             Self::SettingsNarrow => {
-                "The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the scalar rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
+                "The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
             }
             Self::SettingsShort => {
-                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 5 above` says how much is off the top. The scroll is counted in LINES rather than in rows: a section header and the dogs caption cost the same height a row does."
+                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the dogs caption and column header cost the same height a row does."
             }
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
@@ -591,9 +591,9 @@ impl Scene {
             // past every other scene's width. Narrower would truncate the
             // flag it shows.
             Self::SettingsConfirm => (180, 30),
-            // 45: the middle tier of both `SCALAR_TIERS` and `DOG_TIERS`,
+            // 45: the middle tier of both the tree's row columns and `DOG_TIERS`,
             // so both tables have dropped one column without losing a row.
-            Self::SettingsNarrow => (45, 24),
+            Self::SettingsNarrow => (45, 30),
             // 14 rows: twelve of body, against a screen that wants
             // eighteen lines. Short enough that the cursor cannot be
             // reached without scrolling, tall enough that what survives is

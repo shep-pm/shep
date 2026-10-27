@@ -37,11 +37,14 @@ impl App {
                 // `Settings::cursor` clamps on every read, so a
                 // preserved `Viewport` past a shorter dogs list
                 // still lands somewhere real.
-                let view = self.settings().map(|settings| settings.view.clone());
+                let kept = self
+                    .settings()
+                    .map(|settings| (settings.view.clone(), settings.folded.clone()));
                 let mut settings = Settings::new(snapshot);
                 if !opening {
-                    if let Some(view) = view {
+                    if let Some((view, folded)) = kept {
                         settings.view = view;
+                        settings.folded = folded;
                     }
                     let len = settings.rows().len();
                     settings.view.clamp(len);
@@ -83,9 +86,9 @@ impl App {
             Err(message) => {
                 // Split so no borrow of `self.body` is held across
                 // the `self.notice` assignment below.
-                if mine && let Some((field, buffer)) = typed_text_of(&edit) {
+                if mine && let Some((target, buffer)) = reopened_editor(&edit) {
                     if let Some(settings) = self.settings_mut() {
-                        settings.pending = Some(Pending::Typing { field, buffer });
+                        settings.pending = Some(Pending::Typing { target, buffer });
                     }
                     // The overlay closes rather than the editor
                     // reopening beneath it. `on_key` checks text mode

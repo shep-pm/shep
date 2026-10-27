@@ -72,7 +72,7 @@ fn a_missing_file_reads_as_an_empty_document_and_creates_nothing() {
     let path = dir.path().join("shep.toml");
 
     let cfg = ShepToml::read_only(&path).unwrap();
-    assert_eq!(cfg.daemon_log_level(), None);
+    assert!(cfg.to_json().is_empty());
     assert!(!path.exists(), "a read must never create the file");
 }
 /// Both modes are asserted on a path where neither the directory nor
@@ -259,5 +259,4 @@ mod grants;
 mod grants_record;
 mod grants_write;
 mod hosts;
-mod scalars;
 mod style;

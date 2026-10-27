@@ -134,7 +134,7 @@ impl App {
         if let Some((key, carried)) = carried_list {
             pane.adopt_list_view(&key, carried);
         }
-        self.body = Body::ConfigPane(pane);
+        self.body = Body::ConfigPane(Box::new(pane));
         // The rebuilt pane carries no editor, so the keyboard must not
         // still think one is open.
         self.release_text_mode_if_unowned();
@@ -678,10 +678,7 @@ mod tests {
         assert!(app.config_pane().is_some(), "the pane is open");
 
         let _ = app.update(Msg::SettingWritten {
-            edit: SettingEdit::Set {
-                field: SettingField::MaxCronSleep,
-                value: "500ms".to_string(),
-            },
+            edit: fixtures::setting_set("daemon.max_cron_sleep", "500ms"),
             // Any ticket: there is no settings screen to hold one.
             ticket: 0,
             result: Err("max_cron_sleep is 500ms, below the 1s floor".to_string()),
