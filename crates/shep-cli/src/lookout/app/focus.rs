@@ -48,6 +48,25 @@ impl Focus {
     }
 }
 
+/// The half of the ask that outlives the first flock answer, keyed to the
+/// sheep it was asked for.
+///
+/// The key is the point. A keystroke can ask for another sheep's config while
+/// this one's read is still in flight, and [`App::on_sheep_config`]'s guard
+/// drops the reply nobody is waiting for any more. A tab and a dog left over
+/// from that dropped ask would open the next sheep's pane on a tab and a table
+/// its own operator never named, so [`App::ask_for_sheep_config`] retires the
+/// ask the moment an ask for another sheep replaces it.
+#[derive(Debug, Clone)]
+pub(crate) struct FocusAsk {
+    /// The sheep the command line named, and the only pane this ask may open.
+    pub sheep: String,
+    /// The config pane's group to open on.
+    pub tab: Option<&'static str>,
+    /// The dog whose table to open, once that tab's listing names it.
+    pub dog: Option<String>,
+}
+
 impl App {
     /// Says which screen this lookout should open on, before it has a flock
     /// to open it on. Called once, from `crate::lookout::entry`.
@@ -85,21 +104,24 @@ impl App {
         let Some(tab) = focus.tab else {
             return Some(self.open_sheep_pane());
         };
-        self.focus_tab = Some(tab);
-        self.focus_dog = focus.dog;
+        self.focus_ask = Some(FocusAsk {
+            sheep: name.clone(),
+            tab: Some(tab),
+            dog: focus.dog,
+        });
         Some(self.ask_for_sheep_config(name, ConfigFor::Editor))
     }
 
     /// The tab [`Self::resolve_focus`] asked the config pane to open on,
     /// spent by the pane that opens.
     pub(super) fn take_focus_tab(&mut self) -> Option<&'static str> {
-        self.focus_tab.take()
+        self.focus_ask.as_mut()?.tab.take()
     }
 
     /// The dog [`Self::resolve_focus`] asked the `dogs` tab to open, spent by
     /// the listing that names it.
     pub(super) fn take_focus_dog(&mut self) -> Option<String> {
-        self.focus_dog.take()
+        self.focus_ask.as_mut()?.dog.take()
     }
 }
 
@@ -111,6 +133,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    use shep_core::config::AppConfig;
     use shep_core::protocol::{RpcError, RpcErrorCode};
 
     /// A dashboard that was told to open on `focus`, with no flock yet: the
@@ -364,6 +387,103 @@ mod tests {
             Some(NOT_OVER_HOST),
             "and the tab says why it has no rows"
         );
+    }
+
+    /// `api`, with no dogs and nothing overridden: the sheep an operator
+    /// walked to with `j`.
+    fn api_view() -> SheepConfigView {
+        SheepConfigView::new(
+            AppConfig {
+                name: "api".into(),
+                ..AppConfig::default()
+            },
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
+    /// `shep lookout web watch`, then `j` and `e` on another sheep before
+    /// `web`'s read lands. That read is dropped, and the pane that opens next
+    /// is the operator's own, on its own first tab.
+    #[test]
+    fn a_walk_to_another_sheep_retires_the_tab_it_was_asked_for() {
+        let mut app = awaiting(Focus::new("web".into(), Some("watch"), None));
+        let _ = app.update(Msg::Snapshot {
+            rows: flock(),
+            at: Instant::now(),
+        });
+        // Rows sit in name order, `api`, `web`, `worker`, so `k` from the
+        // sheep the command line named lands on another one.
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let effect = app.update(Msg::Key(KeyPress::Edit));
+        assert_eq!(
+            effect,
+            Effect::Send(Sent::SheepConfig {
+                name: "api".to_string()
+            }),
+            "the keystroke asks for the sheep it moved to"
+        );
+
+        let _ = app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "web".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(web_view(false)))),
+        });
+        let _ = app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "api".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(api_view()))),
+        });
+
+        let pane = app.config_pane().expect("api's pane opens");
+        assert_eq!(pane.target().name(), "api");
+        assert_eq!(pane.group(), "process", "not the tab web was named for");
+    }
+
+    /// The same walk with `shep lookout web dogs jobs`: the dog's table is
+    /// retired with the tab, so the other sheep's `dogs` tab lists `jobs` as
+    /// any other row and opens nothing.
+    #[test]
+    fn a_walk_to_another_sheep_retires_the_dog_it_was_asked_for() {
+        let mut app = awaiting(Focus::new("web".into(), Some("dogs"), Some("jobs".into())));
+        let _ = app.update(Msg::Snapshot {
+            rows: flock(),
+            at: Instant::now(),
+        });
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let _ = app.update(Msg::Replied {
+            sent: Sent::SheepConfig {
+                name: "api".to_string(),
+            },
+            result: Ok(Response::SheepConfig(Box::new(api_view()))),
+        });
+
+        let Effect::ListSheepDogs { sheep, ask } = app.update(Msg::Key(KeyPress::Group(9))) else {
+            panic!(
+                "the tab asks for its own listing: {:?}",
+                app.config_pane().map(|p| p.group())
+            );
+        };
+        assert_eq!(sheep, "api");
+        let effect = app.update(Msg::SheepDogNames {
+            sheep,
+            ask,
+            dogs: listing(),
+        });
+        assert_eq!(
+            effect,
+            Effect::None,
+            "no table opens on a sheep that was not named"
+        );
+        assert!(
+            app.notice().is_none(),
+            "{:?}",
+            app.notice().map(ToString::to_string)
+        );
+        assert!(!jobs_row(&app).is_open(), "jobs is a row like any other");
     }
 
     /// The ask is spent on the first answer, so a later poll cannot reopen a

@@ -75,8 +75,7 @@ impl App {
                 // The tab and the dog that were waiting on this read go with
                 // it: a pane that never opened spent neither, and left set
                 // they would open the next one the operator asked for.
-                self.focus_tab = None;
-                self.focus_dog = None;
+                self.focus_ask = None;
                 self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
                 Effect::None
             }
@@ -205,7 +204,18 @@ impl App {
     /// The one place [`Self::config_target`] and [`Self::config_for`] are
     /// set for a sheep-config read, so the two can never disagree about
     /// which request is outstanding.
+    ///
+    /// An ask for one sheep retires the tab and the dog the command line was
+    /// waiting on for another. The read in flight for that other sheep is
+    /// dropped by [`Self::on_sheep_config`]'s guard the moment this one is
+    /// outstanding, and a leftover ask would spend `shep lookout web watch`'s
+    /// tab, or open `shep lookout web dogs jobs`' table, on a pane whose
+    /// operator never named either. An ask for the same sheep keeps them: that
+    /// is the read they were waiting on.
     pub(super) fn ask_for_sheep_config(&mut self, name: String, for_screen: ConfigFor) -> Effect {
+        if self.focus_ask.as_ref().is_some_and(|ask| ask.sheep != name) {
+            self.focus_ask = None;
+        }
         self.config_target = Some(name.clone());
         self.config_for = Some(for_screen);
         Effect::Send(Sent::SheepConfig { name })
@@ -465,8 +475,7 @@ impl App {
         self.sheep_dogs_ask += 1;
         // So does the rest of what the command line asked for. The operator
         // closed the pane it was opening; the next one is theirs.
-        self.focus_tab = None;
-        self.focus_dog = None;
+        self.focus_ask = None;
         self.release_text_mode_if_unowned();
     }
 

@@ -53,8 +53,7 @@ impl App {
             collapsed_folds: HashSet::new(),
             keymap_open: false,
             focus: None,
-            focus_tab: None,
-            focus_dog: None,
+            focus_ask: None,
         }
     }
 

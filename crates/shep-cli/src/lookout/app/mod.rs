@@ -104,7 +104,7 @@ mod update;
 pub use action::*;
 pub use close_dialog::*;
 pub(crate) use config_pane::*;
-pub(crate) use focus::Focus;
+pub(crate) use focus::{Focus, FocusAsk};
 pub use msg::*;
 pub(crate) use over_host::NOT_OVER_HOST;
 pub use rows::*;
@@ -447,13 +447,15 @@ pub struct App {
     /// to report a missing sheep, not a reason to reopen a pane on every
     /// poll.
     focus: Option<Focus>,
-    /// The tab [`Self::focus`] asked for, spent by the config pane that
-    /// opens. Cleared with the pane, so a later `e` opens on the pane's own
-    /// first tab rather than on an ask the operator has walked past.
-    focus_tab: Option<&'static str>,
-    /// The dog [`Self::focus`] asked for, spent by the `dogs` tab's listing
-    /// that names it. Cleared with the pane for [`Self::focus_tab`]'s reason.
-    focus_dog: Option<String>,
+    /// The tab and the dog [`Self::focus`] asked for, held for the config pane
+    /// of the one sheep the command line named, and spent by that pane's read
+    /// and by the `dogs` tab's listing.
+    ///
+    /// Retired with the pane, so a later `e` opens on the pane's own first tab
+    /// rather than on an ask the operator has walked past, and retired by
+    /// [`Self::ask_for_sheep_config`] the moment an ask for another sheep
+    /// replaces the read this one was waiting on.
+    focus_ask: Option<FocusAsk>,
 }
 
 /// What a partly refused walk should say, or `None` when nothing was
