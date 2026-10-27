@@ -27,6 +27,8 @@
 //! - A screen apiece: [`settings`], [`secrets_pane`], [`config_pane`],
 //!   [`sheep_pane`], [`bleats`], [`dog_pane`], and the sub-screens in
 //!   [`pane_list`] and [`pane_dogs`].
+//! - [`config_pane_keys`] is the keyboard over an open config pane, moved out
+//!   of [`config_pane`] under IR-48's 1000-line ceiling.
 //! - [`focus`] is the screen the command line asked for, which the first
 //!   flock answer either opens or reports as unopenable.
 
@@ -68,6 +70,7 @@ mod bleats;
 mod close_dialog;
 mod config_pane;
 mod config_pane_edits;
+mod config_pane_keys;
 #[cfg(test)]
 mod disabled_tests;
 mod dog_pane;
