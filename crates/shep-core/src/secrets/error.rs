@@ -19,6 +19,12 @@ use core::fmt;
 pub enum SecretError {
     /// The store could not be read, written, or replaced.
     Io(std::io::Error),
+    /// The store was replaced, but flushing its directory afterwards failed,
+    /// so the change may not survive a power cut.
+    ///
+    /// Unlike [`Self::Io`], the write took effect: a caller that reports
+    /// the call as failed misreports what the store holds.
+    Unsynced(std::io::Error),
     /// The store's JSON could not be parsed.
     ///
     /// Refused rather than repaired: a partial read would silently drop
@@ -45,6 +51,10 @@ impl fmt::Display for SecretError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(err) => write!(f, "secret store I/O failed: {err}"),
+            Self::Unsynced(err) => write!(
+                f,
+                "secret store was updated, but flushing its directory failed: {err}"
+            ),
             Self::Decode(err) => write!(f, "secret store failed to parse: {err}"),
             Self::InvalidKey(key) => write!(f, "`{key}` is not a valid secret key"),
             Self::InvalidEnvironment(environment) => {
@@ -65,7 +75,7 @@ impl fmt::Display for SecretError {
 impl core::error::Error for SecretError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Io(err) => Some(err),
+            Self::Io(err) | Self::Unsynced(err) => Some(err),
             Self::Decode(err) => Some(err),
             Self::InvalidKey(_)
             | Self::InvalidEnvironment(_)
@@ -196,7 +206,17 @@ mod tests {
         assert_eq!(bad_key.to_string(), "`has space` is not a valid secret key");
         assert_eq!(format!("{bad_key:?}"), "InvalidKey(\"has space\")");
 
-        for rendered in [too_long.to_string(), bad_key.to_string()] {
+        let unsynced = SecretError::Unsynced(std::io::Error::other("disk gone"));
+        assert_eq!(
+            unsynced.to_string(),
+            "secret store was updated, but flushing its directory failed: disk gone"
+        );
+
+        for rendered in [
+            too_long.to_string(),
+            bad_key.to_string(),
+            unsynced.to_string(),
+        ] {
             assert!(
                 !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
                 "no em or en dash in copy a user reads: {rendered}"
