@@ -87,8 +87,8 @@ impl Shepherd {
     /// The shepherd on `dest`, dialled through `options`.
     ///
     /// `options` is [`host_ssh`] for every call this process makes. The seam a
-    /// test uses is [`Whistle::for_test_with_ssh_program`](super::Whistle::for_test_with_ssh_program),
-    /// which keeps those settings and swaps only the program.
+    /// test uses is `Whistle::for_test_with_ssh_program`, which keeps those
+    /// settings and swaps only the program.
     #[must_use]
     pub fn for_host(dest: &str, options: SshOptions) -> Self {
         Self {

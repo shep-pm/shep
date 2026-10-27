@@ -84,7 +84,11 @@ impl Whistle {
     /// The program is the only seam: the settings the dial runs under stay the
     /// ones every real host call runs under, so a test cannot pass its way out
     /// of pinning them.
-    #[cfg(test)]
+    ///
+    /// Unix only, with the tests that use it: the stand-in is a `/bin/sh`
+    /// script, the same shape `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs`
+    /// writes.
+    #[cfg(all(test, unix))]
     #[must_use]
     pub fn for_test_with_ssh_program(
         paths: ShepPaths,
