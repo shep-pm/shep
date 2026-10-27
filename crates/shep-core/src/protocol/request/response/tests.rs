@@ -568,6 +568,10 @@ fn reply_wire_snapshots() {
             id: 50,
             result: Ok(Response::SheepDogTable { table: None }),
         },
+        Reply {
+            id: 51,
+            result: Ok(Response::Reset(vec![sample_info()])),
+        },
     ];
     insta::assert_json_snapshot!("reply_wire_v12", replies);
 }

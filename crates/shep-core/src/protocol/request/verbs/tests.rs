@@ -553,6 +553,14 @@ fn request_wire_snapshots() {
                 dog: "deploy".to_string(),
             },
         ),
+        // The selector has no default, as `flush` (the sibling row): a bare
+        // reset would zero every counter in the flock.
+        envelope(
+            41,
+            Request::Reset {
+                selector: SelectorSpec::Name("web".to_string()),
+            },
+        ),
     ];
     insta::assert_json_snapshot!("request_wire_v12", requests);
 }
@@ -643,6 +651,23 @@ fn the_enable_and_disable_requests_and_their_replies_have_their_own_tags() {
         serde_json::to_string(&Response::Enabled(vec![])).unwrap(),
         r#"{"kind":"enabled","data":[]}"#
     );
+}
+
+/// Bytes an older shepherd cannot read and answers `Unsupported` to, as for
+/// `tail_log`. Neither tag may borrow another verb's.
+#[test]
+fn a_reset_request_and_its_reply_have_their_own_tags() {
+    let request = Request::Reset {
+        selector: SelectorSpec::Name("api".to_string()),
+    };
+    let wire = r#"{"kind":"reset","selector":{"kind":"name","value":"api"}}"#;
+    assert_eq!(serde_json::to_string(&request).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Request>(wire).unwrap(), request);
+
+    let reply = Response::Reset(vec![]);
+    let wire = r#"{"kind":"reset","data":[]}"#;
+    assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
 }
 
 #[test]

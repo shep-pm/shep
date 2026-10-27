@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Request::Reset` and `Response::Reset`, the wire shapes for zeroing a sheep's restart count. Additive: an older shepherd decodes `Request::Unrecognized` and answers `Unsupported`, so `PROTOCOL_VERSION` stays put.
+
 ## [0.18.2] - 2026-10-26
 
 
