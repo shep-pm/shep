@@ -336,6 +336,11 @@ pub(super) fn cursor_on(app: &mut App, dog: &str) {
 /// `app_in_dogs`, with `jobs` opened and its table up inline, the cursor on
 /// the table's first row.
 pub(super) fn app_in_jobs_table() -> App {
+    app_in_jobs_table_over(jobs_entry())
+}
+
+/// [`app_in_jobs_table`], with `jobs` answering `entry` when its row opens.
+pub(super) fn app_in_jobs_table_over(entry: SheepDogEntry) -> App {
     let mut app = app_in_dogs(Control::Allowed);
     cursor_on(&mut app, "jobs");
     assert!(matches!(
@@ -344,7 +349,7 @@ pub(super) fn app_in_jobs_table() -> App {
     ));
     let _ = app.update(Msg::SheepDog {
         sheep: "web".into(),
-        entry: jobs_entry(),
+        entry,
     });
     let _ = app.update(Msg::Key(KeyPress::SelectDown));
     assert!(matches!(

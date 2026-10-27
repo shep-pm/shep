@@ -214,8 +214,8 @@ What the dog enforces, and the reason it reports when you break one:
   not start with `__` (`invalid_label`).
 - At most 16 labels, a label value at most 256 bytes, help text at most 512
   bytes (`too_long`).
-- At most 256 series per sender. A new one is refused rather than an old one
-  evicted (`series_cap`).
+- At most 1024 series per sender. A new one is refused rather than an old
+  one evicted (`series_cap`).
 - A name keeps the kind its first sample set, so a `counter` for a name already
   held as a `gauge` is refused (`type_conflict`). An absent `type` means gauge.
 

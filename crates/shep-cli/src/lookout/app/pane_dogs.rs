@@ -74,7 +74,8 @@ impl App {
     /// The `dogs` tab's own keys, ahead of the pane's: an armed removal, a
     /// dog's row, and a key landing inside an open table. [`None`] for every
     /// key the pane's keymap answers the same way here as on any tab:
-    /// movement, `Escape`, `r`, the tab keys.
+    /// movement, `Escape`, `r`, the tab keys. A table with its list open
+    /// takes every key, those too.
     ///
     /// `d` arms a removal, which `Enter` confirms and every other key but a
     /// quit cancels, the secrets pane's rule. An armed removal eats the first
@@ -91,9 +92,12 @@ impl App {
                 return Some(Effect::None);
             }
         }
-        match self.config_pane()?.cursor()? {
+        let pane = self.config_pane()?;
+        // An open list owns the keyboard, movement and `Escape` included.
+        let list_open = pane.focus().list().is_some();
+        match pane.cursor()? {
             PaneRow::Dog(dog) => self.on_dog_row_key(key, dog),
-            PaneRow::Under { .. } if lands_in_table(key) => Some(
+            PaneRow::Under { .. } if list_open || lands_in_table(key) => Some(
                 self.in_table(|app| app.on_pane_key(key))
                     .unwrap_or(Effect::None),
             ),
@@ -294,7 +298,7 @@ mod tests {
 
     use super::*;
     use crate::lookout::app::testing::*;
-    use crate::lookout::pane::DogTableState;
+    use crate::lookout::pane::{DogTableState, ListRow};
 
     fn dog_names(app: &App) -> Vec<&str> {
         app.config_pane()
@@ -440,6 +444,48 @@ mod tests {
             panic!("one table write: {batch:?}");
         };
         assert_eq!(dog, "jobs");
+    }
+
+    /// The list a table's field opens to owns every key, movement and
+    /// `Escape` included, the same as on a pane of its own.
+    #[test]
+    fn a_list_inside_an_inline_table_walks_adds_and_backs_out_one_level() {
+        let mut schema = jobs_schema();
+        schema["properties"]["tags"] = json!({ "type": "array", "items": { "type": "string" } });
+        let mut app = app_in_jobs_table_over(SheepDogEntry {
+            schema: Some(schema),
+            ..jobs_entry()
+        });
+        pane_to(&mut app, "tags");
+        let _ = app.update(Msg::Key(KeyPress::Edit));
+        let list = |app: &App| {
+            app.config_pane()
+                .expect("a pane")
+                .focus()
+                .list()
+                .map(|list| (list.elements().to_vec(), list.cursor()))
+        };
+        assert_eq!(list(&app), Some((vec![], Some(ListRow::New))));
+
+        for typed in ['a', 'b'] {
+            let _ = app.update(Msg::Key(KeyPress::SelectLast));
+            let _ = app.update(Msg::Key(KeyPress::Confirm));
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+            let _ = app.update(Msg::Key(KeyPress::TextApply));
+        }
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(
+            list(&app),
+            Some((vec!["a".into(), "b".into()], Some(ListRow::Item(1))))
+        );
+
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert_eq!(list(&app), None, "esc closes the list");
+        assert!(
+            matches!(app.body(), Body::ConfigPane(_)),
+            "and leaves the sheep pane up"
+        );
     }
 
     #[test]

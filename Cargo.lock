@@ -2083,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "shep"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "anstyle",
  "assert_cmd",
@@ -2125,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "command-fds",
  "serde",
@@ -2136,11 +2136,11 @@ dependencies = [
 
 [[package]]
 name = "shep-cli"
-version = "0.17.0"
+version = "0.18.2"
 
 [[package]]
 name = "shep-client"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "futures-util",
  "nix 0.29.0",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "shep-core"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -2192,7 +2192,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -2223,7 +2223,7 @@ dependencies = [
 
 [[package]]
 name = "shep-examples"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "nix 0.29.0",
  "shep-channel",
@@ -2231,7 +2231,7 @@ dependencies = [
 
 [[package]]
 name = "shep-handover"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "nix 0.29.0",
  "serde",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "shep-macros"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
@@ -2255,7 +2255,7 @@ dependencies = [
 
 [[package]]
 name = "shep-tree"
-version = "0.17.0"
+version = "0.18.2"
 dependencies = [
  "nix 0.29.0",
  "windows-sys 0.61.2",
