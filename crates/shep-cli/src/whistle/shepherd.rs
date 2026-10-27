@@ -63,6 +63,20 @@ enum Target {
     },
 }
 
+impl Target {
+    /// The destination a host call dials, and `None` for this home's socket.
+    ///
+    /// A refusal needs it. `ConnectError` names the destination in its `Ssh`
+    /// arm only, so every other host failure arrives without the one word the
+    /// caller asked for.
+    fn host(&self) -> Option<&str> {
+        match self {
+            Self::Local(_) => None,
+            Self::Host { dest, .. } => Some(dest),
+        }
+    }
+}
+
 /// The socket, or the host, and the one operation anything in `whistle`
 /// performs on it.
 ///
@@ -170,7 +184,7 @@ impl Shepherd {
             Target::Local(socket) => Client::connect(socket).await,
             Target::Host { dest, options } => Client::connect_ssh_with(dest, options).await,
         };
-        let client = dialled.map_err(|err| connect_refusal(&err))?;
+        let client = dialled.map_err(|err| connect_refusal(&err, self.target.host()))?;
         // `whistle` drives the daemon on every tool call, so it can never be
         // one of `RECOVERY_VERBS`.
         refuse_if_skewed(&client)?;
@@ -241,24 +255,55 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
     })
 }
 
-/// A connect failure, as an in-band tool error naming the socket once.
+/// A connect failure, as an in-band tool error that says which half failed.
 ///
-/// `ConnectError`'s `Display` already prints the path, so this wrapper adds
-/// only the words that say what is missing rather than what failed.
+/// `host` is the destination this call dialled, `None` when it dialled this
+/// home's socket. The two targets fail in different words, and a model that
+/// branches on the code must not read one as the other: nothing listening at
+/// this machine's socket is "no shepherd is running", while a host that
+/// opened an ssh session and then refused, or stalled, is a host with a live
+/// sshd on it.
 ///
-/// A host dial's failure passes through unaltered: its `Display` already names
-/// the host and which half failed ("no shepherd is running on `amp2`", "ssh
-/// could not reach `amp2`"), and prefixing it with the local wording would
-/// say "no shepherd is running" twice.
-fn connect_refusal(err: &ConnectError) -> CallToolResult {
-    let message = match err {
-        ConnectError::Ssh { .. } => err.to_string(),
-        other => format!("no shepherd is running: {other}"),
+/// `ConnectError`'s `Display` is kept whole in every arm. It already prints
+/// the socket path, and in its `Ssh` arm the destination and which half
+/// failed ("no shepherd is running on `amp2`", "ssh could not reach
+/// `amp2`"), so the local sentence is added only where there is no other, and
+/// the destination only where `ConnectError` does not carry one.
+///
+/// # Errors
+///
+/// A [`CallToolResult`] with `is_error: true`, never an [`rmcp::ErrorData`]:
+/// `no_shepherd` for this machine's socket and for a host whose shepherd is
+/// not running, `version_skew` for a shepherd that turns the handshake down
+/// on a protocol difference, `host_unreachable` for a host whose session
+/// opened and never completed the handshake, and `invalid_config` for a
+/// listed entry `Destination::parse` turns down.
+fn connect_refusal(err: &ConnectError, host: Option<&str>) -> CallToolResult {
+    // A refusal is not an absence. The far side answered the handshake and
+    // said the two builds do not speak, and `shep_client::ssh::explain`
+    // returns a refusal as it is, so a live host reaches this arm rather than
+    // the ssh one. Its `Display` already names which side of the gap to
+    // replace, which is the answer `refuse_if_skewed` gives when a host
+    // answers and agrees to disagree.
+    if matches!(err, ConnectError::ProtocolMismatch { .. }) {
+        return own_refusal(ExitCode::VersionSkew.code_str(), err.to_string());
+    }
+    let (code, message) = match (err, host) {
+        (ConnectError::Ssh { .. }, _) => ("no_shepherd", err.to_string()),
+        // An entry an operator wrote into `shep.toml` by hand that
+        // `Destination::parse` turns down: nothing was spawned, and the file
+        // is where the fix is.
+        (ConnectError::Destination(_), Some(dest)) => (
+            ExitCode::InvalidConfig.code_str(),
+            format!("`{dest}` is a listed host ssh cannot take: {err}"),
+        ),
+        // A host whose ssh session opened and never finished the handshake.
+        // `ConnectError`'s words for that name no destination, so this adds
+        // the one the caller asked for.
+        (other, Some(dest)) => ("host_unreachable", format!("`{dest}`: {other}")),
+        (other, None) => ("no_shepherd", format!("no shepherd is running: {other}")),
     };
-    CallToolResult::structured_error(serde_json::json!({
-        "code": "no_shepherd",
-        "message": message,
-    }))
+    own_refusal(code, message)
 }
 
 /// A request failure, as an in-band tool error carrying the shepherd's words.
@@ -335,10 +380,13 @@ mod tests {
     #[test]
     fn an_unreachable_shepherd_names_the_socket_once() {
         let socket = std::path::Path::new("/nonexistent/shep/run/shep.sock");
-        let result = connect_refusal(&ConnectError::Connect {
-            path: socket.to_path_buf(),
-            source: std::io::Error::from(std::io::ErrorKind::NotFound),
-        });
+        let result = connect_refusal(
+            &ConnectError::Connect {
+                path: socket.to_path_buf(),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            },
+            None,
+        );
         assert_eq!(result.is_error, Some(true));
         let message = result.structured_content.expect("structured")["message"]
             .as_str()
@@ -356,6 +404,105 @@ mod tests {
             1,
             "the socket path appears once, not once per layer: {message}"
         );
+    }
+
+    /// A host that answers the handshake only to turn it down is a version
+    /// gap, not an absent shepherd. `shep_client::ssh::explain` returns a
+    /// refusal as it is, so a live host reaches this arm rather than the ssh
+    /// one, and a model branching on the code would report a host with a
+    /// running shepherd as down.
+    #[test]
+    fn a_host_that_turns_down_the_handshake_is_refused_as_a_version_gap() {
+        let result = connect_refusal(
+            &ConnectError::ProtocolMismatch {
+                client: shep_core::protocol::PROTOCOL_VERSION,
+                daemon_version: Some("0.1.8".to_string()),
+                message: "this daemon speaks protocol 2".to_string(),
+            },
+            Some("amp2"),
+        );
+        assert_eq!(result.is_error, Some(true));
+        let structured = result
+            .structured_content
+            .expect("a refusal carries structured content a model can branch on");
+        assert_eq!(
+            structured["code"],
+            ExitCode::VersionSkew.code_str(),
+            "the same code this module gives a host that answers and agrees to disagree: {structured}"
+        );
+        let message = structured["message"]
+            .as_str()
+            .expect("a string")
+            .to_string();
+        assert!(message.contains("protocol mismatch"), "{message}");
+        assert!(
+            message.contains("older of the two"),
+            "and names which side of the gap to replace: {message}"
+        );
+        assert!(
+            !message.contains("no shepherd is running"),
+            "amp2 has a shepherd, which refused: {message}"
+        );
+    }
+
+    /// A host that opens an ssh session and never completes the handshake is
+    /// a slow host, and `ConnectError`'s words for it name no destination at
+    /// all, so the refusal has to add the one the caller asked for.
+    #[test]
+    fn a_host_that_never_answers_the_handshake_names_the_host() {
+        let result = connect_refusal(
+            &ConnectError::HandshakeTimeout {
+                after: HOST_CONNECT_TIMEOUT,
+            },
+            Some("amp2"),
+        );
+        assert_eq!(result.is_error, Some(true));
+        let structured = result
+            .structured_content
+            .expect("a refusal carries structured content a model can branch on");
+        assert_eq!(
+            structured["code"], "host_unreachable",
+            "a code that does not claim the shepherd is missing: {structured}"
+        );
+        let message = structured["message"]
+            .as_str()
+            .expect("a string")
+            .to_string();
+        assert!(
+            message.contains("amp2"),
+            "the refusal names the host it dialled: {message}"
+        );
+        assert!(message.contains("handshake"), "{message}");
+        assert!(
+            !message.contains("no shepherd is running"),
+            "the link was the slow part: {message}"
+        );
+    }
+
+    /// A `hosts` entry an operator edited in by hand that
+    /// `Destination::parse` turns down: nothing was spawned, and the file the
+    /// entry sits in is where the fix is.
+    #[test]
+    fn a_listed_host_ssh_cannot_take_is_refused_as_a_config_problem() {
+        let listed = "amp 2";
+        let destination = shep_core::destination::Destination::parse(listed)
+            .expect_err("a space reads to ssh as a second argument");
+        let result = connect_refusal(&ConnectError::Destination(destination), Some(listed));
+        assert_eq!(result.is_error, Some(true));
+        let structured = result
+            .structured_content
+            .expect("a refusal carries structured content a model can branch on");
+        assert_eq!(
+            structured["code"],
+            ExitCode::InvalidConfig.code_str(),
+            "the entry is the problem, not the host: {structured}"
+        );
+        let message = structured["message"]
+            .as_str()
+            .expect("a string")
+            .to_string();
+        assert!(message.contains(listed), "{message}");
+        assert!(message.contains("destination"), "{message}");
     }
 
     /// Bounded: a `call` that hung on a dead handle would otherwise hang

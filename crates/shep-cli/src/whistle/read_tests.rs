@@ -96,7 +96,18 @@ fn stand_in_file(dir: &Path, name: &str) -> std::path::PathBuf {
     dir.join(format!("ssh-{name}"))
 }
 
-/// Writes an executable stand-in for `ssh` into `dir` and returns its path.
+/// Writes an executable stand-in for `ssh` into `dir` and returns its path,
+/// answering the handshake with this binary's own version.
+///
+/// `Shepherd::connect` refuses a skew, and `matching_ack`'s version is the one
+/// a host link is held to as well, so every test that wants a flock back
+/// starts here.
+#[cfg(unix)]
+fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
+    ssh_stand_in_answering(dir, Ok(matching_ack()), response)
+}
+
+/// [`ssh_stand_in`], with the handshake it answers.
 ///
 /// It records the arguments it was run with, waits for the one request the
 /// client sends, writes that frame to disk for a test that wants the request
@@ -108,26 +119,28 @@ fn stand_in_file(dir: &Path, name: &str) -> std::path::PathBuf {
 ///
 /// The request is read as the daemon's codec frames it, twice: the
 /// client's `Hello` first, then the one request. The ack goes out between
-/// them, so the canned answer cannot sit in the pipe waiting.
+/// them, so the canned answer cannot sit in the pipe waiting. A refusal
+/// written where the ack goes is how a host that turns the `Hello` down
+/// reaches whistle with [`ConnectError::ProtocolMismatch`] intact, which is
+/// what `shep_client::ssh::explain` does with one.
 ///
 /// Unix only: the stand-in is a `/bin/sh` script, the same shape
 /// `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs` uses.
 #[cfg(unix)]
-fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
-    use shep_core::protocol::{HelloReply, Reply};
+fn ssh_stand_in_answering(
+    dir: &Path,
+    handshake: shep_core::protocol::HelloReply,
+    response: Response,
+) -> std::path::PathBuf {
+    use shep_core::protocol::Reply;
     use std::os::unix::fs::PermissionsExt as _;
 
-    // The ack has to carry this binary's own version: `Shepherd::connect`
-    // refuses a skew, and `matching_ack`'s local-socket version is the one
-    // a host link is held to as well.
-    let ack = matching_ack();
     // `shep_client::actor`'s `next_id` starts at 1, and every test here
     // sends one request.
     let reply = Reply {
         id: 1,
         result: Ok(response),
     };
-    let handshake: HelloReply = Ok(ack);
     std::fs::write(stand_in_file(dir, "ack.bin"), framed(&handshake)).unwrap();
     std::fs::write(stand_in_file(dir, "reply.bin"), framed(&reply)).unwrap();
 
@@ -414,6 +427,56 @@ async fn a_host_that_cannot_be_reached_is_refused_in_the_words_that_name_it() {
         message.matches("no shepherd is running").count(),
         1,
         "the phrase appears once, not once per layer: {message}"
+    );
+}
+
+/// A host whose own shepherd turns this build's `Hello` down is a version gap,
+/// not a host with no shepherd on it. `shep_client::ssh::explain` returns a
+/// refusal as it is, so the tool call is the thing that has to say which of the
+/// two it is, and a model branching on the code is the reader that acts on it.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_host_that_turns_down_the_handshake_is_refused_as_a_version_gap() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = ssh_stand_in_answering(
+        dir.path(),
+        Err(shep_core::protocol::RpcError {
+            code: shep_core::protocol::RpcErrorCode::ProtocolMismatch,
+            message: "this daemon speaks protocol 2".to_string(),
+            daemon_version: Some("0.1.8".to_string()),
+        }),
+        Response::Flock(vec![shep_client::testing::sample_info()]),
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let outcome = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.list_flock(Parameters(FlockParams {
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("list_flock must return within the test timeout");
+    let refusal = match outcome {
+        Ok(_) => panic!("a host that refused the handshake answers no flock"),
+        Err(refusal) => refusal,
+    };
+
+    let structured = refusal
+        .structured_content
+        .expect("a refusal carries structured content a model can branch on");
+    assert_eq!(
+        structured["code"], "version_skew",
+        "amp2 answered ssh, so a model must not read it as down: {structured}"
+    );
+    let message = structured["message"]
+        .as_str()
+        .expect("a string")
+        .to_string();
+    assert!(message.contains("protocol mismatch"), "{message}");
+    assert!(
+        !message.contains("no shepherd is running"),
+        "and must not read as an absent shepherd: {message}"
     );
 }
 

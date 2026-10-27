@@ -69,9 +69,16 @@ while whistle runs needs whistle restarted.
 
 The other seven tools stay on this machine. A control tool handed a `host` is
 refused as `host_not_supported` rather than acting locally: `stop_sheep` asked
-for `amp2` does not stop a sheep here. A host running another shep version
-still answers its flock; a host speaking another wire protocol is refused,
-naming which side to upgrade.
+for `amp2` does not stop a sheep here.
+
+A refusal says which half failed. `no_shepherd` means the host answered ssh and
+had no shepherd behind it. A host running another shep version still answers its
+flock, with the difference printed on stderr; a host that turns the handshake
+down on a wire-protocol difference is refused as `version_skew`, naming which
+side to upgrade, and one whose ssh session opens but never completes the
+handshake is refused as `host_unreachable`, naming the host. A `hosts` entry
+that `Destination::parse` turns down is refused as `invalid_config`, since the
+fix is in `shep.toml`.
 
 ## What the gate is, and is not
 
