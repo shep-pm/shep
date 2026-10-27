@@ -26,7 +26,7 @@ pub(super) const MAX_LABELS: usize = 16;
 
 /// Most series one sender may hold. A new series is refused rather than an
 /// old one evicted, so a flapping label cannot push out a stable series.
-pub(super) const MAX_SERIES_PER_SENDER: usize = 256;
+pub(super) const MAX_SERIES_PER_SENDER: usize = 1024;
 
 /// Metric names this dog serves itself. A sender may not write one.
 pub(super) const RESERVED_NAME_PREFIX: &str = "shep_";
@@ -91,7 +91,7 @@ impl RefusalReason {
                 "the sample is over 16 labels, or a label value or help text is over its cap"
             }
             Self::SeriesCap => {
-                "this sender already holds 256 series, and a stable series is never evicted for a new one"
+                "this sender already holds 1024 series, and a stable series is never evicted for a new one"
             }
             Self::TypeConflict => "this name is already held as the other kind",
         }

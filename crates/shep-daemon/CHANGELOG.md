@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-10-26
+
+
+## [0.18.1] - 2026-10-26
+
+
+## [0.18.0] - 2026-10-26
+
+### Added
+
+- Extend the systemd start deadline before each boot stage
+
+### Fixed
+
+- Vet a dog under the environment the daemon gives it
+- Cover each stage's wait and the post-restore setup with a deadline extension
+
+
 ## [0.17.0] - 2026-10-25
 
 ### Added

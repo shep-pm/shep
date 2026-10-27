@@ -362,7 +362,7 @@ What the dog accepts, and what it refuses:
 | A label name matches `[a-zA-Z_][a-zA-Z0-9_]*`, is at most 64 bytes, and does not start with `__`. | `invalid_label` |
 | A label is not named `sheep`, `id`, `fold`, `dog` or `source`, which the dog writes for you. | `reserved_label` |
 | At most 16 labels, a label value at most 256 bytes, help text at most 512 bytes. | `too_long` |
-| At most 256 series per sender. A new one is refused rather than an old one evicted. | `series_cap` |
+| At most 1024 series per sender. A new one is refused rather than an old one evicted. | `series_cap` |
 | A name keeps the kind its first sample set. `type` absent means gauge. | `type_conflict` |
 
 A refusal is counted in `shep_channel_samples_refused_total{reason="..."}` and
