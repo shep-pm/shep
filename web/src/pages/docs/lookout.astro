@@ -148,6 +148,10 @@ const startCmds = `$ shep lookout
 $ shep lookout --read-only
 $ shep --host amp2 lookout`;
 
+const openCmds = `$ shep lookout api
+$ shep lookout api watch
+$ shep lookout api dogs jobs`;
+
 const overHost: { pane: string; works: boolean; note: string }[] = [
   { pane: "Flock table, lambs, config pane", works: true, note: "" },
   { pane: "Actions x, R and L", works: true, note: "The gate stays this machine's." },
@@ -357,6 +361,25 @@ esc/s close   j/k select   g… control enabled`;
     <p class="fine">
       <code>--read-only</code> closes the action gate, covered below. The
       gate is open by default.
+    </p>
+
+    <h2 id="opening-on-one-screen">Opening on one screen</h2>
+    <CodeBlock>{openCmds}</CodeBlock>
+    <p>
+      A sheep name opens that sheep's status page, the screen <code>Enter</code>
+      opens from the dashboard. A tab after it opens the config pane
+      <code>e</code> opens, already sitting on that tab, and the nine names are
+      the ones the pane draws. A dog after <code>dogs</code> opens that dog's
+      table. A third name with any other tab before it is a usage error, before
+      the screen opens at all.
+    </p>
+    <p>
+      The first flock answer decides the name. A sheep the shepherd does not
+      have leaves lookout on the dashboard with a notice saying so, and a dog
+      its <code>dogs</code> listing does not name leaves that tab open with the
+      same. All three work under <code>--read-only</code>. Over
+      <code>--host</code> the dog's table is the one that cannot: its listing
+      reads this machine's files, which the table below counts.
     </p>
 
     <h2 id="over-host">Over --host</h2>

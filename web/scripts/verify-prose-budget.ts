@@ -232,7 +232,12 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
-  lookout: 2830,
+  //
+  // Raised from 2830 on 2026-10-27 for "Opening on one screen": `shep lookout
+  // <sheep> [tab] [dog]` is a new thing an operator types, and the page owes
+  // them which tab names parse and what a name the flock does not have does
+  // (#1194).
+  lookout: 3090,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
