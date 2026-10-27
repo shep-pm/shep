@@ -284,6 +284,10 @@ pub struct Header<'a> {
 /// carries `Connection: close`, so a caller that writes fewer bytes than it
 /// declared gives a truncated response rather than a hang.
 ///
+/// A 304 carries no `Content-Length` at all (RFC 9110 §8.6: a server MUST
+/// NOT generate one in a 304): the reply has no body, and a zero there
+/// reads as a length the client should compare its copy against.
+///
 /// # Errors
 /// - [`HttpError::Io`] if the write failed.
 /// - [`HttpError::BadHeader`] if a header name or value carries a byte
@@ -308,9 +312,10 @@ pub async fn write_head<W: AsyncWrite + Unpin>(
         }
     }
 
-    let mut head = format!(
-        "HTTP/1.1 {status} \r\nContent-Type: {content_type}\r\nContent-Length: {content_length}\r\n"
-    );
+    let mut head = format!("HTTP/1.1 {status} \r\nContent-Type: {content_type}\r\n");
+    if status != 304 {
+        head.push_str(&format!("Content-Length: {content_length}\r\n"));
+    }
     for header in headers {
         head.push_str(header.name);
         head.push_str(": ");
@@ -463,6 +468,33 @@ mod tests {
                 "{name}: nothing may reach the stream: {buf:?}"
             );
         }
+    }
+
+    /// A 304 has no body to count, and RFC 9110 §8.6 forbids the header in
+    /// one. This is the head a conditional `serve` request gets.
+    #[tokio::test]
+    async fn a_304_head_carries_no_content_length() {
+        let (mut client, mut server) = tokio::io::duplex(4096);
+        write_head(
+            &mut server,
+            304,
+            "text/html; charset=utf-8",
+            0,
+            &[Header {
+                name: "ETag",
+                value: "W/\"9-1700000000\"",
+            }],
+        )
+        .await
+        .unwrap();
+        drop(server);
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "HTTP/1.1 304 \r\nContent-Type: text/html; charset=utf-8\r\n\
+             ETag: W/\"9-1700000000\"\r\nConnection: close\r\n\r\n",
+        );
     }
 
     #[tokio::test]

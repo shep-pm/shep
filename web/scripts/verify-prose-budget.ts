@@ -314,7 +314,11 @@ export const BUDGETS: Record<string, number> = {
   examples: 1200,
   "not-built": 1080,
   folds: 900,
-  whistle: 710,
+  // Raised from 710 on 2026-10-25 for `host` on `list_flock` and
+  // `describe_sheep`: which names a model may hand whistle, and which tools
+  // refuse one, is a fact an operator has to be told before pointing an MCP
+  // host at a fleet.
+  whistle: 785,
   containers: 560,
   // Raised from 560 on 2026-10-13 for dog names: an upgrade must say a sheep
   // named after a built-in keeps its name.

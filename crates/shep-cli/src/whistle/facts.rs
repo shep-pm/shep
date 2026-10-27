@@ -33,6 +33,17 @@ use crate::dog::metrics::HostReading;
 pub struct FlockListing {
     /// The matched sheep and dogs, in the order the shepherd reported them.
     pub flock: Vec<SheepRow>,
+    /// The host this flock came from, spelled as the caller asked for it;
+    /// absent when the call named no host and the answer is this machine's.
+    ///
+    /// `skip_serializing_if`, the same reason `SheepRow::pending` carries one:
+    /// this type's doc promises a local reply byte-identical to the one it
+    /// gave before a `host` argument existed, and a `host: null` on every
+    /// local row would break that promise for no information gained. The key
+    /// is present exactly when the call named a host, so a consumer can tell
+    /// "this machine" from "a host whose name I did not pass".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 /// `list_barks`' payload. Same rule, same reason as [`FlockListing`].

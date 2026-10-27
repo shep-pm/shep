@@ -169,38 +169,50 @@ async fn send_request(addr: SocketAddr, request: &str) -> Response {
 }
 
 pub(super) async fn get(addr: SocketAddr, target: &str) -> Response {
-    send_request(
-        addr,
-        &format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
-    )
-    .await
+    request_with_headers(addr, "GET", target, &[]).await
 }
 
 pub(super) async fn get_with_accept(addr: SocketAddr, target: &str, accept: &str) -> Response {
-    send_request(
-        addr,
-        &format!("GET {target} HTTP/1.1\r\nHost: localhost\r\nAccept: {accept}\r\n\r\n"),
-    )
-    .await
+    get_with_headers(addr, target, &[("Accept", accept)]).await
 }
 
 pub(super) async fn get_auth(addr: SocketAddr, target: &str) -> Response {
-    send_request(
+    get_with_headers(
         addr,
-        &format!(
-            "GET {target} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic {}\r\n\r\n",
-            base64(TEST_USER)
-        ),
+        target,
+        &[("Authorization", &format!("Basic {}", base64(TEST_USER)))],
     )
     .await
 }
 
 pub(super) async fn request_with_method(addr: SocketAddr, method: &str, target: &str) -> Response {
-    send_request(
-        addr,
-        &format!("{method} {target} HTTP/1.1\r\nHost: localhost\r\n\r\n"),
-    )
-    .await
+    request_with_headers(addr, method, target, &[]).await
+}
+
+/// One `GET` carrying `extra`, each `(name, value)`, on top of `Host`.
+/// The shape every range and conditional case needs.
+pub(super) async fn get_with_headers(
+    addr: SocketAddr,
+    target: &str,
+    extra: &[(&str, &str)],
+) -> Response {
+    request_with_headers(addr, "GET", target, extra).await
+}
+
+/// One request of `method` carrying `extra` headers on top of `Host`,
+/// each `(name, value)`, written in the order given.
+pub(super) async fn request_with_headers(
+    addr: SocketAddr,
+    method: &str,
+    target: &str,
+    extra: &[(&str, &str)],
+) -> Response {
+    let mut head = format!("{method} {target} HTTP/1.1\r\nHost: localhost\r\n");
+    for (name, value) in extra {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+    send_request(addr, &head).await
 }
 
 /// [`auth::base64_encode`] over a `&str`, for the header built by hand.
