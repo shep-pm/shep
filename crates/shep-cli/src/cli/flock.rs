@@ -380,6 +380,23 @@ mod tests {
         }
     }
 
+    /// `dash` is lookout's visible alias, so it takes the same three. The
+    /// alias is what an operator who already has a habit types.
+    #[test]
+    fn the_alias_takes_the_same_positionals() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) = Cli::try_parse_from(["shep", "dash", "web", "dogs", "jobs"])
+            .unwrap()
+            .command
+        else {
+            panic!("dash parses to lookout's variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("web"));
+        assert_eq!(args.tab.as_deref(), Some("dogs"));
+        assert_eq!(args.dog.as_deref(), Some("jobs"));
+    }
+
     /// `DOG_TAB` is the one group name this module spells out, so it is the
     /// one that can drift from the pane's own list without a parse test
     /// noticing.
