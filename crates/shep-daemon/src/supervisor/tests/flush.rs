@@ -505,14 +505,13 @@ async fn truncating_a_path_that_is_a_directory_reports_the_failure() {
     );
 }
 
-/// Fails if [`truncate_log`] stops opening through [`open_log_path`]: drop
-/// the `O_NOFOLLOW` it adds and `shep flush` empties whatever the symlink
-/// points at, with the daemon's privileges.
+/// Fails if [`truncate_log`] stops opening through [`open_log_path`]: drop the
+/// `O_NOFOLLOW` it adds and `shep flush` empties whatever the symlink points
+/// at, with the daemon's privileges.
 ///
-/// The target's bytes prove nothing was emptied, the link still being a
-/// link proves the open did not replace it, and the message names the
-/// symlink rather than `ELOOP`. `#[cfg(unix)]`: `O_NOFOLLOW` and the
-/// refusal are both unix-only.
+/// The target's bytes prove nothing was emptied, the link still being a link
+/// proves the open did not replace it, and the message names the symlink rather
+/// than `ELOOP`. `#[cfg(unix)]`: both are unix-only.
 #[cfg(unix)]
 #[tokio::test]
 async fn truncating_a_symlinked_log_path_refuses_and_leaves_its_target_alone() {

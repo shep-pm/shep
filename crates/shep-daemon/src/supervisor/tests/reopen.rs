@@ -189,14 +189,12 @@ async fn a_reopen_after_a_failed_respawn_is_a_prompt_no_op_success() {
 }
 
 /// Fails if a reopen aimed at a sheep waiting out a backoff after a refused
-/// spawn waits for an acknowledgement nobody is left to send, or answers
-/// with a flock other than that sheep.
+/// spawn waits for an acknowledgement nobody is left to send, or answers with
+/// a flock other than that sheep.
 ///
-/// The route to a refused respawn is an operator's own: `set_sheep_env`
-/// parks a config the next spawn cannot assemble, and `restart` promotes
-/// it. The refusal is the retriable half, so the sheep waits rather than
-/// errors, and its entry still holds the `log_ctl` of the pump that served
-/// the process which exited.
+/// The route to a refused respawn is an operator's own: `set_sheep_env` parks
+/// a config the next spawn cannot assemble, and `restart` promotes it. The
+/// refusal is the retriable half, so the sheep waits rather than errors.
 #[tokio::test(start_paused = true)]
 async fn a_reopen_after_a_refused_spawn_is_a_prompt_no_op_success() {
     let (events, _rx) = crate::bus::test_bus(64);

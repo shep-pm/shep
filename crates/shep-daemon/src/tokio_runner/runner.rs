@@ -6,10 +6,6 @@
 //! whole group without touching the daemon's own. It optionally wires an
 //! fd-3 socketpair as the shepherd channel and hands it to
 //! [`super::pump::spawn_channel_pumps`].
-//!
-//! `command_fds::FdMapping` holds the parent's copy of the child's fd 3
-//! inside the `Command`, so dropping the `Command` right after `spawn()`
-//! gives the daemon's end a clean EOF at the child's exit.
 
 use std::fs;
 use std::io;
@@ -184,15 +180,10 @@ impl RunningProcess for TokioProc {
     /// Refuses every signal: Windows has no way to deliver anything
     /// SIGTERM-shaped to an arbitrary process.
     ///
-    /// `GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, group)` reaches only
-    /// console processes sharing a console with the caller, and a detached
-    /// shepherd shares a console with nothing. An `Ok(())` would tell the
-    /// ladder a polite stop was delivered and turn every `shep stop` into a
-    /// silent hang and kill.
-    ///
-    /// An app on the shepherd channel never reaches this: `kill::kill_process`
-    /// sends `ShepherdMessage::Shutdown` instead. Any other app costs its full
-    /// `kill_timeout` and ends in [`Self::kill_tree`].
+    /// `GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, group)` reaches only console
+    /// processes sharing a console with the caller, and a detached shepherd
+    /// shares one with nothing. An `Ok(())` would tell the ladder a polite stop
+    /// was delivered. An app on the shepherd channel never reaches this.
     #[cfg(windows)]
     fn signal(&mut self, sig: StopSignal) -> Result<(), RunnerError> {
         Err(RunnerError::SignalFailed(format!(
@@ -227,12 +218,8 @@ impl RunningProcess for TokioProc {
     /// Per-signal rather than per-verb, so `shep signal <sheep> SIGKILL` keeps
     /// working while `SIGHUP` says what it cannot do. Seven of the nine have
     /// no delivery mechanism to a foreign Windows process at all. `Int` is
-    /// refused as a judgement: `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ..)`
-    /// exists, but Ctrl+C is disabled by default under
+    /// refused as a judgement: Ctrl+C is disabled by default under
     /// `CREATE_NEW_PROCESS_GROUP`, which is how every sheep is spawned.
-    ///
-    /// Per-process, matching the unix arm's positive-pid `kill`: this leaves
-    /// the sheep's lambs running, unlike [`Self::kill_tree`].
     #[cfg(windows)]
     fn signal_process(&mut self, sig: OperatorSignal) -> Result<(), RunnerError> {
         let Supervised::Spawned(child) = &mut self.proc;
@@ -359,16 +346,11 @@ fn to_nix_operator_signal(sig: OperatorSignal) -> Signal {
 
 /// What exec will make of `spec.program`, before anything is spawned.
 ///
-/// A `/` makes it a path, absolute or relative to `spec.cwd`, whose absence
-/// is [`Preflight::Impossible`] and refuses the caller's whole batch. Without
-/// one it is a bare command resolved through `spec.env`'s own `PATH`, at most
+/// A `/` makes it a path, absolute or relative to `spec.cwd`, whose absence is
+/// [`Preflight::Impossible`] and refuses the caller's whole batch. Without one
+/// it is a bare command resolved through `spec.env`'s own `PATH`, at most
 /// [`Preflight::Doubtful`]: a `shep startup` unit's `PATH` is not the
-/// operator's shell's, so refusing would keep a flock down over one app's
-/// interpreter.
-///
-/// [`Preflight::Unknown`] for everything else, and existence only. Read
-/// through [`definitely_absent`] rather than [`Path::exists`], which
-/// collapses a permission error into "absent".
+/// operator's shell's. Read through [`definitely_absent`], not [`Path::exists`].
 pub(super) fn what_exec_will_find(spec: &SpawnSpec) -> Preflight {
     if spec.program.is_empty() {
         return Preflight::Unknown;
@@ -445,15 +427,12 @@ pub(super) fn summarise_path(path: &str) -> String {
 }
 
 /// Whether the filesystem says, without qualification, that `path` is not
-/// there.
+/// there. `NotFound` and nothing else.
 ///
-/// `NotFound` and nothing else. [`Path::exists`] returns `false` on any
-/// [`fs::metadata`] error, so a permission error, an unsettled mount and a
-/// race would all read as absent and have `what_exec_will_find` refuse a
-/// whole batch over a filesystem that was unavailable for a moment.
-///
-/// Follows symlinks, as exec does. A directory and a file with no execute bit
-/// both answer `Ok` and so are not absent.
+/// [`Path::exists`] returns `false` on any [`fs::metadata`] error, so a
+/// permission error or an unsettled mount would read as absent and have
+/// `what_exec_will_find` refuse a whole batch over a filesystem that was
+/// unavailable for a moment. Follows symlinks, as exec does.
 fn definitely_absent(path: &Path) -> bool {
     matches!(fs::metadata(path), Err(err) if err.kind() == io::ErrorKind::NotFound)
 }
@@ -475,14 +454,8 @@ impl ProcessRunner for TokioRunner {
     /// Nothing is spawned, opened or signalled. The carried pipe read ends go
     /// to the same log pump a spawn feeds, the carried log handles are written
     /// through rather than reopened, and the pid is the one the sheep has been
-    /// running under all along.
-    ///
-    /// Stdin and the shepherd channel are both carried, so `shep whisper`
-    /// reaches the same fd 0 and the child's fd 3 is undisturbed. What a blob
-    /// named neither of is closed here rather than left dangling, so a
-    /// caller's `is_closed()` says so at once. A dog's own connection is
-    /// handed to whatever serves [`ProcessRunner::dog_links`], to be served
-    /// as it was.
+    /// running under all along. A blob naming neither a stdin nor a channel
+    /// gets both closed here rather than left dangling.
     #[cfg(unix)]
     fn adopt(&self, spec: AdoptSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
         let AdoptSpec {

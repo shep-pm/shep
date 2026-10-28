@@ -71,14 +71,12 @@ async fn a_dog_that_cannot_be_spawned_is_still_a_dog() {
 }
 
 /// Fails if the gate is ignored: with no `wait_ready` and no
-/// `readiness_probe`, `spawn_fresh`'s ungated arm reports `Online` at once
-/// and a stage gate on this app would wait for nothing.
+/// `readiness_probe`, `spawn_fresh`'s ungated arm reports `Online` at once and
+/// a stage gate on this app would wait for nothing.
 ///
-/// Paused time, since the daemon still arms a readiness task for the
-/// gated fallback: the assertion below reads the status `handle_command`
-/// answers with synchronously, before that task's `listen_timeout` runs
-/// out either way, but pausing keeps the fixture's background tasks from
-/// costing real wall clock while the case holds them.
+/// Paused time, since the daemon still arms a readiness task for the gated
+/// fallback: the assertion below reads a status `handle_command` answers with
+/// synchronously, before that task's `listen_timeout` runs out either way.
 #[tokio::test(start_paused = true)]
 async fn an_app_in_the_gate_set_holds_at_starting_without_a_probe() {
     let dir = tempfile::tempdir().unwrap();
@@ -113,17 +111,13 @@ async fn an_app_outside_the_gate_set_is_online_at_spawn() {
     assert_eq!(started[0].status, ProcStatus::Online);
 }
 
-/// `PerApp` skips an app whose credentials do not resolve, so `credentials`
-/// is shorter than `apps` while still in order: a naive `zip` against `apps`
-/// pairs app 2 with app 3's credentials and drops the last app. The first of
-/// three fails, the ordering where the drift starts at the next app.
+/// `PerApp` skips an app whose credentials do not resolve, so `credentials` is
+/// shorter than `apps` while still in order: a naive `zip` against `apps` pairs
+/// app 2 with app 3's credentials and drops the last app. The first of three
+/// fails, the ordering where the drift starts at the next app.
 ///
-/// Asserts the identity each app got, not merely that it is registered:
-/// under the broken pairing all three are present, holding each other's
-/// credentials.
-///
-/// `#[cfg(unix)]`: `nix` is a unix-only dependency, and `privilege::resolve`
-/// refuses any user request off-platform.
+/// Asserts the identity each app got, not merely that it is registered.
+/// `#[cfg(unix)]`: `nix` is a unix-only dependency.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_credential_failure_never_shifts_another_apps_identity() {

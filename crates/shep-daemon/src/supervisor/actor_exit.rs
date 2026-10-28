@@ -10,17 +10,12 @@ use super::*;
 
 impl<R: ProcessRunner> Actor<R> {
     /// Resolves `selector` and hands every pump writing to a matched sheep's
-    /// log paths to a task that reopens their files and then answers the
-    /// caller.
+    /// log paths to a task that reopens their files and answers the caller.
     ///
     /// Nothing is awaited here: awaiting a pump inside the actor loop
     /// deadlocks, since the actor stops draining the mailbox its answer must
-    /// come through. `&self` keeps the handler free of state changes, which is
-    /// what lets it skip the epoch check.
-    ///
-    /// A matched sheep with no pump is a success. The pumps asked come from
-    /// [`Self::pumps_for_paths`], a wider set than the selector's matches;
-    /// the reply stays keyed by the selector.
+    /// come through. A matched sheep with no pump is a success, and the reply
+    /// stays keyed by the selector.
     pub(super) fn handle_reopen(
         &self,
         selector: &ProcessSelector,
@@ -53,17 +48,12 @@ impl<R: ProcessRunner> Actor<R> {
     /// Resolves `selector` into the rows its reply carries and the log paths
     /// the sheep those rows name write to.
     ///
-    /// The one place the two log verbs decide which sheep they reached: they
-    /// differ only in what they do with the paths, so a rule about which
-    /// paths count cannot be written twice here.
-    ///
+    /// The one place the two log verbs decide which sheep they reached.
     /// `matched` comes back in `reached_ids`' id order, not listing order:
     /// each caller sorts it for the table it prints.
     ///
     /// # Errors
-    ///
-    /// [`SupervisorError::NotFound`] when `selector` names no registered
-    /// sheep.
+    /// [`SupervisorError::NotFound`] when `selector` names no registered sheep.
     fn resolve_selector(
         &self,
         selector: &ProcessSelector,
@@ -92,13 +82,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// Wider than the selector's matches on purpose: a sheep the selector
     /// never named can share a path with one it did, and that sibling's
     /// dispatched `write(2)` would land at offset 0 of the file just
-    /// truncated, or keep a rotator's renamed inode open. A slot with no pump
-    /// is skipped: it owes no bytes.
-    ///
-    /// Sorted because `HashMap` iteration order is arbitrary and pump
-    /// failures are reported in collection order, so an unsorted set would
-    /// word a multi-pump failure differently run to run. Id order is enough
-    /// here, unlike a caller's `matched`: this list is never rendered.
+    /// truncated. Sorted so a multi-pump failure reads the same run to run.
     fn pumps_for_paths(&self, paths: &BTreeSet<PathBuf>) -> Vec<(u32, mpsc::Sender<LogCtl>)> {
         let mut pumps: Vec<(u32, mpsc::Sender<LogCtl>)> = self
             .sheep
@@ -115,29 +99,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Reads everything a handover needs off the actor and hands it to a
     /// task that asks each live pump for its descriptors.
     ///
-    /// Synchronous and `&self` for the reason [`Self::handle_reopen`] gives.
-    /// The entries are cloned because the assembly runs after the loop, which
-    /// is what [`OwnedCandidate`] exists for.
-    ///
-    /// Every registered sheep is described, with no selector: a handover
-    /// carries one process image, so the flock goes whole or not at all.
-    ///
-    /// One group is left behind: every dog that is parked, which
-    /// [`Self::is_parked_dog`] spells as the disabled mark and no process.
-    /// Whether a dog runs is `shep.toml`'s decision, and this daemon never
-    /// reads that file while a successor boots from it, so the successor
-    /// registers a parked dog at rest exactly as a cold boot does, under a new
-    /// id. Carrying it would pin the id this flock issued and hand the
-    /// successor a stopped dog its idempotent [`Self::do_start_dog`] could
-    /// never start.
-    ///
-    /// Everything holding a process carries, marked or not. This snapshot is
-    /// the only way a successor learns a pid, and a process it never learned
-    /// is one it cannot stop: `shep disable` sets the mark before its stop
-    /// begins and answers only once the stop has finished, so a reload racing
-    /// that disable meets a marked dog still on its kill ladder. A dog an
-    /// operator stopped with `shep stop` carries too, mark or no mark: its row
-    /// and its history are the successor's to inherit.
+    /// Synchronous and `&self` for the reason [`Self::handle_reopen`] gives;
+    /// the entries are cloned because the assembly runs after the loop, which
+    /// is what [`OwnedCandidate`] exists for. Every registered entry is
+    /// described except a parked dog, which a successor registers for itself.
     #[cfg(unix)]
     pub(super) fn handle_handover_snapshot(
         &self,
@@ -229,14 +194,8 @@ impl<R: ProcessRunner> Actor<R> {
     /// Synchronous and `&self` for the reason [`Self::handle_reopen`] gives.
     ///
     /// The paths are [`ProcessEntry::out_file`]/[`ProcessEntry::err_file`],
-    /// never the inode the pump holds: chasing the handle after an external
-    /// rotator's rename would empty the archive and leave the live log alone.
-    /// A stopped sheep has no pump and is still flushed.
-    ///
-    /// Every slot writing to one of those paths is flushed, matched or not,
-    /// through [`Self::pumps_for_paths`]: an unflushed sibling's dispatched
-    /// `write(2)` would land at offset 0 of the file just reported empty. The
-    /// reply stays keyed by the selector.
+    /// never the inode the pump holds. Every slot writing to one of them is
+    /// flushed, matched or not, through [`Self::pumps_for_paths`].
     pub(super) fn handle_flush(
         &self,
         selector: &ProcessSelector,
@@ -442,8 +401,7 @@ impl<R: ProcessRunner> Actor<R> {
         // A manual Restart forces a respawn, where `decide_on_exit` would
         // choose CleanStop off `manual_stop`. Not while shutting down, which
         // would orphan a child outside the shutdown snapshot; not under
-        // `pending_delete`, which would hand back a live process as deleted;
-        // not for a disabled app, whose stop rode this marker.
+        // `pending_delete`, which would hand back a live process as deleted.
         if kind == Some(ManualKind::Restart)
             && !self.shutting_down
             && !pending_delete
@@ -531,33 +489,11 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// A memory breach or a liveness failure asked for a restart.
     ///
-    /// Guarded on the pid rather than [`SheepSlot`]'s respawn epoch: the pid is
-    /// on both reports and is as good a generation token. A liveness report
-    /// carries its probe's own epoch too, since `InstanceExtras::disarm` does
-    /// not await the aborted task, so a probe already inside `failures.send`
-    /// can deliver against the same pid in the same status, and a config apply
-    /// must never kill a process. A memory breach re-asks the ceiling instead.
-    ///
-    /// Delegates to `begin_manual`, not `respawn`, which keeps the kill ladder
-    /// and the budget reset; it goes in as [`CommandOrigin::Automatic`], so an
-    /// operator's `stop` can take the sheep back off a restart mid-ladder.
-    ///
-    /// The status guard is [`reload_eligible`], not a bare `== Online` check:
-    /// a `ready_failed` sheep (an abandoned reload's replacement, left
-    /// `Starting` with nothing to fall back to, see
-    /// [`Actor::reload_ready_result`] and [`Actor::handle_reload_verified`])
-    /// is armed the same extras an `Online` sheep is, and must be reachable
-    /// here or nothing ever restarts it. Both reports still guard on the pid
-    /// too, so a fresh respawn under the same id (which always clears
-    /// `ready_failed`, see [`SheepSlot::ready_failed`]) cannot be reached by a
-    /// report addressed to the process it replaced. `begin_manual`'s own
-    /// `in_an_uncommitted_swap` check is already false here: both
-    /// abandonment sites remove the job from `self.reloads` before setting
-    /// `ready_failed`, so this can race neither a drainee (never
-    /// `ready_failed`, so [`reload_eligible`] still rejects its `Stopping`
-    /// status) nor an operator's own stop of the replacement (claims the
-    /// `manual` marker first; `begin_manual` then rides that command's
-    /// outcome instead of restarting).
+    /// Guarded on the pid rather than [`SheepSlot`]'s respawn epoch: the pid
+    /// is on both reports. The status guard is [`reload_eligible`], not
+    /// `== Online`: a `ready_failed` sheep is armed the same extras and must
+    /// be reachable here or nothing restarts it. Delegates to
+    /// `begin_manual`, which keeps the kill ladder and the budget reset.
     pub(super) fn handle_extra_restart(
         &mut self,
         id: u32,
@@ -645,10 +581,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Dropped while shutting down, since nothing here would be in the
     /// shutdown's `online` snapshot. Dropped unless the entry is still
-    /// `WaitingRestart`, which a manual command may have intercepted and which
-    /// also excludes a reload's drainee, and unless the epoch still matches: a
-    /// respawn since this timer was scheduled makes it stale even though the
-    /// sheep is legitimately `WaitingRestart` again, under a newer backoff.
+    /// `WaitingRestart`, which a manual command may have intercepted, and
+    /// unless the epoch still matches: a respawn since makes it stale.
     pub(super) fn handle_restart_due(&mut self, id: u32, epoch: u64) {
         if self.shutting_down {
             return;
@@ -680,13 +614,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// A readiness wait resolved.
     ///
     /// Dropped while shutting down, or when the slot is gone, its epoch has
-    /// moved, or its status has left `Starting`. Without those, a sheep that
-    /// exited and respawned while its readiness task was still waiting would
-    /// have the old wait mark the new process online.
-    ///
-    /// Past the guards the wait belongs to one of two callers, which want
-    /// opposite things from a deadline that elapsed; see
-    /// [`Self::reload_ready_result`], which owns the reload half.
+    /// moved, or its status has left `Starting`: otherwise an old wait marks a
+    /// respawned process online. Past the guards the wait belongs to one of
+    /// two callers, which want opposite things from a deadline that elapsed;
+    /// see [`Self::reload_ready_result`], which owns the reload half.
     pub(super) fn handle_ready_result(
         &mut self,
         id: u32,

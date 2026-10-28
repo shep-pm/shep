@@ -11,10 +11,9 @@ use super::*;
 /// a fresh [`OsProber`] scoped to the assembled spec's `cwd`/`env`.
 ///
 /// Taking the [`SpawnSpec`] rather than the [`ResolvedApp`] it was assembled
-/// from: `probe_exec` runs `env_clear().envs(&self.env)`, and `config.env` is
-/// one of three things [`assemble`] folds into the child's environment, so an
-/// app that sets no `env` would probe with no `PATH`. A `&ResolvedApp` also
-/// cannot reach `instance`, so every instance would probe the same port.
+/// from: `probe_exec` runs `env_clear().envs(&self.env)`, so an app that sets
+/// no `env` would probe with no `PATH`. A `&ResolvedApp` also cannot reach
+/// `instance`, so every instance would probe the same port.
 pub(super) fn spec_prober(spec: &SpawnSpec) -> Arc<dyn Prober> {
     Arc::new(OsProber::new(spec.cwd.clone(), spec.env.clone()))
 }
@@ -22,13 +21,10 @@ pub(super) fn spec_prober(spec: &SpawnSpec) -> Arc<dyn Prober> {
 /// Spawns a readiness task for `id` at `epoch`, returning the oneshot sender
 /// the actor stores (`SheepSlot::ready_tx`) so a later `Msg::Ready` can wake
 /// it. `source` decides which signal [`await_ready`] waits for; `deadline` is
-/// the app's `listen_timeout`. The task reports back through `actor_tx` as a
-/// `Msg::ReadyResult`, which `Actor::handle_ready_result` drops against a
-/// stale `epoch`.
+/// the app's `listen_timeout`.
 ///
-/// `manually` is carried, never inspected here.
-///
-/// Must be called from within a Tokio runtime context.
+/// The task reports back as a `Msg::ReadyResult`, which
+/// [`Actor::handle_ready_result`] drops against a stale `epoch`.
 pub(super) fn spawn_readiness_task(
     id: u32,
     epoch: u64,
@@ -55,16 +51,11 @@ pub(super) fn spawn_readiness_task(
 
 /// Spawns the task that delivers one action to `id`'s child and waits for the
 /// reply, returning the oneshot sender the actor stores
-/// (`PendingAction::waiter`) so a later [`Msg::ActionReply`] can wake it. The
-/// task reports back through `actor_tx` as a [`Msg::ActionResult`].
+/// (`PendingAction::waiter`) so a later [`Msg::ActionReply`] can wake it.
 ///
 /// The send is in here rather than at the call site because both it and the
 /// wait are awaits, which the actor loop may not do. `deadline` covers the two
 /// together, since a child that has stopped reading can stall either.
-///
-/// Only [`ActionOutcome::Replied`] proves the action landed. A failed send or
-/// a dropped waiter is [`ActionOutcome::NoChannel`]; a send that succeeds
-/// proves nothing, the first one after a child exits being discarded.
 pub(super) fn spawn_action_task(
     id: u32,
     stamp: u64,
@@ -103,12 +94,8 @@ pub(super) fn spawn_action_task(
 /// called from within a Tokio runtime context.
 ///
 /// Awaiting them in a loop is not serial: every wait in `waits` is already
-/// running its own task under its own deadline, so the loop is a join. Ten
-/// unresponsive apps cost the longest `action_timeout`, not the sum.
-///
-/// A wait whose sender is dropped rather than answered reports
-/// [`ActionOutcome::NoChannel`]: the sender lives on the sheep's slot, so
-/// losing it means that slot let go of the wait.
+/// running its own task under its own deadline, so the loop is a join. A wait
+/// whose sender is dropped reports [`ActionOutcome::NoChannel`].
 pub(super) fn spawn_trigger_task(
     mut rows: Vec<ActionReply>,
     waits: Vec<(u32, String, oneshot::Receiver<ActionOutcome>)>,

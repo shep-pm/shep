@@ -102,9 +102,7 @@ pub(crate) enum ReloadMode {
     ///
     /// The default for a probed app. It costs a gap, the drain plus the
     /// replacement's start, and buys a probe only the replacement can answer.
-    /// It spares an app without `SO_REUSEPORT` the `EADDRINUSE` an overlapping
-    /// reload would take. A single-instance app loses its name-group watch and
-    /// cron worker for the width of the gap.
+    /// It spares an app without `SO_REUSEPORT` the `EADDRINUSE` a swap would take.
     Serial,
 }
 

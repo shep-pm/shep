@@ -93,13 +93,12 @@ async fn an_adopted_flock_keeps_its_pids_and_ids() {
 }
 
 /// Losing the marker is invisible to a pid check: the dog runs on. What
-/// changes is that `matching_ids` stops passing it by, so `shep restart
-/// all` reaches it and `shep dogs` loses it entirely.
+/// changes is that `matching_ids` stops passing it by, so `shep restart all`
+/// reaches it and `shep dogs` loses it entirely.
 ///
 /// A `stop` over a kennel with no sheep in it, so nothing waits on a kill
 /// ladder and `NotFound` answers the wildcard. With the marker dropped the
-/// wildcard matches the dog and parks on an exit `StandInProc` never
-/// delivers, so the timeout turns a hung suite into a failure.
+/// wildcard parks on an exit `StandInProc` never delivers.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn an_adopted_dog_keeps_its_marker_and_stays_out_of_a_wildcard() {

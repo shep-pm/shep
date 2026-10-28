@@ -49,11 +49,9 @@ const STREAM_BUFFER: usize = 4096;
 /// One pump over two streams and two real files: everything
 /// [`spawn_log_pump`] takes, with no child process involved.
 ///
-/// Generic over the writing side only, so the descriptor cases can swap
-/// the in-memory pair for a real one: an in-memory pipe has no
-/// descriptor, so the pump is told its stream numbers rather than
-/// reading them off its own readers. Every case about bytes rather
-/// than descriptors uses the cheaper [`PumpHarness::start`].
+/// Generic over the writing side only, so the descriptor cases can swap the
+/// in-memory pair for a real one: an in-memory pipe has no descriptor, so the
+/// pump is told its stream numbers rather than reading them off its readers.
 struct PumpHarness<W = DuplexStream> {
     dir: tempfile::TempDir,
     out_path: PathBuf,
@@ -262,14 +260,12 @@ async fn request_fds(ctl: &mpsc::Sender<LogCtl>) -> CarriedFds {
     ctl_acked(ctl, "a descriptor report", report).await
 }
 
-/// One log file's contents with [`super::log_file::LogFile::append`]'s
-/// per-line stamp taken back off, so a test can assert on the sheep's own
-/// bytes.
+/// One log file's contents with [`super::log_file::LogFile::append`]'s per-line
+/// stamp taken back off, so a test can assert on the sheep's own bytes.
 ///
-/// The stamp is the daemon's and moves every run, so pinning it would
-/// assert on the clock. `a_line_carries_the_time_it_was_written` checks
-/// the stamp itself; this checks it is present and well formed as a
-/// side effect of parsing (see [`unstamped`]).
+/// The stamp is the daemon's and moves every run, so pinning it would assert
+/// on the clock. `a_line_carries_the_time_it_was_written` checks the stamp
+/// itself; this checks it is present and well formed as a side effect.
 fn log_text(path: &Path) -> String {
     unstamped(&fs::read_to_string(path).unwrap())
 }
@@ -290,14 +286,13 @@ fn unstamped(text: &str) -> String {
     out
 }
 
-/// Waits for `path` to hold exactly `expected`, ignoring the per-line
-/// stamps (see [`log_text`]).
+/// Waits for `path` to hold exactly `expected`, ignoring the per-line stamps
+/// (see [`log_text`]).
 ///
-/// A line on `logs` has reached the stream's buffer, not necessarily the
-/// file (see [`spawn_log_pump`]'s ordering note), so this polls for
-/// [`super::IDLE_FLUSH`] to write it through. A reopen acknowledgement
-/// would be a cleaner barrier, but the point here is what the current
-/// handle does, and a reopen replaces it.
+/// A line on `logs` has reached the stream's buffer, not necessarily the file
+/// (see [`spawn_log_pump`]'s ordering note), so this polls for
+/// [`super::IDLE_FLUSH`] to write it through. A reopen acknowledgement would
+/// be a cleaner barrier, but a reopen replaces the handle this is about.
 async fn assert_file_settles(path: &Path, expected: &str) {
     let settled = timeout(PUMP_DEADLINE, async {
         while unstamped(&fs::read_to_string(path).unwrap_or_default()) != expected {
@@ -327,16 +322,8 @@ fn is_open(fd: RawFd) -> bool {
 ///
 /// The wait is on the pump's own bookkeeping rather than on a descriptor
 /// number: a closed number is free for the next `open` anywhere in this
-/// process, and `cargo test` runs cases on parallel threads in one process,
-/// so a poll of the raw number can be answered by an unrelated file and
-/// never settle.
-///
-/// Every unsettled round ends with a [`LogCtl::Resume`]: a report parks the
-/// pump (see [`super::log_file::LogFiles::reading`]), and a parked pump
-/// cannot reach EOF, drop its reader, or clear the number. The sleep between
-/// rounds is real rather than [`tokio::task::yield_now`], because the EOF
-/// arrives through the OS reactor, which the runtime drives only once
-/// nothing else is runnable.
+/// process, and `cargo test` runs cases on parallel threads in one process.
+/// Every unsettled round ends with a [`LogCtl::Resume`]: a report parks it.
 #[cfg(unix)]
 async fn report_fds_until(
     ctl: &mpsc::Sender<LogCtl>,
@@ -383,12 +370,9 @@ const RACE_ATTEMPTS: usize = 32;
 /// Fills one pipe with whole lines until the kernel refuses another, and
 /// answers with how many went in.
 ///
-/// Uses `try_write`, not a timed `write_all`: saturation must be
-/// something the kernel reports, since a full pipe and a merely slow
-/// pump look identical to a wait. A short write's partial line is left
-/// uncounted, so the answer is an exact count of whole lines.
-///
-/// `cfg(unix)`: `tokio::net::unix` does not exist on Windows.
+/// Uses `try_write`, not a timed `write_all`: saturation must be something the
+/// kernel reports, since a full pipe and a merely slow pump look identical to
+/// a wait. A short write's partial line is left uncounted. `cfg(unix)`.
 #[cfg(unix)]
 async fn fill_pipe(writer: &tokio::net::unix::pipe::Sender, line: &str) -> usize {
     // `try_write` reports `WouldBlock` for a not-yet-writable pipe as
@@ -515,15 +499,10 @@ const RUN_LINE: usize = 8;
 /// Hands the runtime to the pump task and back, for a stream backed by an
 /// in-memory [`tokio::io::duplex`] pair rather than a real pipe.
 ///
-/// `#[tokio::test]` runs on a current-thread runtime, so yielding is what
-/// lets the pump run at all: dropping a duplex writer wakes its read with
-/// EOF by pushing the pump's task straight onto the run queue, and retiring
-/// a stream from there has no await of its own, so one turn is enough for
-/// the pump to reach its next park. A duplex pair has no OS reactor in the
-/// loop, so unlike [`report_fds_until`] there is no event a busy runtime
-/// could leave undelivered. The second yield is slack for whichever task
-/// this caller happens to be queued behind, not a race the count papers
-/// over.
+/// `#[tokio::test]` runs on a current-thread runtime, so yielding is what lets
+/// the pump run at all: dropping a duplex writer wakes its read with EOF by
+/// pushing the pump's task straight onto the run queue, and retiring a stream
+/// from there has no await of its own. A duplex pair has no OS reactor.
 async fn let_the_duplex_pump_settle() {
     for _ in 0..2 {
         tokio::task::yield_now().await;

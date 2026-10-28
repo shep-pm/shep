@@ -9,12 +9,10 @@ use super::*;
 /// A serial drain is what holds still long enough to be snapshotted: a
 /// `readiness_probe` with no `reuse_port` is the one arrangement
 /// `ReloadMode::of` sends down the serial ordering, and
-/// [`ProcScript::never_reports_its_exit`] models the child a kill ladder
-/// cannot end, so the swap stays in [`ReloadPhase::DrainFirst`].
+/// [`ProcScript::never_reports_its_exit`] models a child no kill ladder can end.
 ///
-/// A real clock, unlike its neighbours: a paused one auto-advances
-/// whenever every task is idle, and the awaits inside `handover_snapshot`
-/// are such a window.
+/// A real clock, unlike its neighbours: a paused one auto-advances whenever
+/// every task is idle, and the awaits inside `handover_snapshot` are such a window.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_snapshot_taken_mid_swap_carries_the_job_and_the_markers() {
@@ -205,14 +203,13 @@ async fn a_carried_reload_naming_no_registered_instance_is_dropped() {
         .expect("a job naming nothing must be dropped, not left refusing every later reload");
 }
 
-/// `spawn_verify_task` is a task of the predecessor's too, so a successor
-/// that re-arms only the watchdog abandons a deploy that worked: the
-/// replacement serves on, but `Reloaded` never fires and the rest of a
-/// clustered app's queue is dropped.
+/// `spawn_verify_task` is a task of the predecessor's too, so a successor that
+/// re-arms only the watchdog abandons a deploy that worked: the replacement
+/// serves on, but `Reloaded` never fires and the rest of a clustered app's
+/// queue is dropped.
 ///
-/// A real listener and a real clock. The probe answers in microseconds
-/// where the watchdog is 16s, so the bound below separates the two by an
-/// order of magnitude whatever the host's speed.
+/// A real listener and a real clock. The probe answers in microseconds where
+/// the watchdog is 16s, so the bound below separates the two whatever the host.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_carried_swap_in_verify_is_asked_again_rather_than_abandoned() {

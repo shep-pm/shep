@@ -293,13 +293,12 @@ async fn a_batch_refuses_a_dog_and_an_unknown_name() {
 }
 
 /// The dog refusal is a security boundary, and four pane doors reach it: a
-/// read of a dog's whole config, one env key, a batch, and a bare field.
-/// Each is asserted against the store as well as the code, since a refusal
-/// that still wrote is the same hole with a better error.
+/// read of a dog's whole config, one env key, a batch, and a bare field. Each
+/// is asserted against the store as well as the code, since a refusal that
+/// still wrote is the same hole with a better error.
 ///
-/// The batch door's refusal is already pinned by
-/// [`a_batch_refuses_a_dog_and_an_unknown_name`] above; what this adds for
-/// it is the store half, and for the other three the whole refusal.
+/// [`a_batch_refuses_a_dog_and_an_unknown_name`] above pins the batch door's
+/// refusal; what this adds for it is the store half.
 #[tokio::test(start_paused = true)]
 async fn every_pane_door_refuses_a_dog_and_leaves_the_store_untouched() {
     let h = env_batch_harness().await;

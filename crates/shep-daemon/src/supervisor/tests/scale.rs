@@ -12,7 +12,6 @@ use super::*;
 /// path from something else would pass an assertion on the internal field.
 ///
 /// # Panics
-///
 /// If a matched row carries no `out_file`, or one this fixture cannot parse.
 async fn instance_slots_of(h: &Harness, name: &str) -> Vec<u32> {
     let mut slots: Vec<u32> = h

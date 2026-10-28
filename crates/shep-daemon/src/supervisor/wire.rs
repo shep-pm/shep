@@ -116,11 +116,6 @@ pub(super) fn swap_budget(config: &AppConfig) -> Duration {
 /// [`SheepSlot::ready_failed`]). Both doors into a reload ask this,
 /// [`Actor::handle_reload`]'s selector pass and [`Actor::advance_reload`], so
 /// a reload cannot drop an instance silently or reach one it had ruled out.
-/// `advance_reload` adds the `manual` half on its own.
-///
-/// [`Actor::handle_extra_restart`] asks the same question for the same
-/// reason: a `ready_failed` sheep is armed extras same as an `Online` one, so
-/// its own report must be able to reach it too.
 pub(super) fn reload_eligible(slot: &SheepSlot) -> bool {
     slot.entry.status == ProcStatus::Online || slot.ready_failed
 }
@@ -129,11 +124,9 @@ pub(super) fn reload_eligible(slot: &SheepSlot) -> bool {
 ///
 /// `Online` for an instance that was serving. `Starting` for one an earlier
 /// reload had already parked, the case [`reload_eligible`] opened up: it never
-/// proved it could serve. `ready_failed` stays set, so the next attempt can
-/// still replace it.
+/// proved it could serve. `ready_failed` stays set.
 ///
-/// Shared by the two sites that undo a swap, as [`reload_eligible`] is shared
-/// by the two that start one.
+/// Shared by the two sites that undo a swap, as [`reload_eligible`] is.
 pub(super) fn restored_status(slot: &SheepSlot) -> ProcStatus {
     if slot.ready_failed {
         ProcStatus::Starting

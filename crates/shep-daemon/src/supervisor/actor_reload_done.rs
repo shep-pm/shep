@@ -13,9 +13,7 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Exact for a single-instance app, where one process is left. Weaker for a
     /// clustered app: surviving old instances are still in the `SO_REUSEPORT`
-    /// group and can answer for a bad replacement until the last swap. Closing
-    /// that takes a per-instance identity in the response, which is
-    /// `wait_ready`'s job.
+    /// group and can answer for a bad replacement until the last swap.
     pub(super) fn handle_reload_verified(&mut self, name: &str, new_id: u32, readiness: Readiness) {
         let Some(job) = self.reloads.get(name) else {
             return;
@@ -39,10 +37,7 @@ impl<R: ProcessRunner> Actor<R> {
         // Demoted out of `Online`: that status was written on a probe the
         // now-reaped instance may have answered. The process is not killed,
         // since a replacement that is up but not answering is more than none,
-        // and nothing will restart it on its own but the extras armed below:
-        // `handle_extra_restart`'s guard admits a `ready_failed` sheep so a
-        // `liveness_probe` or `max_memory` this app configures still watches
-        // it, same as `reload_ready_result`'s own abandonment.
+        // and `handle_extra_restart`'s guard admits a `ready_failed` sheep.
         tracing::warn!(
             name,
             new_id,
@@ -58,16 +53,13 @@ impl<R: ProcessRunner> Actor<R> {
         self.arm_extras(new_id);
     }
 
-    /// Abandons `name`'s reload: the instance it was replacing goes back to
-    /// serving where that is still available to it, the instances it had not
-    /// reached yet are left alone, and the replacement is killed and
-    /// deregistered.
+    /// Abandons `name`'s reload: the drainee goes back to serving where that
+    /// is still available to it, the instances not yet reached are left alone,
+    /// and the replacement is killed and deregistered.
     ///
-    /// The replacement goes through the kill ladder, since it may already have
-    /// forked lambs and the `SIGKILL` rung is what sweeps the group. Its entry
-    /// is deregistered rather than left `Errored`: the instance slot belongs to
-    /// the drainee, and a second permanent row would double every name-keyed
-    /// verb. Only reachable while the swap is still `AwaitReady`.
+    /// The replacement goes through the kill ladder, since it may have forked
+    /// lambs. Its entry is deregistered rather than left `Errored`: the slot
+    /// belongs to the drainee.
     pub(super) fn abort_reload(&mut self, name: &str, reason: &str) {
         let Some(job) = self.reloads.remove(name) else {
             return;
@@ -139,12 +131,7 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Every other transition out of a [`ReloadJob`] is driven by a message
     /// from a task the actor cannot make report, and [`kill_process`]'s wait
-    /// after `SIGKILL` has no timeout, so a wedged instance would leave
-    /// `handle_reload` refusing the app until the daemon restarts.
-    ///
-    /// Every swap is armed at the door it starts from, and each arming replaces
-    /// the last: the fresh stamp goes on [`ReloadJob::deadline`] and older
-    /// timers are dropped when they fire. `id` names any entry of the app.
+    /// after `SIGKILL` has no timeout: a wedged instance would wedge the app.
     pub(super) fn arm_reload_deadline(&mut self, name: &str, id: u32) {
         // Loud rather than silent: a swap that failed to arm one is the state
         // this exists to make impossible.
@@ -179,15 +166,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// A swap ran out of time: end the reload rather than leave a job nothing
     /// can remove.
     ///
-    /// Stale deadlines are dropped on the swap's `new_id`; ids are never
-    /// reused, so a finished swap and a later reload of the same app are both
-    /// covered. Before the commit there is still an instance to go back to, so
-    /// this is an ordinary abandonment; after it the job is dropped where it
-    /// stands and the replacement is left as it is.
-    ///
-    /// The instance being replaced keeps [`ReloadState::Drainee`] through that
-    /// second ending: it routes a late exit to [`Self::reap_drainee`], where a
-    /// cleared marker would respawn a second live process into the slot.
+    /// Stale deadlines are dropped on the swap's `new_id`, which ids are never
+    /// reused for. Before the commit this is an ordinary abandonment; after it
+    /// the job is dropped where it stands. The drainee keeps
+    /// [`ReloadState::Drainee`] so a late exit routes to [`Self::reap_drainee`].
     pub(super) fn handle_reload_deadline(&mut self, name: &str, stamp: u64) {
         let Some(job) = self.reloads.get(name) else {
             return;
@@ -241,14 +223,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// `ReapOld`: the drainee has exited, so its registration goes with it.
     ///
     /// Nothing else would remove it: a drainee is not deleted and does not
-    /// respawn, so without this its `SheepSlot` outlives the process, one dead
-    /// row per instance per reload. Returns what [`Self::resolve_pending`]
-    /// returned, so an operator's `stop`/`delete` waiting on this exit is still
-    /// answered.
-    ///
-    /// A [`ReloadMode::Serial`] reload's replacement is created here, before
-    /// the deregistration: it inherits its instance slot, restart count,
-    /// credentials and dog marker off the entry deregistration removes.
+    /// respawn, so without this its `SheepSlot` outlives the process. Returns
+    /// what [`Self::resolve_pending`] returned, so an operator's `stop`/`delete`
+    /// waiting on this exit is still answered. A [`ReloadMode::Serial`]'s
+    /// replacement is created here, before the deregistration.
     pub(super) fn reap_drainee(&mut self, old_id: u32) -> bool {
         if let Some(name) = self.serial_drain_of(old_id) {
             // An operator's `delete` can reach the instance a serial reload is

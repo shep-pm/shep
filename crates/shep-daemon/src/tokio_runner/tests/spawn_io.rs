@@ -254,16 +254,13 @@ async fn an_adopted_sheep_keeps_its_log_unstamped() {
     assert_eq!(written, "after the handover\n");
 }
 
-/// fails if a descriptor report leaves out the sheep's shepherd
-/// channel.
+/// The number belongs to that channel's two pump tasks rather than to this
+/// one, exactly as the stdin number belongs to the stdin pump, and the log
+/// pump is told it for the same reason: it is the only party a snapshot asks.
 ///
-/// The number belongs to that channel's two pump tasks rather than to
-/// this one, exactly as the stdin number belongs to the stdin pump, and
-/// the log pump is told it for the same reason: it is the only party a
-/// snapshot asks. A report that dropped it would hand the successor a
-/// sheep whose fd 3 the exec closed, so a `shep trigger` reaches
-/// nothing and the app sees its channel end for no reason it can
-/// observe.
+/// A report that dropped it would hand the successor a sheep whose fd 3 the
+/// exec closed, so a `shep trigger` reaches nothing and the app sees its
+/// channel end for no reason it can observe.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_report_names_the_shepherd_channel_it_was_told_about() {
@@ -296,15 +293,12 @@ async fn a_report_names_the_shepherd_channel_it_was_told_about() {
     assert_eq!(fds.channel, Some(daemon_end.as_raw_fd()));
 }
 
-/// fails if an adopted shepherd channel is not wired back to both
-/// `to_child` and `from_child`.
+/// Both directions in one case, because the failure to catch is a successor
+/// that rebuilt one pump and not the other, and either half alone looks
+/// healthy from the other side.
 ///
-/// Both directions in one case, because the failure to catch is a
-/// successor that rebuilt one pump and not the other, and either half
-/// alone looks healthy from the other side. Writing proves
-/// `shutdown_with_message` and `shep trigger` still land; reading proves
-/// `{"kind":"ready"}` and every action reply still come back, which is
-/// what a `wait_ready` sheep's whole lifecycle turns on.
+/// Writing proves `shutdown_with_message` and `shep trigger` still land;
+/// reading proves `{"kind":"ready"}` and every action reply still come back.
 #[cfg(unix)]
 #[tokio::test]
 async fn an_adopted_shepherd_channel_carries_both_directions() {
@@ -399,17 +393,13 @@ fn adopt_spec(
     }
 }
 
-/// A spec for a real child, whose fd 0 is the point of the two cases
-/// below.
+/// A spec for a real child, whose fd 0 is the point of the two cases below.
 ///
-/// A real child rather than a harness, since the question is what the
-/// spawn reads off the handle it is about to give away: an in-memory
-/// stand-in has no descriptor to read.
+/// A real child rather than a harness, since the question is what the spawn
+/// reads off the handle it is about to give away: an in-memory stand-in has no
+/// descriptor to read.
 ///
-/// The program is the caller's, and the choice matters more than it
-/// looks: a child that exits before the report is answered takes its
-/// log pump with it, and the case then fails on a dropped
-/// acknowledgement rather than on anything about descriptors.
+/// The program is the caller's: a child that exits early takes its log pump.
 #[cfg(unix)]
 fn child_spec(dir: &tempfile::TempDir, program: &str, args: &[&str], stdin: bool) -> SpawnSpec {
     SpawnSpec {
@@ -428,15 +418,13 @@ fn child_spec(dir: &tempfile::TempDir, program: &str, args: &[&str], stdin: bool
     }
 }
 
-/// fails if a spawn does not report the descriptor it put on the child's
-/// fd 0.
+/// The number is read off `child.stdin` before the spawn hands it to the stdin
+/// pump, which is the only moment it is knowable, and getting that order wrong
+/// reports `None` for every sheep an operator can whisper to.
 ///
-/// The number is read off `child.stdin` before the spawn hands it to the
-/// stdin pump, which is the only moment it is knowable, and getting that
-/// order wrong reports `None` for every sheep an operator can whisper
-/// to. Checked as a write end of a pipe rather than merely as some
-/// number: a report that named the wrong one of the five handles a spawn
-/// holds would still be `Some`.
+/// Checked as a write end of a pipe rather than merely as some number: a
+/// report that named the wrong one of the five handles a spawn holds would
+/// still be `Some`.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_spawn_reports_the_write_end_it_put_on_the_childs_stdin() {
@@ -593,19 +581,13 @@ fn an_absent_path_is_impossible_and_names_the_path_that_was_tried() {
     );
 }
 
-/// Fails if a filesystem error that is not "no such file" is ever read
-/// as absence.
+/// [`std::path::Path::exists`] returns `false` on any [`fs::metadata`] error,
+/// so an unreadable directory or an unsettled mount would otherwise refuse a
+/// whole batch over a filesystem merely unavailable for a moment.
 ///
-/// [`std::path::Path::exists`] returns `false` on any [`fs::metadata`]
-/// error, so an unreadable directory or an unsettled mount would
-/// otherwise refuse a whole batch over a filesystem merely unavailable
-/// for a moment.
-///
-/// Two provocations: `ENOTDIR` (an invalid filename on Windows, where a
-/// blocked file answers absence instead), and `EACCES` via a `chmod
-/// 000` directory, skipped under root, which bypasses it. Mode
-/// restored before the assertion, or a panic leaves the `TempDir`
-/// unable to `Drop` through the locked directory.
+/// Two provocations: `ENOTDIR`, and `EACCES` via a `chmod 000` directory,
+/// skipped under root, which bypasses it. Mode restored before the assertion,
+/// or a panic leaves the `TempDir` unable to `Drop`.
 #[test]
 fn a_filesystem_error_that_is_not_absence_is_never_impossible() {
     let dir = tempfile::tempdir().unwrap();
@@ -673,15 +655,13 @@ fn a_filesystem_error_that_is_not_absence_is_never_impossible() {
     }
 }
 
-/// fails if a bare command off the PATH ever becomes `Impossible`.
+/// `Doubtful` is reported and carried on with, never refused: the daemon's own
+/// PATH under the unit `shep startup` installs is not the shell an operator
+/// tested in, so a flock whose one Node app cannot resolve `node` must still
+/// bring up every other app.
 ///
-/// `Doubtful` is reported and carried on with, never refused: the
-/// daemon's own PATH under the unit `shep startup` installs is not the
-/// shell an operator tested in, so a flock whose one Node app cannot
-/// resolve `node` must still bring up every other app.
-///
-/// The PATH searched is in the message on purpose: naming which one
-/// sends an operator to the terminal path that actually works.
+/// The PATH searched is in the message on purpose: naming which one sends an
+/// operator to the terminal path that actually works.
 #[test]
 fn a_bare_command_off_the_path_is_only_ever_doubtful() {
     let found = what_exec_will_find(&preflight_spec("node", None, Some("/nonexistent")));
@@ -696,18 +676,13 @@ fn a_bare_command_off_the_path_is_only_ever_doubtful() {
     );
 }
 
-/// fails if a long PATH is printed in full, or a short one is not.
-///
 /// This message reaches a terminal now, not only the shepherd's log:
-/// `spawn_fresh` puts a `Doubtful` reason into the reply once that app's
-/// own spawn has failed. A full interactive shell's PATH is unreadably
-/// long (see `super::super::runner::PATH_ENTRIES_IN_MESSAGE`'s own
-/// doc), and dumping that into `error[spawn_failed]:` buries the
-/// sentence that matters.
+/// `spawn_fresh` puts a `Doubtful` reason into the reply once that app's own
+/// spawn has failed. A full interactive shell's PATH is unreadably long (see
+/// `super::super::runner::PATH_ENTRIES_IN_MESSAGE`'s own doc), and dumping
+/// that into `error[spawn_failed]:` buries the sentence that matters.
 ///
-/// The short case is the one that must survive intact: a `shep startup`
-/// unit with no PATH of its own gets `assemble`'s three-entry fallback,
-/// and seeing those three IS the diagnosis.
+/// The short case must survive intact: a `shep startup` unit's three-entry fallback.
 #[test]
 fn a_long_path_is_summarised_and_a_startup_units_own_path_is_not() {
     // Spelled in the platform's own PATH syntax. A unix PATH handed to
