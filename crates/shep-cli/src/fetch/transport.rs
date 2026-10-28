@@ -115,6 +115,21 @@ mod tests {
         assert_eq!(kept.to_string(), "tls handshake eof [2J");
     }
 
+    /// The wrapping `tokio-rustls` puts on a rustls failure is what
+    /// `get_ref` has to see through, so the mapping is pinned without a
+    /// socket in the way.
+    #[test]
+    fn a_rustls_unknown_issuer_becomes_the_hint() {
+        let source = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            RustlsError::InvalidCertificate(CertificateError::UnknownIssuer),
+        );
+        assert_eq!(
+            peer_transport_error("hooks.example.com", source).to_string(),
+            UNKNOWN_ISSUER
+        );
+    }
+
     /// `host` comes from a URL, and a URL is not a trusted string.
     #[test]
     fn a_reworded_name_refusal_cannot_carry_a_control_character() {

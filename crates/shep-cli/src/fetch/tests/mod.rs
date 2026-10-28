@@ -1,4 +1,5 @@
-//! Tests for [`super`]: what a GET refuses, and the URL grammar behind it.
+//! Tests for `crate::fetch`: what a GET refuses, and the URL grammar
+//! behind it.
 //!
 //! These live under the module they exercise rather than in `tests/`, so
 //! they can reach its private items directly. `tls` holds the HTTPS half,

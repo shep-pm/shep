@@ -79,7 +79,7 @@ fn connector_trusting(ca_pem: &[u8]) -> TlsConnector {
 }
 
 /// A [`WebPkiServerVerifier`] over `roots`: the verifier a
-/// [`super::tls_connector`] config ends up holding.
+/// `tls_connector` config ends up holding.
 fn verifier(roots: RootCertStore) -> Arc<WebPkiServerVerifier> {
     WebPkiServerVerifier::builder_with_provider(
         Arc::new(roots),
