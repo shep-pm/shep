@@ -153,7 +153,6 @@ export function unstacked(html: string, css: string): string[] {
     .map((t) => t.classes.join("."));
 }
 
-/** A page's CSS: the styles Astro inlines, plus the sheets the page links. */
 /** One open tag found directly inside a span of the document. */
 interface Element {
   /** Index of its `<`. */
@@ -296,18 +295,58 @@ export function unlabelledElementCells(html: string): string[] {
  * their header labels.
  *
  * Stacking means the table, its rows and its cells all become blocks and its
- * header row goes away, which is what `dog-readme.css` does under 640px. Read
- * per page rather than per table because the rule belongs to a stylesheet: one
- * phone block covers every table the page has.
+ * header row goes away, which is what `dog-readme.css` does under 640px, and
+ * `phoneStacksTables()` requires both halves. Read per page rather than per
+ * table because the rule belongs to a stylesheet: one phone block covers every
+ * table the page has.
  */
 export function unstackedElementTables(html: string, css: string): string[] {
   const headed = elementTables(html).filter((t) => t.headed);
   if (headed.length === 0) return [];
-  const stacks = [...phoneRules(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].some(
-    (rule) => /(^|[\s,>+])table\b/.test(rule[1]) && /display:\s*block/.test(rule[2]),
-  );
-  return stacks ? [] : headed.map(headerLabel);
+  return phoneStacksTables(css) ? [] : headed.map(headerLabel);
 }
+
+/**
+ * True when the selector's subject, the element it actually paints, is `name`.
+ *
+ * The subject is the last compound selector, the one after every combinator:
+ * `.dog-readme table code` paints `code` and `.dog-readme table` paints
+ * `table`. A compound carrying its own modifiers still names its element
+ * first, which is how Astro's scoped output reads (`table:where(.astro-cid-x)`).
+ * A subject wrapped in `:is()` or `:where()` is not read as that element, and
+ * no sheet on this site writes one.
+ */
+function targetsElement(selector: string, name: string): boolean {
+  const compounds = selector.split(/[\s>+~]+/).filter(Boolean);
+  const subject = compounds[compounds.length - 1] ?? "";
+  return new RegExp(`^${name}(?![\\w-])`).test(subject);
+}
+
+/**
+ * True when some phone-width block both stacks `<table>` and hides `<thead>`.
+ *
+ * Both halves are the rule, and the label check above only makes sense once
+ * the second one holds: the header row is what goes away, and each cell's
+ * `data-label` is what replaces it. A rule whose subject is not the element is
+ * not a rule about it either, so `.dog-readme table code{display:block}`
+ * restyles the code inside a table and leaves the table laid out as a table.
+ */
+function phoneStacksTables(css: string): boolean {
+  let stacked = false;
+  let headHidden = false;
+  for (const rule of phoneRules(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = rule[1].split(",").map((s) => s.trim());
+    if (/display:\s*block/.test(rule[2])) {
+      stacked ||= selectors.some((s) => targetsElement(s, "table"));
+    }
+    if (/display:\s*none/.test(rule[2])) {
+      headHidden ||= selectors.some((s) => targetsElement(s, "thead"));
+    }
+  }
+  return stacked && headHidden;
+}
+
+/** A page's CSS: the styles Astro inlines, plus the sheets the page links. */
 async function styles(html: string): Promise<string> {
   const inline = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(
     (m) => m[1],
@@ -361,18 +400,43 @@ test("unstacked() ignores a hide rule outside a phone-width block", () => {
   assert.deepEqual(unstacked(html, css), ["verb-table"]);
 });
 
+/** A README's table, labelled the way `labelTableCells()` leaves it. */
+const DOG_TABLE = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td data-label="Does">skips the prompt</td></tr></tbody></table>`;
+
+/** The phone block `dog-readme.css` writes, minified the way Astro emits it. */
+const STACKING_CSS = `@media (width<=640px){.dog-readme table,.dog-readme tbody,.dog-readme tr,.dog-readme td{display:block}.dog-readme thead{display:none}}`;
+
 test("unstackedElementTables() catches a dog page whose stylesheet never stacks table", () => {
-  const readme = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td data-label="Does">skips the prompt</td></tr></tbody></table>`;
   assert.deepEqual(
-    unstackedElementTables(readme, `@media (width<=640px){.dog-readme p{color:red}}`),
+    unstackedElementTables(DOG_TABLE, `@media (width<=640px){.dog-readme p{color:red}}`),
     ["Flag"],
   );
 });
 
-test("unstackedElementTables() passes a dog page whose stylesheet stacks table", () => {
-  const readme = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td data-label="Does">skips the prompt</td></tr></tbody></table>`;
-  const css = `@media (width<=640px){.dog-readme table,.dog-readme tbody,.dog-readme tr,.dog-readme td{display:block}.dog-readme thead{display:none}}`;
-  assert.deepEqual(unstackedElementTables(readme, css), []);
+test("unstackedElementTables() catches a dog page that stacks table and keeps its thead", () => {
+  // One column, header row still on screen: the reader sees `Flag` and `Does`
+  // above a run of stacked values that also carry them as `data-label`.
+  assert.deepEqual(
+    unstackedElementTables(
+      DOG_TABLE,
+      `@media (width<=640px){.dog-readme table,.dog-readme td{display:block}}`,
+    ),
+    ["Flag"],
+  );
+});
+
+test("unstackedElementTables() catches a phone rule about something inside the table", () => {
+  assert.deepEqual(
+    unstackedElementTables(
+      DOG_TABLE,
+      `@media (width<=640px){.dog-readme table code{display:block}.dog-readme thead{display:none}}`,
+    ),
+    ["Flag"],
+  );
+});
+
+test("unstackedElementTables() passes a dog page whose stylesheet stacks table and hides its thead", () => {
+  assert.deepEqual(unstackedElementTables(DOG_TABLE, STACKING_CSS), []);
 });
 
 test("unlabelledElementCells() catches a dog README table whose cells lost their labels", () => {
