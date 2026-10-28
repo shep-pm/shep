@@ -136,13 +136,10 @@ fn mustered_caption(counts: &[(ProcStatus, usize)], total: usize) -> String {
 /// The flock is back, or however much of it actually came back.
 ///
 /// Built from the real [`ProcStatus`] of every sheep `Response::Mustered`
-/// named, never a bare count: a stopped sheep stays a flock member across a
-/// restart, so `shep muster` restores it without starting it. Faces come
-/// from [`face`], the same function the STATUS column reads.
+/// named. Faces come from [`face`].
 ///
 /// # Panics
-/// If `statuses` is empty. `commands::muster::muster` checks `count > 0`
-/// first, and an empty `Mustered` gets `emit_notice` instead.
+/// If `statuses` is empty; `emit_notice` handles an empty `Mustered`.
 #[track_caller]
 #[cfg_attr(windows, allow(dead_code))]
 pub(crate) fn mustered(statuses: &[ProcStatus]) -> String {

@@ -4,12 +4,9 @@
 //! stream, so this verb takes only a stderr handle, never `output::emit`,
 //! and installs no tracing subscriber.
 //!
-//! The peer is the launcher: whistle binds no port, listens on no socket,
-//! and has nobody to authenticate. Whoever launched it already runs as
-//! this uid and can already run `shep stop`. See [`gate`] for what the
-//! control gate is, and is not.
-//!
-//! `catalogue` (`#[cfg(test)]` only) renders `docs/whistle/tools.md`.
+//! The peer is the launcher: whistle binds no port and authenticates nobody.
+//! See [`gate`] for what the control gate is, and is not. `catalogue`
+//! (`#[cfg(test)]` only) renders `docs/whistle/tools.md`.
 
 pub mod control;
 #[cfg(test)]
@@ -81,13 +78,9 @@ impl Whistle {
 
     /// A `Whistle` at `paths` whose host calls run `program` in place of `ssh`.
     ///
-    /// The program is the only seam: the settings the dial runs under stay the
-    /// ones every real host call runs under, so a test cannot pass its way out
-    /// of pinning them.
-    ///
-    /// Unix only, with the tests that use it: the stand-in is a `/bin/sh`
-    /// script, the same shape `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs`
-    /// writes.
+    /// The program is the only seam: the dial's settings stay the ones every
+    /// real host call runs under. Unix only, with the tests that use it: the
+    /// stand-in is a `/bin/sh` script.
     #[cfg(all(test, unix))]
     #[must_use]
     pub fn for_test_with_ssh_program(
@@ -182,17 +175,13 @@ impl ServerHandler for Whistle {
     }
 }
 
-/// Runs `shep whistle`: resolves the control gate, then serves the MCP
-/// protocol over stdio until the peer disconnects.
+/// Runs `shep whistle`: resolves the control gate, then serves MCP over stdio.
 ///
-/// A missing `paths.daemon_config` reads as read-only, silently. One that
-/// exists but will not parse also reads as read-only, but prints a notice
-/// to `err` naming the path and the parse failure.
+/// A missing `paths.daemon_config` reads as read-only, silently. One that will
+/// not parse also reads as read-only, with a notice to `err`.
 ///
-/// Every failure folds into the returned [`ExitCode`] rather than `Err`:
-/// [`ExitCode::Failure`] if the transport never establishes or the serve
-/// task panics, [`ExitCode::Success`] on any clean end, peer closing the
-/// pipe included.
+/// Every failure folds into the returned [`ExitCode::Failure`]; any clean end
+/// is [`ExitCode::Success`].
 pub async fn whistle(err: &mut dyn Write, fmt: Format, paths: &ShepPaths) -> ExitCode {
     let file_source = std::fs::read_to_string(&paths.daemon_config).ok();
     let loaded = shep_core::config::DaemonConfig::load(file_source.as_deref(), &|_| None);
@@ -235,14 +224,9 @@ pub async fn whistle(err: &mut dyn Write, fmt: Format, paths: &ShepPaths) -> Exi
 
 /// The hosts `paths`' `shep.toml` lists, or none.
 ///
-/// Read once, at startup, exactly as the gate is read: a host added to
-/// `shep.toml` while whistle runs is not a host a tool call can name until
-/// whistle restarts, and the refusal below says so rather than letting a
-/// model retry a name it was told.
-///
-/// A file that will not read or parse is no hosts, and silently. `whistle()`
-/// has already printed that file's parse failure for the gate, and a second
-/// copy of the same complaint would read as two problems.
+/// Read once, at startup, as the gate is: a host added while whistle runs is
+/// not nameable until it restarts. A file that will not read or parse is no
+/// hosts, silently, since `whistle()` has already printed its parse failure.
 fn listed_hosts(paths: &ShepPaths) -> Vec<String> {
     ShepToml::read_only(&paths.daemon_config)
         .and_then(|doc| doc.host_names())

@@ -45,21 +45,13 @@ use crate::{
     whistle,
 };
 
-/// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches
-/// to the verb's own module.
+/// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches.
 ///
-/// Every command receives an already-connected client; no verb module
-/// connects or autostarts. `Start` and `Muster` are the only two arms that
-/// bring a shepherd up, through [`connect_or_spawn_client`].
+/// Every command receives an already-connected client. Only `Start` and
+/// `Muster` bring a shepherd up, through [`connect_or_spawn_client`].
 ///
-/// `Startup` and `Unstartup` skip the shared `$SHEP_HOME` gate below: with
-/// no `--home`/`$SHEP_HOME` the unit's home is the TARGET user's passwd
-/// home, which the gate would get wrong under `sudo`, and a named one goes
-/// through [`ensure_home`] inside the `Startup` arm. `unstartup` ignores
-/// `--home` entirely, since a removal is addressed by the unit's path and
-/// label alone. `style` is already forced to [`style::StyleLevel::Bare`] if
-/// the hard rule applies; `resolved_style` is the unforced pair
-/// `Commands::Style` and the lookout settings screen read.
+/// `Startup` and `Unstartup` skip the shared `$SHEP_HOME` gate: the unit's
+/// home is the target user's, which the gate gets wrong under `sudo`.
 pub(crate) async fn run(
     cli: Cli,
     style: style::Presentation,
@@ -75,12 +67,10 @@ pub(crate) async fn run(
     // so no arm can borrow it to ask this question for itself.
     let guard = VersionGuard::for_command(&cli.command);
 
-    // Before `ensure_home`: the answer is the host's, and nothing of this
-    // machine's is read, so a fresh machine must not get a `~/.shep` or a
-    // first-run banner out of it. `host_scope` above left only the verbs that
-    // reach a host here. The lookout is the exception: it reads this
-    // machine's own `lookout.allow_control` gate, so it resolves the home first
-    // and takes its host from `Link` below.
+    // Before `ensure_home`: the answer is the host's, so a fresh machine must
+    // not get a `~/.shep` or a banner out of it. The lookout is the exception:
+    // it reads this machine's `lookout.allow_control` gate, so it resolves the
+    // home first and takes its host from `Link` below.
     if let Some(dest) = cli.global.host.as_deref()
         && !matches!(cli.command, Commands::Lookout(_))
     {
@@ -182,9 +172,8 @@ pub(crate) async fn run(
         }
         // Resolves the home but never creates it: a probe against a machine
         // with no shep home must leave nothing behind and print no welcome.
-        // `--autostart` creates it like a local `start` does, without the
-        // interpreter scaffold or the welcome: stderr crosses ssh to the
-        // operator's terminal.
+        // `--autostart` creates it like a local `start`, minus the scaffold
+        // and welcome, since stderr crosses ssh to the operator's terminal.
         Commands::DialStdio(ref args) => {
             let resolved = if args.autostart {
                 ensure_home(&cli.global).map(|(paths, _)| paths)

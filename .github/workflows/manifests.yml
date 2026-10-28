@@ -9,7 +9,8 @@ name: manifests
 # `workspace = true` inherits a version without looking like it does. Runs
 # locally in about a second: `python3 scripts/check-dev-deps.py`.
 #
-# The second runs the tests for the release guard. It rewrites a branch and
+# The second runs the tests of every script here that has them: the release
+# guard's and the IR-47 comment checker's. The guard rewrites a branch and
 # pushes, so it is the one script in this repository whose bug would be a bad
 # release pull request rather than a failed check, and its tests build a
 # throwaway repository with a bare remote rather than read this one.
@@ -42,8 +43,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The tests build their own history in a temp directory, so a default
-      # shallow checkout of this repository is enough: they read its two
-      # release-plz config files and nothing else from it.
+      # The guard's tests build their own history in a temp directory and read
+      # only this repository's two release-plz config files. The checker's tests
+      # read its tracked `.rs` files and `.github/doc-length-baseline.txt`, so
+      # this job wants the real checkout rather than an archive.
       - name: Run the release guard's tests
         run: python3 -m unittest discover --start-directory scripts --verbose

@@ -109,23 +109,11 @@ fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
 
 /// [`ssh_stand_in`], with the handshake it answers.
 ///
-/// It records the arguments it was run with, waits for the one request the
-/// client sends, writes that frame to disk for a test that wants the request
-/// back, and answers it with `response`. Answering only once the request has
-/// arrived is what the fixture is for: `shep_client::actor`'s loop picks
-/// between a command and an incoming frame, so a reply already sitting in the
-/// pipe when the request is sent can be read before anything is waiting for
-/// it, and dropped.
+/// It records its arguments, writes the one request to disk, and answers with
+/// `response` only once the request has arrived: an earlier reply is dropped.
 ///
-/// The request is read as the daemon's codec frames it, twice: the
-/// client's `Hello` first, then the one request. The ack goes out between
-/// them, so the canned answer cannot sit in the pipe waiting. A refusal
-/// written where the ack goes is how a host that turns the `Hello` down
-/// reaches whistle with [`ConnectError::ProtocolMismatch`] intact, which is
-/// what `shep_client::ssh::explain` does with one.
-///
-/// Unix only: the stand-in is a `/bin/sh` script, the same shape
-/// `crates/shep-cli/tests/cli_e2e/ssh_stand_in.rs` uses.
+/// The ack goes out between the `Hello` and the request, so a refusal there
+/// reaches whistle as [`ConnectError::ProtocolMismatch`].
 #[cfg(unix)]
 fn ssh_stand_in_answering(
     dir: &Path,
@@ -796,18 +784,12 @@ async fn get_metrics_carries_the_host_sample() {
     served.await.expect("the fake daemon task must not panic");
 }
 
-/// The two handshake fields are the only place a model is told which
-/// shepherd it is looking at, and both come off the `HelloAck` the same
-/// call returns, not off the `Response::Flock`.
+/// Both handshake fields come off the `HelloAck`, not the `Response::Flock`.
 ///
-/// The sheep's own pid is deliberately not the ack's: with both at
-/// 4242, `daemon_pid` taken from the flock instead of the ack would
-/// read as the handshake. The version half cannot be separated that
-/// way: `Shepherd::connect` refuses any ack whose version is not this
-/// binary's (`VersionGuard::Enforce`'s arm in `crate::version_guard`),
-/// so what this pins for the version is that the field is filled from
-/// the handshake rather than left at a placeholder, which is what a
-/// `call` that dropped the ack would get wrong.
+/// The sheep's pid is deliberately not the ack's: with both at 4242, a
+/// `daemon_pid` taken from the flock would read as the handshake. The version
+/// half pins only that the field is filled from the handshake, since
+/// `Shepherd::connect` refuses any other version.
 #[tokio::test]
 async fn get_metrics_reports_the_version_and_pid_from_the_handshake() {
     let dir = tempfile::tempdir().unwrap();

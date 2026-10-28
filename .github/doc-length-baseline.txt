@@ -1,0 +1,2086 @@
+# Comment blocks over IR-47's line limits, measured at 427e9215e.
+# Limits: `///` 6 body lines after the summary (12 when the block has an
+# `# Errors` section), `//!` 10 lines, `//` 4 in a row. Fenced code and an
+# `# Example` section never count; a line that is only its marker does.
+# Format: <lines> <path> <first line of the block>, one group per file.
+# A listed block may shrink but never past its recorded count; a block not
+# listed may not appear, and an entry whose block now fits must go.
+# Regenerate with `python3 scripts/check-doc-length.py --write-baseline`.
+# Merge main before measuring: a block main moved elsewhere reads as a new
+# block here and a stale entry there.
+
+19 benches/benches/bark_append.rs //! Times the one blocking file write the bark dog parks on a tokio worker:
+
+12 benches/benches/memory_sample.rs //! Benches the two costs `MEMORY_POLL_INTERVAL`
+
+10 crates/shep-channel/src/endpoint.rs /// Where this process's channel is, if it has one.
+9 crates/shep-channel/src/endpoint.rs /// Reads one `SHEP_CHANNEL_FD` value and says whether it can be the channel.
+7 crates/shep-channel/src/endpoint.rs /// The floor of the Windows reader's sleep between peeks at an empty pipe.
+7 crates/shep-channel/src/endpoint.rs /// Reads the channel's named pipe without parking inside `ReadFile`.
+21 crates/shep-channel/src/endpoint.rs /// Takes the connected socket the shepherd handed this process, named by the
+5 crates/shep-channel/src/endpoint.rs // SAFETY: soundness rests on the shepherd naming a descriptor it
+
+20 crates/shep-channel/src/lib.rs //! Speak the shep shepherd channel: signal readiness, emit a metric,
+5 crates/shep-channel/src/lib.rs // Not `forbid`: `endpoint` needs unsafe to reach the channel. Three blocks
+
+16 crates/shep-channel/src/loops.rs /// Drives the reader side: reads one message, resolves it against
+6 crates/shep-channel/src/loops.rs // An `on_shutdown` handler that flushes and exits must
+
+7 crates/shep-channel/src/metric.rs /// The optional half of a metric sample: kind, labels and help text.
+
+14 crates/shep-channel/src/outbox.rs //! The queue between the app's threads and the one thread that writes.
+10 crates/shep-channel/src/outbox.rs /// Moves up to [`MAX_BATCH`] queued messages into `batch`, oldest
+13 crates/shep-channel/src/outbox.rs /// Records that the writer has returned, and closes. Idempotent.
+10 crates/shep-channel/src/outbox.rs /// Runs `drain(timeout)` on its own thread, bounded from outside the
+7 crates/shep-channel/src/outbox.rs /// Pins that `stop` closes as well as stops, which is what keeps a
+8 crates/shep-channel/src/outbox.rs /// The whole point of the in-flight count, and the one thing an
+
+7 crates/shep-channel/src/serve.rs /// Whether this process's channel is live right now.
+12 crates/shep-channel/src/serve.rs /// Registers a handler for one action name, replacing any prior one.
+7 crates/shep-channel/src/serve.rs /// Registers the handler run when the shepherd asks this app to stop.
+28 crates/shep-channel/src/serve.rs /// Waits for everything already queued to reach the shepherd.
+8 crates/shep-channel/src/serve.rs /// Records one metric sample. Never blocks and never fails.
+7 crates/shep-channel/src/serve.rs /// Opens this process's channel and starts serving it.
+10 crates/shep-channel/src/serve.rs // Without this thread, nothing drains the outbox.
+
+11 crates/shep-channel/src/wire.rs //! The shepherd channel: newline-JSON wire between the shepherd and each
+
+9 crates/shep-channel/tests/common/mod.rs /// Writes `produced` to `path` under [`BLESS`], and otherwise asserts the
+
+8 crates/shep-channel/tests/wire_export.rs // ChildMessage is one line the app writes to the shepherd.
+
+9 crates/shep-cli/src/cli/dogs.rs /// Grant a dog one permission it declared.
+
+12 crates/shep-cli/src/cli/flock.rs /// Keep the listing current: redraw it in place until Ctrl+C
+10 crates/shep-cli/src/cli/flock.rs /// Close the dashboard's action gate. Actions are permitted by default.
+
+14 crates/shep-cli/src/cli/hosts.rs /// Add a machine to the list
+
+8 crates/shep-cli/src/cli/import.rs /// Write a Flockfile from a pm2 dump. Starts nothing.
+19 crates/shep-cli/src/cli/import.rs /// Read a `.env` into the secret store and one sheep's own env.
+
+8 crates/shep-cli/src/cli/kv.rs /// Store a value in the shepherd's key/value store.
+
+10 crates/shep-cli/src/cli/logs.rs /// How many existing lines of each stream to print before following
+
+8 crates/shep-cli/src/cli/mod.rs /// Reach another host's shepherd over ssh
+
+41 crates/shep-cli/src/cli/sheep.rs /// Selectors, script paths, Flockfiles, or `-` to read Flockfile JSON
+8 crates/shep-cli/src/cli/sheep.rs /// Interpreter to run the script with, overriding both shep.toml's
+9 crates/shep-cli/src/cli/sheep.rs /// Widen a Flockfile load past its additive default: append nothing,
+10 crates/shep-cli/src/cli/sheep.rs /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
+
+14 crates/shep-cli/src/cli/verbs.rs /// Register a sheep without starting it.
+21 crates/shep-cli/src/cli/verbs.rs /// Serve a directory over plain HTTP, as a managed sheep.
+28 crates/shep-cli/src/cli/verbs.rs /// Restart one or more sheep.
+55 crates/shep-cli/src/cli/verbs.rs /// Reload one or more sheep, one instance at a time.
+22 crates/shep-cli/src/cli/verbs.rs /// Delete one or more sheep, or one or more dogs, from the flock, for
+15 crates/shep-cli/src/cli/verbs.rs /// Set how many instances one app runs — the stocking rate.
+12 crates/shep-cli/src/cli/verbs.rs /// List the flock.
+13 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog back on. A sheep named here has its disabled
+12 crates/shep-cli/src/cli/verbs.rs /// Stop a sheep and refuse to start it again until `shep enable`, or turn
+18 crates/shep-cli/src/cli/verbs.rs /// Vet a binary shep has never seen and register it as a dog: writes
+8 crates/shep-cli/src/cli/verbs.rs /// Describe one sheep in detail.
+11 crates/shep-cli/src/cli/verbs.rs /// Send a named action to matched sheep and report what each app
+14 crates/shep-cli/src/cli/verbs.rs /// Send a unix signal to matched sheep.
+13 crates/shep-cli/src/cli/verbs.rs /// Write one line to matched sheep's stdin.
+11 crates/shep-cli/src/cli/verbs.rs /// Watch the flock on a live dashboard.
+16 crates/shep-cli/src/cli/verbs.rs /// Serve the MCP interface on stdin/stdout for an AI agent.
+8 crates/shep-cli/src/cli/verbs.rs /// Read and write the key/value store: `shep kv get`, `shep kv set`, `shep kv unset`.
+22 crates/shep-cli/src/cli/verbs.rs /// Change one setting of a sheep or a dog: `shep set <address> <value>`.
+18 crates/shep-cli/src/cli/verbs.rs /// Drop an override, or remove a dog's key, so what was there before applies.
+16 crates/shep-cli/src/cli/verbs.rs /// Store the values a Flockfile refers to and never carries.
+41 crates/shep-cli/src/cli/verbs.rs /// Copy one setting, one dog's table, or a sheep's env from one sheep onto
+23 crates/shep-cli/src/cli/verbs.rs /// Print a sheep's or a dog's settings as TOML.
+20 crates/shep-cli/src/cli/verbs.rs /// Boot a shepherd in this process, run one Flockfile's flock in the
+12 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in an isolated, throwaway foreground
+23 crates/shep-cli/src/cli/verbs.rs /// Install an init unit so the shepherd starts at boot.
+
+21 crates/shep-cli/src/commands/admin.rs /// How long `kill` waits for the control address to stop answering after the
+7 crates/shep-cli/src/commands/admin.rs /// Stops a shepherd without the socket, for when the socket is the problem.
+
+14 crates/shep-cli/src/commands/bleats/mod.rs //! `bleats` (alias `logs`): following a sheep's log stream. The only
+7 crates/shep-cli/src/commands/bleats/mod.rs /// Writes one line, the backlog path and the follow path both through
+18 crates/shep-cli/src/commands/bleats/mod.rs /// Renders the selected files of every sheep the selector admits, in flock
+5 crates/shep-cli/src/commands/bleats/mod.rs // One file, one read. Several instances can resolve to one path: every
+8 crates/shep-cli/src/commands/bleats/mod.rs /// Handles one followed log line, shared by the `LogOut` and `LogErr` arms
+13 crates/shep-cli/src/commands/bleats/mod.rs /// [`bleats`] with the interrupt injected, so the Ctrl-C branch has a test
+14 crates/shep-cli/src/commands/bleats/mod.rs /// What a request whose link closed mid-flight means.
+9 crates/shep-cli/src/commands/bleats/mod.rs /// One step of the verb, raced against the operator's Ctrl+C.
+5 crates/shep-cli/src/commands/bleats/mod.rs // Backlog before subscribing, so a line in the gap is missed rather
+
+8 crates/shep-cli/src/commands/bleats/tests/follow.rs /// Depends on the default current-thread runtime: `overrun_by` pushes
+8 crates/shep-cli/src/commands/bleats/tests/follow.rs /// `write_outcome` already treats a `BrokenPipe` write as
+
+18 crates/shep-cli/src/commands/copy/address.rs //! The address grammar: a sheep name, then a path inside its config.
+12 crates/shep-cli/src/commands/copy/address.rs /// The key path inside a dog's table, resolved against what both sides hold.
+
+23 crates/shep-cli/src/commands/copy/mod.rs //! `shep copy`: one setting, one dog's whole table, or a sheep's env, from one
+8 crates/shep-cli/src/commands/copy/mod.rs /// The code that reports it.
+
+7 crates/shep-cli/src/commands/copy/plan.rs /// Writes `value` at `keys` under `root`, creating the tables on the way.
+
+11 crates/shep-cli/src/commands/daemon/lifecycle.rs /// Installs the subscriber that renders the daemon's own records, for the
+12 crates/shep-cli/src/commands/daemon/lifecycle.rs /// Builds [`BootOptions`] from `config`, the `daemon` subcommand's own
+9 crates/shep-cli/src/commands/daemon/lifecycle.rs // Every dog that EXISTS, which is not the list above: that one is
+
+9 crates/shep-cli/src/commands/daemon/reload.rs /// The first shep release whose shepherd can hand its flock to a successor.
+8 crates/shep-cli/src/commands/daemon/reload.rs /// The arm that reloads a shepherd reporting `daemon_version`.
+7 crates/shep-cli/src/commands/daemon/reload.rs /// Signals the shepherd to replace its own image in place, then waits for
+16 crates/shep-cli/src/commands/daemon/reload.rs /// What a reload does when [`admin::KILL_TEARDOWN_WAIT`] elapses with the
+9 crates/shep-cli/src/commands/daemon/reload.rs /// Stops the shepherd, waits it out, starts a successor, and musters.
+
+9 crates/shep-cli/src/commands/daemon/reload_report.rs /// Reports the shepherd now serving, then what happened to each sheep.
+8 crates/shep-cli/src/commands/daemon/reload_report.rs /// Reports the dogs that could not come back, once the shepherd has heard
+9 crates/shep-cli/src/commands/daemon/reload_report.rs /// The sentence for dogs that had not answered within the reload's settle
+
+19 crates/shep-cli/src/commands/dev.rs /// Where a dev flock lives: `$SHEP_DEV_HOME`, else `~/.shep-dev`.
+
+7 crates/shep-cli/src/commands/dial_stdio.rs /// Copies bytes between stdin/stdout and the shepherd at `paths.socket`, then
+10 crates/shep-cli/src/commands/dial_stdio.rs /// Connects to the shepherd at `socket` and runs [`bridge`] over it.
+
+15 crates/shep-cli/src/commands/dog_migration.rs //! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once.
+5 crates/shep-cli/src/commands/dog_migration.rs // Take `dogs.toml`'s lock, so the read and merge below are one
+28 crates/shep-cli/src/commands/dog_migration.rs /// What `shep adopt` does with a manifest's `defaults`: writes them as
+7 crates/shep-cli/src/commands/dog_migration.rs // The parsed document's root table is implicit, holding the defaults'
+9 crates/shep-cli/src/commands/dog_migration.rs /// Every name `table` declares a value for under `[dog]`.
+8 crates/shep-cli/src/commands/dog_migration.rs /// Whether `value` holds nothing an operator could lose by not moving it.
+7 crates/shep-cli/src/commands/dog_migration.rs /// The highest render position any table inside `item` holds, or `None`
+7 crates/shep-cli/src/commands/dog_migration.rs /// Walks `item` depth-first and gives every table it holds the next document
+7 crates/shep-cli/src/commands/dog_migration.rs /// Writes `rendered` to `path`: staged in a sibling temp file at
+7 crates/shep-cli/src/commands/dog_migration.rs /// Exact string: it pins both that the destination keeps its own
+11 crates/shep-cli/src/commands/dog_migration.rs /// Fails if a destination with nested or array-of-tables sections puts
+7 crates/shep-cli/src/commands/dog_migration.rs /// Fails if an empty `[dog.<name>]` can stop a shepherd booting.
+8 crates/shep-cli/src/commands/dog_migration.rs /// Fails if a boot with nothing to migrate opens `shep.toml` for
+7 crates/shep-cli/src/commands/dog_migration.rs /// How many times [`a_boot_migration_and_a_dog_config_write_at_once_both_land`]
+24 crates/shep-cli/src/commands/dog_migration.rs /// The two `dogs.toml` writers this test races, both named in this
+
+7 crates/shep-cli/src/commands/dogs/adopt.rs // A home that still holds `[dog.<name>]` values in `shep.toml` must
+14 crates/shep-cli/src/commands/dogs/adopt.rs /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
+9 crates/shep-cli/src/commands/dogs/adopt.rs /// The file names a bare command could resolve to in one `$PATH` directory.
+8 crates/shep-cli/src/commands/dogs/adopt.rs /// Whether `name` already names a built-in verb or one of its visible
+
+8 crates/shep-cli/src/commands/dogs/barks.rs /// `shep barks`: the alert history, newest last.
+
+18 crates/shep-cli/src/commands/dogs/enable.rs /// The first enable of a dog: shows what it declares and asks whether to
+
+19 crates/shep-cli/src/commands/dogs/mod.rs //! `shep enable`/`shep disable`/`shep adopt`/`shep delete <dog>`: turning a
+7 crates/shep-cli/src/commands/dogs/mod.rs // `pub(crate)` re-exports: reached from other modules by their original
+9 crates/shep-cli/src/commands/dogs/mod.rs /// Where `name`'s binary comes from, according to `cfg`.
+
+14 crates/shep-cli/src/commands/dogs/remove.rs //! The one removal an adopted dog has, run by `shep delete <name>` and by
+
+14 crates/shep-cli/src/commands/dogs/upgrade.rs //! The upgrade path of a dog's grants: what a shep that first knows about
+
+10 crates/shep-cli/src/commands/dogs/vet/manifest.rs /// What a binary's manifest answered. Three answers, in the shape
+10 crates/shep-cli/src/commands/dogs/vet/manifest.rs /// What the cache already holds for `path`, and nothing else: this never
+
+14 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Vets `path` as a dog binary, before anything is written to `shep.toml`.
+9 crates/shep-cli/src/commands/dogs/vet/mod.rs /// The whole environment a dog is run with here: what the daemon would give
+7 crates/shep-cli/src/commands/dogs/vet/mod.rs /// SIGKILLs the probe, and on unix everything it forked
+11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Asks `path` for its config schema with [`SCHEMA_FLAG`], and reads the
+11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// How long [`ask`] gives a binary to answer one probe flag, and separately
+9 crates/shep-cli/src/commands/dogs/vet/mod.rs /// The most a probe will read from a candidate, per spawn.
+7 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Drains `stdout` to end on a thread, handing the text back through the
+11 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Waits, bounded by `budget`, for `child` to answer, and returns what it
+7 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Catches the one way [`vet_binary`]'s `Command::spawn` can succeed for a
+14 crates/shep-cli/src/commands/dogs/vet/mod.rs /// Warns, before `restart` sends anything, about a dog whose binary on disk
+
+11 crates/shep-cli/src/commands/foreground.rs /// Boots a shepherd in this process, starts `options.apps`, streams their
+5 crates/shep-cli/src/commands/foreground.rs // Sized to the stages this flock plans, not to a flat `START_DEADLINE`.
+
+12 crates/shep-cli/src/commands/hook.rs //! [`run_on_remove`]: asking a dog to clean up after itself.
+7 crates/shep-cli/src/commands/hook.rs /// The dog ran and shep could not collect what it did: a pipe read
+9 crates/shep-cli/src/commands/hook.rs /// Runs `binary`'s hook, bounded by `budget`.
+7 crates/shep-cli/src/commands/hook.rs // Both failure arms take the ladder, because both can leave a
+7 crates/shep-cli/src/commands/hook.rs /// SIGKILLs the process group `leader` leads, which `kill_on_drop` does
+10 crates/shep-cli/src/commands/hook.rs /// `raw` as UTF-8, stripped of anything that could drive a terminal.
+7 crates/shep-cli/src/commands/hook.rs /// The budget for the tests that wait for the dog to reach some point
+10 crates/shep-cli/src/commands/hook.rs /// fails if the kill at the budget reaches the dog and not what it
+6 crates/shep-cli/src/commands/hook.rs // Watch for the survivor under a generous bound rather than check
+
+28 crates/shep-cli/src/commands/import/dotenv/mod.rs //! `shep import env`: reading a `.env` into shep's stores.
+9 crates/shep-cli/src/commands/import/dotenv/mod.rs /// Reads `args.file` into the secret store and `args.app`'s own env.
+
+12 crates/shep-cli/src/commands/import/dotenv/parse.rs //! The `.env` grammar, and nothing else.
+7 crates/shep-cli/src/commands/import/dotenv/parse.rs /// An unquoted value: the rest of the line, trimmed, with the trailing
+
+12 crates/shep-cli/src/commands/import/pm2/dump.rs //! Reading a pm2 dump into rows.
+
+8 crates/shep-cli/src/commands/import/pm2/env.rs /// Splits one row's environment into what a Flockfile should carry and what
+
+11 crates/shep-cli/src/commands/import/pm2/mod.rs /// Reads a pm2 dump into apps and writes them out as a Flockfile.
+5 crates/shep-cli/src/commands/import/pm2/mod.rs // `--force` truncates unconditionally: `std::fs::write` is exactly right.
+
+8 crates/shep-cli/src/commands/lifecycle/configure.rs /// Gives every app that set no `cwd` the Flockfile's own directory
+11 crates/shep-cli/src/commands/lifecycle/configure.rs /// Merges the Flockfile's declaration into each app the flock already has,
+
+13 crates/shep-cli/src/commands/lifecycle/deadline.rs /// Slack the client allows PER APP over the summed readiness deadlines of a
+29 crates/shep-cli/src/commands/lifecycle/deadline.rs /// The deadline a staged start needs.
+
+24 crates/shep-cli/src/commands/lifecycle/operational.rs /// Restarts the sheep matching `args.selector`
+6 crates/shep-cli/src/commands/lifecycle/operational.rs // The refused apps have nowhere else to go from here. Stdout stayed
+18 crates/shep-cli/src/commands/lifecycle/operational.rs /// Reloads the sheep matching `args.selector`, replacing each instance with
+7 crates/shep-cli/src/commands/lifecycle/operational.rs /// What a refused app inside an otherwise successful walk exits with
+11 crates/shep-cli/src/commands/lifecycle/operational.rs /// The tail `restart` and `reload` share: what a walk that refused part of
+7 crates/shep-cli/src/commands/lifecycle/operational.rs /// One line for the apps `verb` could not reach, or `None` when it reached
+
+21 crates/shep-cli/src/commands/lifecycle/remove.rs //! `shep delete`: the one way to remove a sheep or a dog, and it sticks.
+27 crates/shep-cli/src/commands/lifecycle/remove.rs /// `shep delete <selectors...>`
+
+10 crates/shep-cli/src/commands/lifecycle/respawn.rs /// Brings every sheep in `matched` up, and reports the ones that were already
+
+8 crates/shep-cli/src/commands/lifecycle/selectors.rs /// Which sheep in `flock` a `start` target names
+
+8 crates/shep-cli/src/commands/lifecycle/start.rs /// Registers what `args` resolves to and starts none of it
+8 crates/shep-cli/src/commands/lifecycle/start.rs /// Writes `--no-log-timestamps` onto each sheep the flock already has
+6 crates/shep-cli/src/commands/lifecycle/start.rs // Returns rather than falling through: a token that resolved
+
+9 crates/shep-cli/src/commands/lifecycle/tests/configure.rs /// Every selector-taking verb must send a compiled `SelectorSpec` inside
+7 crates/shep-cli/src/commands/lifecycle/tests/configure.rs // fails if a staged verb goes out on the client's 5s
+
+5 crates/shep-cli/src/commands/lifecycle/tests/deadline.rs // fails if the client's slack is flat: the daemon spends
+
+10 crates/shep-cli/src/commands/lifecycle/tests/dogs.rs /// Wall-clock tests, skipped by every CI job but the serial `slow` one
+
+8 crates/shep-cli/src/commands/lifecycle/tests/mod.rs /// The apps inside the envelope [`next_start`] handed back
+7 crates/shep-cli/src/commands/lifecycle/tests/mod.rs /// The answer a dog gives when its binary was built against a
+
+10 crates/shep-cli/src/commands/lifecycle/tests/operational.rs /// fails if a JSON walk whose envelope never printed drops the refused
+
+7 crates/shep-cli/src/commands/lifecycle/toggle.rs /// The sheep half of [`toggle`], against a connected shepherd
+
+11 crates/shep-cli/src/commands/logs.rs /// Reopens the log files of the sheep matching `args.selector`, for an
+10 crates/shep-cli/src/commands/logs.rs /// Empties the log files of the sheep matching `args.selector`: the daemon
+10 crates/shep-cli/src/commands/logs.rs /// Empties the shepherd's own two log files: `shep flush --daemon`.
+
+19 crates/shep-cli/src/commands/muster.rs /// Asks the daemon to assemble the flock from the muster roll `save` wrote,
+
+20 crates/shep-cli/src/commands/query/dog_browsing.rs /// Lists the dogs published in the community index: `shep dogs --available`
+
+8 crates/shep-cli/src/commands/query/fleet.rs /// This machine's flock and then each of `hosts`, one table apiece, or under
+
+7 crates/shep-cli/src/commands/query/flock_display.rs /// [`flock`] for the shepherd `origin` names, as typed after `--host`, or this
+7 crates/shep-cli/src/commands/query/flock_display.rs /// One listing's tables: the host strip and a blank line above them in the
+13 crates/shep-cli/src/commands/query/flock_display.rs /// What the shepherd says the machine is doing, or `None` where it will not
+16 crates/shep-cli/src/commands/query/flock_display.rs /// `shep flock --follow`: the same listing, painted over itself every
+5 crates/shep-cli/src/commands/query/flock_display.rs // The hook covers a panic, the guard covers every other way out of this
+5 crates/shep-cli/src/commands/query/flock_display.rs // One reading, used twice. Measured before the frame is built
+6 crates/shep-cli/src/commands/query/flock_display.rs // Not discarded. A follow whose terminal has gone (the emulator
+7 crates/shep-cli/src/commands/query/flock_display.rs /// The version-skew arm, and the reason a refusal is silent: a shepherd
+
+15 crates/shep-cli/src/commands/query/secret_inspection.rs /// `describe` and `flock_display::fold`'s shared body: one `Request::Describe` against
+11 crates/shep-cli/src/commands/query/secret_inspection.rs /// Renders one sheep's secret references the way `describe`'s table form
+33 crates/shep-cli/src/commands/query/secret_inspection.rs /// `describe`'s secrets section for `procs`, once per distinct sheep name:
+
+20 crates/shep-cli/src/commands/query/terminal_fitting.rs /// Trims `frame` to what a terminal `columns` wide and `rows` tall shows,
+6 crates/shep-cli/src/commands/query/terminal_fitting.rs // `budget - used` rather than the whole notice: a window too narrow to
+10 crates/shep-cli/src/commands/query/terminal_fitting.rs /// fails if a frame that fits gets trimmed anyway. Three lines in a
+
+11 crates/shep-cli/src/commands/reap.rs /// Runs as PID 1: spawns the supervisor, forwards signals to it, and reaps
+
+12 crates/shep-cli/src/commands/secret.rs //! `shep secret`: the CLI half of [`shep_core::secrets`].
+8 crates/shep-cli/src/commands/secret.rs /// The exit code each [`SecretError`] maps to.
+14 crates/shep-cli/src/commands/secret.rs /// `shep.toml` as this verb reads it, or the defaults when there is no file
+22 crates/shep-cli/src/commands/secret.rs /// `--stdin`'s value: `reader`'s bytes, with at most one trailing `\n`
+23 crates/shep-cli/src/commands/secret.rs /// `shep secret get <key> [--env <environment>]`.
+16 crates/shep-cli/src/commands/secret.rs /// What `key` resolves to in `host_environment`: that environment's own
+
+11 crates/shep-cli/src/commands/serve.rs //! `shep serve`: registers a static file server as a managed sheep, or,
+8 crates/shep-cli/src/commands/serve.rs /// The sheep's own command line, rebuilt from the flags rather than from
+
+13 crates/shep-cli/src/commands/settings/mod.rs //! The settings screen's own reader and writer: the one place `shep.toml`'s
+7 crates/shep-cli/src/commands/settings/mod.rs /// The permissions the settings screen offers as a checklist under this
+13 crates/shep-cli/src/commands/settings/mod.rs /// The checklist the settings screen offers under `name`'s `grants` row.
+
+19 crates/shep-cli/src/commands/settings_read.rs //! `shep get <name>[.<path>]`: one read for any settings in the flock.
+11 crates/shep-cli/src/commands/settings_read.rs /// One dog's own section, or the fragment of it the address named.
+5 crates/shep-cli/src/commands/settings_read.rs // A dog in the flock with nothing written for it is a different answer
+7 crates/shep-cli/src/commands/settings_read.rs /// The sentence for a dog the flock has and `dogs.toml` says nothing about.
+8 crates/shep-cli/src/commands/settings_read.rs /// The key path inside a dog's section that the segments after its name name.
+6 crates/shep-cli/src/commands/settings_read.rs // One lookup for the key `longest_toml_key` found, not one per segment
+9 crates/shep-cli/src/commands/settings_read.rs // A map with no keys at all is a table the operator wrote a header
+
+5 crates/shep-cli/src/commands/settings_write/flow.rs // The ask waits on the dog's own `action_timeout`, which is a second
+17 crates/shep-cli/src/commands/settings_write/flow.rs /// The check that the holder still holds what the plan was built from.
+
+40 crates/shep-cli/src/commands/settings_write/mod.rs //! `shep set <address> <value>` and `shep unset <address>`: one write for any
+8 crates/shep-cli/src/commands/settings_write/mod.rs /// The code that reports it.
+18 crates/shep-cli/src/commands/settings_write/mod.rs /// The dog an address names.
+
+9 crates/shep-cli/src/commands/settings_write/plan.rs // A table the sheep already holds is not replaced by a value that is not
+17 crates/shep-cli/src/commands/settings_write/plan.rs /// The plan for one dog's section, edited in place.
+7 crates/shep-cli/src/commands/settings_write/plan.rs /// Every property path under `keys` that `value` puts a leaf at.
+7 crates/shep-cli/src/commands/settings_write/plan.rs /// The refusal for a value the dog's own schema turns down, or `None` when no
+
+7 crates/shep-cli/src/commands/settings_write/schema.rs /// A dog the shepherd knows, which is a wider set than the dogs it runs.
+
+19 crates/shep-cli/src/commands/settings_write/unset.rs //! `shep unset <address>`: the undo for `shep set`.
+
+7 crates/shep-cli/src/commands/settings_write/value.rs /// The dotted path of the first `nan` or `inf` under `value`, `None` when it
+
+12 crates/shep-cli/src/commands/shep_toml/mod.rs //! `$SHEP_HOME/shep.toml`, the daemon's own config file, read and rewritten
+10 crates/shep-cli/src/commands/shep_toml/mod.rs /// The one writer of `$SHEP_HOME/shep.toml` in this binary.
+9 crates/shep-cli/src/commands/shep_toml/mod.rs /// Renders the in-memory document exactly as [`Self::save`] would
+9 crates/shep-cli/src/commands/shep_toml/mod.rs /// Removes the whole `[dog]` table and hands back what was under it,
+9 crates/shep-cli/src/commands/shep_toml/mod.rs /// Forgets `name`'s adoption in this file: out of `enabled_dogs`,
+9 crates/shep-cli/src/commands/shep_toml/mod.rs /// Writes the starter `[interpreters]` mapping, a script extension to
+10 crates/shep-cli/src/commands/shep_toml/mod.rs /// Creates `dir` (and any missing parent) at `boot::DIR_MODE` directly,
+
+7 crates/shep-cli/src/commands/shep_toml/tests/dogs.rs /// Three keys under `[daemon]` are written by the dog verbs and hand-edited
+
+9 crates/shep-cli/src/commands/shep_toml/tests/mod.rs /// Asserts a write over [`PRESERVATION_SEED`] kept every comment the seed
+
+12 crates/shep-cli/src/commands/startup/mod.rs //! `shep startup`/`unstartup`: installs and removes the init unit that
+
+7 crates/shep-cli/src/commands/startup/privilege_check.rs /// Whether `user` can appear in a BSD rc script's variable names.
+
+7 crates/shep-cli/src/commands/startup/step_execution.rs /// Installs the init unit that starts the shepherd at boot.
+14 crates/shep-cli/src/commands/startup/step_execution.rs /// Writes and enables the unit, or prints the command that would.
+7 crates/shep-cli/src/commands/startup/step_execution.rs /// Disables and removes the unit, or prints the command that would.
+8 crates/shep-cli/src/commands/startup/step_execution.rs /// Quotes one word of a printed command so the line can be pasted rather
+
+7 crates/shep-cli/src/commands/startup/testing.rs /// The unit path a `target_resolution::StartupPlan` built for a test points at, so `step_execution::install`
+
+11 crates/shep-cli/src/commands/startup/unit.rs //! Rendering the five init-system units shep can start at boot: a systemd
+14 crates/shep-cli/src/commands/startup/unit.rs /// Renders the systemd unit, `Type=notify`.
+11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the openrc init script.
+11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the FreeBSD `rc.d` script, `/usr/local/etc/rc.d/shep_<user>`.
+11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the OpenBSD `rc.d` script, `/etc/rc.d/shep_<user>`.
+7 crates/shep-cli/src/commands/startup/unit.rs /// Escapes a value that lands inside a double-quoted shell assignment:
+9 crates/shep-cli/src/commands/startup/unit.rs /// systemd's own parser is the only thing that can say the generated
+
+7 crates/shep-cli/src/commands/startup/unit_layout.rs /// The notice [`install`](crate::commands::startup::step_execution::install) prints when `$SUDO_USER` was set: `None` if it
+7 crates/shep-cli/src/commands/startup/unit_layout.rs /// Which init a Linux host running these two probes is on.
+9 crates/shep-cli/src/commands/startup/unit_layout.rs /// The init system this host is actually running, or `None` when it is one
+
+11 crates/shep-cli/src/commands/whisper.rs //! `whisper`: write one line to matched sheep's stdin.
+
+11 crates/shep-cli/src/dog/bark/clock.rs //! The bark dog's wall clock: the one reader of `SystemTime`, and what a
+
+8 crates/shep-cli/src/dog/bark/config.rs /// The sinks map carries the credential marker, every sink's own URL
+
+8 crates/shep-cli/src/dog/bark/delivery.rs /// Everything a delivery needs, so the five values that travel together
+30 crates/shep-cli/src/dog/bark/delivery.rs /// Delivers `firing` to each of its named sinks, then writes the resulting
+12 crates/shep-cli/src/dog/bark/delivery.rs /// A dead endpoint's timeout must run beside the healthy sinks, not
+8 crates/shep-cli/src/dog/bark/delivery.rs /// fails if the ring write parks the tokio worker instead of
+6 crates/shep-cli/src/dog/bark/delivery.rs // The hold must be real before the delivery starts, or the
+
+14 crates/shep-cli/src/dog/bark/event_loop.rs /// Bark's loop: subscribe for speed, poll for correctness. Ends on
+5 crates/shep-cli/src/dog/bark/event_loop.rs // One connection generation ended. Usually the
+5 crates/shep-cli/src/dog/bark/event_loop.rs // Reconcile whichever daemon answered.
+8 crates/shep-cli/src/dog/bark/event_loop.rs /// The poll timer for `period`.
+8 crates/shep-cli/src/dog/bark/event_loop.rs /// Fails if a slow sink stalls the loop: a bark dog that stops reading
+5 crates/shep-cli/src/dog/bark/event_loop.rs // Empty on purpose. A re-subscribe reconciles, and a flock with
+9 crates/shep-cli/src/dog/bark/event_loop.rs /// Fails if a `config.dog.bark` frame does not reach bark's sinks: the
+
+16 crates/shep-cli/src/dog/bark/mod.rs //! `shep dog bark`: the webhook-alert dog.
+11 crates/shep-cli/src/dog/bark/mod.rs /// Runs the bark dog until it is signalled.
+
+11 crates/shep-cli/src/dog/bark/rules/mod.rs //! What makes a bark fire: [`Rule`], [`Trigger`] and the [`Rules`] engine
+11 crates/shep-cli/src/dog/bark/rules/mod.rs /// `kind`'s wire spelling, the string `kinds` in a rule names it by.
+8 crates/shep-cli/src/dog/bark/rules/mod.rs /// The subject's entry in `subjects`, created on first sight.
+13 crates/shep-cli/src/dog/bark/rules/mod.rs /// Builds the engine, refusing a configuration that cannot work.
+7 crates/shep-cli/src/dog/bark/rules/mod.rs /// Whether a `RestartRate` rule has accumulated `threshold` or more
+
+10 crates/shep-cli/src/dog/bark/rules/tests/mod.rs /// The name promises an alert, so the test asks for one. The rules come in
+8 crates/shep-cli/src/dog/bark/rules/tests/mod.rs /// [`wire_spelling`] hand-lists the spellings instead of reading
+
+13 crates/shep-cli/src/dog/bark/sinks.rs //! Bark's sinks: [`Sink`], the pure [`render_body`], and the async
+10 crates/shep-cli/src/dog/bark/sinks.rs /// One named entry under `[bark.sinks]`.
+18 crates/shep-cli/src/dog/bark/sinks.rs /// Refuses a sink whose url cannot work: a Discord or Slack webhook over
+8 crates/shep-cli/src/dog/bark/sinks.rs /// Substitutes `{subject}`, `{rule}`, `{message}` and `{at_ms}` in
+8 crates/shep-cli/src/dog/bark/sinks.rs /// `s`, escaped for use inside a JSON string's quotes, not a JSON string
+11 crates/shep-cli/src/dog/bark/sinks.rs /// Reads the status line off `stream`; a 2xx reply is read no further. A
+
+14 crates/shep-cli/src/dog/bark/source.rs /// Replaces the topics this source listens to, on the live connection.
+7 crates/shep-cli/src/dog/bark/source.rs /// Why bark could not arm a fresh subscription.
+24 crates/shep-cli/src/dog/bark/source.rs /// The `Subscribe` did not succeed and waiting cannot change that.
+8 crates/shep-cli/src/dog/bark/source.rs /// What bark re-asks its own `[bark]` section through, so a config change
+5 crates/shep-cli/src/dog/bark/source.rs // Checked here rather than left to `connected_within`, which
+6 crates/shep-cli/src/dog/bark/source.rs // Bounded by what is left rather than by the request's own
+7 crates/shep-cli/src/dog/bark/source.rs /// fails if the production adapter cannot arm a second subscription
+8 crates/shep-cli/src/dog/bark/source.rs /// fails if the adapter treats a shepherd that answers and refuses as
+
+7 crates/shep-cli/src/dog/bark/testing.rs /// A sink that accepts one connection and then never answers, plus a
+7 crates/shep-cli/src/dog/bark/testing.rs /// [`slow_sink`], plus the handle that ends the hang.
+
+7 crates/shep-cli/src/dog/metrics/config.rs /// `[dog.metrics]`.
+7 crates/shep-cli/src/dog/metrics/config.rs /// Base URL of an OTLP/HTTP collector, `http://` or `https://`. Absent
+
+8 crates/shep-cli/src/dog/metrics/exposition.rs /// `ProcStatus`'s label value, the same spelling [`ProcStatus`]'s own
+8 crates/shep-cli/src/dog/metrics/exposition.rs /// Renders `reading` as Prometheus text exposition, format version 0.0.4.
+8 crates/shep-cli/src/dog/metrics/exposition.rs /// The exposition of [`golden_reading`], byte for byte, as the code
+7 crates/shep-cli/src/dog/metrics/exposition.rs /// The [`Reading`] [`GOLDEN_EXPOSITION`] was captured from: one plain
+
+9 crates/shep-cli/src/dog/metrics/feed.rs /// Whether `kind` means the samples this sender sent belong to an instance
+9 crates/shep-cli/src/dog/metrics/feed.rs // Still the instance that is serving. `Online` follows a `Start` this
+9 crates/shep-cli/src/dog/metrics/feed.rs /// A replay of what a completed swap puts on the bus, read from the
+
+11 crates/shep-cli/src/dog/metrics/mod.rs //! The metrics dog: [`MetricsConfig`], [`run`], and the data types
+12 crates/shep-cli/src/dog/metrics/mod.rs /// [`sample_host`] on the blocking pool, awaited.
+13 crates/shep-cli/src/dog/metrics/mod.rs /// Asks the shepherd for the flock and pairs that answer with the
+15 crates/shep-cli/src/dog/metrics/mod.rs /// Runs the metrics dog until it is signalled.
+9 crates/shep-cli/src/dog/metrics/mod.rs /// fails if a metrics dog whose shepherd is gone waits for it
+
+21 crates/shep-cli/src/dog/metrics/otlp/encode.rs //! The OTLP/JSON mapping for a [`Reading`]: the same series
+10 crates/shep-cli/src/dog/metrics/otlp/encode.rs /// Encodes `reading` as one OTLP/JSON `ExportMetricsServiceRequest` body.
+
+12 crates/shep-cli/src/dog/metrics/otlp/encode/payload.rs //! The OTLP/JSON payload shape, as types: `ExportMetricsServiceRequest`
+8 crates/shep-cli/src/dog/metrics/otlp/encode/payload.rs /// `metrics[]`. Exactly one of `gauge` or `sum` is set, which is how OTLP
+
+11 crates/shep-cli/src/dog/metrics/otlp/encode/samples.rs /// When `info`'s current instance started, floored to a whole second.
+9 crates/shep-cli/src/dog/metrics/otlp/encode/samples.rs /// One `metrics[]` entry per [`SampleFamily`], in the store's own name order,
+
+7 crates/shep-cli/src/dog/metrics/otlp/encode/samples/tests.rs /// The other half of the same rule: for one instance the start must not
+
+10 crates/shep-cli/src/dog/metrics/otlp/encode/tests.rs /// The drift guard: every name the exposition emits, with its `# TYPE`,
+
+12 crates/shep-cli/src/dog/metrics/otlp/mod.rs //! OTLP/HTTP export: `[dog.metrics] otlp_*`, the interval loop that pushes
+10 crates/shep-cli/src/dog/metrics/otlp/mod.rs /// One export per `interval`, until the process ends.
+10 crates/shep-cli/src/dog/metrics/otlp/mod.rs /// A 500 is a failed export, and a failed export is a log line: the
+
+16 crates/shep-cli/src/dog/metrics/otlp/reply.rs /// Why a collector's 2xx answer says it dropped points, `None` when it took
+
+11 crates/shep-cli/src/dog/metrics/samples.rs //! The channel samples the metrics dog keeps between scrapes.
+8 crates/shep-cli/src/dog/metrics/samples.rs /// Records `metric` from `sender`, replacing whatever that sender already
+12 crates/shep-cli/src/dog/metrics/samples.rs /// Every retained sample, grouped into one [`SampleFamily`] per metric
+
+11 crates/shep-cli/src/dog/mod.rs //! `shep dog <name>`: the hidden re-exec target a built-in dog runs as, and
+22 crates/shep-cli/src/dog/mod.rs /// How long a dog waits for a shepherd to answer again before it gives up
+7 crates/shep-cli/src/dog/mod.rs /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
+12 crates/shep-cli/src/dog/mod.rs /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
+
+8 crates/shep-cli/src/lookout/app/action.rs /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
+7 crates/shep-cli/src/lookout/app/action.rs /// Arms a confirm, or refuses and says why.
+7 crates/shep-cli/src/lookout/app/action.rs // `self.held` as well as `self.action`, the same pair
+
+5 crates/shep-cli/src/lookout/app/bleats/keys.rs // Named here only to keep this keymap exhaustive: the guard above
+6 crates/shep-cli/src/lookout/app/bleats/keys.rs // `N`: the same, toward the oldest matching line, through
+7 crates/shep-cli/src/lookout/app/bleats/keys.rs /// Scrolls the bleats pane back by `amount`, then holds the offset at the
+6 crates/shep-cli/src/lookout/app/bleats/keys.rs // Asserts a rendered FEED line, tagged `out`, not merely that the
+47 crates/shep-cli/src/lookout/app/bleats/keys.rs /// `ctrl-u`/`ctrl-d` move by a body height rather than a line, and the
+7 crates/shep-cli/src/lookout/app/bleats/keys.rs /// The same, walking `ctrl-d` instead. Its own test because its own
+14 crates/shep-cli/src/lookout/app/bleats/keys.rs /// `n` with no match axis set does nothing, rather than quietly becoming
+5 crates/shep-cli/src/lookout/app/bleats/keys.rs // 60 double-width characters are 120 display columns. The body is
+
+14 crates/shep-cli/src/lookout/app/bleats/mod.rs /// The row whose log files the feed should read: the bleats pane's
+12 crates/shep-cli/src/lookout/app/bleats/mod.rs /// The pane opens on whatever was selected and pins it: full screen
+8 crates/shep-cli/src/lookout/app/bleats/mod.rs /// The same regression as [`the_feed_follows_the_pinned_sheep_when_the_selection_moves`],
+
+14 crates/shep-cli/src/lookout/app/close_dialog/dialog_model.rs /// The question `esc` asks when a pane closes over changes the running
+8 crates/shep-cli/src/lookout/app/close_dialog/dialog_model.rs /// One, over `unsent` filed edits and `parked` fields, reading
+7 crates/shep-cli/src/lookout/app/close_dialog/dialog_model.rs // `value` renders the pane's own map as JSON and `instances`
+8 crates/shep-cli/src/lookout/app/close_dialog/dialog_model.rs /// The gap that let a second held verb through: two `R` answers in a
+5 crates/shep-cli/src/lookout/app/close_dialog/dialog_model.rs // `app_in_sheep_pane` parks `kill_signal` unconditionally
+
+13 crates/shep-cli/src/lookout/app/close_dialog/verb_commit.rs /// A verb the close dialog chose, waiting on the writes it must follow.
+18 crates/shep-cli/src/lookout/app/close_dialog/verb_commit.rs /// Writes the pane's filed set and closes both the dialog and the
+6 crates/shep-cli/src/lookout/app/close_dialog/verb_commit.rs // Nothing goes to a shepherd that is gone. The menu this dialog
+12 crates/shep-cli/src/lookout/app/close_dialog/verb_commit.rs /// One pane write's answer, matched against the held batch by its own
+11 crates/shep-cli/src/lookout/app/close_dialog/verb_commit.rs /// Nothing goes to a shepherd that is gone.
+
+8 crates/shep-cli/src/lookout/app/config_pane.rs /// Which screen asked for a sheep's config.
+13 crates/shep-cli/src/lookout/app/config_pane.rs /// One `Request::SheepConfig` reply. Opens the pane, or refreshes an
+6 crates/shep-cli/src/lookout/app/config_pane.rs // `None` only if something outside this file set
+5 crates/shep-cli/src/lookout/app/config_pane.rs // Prefixed, like every other reply handler in this file: the
+9 crates/shep-cli/src/lookout/app/config_pane.rs /// Opens the config pane on `view`, or refreshes one already open in
+13 crates/shep-cli/src/lookout/app/config_pane.rs /// Sends `Request::SheepConfig` for `name`, recording which screen it is
+9 crates/shep-cli/src/lookout/app/config_pane.rs /// `r` from inside a pane: ask for the same target again, by whichever
+15 crates/shep-cli/src/lookout/app/config_pane.rs /// Drops the open pane and everything a reply for it would re-open.
+8 crates/shep-cli/src/lookout/app/config_pane.rs /// The refusal a locked row gets, in that row's own words.
+7 crates/shep-cli/src/lookout/app/config_pane.rs /// The sibling above pins the order where the settings read wins. This
+
+9 crates/shep-cli/src/lookout/app/config_pane_edits/close_reread.rs /// `Escape` on a dog pane, or a sheep pane whose dogs hold tables with
+7 crates/shep-cli/src/lookout/app/config_pane_edits/close_reread.rs /// `r` sends a plain read that is still out when `Escape` follows.
+
+21 crates/shep-cli/src/lookout/app/config_pane_edits/confirm_field.rs /// The operator's `Enter` on the config pane. Seven meanings, picked in
+
+17 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs /// Everything the open pane has filed, as the requests that carry it,
+7 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs // The gate is the one `shep set` uses, asked about
+6 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs // No client-side validation, deliberately: the
+
+23 crates/shep-cli/src/lookout/app/config_pane_edits/file_edit.rs /// One `Request::SetSheepField` reply.
+
+8 crates/shep-cli/src/lookout/app/config_pane_edits/pane_text_key.rs /// The config pane's own text keymap, in force for as long as one of
+
+12 crates/shep-cli/src/lookout/app/config_pane_edits/restore_default.rs /// `d` on the config pane's field list. Files an edit that removes the
+
+11 crates/shep-cli/src/lookout/app/config_pane_edits/table_gate.rs //! What the write gate does not do: refuse a value the close changed nothing
+
+14 crates/shep-cli/src/lookout/app/config_pane_keys.rs /// The config pane's own keymap, in force for as long as
+7 crates/shep-cli/src/lookout/app/config_pane_keys.rs // Unreachable: the guard above already returned. Kept rather
+13 crates/shep-cli/src/lookout/app/config_pane_keys.rs // Backs out one level at a time: the close dialog's own
+14 crates/shep-cli/src/lookout/app/config_pane_keys.rs // `D` arms the removal of the env key under the cursor, `Enter`
+5 crates/shep-cli/src/lookout/app/config_pane_keys.rs // `tab` and `shift-tab` walk the groups; a digit jumps straight
+
+10 crates/shep-cli/src/lookout/app/dog_pane.rs /// One `Request::DogConfig` reply: the dog's section, which is the
+9 crates/shep-cli/src/lookout/app/dog_pane.rs /// The settings screen's own half of a `Request::DogConfig` reply: the
+7 crates/shep-cli/src/lookout/app/dog_pane.rs /// Replaces the open pane with one over `toml`, and returns how many of
+10 crates/shep-cli/src/lookout/app/dog_pane.rs /// One `Request::SetDogConfig` reply.
+
+11 crates/shep-cli/src/lookout/app/feed_keys.rs /// The feed keys both screens claim, run ahead of each pane's own keymap.
+9 crates/shep-cli/src/lookout/app/feed_keys.rs /// The armed-confirm prelude, run ahead of the dashboard's keymap and
+8 crates/shep-cli/src/lookout/app/feed_keys.rs /// The match box, in force while a feed owns [`InputMode::Text`].
+
+8 crates/shep-cli/src/lookout/app/focus.rs /// The half of the ask that outlives the first flock answer, keyed to the
+14 crates/shep-cli/src/lookout/app/focus.rs /// The first flock answer's chance to open the screen the command line
+
+6 crates/shep-cli/src/lookout/app/keys.rs // An armed confirm (including one already in flight) owns
+6 crates/shep-cli/src/lookout/app/keys.rs // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
+7 crates/shep-cli/src/lookout/app/keys.rs // Toggles rather than opening: pressing it twice is where it
+7 crates/shep-cli/src/lookout/app/keys.rs // Only a `RowKey::Fold` header answers to this key; anything
+5 crates/shep-cli/src/lookout/app/keys.rs // All four scroll or cycle a bleats-pane axis, and the
+12 crates/shep-cli/src/lookout/app/keys.rs /// Puts the keyboard back to [`InputMode::Normal`] when no pane editor
+7 crates/shep-cli/src/lookout/app/keys.rs // Six now, and the split is still total: the config pane, the
+20 crates/shep-cli/src/lookout/app/keys.rs /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
+
+33 crates/shep-cli/src/lookout/app/mod.rs //! The lookout's state and its reducer: `Msg` in, `Effect` out.
+15 crates/shep-cli/src/lookout/app/mod.rs /// What occupies the body between the title band and the status bar.
+9 crates/shep-cli/src/lookout/app/mod.rs /// Whether a [`Sent::SheepConfig`] or [`Sent::DogSection`] read for the
+7 crates/shep-cli/src/lookout/app/mod.rs /// Each sheep's last [`HISTORY`] CPU-percent samples, oldest first,
+7 crates/shep-cli/src/lookout/app/mod.rs /// The tab and the dog [`Self::focus`] asked for, held for the config pane
+
+9 crates/shep-cli/src/lookout/app/msg.rs /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
+8 crates/shep-cli/src/lookout/app/msg.rs /// An [`Effect::LoadDogPane`]'s schema probe has answered.
+11 crates/shep-cli/src/lookout/app/msg.rs /// An [`Effect::LoadSecrets`] has answered.
+11 crates/shep-cli/src/lookout/app/msg.rs /// Send several requests, in the order given. Raised when a config
+12 crates/shep-cli/src/lookout/app/msg.rs /// Probe one dog for its config schema; the answer lands as
+9 crates/shep-cli/src/lookout/app/msg.rs /// Apply one of a dog's other `[daemon] keys; the result lands as
+9 crates/shep-cli/src/lookout/app/msg.rs /// Read the one value behind `row`; the answer lands as
+8 crates/shep-cli/src/lookout/app/msg.rs /// Apply one change to `secrets.json`; the result lands as
+10 crates/shep-cli/src/lookout/app/msg.rs /// Apply several changes to `secrets.json` in one task; the result lands
+8 crates/shep-cli/src/lookout/app/msg.rs /// Sends the carried value to the terminal's clipboard over OSC 52, by
+
+8 crates/shep-cli/src/lookout/app/pane_dogs.rs /// The `dogs` tab's own keys, ahead of the pane's: an armed removal, a
+
+8 crates/shep-cli/src/lookout/app/pane_list.rs /// One `Request::SetSheepEnv` reply.
+11 crates/shep-cli/src/lookout/app/pane_list.rs /// The list sub-screen's own keymap, in force for as long as the pane
+7 crates/shep-cli/src/lookout/app/pane_list.rs // Drops the newest edit, the same key the field list answers
+7 crates/shep-cli/src/lookout/app/pane_list.rs /// The list sub-screen's own text keymap.
+12 crates/shep-cli/src/lookout/app/pane_list.rs /// The env editor's own text keymap, in force for as long as
+7 crates/shep-cli/src/lookout/app/pane_list.rs /// A refused element keeps `InputMode::Text` on, files nothing, and puts
+
+10 crates/shep-cli/src/lookout/app/read.rs // Every row `view::bleats_full::lines` spends before the first
+9 crates/shep-cli/src/lookout/app/read.rs /// Tells the bleats pane how many columns its own area draws into, so a
+
+8 crates/shep-cli/src/lookout/app/rows.rs /// One dog's newly recorded grants, after `[daemon] dog_grants` landed:
+13 crates/shep-cli/src/lookout/app/rows.rs /// One field of one sheep's config, off the config pane's own `Enter`.
+7 crates/shep-cli/src/lookout/app/rows.rs /// One dog's `[<name>]` section, for the dog config pane. Raised once
+13 crates/shep-cli/src/lookout/app/rows.rs /// One dog's whole section, off the dog pane's own `Enter`.
+9 crates/shep-cli/src/lookout/app/rows.rs /// One dog's whole table on one sheep, or its removal with [`None`]:
+7 crates/shep-cli/src/lookout/app/rows.rs /// The ticket a pane write minted itself with, or [`None`] for a
+8 crates/shep-cli/src/lookout/app/rows.rs /// What one of a dog's other `[daemon] keys left in `shep.toml`.
+8 crates/shep-cli/src/lookout/app/rows.rs /// `[daemon] dog_grants` changed, carrying the source the record now
+10 crates/shep-cli/src/lookout/app/rows.rs /// A dog's schema, and the binary it was probed from.
+
+10 crates/shep-cli/src/lookout/app/samples.rs /// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
+15 crates/shep-cli/src/lookout/app/samples.rs /// Differences one CPU sample per sheep in the current flock against its
+9 crates/shep-cli/src/lookout/app/samples.rs // A respawn keeps the sheep's id and takes a new pid, and
+6 crates/shep-cli/src/lookout/app/samples.rs // A departed sheep's baseline outlives its rows here unless dropped
+17 crates/shep-cli/src/lookout/app/samples.rs /// `id`'s newest differenced CPU sample: [`Self::cpu_history`]'s last
+11 crates/shep-cli/src/lookout/app/samples.rs /// The ceiling every row's CPU sparkline scales against: the busiest
+9 crates/shep-cli/src/lookout/app/samples.rs /// A respawn gives a new tree whose counter starts below the old one's.
+
+8 crates/shep-cli/src/lookout/app/secrets_keys.rs /// The secrets pane's own match box, in force while `self.body` is
+8 crates/shep-cli/src/lookout/app/secrets_keys.rs // `view::status`'s armed prompt promises "enter confirms, any other
+6 crates/shep-cli/src/lookout/app/secrets_keys.rs // Mirrors `on_bleats_key`'s own arm: every full-screen pane
+5 crates/shep-cli/src/lookout/app/secrets_keys.rs // Folding away the group `selected` sits in leaves
+5 crates/shep-cli/src/lookout/app/secrets_keys.rs // `j`/`k`/`g`/`G` move over the pane's visible rows
+7 crates/shep-cli/src/lookout/app/secrets_keys.rs /// Whether the secrets pane owns the body.
+
+7 crates/shep-cli/src/lookout/app/secrets_pane.rs /// The selected row as an owned [`SecretRow`], but only when the pane
+9 crates/shep-cli/src/lookout/app/secrets_pane.rs /// The `model.rows` index the `+ new key` affordance sits after: the
+8 crates/shep-cli/src/lookout/app/secrets_pane.rs /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
+10 crates/shep-cli/src/lookout/app/secrets_pane.rs /// Moves `selected` by `delta` positions over [`Self::screen_slots`],
+8 crates/shep-cli/src/lookout/app/secrets_pane.rs // The selection itself just went hidden (`z` folded its own group
+
+8 crates/shep-cli/src/lookout/app/secrets_write/delete_secret.rs /// `D`: arms the removal of the selected key's value in the current
+
+11 crates/shep-cli/src/lookout/app/secrets_write/reveal_secret.rs /// `v`'s answer: a read of the selected row's stored value, or a refusal
+13 crates/shep-cli/src/lookout/app/secrets_write/reveal_secret.rs /// `y`'s answer: the already-revealed value, on its way to
+
+11 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `Enter` on the secrets pane while nothing is armed: opens the `+ new
+6 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs // `environments` empty is the placeholder model `KeyPress::Secrets`
+12 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `TextApply` on the secrets pane's own editor.
+5 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs // A rename's removal half is a delete of the key the editor was
+
+11 crates/shep-cli/src/lookout/app/selection/cursor.rs /// Selects the row at `index`, clamped to the flock, and reports whether
+
+10 crates/shep-cli/src/lookout/app/selection/rollups.rs /// Every name whose instances draw under a [`RowKey::Group`] header: more
+6 crates/shep-cli/src/lookout/app/selection/rollups.rs // The half the confirm cannot check. `Sent::Action`'s `RowKey::Fold`
+
+13 crates/shep-cli/src/lookout/app/selection/row_sequence.rs /// The rows the table draws, in `(name, instance, id)` order: the whole
+13 crates/shep-cli/src/lookout/app/selection/row_sequence.rs /// The `ByFold` half of [`Self::visible_rows`]: `sheep` gathered under
+
+8 crates/shep-cli/src/lookout/app/settings.rs /// One of a dog's `[daemon] keys` the settings screen changes on its own row.
+8 crates/shep-cli/src/lookout/app/settings.rs /// One dog the operator opened on the settings screen.
+8 crates/shep-cli/src/lookout/app/settings.rs /// The edit this screen is showing, or `None`. One field rather than
+
+7 crates/shep-cli/src/lookout/app/settings/dogs.rs /// Puts the row of the dog named `name` back to waiting on its section,
+15 crates/shep-cli/src/lookout/app/settings/dogs.rs /// The dog `name`'s whole section with `row` of its own tree set to `text`,
+
+6 crates/shep-cli/src/lookout/app/settings/edit.rs // The seed is what [`ConfigPane::begin_typing`] would open with, key
+
+7 crates/shep-cli/src/lookout/app/settings/pending.rs /// Whether `ticket` names the write this screen is still waiting on,
+7 crates/shep-cli/src/lookout/app/settings/pending.rs /// The next candidate for `field`, or `None` for a key that is not a
+
+9 crates/shep-cli/src/lookout/app/settings_dogs.rs /// One dog toggle's answer: the `Pending::Sent` line this ticket raised
+13 crates/shep-cli/src/lookout/app/settings_dogs.rs /// `e` on a dog's row: open it, or close it.
+
+11 crates/shep-cli/src/lookout/app/settings_keys/armed_state.rs /// Cancels an armed settings candidate, answering whether it did.
+
+6 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs // The open, not just the probe: a dog's tree is built from the
+5 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs // An armed candidate eats this too, on the same terms as
+8 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs /// Every key sequence that ends in a write, not one key: a gate guarding
+
+7 crates/shep-cli/src/lookout/app/settings_keys/text_editor_input.rs /// The settings editor's own text keymap, in force while a
+5 crates/shep-cli/src/lookout/app/settings_keys/text_editor_input.rs // A dog's own field leaves as its whole section, which
+
+7 crates/shep-cli/src/lookout/app/settings_keys/value_cycling.rs /// `space` on a key row. Re-arms when a candidate is already armed, so a
+
+8 crates/shep-cli/src/lookout/app/settings_keys/write_handling.rs /// The operator's `Enter` on the settings screen. On a section it folds;
+18 crates/shep-cli/src/lookout/app/settings_keys/write_handling.rs /// A refused write reopens the text editor, and the overlay must not
+
+8 crates/shep-cli/src/lookout/app/sheep_pane/actions.rs /// `e`'s own handler from inside the sheep pane: targets the pane's own
+13 crates/shep-cli/src/lookout/app/sheep_pane/actions.rs /// `x`/`R`/`L` from inside the sheep pane: arms a confirm against the
+
+7 crates/shep-cli/src/lookout/app/sheep_pane/keys.rs // The embedded feed never clamps its own offset: it draws no
+17 crates/shep-cli/src/lookout/app/sheep_pane/keys.rs /// The sheep pane's own keymap, in force while [`Self::sheep_pane`] is
+8 crates/shep-cli/src/lookout/app/sheep_pane/keys.rs // `N`: the same, toward the oldest matching line. Unlike
+
+8 crates/shep-cli/src/lookout/app/sheep_pane/mod.rs /// `Enter`'s own handler on the dashboard: opens the sheep pane on the
+10 crates/shep-cli/src/lookout/app/sheep_pane/mod.rs /// The open sheep pane's own pinned sheep, or `None` once it has left
+
+9 crates/shep-cli/src/lookout/app/testing.rs /// `esc`, and `c` right behind it if that raised the close dialog
+
+9 crates/shep-cli/src/lookout/app/update/link.rs // Every notice is about a shepherd that no longer exists,
+8 crates/shep-cli/src/lookout/app/update/link.rs // The config pane has no expiry of its own any more:
+11 crates/shep-cli/src/lookout/app/update/link.rs // Neither full-screen feed has a timer of its own; each
+
+10 crates/shep-cli/src/lookout/app/update/panes.rs // A config pane opened while this read was in flight, so
+10 crates/shep-cli/src/lookout/app/update/panes.rs // Reset to the top only while `opening`.
+13 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::SettingWritten`'s arm.
+16 crates/shep-cli/src/lookout/app/update/panes.rs // The overlay closes rather than the editor
+9 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::DogWritten`'s arm.
+11 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::DogTuneWritten`'s arm.
+8 crates/shep-cli/src/lookout/app/update/panes.rs // A selection on the trailing `+ new key`
+5 crates/shep-cli/src/lookout/app/update/panes.rs // The row count clamp above says nothing about
+
+8 crates/shep-cli/src/lookout/batch_dispatch.rs /// Delivers an [`Effect::SendAll`](crate::lookout::app::Effect::SendAll) batch to the link task, in order, without
+
+9 crates/shep-cli/src/lookout/edits.rs /// Which field or env key an entry is filed under.
+9 crates/shep-cli/src/lookout/edits.rs /// One pending change: the write it will become, and what sending it costs.
+7 crates/shep-cli/src/lookout/edits.rs /// What sending it costs, and [`None`] for a dog, which has no
+
+16 crates/shep-cli/src/lookout/entry.rs /// Runs the dashboard, and returns the [`ExitCode`] to exit with.
+15 crates/shep-cli/src/lookout/entry.rs /// `Msg::Snapshot` answers every ordinary poll with `Effect::RefreshFeed`,
+5 crates/shep-cli/src/lookout/entry.rs // Each snapshot needs its own serviced iteration, so each is followed
+8 crates/shep-cli/src/lookout/entry.rs /// The end-to-end half of
+15 crates/shep-cli/src/lookout/entry.rs /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
+
+9 crates/shep-cli/src/lookout/input.rs /// The [`KeyPress`] this event means under `mode`, or `None` for a key
+6 crates/shep-cli/src/lookout/input.rs // Guarded on `mode` here, unlike every other binding in this
+7 crates/shep-cli/src/lookout/input.rs // SHIFT stays: crossterm delivers a capital as `Char('W')` with
+6 crates/shep-cli/src/lookout/input.rs // Two keys, one meaning, which is what the design asked for. `h`
+7 crates/shep-cli/src/lookout/input.rs /// `Tab` and `Shift+Tab` belong to the config pane's group cycling, so
+
+5 crates/shep-cli/src/lookout/keymap.rs // Both modes, not `.or_else`: a code with a mapping in each
+8 crates/shep-cli/src/lookout/keymap.rs /// Every `KeyPress` `map_key` can produce is produced by some `PROBE`
+12 crates/shep-cli/src/lookout/keymap.rs /// No `PROBE` entry binds nothing: every `(code, modifiers)` pair
+13 crates/shep-cli/src/lookout/keymap.rs /// Every key the overlay prints in a caption is a key `map_key` binds.
+21 crates/shep-cli/src/lookout/keymap.rs /// `DRAWN`'s headings, which several `contains` assertions across two
+8 crates/shep-cli/src/lookout/keymap.rs /// Every caption fits the cell it draws into, so nothing is cut on
+
+15 crates/shep-cli/src/lookout/keyvalue.rs //! The one key/value editor the env rows and the secrets pane share.
+
+14 crates/shep-cli/src/lookout/level.rs /// The level a line announces, or `None` when it announces none.
+
+11 crates/shep-cli/src/lookout/link.rs //! The link task: subscribe for latency, poll for correctness, repair on a
+10 crates/shep-cli/src/lookout/link.rs /// Runs `opened` and everything that replaces it, until the ladder runs out.
+5 crates/shep-cli/src/lookout/link.rs // Kept for the freeze below and nothing else: the
+
+11 crates/shep-cli/src/lookout/mod.rs //! `shep lookout` (alias `dash`): the terminal dashboard.
+
+11 crates/shep-cli/src/lookout/pane/choices.rs //! A list of choices, drawn as a checklist under its row.
+
+7 crates/shep-cli/src/lookout/pane/config.rs /// The state of an open pane.
+14 crates/shep-cli/src/lookout/pane/config.rs /// The dog's `[<name>]` table as TOML text, with the schema its rows
+12 crates/shep-cli/src/lookout/pane/config.rs /// A pane over one dog's `[<name>]` section.
+19 crates/shep-cli/src/lookout/pane/config.rs /// The current value of `key`, rendered for a cell.
+7 crates/shep-cli/src/lookout/pane/config.rs /// How many filed edits the running sheep already takes without a
+11 crates/shep-cli/src/lookout/pane/config.rs /// Adopts a previous pane's pending set, so a refresh does not
+8 crates/shep-cli/src/lookout/pane/config.rs /// A dog's section text as the JSON table [`crate::dog_settings::touched_refusal`]
+
+13 crates/shep-cli/src/lookout/pane/edit.rs /// The pane's open text editor: which field, and what has been typed.
+11 crates/shep-cli/src/lookout/pane/edit.rs /// Hands the pending set out, leaving the pane holding nothing.
+7 crates/shep-cli/src/lookout/pane/edit.rs /// Drops the most recently filed edit and names it, for `u`.
+14 crates/shep-cli/src/lookout/pane/edit.rs /// Files one config field, or drops whatever was filed for it when the
+7 crates/shep-cli/src/lookout/pane/edit.rs /// Whether `value` is what the target already holds for `key`.
+32 crates/shep-cli/src/lookout/pane/edit.rs /// `d` on the field list: restores the field under the cursor to its
+17 crates/shep-cli/src/lookout/pane/edit.rs /// The value that restores `field` to its default, matching whichever
+9 crates/shep-cli/src/lookout/pane/edit.rs /// Whether `key`'s row is already showing its stored default, with
+8 crates/shep-cli/src/lookout/pane/edit.rs /// Opens an editor on the cursor's row and fills it with `text`.
+37 crates/shep-cli/src/lookout/pane/edit.rs /// Files the buffer as an edit, typed to the field's kind, or hands
+6 crates/shep-cli/src/lookout/pane/edit.rs // Already parsed once by `validation::refusal`, which refused
+6 crates/shep-cli/src/lookout/pane/edit.rs // The same second parse for a decimal. `validation::refusal` already
+
+7 crates/shep-cli/src/lookout/pane/edit_tests.rs /// The confirm sentence quotes what a write would actually mean, not
+
+11 crates/shep-cli/src/lookout/pane/entries_write.rs //! The dog pane's write for a whole-value change to an array or map of
+9 crates/shep-cli/src/lookout/pane/entries_write.rs /// For each of `held`, the new table it becomes, or [`None`] for one that
+
+11 crates/shep-cli/src/lookout/pane/entry_add.rs //! Adding an entry to an array or map of tables, on the pane alone.
+
+7 crates/shep-cli/src/lookout/pane/entry_remove.rs /// Files `whole` as the new value of the entries field `key`, and
+8 crates/shep-cli/src/lookout/pane/entry_remove.rs /// [`Self::adopt_edits`] from `previous`, less every edit filed under an
+
+8 crates/shep-cli/src/lookout/pane/env.rs /// Files an env write from the editor, which it closes over.
+
+5 crates/shep-cli/src/lookout/pane/fields.rs // A Structural field is identity or flock shape, not a runtime knob:
+21 crates/shep-cli/src/lookout/pane/fields.rs /// `raw` resolved through `key`'s own grammar in `fields`, when `key` is one
+
+12 crates/shep-cli/src/lookout/pane/list.rs //! The list sub-screen: one row per element of an array field.
+8 crates/shep-cli/src/lookout/pane/list.rs /// The list sub-screen: one array field's elements, and an editor over
+14 crates/shep-cli/src/lookout/pane/list.rs /// Closes the editor and reads what it holds.
+9 crates/shep-cli/src/lookout/pane/list.rs /// `key`'s array as the operator has it: the elements of whatever is
+19 crates/shep-cli/src/lookout/pane/list.rs /// Files `elements` as the field's whole value, then makes the open
+7 crates/shep-cli/src/lookout/pane/list.rs /// Re-opens the list sub-screen on the refreshed array, at the cursor
+
+19 crates/shep-cli/src/lookout/pane/mod.rs //! An open config pane: what it is editing, its fields, and its cursor.
+
+19 crates/shep-cli/src/lookout/pane/section_write.rs //! The dog pane's write: every filed edit applied to the section's own TOML
+30 crates/shep-cli/src/lookout/pane/section_write.rs /// The section with every field edit in `edits` applied at its own path,
+9 crates/shep-cli/src/lookout/pane/section_write.rs /// The TOML item a filed value becomes, or [`None`] for one this writer has
+22 crates/shep-cli/src/lookout/pane/section_write.rs /// Sets `cell` at `path`, creating any table on the path the section does not
+7 crates/shep-cli/src/lookout/pane/section_write.rs /// Removes the leaf `path` names, and nothing above it.
+
+11 crates/shep-cli/src/lookout/pane/types.rs /// Which thing the pane is editing.
+8 crates/shep-cli/src/lookout/pane/types.rs /// Why a row cannot be edited in place.
+8 crates/shep-cli/src/lookout/pane/types.rs /// One row of the pane.
+8 crates/shep-cli/src/lookout/pane/types.rs /// One step from a dog section's root to a field inside an entry of an array
+18 crates/shep-cli/src/lookout/pane/types.rs /// One config field's new value, on its way out of the pane.
+7 crates/shep-cli/src/lookout/pane/types.rs /// The value, printed, when printing it cannot leak anything: a bool or
+13 crates/shep-cli/src/lookout/pane/types.rs /// One edit, ready to send.
+12 crates/shep-cli/src/lookout/pane/types.rs /// What a dog's section write produced, from
+
+11 crates/shep-cli/src/lookout/pane/union.rs //! A tagged union on a dog's table on a sheep: the rows it opens to and the
+8 crates/shep-cli/src/lookout/pane/union.rs /// The sentence that says why the filed edits cannot be written: a
+
+18 crates/shep-cli/src/lookout/pane/walk.rs /// One row per field of the active group, in display order, then, on a
+
+8 crates/shep-cli/src/lookout/pane_bleats.rs /// The full-screen bleats pane's own state.
+7 crates/shep-cli/src/lookout/pane_bleats.rs /// How many surviving lines back from the newest one the view is
+7 crates/shep-cli/src/lookout/pane_bleats.rs /// Whether the view stays pinned to the newest surviving line as new
+7 crates/shep-cli/src/lookout/pane_bleats.rs /// The match axis's current text, or `None` when it is not set.
+8 crates/shep-cli/src/lookout/pane_bleats.rs /// The lines from `lines` that survive every filter axis currently set.
+12 crates/shep-cli/src/lookout/pane_bleats.rs /// `n`: steps one line toward the newest matching line. A no-op with no
+
+12 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// What the match axis's typed text resolves to.
+12 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// The match axis's typed text, together with what it compiled to.
+9 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// Compiles `text` per [`MatchKind`]'s rule, or `None` for an empty
+8 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// Keep only lines this matcher hits: a plain substring, or a
+7 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// Whether `line` survives every axis currently set.
+8 crates/shep-cli/src/lookout/pane_bleats/filters.rs // A line with no detectable level always passes: `None` means
+7 crates/shep-cli/src/lookout/pane_bleats/filters.rs /// `Matcher` hand-writes `Debug`, and that impl is half of why holding a
+
+12 crates/shep-cli/src/lookout/pane_sheep.rs /// One sheep, given the whole screen.
+7 crates/shep-cli/src/lookout/pane_sheep.rs /// `COLUMN_BODY_ROWS` never changes, so every entry point below records
+
+11 crates/shep-cli/src/lookout/secrets.rs /// The one value behind `row`, read back off disk for a reveal.
+
+12 crates/shep-cli/src/lookout/term.rs //! Raw mode, the alternate screen, and getting out of both no matter how the
+8 crates/shep-cli/src/lookout/term.rs /// Installs the panic hook, then panics on purpose.
+
+14 crates/shep-cli/src/lookout/theme.rs //! The design language's semantic colours, mapped onto a terminal.
+7 crates/shep-cli/src/lookout/theme.rs // xterm-256 indices chosen as the nearest neighbours of the design
+14 crates/shep-cli/src/lookout/theme.rs /// Every semantic colour collapsed onto [`Self::muted`]'s one ink.
+7 crates/shep-cli/src/lookout/theme.rs /// Reverse video over a role's own colour, naming no background.
+8 crates/shep-cli/src/lookout/theme.rs /// The one painted background: the selected row and the status bar.
+5 crates/shep-cli/src/lookout/theme.rs // Pinned deliberately: the 16-colour set has no quiet dark ground,
+
+11 crates/shep-cli/src/lookout/ui_event_loop.rs /// The UI loop.
+6 crates/shep-cli/src/lookout/ui_event_loop.rs // The resolved layout. `paths.home` is `$SHEP_HOME` as this invocation
+8 crates/shep-cli/src/lookout/ui_event_loop.rs // Set wherever `feed_dirty` is, cleared once the read below has run.
+13 crates/shep-cli/src/lookout/ui_event_loop.rs // `feed_row`, not `selected_row`: both the full-screen pane and
+6 crates/shep-cli/src/lookout/ui_event_loop.rs // The detail pane's log size. Read here for the same two reasons as
+5 crates/shep-cli/src/lookout/ui_event_loop.rs // The host sample rides this arm rather than adding one of
+6 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task, unlike the arm above: `try_send` would drop
+9 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task for the same reason `Effect::WriteSetting` is:
+7 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task for `Effect::LoadSettings`'s reason: a read that
+7 crates/shep-cli/src/lookout/ui_event_loop.rs // One of a dog's other `[daemon] keys, off the settings screen.
+5 crates/shep-cli/src/lookout/ui_event_loop.rs // The `bool` is `unset`'s own answer: `false` means there was
+8 crates/shep-cli/src/lookout/ui_event_loop.rs // A rename: both halves in one task, so one `Enter` gets one answer
+11 crates/shep-cli/src/lookout/ui_event_loop.rs /// The property, not the mechanism: with a write in flight and unable to
+7 crates/shep-cli/src/lookout/ui_event_loop.rs // The other half of the same property: the write was not cancelled by
+9 crates/shep-cli/src/lookout/ui_event_loop.rs /// Drives `Effect::LoadSecrets` end to end, the only test that does: every
+
+13 crates/shep-cli/src/lookout/viewport.rs //! A cursor that knows what is on screen.
+
+11 crates/shep-cli/src/lookout/wiring.rs /// `super::super::input::map_key` drops `KeyEventKind::Repeat`, but ordinary terminals
+
+13 crates/shep-cli/src/output/described.rs /// The `--format json` shape [`emit_described`] writes:
+18 crates/shep-cli/src/output/described.rs /// Renders one `describe` answer: the sheep table, then each sheep's lamb
+
+8 crates/shep-cli/src/output/diagnostics.rs /// `message` with everything that could drive a terminal stripped, in the
+7 crates/shep-cli/src/output/diagnostics.rs /// `message` with every line after the first indented by two spaces.
+8 crates/shep-cli/src/output/diagnostics.rs /// The `--format json` shape of a non-failure diagnostic: `{"schema_version",
+
+17 crates/shep-cli/src/output/flock.rs /// The `--format json` shape [`emit_flock`] writes:
+11 crates/shep-cli/src/output/flock.rs /// The `--format json` shape of a listing whose rows name their `origin`:
+13 crates/shep-cli/src/output/flock.rs /// Renders one flock listing: the sheep table, then the dogs table
+8 crates/shep-cli/src/output/flock.rs /// The one line under the dogs table that says where `silent` is
+
+8 crates/shep-cli/src/output/log_line.rs /// `line` wrapped in the default colour of `stream` (`"out"` meadow, the
+
+12 crates/shep-cli/src/output/mod.rs //! The versioned output envelope and its two renderings: a JSON envelope
+7 crates/shep-cli/src/output/mod.rs /// The two streams a command writes to.
+9 crates/shep-cli/src/output/mod.rs /// How much this invocation dresses up its output.
+7 crates/shep-cli/src/output/mod.rs /// Prints `message` as an error, and hands back the code it printed.
+7 crates/shep-cli/src/output/mod.rs /// Prints `message` as a notice, on stdout.
+10 crates/shep-cli/src/output/mod.rs /// Prints `message` as a notice, on stderr.
+11 crates/shep-cli/src/output/mod.rs /// The constructor the command tests build their streams from, test-only
+9 crates/shep-cli/src/output/mod.rs /// Implemented once per command payload. The two methods are the only
+11 crates/shep-cli/src/output/mod.rs /// The rows as this presentation wants them rendered.
+13 crates/shep-cli/src/output/mod.rs /// Table header -> JSON key.
+9 crates/shep-cli/src/output/mod.rs /// Serialized fields that legitimately have no column, each with a
+10 crates/shep-cli/src/output/mod.rs /// Per-column drop priority for [`table::render_boxed`], parallel to
+15 crates/shep-cli/src/output/mod.rs /// Writes `value` to `out` as one JSON line: the serialized value, then a
+11 crates/shep-cli/src/output/mod.rs /// Renders one [`Render`] payload as [`render_table`] or
+11 crates/shep-cli/src/output/mod.rs /// The `--format json` envelope for a verb that did part of what it was
+7 crates/shep-cli/src/output/mod.rs /// The STATUS word drops before any whole column does.
+
+8 crates/shep-cli/src/output/rows/dogs.rs /// The dogs half of a flock listing: the `ProcessInfo`s whose `dog` marker
+7 crates/shep-cli/src/output/rows/dogs.rs /// `DogActionRow`'s STATUS cell and the SHEPHERD cell beside it, as one
+11 crates/shep-cli/src/output/rows/dogs.rs /// `shep enable`/`disable`/`adopt`, and `shep delete`/`rehome` on a dog's,
+
+13 crates/shep-cli/src/output/rows/mod.rs //! Every rendered payload type in the binary, and the [`super::Render`] impl
+9 crates/shep-cli/src/output/rows/mod.rs /// The anti-drift gate, once per payload type with JSON object keys
+6 crates/shep-cli/src/output/rows/mod.rs // CPU is the one field these two surfaces do NOT agree on, by
+6 crates/shep-cli/src/output/rows/mod.rs // The CPU cell specifically, not a substring search of the whole
+
+9 crates/shep-cli/src/output/rows/process.rs /// `Response::Flushed(Vec<ProcessInfo>)`: the sheep a `shep flush` matched,
+5 crates/shep-cli/src/output/rows/process.rs // `reload_deadline_ms` and `disabled` on top of `sample_flock`, not in it: this
+
+7 crates/shep-cli/src/output/rows/secrets.rs /// One row of `shep secret list`: a key, and the environments holding a
+14 crates/shep-cli/src/output/rows/secrets.rs /// `shep secret get`'s `--format json` payload: the key and the value it
+8 crates/shep-cli/src/output/rows/secrets.rs /// The verdict [`DescribedSecret::status`] carries: whether a reference
+7 crates/shep-cli/src/output/rows/secrets.rs /// One `{{secret:...}}` reference `shep describe` reports on: never a
+
+8 crates/shep-cli/src/output/rows/settings_write.rs /// One settings write: which holder the address named, the keys it changed,
+
+11 crates/shep-cli/src/output/table.rs /// Renders any payload as the padded table, returned rather than printed so
+8 crates/shep-cli/src/output/table.rs /// Renders `at_ms` (unix millis) as a local timestamp for a table cell:
+10 crates/shep-cli/src/output/table.rs /// Renders `rows` as a box-drawn table that fits `term_width`.
+7 crates/shep-cli/src/output/table.rs /// The visible width every column needs: the widest of its header and
+7 crates/shep-cli/src/output/table.rs /// "羊" is one character, three bytes, two display columns. Asserts on
+11 crates/shep-cli/src/output/table.rs /// Four sheep, one per role [`crate::vocabulary::role_of`] maps a
+10 crates/shep-cli/src/output/table.rs /// `full`, narrow enough that the STATUS word drops but no whole column
+
+9 crates/shep-cli/src/output/width.rs /// Columns `s` occupies as drawn text, with no ANSI discount.
+9 crates/shep-cli/src/output/width.rs /// Columns `s` occupies once ANSI escapes are discounted.
+8 crates/shep-cli/src/output/width.rs /// A cell, with every control character escaped or stripped so it cannot
+
+12 crates/shep-cli/src/whistle/facts.rs /// Every list-shaped tool's payload: rows under a named field.
+8 crates/shep-cli/src/whistle/facts.rs /// The host this flock came from, spelled as the caller asked for it;
+9 crates/shep-cli/src/whistle/facts.rs /// Whether the shepherd has GIVEN UP on this dog — restarted it once
+
+7 crates/shep-cli/src/whistle/read.rs /// The argument every sheep-scoped tool takes.
+
+7 crates/shep-cli/tests/cli_e2e/assertions.rs /// Asserts `info`, one `data[]` element of an envelope, carries the dynamic
+10 crates/shep-cli/tests/cli_e2e/assertions.rs /// Nulls every value under `host`, having first checked the two that are
+
+11 crates/shep-cli/tests/cli_e2e/dog_channel_samples.rs /// Brings up a shepherd with the metrics dog enabled, spawned and answering a
+
+11 crates/shep-cli/tests/cli_e2e/dog_validate.rs //! A dog that answers `shep.validate`, end to end: the manifest that asks
+7 crates/shep-cli/tests/cli_e2e/dog_validate.rs /// `/bin/sh` for a dog that asks for the channel, answers
+
+10 crates/shep-cli/tests/cli_e2e/fixtures.rs /// The line every fixture script opens with: this spawn's own pid, appended
+7 crates/shep-cli/tests/cli_e2e/fixtures.rs /// Writes a script that grows its own resident set past [`BALLOON_BYTES`] and
+8 crates/shep-cli/tests/cli_e2e/fixtures.rs /// Writes a script that blocks until `sentinel` exists, then announces
+
+8 crates/shep-cli/tests/cli_e2e/guard.rs /// Boots a daemon on `dir`'s `$SHEP_HOME` with `env` set on the `shep start`
+11 crates/shep-cli/tests/cli_e2e/guard.rs /// A `$SHEP_HOME` whose daemon and whole flock this test is responsible for,
+8 crates/shep-cli/tests/cli_e2e/guard.rs /// Register a `$SHEP_HOME` whose daemon this test is responsible for.
+9 crates/shep-cli/tests/cli_e2e/guard.rs /// SIGKILLs every process group named in `home`'s [`FIXTURE_PIDS`], resweeping
+
+7 crates/shep-cli/tests/cli_e2e/handover_disabled.rs /// `parked` is still stopped, still marked and still refused by `restart`
+
+7 crates/shep-cli/tests/cli_e2e/handover_dog_link.rs /// A `/bin/sh` dog that says `Hello` on its fd 4 once, pings every fifth of a
+7 crates/shep-cli/tests/cli_e2e/handover_dog_link.rs /// The dog is written to in a loop, so the proof is a count: replies keep
+
+8 crates/shep-cli/tests/cli_e2e/handover_dogs.rs /// `shep disable metrics`, then a reload. The successor lists the dog at rest,
+5 crates/shep-cli/tests/cli_e2e/handover_dogs.rs // The hand edit: `enabled_dogs` is the only line that decides whether a
+
+8 crates/shep-cli/tests/cli_e2e/handover_extras.rs /// Every lifecycle extra is armed again by the successor, proved by behaviour
+8 crates/shep-cli/tests/cli_e2e/handover_extras.rs /// A sheep already owed a respawn when the shepherd is replaced still gets it.
+
+7 crates/shep-cli/tests/cli_e2e/home_and_watch.rs /// The default home resolves from whichever variable the platform actually
+8 crates/shep-cli/tests/cli_e2e/home_and_watch.rs /// The watched-tree boot both cases below share: a `watcher` sheep whose
+
+7 crates/shep-cli/tests/cli_e2e/lifecycle.rs /// `flock(2)` makes the race safe daemon-side and `connect_or_spawn`
+7 crates/shep-cli/tests/cli_e2e/lifecycle.rs /// Envelopes for `flock`, `describe`, `start` and `ping` are compared
+7 crates/shep-cli/tests/cli_e2e/lifecycle.rs /// A selector matching nothing exits `NotFound`; the malformed `/[/` exits
+
+9 crates/shep-cli/tests/cli_e2e/logs.rs /// `copytruncate`-mode rotation: an external rotator copies the live log aside
+8 crates/shep-cli/tests/cli_e2e/logs.rs /// `--no-log-timestamps` on a sheep the flock already has.
+
+11 crates/shep-cli/tests/cli_e2e/main.rs //! End-to-end tier: drives the real `shep` binary via `assert_cmd` against a
+
+9 crates/shep-cli/tests/cli_e2e/polling.rs /// [`poll_metrics`], retried until one reading carries **every** entry of
+12 crates/shep-cli/tests/cli_e2e/polling.rs /// [`poll_metrics_containing`] for a `needle` that has to be *gone*: a sample
+10 crates/shep-cli/tests/cli_e2e/polling.rs /// Runs `shep flock --format json` until `done` accepts the sheep in `data`,
+9 crates/shep-cli/tests/cli_e2e/polling.rs /// The loop the two above share. `tolerate_one_drop` lets one attempt fail
+
+7 crates/shep-cli/tests/cli_e2e/real_clock.rs /// The only place `PollingEnforcer` and `SysinfoSampler` run together on real
+
+14 crates/shep-cli/tests/cli_e2e/serve.rs /// Which rung of the kill ladder answered, read off the shepherd's own exit
+
+5 crates/shep-cli/tests/cli_e2e/settings_set.rs // The file itself is what the claim is about: the comment above the header
+
+11 crates/shep-cli/tests/cli_e2e/startup.rs /// The control socket answers throughout a handover.
+9 crates/shep-cli/tests/cli_e2e/startup.rs /// A successor that inherited an empty flock must not fall back to the roll.
+8 crates/shep-cli/tests/cli_e2e/startup.rs /// `shep add` registers a sheep, starts nothing, and a later `shep start`
+
+12 crates/shep-cli/tests/common/mod.rs /// Polls `child.try_wait()` until it exits, or `timeout` elapses.
+
+11 crates/shep-cli/tests/init.rs //! Drives the PID-1 init split as a real process.
+9 crates/shep-cli/tests/init.rs /// Fails if the drain loop leaves a reparented orphan as a zombie. The
+
+13 crates/shep-cli/tests/term_panic_order.rs //! Proves `lookout::term::install_panic_hook`'s ordering: `restore()`
+
+12 crates/shep-client/src/actor.rs /// Decodes one frame off the wire and routes it: a [`Reply`] resolves the
+
+16 crates/shep-client/src/client.rs /// Budget for `Request::Reload`.
+7 crates/shep-client/src/client.rs /// Budget for `Request::Stop` and `Request::Delete`.
+20 crates/shep-client/src/client.rs /// Connects to the shepherd on another host by running
+
+57 crates/shep-client/src/dogs/mod.rs //! What every dog shares: answering shep's probes, starting up, talking to
+
+10 crates/shep-client/src/dogs/probes.rs /// Answers shep's probes, and returns when this run is not a probe, so a
+12 crates/shep-client/src/dogs/probes.rs /// [`probe`], for a dog that also publishes a schema for its per-sheep
+10 crates/shep-client/src/dogs/probes.rs /// Answers shep's probes, and returns when this run is not a probe, so a
+7 crates/shep-client/src/dogs/probes.rs /// [`probe_with_sheep`] with the `schema` feature off: behaves exactly like
+8 crates/shep-client/src/dogs/probes.rs /// shep's probes, answered with something the dog asks of shep as well as
+7 crates/shep-client/src/dogs/probes.rs /// Answers the manifest flag, the version flag, or the schema flag with
+7 crates/shep-client/src/dogs/probes.rs /// Answers the manifest flag without `settings` and the version flag,
+
+8 crates/shep-client/src/dogs/stop.rs /// A stop the operator's Ctrl+C requests: `SIGINT` on unix, the
+8 crates/shep-client/src/dogs/stop.rs /// A stop the shepherd's `SIGTERM` or the operator's `SIGINT` requests.
+
+8 crates/shep-client/src/dogs/validate.rs /// The reply body a dog writes back for a `shep.validate` action.
+
+9 crates/shep-client/src/events.rs /// Live bus events for one [`crate::Client::subscribe`] call.
+7 crates/shep-client/src/events.rs /// The local [`broadcast::Receiver`] behind an [`EventStream`] fell behind
+
+7 crates/shep-client/src/lib.rs /// The trait [`EventStream`] implements.
+7 crates/shep-client/src/lib.rs /// The wire protocol this client speaks, re-exported from
+8 crates/shep-client/src/lib.rs /// Not an assertion, just a line of output where a wrong number would
+
+25 crates/shep-client/src/reconnect/client.rs /// Re-establishes this connection, retrying until `budget` is spent.
+9 crates/shep-client/src/reconnect/client.rs /// fails if the verdict follows `daemon_version` rather than the pid.
+
+35 crates/shep-client/src/reconnect/mod.rs //! [`ReconnectingClient`]: a connection that re-establishes itself when the daemon on the other end is replaced.
+
+7 crates/shep-client/src/reconnect/reconnecting.rs /// A [`Client`] that re-establishes its own connection when the daemon it
+7 crates/shep-client/src/reconnect/reconnecting.rs /// Stops the supervisor when the handle goes away.
+7 crates/shep-client/src/reconnect/reconnecting.rs /// The handshake acknowledgement of the daemon this client is talking
+20 crates/shep-client/src/reconnect/reconnecting.rs /// Waits for the supervisor to be on a connection again, for at most
+20 crates/shep-client/src/reconnect/reconnecting.rs /// Waits until the link has been down for a whole `budget` without
+5 crates/shep-client/src/reconnect/reconnecting.rs // Parking here is the only await on the path a connected client
+8 crates/shep-client/src/reconnect/reconnecting.rs /// fails if a cancelled reconnect leaves the handle on neither
+7 crates/shep-client/src/reconnect/reconnecting.rs /// fails if a spent budget starts refusing a link that is already up.
+
+7 crates/shep-client/src/reconnect/schedule.rs /// How long the supervisor waits after its FIRST failed reconnect attempt
+
+10 crates/shep-client/src/reconnect/testing.rs /// Waits until the fake has accepted `accepts` connections and the
+
+9 crates/shep-client/src/spawn.rs /// The retry loop shared by both entry points: keep probing `socket` until
+
+11 crates/shep-client/src/ssh.rs //! Reaching another host's shepherd through the system `ssh`: [`SshOptions`],
+11 crates/shep-client/src/ssh.rs /// How [`Client::connect_ssh_with`] runs ssh.
+
+10 crates/shep-client/src/testing/autostart.rs /// Binds `path`, accepts one connection, answers its handshake with
+
+11 crates/shep-client/src/testing/client.rs /// Binds `path` and serves every connection made to it, handshaking with
+11 crates/shep-client/src/testing/client.rs /// As [`fake_client_capturing_envelopes`], but `answer` decides each reply,
+7 crates/shep-client/src/testing/client.rs /// Binds `path`, handshakes with [`sample_ack`], then reads nothing and
+8 crates/shep-client/src/testing/client.rs /// Binds `path`, handshakes with [`sample_ack`], and answers each request
+
+10 crates/shep-client/src/testing/handover.rs /// A fake shepherd that survives a handover: one listener, one accepted
+5 crates/shep-client/src/testing/handover.rs // Armed refusal, taken so it answers one
+7 crates/shep-client/src/testing/handover.rs /// Arms every `Request::DogConfigResolved` and
+7 crates/shep-client/src/testing/handover.rs /// Arms the next `Request::Subscribe` to be answered with `refusal`
+8 crates/shep-client/src/testing/handover.rs /// Queues `event` for the generation being served now.
+
+7 crates/shep-client/src/testing/handshake.rs /// Serves exactly one connection, replying to the `Hello` with `reply` and
+7 crates/shep-client/src/testing/handshake.rs /// Binds `path`, accepts one connection, handshakes with `ack`, answers the
+11 crates/shep-client/src/testing/handshake.rs /// Binds `path`, accepts one connection, completes the handshake with `ack`,
+8 crates/shep-client/src/testing/handshake.rs /// Binds `path` and answers every connection, one handshake and one request
+
+13 crates/shep-client/src/testing/mod.rs //! Test doubles for a scripted daemon peer, shared with shep-cli via the
+
+12 crates/shep-client/src/testing/scripted.rs /// The [`FakeDaemon`] background task: accepts one connection, handshakes
+7 crates/shep-client/src/testing/scripted.rs /// Queues `event` for this connection's subscriber.
+10 crates/shep-client/src/testing/scripted.rs /// Arms this connection to close itself once it has answered its next
+
+7 crates/shep-client/src/testing/shared.rs /// A control address valid on the platform running the test, unique to
+8 crates/shep-client/src/testing/shared.rs /// Binds `path`, naming it if the bind fails.
+
+18 crates/shep-client/src/typed.rs /// The sheep `name`'s `[app.dogs.<dog>]` table with every
+
+12 crates/shep-core/src/atomic_file.rs //! The atomic file replace.
+
+14 crates/shep-core/src/barks.rs //! `barks.jsonl`: the size-capped ring of fired alerts.
+7 crates/shep-core/src/barks.rs /// The first window [`read_last`] reads from the end of the ring, and the
+7 crates/shep-core/src/barks.rs /// One fired alert, as it lands in `$SHEP_HOME/barks.jsonl`.
+7 crates/shep-core/src/barks.rs /// Error type returned by [`append`] and [`read`].
+13 crates/shep-core/src/barks.rs /// The last `limit` barks in `path`, oldest first, without reading the
+7 crates/shep-core/src/barks.rs /// Rewrites `path` to hold exactly `lines`: the content lands in a
+
+12 crates/shep-core/src/config/app/behavior.rs /// The names of the fields whose values differ between `self` and
+
+8 crates/shep-core/src/config/app/env_value.rs /// One value an `env` table may carry: a string, or a bare boolean or whole
+9 crates/shep-core/src/config/app/env_value.rs /// Reads an `env` table, rendering each [`EnvValue`] as the string a process
+
+14 crates/shep-core/src/config/app/probe.rs // wire format: changing field names/defaults is a breaking change
+
+7 crates/shep-core/src/config/app/schema.rs /// Per-app configuration — one sheep's entry in a Flockfile
+16 crates/shep-core/src/config/app/schema.rs // wire format: changing field names/defaults is a breaking change
+8 crates/shep-core/src/config/app/schema.rs /// Environment for the sheep (merged over the daemon's filtered env).
+14 crates/shep-core/src/config/app/schema.rs /// Initial backoff delay; grows ×1.5 capped at 15s (spec §4)
+16 crates/shep-core/src/config/app/schema.rs /// How long a triggered action gets to answer on the shepherd channel
+8 crates/shep-core/src/config/app/schema.rs /// Sheep or dogs that must be up before this one starts
+7 crates/shep-core/src/config/app/schema.rs /// How this app's own lines announce their level, for a client that
+9 crates/shep-core/src/config/app/schema.rs /// One table per dog, keyed by dog name, for this sheep alone.
+24 crates/shep-core/src/config/app/schema.rs /// Open a pipe on this sheep's stdin, so `shep whisper` can write to it.
+34 crates/shep-core/src/config/app/schema.rs /// Asserts that the app itself sets `SO_REUSEPORT` before it binds —
+8 crates/shep-core/src/config/app/schema.rs /// A protocol-8 peer still serializes `increment_var`, which this build
+
+8 crates/shep-core/src/config/app/testing.rs /// Every `refuses` clause in the schema, paired with what enforces it.
+
+8 crates/shep-core/src/config/apply.rs /// One row of the `FIELDS` table: the field's name, the group it belongs
+9 crates/shep-core/src/config/apply.rs /// Every `AppConfig` field name this table has been taught about, paired with
+20 crates/shep-core/src/config/apply.rs /// Whether a write to `field` reaches a child that is already running.
+9 crates/shep-core/src/config/apply.rs /// How much of a Flockfile load overwrites what the operator has set since.
+7 crates/shep-core/src/config/apply.rs /// Put non-`env` settings back to the template, `env` kept. Every
+7 crates/shep-core/src/config/apply.rs /// Reset `env` back to the template and leave everything else alone.
+
+11 crates/shep-core/src/config/cron.rs //! `cron_restart` schedule parsing: the croner-backed cron grammar (spec §4).
+10 crates/shep-core/src/config/cron.rs /// Builds the five-field-only parser. Not a `const`/`static`:
+8 crates/shep-core/src/config/cron.rs /// True when `trimmed` is exactly one whitespace-free token starting with
+
+8 crates/shep-core/src/config/daemon/config.rs /// Parsed daemon configuration with raw per-dog sections.
+11 crates/shep-core/src/config/daemon/config.rs /// The `[interpreters]` section: a script extension (no leading dot,
+9 crates/shep-core/src/config/daemon/config.rs /// The top-level `hosts` array: ssh destinations of the machines whose
+
+10 crates/shep-core/src/config/daemon/dog_grants.rs /// One dog's entry under `[daemon.dog_grants]`: what the operator granted it.
+
+10 crates/shep-core/src/config/daemon/overrides.rs /// The CLI-flag layer of `file < env < flags` (spec §5).
+9 crates/shep-core/src/config/daemon/overrides.rs /// The boolean grammar of `shep.toml` and the `SHEP_*` environment: `1`,
+
+8 crates/shep-core/src/config/daemon/schema.rs /// Returns the JSON Schema of `shep.toml`.
+
+7 crates/shep-core/src/config/daemon/sections.rs /// Where an adopted dog's binary lives, keyed by dog name
+14 crates/shep-core/src/config/daemon/sections.rs /// Dogs that run before every sheep, rather than after the flock.
+11 crates/shep-core/src/config/daemon/sections.rs /// How much of the daemon's own diagnostics reaches its log.
+11 crates/shep-core/src/config/daemon/sections.rs /// The `[whistle]` section.
+7 crates/shep-core/src/config/daemon/sections.rs /// The `[secrets]` section: whether the CLI will print a stored value back.
+
+11 crates/shep-core/src/config/dogs.rs //! `$SHEP_HOME/dogs.toml`, a dog's own settings.
+10 crates/shep-core/src/config/dogs.rs /// Manual, not derived: `toml::de::Error`'s own `Debug` forwards to
+
+11 crates/shep-core/src/config/flockfile/declared_app.rs /// One app as the document declared it: the validated config, plus the
+
+7 crates/shep-core/src/config/flockfile/error.rs /// Error type returned from [`Flockfile::parse`](crate::config::flockfile::Flockfile::parse).
+13 crates/shep-core/src/config/flockfile/error.rs /// An `app` entry named one or more keys no field claims.
+
+9 crates/shep-core/src/config/flockfile/file.rs /// The top-level `dogs` key does not exist: only `[app.dogs.<name>]`,
+
+12 crates/shep-core/src/config/flockfile/mod.rs //! Flockfile: discovery and multi-format parsing
+
+11 crates/shep-core/src/config/flockfile/parse.rs // The one four-arm format dispatch, shared by `parse_into` (an empty
+
+11 crates/shep-core/src/config/flockfile/raw.rs /// The editor's schema hint, read and discarded.
+38 crates/shep-core/src/config/flockfile/raw.rs /// A dog's own per-app configuration, read and discarded.
+8 crates/shep-core/src/config/flockfile/raw.rs // `deserialize_any`, not the derived `BTreeMap` deserializer: at least one
+7 crates/shep-core/src/config/flockfile/raw.rs /// Parses `source`, refusing any key no field claims.
+8 crates/shep-core/src/config/flockfile/raw.rs /// fails if a Flockfile carrying a dog's own configuration is refused.
+
+11 crates/shep-core/src/config/flockfile/schema.rs /// The committed Flockfile JSON Schema.
+15 crates/shep-core/src/config/flockfile/schema.rs /// Renders the Flockfile JSON Schema: the document grammar, pretty-printed
+9 crates/shep-core/src/config/flockfile/schema.rs /// Returns the Flockfile JSON Schema.
+
+32 crates/shep-core/src/config/graph.rs /// Sorts `nodes` into stages.
+5 crates/shep-core/src/config/graph.rs // Dead last, after the knot and everything hanging off it. Placing these
+9 crates/shep-core/src/config/graph.rs /// Every node outside `in_a_cycle` with a path to one of its members.
+12 crates/shep-core/src/config/graph.rs /// Every knot in `edges`: a strongly connected component of two or more
+9 crates/shep-core/src/config/graph.rs // fails if a node is dropped or duplicated, a cyclic node is
+5 crates/shep-core/src/config/graph.rs // An edge out of an acyclic node has to land strictly earlier,
+5 crates/shep-core/src/config/graph.rs // `prop_assert!` with a comparison rather than
+6 crates/shep-core/src/config/graph.rs // Two reported cycles never share a node: a component is a set
+
+15 crates/shep-core/src/config/level.rs /// Most rules one app may declare.
+9 crates/shep-core/src/config/level.rs //
+13 crates/shep-core/src/config/level.rs /// Compiles `rules` in order.
+
+8 crates/shep-core/src/config/normalize/error.rs /// A value carries `{{SHEP_HOME}}` and no shep home could be determined.
+
+30 crates/shep-core/src/config/normalize/resolved_app.rs /// Validates one app config
+8 crates/shep-core/src/config/normalize/resolved_app.rs /// Shortest `interval` a `liveness_probe` may name.
+7 crates/shep-core/src/config/normalize/resolved_app.rs /// Longest `action_timeout` an app may name. The ceiling itself is
+13 crates/shep-core/src/config/normalize/resolved_app.rs /// Parameters so the `~/` expansion above is testable without mutating the
+
+14 crates/shep-core/src/config/normalize/validate.rs /// Validates one template value, naming `field` in any rejection so the user
+5 crates/shep-core/src/config/normalize/validate.rs // fails if both probes are validated against the liveness floor: a
+
+11 crates/shep-core/src/config/probe.rs //! `ProbeTarget`: parsing a probe's `target` once, at config time.
+8 crates/shep-core/src/config/probe.rs /// The host or IP literal. A bracketed IPv6 literal (`[::1]`) has
+14 crates/shep-core/src/config/probe.rs /// Parses `config.target` according to `config.kind`.
+9 crates/shep-core/src/config/probe.rs /// Splits an authority into `(host, port)`. The port is `None` when the
+6 crates/shep-core/src/config/probe.rs // The whole target is trimmed before the split, the way `parse_http`
+
+12 crates/shep-core/src/config/scaffold.rs //! Building the commented Flockfile `shep init` writes, in every format shep can read.
+9 crates/shep-core/src/config/scaffold.rs /// How much of the Flockfile grammar a scaffold shows.
+9 crates/shep-core/src/config/scaffold.rs /// The fields [`Depth::Curated`] shows, in the order it shows them.
+9 crates/shep-core/src/config/scaffold.rs /// Every field name: the curated four first, then the rest by
+9 crates/shep-core/src/config/scaffold.rs /// What a field's line should explain.
+7 crates/shep-core/src/config/scaffold.rs /// A field's placeholder value, written the way `syntax` spells literals.
+6 crates/shep-core/src/config/scaffold.rs // Nothing else pins this number, so a field added to AppConfig
+
+26 crates/shep-core/src/config/table.rs //! The one refusal shared by every Flockfile key that has to be a table.
+6 crates/shep-core/src/config/table.rs // The marker as a table's first key is a bare TOML date,
+
+28 crates/shep-core/src/config/template.rs //! The `{{...}}` grammar for Flockfile values.
+7 crates/shep-core/src/config/template.rs /// The store reference `token` names, or `None` when it is not a well-formed
+10 crates/shep-core/src/config/template.rs /// A value whose grammar is valid but whose `{{secret:...}}` cannot be
+15 crates/shep-core/src/config/template.rs /// Walks `value`, calling `on_segment` for each literal run and each token.
+11 crates/shep-core/src/config/template.rs /// The text a token that both renderers resolve identically expands to, or
+13 crates/shep-core/src/config/template.rs /// Substitutes `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` only, leaving
+17 crates/shep-core/src/config/template.rs /// Substitutes every token in `value`, resolving `{{secret:...}}` against
+16 crates/shep-core/src/config/template.rs /// Substitutes only the `{{secret:...}}` tokens in `value`, resolving them
+
+7 crates/shep-core/src/destination.rs /// A host to reach over `ssh`, as an optional `user@` and a host.
+
+7 crates/shep-core/src/dogs.rs /// The variable that names the pipe a supervised dog on Windows opens to reach
+
+11 crates/shep-core/src/file_lock.rs //! One exclusive advisory lock, keyed on the file it guards.
+18 crates/shep-core/src/file_lock.rs /// An exclusive advisory lock over one file, held for as long as the value
+
+21 crates/shep-core/src/inherited_env.rs /// Variables inherited from the daemon's own environment, on top of `PATH`.
+
+11 crates/shep-core/src/kv.rs //! `kv.json`: the shepherd's key/value store (spec §5).
+8 crates/shep-core/src/kv.rs /// Error type returned by this module.
+
+12 crates/shep-core/src/logstamp.rs //! The timestamp every line in a sheep's or a dog's log file carries, and
+9 crates/shep-core/src/logstamp.rs /// Appends the current local time in [`LOG_TIMESTAMP_FORMAT`], plus the
+11 crates/shep-core/src/logstamp.rs /// `line` with its stamp removed, or `line` unchanged if it does not carry
+
+16 crates/shep-core/src/logtail.rs /// The last `limit` lines of one log file, bounded twice: a
+5 crates/shep-core/src/logtail.rs // The daemon's per-line stamp comes off here, so a `line` has one
+10 crates/shep-core/src/logtail.rs /// The bytes of the last [`TAIL_WINDOW_BYTES`] of `source`, which holds `len`
+
+11 crates/shep-core/src/overrides.rs //! `overrides.json`: what an operator has changed since a Flockfile was
+7 crates/shep-core/src/overrides.rs /// One sheep's overrides: the fields an operator has set that its current
+8 crates/shep-core/src/overrides.rs /// Error type returned by this module.
+
+9 crates/shep-core/src/paths.rs /// Drops the `\\?\` extended-length prefix Windows' `canonicalize` adds
+12 crates/shep-core/src/paths.rs /// The user's home directory, read through `var` rather than the process
+11 crates/shep-core/src/paths.rs /// The shep home directory `$SHEP_HOME` names, or the default under
+8 crates/shep-core/src/paths.rs /// The control address the client dials and the daemon answers on.
+11 crates/shep-core/src/paths.rs /// Windows named-pipe identity for this home:
+18 crates/shep-core/src/paths.rs /// Resolves the layout from an environment lookup and the user's home dir
+
+11 crates/shep-core/src/permissions/mod.rs //! What a dog may ask of the shepherd: [`Permission`], the [`Grants`] an
+8 crates/shep-core/src/permissions/mod.rs /// The permissions an operator granted one dog.
+
+5 crates/shep-core/src/protocol/events.rs // wire format: changing existing variants is a breaking change
+7 crates/shep-core/src/protocol/events.rs /// An event kind this build has not been taught.
+8 crates/shep-core/src/protocol/events.rs /// One message a sheep wrote on its shepherd channel (fd 3).
+11 crates/shep-core/src/protocol/events.rs /// A dog's section in `dogs.toml` changed. Published under
+15 crates/shep-core/src/protocol/events.rs /// A dog's `[app.dogs.<name>]` table changed on one sheep. Published
+5 crates/shep-core/src/protocol/events.rs // Decode-only, never emitted by this build. Given its own
+
+16 crates/shep-core/src/protocol/frame.rs // Growth is anticipated (progress, flow control), and it is additive for this
+
+38 crates/shep-core/src/protocol/mod.rs //! The client<->daemon wire protocol (version 12).
+12 crates/shep-core/src/protocol/mod.rs /// Wire protocol version.
+12 crates/shep-core/src/protocol/mod.rs /// Fails whenever `PROTOCOL_VERSION` moves, which makes a bump a
+
+10 crates/shep-core/src/protocol/request/config_reply.rs /// What one app's [`Request::ApplyConfig`] did: the answer a load owes the
+13 crates/shep-core/src/protocol/request/config_reply.rs /// One app a multi-sheep reload or restart could not accept, and why
+8 crates/shep-core/src/protocol/request/config_reply.rs /// One sheep's effective config as a pane sees it: every field but env's
+6 crates/shep-core/src/protocol/request/config_reply.rs // wire format: changing field names is a breaking change
+
+10 crates/shep-core/src/protocol/request/env_copy.rs /// One env key a copy touches.
+7 crates/shep-core/src/protocol/request/env_copy.rs /// A fingerprint of the real `old` and `new`, keyed by the shepherd that
+
+9 crates/shep-core/src/protocol/request/envelope.rs /// The daemon's own crate version, when it chose to name it.
+
+8 crates/shep-core/src/protocol/request/handshake.rs /// The name this client was registered under as a dog, when it is one.
+
+11 crates/shep-core/src/protocol/request/log_tail.rs /// What reading the end of one sheep's log file came to.
+
+11 crates/shep-core/src/protocol/request/outcomes.rs /// The shepherd had a pipe and did not confirm a write to it; carries
+
+10 crates/shep-core/src/protocol/request/process.rs /// One process the OS reports as a descendant of a sheep.
+5 crates/shep-core/src/protocol/request/process.rs // wire format: changing this is a breaking change. No `Eq`: `cpu_percent` is
+13 crates/shep-core/src/protocol/request/process.rs /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
+8 crates/shep-core/src/protocol/request/process.rs /// The processes the OS reports as descendants of this sheep, or `None`
+7 crates/shep-core/src/protocol/request/process.rs /// The marker a dog has asked to have painted beside this sheep, or
+10 crates/shep-core/src/protocol/request/process.rs /// Whether this dog has completed a handshake with the shepherd that is
+10 crates/shep-core/src/protocol/request/process.rs /// Whether the reporting shepherd has given up on this dog: restarted it
+13 crates/shep-core/src/protocol/request/process.rs /// How long the shepherd gives ONE swap of this instance before it
+7 crates/shep-core/src/protocol/request/process.rs /// `Some(true)` when the sheep's app is disabled: stopped, and refused a
+9 crates/shep-core/src/protocol/request/process.rs /// Orders one flock listing the way every operator-facing surface presents
+7 crates/shep-core/src/protocol/request/process.rs /// Builds a [`ProcessInfo`], which is `#[non_exhaustive]` and so cannot be
+
+10 crates/shep-core/src/protocol/request/redacted.rs /// A dog's `[dog.<name>]` config section, carried as TOML text.
+21 crates/shep-core/src/protocol/request/redacted.rs /// One environment variable's value, on its way to a sheep.
+
+10 crates/shep-core/src/protocol/request/response.rs /// The machine the flock runs on, as the shepherd last read it.
+7 crates/shep-core/src/protocol/request/response.rs /// One RPC response (pairs with [`Request`] variants)
+17 crates/shep-core/src/protocol/request/response.rs /// Answer to `SheepConfig`: one sheep's config with `env` emptied and
+18 crates/shep-core/src/protocol/request/response.rs /// Answer to `SetSheepField`: which field moved, and whether the
+15 crates/shep-core/src/protocol/request/response.rs /// A `cwd`, `script`, `out_file` or `err_file` that looks wrong on
+10 crates/shep-core/src/protocol/request/response.rs /// Answer to `DogSheepSettings`: one dog's table from every sheep
+8 crates/shep-core/src/protocol/request/response.rs /// Answer to `Restart`: the sheep that were restarted, one row each.
+15 crates/shep-core/src/protocol/request/response.rs /// Answer to `Reload`: acceptances, not results.
+8 crates/shep-core/src/protocol/request/response.rs /// Answer to `DogStaleness`: this daemon's own handshake record, split
+
+5 crates/shep-core/src/protocol/request/response/tests.rs // The three acknowledgements. None echoes what was written:
+6 crates/shep-core/src/protocol/request/response/tests.rs // Key names only, on all three lists, and none empty here on
+5 crates/shep-core/src/protocol/request/response/tests.rs // Both halves of the same reply: a machine that has been read
+12 crates/shep-core/src/protocol/request/response/tests.rs /// The additive claim on `SheepFieldSet::warning` has three halves and
+
+16 crates/shep-core/src/protocol/request/smit.rs /// A short marker a dog attaches to a sheep for `shep flock` to paint.
+
+7 crates/shep-core/src/protocol/request/verbs.rs /// What the machine the flock runs on is doing
+9 crates/shep-core/src/protocol/request/verbs.rs /// Register apps as flock members without starting any of them
+8 crates/shep-core/src/protocol/request/verbs.rs /// Ask which of `apps` name a sheep the flock already has under a
+11 crates/shep-core/src/protocol/request/verbs.rs /// Merge each declared app into the sheep of the same name, applying
+7 crates/shep-core/src/protocol/request/verbs.rs /// One sheep's effective config, for a pane that is about to edit it.
+14 crates/shep-core/src/protocol/request/verbs.rs /// Sets, replaces, or with `None` removes one env key on one sheep,
+24 crates/shep-core/src/protocol/request/verbs.rs /// Sets several env keys on one sheep in a single write.
+25 crates/shep-core/src/protocol/request/verbs.rs /// Copies one sheep's env onto another's, inside the shepherd.
+28 crates/shep-core/src/protocol/request/verbs.rs /// Sets one config field on one sheep, recorded as an operator
+15 crates/shep-core/src/protocol/request/verbs.rs /// The new value, in the shape that field serializes as. The daemon
+15 crates/shep-core/src/protocol/request/verbs.rs /// Drops the operator's override of one config field, so the value the
+11 crates/shep-core/src/protocol/request/verbs.rs /// One dog's `[app.dogs.<name>]` table, for every sheep carrying one.
+13 crates/shep-core/src/protocol/request/verbs.rs /// Sets, replaces, or with `None` removes one dog's table on one sheep,
+17 crates/shep-core/src/protocol/request/verbs.rs /// A provider dog's values for one namespace and one environment.
+8 crates/shep-core/src/protocol/request/verbs.rs /// Set how many instances one app runs (see `shep stock`).
+7 crates/shep-core/src/protocol/request/verbs.rs /// Attach a short marker to `sheep` for `shep flock` to paint, or clear
+7 crates/shep-core/src/protocol/request/verbs.rs /// Zero the restart count of every matched sheep and hand back its
+12 crates/shep-core/src/protocol/request/verbs.rs /// Read the end of one sheep's out or err log, so a client on another
+7 crates/shep-core/src/protocol/request/verbs.rs /// Ask for one dog's `[dog.<name>]` section, as the dog itself parses it
+11 crates/shep-core/src/protocol/request/verbs.rs /// Ask for one dog's section with every `{{secret:...}}` reference
+14 crates/shep-core/src/protocol/request/verbs.rs /// Ask for one sheep's `[app.dogs.<dog>]` table with every
+7 crates/shep-core/src/protocol/request/verbs.rs /// Ask which dogs this daemon has given up on, and which it is still
+10 crates/shep-core/src/protocol/request/verbs.rs /// Ask whether this daemon could hand its flock to a successor in place,
+
+6 crates/shep-core/src/protocol/request/verbs/tests.rs // `value` is pinned as `Some`, because the `None` spelling is
+6 crates/shep-core/src/protocol/request/verbs/tests.rs // `SetSheepEnv`'s twin for everything that is not `env`, and
+6 crates/shep-core/src/protocol/request/verbs/tests.rs // `SetSheepEnvBatch`'s own doc comment calls this the densest
+
+7 crates/shep-core/src/protocol/wire.rs /// Enough of a reply to recover its id when the reply's own type does not
+
+11 crates/shep-core/src/secrets/error.rs /// Error type returned by this module.
+
+12 crates/shep-core/src/secrets/provider.rs /// What provider dogs have pushed: the values, and which
+8 crates/shep-core/src/secrets/provider.rs /// The provider cache as `secrets-cache.json` currently holds it on disk,
+
+7 crates/shep-core/src/secrets/refs.rs /// Every `{{secret:...}}` reference `config` names, exactly as the operator
+7 crates/shep-core/src/secrets/refs.rs /// Every `{{secret:...}}` reference `value` names, as [`references`] spells
+10 crates/shep-core/src/secrets/refs.rs /// The env keys whose value names at least one `{{secret:...}}` reference,
+5 crates/shep-core/src/secrets/refs.rs // Both log paths, and for opposite reasons. `err_file` carries a
+
+7 crates/shep-core/src/secrets/resolve_mod.rs /// The outcome of resolving one [`SecretRef`].
+12 crates/shep-core/src/secrets/resolve_mod.rs /// The value `reference` resolves to in this view's environment.
+8 crates/shep-core/src/secrets/resolve_mod.rs /// Whether a provider has pushed `namespace` for this view's own
+
+9 crates/shep-core/src/secrets/store.rs /// The grammar shared by keys, namespaces and environment names.
+17 crates/shep-core/src/secrets/store.rs /// Every key in the store with its per-environment values, in key order.
+15 crates/shep-core/src/secrets/store.rs /// Stores `value` under `key` for `environment`, replacing any previous
+21 crates/shep-core/src/secrets/store.rs /// Stores every `(key, value)` pair for `environment` in one locked
+
+8 crates/shep-core/src/selector.rs /// Whether `input` carries a glob metacharacter, and so was meant as a
+13 crates/shep-core/src/selector.rs /// Compiles a glob into a regex.
+7 crates/shep-core/src/selector.rs /// Whether this selector names ONE entry the caller already knew of, by
+
+12 crates/shep-core/src/signals.rs //! The signals `shep signal` may name.
+9 crates/shep-core/src/signals.rs /// A signal `shep signal` may name.
+
+8 crates/shep-core/src/status.rs /// This instance is going away and is not a restart target
+
+15 crates/shep-core/src/transport.rs //! The control transport: one address, two implementations
+8 crates/shep-core/src/transport.rs /// Windows' `ERROR_PIPE_BUSY`: the pipe exists but every server instance is
+12 crates/shep-core/src/transport.rs /// Splits an accepted connection into halves that can be owned by two tasks.
+10 crates/shep-core/src/transport.rs /// How a Windows listener creates each server instance of its pipe
+7 crates/shep-core/src/transport.rs /// The idle instance the next client will connect to, taken on every
+11 crates/shep-core/src/transport.rs /// Wraps a socket this process was handed rather than one it bound.
+9 crates/shep-core/src/transport.rs /// The descriptor this listener is bound on.
+
+7 crates/shep-core/src/values.rs /// String-shaped, matching this type's `Serialize`/`Deserialize`, which go
+9 crates/shep-core/src/values.rs /// A duration from the Flockfile grammar `^\d+(ms|h|m|s)?$`
+12 crates/shep-core/src/values.rs /// Tree CPU over a window, as a percentage of one core.
+
+11 crates/shep-daemon/examples/reuse_port_sheep.rs //! A sheep serving one TCP port with `SO_REUSEPORT`, and able to
+10 crates/shep-daemon/examples/reuse_port_sheep.rs /// A listening socket on `127.0.0.1:port` with `SO_REUSEPORT` set
+
+9 crates/shep-daemon/src/assemble/environment_inheritance.rs /// The env every spawned child starts from, before the app's own `env` map
+
+7 crates/shep-daemon/src/assemble/log_path_resolution.rs /// Anchors an explicit log path at the sheep's `cwd` when it is relative.
+
+16 crates/shep-daemon/src/assemble/mod.rs //! Spawn assembly: pure functions that build [`SpawnSpec`](crate::runner::SpawnSpec) from app config.
+
+25 crates/shep-daemon/src/assemble/spawn_spec.rs /// Assembles a [`SpawnSpec`] from a validated app config and instance slot.
+19 crates/shep-daemon/src/assemble/spawn_spec.rs /// [`assemble`] for a caller reading a spec rather than spawning one: a
+7 crates/shep-daemon/src/assemble/spawn_spec.rs // Goes through `build`, the function `assemble`/`describe` actually call,
+
+8 crates/shep-daemon/src/backoff.rs /// Delay before a restart, given the app's config and how many exits in a
+11 crates/shep-daemon/src/backoff.rs /// The delay a sheep adopted across a handover still owes, given the moment
+
+8 crates/shep-daemon/src/boot/error.rs /// Error type returned from this module's boot steps
+
+11 crates/shep-daemon/src/boot/handover.rs //! Both ends of a handover: becoming a successor, and handing over to one
+7 crates/shep-daemon/src/boot/handover.rs /// The apps a successor records in its own registry, which is what the muster
+27 crates/shep-daemon/src/boot/handover.rs /// The handover blob this process was handed, if it is a successor.
+7 crates/shep-daemon/src/boot/handover.rs // Held until this function returns, which is only ever on a refusal: the
+6 crates/shep-daemon/src/boot/handover.rs // The gate with no way back if it is skipped: past the `execve` there is
+7 crates/shep-daemon/src/boot/handover.rs /// The daemon-side gate: anyone can send a signal, and the flock can
+9 crates/shep-daemon/src/boot/handover.rs /// The second gate: a flock the fitness check passes, described by a blob
+8 crates/shep-daemon/src/boot/handover.rs /// A handover that reports and then refuses has to leave every pump
+7 crates/shep-daemon/src/boot/handover.rs /// A snapshot abandoned because a pump went quiet still owes a resume to
+8 crates/shep-daemon/src/boot/handover.rs /// A successor rebuilds its registry from the blob, and the roll on disk
+7 crates/shep-daemon/src/boot/handover.rs /// A reload from the release before the envelope onto this build.
+
+14 crates/shep-daemon/src/boot/mod.rs //! Daemon boot: the sequence, and a file for each step of it
+9 crates/shep-daemon/src/boot/mod.rs /// Where to report readiness once the muster restore has finished, for an
+21 crates/shep-daemon/src/boot/mod.rs /// Every dog this shepherd may hold a section for, running or not, with
+7 crates/shep-daemon/src/boot/mod.rs /// Let SIGHUP replace this process's image with a successor holding the
+11 crates/shep-daemon/src/boot/mod.rs // 5. A failure is a `warn!` and the boot continues: only systemd's view
+20 crates/shep-daemon/src/boot/mod.rs /// Reads the muster roll (if one exists) and starts every app it restores, in
+7 crates/shep-daemon/src/boot/mod.rs /// Serializes every test in this module tree whose `boot()` call succeeds
+
+11 crates/shep-daemon/src/boot/pidfile.rs /// This daemon's exclusive claim on `$SHEP_HOME`: an `flock(2)` held on the
+7 crates/shep-daemon/src/boot/pidfile.rs /// How this process came to hold the pidfile's `flock`.
+9 crates/shep-daemon/src/boot/pidfile.rs /// What [`daemon_liveness`] found holding a home's pidfile lock.
+8 crates/shep-daemon/src/boot/pidfile.rs /// `flock` conflicts between separate open file descriptions even inside
+
+9 crates/shep-daemon/src/boot/running.rs // 2. The final roll, written while every sheep is still online, unless
+5 crates/shep-daemon/src/boot/running.rs // 4. Stop the flock in reverse dependency order, so a worker drains
+6 crates/shep-daemon/src/boot/running.rs // fails if the reverse walk reads its edges after the registry is
+7 crates/shep-daemon/src/boot/running.rs /// Pins teardown's step 5, the `shutdown` backstop, which nothing else
+
+11 crates/shep-daemon/src/boot/socket.rs /// Fabricates what a crashed daemon leaves behind: a socket file at
+
+10 crates/shep-daemon/src/boot/tests/mod.rs /// A laid-out `$SHEP_HOME` holding a muster roll of `apps`, every one of them
+14 crates/shep-daemon/src/boot/tests/mod.rs /// Boots a daemon to a finished listing, and hands back the flock with every
+
+7 crates/shep-daemon/src/boot/tests/readiness.rs /// The ordering `Type=notify` was chosen for: a unit that goes green at
+10 crates/shep-daemon/src/boot/tests/readiness.rs /// The deadline systemd holds a `Type=notify` unit to is one number, and a
+
+11 crates/shep-daemon/src/boot_order.rs /// The plan for a flock given as names and the names each one waits for.
+13 crates/shep-daemon/src/boot_order.rs /// Graph nodes for a flock plus its dogs.
+40 crates/shep-daemon/src/boot_order.rs /// Starts `apps` stage by stage, holding each stage until every member a
+6 crates/shep-daemon/src/boot_order.rs // Every name anything in the flock waits on, read once. That is usually
+5 crates/shep-daemon/src/boot_order.rs // Walked over `apps` rather than over `stage`, so a stage keeps the
+9 crates/shep-daemon/src/boot_order.rs // The gate rides on this one `Command::Start` and so is a property of
+7 crates/shep-daemon/src/boot_order.rs // Subscribed before the spawn, not after it: a broadcast receiver
+16 crates/shep-daemon/src/boot_order.rs /// What this start left running: every earlier stage, plus whatever of the
+14 crates/shep-daemon/src/boot_order.rs /// `err`, told to name what this start already left running.
+22 crates/shep-daemon/src/boot_order.rs /// Waits until every name in `waiting` has reached a settled answer, or until
+18 crates/shep-daemon/src/boot_order.rs /// Waits until every name in `waiting` has finished reloading, or until
+11 crates/shep-daemon/src/boot_order.rs /// Whether a boot stage has its answer about an instance in this status.
+15 crates/shep-daemon/src/boot_order.rs /// Drops from `waiting` every name the flock has no unanswered instance of.
+12 crates/shep-daemon/src/boot_order.rs // `join_all` inside a stage, a serial walk across them, for the reason
+26 crates/shep-daemon/src/boot_order.rs /// Stops every sheep `edges` names, last stage first, leaving the dogs
+
+7 crates/shep-daemon/src/boot_order/tests.rs /// The bound a test passes `await_stage` when it expects the wait to end
+5 crates/shep-daemon/src/boot_order/tests.rs // fails if the driver fires every stage at once, which is what the
+6 crates/shep-daemon/src/boot_order/tests.rs // fails if the driver waits for a live sheep only: a dependency whose
+6 crates/shep-daemon/src/boot_order/tests.rs // fails if the refusal names completed stages only: `do_start`
+7 crates/shep-daemon/src/boot_order/tests.rs // fails if the walk awaits each stop to full termination before it
+13 crates/shep-daemon/src/boot_order/tests.rs // fails if shutdown stays parallel, which gives a worker and its
+6 crates/shep-daemon/src/boot_order/tests.rs // fails if the teardown claims every online sheep at once, which
+6 crates/shep-daemon/src/boot_order/tests.rs // fails if the driver reads the bus alone: an app that reached its
+7 crates/shep-daemon/src/boot_order/tests.rs // fails if the wait settles a name off the event that triggered it:
+
+10 crates/shep-daemon/src/bus.rs /// The daemon's event channel, plus the one question the channel cannot
+9 crates/shep-daemon/src/bus.rs /// Announces one `config.dog.<name>` per dog whose section changed.
+10 crates/shep-daemon/src/bus.rs /// One published [`BusEvent`], plus the wire frame its subscribers share.
+
+12 crates/shep-daemon/src/cron.rs //! The `Clock` seam and the cron-restart worker.
+10 crates/shep-daemon/src/cron.rs /// Longest a cron worker sleeps before re-deriving its next occurrence, when
+7 crates/shep-daemon/src/cron.rs /// Floor `spawn_cron_worker` enforces on `max_sleep`, regardless of caller.
+7 crates/shep-daemon/src/cron.rs /// Runs one sheep-group's cron schedule until the handle is dropped.
+
+16 crates/shep-daemon/src/dogs/config.rs /// The `[<name>]` section of `path`, a `dogs.toml`, as the operator wrote
+8 crates/shep-daemon/src/dogs/config.rs // Re-rooted, not `to_string`ed in place. A table renders its own
+38 crates/shep-daemon/src/dogs/config.rs /// Replaces `name`'s table in `path`, a `dogs.toml`, with `section` and
+6 crates/shep-daemon/src/dogs/config.rs // Held across the read, the splice and the rename, and dropped on the
+6 crates/shep-daemon/src/dogs/config.rs // `set_implicit(false)`, or a section emptied down to nothing takes the
+6 crates/shep-daemon/src/dogs/config.rs // A comment above `[name]`, and anything trailing the header itself,
+
+12 crates/shep-daemon/src/dogs/contacts.rs /// How long this map must have been watching before a pid's absence from it
+10 crates/shep-daemon/src/dogs/contacts.rs /// What this daemon has observed arriving on its socket, keyed by the
+
+11 crates/shep-daemon/src/dogs/narrate.rs /// Writes one line of shep's own narration into `info`'s log, and publishes
+
+9 crates/shep-daemon/src/dogs/refusals.rs /// Which dogs this daemon has refused at the handshake, and how often since
+9 crates/shep-daemon/src/dogs/refusals.rs /// Records a dog's refused handshake and acts on it.
+9 crates/shep-daemon/src/dogs/refusals.rs /// Restarts the dog named `name`, logging either outcome.
+
+10 crates/shep-daemon/src/dogs/rotation.rs /// Every dog whose section in `dogs_config` names `namespace`, with the
+
+16 crates/shep-daemon/src/dogs/silent.rs /// How long a registered, running dog may stay silent before this shepherd
+10 crates/shep-daemon/src/dogs/silent.rs /// Enters a dog that has gone quiet into the same ladder a named refusal
+10 crates/shep-daemon/src/dogs/silent.rs /// Watches for dogs that are running and have never once spoken to this
+11 crates/shep-daemon/src/dogs/silent.rs /// Waits for `settled` to answer true, and answers how much virtual time
+8 crates/shep-daemon/src/dogs/silent.rs /// Fails if the warm-up swallows the one verdict it exists to protect, or
+
+7 crates/shep-daemon/src/dogs/spec.rs /// The sentence this shepherd answers a request to delete a built-in dog with.
+11 crates/shep-daemon/src/dogs/spec.rs /// Error assembling a dog's app config, or reading its section
+13 crates/shep-daemon/src/dogs/spec.rs /// The app config the daemon spawns `spec` from.
+12 crates/shep-daemon/src/dogs/spec.rs /// Registers every dog in `known` and `enabled` at rest, so the flock lists
+23 crates/shep-daemon/src/dogs/spec.rs /// Stops and marks every dog row in `flock` that `enabled` does not name,
+7 crates/shep-daemon/src/dogs/spec.rs /// Starts every dog in `specs`, warning and carrying on for each one that
+
+8 crates/shep-daemon/src/dogs/verdict.rs /// What this shepherd observed about a silent dog's connections: the
+9 crates/shep-daemon/src/dogs/verdict.rs /// The stale verdict, written from what this shepherd observed.
+
+10 crates/shep-daemon/src/dogs/watch.rs /// Watches the bus and records, locally, every enabled dog that exhausts its
+
+7 crates/shep-daemon/src/entry.rs /// Whether the config in [`Self::pending`] changes who this sheep runs
+10 crates/shep-daemon/src/entry.rs /// The [`AppConfig`](shep_core::config::AppConfig) field names an
+11 crates/shep-daemon/src/entry.rs /// The identity this entry's next spawn runs under.
+8 crates/shep-daemon/src/entry.rs /// Where this instance's stdout is appended, copied from the
+8 crates/shep-daemon/src/entry.rs /// How this instance's process most recently stopped existing.
+9 crates/shep-daemon/src/entry.rs /// Which half of a reload's swap a [`ProcessEntry`] is, if either.
+
+10 crates/shep-daemon/src/extras/mod.rs /// Restarts each sheep reported over `breaches` or `liveness`.
+9 crates/shep-daemon/src/extras/mod.rs /// Arms everything an entry's configuration asks for.
+11 crates/shep-daemon/src/extras/mod.rs /// Rebuilds everything armed for `name`, replacing live tasks rather than
+8 crates/shep-daemon/src/extras/mod.rs /// Spawns the name-group's filesystem watch, or `None` when the app does not
+
+7 crates/shep-daemon/src/extras/tests/actor.rs /// The actor-tier fixture: a scripted runner over extras a case asserts
+8 crates/shep-daemon/src/extras/tests/actor.rs /// Waits until the armed cron worker has taken its first reading of `clock`.
+10 crates/shep-daemon/src/extras/tests/actor.rs /// Each `list()` is a full round trip through the actor's mailbox, so this
+
+8 crates/shep-daemon/src/fake/fake_process.rs /// Flipped to `true` when `wait()` latches an outcome, and watched by
+7 crates/shep-daemon/src/fake/fake_process.rs /// A single scripted live child produced by [`ScriptedRunner::spawn`](crate::runner::ProcessRunner::spawn)
+
+9 crates/shep-daemon/src/fake/proc_script.rs /// Never resolves its `wait()` at all: not on a signal, and not on
+
+8 crates/shep-daemon/src/fake/scripted_runner.rs /// The sheep name this spawn carried, copied off [`SpawnSpec::name`] and
+7 crates/shep-daemon/src/fake/scripted_runner.rs /// The identity this spawn was asked to run under, copied off
+11 crates/shep-daemon/src/fake/scripted_runner.rs /// Sheep names whose [`ProcessRunner::spawn`] fails, by name because
+7 crates/shep-daemon/src/fake/scripted_runner.rs /// Sheep names whose [`ProcessRunner::preflight`] answers
+9 crates/shep-daemon/src/fake/scripted_runner.rs /// Sheep names whose log-control task accepts a [`LogCtl::ReportFds`]
+10 crates/shep-daemon/src/fake/scripted_runner.rs /// Six real, distinct, open descriptors for a fake pump to report, and the
+11 crates/shep-daemon/src/fake/scripted_runner.rs /// The credentials the spawn at `spawn_index` was asked to apply, as
+7 crates/shep-daemon/src/fake/scripted_runner.rs /// The program the spawn at `spawn_index` was asked to run.
+8 crates/shep-daemon/src/fake/scripted_runner.rs /// Every [`OperatorSignal`] a `signal_process` call has recorded for the
+10 crates/shep-daemon/src/fake/scripted_runner.rs /// Whether the log-control task for the proc spawned at `spawn_index` is
+9 crates/shep-daemon/src/fake/scripted_runner.rs /// How many [`LogCtl::Reopen`] requests the proc spawned at `spawn_index`
+10 crates/shep-daemon/src/fake/scripted_runner.rs /// How many [`LogCtl::Flush`] requests the proc spawned at `spawn_index`
+8 crates/shep-daemon/src/fake/scripted_runner.rs /// How many [`LogCtl::Resume`] requests the proc spawned at
+9 crates/shep-daemon/src/fake/scripted_runner.rs /// Every line the daemon has written to the stdin of the proc spawned at
+11 crates/shep-daemon/src/fake/scripted_runner.rs /// `program`, `args`, `env`, `cwd`, `out_file` and `err_file` are read
+7 crates/shep-daemon/src/fake/scripted_runner.rs /// Fails if the fake drops its control receiver instead of answering:
+
+7 crates/shep-daemon/src/fake/scripted_sweep.rs /// A [`LambSweep`] that touches no process.
+
+9 crates/shep-daemon/src/handover/adopt/adopt_descriptors.rs /// Rebuild one shepherd channel's daemon end as an async socket, if the
+7 crates/shep-daemon/src/handover/adopt/adopt_descriptors.rs /// Rebuild one dog's own connection as an async socket, if the blob named
+
+11 crates/shep-daemon/src/handover/adopt/mod.rs //! Rebuilding a successor's Rust-side objects around descriptors it did not
+
+8 crates/shep-daemon/src/handover/adopt/rehearse_blob.rs /// The predecessor is still supervising this flock, so everything it
+
+7 crates/shep-daemon/src/handover/adopt/testing.rs /// A predecessor's live descriptors: one of everything a blob names,
+8 crates/shep-daemon/src/handover/adopt/testing.rs /// Run the real [`adopt`] over DUPLICATES of `blob`'s descriptors.
+
+12 crates/shep-daemon/src/handover/blob.rs /// Everything the successor needs to keep supervising a flock it did not
+
+13 crates/shep-daemon/src/handover/blob/tests/mod.rs //! What a blob this daemon wrote must still be when it comes back.
+
+11 crates/shep-daemon/src/handover/blob/tests/old_blob_shape.rs //! The key set each committed handover fixture must hold.
+15 crates/shep-daemon/src/handover/blob/tests/old_blob_shape.rs /// Assert a committed fixture holds exactly the key set the release it is
+
+27 crates/shep-daemon/src/handover/blob/tests/old_blob_state.rs //! Populated blobs an older release wrote, and the state that must come back.
+
+14 crates/shep-daemon/src/handover/blob/tests/old_blobs.rs //! Blobs committed as the bytes a named release wrote.
+
+7 crates/shep-daemon/src/handover/carried.rs /// One sheep, as the successor will find it.
+9 crates/shep-daemon/src/handover/carried.rs /// What the dog's carried connection had said by the time the predecessor
+8 crates/shep-daemon/src/handover/carried.rs /// When this instance's owed respawn falls due, in wall-clock terms, or
+7 crates/shep-daemon/src/handover/carried.rs /// Where this instance's binary came from, for an instance that is a
+7 crates/shep-daemon/src/handover/carried.rs /// Whether promoting [`Self::pending`] must re-resolve
+8 crates/shep-daemon/src/handover/carried.rs /// The shepherd's end of one dog's own connection, held for the exec.
+7 crates/shep-daemon/src/handover/carried.rs /// The descriptor numbers one sheep's output travels on, the one its input
+7 crates/shep-daemon/src/handover/carried.rs /// The daemon's end of the sheep's shepherd-channel socketpair, whose
+
+11 crates/shep-daemon/src/handover/exec.rs //! The flock's two ends of the exec, on top of `shep-handover`.
+20 crates/shep-daemon/src/handover/exec.rs /// Replace this process with a fresh copy of the shep binary, handing it
+7 crates/shep-daemon/src/handover/exec.rs // Three stages of the same test binary, the first thing each does
+
+13 crates/shep-daemon/src/handover/mod.rs //! Whole-flock handover: whether this daemon's flock can be replaced in
+
+15 crates/shep-daemon/src/handover/reap.rs //! Reaping the sheep a successor adopted, one pid at a time and never
+
+7 crates/shep-daemon/src/handover/uptime.rs /// The age of a process that started at `started_secs`, seen from a wall
+
+30 crates/shep-daemon/src/host.rs //! The machine the flock runs on, sampled on a tick so a listing never has
+9 crates/shep-daemon/src/host.rs /// How often the shepherd reads the host counters.
+9 crates/shep-daemon/src/host.rs /// The reading from the last tick, or `None` where there has not been
+5 crates/shep-daemon/src/host.rs // The seeding read, before the first tick rather than after
+12 crates/shep-daemon/src/host.rs /// Totals `entries` over distinct devices, counting each one once.
+7 crates/shep-daemon/src/host.rs /// Whether every address on `interface` is a loopback address.
+9 crates/shep-daemon/src/host.rs /// The earlier reading, held between ticks.
+9 crates/shep-daemon/src/host.rs // `true` on both: drop whatever this enumeration no longer lists.
+7 crates/shep-daemon/src/host.rs /// fails if a seeding reading starts reporting rates over a window too
+
+10 crates/shep-daemon/src/kill.rs /// Runs the stop ladder against one live process and returns its exit outcome.
+
+93 crates/shep-daemon/src/lib.rs //! The daemon: a process-supervision engine plus the control plane that
+
+13 crates/shep-daemon/src/limits/mod.rs //! Process-tree memory limits (spec §4).
+7 crates/shep-daemon/src/limits/mod.rs /// Watches each armed sheep's process tree for memory-limit breaches.
+8 crates/shep-daemon/src/limits/mod.rs /// Begins enforcing `limit` against the process tree rooted at `root_pid`.
+7 crates/shep-daemon/src/limits/mod.rs /// Starts the polling task; breaches arrive on `breaches`.
+
+12 crates/shep-daemon/src/limits/sample.rs //! The [`MemorySampler`] seam: one read of the machine's process table, and
+10 crates/shep-daemon/src/limits/sample.rs /// Every process currently visible, with the name the OS reports for it.
+11 crates/shep-daemon/src/limits/sample.rs /// The refresh kind [`SysinfoSampler::sample`] asks sysinfo for, named so
+7 crates/shep-daemon/src/limits/sample.rs /// The refresh kind [`SysinfoSampler::identify`] asks sysinfo for.
+7 crates/shep-daemon/src/limits/sample.rs /// How long [`name_when`] keeps walking before giving up and
+7 crates/shep-daemon/src/limits/sample.rs /// Walks until `accept` is happy with the name `pid` is reported
+7 crates/shep-daemon/src/limits/sample.rs // `read` rather than a `sleep` long enough to win the race:
+9 crates/shep-daemon/src/limits/sample.rs // Any name but `sleep`, rather than the shell's own name: this
+
+14 crates/shep-daemon/src/limits/stats.rs //! Live per-sheep resource readings: the CPU and memory figures every row of
+7 crates/shep-daemon/src/limits/stats.rs /// Tree CPU over the window since the last periodic baseline, as a
+7 crates/shep-daemon/src/limits/stats.rs /// Which sheep are worth sampling, and what their CPU counters read at the
+11 crates/shep-daemon/src/limits/stats.rs /// Every process `index` reports as a descendant of `root_pid`, in pid
+
+15 crates/shep-daemon/src/notify.rs //! Readiness reporting to an init system that supervises this process
+8 crates/shep-daemon/src/notify.rs /// The variable an init system sets on a service that reports its own
+8 crates/shep-daemon/src/notify.rs /// Errors reporting readiness.
+
+12 crates/shep-daemon/src/privilege.rs //! Privilege drop: resolving an app's requested `user`/`group` to numeric ids.
+11 crates/shep-daemon/src/privilege.rs /// What identity an entry's next spawn will run under, and whether that
+
+12 crates/shep-daemon/src/probes/mod.rs //! The `Prober` seam and the liveness probe loop (spec §7).
+8 crates/shep-daemon/src/probes/mod.rs /// Runs one probe against one target.
+9 crates/shep-daemon/src/probes/mod.rs /// Floor `spawn_liveness_task` enforces on `interval`, regardless of caller.
+8 crates/shep-daemon/src/probes/mod.rs /// Runs a sheep's liveness probe until the returned handle is aborted.
+
+8 crates/shep-daemon/src/probes/os.rs /// SIGKILLs the whole process group of a probe child, exited or abandoned.
+8 crates/shep-daemon/src/probes/os.rs /// Builds the RFC 7230 `Host:` header value for a target.
+10 crates/shep-daemon/src/probes/os.rs /// Parses the numeric status out of an HTTP status line (`HTTP/1.1 200 OK`
+8 crates/shep-daemon/src/probes/os.rs /// Polls `kill(pid, None)` for `ESRCH` instead of sleeping a fixed guess.
+
+18 crates/shep-daemon/src/probes/ready.rs //! `ReadinessSource` and `await_ready`: the gate between `starting` and
+9 crates/shep-daemon/src/probes/ready.rs /// [`Self::of`] on a config that has already been through `normalize`.
+5 crates/shep-daemon/src/probes/ready.rs // A dropped sender must not resolve this wait early, since
+
+10 crates/shep-daemon/src/rpc/batch.rs /// Whether `namespace`'s push may reach the cache file: the `persist` key
+22 crates/shep-daemon/src/rpc/batch.rs /// The stages `apps` starts in, or the cycle that refuses the whole batch.
+6 crates/shep-daemon/src/rpc/batch.rs // A dog is a node with no edges of its own, so an edge naming one
+13 crates/shep-daemon/src/rpc/batch.rs // Only a cycle this batch is in, for the reason the `unresolved` loop
+11 crates/shep-daemon/src/rpc/batch.rs /// The first name two entries of an `ApplyConfig` share, if any.
+
+11 crates/shep-daemon/src/rpc/context.rs /// Every dog name this shepherd may hold a section for, running or not,
+8 crates/shep-daemon/src/rpc/context.rs /// Everything a request handler may touch; one clone per connection.
+7 crates/shep-daemon/src/rpc/context.rs /// Names from [`crate::boot::BootOptions::dogs`], the spawn list this
+7 crates/shep-daemon/src/rpc/context.rs /// Announces that these dogs' `dogs.toml` sections changed.
+
+13 crates/shep-daemon/src/rpc/dispatch.rs /// Dispatches one request envelope against `ctx`, returning what the
+6 crates/shep-daemon/src/rpc/dispatch.rs // Peer input is untrusted: re-normalize before anything is registered.
+8 crates/shep-daemon/src/rpc/dispatch.rs // The membership half of `Start` with none of the spawning, and the
+13 crates/shep-daemon/src/rpc/dispatch.rs // Staged like `Restart` above and for its reason. Which of the two
+6 crates/shep-daemon/src/rpc/dispatch.rs // Recorded before the start is queued, not after it
+6 crates/shep-daemon/src/rpc/dispatch.rs // `start_dog` is idempotent by name for anything
+10 crates/shep-daemon/src/rpc/dispatch.rs // The one place this daemon learns of a dog it
+5 crates/shep-daemon/src/rpc/dispatch.rs // A spawn that fails still registers the dog, as
+9 crates/shep-daemon/src/rpc/dispatch.rs // Recorded exactly as `Start`, `Add`, `Scale` and
+6 crates/shep-daemon/src/rpc/dispatch.rs // Recorded for `SetSheepEnv`'s reason: the muster roll is
+6 crates/shep-daemon/src/rpc/dispatch.rs // Recorded exactly as `SetSheepEnv` records its own, and
+19 crates/shep-daemon/src/rpc/dispatch.rs // The inverse of every other config door's guard: `dogs.toml`
+19 crates/shep-daemon/src/rpc/dispatch.rs // A provider dog's push. Unguarded by design, for the reason the
+7 crates/shep-daemon/src/rpc/dispatch.rs // The catch-all `#[serde(other)]` lands on the wire, not a panic:
+
+10 crates/shep-daemon/src/rpc/dog_secrets.rs /// `name`'s section, read fresh from `dogs.toml` and resolved in the
+
+11 crates/shep-daemon/src/rpc/enrichment.rs /// The dogs this daemon has given up on, and the dogs it is still waiting to
+10 crates/shep-daemon/src/rpc/enrichment.rs /// Why this shepherd cannot hand its flock to a successor in place, or
+9 crates/shep-daemon/src/rpc/enrichment.rs /// Fills in each running sheep's live CPU and memory.
+11 crates/shep-daemon/src/rpc/enrichment.rs /// Fills in each dog's two connection facts, which no sheep has and the
+8 crates/shep-daemon/src/rpc/enrichment.rs /// Fills each row's `lambs` from a fresh walk of the process table.
+
+6 crates/shep-daemon/src/rpc/error.rs // `Internal`, on the same rule the log-maintenance pair above
+
+8 crates/shep-daemon/src/rpc/gate.rs /// `request` as the operator's word on grants, on a dog's own connection.
+
+11 crates/shep-daemon/src/rpc/mod.rs //! Portable RPC dispatch: verb routing, typed errors, per-call deadlines
+
+8 crates/shep-daemon/src/rpc/selector_verbs.rs /// `Trigger`'s own resolve-then-map path. [`selector_call`] cannot serve it:
+
+9 crates/shep-daemon/src/rpc/tests/dog_lifecycle.rs /// The boot-time list is a snapshot, so a dog adopted against a running
+
+10 crates/shep-daemon/src/rpc/tests/misc_verbs.rs /// Fails if the arm is routed to another verb's supervisor call while
+7 crates/shep-daemon/src/rpc/tests/misc_verbs.rs /// `web` at two instances, scaled to four, with one script left so the
+7 crates/shep-daemon/src/rpc/tests/misc_verbs.rs /// Assembling a flock that is already assembled starts nothing, so a
+
+5 crates/shep-daemon/src/rpc/tests/start_add.rs // fails if the cycle check tests the batch against the representative
+5 crates/shep-daemon/src/rpc/tests/start_add.rs // fails if the cycle check takes the first cycle in the graph: the
+
+7 crates/shep-daemon/src/rpc/tests/trigger_signal.rs /// `TimedOut` rather than `NoChannel` is the assertion that matters: the
+
+7 crates/shep-daemon/src/rpc/tests/walk.rs /// A `db` and an `api` that waits for it, started through the ordinary
+12 crates/shep-daemon/src/rpc/tests/walk.rs /// fails if a staged restart drops the name of an app it went around: the
+7 crates/shep-daemon/src/rpc/tests/walk.rs /// fails if a staged restart keeps only the first refusal, which is what
+
+11 crates/shep-daemon/src/rpc/walk.rs /// How `selector` is walked, or `None` when it names at most one sheep and
+6 crates/shep-daemon/src/rpc/walk.rs // A matched name the registry does not hold has no node in the plan, and
+10 crates/shep-daemon/src/rpc/walk.rs /// Every name in `matched` that `start` waits for, however many hops away.
+7 crates/shep-daemon/src/rpc/walk.rs /// How long ONE INSTANCE gets to settle, before the stage's slack.
+13 crates/shep-daemon/src/rpc/walk.rs /// [`stage_bound`] for a reload, sized by the swaps each member still owes.
+16 crates/shep-daemon/src/rpc/walk.rs /// Restarts each stage's members at once, then holds the walk until the ones
+5 crates/shep-daemon/src/rpc/walk.rs // A `NotFound` here is not necessarily a defect: the walk
+29 crates/shep-daemon/src/rpc/walk.rs /// [`restart_in_stages`] for a reload: same walk, a different call and a
+15 crates/shep-daemon/src/rpc/walk.rs // An app already reloading is refused per app now, so it
+
+9 crates/shep-daemon/src/runner/dog_link.rs /// The daemon's end of the connection a dog was spawned holding
+
+11 crates/shep-daemon/src/runner/log_path_security.rs /// The nearest ancestor of `path` another local user could redirect it
+
+10 crates/shep-daemon/src/runner/log_protocol.rs /// What the supervisor can ask a log pump to do mid-flight.
+11 crates/shep-daemon/src/runner/log_protocol.rs /// Fires once the pump has finished acting on this request.
+11 crates/shep-daemon/src/runner/log_protocol.rs /// Fires once both handles have nothing buffered and no write in
+9 crates/shep-daemon/src/runner/log_protocol.rs /// Write out whatever the pump has buffered, wait for it to reach the
+9 crates/shep-daemon/src/runner/log_protocol.rs /// Fires once both handles have nothing buffered and no write in
+11 crates/shep-daemon/src/runner/log_protocol.rs /// Read the sheep's streams again after a [`Self::ReportFds`] that no
+9 crates/shep-daemon/src/runner/log_protocol.rs /// Every log file the reopen could not open again, as
+7 crates/shep-daemon/src/runner/log_protocol.rs /// A `shep flush` that could not empty a log file, from either half of that
+10 crates/shep-daemon/src/runner/log_protocol.rs /// Every log file the flush could not empty, as
+
+13 crates/shep-daemon/src/runner/mod.rs //! Spawn seam between the daemon engine and the OS
+
+14 crates/shep-daemon/src/runner/path_advisories.rs /// Whether `path` exists as a directory, in the one word a config-edit
+9 crates/shep-daemon/src/runner/path_advisories.rs /// An operator-facing note that a `cwd` looks wrong on disk, checked when
+7 crates/shep-daemon/src/runner/path_advisories.rs /// [`cwd_advisory`]'s counterpart for a log file rather than a working
+11 crates/shep-daemon/src/runner/path_advisories.rs /// Windows path restrictions no unix filesystem enforces, so nothing in
+9 crates/shep-daemon/src/runner/path_advisories.rs /// The classic `MAX_PATH` every Windows install still enforces unless an
+6 crates/shep-daemon/src/runner/path_advisories.rs // `encode_wide`, not `OsStr::len`. Windows counts this limit in UTF-16
+9 crates/shep-daemon/src/runner/path_advisories.rs // Below U+0020 only, which is the range Windows documents. Not
+5 crates/shep-daemon/src/runner/path_advisories.rs // Up to the LAST dot, not the first. Measured on Windows 2026-09-12
+
+10 crates/shep-daemon/src/runner/process_runner.rs /// Control channel into this sheep's log pump
+8 crates/shep-daemon/src/runner/process_runner.rs /// The shepherd's writing end of this sheep's stdin.
+8 crates/shep-daemon/src/runner/process_runner.rs /// One inherited sheep, and everything a runner needs to supervise it again.
+9 crates/shep-daemon/src/runner/process_runner.rs /// What a [`ProcessRunner`] can tell about a [`SpawnSpec`] before anything is
+10 crates/shep-daemon/src/runner/process_runner.rs /// Resolves exactly once with the exit outcome
+
+11 crates/shep-daemon/src/secrets.rs //! `secrets-cache.json`: what provider dogs have pushed.
+10 crates/shep-daemon/src/secrets.rs /// Every provider dog's pushed values, and the cache file the persisting
+23 crates/shep-daemon/src/secrets.rs /// Replaces `namespace`'s values for `environment` with `entries`,
+7 crates/shep-daemon/src/secrets.rs /// Every namespace's values and every pair pushed for them, in the
+
+7 crates/shep-daemon/src/secrets_watch.rs /// One look: the dogs that name a key whose resolved value in the host
+
+8 crates/shep-daemon/src/server/accept_backoff.rs /// How long to wait before accepting again: `None` means at once.
+
+13 crates/shep-daemon/src/server/conn_protocol.rs /// Picks up a connection whose dog shook hands with the shepherd this one
+5 crates/shep-daemon/src/server/conn_protocol.rs // Version skew is a typed error, not silence (spec §6). No upper
+5 crates/shep-daemon/src/server/conn_protocol.rs // `send` is feed plus flush, one flush per frame. What is already
+8 crates/shep-daemon/src/server/conn_protocol.rs /// fails if a dog that is CONNECTED to this shepherd is reported as a
+
+9 crates/shep-daemon/src/server/dog_links.rs /// Serves every [`DogLink`] a runner opens until `shutdown` flips or the
+
+15 crates/shep-daemon/src/server/link_table.rs //! The dog connections this shepherd is serving, kept so a handover can carry
+8 crates/shep-daemon/src/server/link_table.rs /// Freezes the table, waits up to `within` for every connection's reader
+
+15 crates/shep-daemon/src/server/mod.rs //! The connection layer: peer auth, handshake, subscriptions
+
+8 crates/shep-daemon/src/server/peer_auth.rs /// The connecting peer's pid, when the OS will name one.
+7 crates/shep-daemon/src/server/peer_auth.rs /// Error type ending one connection.
+
+11 crates/shep-daemon/src/server/server_lifecycle.rs /// The control socket: shep's privilege boundary
+11 crates/shep-daemon/src/server/server_lifecycle.rs /// Accepts connections, each on its own task, until `shutdown` flips to
+8 crates/shep-daemon/src/server/server_lifecycle.rs /// Sleeps out `delay` unless `shutdown` flips first, so a stop lands inside a
+
+17 crates/shep-daemon/src/snapshot/mod.rs //! The muster roll: persisted flock state for restart-survival (`shep muster`)
+8 crates/shep-daemon/src/snapshot/mod.rs /// A roll holding `apps`, under the schema version this build writes.
+9 crates/shep-daemon/src/snapshot/mod.rs /// Records one app's config directly, for a successor rebuilding this
+7 crates/shep-daemon/src/snapshot/mod.rs /// Drops every recorded app, so the next [`Self::roll`] describes an
+8 crates/shep-daemon/src/snapshot/mod.rs /// Error type returned from `write_atomic` and [`read`]
+10 crates/shep-daemon/src/snapshot/mod.rs /// Splits a loaded [`FlockSnapshot`] into members, the subset to start, and
+21 crates/shep-daemon/src/snapshot/mod.rs /// Reads the muster roll and starts every app it restores, returning the
+6 crates/shep-daemon/src/snapshot/mod.rs // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
+11 crates/shep-daemon/src/snapshot/mod.rs /// Warns for every saved sheep whose name a running dog has taken.
+10 crates/shep-daemon/src/snapshot/mod.rs /// Reports every way the roll's dependency graph is not what it says it is.
+5 crates/shep-daemon/src/snapshot/mod.rs // Every name the roll can put back, whether or not this restore starts
+5 crates/shep-daemon/src/snapshot/mod.rs // A dog gets an ordinary graph position, but `boot` spawns dogs in two
+7 crates/shep-daemon/src/snapshot/mod.rs // A dog that is already up is not one this restore starts after the
+9 crates/shep-daemon/src/snapshot/mod.rs // `BootPlan::cycles` carries ONE representative path per knot, so a sheep
+7 crates/shep-daemon/src/snapshot/mod.rs /// Spawns the debounced muster-roll writer.
+
+14 crates/shep-daemon/src/snapshot/tests/graph.rs /// fails if the unpromoted-dog warning reads the promotion list alone.
+
+9 crates/shep-daemon/src/snapshot/tests/muster.rs /// fails if a bad entry that is not LAST takes every app after it down.
+14 crates/shep-daemon/src/snapshot/tests/muster.rs /// fails if ONE saved app that cannot start keeps the rest of the flock
+
+12 crates/shep-daemon/src/supervisor/actor_actions.rs /// Resolves `selector`, puts one action on the shepherd channel of every
+9 crates/shep-daemon/src/supervisor/actor_actions.rs /// Delivers one signal to every matched sheep's own process.
+11 crates/shep-daemon/src/supervisor/actor_actions.rs /// Writes one line to every matched sheep's stdin. Off the actor loop,
+9 crates/shep-daemon/src/supervisor/actor_actions.rs /// One sheep's transition to `Online`: emits the event, then arms every
+7 crates/shep-daemon/src/supervisor/actor_actions.rs /// Arms `id`'s lifecycle extras, rebuilding the spec the running process
+13 crates/shep-daemon/src/supervisor/actor_actions.rs /// Disarms `id`'s lifecycle extras, and its name-group's cron worker and
+10 crates/shep-daemon/src/supervisor/actor_actions.rs /// Full flock listing, grouped by app name.
+
+10 crates/shep-daemon/src/supervisor/actor_config.rs /// Merges each declared app into the sheep of the same name, one app at a
+9 crates/shep-daemon/src/supervisor/actor_config.rs /// The slot that stands in for `name`'s whole app, for a command that
+8 crates/shep-daemon/src/supervisor/actor_config.rs /// One app's half of [`Self::handle_apply_config`].
+8 crates/shep-daemon/src/supervisor/actor_config.rs // Built from the running config, plus only the fields that can reach a
+5 crates/shep-daemon/src/supervisor/actor_config.rs // `autostart` and `depends_on` are the two `NextSpawn` fields that
+11 crates/shep-daemon/src/supervisor/actor_config.rs /// Rebuilds every lifecycle extra armed for `name`, so a changed
+10 crates/shep-daemon/src/supervisor/actor_config.rs /// The [`SpawnSpec`] each armable entry's prober is built from, by id.
+
+8 crates/shep-daemon/src/supervisor/actor_core.rs /// Registers + spawns one dog, or reports the one already running under
+9 crates/shep-daemon/src/supervisor/actor_core.rs /// Expands each app through `instance_slots` + `assemble`, spawning one
+
+7 crates/shep-daemon/src/supervisor/actor_disable.rs /// Ends `name`'s reload while it is draining an instance before any
+
+7 crates/shep-daemon/src/supervisor/actor_dog_tables.rs /// `name`'s table for `dog`, and the environment a reference in it
+
+33 crates/shep-daemon/src/supervisor/actor_env_copy.rs /// Copies `from`'s intended env onto `to` as operator overrides, in one
+
+11 crates/shep-daemon/src/supervisor/actor_exit.rs /// Resolves `selector` and hands every pump writing to a matched sheep's
+13 crates/shep-daemon/src/supervisor/actor_exit.rs /// Resolves `selector` into the rows its reply carries and the log paths
+11 crates/shep-daemon/src/supervisor/actor_exit.rs /// Every live log pump writing to a path in `paths`, in id order.
+25 crates/shep-daemon/src/supervisor/actor_exit.rs /// Reads everything a handover needs off the actor and hands it to a
+12 crates/shep-daemon/src/supervisor/actor_exit.rs /// Resolves `selector` and hands every match to a task that flushes its
+5 crates/shep-daemon/src/supervisor/actor_exit.rs // A manual Restart forces a respawn, where `decide_on_exit` would
+28 crates/shep-daemon/src/supervisor/actor_exit.rs /// A memory breach or a liveness failure asked for a restart.
+7 crates/shep-daemon/src/supervisor/actor_exit.rs /// A scheduled restart's backoff elapsed.
+9 crates/shep-daemon/src/supervisor/actor_exit.rs /// A readiness wait resolved.
+
+5 crates/shep-daemon/src/supervisor/actor_lifecycle.rs // The last word on the mark, under every door that reaches a respawn:
+7 crates/shep-daemon/src/supervisor/actor_lifecycle.rs /// Lands `id` in the terminal state a respawn that could not start
+11 crates/shep-daemon/src/supervisor/actor_lifecycle.rs /// A spawn that never happened because a `{{secret:...}}` would not
+11 crates/shep-daemon/src/supervisor/actor_lifecycle.rs /// Offers `manual` the `manual` marker on a running sheep, starting its
+10 crates/shep-daemon/src/supervisor/actor_lifecycle.rs /// Resolves `selector`, then either defers to each matched sheep's next
+10 crates/shep-daemon/src/supervisor/actor_lifecycle.rs /// Applies a manual command synchronously to a matched sheep that has no
+
+6 crates/shep-daemon/src/supervisor/actor_pane.rs // A tombstone is left alone rather than removed and re-inserted,
+29 crates/shep-daemon/src/supervisor/actor_pane.rs // Dropping the operator's own value is only half an answer: for a
+5 crates/shep-daemon/src/supervisor/actor_pane.rs // A removal that left nothing behind takes the `env` key with it,
+13 crates/shep-daemon/src/supervisor/actor_pane.rs /// One read-modify-write of `name`'s record in the override store, and
+6 crates/shep-daemon/src/supervisor/actor_pane.rs // [`Self::intended_spec`], not the running `spec`: a pane has to
+28 crates/shep-daemon/src/supervisor/actor_pane.rs /// Records `key` on `name`'s env as an operator override, or removes it
+5 crates/shep-daemon/src/supervisor/actor_pane.rs // The config an unchanged next spawn would use, which is a parked
+35 crates/shep-daemon/src/supervisor/actor_pane.rs /// Records several env keys on `name` as operator overrides in one
+19 crates/shep-daemon/src/supervisor/actor_pane.rs /// Drops the operator's override of `key` on `name`, so the value it held
+52 crates/shep-daemon/src/supervisor/actor_pane.rs /// Records `key` on `name` as an operator override, applies what can
+5 crates/shep-daemon/src/supervisor/actor_pane.rs // A subset of a valid config can still fail to normalize, because
+
+11 crates/shep-daemon/src/supervisor/actor_reload.rs /// Accepts a reload: answers the caller at once, then starts one swap per
+7 crates/shep-daemon/src/supervisor/actor_reload.rs // Refused whole, before anything is spawned: a partly-accepted
+5 crates/shep-daemon/src/supervisor/actor_reload.rs // Only where a swap is actually coming: the queue below is
+11 crates/shep-daemon/src/supervisor/actor_reload.rs /// Starts the next swap of `name`'s reload, or ends the reload when
+7 crates/shep-daemon/src/supervisor/actor_reload.rs /// The reload ordering the instance `old_id` occupies asks for.
+8 crates/shep-daemon/src/supervisor/actor_reload.rs /// `DrainOld`, run first: a serial reload asks the instance it is about to
+11 crates/shep-daemon/src/supervisor/actor_reload.rs /// `SpawnNew`: spawns a replacement in `old_id`'s instance slot under a
+9 crates/shep-daemon/src/supervisor/actor_reload.rs /// `AwaitReady` resolved for a replacement: commit the swap, or abandon
+7 crates/shep-daemon/src/supervisor/actor_reload.rs // With nothing to fall back to, the reload ends here. The
+8 crates/shep-daemon/src/supervisor/actor_reload.rs /// `DrainOld`: the replacement is serving, so ask the instance it
+10 crates/shep-daemon/src/supervisor/actor_reload.rs /// One instance replaced: the replacement stops being half of a pair, and
+9 crates/shep-daemon/src/supervisor/actor_reload.rs /// The readiness source a drained swap still has to prove, if it has one.
+8 crates/shep-daemon/src/supervisor/actor_reload.rs /// Asks the replacement, alone this time, whether it can serve, and reports
+
+7 crates/shep-daemon/src/supervisor/actor_reload_done.rs /// The post-drain probe answered, or did not: finish the swap or abandon
+7 crates/shep-daemon/src/supervisor/actor_reload_done.rs // Demoted out of `Online`: that status was written on a probe the
+9 crates/shep-daemon/src/supervisor/actor_reload_done.rs /// Abandons `name`'s reload: the instance it was replacing goes back to
+11 crates/shep-daemon/src/supervisor/actor_reload_done.rs /// Bounds the swap that has just started: after
+11 crates/shep-daemon/src/supervisor/actor_reload_done.rs /// A swap ran out of time: end the reload rather than leave a job nothing
+10 crates/shep-daemon/src/supervisor/actor_reload_done.rs /// `ReapOld`: the drainee has exited, so its registration goes with it.
+
+10 crates/shep-daemon/src/supervisor/actor_scale.rs /// Sets `name`'s instance count to `count`.
+8 crates/shep-daemon/src/supervisor/actor_scale.rs // `out_file`/`err_file` need no refresh here: `stored` only
+
+7 crates/shep-daemon/src/supervisor/actor_spawn.rs /// Registers one app as a member of the flock without spawning anything.
+17 crates/shep-daemon/src/supervisor/actor_spawn.rs /// The secret view one spawn, or one batch of instances, resolves
+10 crates/shep-daemon/src/supervisor/actor_spawn.rs /// Registers one app as a flock member in `status`, spawning nothing.
+11 crates/shep-daemon/src/supervisor/actor_spawn.rs /// Registers + spawns one brand-new instance (a fresh id, `restarts: 0`).
+6 crates/shep-daemon/src/supervisor/actor_spawn.rs // Registered before the refusal is routed: a sheep that never
+11 crates/shep-daemon/src/supervisor/actor_spawn.rs /// Restores the reload jobs the blob carried, and re-arms every timer
+
+30 crates/shep-daemon/src/supervisor/config_merge.rs /// Records what a load's `env` branch just merged: the file's env keys are
+13 crates/shep-daemon/src/supervisor/config_merge.rs /// The field names `entry`'s parked config differs from its running spec on,
+7 crates/shep-daemon/src/supervisor/config_merge.rs /// The one sentence every door that refuses to touch a dog's config says.
+
+10 crates/shep-daemon/src/supervisor/error.rs /// A command that would have started processes was refused before any of
+7 crates/shep-daemon/src/supervisor/error.rs /// A `Scale` the engine will not perform; carries the refusal in plain
+8 crates/shep-daemon/src/supervisor/error.rs /// At least one log pump could not open a log path again, so that stream
+8 crates/shep-daemon/src/supervisor/error.rs /// At least one matched log file could not be flushed or truncated.
+12 crates/shep-daemon/src/supervisor/error.rs /// A request whose target is a dog, and which a dog is not a valid
+11 crates/shep-daemon/src/supervisor/error.rs /// A `SetSheepEnv` whose result is not a config this build accepts;
+11 crates/shep-daemon/src/supervisor/error.rs /// A `SetSheepField` this build will not take; carries the reason.
+10 crates/shep-daemon/src/supervisor/error.rs /// The override store at `$SHEP_HOME/overrides.json` could not be read
+7 crates/shep-daemon/src/supervisor/error.rs /// A `CopySheepEnv` write whose change list is not the one the caller
+
+18 crates/shep-daemon/src/supervisor/handle.rs /// [`Self::start`], holding every app in `gate` at `Starting` until its
+23 crates/shep-daemon/src/supervisor/handle.rs /// Sets `key` on `name`'s env, or removes it with `None`, recorded as an
+16 crates/shep-daemon/src/supervisor/handle.rs /// Sets several env keys on one sheep as operator overrides, in one
+16 crates/shep-daemon/src/supervisor/handle.rs /// Copies `from`'s env onto `to` as operator overrides, in one write.
+13 crates/shep-daemon/src/supervisor/handle.rs /// Sets one config field on one sheep as an operator override.
+15 crates/shep-daemon/src/supervisor/handle.rs /// Sets `dog`'s table on `name`, or removes it with `None`, as an
+7 crates/shep-daemon/src/supervisor/handle.rs /// Full flock listing, by name, then instance slot, then id
+
+10 crates/shep-daemon/src/supervisor/handover.rs /// The log pumps a snapshot stopped, so a handover that is then abandoned
+7 crates/shep-daemon/src/supervisor/handover.rs /// Whether this sheep's shepherd channel is still one the daemon can
+11 crates/shep-daemon/src/supervisor/handover.rs /// Spawns the task that assembles one handover snapshot and answers its
+8 crates/shep-daemon/src/supervisor/handover.rs /// What one log pump answered a snapshot's [`LogCtl::ReportFds`] with.
+11 crates/shep-daemon/src/supervisor/handover.rs /// How long a snapshot waits for one log pump to report its descriptors.
+9 crates/shep-daemon/src/supervisor/handover.rs /// Asks one sheep's log pump to write out everything it is holding, report
+
+9 crates/shep-daemon/src/supervisor/logs.rs /// Spawns the task that carries out one `Reopen` and answers its caller; must
+11 crates/shep-daemon/src/supervisor/logs.rs /// Spawns the task that carries out one `Flush` and answers its caller; must
+
+7 crates/shep-daemon/src/supervisor/manual.rs /// The manual command that owns a sheep's next exit, and who asked for it.
+
+13 crates/shep-daemon/src/supervisor/mod.rs //! The supervisor actor: owns the flock's lifecycle state machine.
+
+8 crates/shep-daemon/src/supervisor/reload.rs /// `DrainOld → ReapOld → SpawnNew → AwaitReady`. The instance being
+
+13 crates/shep-daemon/src/supervisor/sheep.rs /// The per-sheep task body: owns `(proc, io)` for the process's whole lifetime
+
+7 crates/shep-daemon/src/supervisor/slot.rs /// A clone of the [`ProcIo::log_ctl`] the most recent successful spawn
+9 crates/shep-daemon/src/supervisor/slot.rs /// A clone of the [`ProcIo::to_child`] the most recent successful spawn
+11 crates/shep-daemon/src/supervisor/slot.rs /// A clone of the [`ProcIo::to_stdin`] the most recent successful spawn
+12 crates/shep-daemon/src/supervisor/slot.rs /// This instance's readiness wait ended without a signal, and a reload
+8 crates/shep-daemon/src/supervisor/slot.rs /// When this slot's owed respawn falls due, in wall-clock terms.
+
+7 crates/shep-daemon/src/supervisor/tasks.rs /// The prober a gated readiness task, or a sheep's liveness loop, probes with:
+9 crates/shep-daemon/src/supervisor/tasks.rs /// Spawns a readiness task for `id` at `epoch`, returning the oneshot sender
+11 crates/shep-daemon/src/supervisor/tasks.rs /// Spawns the task that delivers one action to `id`'s child and waits for the
+10 crates/shep-daemon/src/supervisor/tasks.rs /// Spawns the task that collects one trigger's rows and answers its caller,
+
+7 crates/shep-daemon/src/supervisor/tests/adopt.rs /// Losing the marker is invisible to a pid check: the dog runs on. What
+
+8 crates/shep-daemon/src/supervisor/tests/adopt/dogs.rs /// The shape `shep disable` holds from the moment it sets the mark until its
+8 crates/shep-daemon/src/supervisor/tests/adopt/dogs.rs /// The other way a carried dog escapes what this boot registered: its own
+
+8 crates/shep-daemon/src/supervisor/tests/adopt_swap.rs /// A serial drain is what holds still long enough to be snapshotted: a
+7 crates/shep-daemon/src/supervisor/tests/adopt_swap.rs /// `spawn_verify_task` is a task of the predecessor's too, so a successor
+
+8 crates/shep-daemon/src/supervisor/tests/dogs.rs /// Fails if the gate is ignored: with no `wait_ready` and no
+10 crates/shep-daemon/src/supervisor/tests/dogs.rs /// `PerApp` skips an app whose credentials do not resolve, so `credentials`
+
+7 crates/shep-daemon/src/supervisor/tests/env_batch.rs /// The dog refusal is a security boundary, and four pane doors reach it: a
+
+7 crates/shep-daemon/src/supervisor/tests/flush.rs /// Fails if [`truncate_log`] stops opening through [`open_log_path`]: drop
+
+9 crates/shep-daemon/src/supervisor/tests/handover.rs /// Six wedged pumps is the size this test pins, and the bound it asserts
+
+7 crates/shep-daemon/src/supervisor/tests/interleaving.rs /// How many scripted procs one generated case may spawn.
+
+7 crates/shep-daemon/src/supervisor/tests/mod.rs /// A bare actor over `sheep`, running `scripts` and reachable at `tx`.
+10 crates/shep-daemon/src/supervisor/tests/mod.rs /// The apps in `apps`, all started through one `Start`, their runner and a
+7 crates/shep-daemon/src/supervisor/tests/mod.rs /// A real child for the adoption cases below to take over, running
+
+12 crates/shep-daemon/src/supervisor/tests/readiness.rs //! Tests for a gated sheep: one that must prove itself before it counts as online.
+7 crates/shep-daemon/src/supervisor/tests/readiness.rs // The fake holds its port for the whole test. A port released between
+6 crates/shep-daemon/src/supervisor/tests/readiness.rs // Wait on the probe's own traffic: the marker is named through
+
+8 crates/shep-daemon/src/supervisor/tests/reopen.rs /// Fails if a reopen aimed at a sheep waiting out a backoff after a refused
+
+7 crates/shep-daemon/src/supervisor/tests/scale.rs /// The instance slot of every registered instance of `name`, ascending.
+
+8 crates/shep-daemon/src/supervisor/tests/secrets.rs /// A secret nobody has set is a person's to fix, so a [`BatchPolicy::PerApp`]
+8 crates/shep-daemon/src/supervisor/tests/secrets.rs /// A respawn that could not start leaves no handle behind on either status
+
+8 crates/shep-daemon/src/supervisor/types.rs /// What a [`Command::SetSheepField`] did.
+7 crates/shep-daemon/src/supervisor/types.rs /// The merged, normalized app. `rpc/dispatch.rs` hands this to
+
+11 crates/shep-daemon/src/supervisor/wire.rs /// Whether this instance's status lets a reload replace it.
+8 crates/shep-daemon/src/supervisor/wire.rs /// The status a drainee goes back to when its swap is undone.
+
+21 crates/shep-daemon/src/sweep/mod.rs //! The lamb sweep: ending what a sheep left running once the sheep is gone
+9 crates/shep-daemon/src/sweep/mod.rs /// Ends every survivor of `snapshot`, and whatever they start meanwhile:
+
+11 crates/shep-daemon/src/sys.rs //! Adopting an inherited descriptor: this crate's only `unsafe` on unix
+7 crates/shep-daemon/src/sys.rs // fd 4096 is a number this process never owns: fd-table limits sit
+
+10 crates/shep-daemon/src/sys_windows.rs /// Marks this process's own stdio handles non-inheritable.
+5 crates/shep-daemon/src/sys_windows.rs // SAFETY: `handle` is a live handle owned by this process, checked
+15 crates/shep-daemon/src/sys_windows.rs /// A security descriptor that admits the shepherd's own user and nobody else
+5 crates/shep-daemon/src/sys_windows.rs // SAFETY: `sddl` is a NUL-terminated UTF-16 string that outlives the
+
+5 crates/shep-daemon/src/testing/mod.rs // One crate-root fixture module: every test module in this crate shares these
+10 crates/shep-daemon/src/testing/mod.rs /// A second [`tracing::Dispatch`], kept alive for the life of the process, so
+7 crates/shep-daemon/src/testing/mod.rs /// Runs `f` with a subscriber scoped to THIS thread, returning everything the
+7 crates/shep-daemon/src/testing/mod.rs /// A [`ProcessRunner`] that announces each spawn on a unix datagram socket
+7 crates/shep-daemon/src/testing/mod.rs /// [`harness`], with the caller deciding the extras.
+8 crates/shep-daemon/src/testing/mod.rs /// `AppConfig::minimal(name, "./srv")` with `mutate` applied, normalized.
+
+12 crates/shep-daemon/src/testing_http.rs /// Binds a loopback HTTP fake on `bind` and serves one reply per accepted
+
+14 crates/shep-daemon/src/tokio_runner/line_reader.rs /// The next line without its `\n` or `\r\n`, or `None` at EOF. A last
+
+7 crates/shep-daemon/src/tokio_runner/log_file.rs /// The sink for one carried stream: its handle when the blob had one, and
+11 crates/shep-daemon/src/tokio_runner/log_file.rs /// The lock that serializes one whole record written to one log path.
+12 crates/shep-daemon/src/tokio_runner/log_file.rs /// Appends one line and its newline to the buffer, after a timestamp
+9 crates/shep-daemon/src/tokio_runner/log_file.rs /// The write end of the child's stdin, held by the stdin pump rather
+7 crates/shep-daemon/src/tokio_runner/log_file.rs /// The daemon's end of the child's shepherd-channel socketpair, held by
+9 crates/shep-daemon/src/tokio_runner/log_file.rs /// Whether the pump should still be reading its sheep's streams.
+9 crates/shep-daemon/src/tokio_runner/log_file.rs /// Carries out one control request and then answers it.
+
+12 crates/shep-daemon/src/tokio_runner/mod.rs /// How long the pump keeps reading after its sheep task has let go.
+
+10 crates/shep-daemon/src/tokio_runner/pump.rs /// Waits for room on `logs_tx`, serving control requests and idle flushes
+7 crates/shep-daemon/src/tokio_runner/pump.rs /// The next line from an optional stream, or a future that never resolves
+8 crates/shep-daemon/src/tokio_runner/pump.rs /// A pump's two line readers, held in one place so a control request can
+11 crates/shep-daemon/src/tokio_runner/pump.rs /// Writes out the whole lines one stream's reader is already holding, and
+11 crates/shep-daemon/src/tokio_runner/pump.rs /// Writes out what the streams still hold once the sheep task has let go,
+14 crates/shep-daemon/src/tokio_runner/pump.rs /// Pumps a sheep's stdout and stderr to completion, and stays reachable the
+11 crates/shep-daemon/src/tokio_runner/pump.rs /// Writes lines to one child's stdin, one at a time, acknowledging each.
+7 crates/shep-daemon/src/tokio_runner/pump.rs /// Wires the daemon side of the shepherd channel: a reader task decodes
+
+12 crates/shep-daemon/src/tokio_runner/runner.rs //! [`TokioRunner`] and [`TokioProc`]: [`crate::runner::ProcessRunner`] and
+11 crates/shep-daemon/src/tokio_runner/runner.rs /// Refuses every signal: Windows has no way to deliver anything
+10 crates/shep-daemon/src/tokio_runner/runner.rs /// `SIGKILL` is delivered; the other eight names are refused by name.
+11 crates/shep-daemon/src/tokio_runner/runner.rs /// What exec will make of `spec.program`, before anything is spawned.
+9 crates/shep-daemon/src/tokio_runner/runner.rs /// Whether the filesystem says, without qualification, that `path` is not
+12 crates/shep-daemon/src/tokio_runner/runner.rs /// Takes a sheep this image inherited rather than started.
+
+10 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if both pipes filled to capacity cannot be drained.
+10 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if two instances of one `merge_logs` app end up naming one
+14 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a report still names a stream whose descriptor the pump has
+8 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a report is answered before what the pump is holding has
+7 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a pump goes on reading its sheep's streams after it has
+7 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a report leaves lines stranded in the pump's reader.
+11 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a report takes bytes off a pipe that it does not write.
+7 crates/shep-daemon/src/tokio_runner/tests/handover.rs /// Fails if a report follows a sheep that is still writing instead of
+
+11 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if a line the child wrote before its sheep task let go never
+10 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// The same line, lost the other way: through the control channel
+14 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// A [`LogFile`] writing through `sink`, for the cases that drive one
+8 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if an appended line still costs one write to the file.
+10 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if a line only leaves the buffer when the buffer fills or when
+7 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// `mtime` answers for the whole file and only until something touches
+8 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if a rotation loses or duplicates what the buffers were
+11 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if [`open_append`] stops opening through `open_log_path`:
+9 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if the pump waits for room on `logs` with a bare
+9 crates/shep-daemon/src/tokio_runner/tests/log_io.rs // stdout at EOF with stderr still live: what a child that closes one
+10 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if the pump acknowledges a reopen it could not carry out.
+10 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if the `Flush` arm never reaches the files, never answers, or
+16 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if [`LogFile::flush`] stops asking the file anything: an early
+11 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if a log handle carried across a handover writes anywhere but
+11 crates/shep-daemon/src/tokio_runner/tests/log_io.rs /// Fails if the pump can only notice a departed `logs` receiver from
+
+7 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// One pump over two streams and two real files: everything
+7 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// One log file's contents with [`super::log_file::LogFile::append`]'s
+7 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// Waits for `path` to hold exactly `expected`, ignoring the per-line
+14 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// Polls [`LogCtl::ReportFds`] until `settled` holds of the answer, and
+8 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// Fills one pipe with whole lines until the kernel refuses another, and
+11 crates/shep-daemon/src/tokio_runner/tests/mod.rs /// Hands the runtime to the pump task and back, for a stream backed by an
+
+9 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// fails if a descriptor report leaves out the sheep's shepherd
+8 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// fails if an adopted shepherd channel is not wired back to both
+10 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// A spec for a real child, whose fd 0 is the point of the two cases
+8 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// fails if a spawn does not report the descriptor it put on the child's
+12 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// Fails if a filesystem error that is not "no such file" is ever read
+8 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// fails if a bare command off the PATH ever becomes `Impossible`.
+11 crates/shep-daemon/src/tokio_runner/tests/spawn_io.rs /// fails if a long PATH is printed in full, or a short one is not.
+
+12 crates/shep-daemon/src/tokio_runner/windows_pipe.rs /// Hands the dog's side of `listener` to the server once the dog connects.
+
+9 crates/shep-daemon/src/watch/filter.rs /// Ignore patterns covering a sheep's own log files: one per path in `logs`
+7 crates/shep-daemon/src/watch/filter.rs /// Whether `path`, an absolute path exactly as notify delivered it,
+
+8 crates/shep-daemon/src/watch/group.rs /// Floor the watch arming enforces on an app's own `watch_delay`.
+8 crates/shep-daemon/src/watch/group.rs /// The group loop: filters each debounced batch and single-flights a
+5 crates/shep-daemon/src/watch/group.rs // A restart touches no log files, starts no reload, scales
+8 crates/shep-daemon/src/watch/group.rs // The only case that constructs a real `WatchSource`, exercised by
+
+12 crates/shep-daemon/src/watch/mod.rs //! The filesystem-watch subsystem (spec §4).
+7 crates/shep-daemon/src/watch/mod.rs /// The real-time constants shared by every real-filesystem test suite
+
+8 crates/shep-daemon/src/watch/source.rs /// Whether notify flagged this delivery for a rescan: it dropped events
+11 crates/shep-daemon/src/watch/source.rs /// Waits up to `within` for a batch satisfying `wanted`, returning every
+5 crates/shep-daemon/src/watch/source.rs // Prove the watch is live first, so a failure below can't be
+
+7 crates/shep-daemon/src/watch/testing.rs /// How many `tokio::task::yield_now` rounds [`settle`] spends: headroom
+7 crates/shep-daemon/src/watch/testing.rs /// When a correct group loop finishes each restart, given the instants
+
+8 crates/shep-daemon/tests/daemon_e2e/harness.rs /// Stops the daemon a panicking test never shut down, then reaps what a
+12 crates/shep-daemon/tests/daemon_e2e/harness.rs /// Starts one `app` and hands back its row, failing at the call site.
+
+7 crates/shep-daemon/tests/daemon_e2e/probed_reload.rs /// Both instances run the same command; the second finds `SHEEP_MUTE_FILE` in
+
+7 crates/shep-daemon/tests/daemon_e2e/reload.rs /// shep promises the overlap, not zero downtime: a listener's accept backlog
+7 crates/shep-daemon/tests/daemon_e2e/reload.rs /// An instance that will not stop accepting, finish what it has, and exit
+
+9 crates/shep-daemon/tests/real_runner/adoption.rs /// A `/bin/sh` child that holds the far end of a socketpair on fd 3 and
+7 crates/shep-daemon/tests/real_runner/adoption.rs /// fails if an adopted shepherd channel does not reach a real app blocked
+
+8 crates/shep-daemon/tests/real_runner/channel.rs /// A `/bin/sh` child that answers exactly `rounds` shepherd-channel
+8 crates/shep-daemon/tests/real_runner/channel.rs /// Sends one message and returns the child's reply.
+10 crates/shep-daemon/tests/real_runner/channel.rs /// Fails if fd 3 reaches the child non-blocking: a plain `read <&3` gets
+
+8 crates/shep-daemon/tests/real_runner/environment.rs /// RAII guard: sets `PATH` for a test and restores it on drop, including on
+
+11 crates/shep-daemon/tests/real_runner/identity.rs /// Proves `TokioRunner::spawn`'s `command.uid`/`command.gid` calls are
+
+11 crates/shep-daemon/tests/real_runner/main.rs //! Behavioral tests for [`shep_daemon::tokio_runner::TokioRunner`] against
+9 crates/shep-daemon/tests/real_runner/main.rs /// The child's next log line, or a named panic for either way there is not
+8 crates/shep-daemon/tests/real_runner/main.rs /// Waits for `proc` to exit, failing at `deadline`, and hands back the outcome.
+9 crates/shep-daemon/tests/real_runner/main.rs /// Last-resort net: kills any process left alive when a test panics, so a
+
+11 crates/shep-daemon/tests/real_runner_windows.rs /// Reads `out_file` until it contains `needle`, or fails after [`SETTLE`].
+9 crates/shep-daemon/tests/real_runner_windows.rs /// Kills the tree, then waits up to [`SETTLE`] for the sheep to report.
+5 crates/shep-daemon/tests/real_runner_windows.rs // `cmd` from a batch file, not `powershell -Command`: PowerShell hangs
+9 crates/shep-daemon/tests/real_runner_windows.rs /// fails if a child cannot reach the shepherd channel by pipe name.
+
+8 crates/shep-handover/src/fitness.rs /// A caller's gate over a handover, asked once the target is resolved and
+
+26 crates/shep-handover/src/incoming.rs /// Find out whether this image is a successor, and adopt what its
+
+26 crates/shep-handover/src/lib.rs //! Replace a process's image with `execve` and carry on: named descriptors
+
+7 crates/shep-handover/src/outgoing.rs /// A handover being described: the state to pass, the descriptors to carry,
+9 crates/shep-handover/src/outgoing.rs /// Carry `fd` across the exec under `key`; the new image claims it with
+7 crates/shep-handover/src/outgoing.rs /// Do not start the target to ask whether it reads the state's format.
+24 crates/shep-handover/src/outgoing.rs /// Replace this process's image with the target, carrying the state and
+
+18 crates/shep-handover/src/reap.rs /// Wait for one child of this process to end, and report how.
+
+14 crates/shep-handover/src/sys.rs /// Take ownership of a descriptor a predecessor carried across an `execve`,
+5 crates/shep-handover/src/sys.rs // SAFETY: `fd` is open, and not close-on-exec. Everything this process
+
+11 crates/shep-macros/src/lib.rs //! The `dog_config` attribute, and nothing else.
+59 crates/shep-macros/src/lib.rs /// Marks which of a dog's config fields are credentials, so shep can redact
+6 crates/shep-macros/src/lib.rs // The type is emitted even on the error path, stripped of the
+
+12 crates/shep-tree/src/job.rs //! A Windows job object: the substitute for a unix process group.
+12 crates/shep-tree/src/job.rs // Zeroed, then left zeroed: every limit flag stays off. Setting the
+16 crates/shep-tree/src/job.rs /// Assigns an already-spawned process to this job.
+
+19 crates/shep-tree/src/lib.rs //! Signal a process group, own a Windows job and stop a child and everything
+
+15 crates/shep-tree/src/stop.rs /// Spawns `command` as the leader of a new tree.
+27 crates/shep-tree/src/stop.rs /// Stops `child` and everything in its tree, and returns how `child` exited.
+
+17 examples/src/bin/busy.rs //! Burns CPU on a repeating curve, so a dashboard's CPU column has a shape to
+
+22 examples/src/bin/chatty.rs //! Speaks the shepherd channel: readiness, a metric, and custom actions.
+9 examples/src/bin/chatty.rs /// Reads a level out of one action's `params`, with whatever followed it.
+
+9 examples/src/bin/noisy.rs /// Turns a rate into the sleep between lines.
+
+14 examples/src/bin/stubborn.rs //! Traps `SIGTERM` and refuses to die, so `kill_timeout` elapses and
+9 examples/src/bin/stubborn.rs /// Blocks `SIGTERM` in the calling thread; threads it spawns inherit

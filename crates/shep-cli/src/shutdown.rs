@@ -4,12 +4,10 @@
 //! keep one shape: install once, `recv().await` in a `select!`.
 //!
 //! Unix listens for `SIGTERM` alone. Windows merges all five console
-//! control events, since `CTRL_CLOSE_EVENT`, `CTRL_SHUTDOWN_EVENT` and
-//! `CTRL_LOGOFF_EVENT` arrive on a closing console or a machine going
-//! down, and a stop request must cover those too.
+//! control events, including the ones that arrive on a closing console or a
+//! machine going down.
 //!
-//! Windows terminates the process a few seconds after the handler
-//! returns, so a shutdown path here should not assume it has long.
+//! Windows terminates the process a few seconds after the handler returns.
 
 use std::io;
 
@@ -64,18 +62,11 @@ impl Terminate {
 
     /// Resolves when the OS asks this process to stop.
     ///
-    /// `Option<()>` rather than `()`, because that is what
-    /// `tokio::signal::unix::Signal::recv` answers and the unix arm is a
-    /// straight pass-through of it. Every call site ignores the value: each
-    /// one is a `select!` arm binding `_`, or an awaited `recv()` whose
-    /// result is discarded. So the type is tokio's shape surviving rather
-    /// than anything a caller reads, and narrowing it to `()` would be
-    /// correct at every call site today.
+    /// `Option<()>` is tokio's `Signal::recv` shape surviving on unix. Every
+    /// call site discards the value.
     ///
     /// # Cancellation safety
-    /// Safe on both platforms: each underlying stream is documented
-    /// cancel-safe, and the Windows arm's `select!` over five of them
-    /// inherits that.
+    /// Safe on both platforms: each underlying stream is cancel-safe.
     pub(crate) async fn recv(&mut self) -> Option<()> {
         #[cfg(unix)]
         {
@@ -96,15 +87,11 @@ impl Terminate {
 
 /// A listener for the operator's own Ctrl+C.
 ///
-/// Distinct from [`Terminate`], which is the OS asking a long-running
-/// process to stop. This is a person ending something they started at a
-/// keyboard, and a verb that has changed the terminal has to put it back
-/// before it goes.
+/// Distinct from [`Terminate`], the OS asking a process to stop. A verb that
+/// has changed the terminal has to put it back before it goes.
 ///
 /// Installed rather than awaited through `tokio::signal::ctrl_c()`, which
-/// registers its handler on the first poll: an interrupt arriving before
-/// that poll reaches the default disposition and kills the process outright,
-/// leaving whatever the verb did to the terminal in place.
+/// registers on the first poll: an earlier interrupt kills the process.
 pub(crate) struct Interrupt {
     #[cfg(unix)]
     signal: tokio::signal::unix::Signal,

@@ -51,14 +51,9 @@ impl Entry {
 /// Renders a directory listing as one HTML document.
 ///
 /// `entries` are file names, already sorted, directories first, and
-/// already filtered: the caller drops any name starting with `.` unless
-/// `--hidden`. `prefix` is the request path the listing is for, always
-/// ending in `/`.
-///
-/// The name is HTML-escaped for the text node, since a filename can
-/// itself be `<script>...</script>`. The href is percent-encoded via
-/// [`encode_segment`] instead, since a name with a space, `#` or `?`
-/// would otherwise produce a link to somewhere else.
+/// filtered: the caller drops names starting with `.` unless `--hidden`.
+/// `prefix` is the request path, always ending in `/`. The name is
+/// HTML-escaped; the href is percent-encoded via [`encode_segment`].
 #[must_use]
 pub fn render(prefix: &str, entries: &[Entry]) -> String {
     let mut out = String::new();
@@ -87,9 +82,8 @@ pub fn render(prefix: &str, entries: &[Entry]) -> String {
 
 /// Percent-encodes one path segment for a URL.
 ///
-/// Public within `serve`: also used by the worker's trailing-slash
-/// redirect `Location`, where an unencoded non-ASCII byte would produce a
-/// header `http::write_head`'s control-byte check refuses.
+/// Public within `serve`: the worker's trailing-slash redirect `Location`
+/// uses it too, since `http::write_head` refuses a non-ASCII byte.
 ///
 /// The safe set is `encodeURIComponent`'s: ASCII alphanumerics plus
 /// `- _ . ~ ! * ' ( )`. Everything else becomes `%XX`, byte by byte.

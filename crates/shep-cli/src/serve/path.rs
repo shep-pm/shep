@@ -1,15 +1,12 @@
 //! Request-target resolution, pure tier.
 //!
 //! No `cfg`, no I/O: [`resolve`] takes the raw HTTP request target and
-//! returns either a root-relative sequence of segments or the precise
-//! reason it refused the target. Compiles on every target this workspace
-//! ships, Windows included.
+//! returns either a root-relative sequence of segments or the reason it
+//! refused. Compiles on every target, Windows included.
 //!
-//! Splits on `/` before decoding each segment: decoding happens once the
-//! boundaries are fixed, so a `%2f` can only ever produce a literal `/`
-//! byte inside its own segment, which [`Refusal::ForbiddenByte`] then
-//! catches. The filesystem half, the containment walk and the open, lives
-//! in `serve::fs`, portable and `async`.
+//! Splits on `/` before decoding each segment, so a `%2f` only ever yields a
+//! literal `/` inside its own segment, which [`Refusal::ForbiddenByte`]
+//! catches. The containment walk and the open live in `serve::fs`.
 
 use core::fmt;
 

@@ -1,19 +1,12 @@
 //! A bounded, redirect-refusing GET over `tokio-rustls`: [`get`], plus the
 //! URL parsing ([`parse_url`]) and TLS setup ([`tls_connector`]) it shares
-//! with `dog::bark::sinks`. An HTTP client, where `crate::http` is a
-//! hand-rolled, TLS-free server. Either scheme is accepted; a caller
-//! wanting only `https://` enforces that itself. A URL carrying
-//! credentials before the host (`user@`, `user:pass@`) is refused.
+//! with `dog::bark::sinks`. A URL carrying credentials is refused.
 //!
 //! [`get`] refuses, in this order: a 3xx naming a `Location`; any other
-//! non-2xx; any `Transfer-Encoding`, since it reads exactly
-//! `Content-Length` bytes; a `Content-Length` absent, unparseable, or
-//! contradicted by a second one; and one above the caller's `limit`,
-//! rechecked as the body arrives. The head has its own cap,
-//! [`MAX_HEADER_BYTES`]. No `Accept-Encoding` is sent.
+//! non-2xx; any `Transfer-Encoding`; a bad `Content-Length`; and a body above
+//! the caller's `limit`. The head has its own cap, [`MAX_HEADER_BYTES`].
 //!
-//! The `otel` feature adds `post_json` in the `post` submodule, over the
-//! same transport: a build without it compiles none of that half.
+//! The `otel` feature adds `post_json` in the `post` submodule.
 use core::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,25 +32,18 @@ pub(crate) use transport::connect_and_send;
 /// The most this module will read before the blank line that ends a
 /// response's header block, status line included.
 ///
-/// 64 KiB, within an order of magnitude of what nginx, Apache and Go's
-/// `net/http` allow, and far more than any real response needs: the live
-/// index answers in about 300 bytes of headers. Nothing else bounds a peer
-/// that never sends a newline.
-///
-/// Not the caller's `limit`, which is a body budget.
+/// 64 KiB: far more than any real response needs, and the only bound on a
+/// peer that never sends a newline. Not the caller's `limit`, which is a
+/// body budget.
 pub const MAX_HEADER_BYTES: usize = 64 * 1024;
 
 /// A URL, parsed into what [`get`] needs to reach it.
 ///
 /// `Debug` is REDACTED (IR-41), and `path` is the field that needs it: a
-/// Discord or Slack webhook URL is a bearer credential and carries its
-/// token as a path segment, which is why
-/// [`Sink`](crate::dog::bark::sinks::Sink) redacts its own `Debug` too. A
-/// `Target` printed into a log, a panic message or an error chain must not
-/// hand that token to whoever reads the log.
+/// Discord or Slack webhook URL carries its token as a path segment, which
+/// is why [`Sink`](crate::dog::bark::sinks::Sink) redacts its own `Debug`.
 ///
-/// `host` needs no redaction: [`parse_url`] refuses a `user@` or
-/// `user:pass@` authority rather than folding it into `host`.
+/// `host` needs no redaction: [`parse_url`] refuses a credentialed authority.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Target {
     /// `true` for `https://`, `false` for `http://`.
@@ -104,11 +90,8 @@ pub enum FetchError {
     /// `url` did not parse as an absolute `http://`/`https://` URL. Carries
     /// a human-readable reason, never the raw bytes of a malformed input.
     ///
-    /// The reason quotes `url` only through [`url_for_message`], which
-    /// withholds anything holding an `@`. That is the backstop under
-    /// [`url_carries_credentials`], which reads an authority and so can
-    /// misread a url far enough off the grammar. An authority that really
-    /// does carry `user@` or `user:pass@` gets its own reason,
+    /// The reason quotes `url` only through [`url_for_message`]. An authority
+    /// that carries `user@` or `user:pass@` gets its own reason,
     /// [`CREDENTIALS_REFUSAL`].
     Url(String),
     /// The connection failed, the TLS handshake failed, or the response
@@ -216,17 +199,9 @@ pub const CREDENTIALS_REFUSAL: &str = concat!(
 
 /// How `url` may be named in a message: itself, or a fixed placeholder.
 ///
-/// Deliberately blunter than [`url_carries_credentials`], and deliberately
-/// the only rule any message consults. That predicate reads an authority,
-/// so it can say precisely why a sink was refused; this one asks only
-/// whether printing the text might print a secret, and an `@` anywhere is
-/// enough to decline.
-///
-/// Two rules for one question drift, and did: [`parse_url`] withheld
-/// `file:///etc/user:pw@host` on its own `@` test while
-/// [`available_dogs`](crate::commands::query::available_dogs) printed that
-/// same url in the sentence around it, because it asked the predicate
-/// instead.
+/// Blunter than [`url_carries_credentials`] and the only rule any message
+/// consults: an `@` anywhere is enough to decline. Two rules for one question
+/// drift, and printing a url a second rule let through leaks its password.
 pub fn url_for_message(url: &str) -> &str {
     if url.contains('@') {
         "a url that may carry credentials"
@@ -250,20 +225,11 @@ fn authority_of(rest: &str) -> &str {
 
 /// Whether `url`'s authority carries a `user@` or `user:pass@` prefix.
 ///
-/// The rule [`parse_url`] refuses on, separated out so a caller holding a
-/// URL it has not parsed yet can refuse the same shape at config-load time
-/// rather than at first use.
+/// The rule [`parse_url`] refuses on, separated out so a caller can refuse
+/// the same shape at config-load time.
 ///
-/// Deliberately blind to the scheme, and to whether there is one at all.
-/// Keying this on `http://`/`https://` would have answered `false` for
-/// `ftp://user:pass@host/` and for `HTTPS://user:pass@host/`, which
-/// [`parse_url`] then refuses on the SCHEME instead, in a message that
-/// quotes the whole url and hands the password back. A url this cannot
-/// parse is exactly the one whose refusal must not echo it.
-///
-/// The cost is that `mailto:someone@example.com` reads as credentials.
-/// It is refused either way, and a wrong reason on a url nothing here can
-/// fetch is cheaper than a right one that prints a password.
+/// Blind to the scheme, so a refusal never echoes the url. `mailto:` reads as
+/// credentials too; a wrong reason is cheaper than a printed password.
 pub fn url_carries_credentials(url: &str) -> bool {
     let rest = url.split_once("://").map_or(url, |(_scheme, rest)| rest);
     // A scheme-relative url has an authority with no scheme in front of
@@ -275,18 +241,9 @@ pub fn url_carries_credentials(url: &str) -> bool {
 
 /// Parses `url` into a [`Target`] naming where [`get`] should connect.
 ///
-/// Hand-rolled: a fetch target is never more than a scheme, a host, an
-/// optional port and a path.
-///
-/// Credentials before the host are refused rather than stripped: nothing
-/// downstream of here sends an `Authorization` header, so a `user:pass@`
-/// prefix could only ever be silently discarded or silently sent as part
-/// of a hostname. `ProbeTarget::parse` refuses the same shape for the same
-/// reason.
-///
-/// The authority ends at the first `/`, `?` or `#`. A query belongs to
-/// the path from there; a fragment is dropped, being the client's own and
-/// having no place in a request target.
+/// Credentials before the host are refused rather than stripped.
+/// `ProbeTarget::parse` refuses the same shape. The authority ends at the
+/// first `/`, `?` or `#`; a fragment is dropped.
 ///
 /// # Errors
 /// - [`FetchError::Url`] if `url` does not start with `http://` or
@@ -294,11 +251,9 @@ pub fn url_carries_credentials(url: &str) -> bool {
 ///   non-numeric port, or names no host. No such message quotes a `url`
 ///   holding an `@`; see [`url_for_message`].
 pub fn parse_url(url: &str) -> Result<Target, FetchError> {
-    // Ahead of the host/port split, which trusts the last colon: without
-    // this, `user:pass@host:8443` parses to the host `user:pass@host` and
-    // `user:pass@host` to the host `user` and the port `pass@host`, so a
-    // password reaches either a `Target` field or, through that split's
-    // own refusal, an error message quoting the whole URL.
+    // Ahead of the host/port split, which trusts the last colon: otherwise
+    // `user:pass@host:8443` parses to the host `user:pass@host`, and a password
+    // reaches a `Target` field or an error message quoting the whole URL.
     if url_carries_credentials(url) {
         return Err(FetchError::Url(CREDENTIALS_REFUSAL.to_owned()));
     }
