@@ -244,6 +244,25 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       environment means nobody has to remember which dog's config is
       sensitive.
     </p>
+    <p>
+      The one setting shep does send through the environment is the{" "}
+      <code>env</code> an operator sets beside an adopted dog's path in{" "}
+      <code>[daemon.adopted_dogs]</code>: the same key a sheep has, for a dog
+      that runs other programs, or hands a key to a library that looks it up
+      there.
+    </p>
+    <CodeBlock label="$SHEP_HOME/shep.toml">{`[daemon.adopted_dogs.kelpie]
+path = "/usr/local/bin/shep-kelpie"
+env  = { PADDOCK_KEY = "{{secret:paddock/key}}" }`}</CodeBlock>
+    <p class="fine">
+      A path on its own is still an entry, so a <code>shep.toml</code> written
+      before this key existed reads unchanged. A value may be a{" "}
+      <code>{'{{secret:...}}'}</code>, resolved at spawn and never written back
+      to the file, and <code>SHEP_HOME</code> and <code>SHEP_DOG_NAME</code>{" "}
+      are set over anything <code>env</code> claims for them. A built-in dog has
+      no entry to set <code>env</code> in. Lookout edits it from the dog's row,
+      every value shown as <code>&lt;set&gt;</code>.
+    </p>
     <Callout variant="careful">
       Editing <code>[&lt;name&gt;]</code> in <code>dogs.toml</code> does not
       reach a dog that's already running. It asked for its section once, at

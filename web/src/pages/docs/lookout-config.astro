@@ -845,6 +845,16 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       field costs. There's no tab row: a dog's schema carries no groups to
       move between.
     </p>
+    <p>
+      Under the fields, an adopted dog's pane carries the <code>env</code> an
+      operator set beside its path in <code>shep.toml</code>: the same rows a
+      sheep's <code>process</code> tab has, <code>e</code> editing one and{" "}
+      <code>+</code> adding one, each value reading <code>&lt;set&gt;</code>{" "}
+      and its editor opening empty. <code>Esc</code> writes that half to{" "}
+      <code>shep.toml</code> first, then sends the field edits to{" "}
+      <code>dogs.toml</code>. A built-in dog has no entry to hold an{" "}
+      <code>env</code>, so its pane shows none.
+    </p>
     <p class="fine">
       <code>r</code> re-reads the section and not the schema, so a keystroke
       whose job is to re-read a file never respawns somebody else's binary.
