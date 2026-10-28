@@ -32,7 +32,7 @@ const JSON_SCHEMA: &str = "JsonSchema";
 ///
 /// Put it above the derives on the type a dog deserializes its config into.
 /// Mark each credential field with `#[shep(secret)]`. Structs and enums both
-/// work. A `JsonSchema` derive listed above this attribute is refused.
+/// work. A marked field with no `JsonSchema` derive below it is refused.
 ///
 /// # Example
 ///
