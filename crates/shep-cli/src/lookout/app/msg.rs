@@ -165,17 +165,29 @@ pub enum KeyPress {
     /// `N`: the same, toward the oldest matching line. Ignored on the
     /// dashboard.
     MatchPrev,
-    /// `D`: arms the removal of the selected key's value in the current
-    /// tab's environment, in the secrets pane. `Enter` confirms.
+    /// `D`: arms the removal of the key the cursor is on, in the secrets pane
+    /// and on a sheep's env rows. `Enter` confirms and every other key cancels.
     ///
     /// Capital, and `d` is left alone: `d` is already
     /// [`Self::Remove`], and `map_key` dispatches on mode rather than
-    /// pane, so the two cannot share a key.
-    SecretDelete,
+    /// pane, so the two cannot share a key. One key in both panes, because
+    /// both panes delete the same kind of thing.
+    ArmDelete,
     /// `Tab`: moves the config pane's focus to the next group.
+    ///
+    /// In a key/value editor it steps to the next field instead, the way
+    /// [`Self::NextField`] below; `map_key` dispatches on mode, so the two
+    /// never meet.
     NextGroup,
     /// `Shift+Tab`: moves the config pane's focus to the previous group.
     PrevGroup,
+    /// `Tab` in a key/value editor: the cursor moves to the other field,
+    /// which is where the KEY field's own grammar gets its turn. Read only
+    /// by the env rows and the secrets pane.
+    NextField,
+    /// `Shift+Tab` in a key/value editor: the same step back, which is how
+    /// the key a row is under is reached from its value.
+    PrevField,
     /// `1` through `9`: jumps the config pane's focus straight to that
     /// group, numbered in the order the pane lists them (`GROUP_ORDER`,
     /// nine of them). A digit past the last group is ignored.
@@ -605,6 +617,18 @@ pub enum Effect {
     /// The [`WriteAuthority`] is not decoration: this variant cannot be
     /// named without having passed the gate.
     WriteSecret(SecretEdit, WriteAuthority),
+    /// Apply several changes to `secrets.json` in one task; the result lands
+    /// as one [`Msg::SecretWritten`].
+    ///
+    /// Raised by a rename, which is two changes to the store: set the new key,
+    /// then remove the old one. One task rather than two effects so one `Enter`
+    /// gets one answer and one re-read, and so the half that can lose a value
+    /// goes last. Each half still takes the store's own lock, so a rename that
+    /// fails halfway leaves the key under two names rather than under none.
+    ///
+    /// `spawn_blocking` for [`Self::WriteSecret`]'s reason, and carries the same
+    /// [`WriteAuthority`] for the same reason.
+    WriteSecrets(Vec<SecretEdit>, WriteAuthority),
     /// Sends the carried value to the terminal's clipboard over OSC 52, by
     /// [`KeyPress::Copy`]. `crate::lookout::run_ui` writes it straight to the same
     /// stdout handle `crate::lookout::term` uses, never through `Terminal<B>` (a

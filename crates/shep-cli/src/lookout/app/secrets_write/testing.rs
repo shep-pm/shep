@@ -12,8 +12,8 @@ pub(super) fn reveal_of(app: &App) -> Option<&Reveal> {
     }
 }
 
-/// The pane's own open input, or `None`.
-pub(super) fn typing_of(app: &App) -> Option<&Typing> {
+/// The pane's own open editor, or `None`.
+pub(super) fn typing_of(app: &App) -> Option<&KeyValues> {
     match app.body() {
         Body::Secrets(pane) => pane.typing.as_ref(),
         _ => None,

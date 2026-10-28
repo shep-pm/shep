@@ -4,8 +4,8 @@ use super::super::cell;
 use super::super::flock::fit;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
 use super::key_hint::{
-    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, hint_for, pane_editor, pane_hint, pane_screen,
-    secrets_armed, secrets_hint, secrets_typing, sheep_pane_hint,
+    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, env_armed, hint_for, pane_editor, pane_hint,
+    pane_screen, secrets_armed, secrets_hint, secrets_typing, sheep_pane_hint,
 };
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -122,17 +122,19 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             buffer.line("match  ", "   enter applies   esc cancels", left_width),
             palette.attention(),
         )
-    } else if let Some((label, buffer)) = app.config_pane().and_then(pane_editor) {
-        // The pane's own free-text editor, and the env sub-screen's, ahead
-        // of the filter branch: all three share `InputMode::Text`, and a
-        // bar that fell through would render the dashboard's untouched
-        // query under the label `filter` instead.
+    } else if let Some(editor) = app.config_pane().and_then(pane_editor) {
+        // The pane's own free-text editor, and the key/value editor the env
+        // rows open, ahead of the filter branch: all three share
+        // `InputMode::Text`, and a bar that fell through would render the
+        // dashboard's untouched query under the label `filter` instead.
+        //
+        // The keys come from the slot, not from here: the key/value editor
+        // names the field under the cursor, and the secrets pane's branch
+        // below reads the same words for the same field.
         (
-            buffer.line(
-                &format!("{label}  "),
-                "   enter applies   esc cancels",
-                left_width,
-            ),
+            editor
+                .buffer
+                .line(&format!("{}  ", editor.label), &format!("   {}", editor.keys), left_width),
             palette.attention(),
         )
     } else if let Some(action) = app.action().filter(|a| !a.sent) {
@@ -151,16 +153,24 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             ),
             palette.attention(),
         )
-    } else if let Some((label, buffer)) = secrets_typing(app) {
+    } else if let Some(key) = app.config_pane().and_then(env_armed) {
+        // The config pane's one armed thing, ranked with the secrets pane's
+        // own below for the same reason: it is a question awaiting an answer,
+        // and it must outrank `pane_hint`, which still reads `e edit` while an
+        // arm is live. The same sentence the secrets pane raises, because it is
+        // the same promise.
+        (
+            format!("delete {key}? enter confirms, any other key cancels"),
+            palette.attention(),
+        )
+    } else if let Some(editor) = secrets_typing(app) {
         // Ahead of the filter-box branch below, for the reason the config
         // pane's own free-text branch above gives: this shares
         // `InputMode::Text` with `App::filter` too.
         (
-            buffer.line(
-                &format!("{label}  "),
-                "   enter applies   esc cancels",
-                left_width,
-            ),
+            editor
+                .buffer
+                .line(&format!("{}  ", editor.label), &format!("   {}", editor.keys), left_width),
             palette.attention(),
         )
     } else if let Some(key) = secrets_armed(app) {
@@ -695,9 +705,63 @@ mod tests {
         app.update(Msg::Key(KeyPress::Confirm));
         app.update(Msg::Key(KeyPress::TextChar('y')));
         let env = rendered(&status_line(&app, 200));
-        assert!(env.contains("env DB_HOST ="), "got {env:?}");
+        assert!(env.contains("env DB_HOST VALUE"), "got {env:?}");
         assert!(env.contains('y'), "got {env:?}");
         assert!(!env.contains("filter"), "got {env:?}");
+    }
+
+    /// The whole point of one editor: the keys the bar names for a focused
+    /// field are the same words on both panes, so an operator who learned one
+    /// has learned the other.
+    #[test]
+    fn the_key_hint_for_each_field_reads_the_same_in_both_panes() {
+        let mut env_app = super::super::super::fixtures::app_in_sheep_pane_with_control();
+        // `SelectLast` lands on `+ add a key`, the env row whose editor opens
+        // on KEY.
+        env_app.update(Msg::Key(KeyPress::SelectLast));
+        env_app.update(Msg::Key(KeyPress::Confirm));
+        let env_key = rendered(&status_line(&env_app, 200));
+
+        let mut secret_app = super::super::super::fixtures::app_with_secrets_and_control();
+        secret_app.update(Msg::Key(KeyPress::SelectLast));
+        secret_app.update(Msg::Key(KeyPress::Confirm));
+        let secret_key = rendered(&status_line(&secret_app, 200));
+
+        for keys in ["tab value   enter next   esc cancels"] {
+            assert!(env_key.contains(keys), "env KEY focus: {env_key:?}");
+            assert!(secret_key.contains(keys), "secrets KEY focus: {secret_key:?}");
+        }
+
+        env_app.update(Msg::Key(KeyPress::TextChar('A')));
+        secret_app.update(Msg::Key(KeyPress::TextChar('A')));
+        env_app.update(Msg::Key(KeyPress::NextField));
+        secret_app.update(Msg::Key(KeyPress::NextField));
+        let env_value = rendered(&status_line(&env_app, 200));
+        let secret_value = rendered(&status_line(&secret_app, 200));
+
+        for keys in ["tab key   enter writes   esc cancels"] {
+            assert!(env_value.contains(keys), "env VALUE focus: {env_value:?}");
+            assert!(secret_value.contains(keys), "secrets VALUE focus: {secret_value:?}");
+        }
+    }
+
+    /// An armed env delete takes the bar the way an armed secret delete
+    /// already does, with the same promise.
+    #[test]
+    fn an_armed_env_delete_owns_the_status_line() {
+        let mut app = super::super::super::fixtures::app_in_sheep_pane_with_control();
+        // `SelectLast` lands on `+ add a key`; two steps up is `DB_HOST`, the
+        // fixture's first env key. `D` arms its removal.
+        app.update(Msg::Key(KeyPress::SelectLast));
+        app.update(Msg::Key(KeyPress::SelectUp));
+        app.update(Msg::Key(KeyPress::SelectUp));
+        app.update(Msg::Key(KeyPress::ArmDelete));
+        let bar = rendered(&status_line(&app, 200));
+        assert!(
+            bar.contains("delete DB_HOST? enter confirms, any other key cancels"),
+            "{bar:?}"
+        );
+        assert!(!bar.contains("e edit"), "the arm outranks the pane's own hint: {bar:?}");
     }
 
     #[test]

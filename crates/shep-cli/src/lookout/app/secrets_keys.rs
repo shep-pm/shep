@@ -126,7 +126,7 @@ impl App {
                     self.secrets_confirm()
                 }
             }
-            KeyPress::SecretDelete => self.arm_secret_delete(),
+            KeyPress::ArmDelete => self.arm_secret_delete(),
             KeyPress::Help => self.open_keymap(),
             // Nothing else means anything here. Listed rather than a
             // wildcard, so a new `KeyPress` variant cannot fall silently
@@ -159,6 +159,8 @@ impl App {
             // has neither a group to walk nor an edit set to take back.
             | KeyPress::NextGroup
             | KeyPress::PrevGroup
+            | KeyPress::NextField
+            | KeyPress::PrevField
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

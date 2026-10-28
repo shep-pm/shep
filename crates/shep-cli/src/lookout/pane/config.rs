@@ -29,7 +29,8 @@ use super::sheep_dog::SheepDogTable;
 #[cfg(doc)]
 use super::super::field::ValueKind;
 use super::dogs::{DogsTab, dog_names};
-use super::{EnvTyping, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep};
+use super::super::keyvalue::KeyValues;
+use super::{ArmedEnv, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep};
 #[cfg(doc)]
 use shep_core::config::GROUP_ORDER;
 #[cfg(doc)]
@@ -89,8 +90,13 @@ pub struct ConfigPane {
     pub(super) edits: Edits,
     /// The open env editor, or [`None`]. Never open at the same time as
     /// [`Self::list`]: each opens on a row of its own kind, and `Escape`
-    /// closes whichever is up before the pane.
-    pub(super) env_typing: Option<EnvTyping>,
+    /// closes whichever is up before the pane. The same [`KeyValues`] the
+    /// secrets pane opens, so the two panes answer the same keys the same way.
+    pub(super) env_typing: Option<KeyValues>,
+    /// An env delete waiting on `Enter`, or [`None`]. The config pane's one
+    /// armed thing, mirroring [`SecretsPane::armed`](super::super::app):
+    /// `D` arms it and `Enter` files the removal.
+    pub(super) armed_env: Option<ArmedEnv>,
     /// The open list sub-screen. Never open at the same time as
     /// [`Self::env_typing`]: each opens on a row of its own kind, and
     /// `Escape` closes whichever is up before the pane. `Box`: one is open
@@ -149,10 +155,11 @@ impl core::fmt::Debug for ConfigPane {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "ConfigPane {{ target: {:?}, fields: {}, env_keys: {}, cursor: {} }}",
+            "ConfigPane {{ target: {:?}, fields: {}, env_keys: {}, armed: {}, cursor: {} }}",
             self.target,
             self.fields.len(),
             self.env_keys.len(),
+            self.armed_env.is_some(),
             self.view.cursor()
         )
     }
@@ -180,6 +187,7 @@ impl ConfigPane {
             typing: None,
             edits: Edits::default(),
             env_typing: None,
+            armed_env: None,
             list: None,
             dogs_tab: Box::default(),
             section: None,
@@ -248,6 +256,7 @@ impl ConfigPane {
             typing: None,
             edits: Edits::default(),
             env_typing: None,
+            armed_env: None,
             list: None,
             dogs_tab: Box::default(),
             section: Some(Box::new(DogSection {

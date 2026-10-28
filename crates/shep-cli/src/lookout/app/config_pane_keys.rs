@@ -26,6 +26,12 @@ impl App {
     /// costs an `u` rather than a write to a running sheep.
     pub(super) fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
+        // An armed env delete is cancelled by every key but the confirm and a
+        // quit, the secrets pane's rule, and its status line promises exactly
+        // that. The arm is taken before the key is dispatched so `Escape` can
+        // eat its own press rather than also closing the pane behind it.
+        let was_armed = !matches!(key, KeyPress::Confirm | KeyPress::Quit)
+            && self.config_pane_mut().is_some_and(ConfigPane::disarm_env_delete);
         if self.close_dialog.is_some() {
             return self.on_close_dialog_key(key);
         }
@@ -61,6 +67,12 @@ impl App {
             // One press, not two: the field's help draws unconditionally
             // now, so nothing waits behind a second `esc` for it.
             KeyPress::Escape => {
+                // An armed delete eats the first `Escape`, as it does on the
+                // secrets pane: a delete waiting on a confirm is a state the
+                // operator should see cleared before anything else moves.
+                if was_armed {
+                    return Effect::None;
+                }
                 if let Some(text) = self.config_pane().and_then(ConfigPane::incomplete_union) {
                     self.notice = Some(Notice::grave(text));
                     return Effect::None;
@@ -129,6 +141,24 @@ impl App {
             // entirely is a different act from restoring a default, and
             // the spec does not ask for it.
             KeyPress::Remove => return self.restore_default(),
+            // `D` arms the removal of the env key under the cursor, `Enter`
+            // confirms it, and every other key cancels: the same
+            // arm-then-`Enter` the secrets pane uses, on the same key. A field
+            // row and `+ add a key` name no key to remove, so nothing arms
+            // there and the key stays as inert as it was.
+            //
+            // The gate is checked on the arm, not on the confirm, for the
+            // reason [`Self::confirm_field`]'s doc gives: a refusal that
+            // arrived only at the confirm would have spent the operator's
+            // whole `D` for nothing.
+            KeyPress::ArmDelete => {
+                let now = self.now;
+                if self.authorize_write().is_some()
+                    && let Some(pane) = self.config_pane_mut()
+                {
+                    pane.arm_env_delete(now);
+                }
+            }
             KeyPress::Action(_)
             | KeyPress::Settings
             | KeyPress::FilterStart
@@ -143,11 +173,14 @@ impl App {
             | KeyPress::Secrets
             | KeyPress::Reveal
             | KeyPress::Copy
-            | KeyPress::SecretDelete
             | KeyPress::Collapse
             // Bound only in the close dialog; with none up, `c` is a stray
             // key the same way an action key is.
             | KeyPress::Continue => {}
+            // The key/value editor's two field steps. `map_key` only raises
+            // them in `InputMode::Text`, which `on_key` branches on before
+            // this match is reached, so nothing here can see them.
+            KeyPress::NextField | KeyPress::PrevField => {}
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown

@@ -45,7 +45,7 @@ impl App {
                 | KeyPress::Copy
                 | KeyPress::TabPrev
                 | KeyPress::TabNext
-                | KeyPress::SecretDelete
+                | KeyPress::ArmDelete
                 | KeyPress::Collapse => Effect::None,
                 KeyPress::StreamCycle
                 | KeyPress::LevelCycle
@@ -60,6 +60,8 @@ impl App {
                 // other screen has groups to walk or a filed edit set to undo.
                 | KeyPress::NextGroup
                 | KeyPress::PrevGroup
+                | KeyPress::NextField
+                | KeyPress::PrevField
                 | KeyPress::Group(_)
                 | KeyPress::Undo => Effect::None,
             }

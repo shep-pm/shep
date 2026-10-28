@@ -162,11 +162,13 @@ impl App {
             | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
-            | KeyPress::SecretDelete => Effect::None,
+            | KeyPress::ArmDelete => Effect::None,
             // The groups and the filed edit set belong to the config pane;
             // this read-only list has neither to switch or take back.
             | KeyPress::NextGroup
             | KeyPress::PrevGroup
+            | KeyPress::NextField
+            | KeyPress::PrevField
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

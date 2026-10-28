@@ -525,6 +525,34 @@ where
                     Msg::SecretWritten { result }
                 }));
             }
+            // A rename: both halves in one task, so one `Enter` gets one answer
+            // and one re-read. Each half still takes the store's own lock, so a
+            // rename that fails at the removal leaves the key under two names
+            // rather than under none. `_authority` is dropped as it is there.
+            //
+            // The `bool` is the same answer `Msg::SecretWritten` takes above:
+            // whether the store changed at all, which a rename always did once
+            // its set half ran.
+            Effect::WriteSecrets(edits, _authority) => {
+                let store = paths.secrets.clone();
+                let handle = tokio::task::spawn_blocking(move || -> Result<bool, shep_core::secrets::SecretError> {
+                    let mut changed = false;
+                    for edit in &edits {
+                        match &edit.value {
+                            Some(value) => {
+                                shep_core::secrets::set(&store, &edit.key, &edit.environment, value)?;
+                                changed = true;
+                            }
+                            None => changed |= shep_core::secrets::unset(&store, &edit.key, &edit.environment)?,
+                        }
+                    }
+                    Ok(changed)
+                });
+                inflight.push(Box::pin(async move {
+                    let result = join_blocking(handle).await;
+                    Msg::SecretWritten { result }
+                }));
+            }
             // Straight to `io::stdout()` through `term`, not `terminal`
             // (`ratatui::Terminal`): a `TestBackend` verifies nothing here.
             // Ignored on failure: nothing sensible to do with a broken

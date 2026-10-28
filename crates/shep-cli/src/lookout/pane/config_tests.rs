@@ -402,7 +402,7 @@ fn a_dog_panes_debug_names_no_section() {
     let pane = bark_pane();
     assert_eq!(
         format!("{pane:?}"),
-        r#"ConfigPane { target: Dog { name: "bark", adopted_path: None }, fields: 5, env_keys: 0, cursor: 0 }"#
+        r#"ConfigPane { target: Dog { name: "bark", adopted_path: None }, fields: 5, env_keys: 0, armed: false, cursor: 0 }"#
     );
 }
 
@@ -420,6 +420,6 @@ fn the_panes_debug_names_no_value_it_holds() {
     let pane = ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()));
     assert_eq!(
         format!("{pane:?}"),
-        r#"ConfigPane { target: Sheep { name: "web" }, fields: 44, env_keys: 1, cursor: 0 }"#
+        r#"ConfigPane { target: Sheep { name: "web" }, fields: 44, env_keys: 1, armed: false, cursor: 0 }"#
     );
 }

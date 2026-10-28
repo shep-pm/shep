@@ -43,11 +43,6 @@ pub(super) fn deletes_the_all_slot(row: &SecretRow, environment: &str) -> bool {
     row.in_force.as_deref() == Some(ALL_ENVIRONMENTS) && environment != ALL_ENVIRONMENTS
 }
 
-/// The grammar a new key's name is checked against, matching `shep secret`'s
-/// own `--help` wording (`cli.rs`) rather than a second copy of it.
-pub(super) const NEW_KEY_GRAMMAR: &str =
-    "letters, digits, `.`, `_` and `-`, up to 128 bytes, not starting with a dot";
-
 /// `y`'s notice on a successful copy.
 ///
 /// Says the value was sent, never that it arrived: OSC 52 is write-only, the
@@ -87,8 +82,10 @@ pub(crate) struct SecretsPane {
     /// The armed delete, or `None`. While this is set, `Enter` confirms the
     /// delete rather than opening the value input.
     pub armed: Option<ArmedDelete>,
-    /// The open text input, or `None`.
-    pub typing: Option<Typing>,
+    /// The open key/value editor, or `None`. The same [`KeyValues`] a sheep's
+    /// env rows open, so `Tab`, `Shift-Tab`, `Enter` and `Esc` mean the same
+    /// thing on both panes.
+    pub typing: Option<KeyValues>,
 }
 
 /// A delete armed on the secrets pane: the key and when it armed, one value
@@ -371,40 +368,21 @@ impl fmt::Debug for SecretEdit {
     }
 }
 
-/// An open text input in the secrets pane: the `+ new key` row's name step,
-/// or a key's value step.
-pub(crate) struct Typing {
-    /// What is being typed: a new key's name, or a value for a key.
-    pub what: TypingWhat,
-    /// The buffer.
-    pub buffer: TextBox,
-}
-
-/// Redacted (IR-41): a value buffer is the secret being typed.
-impl fmt::Debug for Typing {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Typing")
-            .field("what", &self.what)
-            .field(
-                "buffer",
-                &format_args!("<{} bytes>", self.buffer.as_str().len()),
-            )
-            .finish()
-    }
-}
-
-/// Which of the pane's two inputs is open.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TypingWhat {
-    /// The `+ new key` row's name input.
-    NewKey,
-    /// A value for the named key, in the current tab's environment.
-    ValueFor(String),
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pane's editor with a value halfway typed into it, which is the only
+    /// way one gets here: no pane is ever told a stored value, so the text a
+    /// `Debug` must not print is always text an operator typed.
+    fn typing_editor() -> KeyValues {
+        let mut editor = KeyValues::under(Grammar::Secret, "K");
+        for typed in "hunter2".chars() {
+            editor.handle(KeyPress::TextChar(typed));
+        }
+        editor
+    }
 
     /// Exact-string, so restoring a derived `Debug` fails this test rather
     /// than silently reopening the leak (IR-41).
@@ -422,10 +400,7 @@ mod tests {
             }),
             pending_reveal: None,
             armed: None,
-            typing: Some(Typing {
-                what: TypingWhat::ValueFor("K".into()),
-                buffer: "hunter2".into(),
-            }),
+            typing: Some(typing_editor()),
         };
 
         let printed = format!("{pane:?}");

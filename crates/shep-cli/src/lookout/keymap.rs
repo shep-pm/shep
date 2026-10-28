@@ -105,7 +105,11 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::StepDown | KeyPress::StepUp => row("J/K", Group::Moving, "next / prev sheep"),
         KeyPress::PageDown | KeyPress::PageUp => row("ctrl-d/u", Group::Moving, "page the feed"),
         KeyPress::TabPrev | KeyPress::TabNext => row(TAB_KEYS, Group::Moving, "environment tab"),
-        KeyPress::NextGroup | KeyPress::PrevGroup => {
+        // One row for both meanings of the same two keys. `map_key` gives
+        // them to groups in `Normal` and to a key/value editor's fields in
+        // `Text`, and the overlay can never be raised from inside a box, so
+        // the caption it prints is always the one that was in force.
+        KeyPress::NextGroup | KeyPress::PrevGroup | KeyPress::NextField | KeyPress::PrevField => {
             row("tab/S-tab", Group::Moving, "next / prev group")
         }
         KeyPress::Group(_) => row("1-9", Group::Moving, "jump to a group"),
@@ -142,7 +146,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::Undo => row("u", Group::Changing, "undo the edit"),
         KeyPress::Settings => row("s", Group::Changing, "shepherd settings"),
         KeyPress::Secrets => row("S", Group::Changing, "secrets"),
-        KeyPress::SecretDelete => row("D", Group::Changing, "delete a secret"),
+        KeyPress::ArmDelete => row("D", Group::Changing, "delete a key"),
         KeyPress::Continue => row("c", Group::Changing, "leave it running"),
         KeyPress::TextChar(_) => row("any char", Group::Changing, "types into a box"),
         KeyPress::TextBackspace
