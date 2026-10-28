@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An adopted dog's entry carries an operator-set env **(BREAKING)**
 - Fill a sheep's vcs on Describe from its checkout, behind the vcs feature
+- Give an adopted dog an operator-set env **(BREAKING)**
 
 ### Changed
 

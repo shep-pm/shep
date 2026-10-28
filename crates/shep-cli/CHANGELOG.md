@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An adopted dog's entry carries an operator-set env **(BREAKING)**
 - Fill a sheep's vcs on Describe from its checkout, behind the vcs feature
 - Print a sheep's revision under describe's table
+- Every shep.toml field in the settings tree
+- Let whistle's read tools answer from a listed host
+- One key and value editor for env rows and secrets
+- Put a sheep's revision on its row
+- Give an adopted dog an operator-set env **(BREAKING)**
 
 ### Changed
 
