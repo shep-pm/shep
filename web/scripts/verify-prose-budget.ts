@@ -398,7 +398,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 420 for the six verbs #951 adds to the list `--host` reaches.
   // Raised from 430 for `lookout` in the list `--host` reaches (#954).
   cli: 435,
-  "community-dogs": 300,
+  // Raised from 300 on #1256 for the Docs link a row of ours carries. Most of
+  // what it costs is not prose: the branch that decides whether a row gets a
+  // link sits in the page body rather than in frontmatter, and this counter
+  // reads the page body as words a reader wades through.
+  "community-dogs": 315,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

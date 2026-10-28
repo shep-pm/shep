@@ -27,6 +27,7 @@ import { readFile } from "node:fs/promises";
 import {
   FIRST_PARTY_REPO_PREFIX,
   README_PATH,
+  docsPageOf,
   fetchDogPages,
   firstPartyDogs,
   githubRepoOf,
@@ -161,6 +162,33 @@ test("firstPartyDogs keeps every first-party row of the published index", () => 
   for (const dog of kept) {
     assert.ok(dog.repo.startsWith(FIRST_PARTY_REPO_PREFIX), dog.repo);
   }
+});
+
+/* --- docsPageOf -------------------------------------------------------- */
+
+test("docsPageOf gives a row of ours the page the build writes for it", () => {
+  const dog = dogFixture("https://github.com/shep-pm/shep-log-rotate");
+  assert.equal(docsPageOf(dog), `/docs/dogs/${ADOPT_AS}`);
+  // The same route the imported page writes into its own links, so the link a
+  // reader clicks is the file the build wrote.
+  assert.equal(docsPageOf(dog), dogDocRoute(ADOPT_AS, README_PATH));
+});
+
+test("docsPageOf gives someone else's row no page", () => {
+  assert.equal(docsPageOf(dogFixture("https://github.com/someone/x")), null);
+});
+
+test("docsPageOf gives a repo that only looks like the org no page", () => {
+  assert.equal(docsPageOf(dogFixture("https://github.com/shep-pm-fake/x")), null);
+});
+
+test("docsPageOf gives every first-party row of the published index its own page", () => {
+  const routes = firstPartyDogs(dogs).map((dog) => docsPageOf(dog));
+  assert.ok(routes.length >= 1, "the published index should have at least one first-party dog");
+  for (const route of routes) {
+    assert.ok(route !== null && route.startsWith("/docs/dogs/"), String(route));
+  }
+  assert.equal(new Set(routes).size, routes.length, "two rows of ours share one docs page");
 });
 
 test("githubRepoOf reads the owner and repo a repo URL names", () => {

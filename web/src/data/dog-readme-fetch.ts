@@ -6,8 +6,9 @@
  * first-party dog's docs page": a row in `web/public/dogs.json` whose `repo`
  * is under `github.com/shep-pm/` gets a page at `/docs/dogs/<adopt_as>`,
  * built from that repo's README at its latest release tag, never vendored and
- * never pinned. Drawing those pages is the next slice's job; this file only
- * gets the text and the tag it came from, before any page can be drawn.
+ * never pinned. Drawing those pages is another slice's job; this file gets
+ * the text and the tag it came from, and answers which rows have a page and
+ * where it sits, before any page is drawn.
  *
  * Plain TypeScript with no `astro:` imports and no `?raw` import, the way
  * `dogs.ts` is, so `node --test scripts/verify-dog-readme.ts` can load it
@@ -35,7 +36,7 @@
  */
 
 import type { Dog } from "./dogs.ts";
-import { findRelativeMdLinks, rawFileUrl } from "./dog-readme-links.ts";
+import { dogDocRoute, findRelativeMdLinks, rawFileUrl } from "./dog-readme-links.ts";
 
 /**
  * The org prefix that makes a dog first-party. Matched as a literal prefix of
@@ -108,6 +109,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function firstPartyDogs(dogs: readonly Dog[]): Dog[] {
   return dogs.filter((dog) => dog.repo.startsWith(FIRST_PARTY_REPO_PREFIX));
+}
+
+/**
+ * The docs page a row gets on this site, or `null` when it gets none.
+ *
+ * Asked of one row rather than of the index, because the community listing
+ * renders row by row and has to ask the same question the build asks before
+ * it writes anything: `firstPartyDogs` is the one filter that decides which
+ * rows have a page, so a listing that tested the `repo` prefix itself would
+ * be a second answer to that question, and the two would drift. The route
+ * comes from `dogDocRoute`, the same function the imported page writes into
+ * its own links, so the link a reader clicks and the file the build wrote
+ * cannot be spelled differently.
+ */
+export function docsPageOf(dog: Dog): string | null {
+  return firstPartyDogs([dog]).length === 0 ? null : dogDocRoute(dog.adopt_as, README_PATH);
 }
 
 /**
