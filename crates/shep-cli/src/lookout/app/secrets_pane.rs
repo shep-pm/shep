@@ -159,6 +159,22 @@ impl SecretsPane {
         self.model.rows.get(self.selected).cloned()
     }
 
+    /// Whether unsetting `key` from the tab named `environment` would have to
+    /// reach the `all` slot. Looked up by key rather than by the cursor,
+    /// because a rename's removal half names the row the editor was opened
+    /// under while the cursor is inside the editor.
+    ///
+    /// The fact [`deletes_the_all_slot`] already gives `D`, reached here so the
+    /// delete and a rename's removal refuse on one rule rather than two.
+    #[must_use]
+    pub(crate) fn unset_reaches_the_all_slot(&self, key: &str, environment: &str) -> bool {
+        self.model
+            .rows
+            .iter()
+            .find(|row| row.key == key)
+            .is_some_and(|row| deletes_the_all_slot(row, environment))
+    }
+
     /// Whether `selected` names the `+ new key` row rather than a real one:
     /// one past every index [`Self::visible_row_indices`] can ever hand
     /// back.

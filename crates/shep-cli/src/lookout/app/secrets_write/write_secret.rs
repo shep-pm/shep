@@ -136,6 +136,10 @@ impl App {
     /// The submit that passed every check the editor itself makes: the value
     /// cap and the tab the write belongs to, each refused the way the editor's
     /// own refusals are, with what was typed kept.
+    ///
+    /// A rename carries one more check the editor cannot make on its own: the
+    /// [`ALL_SLOT_REFUSAL`] a delete raises on a named tab, because half of a
+    /// rename is a delete of the key the editor was opened under.
     fn write_secret(&mut self, editor: KeyValues) -> Effect {
         let typed_len = editor.value().as_str().len();
         if typed_len > shep_core::secrets::MAX_VALUE_BYTES {
@@ -165,10 +169,26 @@ impl App {
             self.reopen_secret_editor(editor);
             return Effect::None;
         };
-        self.mode = InputMode::Normal;
         let key = editor.key().as_str().to_owned();
         let value = Some(editor.value().as_str().to_owned());
-        let Some(under) = editor.opened_under().map(str::to_owned) else {
+        let renamed = editor
+            .opened_under()
+            .map(str::to_owned)
+            .filter(|under| under != &key);
+        if let Some(under) = &renamed
+            && self.unset_reaches_the_all_slot(under, &environment)
+        {
+            // A rename's removal half is a delete of the key the editor was
+            // opened under, so it carries the delete's own refusal. Writing
+            // through it would set the new key under this tab and leave the old
+            // one in force from `all`: a copy, closing the editor as if the move
+            // had worked.
+            self.reopen_secret_editor(editor);
+            self.notice = Some(Notice::grave(ALL_SLOT_REFUSAL.to_string()));
+            return Effect::None;
+        }
+        self.mode = InputMode::Normal;
+        let Some(under) = renamed else {
             return Effect::WriteSecret(
                 SecretEdit {
                     key,
@@ -178,16 +198,6 @@ impl App {
                 authority,
             );
         };
-        if under == key {
-            return Effect::WriteSecret(
-                SecretEdit {
-                    key,
-                    environment,
-                    value,
-                },
-                authority,
-            );
-        }
         Effect::WriteSecrets(
             vec![
                 SecretEdit {
@@ -206,6 +216,22 @@ impl App {
             ],
             authority,
         )
+    }
+
+    /// Whether unsetting `key` from the tab named `environment` would have to
+    /// reach the `all` slot, asked of the pane that holds the rows.
+    ///
+    /// [`Self::arm_secret_delete`] asks this before it arms a delete, and a
+    /// rename needs the same answer because half of a rename is a delete.
+    fn unset_reaches_the_all_slot(&self, key: &str, environment: &str) -> bool {
+        match &self.body {
+            Body::Secrets(pane) => pane.unset_reaches_the_all_slot(key, environment),
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Sheep(_) => false,
+        }
     }
 
     /// Puts an editor back on the pane with what was typed still in it.
@@ -518,6 +544,77 @@ mod tests {
         let typing = typing_of(&app).expect("the editor stayed open");
         assert_eq!(typing.key().as_str(), "DB_PASSPHRASE");
         assert_eq!(typing.focus(), Field::Value);
+    }
+
+    /// Half a rename is a delete, so it carries the delete's refusal. A row
+    /// holding its value in the `all` slot cannot be unset from a named tab: the
+    /// removal would find no slot, and a write through that would leave the
+    /// value under both names with the editor closed as if the move worked.
+    #[test]
+    fn a_rename_refuses_a_key_whose_value_comes_from_the_all_slot() {
+        let mut app = fixtures::app_with_secrets_on_a_named_tab_and_control();
+        select_the_all_slot_row(&mut app);
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::PrevField));
+        let _ = app.update(Msg::Key(KeyPress::TextEdit(TextEdit::DeleteToStart)));
+        for c in "SET_SOMETHING_ELSE".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::NextField));
+        for c in "hunter2".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        assert!(matches!(effect, Effect::None), "nothing reached the store");
+        assert_eq!(
+            notice_of(&app).as_deref(),
+            Some(ALL_SLOT_REFUSAL),
+            "one sentence, the same one `D` raises on this row"
+        );
+        assert_eq!(app.mode(), InputMode::Text, "the editor stays open");
+        let typing = typing_of(&app).expect("with what was typed still in it");
+        assert_eq!(typing.key().as_str(), "SET_SOMETHING_ELSE");
+        assert_eq!(typing.value().as_str(), "hunter2");
+    }
+
+    /// The same rename on the `all` tab is the deliberate one the refusal
+    /// points at, so it must go through.
+    #[test]
+    fn the_all_tab_renames_a_key_whose_value_lives_in_the_all_slot() {
+        let mut app = fixtures::app_with_secrets_on_a_named_tab_and_control();
+        let _ = app.update(Msg::Key(KeyPress::TabPrev));
+        let _ = app.update(Msg::Key(KeyPress::TabPrev));
+        let _ = app.update(Msg::Key(KeyPress::SelectFirst));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let _ = app.update(Msg::Key(KeyPress::SelectDown));
+        let Body::Secrets(pane) = app.body() else {
+            panic!("the pane is not open");
+        };
+        assert_eq!(pane.environment(), Some("all"), "the tab the refusal names");
+        assert_eq!(pane.model.rows[pane.selected].key, "SET_EVERYWHERE");
+
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::PrevField));
+        let _ = app.update(Msg::Key(KeyPress::TextEdit(TextEdit::DeleteToStart)));
+        for c in "SET_ELSEWHERE".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::NextField));
+        for c in "hunter2".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+
+        let effect = app.update(Msg::Key(KeyPress::TextApply));
+
+        let Effect::WriteSecrets(edits, _) = effect else {
+            panic!("the `all` tab may move an `all` slot, got {effect:?}");
+        };
+        assert_eq!(edits[0].key, "SET_ELSEWHERE");
+        assert_eq!(edits[1].key, "SET_EVERYWHERE");
+        assert_eq!(edits[0].environment, "all");
     }
 
     /// `Shift-Tab` back to KEY and `Tab` forward again is free: the grammar was

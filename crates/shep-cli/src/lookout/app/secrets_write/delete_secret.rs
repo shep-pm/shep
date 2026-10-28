@@ -57,13 +57,7 @@ impl App {
         // step before an unrecoverable write. No keypress reaches here with
         // an `all` row armed today, since a tab move and a reload both
         // disarm, so this is depth rather than a live path.
-        let refuses = pane
-            .model
-            .rows
-            .iter()
-            .find(|row| row.key == key)
-            .is_some_and(|row| deletes_the_all_slot(row, &environment));
-        if refuses {
+        if pane.unset_reaches_the_all_slot(&key, &environment) {
             self.notice = Some(Notice::grave(ALL_SLOT_REFUSAL.to_string()));
             return Effect::None;
         }
