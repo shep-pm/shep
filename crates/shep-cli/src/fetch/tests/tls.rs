@@ -22,7 +22,7 @@ use tokio_rustls::rustls::pki_types::{
 use tokio_rustls::rustls::{CertificateError, Error as RustlsError, RootCertStore, ServerConfig};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
-use super::super::transport::connect_with;
+use super::super::transport::{UNKNOWN_ISSUER, connect_with};
 use super::super::{Target, root_store};
 
 /// The fixture CA, and the two leaves the tests put in front of a client.
@@ -164,20 +164,14 @@ async fn try_connect(connector: &TlsConnector, target: &Target) -> Result<(), st
 }
 
 /// A leaf under a CA `webpki-roots` does not carry is refused, and the
-/// refusal names the two things the operator can actually do.
+/// refusal says what an operator can actually do about it.
 #[tokio::test]
 async fn an_unknown_issuer_is_refused_with_a_hint() {
     let target = serve_tls(server_config(PRIVATE_LEAF, &[FIXTURE_CA], PRIVATE_LEAF_KEY)).await;
     let err = try_connect(super::super::tls_connector(), &target)
         .await
         .expect_err("a fixture CA is not a public one");
-    assert_eq!(
-        err.to_string(),
-        "the certificate this endpoint presented chains to a certificate authority shep does \
-         not trust; shep trusts only public certificate authorities, and offers no way to add a \
-         private one or to skip verification; use http:// for a private endpoint, or a publicly \
-         trusted certificate (Let's Encrypt, or a Cloudflare-proxied hostname)"
-    );
+    assert_eq!(err.to_string(), UNKNOWN_ISSUER);
     assert!(
         !err.to_string().contains("shep.test"),
         "the peer's own names reached the message: {err}"
@@ -192,13 +186,7 @@ async fn a_self_signed_server_is_refused() {
     let err = try_connect(super::super::tls_connector(), &target)
         .await
         .expect_err("a self-signed leaf is not issued by a public CA");
-    assert_eq!(
-        err.to_string(),
-        "the certificate this endpoint presented chains to a certificate authority shep does \
-         not trust; shep trusts only public certificate authorities, and offers no way to add a \
-         private one or to skip verification; use http:// for a private endpoint, or a publicly \
-         trusted certificate (Let's Encrypt, or a Cloudflare-proxied hostname)"
-    );
+    assert_eq!(err.to_string(), UNKNOWN_ISSUER);
 }
 
 /// The name check runs after the chain check, so this is the one case that

@@ -15,15 +15,18 @@ use crate::terminal_safe;
 /// TLS: all a reader needs once the request is out.
 pub(crate) type ReplyStream = Pin<Box<dyn AsyncRead + Send>>;
 
-/// What [`peer_transport_error`] says when rustls finds no root it trusts
-/// behind a peer's certificate.
+/// What [`peer_transport_error`] says when rustls reports `UnknownIssuer`.
 ///
 /// Named here rather than inline because an operator has to be able to act
-/// on it, and the action is a change to the endpoint, not to shep.
-const UNKNOWN_ISSUER: &str = concat!(
-    "the certificate this endpoint presented chains to a certificate authority shep does not trust; ",
+/// on it, and the action is a change to the endpoint, not to shep. rustls
+/// reports that one variant both for a chain that ends at an issuer shep
+/// holds no root for and for a publicly trusted chain that left an
+/// intermediate out, so the text covers both.
+pub(super) const UNKNOWN_ISSUER: &str = concat!(
+    "the certificate chain this endpoint presented does not reach a certificate authority shep trusts; ",
     "shep trusts only public certificate authorities, and offers no way to add a private one or to skip verification; ",
-    "use http:// for a private endpoint, or a publicly trusted certificate (Let's Encrypt, or a Cloudflare-proxied hostname)"
+    "a leaf served without its intermediate is refused the same way, so check the chain the endpoint serves, ",
+    "use http:// for a private endpoint, or use a publicly trusted certificate (Let's Encrypt, or a Cloudflare-proxied hostname)"
 );
 
 /// Connects to `target` with [`tls_connector`], writes `request`, flushes,
@@ -117,7 +120,8 @@ mod tests {
 
     /// The wrapping `tokio-rustls` puts on a rustls failure is what
     /// `get_ref` has to see through, so the mapping is pinned without a
-    /// socket in the way.
+    /// socket in the way. This is also where the operator-facing text is
+    /// pinned, as a literal rather than against the constant.
     #[test]
     fn a_rustls_unknown_issuer_becomes_the_hint() {
         let source = std::io::Error::new(
@@ -126,7 +130,12 @@ mod tests {
         );
         assert_eq!(
             peer_transport_error("hooks.example.com", source).to_string(),
-            UNKNOWN_ISSUER
+            "the certificate chain this endpoint presented does not reach a certificate \
+             authority shep trusts; shep trusts only public certificate authorities, and offers \
+             no way to add a private one or to skip verification; a leaf served without its \
+             intermediate is refused the same way, so check the chain the endpoint serves, use \
+             http:// for a private endpoint, or use a publicly trusted certificate (Let's \
+             Encrypt, or a Cloudflare-proxied hostname)"
         );
     }
 
