@@ -484,10 +484,10 @@ mod tests {
         );
     }
 
-    /// Interleaved sources (operator, namespace, operator): the drawn
-    /// operator group and the cursor's anchor are one line, because both read
+    /// Interleaved sources (operator, namespace, operator): the drawn `+ new key`
+    /// affordance and the row `G` selects are one row, because both read
     /// [`SecretsPane::new_key_anchor`](crate::lookout::app::SecretsPane::new_key_anchor).
-    /// `G` selects the affordance at the row it draws.
+    /// The affordance draws after the highest-index operator row.
     #[test]
     fn interleaved_sources_still_agree_between_the_cursor_and_the_drawn_affordance() {
         let mut app = fixtures::app_with_interleaved_secret_sources();
