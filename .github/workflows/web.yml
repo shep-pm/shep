@@ -101,9 +101,9 @@ jobs:
       # it ran.
       - run: npx astro check
         working-directory: web
-      # The whole `build` script, not `astro build` alone. It is eleven steps
+      # The whole `build` script, not `astro build` alone. It is twelve steps
       # now: a node-version check, four `verify-*` scripts, `astro build`,
-      # `pagefind --site dist`, and four more `verify-*` scripts after it. It
+      # `pagefind --site dist`, and five more `verify-*` scripts after it. It
       # is exactly what pages.yml runs. This comment listed five of them until
       # 2026-09-18, naming a set that had not been current for several phases.
       #
