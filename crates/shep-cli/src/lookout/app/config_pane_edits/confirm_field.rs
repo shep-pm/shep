@@ -1,28 +1,12 @@
 use super::super::*;
 
 impl App {
-    /// The operator's `Enter` on the config pane. Seven meanings, picked in
-    /// this order:
+    /// The operator's `Enter` on the config pane, in this order: an armed
+    /// `D` on an env row, a table or choice list under the cursor, `+ new`
+    /// under an array or map of tables, a name in a choice list, an env row
+    /// or `+ add a key`, an array field, then a typed field.
     ///
-    /// - A `D` is armed on an env row: files that key's removal and disarms.
-    /// - The cursor is on a table of a dog's pane, or on a list of choices:
-    ///   opens it if it is closed and closes it if it is open.
-    /// - The cursor is on `+ new` under an array or map of tables: adds an
-    ///   entry, at once to an array, and for a map through a text editor for
-    ///   its key, which switches [`InputMode::Text`] on. Behind the write
-    ///   gate, like an edit.
-    /// - The cursor is on a name in a list of choices: toggles it, as
-    ///   `space` does.
-    /// - The cursor is on an env row or `+ add a key`: opens the shared
-    ///   KEY/VALUE editor in place, on the same row.
-    /// - The cursor is on an array field: opens the list sub-screen.
-    /// - The cursor is on a typed field: opens the editor and switches
-    ///   [`InputMode::Text`] on.
-    ///
-    /// The last three go through [`Self::authorize_write`], the editor included,
-    /// for the reason [`Self::confirm_setting`]'s own doc gives: the gate
-    /// is checked on the keystroke that would file an edit, not on the
-    /// close that writes them.
+    /// The last three go through [`Self::authorize_write`].
     pub(in crate::lookout::app) fn confirm_field(&mut self) -> Effect {
         // An armed env delete outranks every other meaning of `Enter` here,
         // the same way an armed delete outranks it on the secrets pane: a

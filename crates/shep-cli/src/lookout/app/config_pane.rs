@@ -6,13 +6,11 @@ use super::*;
 
 /// Which screen asked for a sheep's config.
 ///
-/// Both [`Sent::SheepConfig`]'s callers send the exact same request, and the
-/// reply cannot tell them apart on its own: `e` pressed inside the sheep
-/// pane leaves that pane on screen while the reply is in flight, so
-/// [`App::on_sheep_config`] cannot route by the current [`Body`] the way it
-/// could if only one screen ever asked. This is read instead, and it is set
-/// in the same step as [`App::config_target`], by whichever door sent the
-/// request.
+/// Both [`Sent::SheepConfig`]'s callers send the same request, and the reply
+/// cannot tell them apart on its own: `e` inside the sheep pane leaves that
+/// pane on screen while the reply is in flight, so [`App::on_sheep_config`]
+/// cannot route by the current [`Body`]. It is set in the same step as
+/// [`App::config_target`], by whichever door sent the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigFor {
     /// The editing pane, opened by `e`.
@@ -25,17 +23,10 @@ impl App {
     /// One `Request::SheepConfig` reply. Opens the pane, or refreshes an
     /// open one in place.
     ///
-    /// The cursor and offset are carried across a refresh rather than reset
-    /// to the first field, the same rule `Msg::Settings` follows and for the
-    /// same reason: `r` from inside the pane, and every later re-read, must
-    /// not throw an operator who was reading `cron_restart` back to `name`.
-    /// [`ConfigPane::adopt_view`] clamps what it adopts, so a field list
-    /// that came back shorter cannot leave the cursor past its end.
-    ///
-    /// A failed read leaves whatever is on screen exactly as it was and
-    /// raises a grave notice, so a refusal is reported rather than
-    /// swallowed, and a refresh that fails does not blank a pane that was
-    /// showing something real.
+    /// The cursor and offset are carried across a refresh rather than reset,
+    /// the same rule `Msg::Settings` follows: a re-read must not throw an
+    /// operator back to `name`. [`ConfigPane::adopt_view`] clamps what it
+    /// adopts. A failed read leaves the screen as it was and raises a notice.
     pub(super) fn on_sheep_config(
         &mut self,
         name: &str,
@@ -62,16 +53,13 @@ impl App {
                 // `None` only if something outside this file set
                 // `config_target` without `config_for`, which nothing does:
                 // [`Self::ask_for_sheep_config`] is the one place both are
-                // set, always together. Falling back to the editor is the
-                // pre-[`ConfigFor`] behaviour, not a guess this reply
-                // belongs to a screen that never asked for it.
+                // set, always together.
                 None | Some(ConfigFor::Editor) => self.open_or_refresh_config_pane(*view),
             },
             // Prefixed, like every other reply handler in this file: the
             // shepherd's refusals mostly name their own subject, but
             // `EngineStopped` renders as `the supervisor engine has
-            // stopped`, naming neither the sheep nor the screen it came
-            // from.
+            // stopped`, naming neither the sheep nor the screen.
             other => {
                 // The tab and the dog that were waiting on this read go with
                 // it: a pane that never opened spent neither, and left set
@@ -86,13 +74,10 @@ impl App {
     /// Opens the config pane on `view`, or refreshes one already open in
     /// place, carrying across everything a rebuild would otherwise drop.
     /// Split out of [`Self::on_sheep_config`] so that method can route a
-    /// [`ConfigFor::SheepPane`] reply to [`Self::sheep_pane_mut`] instead
-    /// without repeating its guard or its error arms.
+    /// [`ConfigFor::SheepPane`] reply without repeating its guard.
     ///
     /// A tab the command line asked for is spent here, ahead of the carried
-    /// one: the operator named it, and nothing has been read since. The
-    /// effect is the `dogs` tab's own listing, raised the same way `tab`
-    /// raises it from a keyboard.
+    /// one: the operator named it, and nothing has been read since.
     pub(super) fn open_or_refresh_config_pane(&mut self, view: SheepConfigView) -> Effect {
         let carried = self.config_pane().map(|pane| pane.view().clone());
         // The tab too, so a re-read lands where the operator was reading.
@@ -201,18 +186,11 @@ impl App {
 
     /// Sends `Request::SheepConfig` for `name`, recording which screen it is
     /// for so [`Self::on_sheep_config`] can route the reply once it lands.
-    ///
-    /// The one place [`Self::config_target`] and [`Self::config_for`] are
-    /// set for a sheep-config read, so the two can never disagree about
-    /// which request is outstanding.
+    /// The one place [`Self::config_target`] and [`Self::config_for`] are set
+    /// for a sheep-config read, so the two can never disagree.
     ///
     /// An ask for one sheep retires the tab and the dog the command line was
-    /// waiting on for another. The read in flight for that other sheep is
-    /// dropped by [`Self::on_sheep_config`]'s guard the moment this one is
-    /// outstanding, and a leftover ask would spend `shep lookout web watch`'s
-    /// tab, or open `shep lookout web dogs jobs`' table, on a pane whose
-    /// operator never named either. An ask for the same sheep keeps them: that
-    /// is the read they were waiting on.
+    /// waiting on for another; an ask for the same sheep keeps them.
     pub(super) fn ask_for_sheep_config(&mut self, name: String, for_screen: ConfigFor) -> Effect {
         if self.focus_ask.as_ref().is_some_and(|ask| ask.sheep != name) {
             self.focus_ask = None;
@@ -239,10 +217,7 @@ impl App {
     /// A dog's schema is not re-probed. It came from the dog's binary at
     /// open and is parked on [`Self::dog_target`]; re-probing would respawn
     /// somebody else's binary on a keystroke whose job is to re-read a file.
-    ///
-    /// `None` while a read for this pane is already out: see
-    /// [`Self::config_read_in_flight`]'s doc for why a second one is refused
-    /// rather than sent.
+    /// `None` while a read for this pane is already out.
     pub(super) fn reread_pane(&mut self) -> Effect {
         if self.config_read_in_flight {
             return Effect::None;
@@ -264,19 +239,10 @@ impl App {
     /// Drops the open pane and everything a reply for it would re-open.
     ///
     /// Both targets are cleared, always, and not only the one the pane
-    /// happens to hold: a read for the other kind can be in flight when this
-    /// runs (`e` on a dog, then the settings screen closes and `e` opens a
-    /// sheep), and a stale one left set is exactly the re-open behind the
-    /// operator's back `config_target` exists to prevent.
-    ///
-    /// This always lands on [`Body::FlockTable`], never on whatever screen
-    /// preceded the pane. That used to be reachable the other way: a
-    /// settings screen and a config pane were once two independent
-    /// `Option`s, so closing the pane only cleared its own field and a
-    /// still-`Some` settings screen underneath resurfaced — the dashboard is
-    /// what `Escape` is supposed to reach, not a screen the operator asked
-    /// for two actions ago. `Body` makes that unrepresentable: there is only
-    /// ever one screen to close to, and it is this one.
+    /// holds: a read for the other kind can be in flight when this runs, and
+    /// a stale one left set is the re-open behind the operator's back
+    /// `config_target` exists to prevent. This always lands on
+    /// [`Body::FlockTable`]: there is only ever one screen to close to.
     pub(super) fn close_pane(&mut self) {
         self.body = Body::FlockTable;
         self.close_dialog = None;
@@ -293,15 +259,10 @@ impl App {
         self.release_text_mode_if_unowned();
     }
 
-    /// The refusal a locked row gets, in that row's own words.
-    ///
-    /// Two sentences for two facts, never one for both: shep refusing a
-    /// config write is not the same as this pane having no widget for a
-    /// shape a Flockfile writes perfectly well.
-    ///
-    /// A refused Structural field names the verb that moves it instead.
-    /// The wildcard keeps a generic sentence for a Structural field this
-    /// binary has no remedy for, rather than guessing a verb.
+    /// The refusal a locked row gets, in that row's own words. Two
+    /// sentences for two facts: shep refusing a config write is not the same
+    /// as this pane having no widget for a shape a Flockfile writes well.
+    /// The wildcard keeps a generic sentence rather than guessing a verb.
     pub(super) fn lock_refusal(key: &str, lock: Lock) -> String {
         match lock {
             Lock::Refused => match key {
@@ -483,13 +444,8 @@ mod tests {
     }
 
     /// The sibling above pins the order where the settings read wins. This
-    /// is the other one, and it is the order that used to corrupt state:
-    /// the pane's own reply lands first, and the settings read arrives with
-    /// the operator two actions past caring about it. `Msg::Settings` wrote
-    /// `body` unconditionally, so the reply replaced the pane, reset the
-    /// cursor as if opening, and forced `InputMode::Normal` while
-    /// `config_target` and `close_dialog` went on describing a pane that was
-    /// no longer on screen.
+    /// is the other one: the pane's own reply lands first, and the settings
+    /// read arrives with the operator two actions past caring about it.
     #[test]
     fn a_settings_read_landing_after_a_config_pane_leaves_the_pane_up() {
         let mut app =
