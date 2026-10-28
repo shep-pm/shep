@@ -14,10 +14,9 @@ use crate::testing::{harness, harness_failing_to_spawn, harness_refusing};
 /// on its own answer rather than on the clock.
 ///
 /// Short, because a test that reaches it either failed already or is
-/// asserting that nothing settled. Every caller runs under
-/// `start_paused`, so an idle runtime advances the clock to it rather
-/// than a test sitting through it; the value is still short enough to
-/// read as a bound rather than as a duration under test.
+/// asserting that nothing settled. Every caller runs under `start_paused`,
+/// so an idle runtime advances the clock to it rather than a test sitting
+/// through it.
 const SHORT_BOUND: Duration = Duration::from_millis(500);
 
 /// `AppConfig`'s own default `kill_timeout`, which every app built by
@@ -88,10 +87,9 @@ fn a_dog_named_after_a_sheep_is_not_a_node_of_its_own() {
 #[tokio::test(start_paused = true)]
 async fn a_later_stage_does_not_start_until_the_earlier_one_is_online() {
     // fails if the driver fires every stage at once, which is what the
-    // supervisor already does and what this exists to change. Asserted as
-    // a sequence rather than as two start names: walking the stages in
-    // order gets the names right on its own, and only `db`'s `Online`
-    // landing before `api`'s `Start` proves anything was waited for.
+    // supervisor already does and what this exists to change. Asserted as a
+    // sequence: walking the stages in order gets the names right on its own,
+    // and only `db`'s `Online` landing before `api`'s `Start` proves a wait.
     let h = harness(vec![ProcScript::never_exits(), ProcScript::never_exits()]);
     let apps = db_then_api();
     let plan = plan(&nodes_for(&apps, &[]));
@@ -153,10 +151,8 @@ async fn one_stage_starts_its_members_in_the_order_the_caller_handed_them() {
 async fn a_member_that_exits_does_not_hold_its_stage() {
     // fails if the driver waits for a live sheep only: a dependency whose
     // binary is missing would then hold every later stage for the full
-    // deadline instead of resolving at once. The first script exits at
-    // once, standing in for a binary that is not there. Both durations
-    // are virtual under `start_paused`, so the 30s deadline this must not
-    // pay and the 5s bound that catches it cost nothing either way.
+    // deadline instead of resolving at once. The first script exits at once,
+    // standing in for a binary that is not there.
     let h = harness(vec![ProcScript::const_exit(1), ProcScript::never_exits()]);
     let mut db = AppConfig::minimal("db", "./does-not-exist");
     db.listen_timeout = UpDuration::from_millis(30_000);
@@ -241,12 +237,10 @@ async fn a_refused_stage_names_what_earlier_stages_already_started() {
 
 #[tokio::test(start_paused = true)]
 async fn a_stage_that_fails_part_way_names_what_it_left_running() {
-    // fails if the refusal names completed stages only: `do_start`
-    // refuses a batch up front for the checks it can make in advance,
-    // and a spawn that fails anyway leaves the members ahead of it
-    // running, in a stage no completed-stage list holds. One stage here,
-    // so `started` is empty and the note exists only if the flock was
-    // read.
+    // fails if the refusal names completed stages only: `do_start` refuses a
+    // batch up front for the checks it can make in advance, and a spawn that
+    // fails anyway leaves the members ahead of it running, in a stage no
+    // completed-stage list holds.
     let h = harness_failing_to_spawn(
         vec![ProcScript::never_exits(), ProcScript::never_exits()],
         &["zulu"],
@@ -281,13 +275,10 @@ async fn a_stage_that_fails_part_way_names_what_it_left_running() {
 
 #[tokio::test(start_paused = true)]
 async fn one_stage_stops_its_members_at_the_same_time() {
-    // fails if the walk awaits each stop to full termination before it
-    // arms the next, which costs a teardown the SUM of its members' kill
-    // ladders where the flock-wide shutdown it replaced cost the longest
-    // one. Two sheep in one stage that ignore SIGTERM, so each burns its
-    // whole 1600ms ladder: overlapped that is one ladder, serialized it is
-    // two. Virtual time under `start_paused`, which advances only when
-    // every task is idle, so the two are exact rather than close.
+    // fails if the walk awaits each stop to full termination before it arms
+    // the next, which costs a teardown the SUM of its members' kill ladders
+    // where the flock-wide shutdown it replaced cost the longest one. Two
+    // sheep in one stage ignore SIGTERM, so each burns its whole 1600ms ladder.
     let h = harness(vec![
         ProcScript::ignores_signals(),
         ProcScript::ignores_signals(),
@@ -317,19 +308,10 @@ async fn one_stage_stops_its_members_at_the_same_time() {
 
 #[tokio::test(start_paused = true)]
 async fn stopping_walks_the_stages_backwards() {
-    // fails if shutdown stays parallel, which gives a worker and its
-    // database the same SIGTERM millisecond. Asserted per stage rather
-    // than as a flat sequence of names: a stage's members are stopped
-    // concurrently, so which of `api` and `worker` reaches the bus first
-    // is not something this walk decides. What it does decide is that
-    // both of them stop before `db` does.
-    //
-    // The later stage's members ignore signals and `db` does not, so
-    // they have a kill ladder to burn and it does not. That is what
-    // makes the assertion read stage boundaries rather than poll order:
-    // with every stop flattened into one `join_all`, `db` answers first
-    // and the bus carries `Stop db` at the front. Scripts are handed out
-    // in spawn order, which is the order `apps` lists them.
+    // fails if shutdown stays parallel, which gives a worker and its database
+    // the same SIGTERM millisecond. Asserted per stage rather than as a flat
+    // sequence: a stage's members stop concurrently, so what this walk decides
+    // is that both stop before `db` does, not which of them reaches the bus first.
     let h = harness(vec![
         ProcScript::never_exits(),
         ProcScript::ignores_signals(),
@@ -371,12 +353,10 @@ async fn stopping_walks_the_stages_backwards() {
 
 #[tokio::test(start_paused = true)]
 async fn a_shutdown_stops_dependents_before_their_dependencies() {
-    // fails if the teardown claims every online sheep at once, which
-    // gives a worker and its database the same SIGTERM millisecond.
-    // `worker` ignores signals and `db` does not, so the later stage has
-    // a kill ladder to burn: flatten the walk and `db` answers first,
-    // which is the only thing that makes this assertion about stages
-    // rather than about poll order.
+    // fails if the teardown claims every online sheep at once, which gives a
+    // worker and its database the same SIGTERM millisecond. `worker` ignores
+    // signals and `db` does not, so flatten the walk and `db` answers first,
+    // which is what makes this assertion about stages rather than poll order.
     let h = harness(vec![
         ProcScript::never_exits(),
         ProcScript::ignores_signals(),
@@ -454,12 +434,10 @@ async fn a_dog_stops_after_every_sheep() {
 
 #[tokio::test(start_paused = true)]
 async fn a_stage_whose_members_have_already_settled_waits_for_no_event_at_all() {
-    // fails if the driver reads the bus alone: an app that reached its
-    // answer while the start call was still returning would then be
-    // waited on until the bound, since its event is behind the cursor
-    // rather than ahead of it. Nothing will ever put that event on the bus
-    // again, so only the flock read can end this wait, and the short bound
-    // is what it costs when it does not happen.
+    // fails if the driver reads the bus alone: an app that reached its answer
+    // while the start call was still returning would then be waited on until
+    // the bound, since its event is behind the cursor. Nothing puts that event
+    // on the bus again, so only the flock read can end this wait.
     let h = harness(vec![ProcScript::never_exits()]);
     let apps = normalize_all(vec![AppConfig::minimal("db", "./sleep")]).expect("one app");
     h.ctx
@@ -477,13 +455,10 @@ async fn a_stage_whose_members_have_already_settled_waits_for_no_event_at_all() 
 
 #[tokio::test(start_paused = true)]
 async fn one_instance_going_online_does_not_settle_a_multi_instance_dependency() {
-    // fails if the wait settles a name off the event that triggered it:
-    // every instance of an app publishes under the same `ProcessInfo::name`,
-    // so instance 0 passing its probe would release a name whose other two
-    // instances are seconds away, against what `AppConfig::depends_on`
-    // promises. The event is put on the bus before the wait starts, so
-    // there is no race over whether it was read; the bound is what the
-    // wait costs when nothing settles, not a duration under test.
+    // fails if the wait settles a name off the event that triggered it: every
+    // instance of an app publishes under the same `ProcessInfo::name`, so
+    // instance 0 passing its probe would release a name whose other two
+    // instances are seconds away.
     let h = harness(vec![
         ProcScript::never_exits(),
         ProcScript::never_exits(),

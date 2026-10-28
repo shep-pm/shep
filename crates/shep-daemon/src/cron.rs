@@ -3,13 +3,11 @@
 //! [`spawn_cron_worker`] runs one name-group's `cron_restart` schedule for as
 //! long as its handle lives, restarting every instance of the name (stopped
 //! ones included) through [`SupervisorHandle::restart_automatic`], budget
-//! reset included. An operator's `stop` racing an in-flight occurrence
-//! wins, since this is not a person's `shep restart`.
+//! reset included. An operator's `stop` racing an in-flight occurrence wins.
 //!
 //! Re-derives the next occurrence from wall time on every wake instead of
-//! sleeping across one long interval, so a clock jump costs one late
-//! restart rather than a replayed backlog. `max_cron_sleep` bounds how
-//! late; five-field standard cron only.
+//! sleeping across one long interval, so a clock jump costs one late restart
+//! rather than a replayed backlog. Five-field standard cron only.
 
 use core::time::Duration;
 use std::sync::Arc;
@@ -46,12 +44,8 @@ impl Clock for SystemClock {
 ///
 /// Re-deriving at least this often bounds the lateness a suspend, NTP step
 /// or DST shift can cause to one minute, at the cost of one wakeup per
-/// minute per cron-configured sheep.
-///
-/// Applied in exactly one place, `boot`'s `options.max_cron_sleep.unwrap_or`:
-/// a second default would let the two drift apart. `shep-core` carries the
-/// floor, never the default. `#[allow(dead_code)]` because a non-unix build
-/// (`boot` is unix-only) has no reader.
+/// minute per cron-configured sheep. Applied in exactly one place, `boot`'s
+/// `options.max_cron_sleep.unwrap_or`, so two defaults cannot drift apart.
 #[allow(dead_code)]
 pub(crate) const DEFAULT_MAX_CRON_SLEEP: Duration = Duration::from_secs(60);
 
@@ -60,9 +54,7 @@ pub(crate) const DEFAULT_MAX_CRON_SLEEP: Duration = Duration::from_secs(60);
 /// `shep-core` rejects a configured value below this bound, but that guard
 /// only covers the call site that routes through it. Without a floor here
 /// too, a `Duration::ZERO` turns the loop into a hot spin that still fires
-/// correctly, which makes the failure hard to attribute. Declared
-/// independently from `shep-core`'s `MIN_CRON_SLEEP` (private, and a
-/// different duration type), matching it in spirit only.
+/// correctly, which makes the failure hard to attribute.
 const MIN_MAX_SLEEP: Duration = Duration::from_millis(1_000);
 
 /// Runs one sheep-group's cron schedule until the handle is dropped.
@@ -71,8 +63,7 @@ const MIN_MAX_SLEEP: Duration = Duration::from_millis(1_000);
 /// it changes how quickly the worker recovers from a wall-clock jump, never
 /// whether an occurrence fires. Clamped to at least `MIN_MAX_SLEEP`.
 ///
-/// Cancellation: the returned handle aborts the loop on `abort()`; the loop
-/// itself holds no state that needs unwinding.
+/// Cancellation: the returned handle aborts the loop, which holds no state.
 pub fn spawn_cron_worker(
     name: String,
     schedule: CronSchedule,

@@ -16,14 +16,10 @@ use super::narrate;
 /// Watches the bus and records, locally, every enabled dog that exhausts its
 /// restart budget, and writes each dog's spawn and exit into its own log.
 ///
-/// The shepherd cannot deliver an alert about a dead bark dog: it has no sinks
-/// and no webhook code, so what it guarantees is a local trail in `shep barks`.
-/// Read from the bus rather than from the call sites: a `Start` on the bus is a
-/// spawn that really happened, while `start_dog` answering `Ok` covers its
-/// idempotent no-op too.
-///
-/// Its `JoinHandle` is held by the caller and aborted at teardown: the task
-/// parks on a broadcast receiver.
+/// The shepherd cannot deliver an alert about a dead bark dog: it has no
+/// sinks and no webhook code, so what it guarantees is a local trail in
+/// `shep barks`. Read from the bus rather than from the call sites: a
+/// `Start` on the bus is a spawn that really happened.
 pub fn spawn_dog_watch(
     mut events: broadcast::Receiver<SharedEvent>,
     publish: Bus,

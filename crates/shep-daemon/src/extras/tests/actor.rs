@@ -10,9 +10,7 @@ use shep_core::config::ResolvedApp;
 ///
 /// A recording enforcer arms without ever polling, an idle lamb sweep reports
 /// no lambs and idle stats see no processes, so the only thing left that can
-/// report is the cron worker. `max_cron_sleep` stays the case's own: how far
-/// that worker may sleep is what decides whether it wakes inside the case's
-/// window.
+/// report is the cron worker. `max_cron_sleep` stays the case's own.
 fn plain_harness(
     clock: &Arc<TestClock>,
     scripts: Vec<ProcScript>,
@@ -195,11 +193,9 @@ const SETTLE_VIRTUAL_LIMIT: Duration = Duration::from_secs(5);
 ///
 /// The worker derives its occurrence from that reading, so time advanced
 /// before it lands moves the occurrence out with it: a crossing that starts
-/// early finds the schedule an hour further on, and the trigger never fires.
-/// Call this between starting the app and [`cross_one_hour`].
-///
-/// Bounded on the real clock rather than in rounds, since how many rounds a
-/// busy machine needs is not something a test can know.
+/// early finds the schedule an hour further on. Call this between starting
+/// the app and [`cross_one_hour`]. Bounded on the real clock, since how many
+/// rounds a busy machine needs is not something a test can know.
 async fn wait_for_cron_worker(clock: &TestClock) {
     let started = std::time::Instant::now();
     while clock.reads() == 0 {
@@ -216,12 +212,8 @@ async fn wait_for_cron_worker(clock: &TestClock) {
 ///
 /// A round waits on the paused clock, not on `yield_now`: a stop's lamb walk
 /// runs on the blocking pool, and the runtime holds the clock still until it
-/// returns, where a yield would spend its rounds before the pool answers.
-/// Bounded on both clocks: [`SETTLE_DEADLINE`] of real time, for a wait that
-/// runs off the paused clock and so spends no virtual time while it lasts,
-/// and [`SETTLE_VIRTUAL_LIMIT`] of paused time, so a wait that spins cannot
-/// carry the clock past an occurrence. A satisfied wait returns on its first
-/// round either way.
+/// returns. Bounded on both clocks, [`SETTLE_DEADLINE`] of real time and
+/// [`SETTLE_VIRTUAL_LIMIT`] of paused time.
 async fn settle_into(supervisor: &SupervisorHandle, id: u32, status: ProcStatus) {
     let started = std::time::Instant::now();
     let virtual_start = tokio::time::Instant::now();

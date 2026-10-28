@@ -8,12 +8,10 @@ use shep_core::config::AppConfig;
 /// Delay before a restart, given the app's config and how many exits in a
 /// row have been unstable.
 ///
-/// A fixed `restart_delay` wins if set. Else a stable exit
-/// (`consecutive_unstable == 0`) gets none. Else `exp_backoff_restart_delay`
-/// steps `d = min(d * 3 / 2, 15000)` from its initial value,
-/// `consecutive_unstable - 1` times; `AppConfig::default()` sets it to
-/// 100ms, so an unconfigured app still backs off unless the field is
-/// explicitly set to `None`.
+/// A fixed `restart_delay` wins if set. A stable exit
+/// (`consecutive_unstable == 0`) gets none. Else
+/// `exp_backoff_restart_delay` steps `d = min(d * 3 / 2, 15000)` from its
+/// initial value, `consecutive_unstable - 1` times.
 pub fn restart_delay(app: &AppConfig, consecutive_unstable: u32) -> Option<Duration> {
     if let Some(fixed) = app.restart_delay {
         return Some(fixed.as_duration());
@@ -36,18 +34,13 @@ pub fn restart_delay(app: &AppConfig, consecutive_unstable: u32) -> Option<Durat
     None
 }
 
-/// The delay a sheep adopted across a handover still owes, given the moment
-/// its predecessor recorded the respawn as due. Belongs to the sheep's
-/// exit, not the handover: an app with `restart_delay = "1h"` reloaded at
-/// minute 59 is owed the remaining minute, not another hour. `due` is a
+/// The delay a sheep adopted across a handover still owes. The debt belongs
+/// to the sheep's exit, not to the handover, and is measured from a
 /// wall-clock moment, so it survives the `execve` where a
 /// [`tokio::time::Instant`] would not.
 ///
-/// Returns what [`schedule_restart`](crate::supervisor) should sleep;
-/// `None` means "respawn now". A `due` already past returns immediately. A
-/// `due` further out than `restart_delay(app, 1)` clamps to that value,
-/// also the fallback when `due` is `None`; the carried restart count plays
-/// no part, since a fresh restart budget does not inherit it either.
+/// Returns what [`schedule_restart`](crate::supervisor) should sleep; `None`
+/// means "respawn now". A `due` past `restart_delay(app, 1)` clamps to it.
 #[must_use]
 pub fn adopted_restart_delay(
     app: &AppConfig,

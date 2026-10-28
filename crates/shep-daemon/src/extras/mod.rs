@@ -125,17 +125,13 @@ impl fmt::Debug for Extras {
     }
 }
 
-/// Restarts each sheep reported over `breaches` or `liveness`.
+/// Restarts each sheep reported over `breaches` or `liveness`, and must be
+/// called from within a Tokio runtime context.
 ///
 /// Ends when both senders have dropped. Owns both receivers: the actor must
 /// never block on anything a subsystem controls.
-///
-/// Restarts go through [`SupervisorHandle::extra_restart`], never `restart`: a
-/// report queued before `shep stop` is delivered after the sheep is `Stopped`,
-/// and `restart` would resurrect it.
-///
-/// Must be called from within a Tokio runtime context: it spawns the reporting
-/// task immediately.
+/// Restarts go through [`SupervisorHandle::extra_restart`], never `restart`:
+/// a report queued before `shep stop` would resurrect a stopped sheep.
 pub fn spawn_extras_reporter(
     mut breaches: mpsc::Receiver<LimitBreach>,
     mut liveness: mpsc::Receiver<LivenessReport>,
@@ -286,14 +282,11 @@ impl fmt::Debug for InstanceExtras {
 impl ExtrasRegistry {
     /// Arms everything an entry's configuration asks for.
     ///
-    /// `prober` is scoped to this instance's assembled `SpawnSpec` and is read
-    /// only by the liveness loop.
+    /// `prober` is scoped to this instance's assembled `SpawnSpec` and is
+    /// read only by the liveness loop.
     ///
     /// Idempotent per id: arming an already-armed id disarms that id's own
-    /// per-pid extras first, which is what a respawn needs. A live name-group
-    /// task is left alone: it is keyed on the name and outlives any one process.
-    /// Rebuilding it re-registers the OS watcher, which can fail and would
-    /// silently cost the app its watch.
+    /// per-pid extras first. A live name-group task is left alone.
     pub fn arm(
         &mut self,
         entry: &ProcessEntry,
@@ -363,18 +356,13 @@ impl ExtrasRegistry {
         }
     }
 
-    /// Rebuilds everything armed for `name`, replacing live tasks rather than
-    /// keeping them.
+    /// Rebuilds everything armed for `name`, replacing live tasks rather
+    /// than keeping them.
     ///
-    /// The group-scoped fields (`watch`, `ignore_watch`, `watch_delay`,
-    /// `watch_options`, `cron_restart`, `cron_timezone`) are read when the task
-    /// is built, so a task [`Self::arm`] left alive would keep the old values.
-    /// The rebuild costs a real gap in the OS watch with no rescan.
-    ///
-    /// `entries` is what the caller wants armed: a stopped instance passed here
-    /// joins a group whose next cron occurrence or watch event restarts it, and
-    /// an empty slice aborts the group and rebuilds nothing. `prober` runs once
-    /// per entry, since `assemble` bakes `SHEP_INSTANCE` into its environment.
+    /// The group-scoped fields are read when the task is built, so a task
+    /// [`Self::arm`] left alive would keep the old values. The rebuild costs
+    /// a gap in the OS watch. `prober` runs once per entry, since `assemble`
+    /// bakes `SHEP_INSTANCE` into its environment.
     pub fn rearm_name(
         &mut self,
         name: &str,
@@ -545,12 +533,10 @@ fn arm_cron(
 /// Spawns the name-group's filesystem watch, or `None` when the app does not
 /// ask to be watched, or when its root or its globs will not resolve.
 ///
-/// Every failure here arms no watch rather than propagating: a watch root that
-/// will not resolve must not take down the same app's cron worker, enforcer and
-/// probe. Each writes a `warn!`, and that record is the entire signal.
-///
-/// Takes the whole [`ProcessEntry`] because the assembled `out_file`/`err_file`
-/// are what `own_log_ignores` needs.
+/// Every failure here arms no watch rather than propagating: a watch root
+/// that will not resolve must not take down the same app's cron worker,
+/// enforcer and probe. Each writes a `warn!`, and that is the entire signal.
+/// Takes the whole [`ProcessEntry`] because `own_log_ignores` needs the log paths.
 fn arm_watch(entry: &ProcessEntry, supervisor: &SupervisorHandle) -> Option<JoinHandle<()>> {
     let config = entry.spec.config();
     if !config.watch {

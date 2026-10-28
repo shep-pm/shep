@@ -8,10 +8,6 @@
 //! ends of `shep daemon reload`, and `running.rs` holds what `boot` hands
 //! back: [`RunningDaemon::run`] serves until a signal or `KillDaemon`, then
 //! tears down in a load-bearing order.
-//!
-//! [`BootOptions::ready_fd`] arrives as an owned [`std::fs::File`]:
-//! `crate::sys::adopt_fd`'s ordering precondition is process-wide and `boot`
-//! is `async`, so only the CLI's `main` can discharge it.
 
 mod error;
 #[cfg(unix)]
@@ -87,12 +83,9 @@ pub struct BootOptions {
     /// init system supervising this process directly. `None` reports nothing.
     ///
     /// The resolved address rather than a bool: `std::env::set_var` is
-    /// `unsafe` in edition 2024 and this crate is `#![deny(unsafe_code)]`, so
-    /// a boot test could not establish an ambient `$NOTIFY_SOCKET`.
-    ///
-    /// Distinct from [`Self::ready_fd`], which answers a parent shep process
-    /// the moment the socket binds. This one is written last, so a unit goes
-    /// green only once the flock is back.
+    /// `unsafe` in edition 2024, so a boot test could not establish an
+    /// ambient `$NOTIFY_SOCKET`. Distinct from [`Self::ready_fd`], which
+    /// answers a parent shep process the moment the socket binds.
     pub notify_socket: Option<OsString>,
     /// Dogs to start once the flock is back, in the order given.
     ///
@@ -104,23 +97,8 @@ pub struct BootOptions {
     /// `[daemon] adopted_dogs` records, and whatever `[daemon] enabled_dogs`
     /// names.
     ///
-    /// Assembled by the caller from the same file [`Self::dogs`] comes out
-    /// of, and for the same reason: shep-daemon never reads `shep.toml`
-    /// itself. A [`shep_core::protocol::DogSource::Adopted`] carries whether
-    /// the dog declared the shepherd channel (`[daemon] channel_dogs`), which
-    /// is what lets a dog be registered at rest without the file in hand.
-    ///
-    /// A superset of [`Self::dogs`], and the difference is the whole point
-    /// of carrying both. That one is the spawn list, so it holds only the
-    /// dogs an operator has switched on; this one holds the dogs that
-    /// exist. Every entry here is registered once the flock is restored: a
-    /// dog outside [`Self::dogs`] sits `Stopped` and disabled until an
-    /// `EnableDog` starts it. `Request::SetDogConfig` is guarded on this
-    /// one, because the dog most in need of configuring is the one that is
-    /// disabled or has never started, and a guard on the running set
-    /// refuses exactly that dog.
-    ///
-    /// A dog in [`Self::dogs`] and absent here is registered all the same.
+    /// A superset of [`Self::dogs`], the spawn list: this one holds the dogs
+    /// that exist, and `Request::SetDogConfig` is guarded on this one.
     pub known_dogs: Vec<DogSpec>,
     /// Which of [`Self::dogs`] run before every sheep rather than after the
     /// flock, from `[daemon] boot_first_dogs`.
@@ -140,10 +118,9 @@ pub struct BootOptions {
     /// same flock, rather than stopping gracefully.
     ///
     /// A handover `execve`s the file this process was launched from, so a
-    /// caller that opts in is asserting it is the shep binary; a test harness
-    /// would re-run itself from the top forever. Defaults to `false`, and a
-    /// boot that has not opted in answers SIGHUP with the graceful stop, as
-    /// does a handover that cannot proceed. Unix only in effect.
+    /// caller that opts in asserts it is the shep binary; a test harness
+    /// would re-run itself forever. Defaults to `false`, and a handover that
+    /// cannot proceed answers SIGHUP with the graceful stop.
     pub handover: bool,
     /// The environment a sheep that names none of its own resolves its
     /// `{{secret:...}}` references in, from `[daemon] environment`.
@@ -485,17 +462,10 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         events.subscribe(),
     );
 
-    // 5. A failure is a `warn!` and the boot continues: only systemd's view
-    //    is wrong. Unix only, since `$NOTIFY_SOCKET` is a unix datagram
-    //    socket; the field stays on `BootOptions` for both platforms.
-    //
-    //    Reported here, after the restore, which is the honest answer to
-    //    `Type=notify`. The restore holds each stage until its members are
-    //    ready, so it can outlast `TimeoutStartSec`; `restore_flock` has each
-    //    stage extend that deadline by its own bound, before its spawns and
-    //    again before its wait, and the restore extends it once more for the
-    //    setup that follows. The unit is killed only by a stage that overruns
-    //    its own bound.
+        // 5. A failure is a `warn!` and the boot continues: only systemd's
+        //    view is wrong. Unix only, since `$NOTIFY_SOCKET` is a unix
+        //    datagram socket. Reported after the restore, which is the honest
+        //    answer to `Type=notify`: each stage extends the deadline itself.
     #[cfg(unix)]
     if let Some(target) = options.notify_socket.as_deref()
         && let Err(err) = crate::notify::notify(target)
@@ -551,23 +521,9 @@ fn max_cron_sleep(options: &BootOptions) -> Duration {
 /// dependency order.
 ///
 /// One line over [`snapshot::muster`], which holds the whole restore rule and
-/// also serves an operator's `Muster` request. The names it returns are
-/// discarded: nobody is waiting on them here.
-///
-/// `dogs` is every dog this shepherd holds and `boot_first_dogs` the ones
-/// promoted ahead of the flock. Neither is spawned here. Only the promoted
-/// ones are running by the time a stage starts, so a sheep that names an
-/// unpromoted dog in its `depends_on` is positioned by the plan and by
-/// nothing else; both lists are passed on so the restore can warn about
-/// exactly that.
-///
-/// This is where a boot's worst case grows with the shape of the flock. Every
-/// stage holding a member something else depends on is waited for here, in
-/// turn, before the daemon serves: up to that stage's longest
-/// `listen_timeout` plus `boot_order::STAGE_SLACK`. A client connecting during
-/// the restore waits with it. The bound is limited rather than open-ended,
-/// since a stage nothing depends on is not waited for at all and a flock with
-/// no `depends_on` anywhere pays nothing.
+/// also serves an operator's `Muster` request. Neither `dogs` list is spawned
+/// here, so a sheep naming an unpromoted dog is positioned by the plan alone.
+/// A waited-on stage costs its longest `listen_timeout` plus `STAGE_SLACK`.
 async fn restore_flock(
     paths: &ShepPaths,
     registry: &FlockRegistry,
@@ -605,10 +561,9 @@ pub(crate) async fn boot_with_idle_sweep<R: ProcessRunner>(
 
 /// Serializes every test in this module tree whose `boot()` call succeeds
 ///
-/// `raise(SIGTERM)` reaches every `Signal` stream in the test binary,
-/// whichever runtime registered it, so two overlapping tests can rescue or
-/// corrupt each other's daemon. A successful `boot()` is the line, not a
-/// `run()`: `install_signals` runs inside `boot`.
+/// `raise(SIGTERM)` reaches every `Signal` stream in the test binary, so two
+/// overlapping tests can rescue or corrupt each other's daemon. A successful
+/// `boot()` is the line, not a `run()`: `install_signals` runs inside `boot`.
 ///
 /// `tokio::sync::Mutex`, since the guard is held across `.await`.
 #[cfg(all(test, unix))]

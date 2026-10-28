@@ -63,10 +63,8 @@ pub(super) struct ProcState {
     /// [`ProcScript::lamb_holds_the_pipe`](crate::fake::ProcScript::lamb_holds_the_pipe) says the streams outlive it.
     ///
     /// Without it the fake would answer a reopen aimed at a proc that exited
-    /// long ago, while the real runner's pump (and with it the receiving end
-    /// of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl)) is gone once the child's streams reach EOF. A
-    /// caller's "the pump is already gone" branch would then be unreachable
-    /// from this tier.
+    /// long ago, while the real runner's pump is gone once the child's
+    /// streams reach EOF.
     pub(super) exited: watch::Sender<bool>,
 }
 
@@ -85,8 +83,7 @@ impl fmt::Debug for ProcState {
 ///
 /// `Clone`s share the same underlying state (private `ProcState`, held in an
 /// `Arc`), which lets one handle drive `wait()` on a spawned task while
-/// another delivers `signal()`/`kill_tree()` concurrently, the pattern the
-/// daemon's kill ladder uses against the real runner too. A control event
+/// another delivers `signal()`/`kill_tree()` concurrently. A control event
 /// (signal, shutdown, kill) resolves exactly one waiting `wait()` call, not
 /// every clone independently: `tokio::sync::Notify::notify_one` semantics.
 #[derive(Debug, Clone)]

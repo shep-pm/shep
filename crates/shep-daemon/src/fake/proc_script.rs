@@ -80,11 +80,8 @@ impl ProcScript {
     ///
     /// Models the one child a kill ladder cannot end: wedged in
     /// uninterruptible sleep, where `SIGKILL` is delivered and accepted by
-    /// the kernel but `wait(2)` never returns. Lets a test see what the
-    /// supervisor does when a message it is waiting on never comes.
-    ///
-    /// The kill is still delivered and counted
-    /// ([`ScriptedRunner::kill_counts`](crate::fake::ScriptedRunner::kill_counts)); only the exit is withheld.
+    /// the kernel but `wait(2)` never returns. The kill is still delivered
+    /// and counted ([`ScriptedRunner::kill_counts`](crate::fake::ScriptedRunner::kill_counts)).
     #[must_use]
     pub fn never_reports_its_exit() -> Self {
         Self {

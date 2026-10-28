@@ -106,15 +106,10 @@ impl RunningDaemon {
         dog_watch.abort();
         silent_dog_watch.abort();
 
-        // 2. The final roll, written while every sheep is still online, unless
-        //    `delete_flock_on_shutdown` (`shep dev`'s case) wiped the registry
-        //    first. Runs however serving ended, a caught signal included.
-        //
-        //    The edges are read BEFORE the clear, because step 4 needs them
-        //    and the clear is about what a roll persists, not about how a
-        //    session tears down: a `shep dev` worker drains against its
-        //    database the same as any other, and reading them after the clear
-        //    left that session with no ordered teardown at all.
+        // 2. The final roll, written while every sheep is still online,
+        //    unless `delete_flock_on_shutdown` (`shep dev`'s case) wiped the
+        //    registry first. The edges are read BEFORE the clear, because
+        //    step 4 needs them.
         let edges = ctx.registry.depends_on_by_name();
         if delete_flock_on_shutdown {
             ctx.registry.clear();
@@ -129,8 +124,7 @@ impl RunningDaemon {
         // 4. Stop the flock in reverse dependency order, so a worker drains
         //    against a database that is still answering. Every sheep is
         //    bounded by its own kill ladder, and step 5 is the backstop: a
-        //    sheep this walk misses is still killed there, so a bug here
-        //    cannot leave a child alive.
+        //    sheep this walk misses is still killed there.
         crate::boot_order::stop_edges_in_reverse(edges, &ctx.dog_names, &ctx.supervisor).await;
 
         // 5. Kill ladder on whatever is still online, dogs included: they are
@@ -285,10 +279,8 @@ mod tests {
     async fn a_dev_session_still_stops_its_flock_in_dependency_order() {
         // fails if the reverse walk reads its edges after the registry is
         // cleared: `delete_flock_on_shutdown` empties it before the final
-        // roll, so the walk planned nothing and the backstop killed the
-        // whole flock at once. A dev worker drains against its database the
-        // same as any other, and not persisting a roll is a different thing
-        // from not draining.
+        // roll, so the walk planned nothing and the backstop killed the whole
+        // flock at once.
         let _guard = SIGNAL_TEST_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
@@ -352,11 +344,9 @@ mod tests {
     /// Pins teardown's step 5, the `shutdown` backstop, which nothing else
     /// does: deleting that line leaves every other test in this crate green.
     ///
-    /// A dog is what makes it observable. The reverse walk skips dogs
-    /// deliberately, so monitoring outlives what it monitors, which leaves the
-    /// backstop as the only thing in teardown that can stop one. The same
-    /// call is what the step's own comment promises for a sheep the walk
-    /// misses.
+    /// A dog is what makes it observable. The reverse walk skips dogs so
+    /// monitoring outlives what it monitors, which leaves the backstop as the
+    /// only thing in teardown that can stop one.
     #[tokio::test]
     async fn a_dog_is_stopped_by_the_time_run_returns() {
         // fails if teardown loses its kill-ladder backstop, which would leave

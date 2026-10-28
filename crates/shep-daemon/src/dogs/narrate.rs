@@ -20,15 +20,10 @@ const SHEP_VOICE: &str = "[shep]";
 /// Writes one line of shep's own narration into `info`'s log, and publishes
 /// it to whoever is following that log live.
 ///
-/// The file is written directly rather than through the pump, which ends when
-/// its sheep's streams reach EOF, before there is anything to say about how the
-/// dog exited. Safe because [`crate::tokio_runner::open_append`] opens with
-/// `O_APPEND`: every write
-/// seeks to end atomically, so the whole line is assembled and written in one
-/// call. The cost is ordering, since a narration line can land ahead of dog
-/// output still in the pump's buffer, bounded by `IDLE_FLUSH`.
-///
-/// A dog with no `err_file` still reaches a live follower.
+/// The file is written directly rather than through the pump, which ends
+/// when its sheep's streams reach EOF, before there is anything to say about
+/// how the dog exited. `open_append` uses `O_APPEND`, so the line lands in
+/// one write; the cost is ordering against output still in the pump.
 pub(crate) async fn narrate(events: &Bus, info: &ProcessInfo, message: &str) {
     let line = format!("{SHEP_VOICE} {message}");
     if let Some(path) = &info.err_file {

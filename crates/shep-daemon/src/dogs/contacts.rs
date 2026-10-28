@@ -27,12 +27,6 @@ const PEER_CONTACT_CAPACITY: usize = 1024;
 /// without this every dog carried across a `shep daemon reload` would look,
 /// for its first seconds, like a dog that never called. The stale rung is
 /// spent once, so a verdict against a cold map would be the last one.
-///
-/// While the map warms, `from_pid` answers [`Contact::Unknown`], which routes
-/// to `Silence::Unattributed`.
-///
-/// `pub(super)`: `dogs::silent`'s own tests drive a map across this whole
-/// warm-up window.
 pub(super) const PEER_CONTACT_WARMUP: Duration = DOG_SILENCE_BUDGET;
 
 /// What this daemon has observed arriving on its socket, keyed by the
@@ -41,11 +35,7 @@ pub(super) const PEER_CONTACT_WARMUP: Duration = DOG_SILENCE_BUDGET;
 /// One question, asked by `record_silent_dog`: when a dog has been running
 /// without ever handshaking, is it failing to reach this daemon, or reaching
 /// it and not saying who it is? Those have opposite fixes. A pid is the
-/// identifier both sides already have, so nothing is added to a protocol the
-/// dogs being diagnosed are too old to speak.
-///
-/// Unix only in practice: Windows has no post-accept peer check, so this map
-/// stays empty there and every lookup answers [`Contact::Unknown`].
+/// identifier both sides already have.
 #[derive(Debug, Clone, Default)]
 pub struct PeerContacts {
     seen: Arc<Mutex<Contacts>>,

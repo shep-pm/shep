@@ -35,11 +35,10 @@ pub struct DogSpec {
 /// The sentence this shepherd answers a request to delete a built-in dog with.
 ///
 /// A built-in dog is an argv branch of the shep binary, so nothing removes it:
-/// `delete` has no registration to forget and no binary to lose. `disable` is
-/// the verb that exists for it, and the refusal names it.
+/// `delete` has no registration to forget and no binary to lose. `disable`
+/// is the verb that exists for it, and the refusal names it.
 ///
-/// Public because `shep-cli` reports it for a shepherd that is not running and
-/// cannot be asked, so an operator reads one sentence either way.
+/// Public because `shep-cli` reports it for a shepherd that is not running.
 #[must_use]
 pub fn built_in_dog_refusal(name: &str) -> String {
     format!("{name} is built in: `shep disable {name}`")
@@ -51,12 +50,7 @@ pub fn built_in_dog_refusal(name: &str) -> String {
 /// parser message, never a value read out of a parsed `[<name>]` table. The
 /// two secret variants hold a key path, a reference as written, an
 /// environment name and a [`StoreFault`], so no field can hold a resolved
-/// value (IR-41). A syntax error can quote a line of the section's own
-/// source, but only to the peer that asked, which peer-cred auth already
-/// established owns the file.
-///
-/// [`Self::NoBinary`] and [`Self::Io`] wrap their [`std::io::Error`] rather
-/// than rendering it, which costs this enum `Clone`, `PartialEq` and `Eq`.
+/// value (IR-41).
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum DogError {
@@ -155,8 +149,7 @@ fn builtin_program() -> Result<PathBuf, DogError> {
 /// # Errors
 /// - [`DogError::NoBinary`] if a built-in dog has no program to run.
 /// - [`DogError::UnsupportedSource`] if the source is a kind this build does
-///   not know how to spawn.
-/// - [`DogError::Config`] if the assembled config failed `normalize`.
+///   not know how to spawn. [`DogError::Config`] if the config failed `normalize`.
 pub fn dog_app(spec: &DogSpec, paths: &ShepPaths) -> Result<ResolvedApp, DogError> {
     let (script, args, channel) = match &spec.source {
         DogSource::BuiltIn { .. } => (
@@ -190,15 +183,9 @@ pub fn dog_app(spec: &DogSpec, paths: &ShepPaths) -> Result<ResolvedApp, DogErro
 /// it whether or not it runs.
 ///
 /// A dog outside `enabled` is registered `Stopped` and disabled; one in it is
-/// registered `Stopped` all the same, for [`spawn_enabled_dogs`] to start.
-/// A dog already registered under its name, running or a sheep, keeps its row
-/// and its mark, except for the ones `stop_unenabled_dogs` takes back: every
-/// dog row this config does not enable that is not already stopped and marked.
-/// Entries land in the order given, `enabled` first, so a dog's id does not
-/// depend on which of two lists named it.
-///
-/// Never fails the boot, for [`spawn_enabled_dogs`]'s reason: a dog that
-/// cannot be assembled is warned about and left out.
+/// registered `Stopped` all the same, for [`spawn_enabled_dogs`] to start. A
+/// dog already registered under its name keeps its row and its mark, except
+/// for the ones `stop_unenabled_dogs` takes back.
 pub async fn register_dogs_at_rest(
     known: &[DogSpec],
     enabled: &[DogSpec],
@@ -241,27 +228,10 @@ pub async fn register_dogs_at_rest(
 /// Stops and marks every dog row in `flock` that `enabled` does not name,
 /// except one already stopped and marked.
 ///
-/// The case is a handover successor's. A predecessor booted while `shep.toml`
-/// named the dog, ran it, and carried it across the `execve`; this boot read a
-/// file that has since dropped the name, by hand or through `shep disable`
-/// against a shepherd that has since been replaced. The successor owns the
-/// dog's row now, and a row it inherited running is not one its config says
-/// should run: it goes down through the operator's own door, which marks the
-/// app as it stops it, so `shep flock` reads `disabled` and
-/// `shep enable <name>` is the way back. A dog an operator stopped with
-/// `shep stop` and the config then dropped is marked by the same call, so the
-/// row does not go on reading as startable.
-///
-/// Reads the whole flock rather than the rows this boot registered, so a
-/// carried dog whose own config failed to assemble is stopped too: the process
-/// is in the flock and the assembly that would have described it is the half
-/// that failed. A cold boot never reaches the stop: it spawns only the dogs it
-/// enables, so every dog it registers at rest is already in the shape this
-/// passes by.
-///
-/// Awaits each dog's kill ladder, since the reply the supervisor owes is the
-/// exit's. Bounded by the dog's own `shutdown_timeout` and `kill_timeout`, and
-/// it delays the readiness this boot reports by that much.
+/// The case is a handover successor's: a predecessor ran the dog and carried
+/// it across the `execve`, and this boot read a file that has since dropped
+/// the name. It goes down through the operator's own door, which marks the
+/// app as it stops it, so `shep enable <name>` is the way back.
 async fn stop_unenabled_dogs(
     flock: &[ProcessInfo],
     enabled: &[DogSpec],
@@ -286,11 +256,10 @@ async fn stop_unenabled_dogs(
 /// Starts every dog in `specs`, warning and carrying on for each one that
 /// will not start.
 ///
-/// Never fails the boot: a dog that cannot be spawned is a monitoring gap, and
-/// refusing to bring the flock up over it turns that gap into an outage.
+/// Never fails the boot: a dog that cannot be spawned is a monitoring gap,
+/// and refusing to bring the flock up over it turns that gap into an outage.
 /// [`SupervisorHandle::start_dog`] is idempotent by name for a dog that runs,
-/// so an `Ok` reply carrying no `dog` means a sheep already held the name and
-/// nothing started.
+/// so an `Ok` reply carrying no `dog` means a sheep already held the name.
 pub async fn spawn_enabled_dogs(
     specs: &[DogSpec],
     paths: &ShepPaths,

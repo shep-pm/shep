@@ -25,23 +25,19 @@ fn read_dogs_toml(path: &Path) -> Result<Option<String>, DogError> {
     }
 }
 
-/// The `[<name>]` section of `path`, a `dogs.toml`, as the operator wrote
-/// it, as a document in its own right: headers rebased off `name`, and no
-/// header of its own.
+/// The `[<name>]` section of `path`, a `dogs.toml`, as the operator wrote it:
+/// a document in its own right, headers rebased off `name`, no header of its own.
 ///
 /// Reads the file on every call, so one reader can never be stale and
 /// `shep disable X && shep enable X` re-reads an edited section. A missing
 /// file, or one with no such section, is `Ok(String::new())`.
 ///
 /// The operator's own bytes, not a re-render: rendering a parsed table drops
-/// the comments inside a section and sorts its keys. [`set_dog_section`]
-/// takes the same shape back, parsing what it is handed as a document and
-/// rebasing it under `name` again.
+/// the comments inside a section and sorts its keys.
 ///
 /// # Errors
-/// - [`DogError::Config`] if the file exists and is not valid `dogs.toml`, or
-///   its section will not render back to TOML.
-/// - [`DogError::Io`] if the file exists and could not be read.
+/// - [`DogError::Config`] if the file is not valid `dogs.toml` or its section
+///   will not render back. [`DogError::Io`] if it could not be read.
 pub fn dog_section(path: &Path, name: &str) -> Result<String, DogError> {
     // A missing file returns before the parse below, which would otherwise
     // be handed nothing to parse.
@@ -63,12 +59,8 @@ pub fn dog_section(path: &Path, name: &str) -> Result<String, DogError> {
         Some(toml_edit::Item::Table(spanned)) => {
             // Re-rooted, not `to_string`ed in place. A table renders its own
             // key-values and leaves its child tables to the document, which
-            // writes their headers by their path from the root: a section
-            // read out of `[bark]` would arrive at the dog either missing
-            // `[bark.sinks.local]` entirely or naming it `bark.sinks`, and
-            // the dog parses what it gets as its own root. Cloning the table
-            // in as a document's root keeps every byte the operator wrote,
-            // comments between keys included, and rebases the headers.
+            // writes their headers by their path from the root, so a section
+            // read out of `[bark]` would arrive missing or misnamed.
             let mut section = spanned.clone();
             // The root of a document takes no header, and the decor here is
             // the `[bark]` line's own: a comment above it belongs to the
@@ -88,45 +80,19 @@ pub fn dog_section(path: &Path, name: &str) -> Result<String, DogError> {
     }
 }
 
-/// Replaces `name`'s table in `path`, a `dogs.toml`, with `section` and
-/// writes the file back owner-only, under the same lock the CLI's two
-/// writers of that file hold.
+/// Replaces `name`'s table in `path`, a `dogs.toml`, with `section` and writes
+/// the file back owner-only, under the lock the CLI's writers of it hold.
 ///
-/// `dogs.toml` is hand-editable on purpose ([`DogsConfig`]'s own doc calls
-/// it deliberately not a locked shep-owned store), so this reads, modifies
-/// and writes the document it read rather than rendering a parsed map back
-/// out: every table other than `name`'s comes through byte for byte, and so
-/// does a comment outside it. A comment inside the replaced table is the
-/// caller's to carry, because the caller is what decided the section's new
-/// text, and [`dog_section`] hands it the span rather than a re-render
-/// precisely so that it can. The header's own decor, a comment line above
-/// `[name]` and anything trailing the header, is carried across here
-/// instead: it sits neither inside the section nor outside the table, so
-/// neither half would otherwise keep it.
-///
-/// The rendered result is handed to [`DogsConfig::load`] before anything
-/// reaches disk, so a section this daemon could not serve back never lands.
-/// That gate is the same one `shep rehome`'s writer takes, and it is the
-/// stricter of the two parses: a stray top-level scalar is a valid document
-/// and not a valid `DogsConfig`.
-///
-/// The write itself is the three steps `shep-cli`'s `write_dogs_config`
-/// takes, for its reasons: staged in a sibling file created at
-/// [`shep_core::atomic_file::OWNER_ONLY_FILE_MODE`] (this is where an
-/// operator is told to paste a webhook URL, which is a bearer token in a
-/// path), `fsync`ed, then `rename`d over `path` so a crash leaves the whole
-/// file or none of it.
-///
-/// Whether `name` is a dog at all is the caller's question, not this
-/// function's: the answer lives in the supervisor, and `rpc::dispatch` asks
-/// it before calling here.
+/// `dogs.toml` is hand-editable on purpose, so this reads, modifies and
+/// writes the document it read rather than rendering a parsed map back out:
+/// every table other than `name`'s comes through byte for byte, comments
+/// included. The write is staged in a sibling file created owner-only,
+/// `fsync`ed, then `rename`d over `path` so a crash leaves the whole file
+/// or none of it.
 ///
 /// # Errors
 /// - [`DogError::Io`]: the lock, the read, the staging file, the `fsync` or
-///   the rename.
-/// - [`DogError::Config`]: `section` is not valid TOML, `path` is not valid
-///   `dogs.toml`, or the spliced result would not load. Nothing has been
-///   written in any of the three.
+///   the rename. [`DogError::Config`]: `section` or `path` is not valid TOML.
 pub fn set_dog_section(path: &Path, name: &str, section: &str) -> Result<(), DogError> {
     use std::io::Write as _;
 
@@ -134,10 +100,8 @@ pub fn set_dog_section(path: &Path, name: &str, section: &str) -> Result<(), Dog
 
     // Held across the read, the splice and the rename, and dropped on the
     // way out. Two writers that read before either wrote would lose one of
-    // the two sections whichever way the renames raced; the boot migration
-    // takes the same lock on the same path for the same reason. This
-    // function takes no other lock, so it can never be the half of a
-    // deadlock that holds `dogs.toml` and waits on `shep.toml`.
+    // the two sections whichever way the renames raced. This function takes
+    // no other lock, so it cannot hold `dogs.toml` and wait on `shep.toml`.
     let _lock = shep_core::config_lock::ConfigLock::acquire(path).map_err(DogError::Io)?;
 
     // A missing file is the ordinary first write: a home that has never had
@@ -152,18 +116,14 @@ pub fn set_dog_section(path: &Path, name: &str, section: &str) -> Result<(), Dog
 
     // `set_implicit(false)`, or a section emptied down to nothing takes the
     // dog's table with it. A document's root table is implicit, and an
-    // implicit table with no keys of its own renders no header at all. A
-    // section that still holds a key renders `[name]` either way, so this
-    // line shows up only in the emptied case, which is where an operator
-    // arrives by deleting the last key in the pane.
+    // implicit table with no keys of its own renders no header at all. The
+    // emptied case is where an operator lands by deleting the last key.
     let mut table = incoming.as_table().clone();
     table.set_implicit(false);
-    // A comment above `[name]`, and anything trailing the header itself,
-    // are decor on the table rather than text inside it: `dog_section`
-    // hands the caller the body and cannot carry them, and replacing the
-    // item wholesale would drop both. Copied across so an operator's note
-    // about what a dog is for survives a pane write, as the notes between
-    // its keys already do.
+    // A comment above `[name]`, and anything trailing the header itself, are
+    // decor on the table rather than text inside it: `dog_section` hands the
+    // caller the body and cannot carry them, and replacing the item wholesale
+    // would drop both.
     if let Some(Item::Table(existing)) = doc.get(name) {
         *table.decor_mut() = existing.decor().clone();
     }

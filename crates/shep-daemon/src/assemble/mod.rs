@@ -1,19 +1,13 @@
 //! Spawn assembly: pure functions that build [`SpawnSpec`](crate::runner::SpawnSpec) from app config.
 //!
-//! The assembler takes a validated `ResolvedApp` and produces a fully-resolved
-//! [`SpawnSpec`](crate::runner::SpawnSpec) ready for [`ProcessRunner::spawn`](crate::runner::ProcessRunner::spawn).
-//! No I/O here: the defaults, the paths, the credentials and the secret store
-//! are all read by the daemon before the assembler is called. The process env
-//! is the exception, read here through a closure a test can substitute.
+//! The assembler takes a validated `ResolvedApp` and produces a spec ready
+//! for [`ProcessRunner::spawn`](crate::runner::ProcessRunner::spawn). The
+//! daemon reads the defaults, paths, credentials and secret store before the
+//! call; only the process env is read here, through a closure a test swaps.
 //!
-//! Two builders, and only one of them may be spawned. [`assemble`] resolves
-//! every `{{secret:...}}` and refuses the spec when one will not; the private
-//! `describe` is for the callers that read a spec's log paths or build its
-//! prober without ever starting a process.
-//!
-//! Public for its two out-of-crate readers and nothing else: `tests/real_runner/`
-//! calls [`assemble`] to build a spec it then spawns for real, and
-//! [`instance_slots`]'s doc example is compiled as its own crate.
+//! Only [`assemble`] may be spawned: it resolves every `{{secret:...}}` and
+//! refuses the spec when one will not. The private `describe` serves callers
+//! that read a spec without starting a process.
 
 mod assembly_errors;
 mod environment_inheritance;
