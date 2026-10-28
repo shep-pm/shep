@@ -38,11 +38,9 @@ pub(super) fn integer_refusal(
 /// none.
 ///
 /// The empty range is checked ahead of the parse, because it is true of
-/// every value: a field whose schema admits no integer cannot be answered,
-/// and saying "starts at 3" to somebody who then types 3 and is told it
-/// "stops at 1" explains nothing.
-///
-/// `pub(super)`: [`super::items`] runs it for one element of an integer list.
+/// every value: saying "starts at 3" to somebody who then types 3 and is
+/// told it "stops at 1" explains nothing. [`super::items`] runs it for one
+/// element of an integer list.
 pub(super) fn integer_of(
     key: &str,
     bounds: &Bounds,
@@ -59,13 +57,10 @@ pub(super) fn integer_of(
 
 /// The floor and ceiling `bounds` sets on an integer already parsed.
 ///
-/// The pair carries `exclusiveMinimum` and `exclusiveMaximum` folded in at the
-/// next integer in, by exact `i64` arithmetic, so the sentence names the value
-/// the field really starts and stops at: `starts at 1` for `exclusiveMinimum: 0`,
-/// and `starts at 9007199254740993` for a floor at `2^53` that an `f64` could not
-/// step past.
-///
-/// `pub(super)`: [`super::items`] runs it for one element of an integer list.
+/// The pair carries `exclusiveMinimum` and `exclusiveMaximum` folded in at
+/// the next integer in, by exact `i64` arithmetic, so the sentence names the
+/// value the field really starts and stops at. [`super::items`] runs it for
+/// one element of an integer list.
 pub(super) fn range_refusal(
     key: &str,
     bounds: &Bounds,
@@ -83,24 +78,13 @@ pub(super) fn range_refusal(
     }
 }
 
-/// [`super::refusal`] for a [`crate::lookout::field::FieldKind::Number`] field: the empty
-/// range, the parse, then the four numeric keywords the schema published, each
-/// read as the schema wrote it, then its `enum`.
+/// [`super::refusal`] for a [`crate::lookout::field::FieldKind::Number`] field:
+/// the empty range, the parse, the four numeric keywords, then its `enum`.
 ///
-/// [`Bounds::unsatisfiable`] is not consulted, because it answers whether a
-/// range admits an *integer*. `minimum: 1.2, maximum: 1.8` admits no integer
-/// and admits `1.5`, and telling an operator that a decimal field takes no
-/// value is a refusal the schema never made. [`Bounds::number_unsatisfiable`]
-/// is the emptiness this field's own bounds do assert, and it is said once,
-/// ahead of the parse, for [`integer_of`]'s reason: it is true of every
-/// value an operator could type.
-///
-/// A non-finite parse is refused rather than filed. `f64::from_str` takes
-/// `NaN`, `inf` and `-inf`, and `Value::from(f64)` answers a non-finite float
-/// with `null`, which a dog's section writer reads as "remove this key": an
-/// operator typing `NaN` into a money cap would have lost the key.
-///
-/// `pub(super)`: [`super::refusal`] runs it for a decimal field.
+/// [`Bounds::number_unsatisfiable`] is the emptiness these bounds assert,
+/// not [`Bounds::unsatisfiable`]: `minimum: 1.2, maximum: 1.8` admits `1.5`.
+/// A non-finite parse is refused, because `Value::from(f64)` answers `NaN`
+/// with `null` and a dog's writer reads that as removing the key.
 pub(super) fn number_refusal(
     key: &str,
     bounds: &Bounds,

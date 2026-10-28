@@ -2,19 +2,12 @@
 //! operator's words.
 //!
 //! Rendering copy rather than logic. The duration and memory halves are
-//! safe away from the parsers because this module's own tests feed every
-//! form they list back through `shep_core`'s real parser, so those two
-//! cannot go on claiming a form the parser has stopped taking. `BOOL_FORMS`,
-//! `INTEGER_FORMS` and `NUMBER_FORMS` have no `shep_core` grammar to check
-//! against, and each says so beside its own name.
-//!
-//! The per-field lists are backed one crate down, where shep-core hands
-//! `normalize` a value for every refusal it makes, and names the enforcer
-//! for the few decided at spawn.
+//! safe because this module's own tests feed every form they list back
+//! through `shep_core`'s real parser. `BOOL_FORMS`, `INTEGER_FORMS` and
+//! `NUMBER_FORMS` have no such grammar to check against, and each says so.
 //!
 //! [`bullets`] is what a field's explanation panel prints, and
-//! [`super::refusal`] is the gate that names the same table in the sentence
-//! it hands the status bar.
+//! [`super::refusal`] names the same table in its status-bar sentence.
 
 use crate::lookout::field::{Field, FieldKind, ValueKind};
 

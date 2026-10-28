@@ -1,39 +1,13 @@
 //! The one gate over a dog's settings: what a field accepts, in the
-//! operator's words, and whether a whole table is made of values the dog's
-//! schema takes.
+//! operator's words, and whether a table is made of values the schema takes.
 //!
-//! This module is outside `lookout` on purpose. The check used to live in
-//! the pane that ran it, and `shep set` needs the same check: a value read
-//! from a terminal has to be refused for the same reason lookout refuses
-//! it, or the two disagree in front of the operator. Both now call here.
+//! It lives outside `lookout` because `shep set` needs the same check as
+//! the pane: a value read from a terminal has to be refused for the same
+//! reason, or the two disagree in front of the operator.
 //!
-//! Two doors, one set of rules. [`refusal`] answers one typed buffer against
-//! one field, which is what a keystroke in a pane needs. [`table::table_refusal`]
-//! answers a whole proposed table against the schema that describes it,
-//! which is what a write that carries a table needs. [`touched_refusal`] is
-//! the same walk over only the keys a caller chose, which is what a pane that
-//! writes a table it only partly chose needs. Each arm of each door
-//! reads the same bounds, the same grammars and the same sentences, so a
-//! value cannot pass one and fail the other.
-//!
-//! Two sources for what a field accepts, and the per-field one wins outright
-//! rather than merging: a field writing its own `accepts` gets those and
-//! none from the table. One rule beats merge semantics nobody can predict.
-//! The table itself is [`forms`], and the per-field lists are backed one
-//! crate down, where shep-core hands `normalize` a value for every refusal
-//! it makes, and names the enforcer for the few decided at spawn.
-//!
-//! [`refusal`] is built here rather than in the pane so that the sentence an
-//! operator reads and the check that stops the write come from one table. A
-//! dog's section is written by the shepherd without being read, so there is
-//! no second gate behind this one. [`item_refusal`] is the same gate for one
-//! element of a list field, against the bounds its item schema published.
-//!
-//! The arms of the gate live one level down, each with the tests for what it
-//! checks: [`numbers`] for the whole-number and decimal parse and bounds,
-//! [`items`] for one element of a list field, [`patterns`] for a dog's own
-//! grammar, [`table`] for a value already shaped as JSON. What is here is the
-//! door itself, the sentence, and the rule about what a sentence may print.
+//! Two doors, one set of rules. [`refusal`] answers one typed buffer,
+//! [`table::table_refusal`] a whole proposed table, and [`touched_refusal`]
+//! only the keys a caller chose.
 
 #[cfg(test)]
 mod fixtures;
@@ -69,15 +43,11 @@ use patterns::pattern_refusal;
 pub const REDACTED: &str = "<set>";
 
 /// What may be printed for `typed`: [`REDACTED`] when `secret`, the value
-/// itself otherwise.
+/// itself otherwise. Every sentence this module builds resolves its value
+/// here, so a refusal added later cannot echo a secret by forgetting to ask.
 ///
-/// Every sentence this module builds resolves its value here, so a refusal
-/// added later cannot echo a secret by forgetting to ask. The rule is one
-/// line and the reason it is a function is that it has three callers.
-///
-/// `pub(crate)`: `ConfigPane::apply_typing` builds one refusal of its own
-/// through [`not_a_whole_number`], and [`table`] answers a value that is
-/// already JSON, so both have to resolve what may be printed the same way.
+/// `pub(crate)`: `ConfigPane::apply_typing` and [`table`] build refusals of
+/// their own, and both resolve what may be printed the same way.
 #[must_use]
 pub(crate) fn shown_value(secret: bool, typed: &str) -> &str {
     if secret { REDACTED } else { typed }
@@ -86,16 +56,10 @@ pub(crate) fn shown_value(secret: bool, typed: &str) -> &str {
 /// Why a typed buffer was not filed, in the operator's words.
 ///
 /// One sentence, ready for the status bar: it names the key, quotes what
-/// was typed, and says what the field does take. The house shape every
-/// other refusal in the pane follows.
+/// was typed, and says what the field does take.
 ///
-/// `Debug` is derived (IR-41), which is safe only because [`refusal`]
-/// redacts before it builds one: a secret's value never reaches `text`,
-/// so there is nothing here for a hand-written impl to hide. Both halves
-/// are pinned by exact-string tests below.
-///
-/// The value quoted for a field that is not secret is one the operator
-/// just typed, and the row beside it is already drawing the same thing.
+/// `Debug` is derived (IR-41), safe only because [`refusal`] redacts before
+/// it builds one: a secret's value never reaches `text`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     /// The sentence to print.
@@ -104,52 +68,20 @@ pub struct Refusal {
 
 /// Whether `field` takes `typed`, and why not when it does not.
 ///
-/// Five checks, and a field reaches at most one of them:
-///
-/// - A [`FieldKind::Integer`] buffer must parse as an `i64` and sit inside
-///   whatever `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`
-///   the schema published, the two strict spellings folded into the pair at the
-///   next integer in.
-/// - A [`FieldKind::Number`] buffer must parse as a finite `f64` and sit inside
-///   whatever `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`
-///   the schema published, each read as the schema wrote it.
-/// - A string field naming one of shep-core's own grammars goes through
-///   that type's `FromStr`, which is the enforcer itself rather than a
-///   second opinion about it.
-/// - Any other string field with a `pattern` is matched against it. This
-///   is the only door a third-party dog's own grammar has, since shep has
-///   no parser for a type it has never heard of.
-/// - A numeric field whose `enum` this pane could not turn into a cycle
-///   widget, which is what a set of numbers is, is held to that set by
-///   [`enum_refusal`] once its value parsed. A set of strings is
-///   [`FieldKind::Choice`] instead, chosen from rather than typed, so it
-///   never reaches this door at all.
-///
-/// [`None`] for everything else, which is most fields: a plain string with
-/// no pattern takes any string, and shep is not the authority on a dog's
-/// config beyond what that dog published. A list field's element is checked
-/// by [`item_refusal`] rather than here, against its item schema.
-///
-/// Fails open on a `pattern` that does not compile. A dog that ships a
-/// broken regex has a bug in its schema, and refusing every value for that
-/// field would lock an operator out of a setting on the strength of
-/// somebody else's typo.
-///
-/// The empty buffer never reaches here: it means "unset", which is
-/// `ConfigPane::apply_typing`'s own case and not a value to check.
+/// Five checks, and a field reaches at most one: the two numeric kinds
+/// against the range their schema published, shep-core's grammars through
+/// the type's `FromStr`, a `pattern`, and an `enum` a numeric field could
+/// not turn into a cycle widget. A `pattern` that does not compile fails
+/// open.
 #[must_use]
 pub fn refusal(field: &Field, typed: &str) -> Option<Refusal> {
     if typed.is_empty() {
         return None;
     }
-    // Every path below quotes `typed` back at the operator, and
-    // `App::on_pane_text_key` paints the sentence in the status bar. For a
-    // secret that is the one place in this pane the value would appear:
-    // `ConfigPane::begin_typing` seeds a secret's editor empty and the row
-    // renders `<set>`, both so the value is never drawn. A schema decides
-    // this, not shep, so it is reachable rather than theoretical: a dog
-    // publishing `pattern` or a `$ref` grammar on a field it also marks
-    // `x-shep-secret` sends a credential straight through `pattern_refusal`.
+    // Every path below quotes `typed` back, and the status bar paints it.
+    // For a secret that is the one place in the pane the value would
+    // appear: the editor seeds empty and the row renders `<set>`. A schema
+    // decides this, so it is reachable, not theoretical.
     let shown = shown_value(field.secret, typed);
     if field.kind == FieldKind::Integer {
         return integer_refusal(&field.key, &field.bounds, typed, shown);
@@ -178,16 +110,10 @@ pub fn refusal(field: &Field, typed: &str) -> Option<Refusal> {
 
 /// The refusal for a [`FieldKind::Integer`] buffer that is not a number.
 ///
-/// Not built from [`forms::INTEGER_FORMS`] through [`refuse`], which would append
-/// "try a whole number" to a sentence that has just said "is not a whole
-/// number". The table's own text still draws the panel, where "a whole
-/// number" is the whole answer and reads correctly.
-///
-/// `pub(crate)`: `ConfigPane::apply_typing`'s own integer arm and [`table`]
-/// answer with this, so the one sentence has one spelling.
-///
-/// `shown` is what may be printed: [`REDACTED`] rather than the value when
-/// the field is a credential. Callers pass what [`refusal`] resolved.
+/// Not built from [`forms::INTEGER_FORMS`] through [`refuse`]: that would
+/// append "try a whole number" to a sentence that has just said it is not
+/// one. `pub(crate)`: `ConfigPane::apply_typing`'s integer arm and [`table`]
+/// answer with this, so the sentence has one spelling.
 pub(crate) fn not_a_whole_number(key: &str, shown: &str) -> Refusal {
     Refusal {
         text: format!("{key} is \"{shown}\", which is not a whole number shep accepts"),
@@ -197,16 +123,9 @@ pub(crate) fn not_a_whole_number(key: &str, shown: &str) -> Refusal {
 /// The refusal for a [`FieldKind::Number`] buffer that is not a finite number.
 ///
 /// Not built from [`forms::NUMBER_FORMS`] through [`refuse`], for
-/// [`not_a_whole_number`]'s reason: the table's text is "a number", so
-/// `refuse` would append "try a number" to a sentence that has just said "is
-/// not a number". The table's own text still draws the panel, where "a number"
-/// is the whole answer and reads correctly.
-///
-/// `pub(crate)`: `ConfigPane::apply_typing`'s own number arm and [`table`]
-/// answer with this, so the one sentence has one spelling.
-///
-/// `shown` is what may be printed: [`REDACTED`] rather than the value when the
-/// field is a credential. Callers pass what [`refusal`] resolved.
+/// [`not_a_whole_number`]'s reason: the table's text is "a number".
+/// `pub(crate)`: `ConfigPane::apply_typing`'s number arm and [`table`]
+/// answer with this, so the sentence has one spelling.
 pub(crate) fn not_a_number(key: &str, shown: &str) -> Refusal {
     Refusal {
         text: format!("{key} is \"{shown}\", which is not a number shep accepts"),
@@ -215,16 +134,11 @@ pub(crate) fn not_a_number(key: &str, shown: &str) -> Refusal {
 
 /// The refusal for a field whose own numeric range admits nothing.
 ///
-/// Said once, ahead of the parse, because it is true of every value: a field
-/// whose schema asks for a range with nothing in it cannot be answered, and
+/// Said once, ahead of the parse, because it is true of every value:
 /// refusing `1` for being under the floor and `3` for being over the ceiling
-/// bounces an operator between two sentences that cannot both be met. Both
-/// number arms answer with this one sentence, so an integer's empty range and a
-/// decimal's read the same to the operator.
+/// bounces an operator between two sentences that cannot both be met.
 ///
-/// [`numbers`] builds it twice, for the pair
-/// [`crate::lookout::field::Bounds`] normalises for an integer and the pair it
-/// keeps as written for a decimal.
+/// [`numbers`] builds it twice, once per `Bounds` spelling.
 fn takes_no_value(key: &str) -> Refusal {
     Refusal {
         text: format!("{key} takes no value: its schema asks for a range with nothing in it"),
@@ -234,13 +148,9 @@ fn takes_no_value(key: &str) -> Refusal {
 /// The refusal for an arm of a tagged union that holds no value for a field
 /// the arm's own `required` list names.
 ///
-/// `field` and `tag` are those two keys as the caller's door names them: bare
-/// for a pane's rows (`path`, `kind`), dotted to the union for the table walk
-/// (`retro.path`, `retro.kind`). `arm` is the tag the table named.
-///
-/// `pub(crate)`: [`table`] answers a proposed table with it and
-/// `ConfigPane::incomplete_union` answers the pane's filed edits with it, so
-/// the two doors say one sentence for one rule.
+/// `field` and `tag` are those keys as the caller's door names them: bare
+/// for a pane's row, dotted to the union for the table walk. [`table`] and
+/// `ConfigPane::incomplete_union` say one sentence for one rule.
 pub(crate) fn required_field(field: &str, tag: &str, arm: &str) -> Refusal {
     Refusal {
         text: format!("{field} is required when {tag} is {arm}; give it a value"),
@@ -250,18 +160,9 @@ pub(crate) fn required_field(field: &str, tag: &str, arm: &str) -> Refusal {
 /// The refusal for a value a closed set does not name, where the set is the
 /// one the field's own kind holds rather than the one `bounds.choices` holds.
 ///
-/// Not [`enum_refusal`]: a closed set can come from a `oneOf` of `const`s,
-/// where `bounds.choices` holds nothing and [`enum_refusal`] fails open on it.
-/// [`table`]'s scalar arm and [`items`]'s choice-item arm answer with this one
-/// so a set is enforced whichever way the schema spelled it.
-///
-/// The refusal lists the set because it is the one rule an operator can
-/// satisfy by copying from it.
-///
-/// `shown` is what may be printed, which [`shown_value`] has already resolved.
-///
-/// `pub(crate)`: [`table`] and [`items`] build their closed-set refusals with
-/// it, and neither can reach [`enum_refusal`], which is private to this module.
+/// Not [`enum_refusal`]: a closed set spelled as a `oneOf` of `const`s leaves
+/// `bounds.choices` empty, and that one fails open on it. The refusal lists
+/// the set because it is the rule an operator can satisfy by copying.
 pub(crate) fn takes_one_of(key: &str, shown: &str, names: &[String]) -> Refusal {
     Refusal {
         text: format!(
@@ -274,23 +175,9 @@ pub(crate) fn takes_one_of(key: &str, shown: &str, names: &[String]) -> Refusal 
 /// The refusal for a value a schema's `enum` does not list, [`None`] when the
 /// schema named no `enum` or `value` is one of the values it named.
 ///
-/// The rule is shared because two doors meet it: [`items`] checks one element
-/// of a list against its item schema's `enum`, and [`numbers`] checks a scalar
-/// integer or decimal against the `enum` its own schema published. A set of
-/// strings on a scalar is the case that is not here, because [`FieldKind::Choice`]
-/// draws it as a cycle widget and nothing is typed to check.
-///
-/// The refusal lists the allowed set because an `enum` is the one rule an
-/// operator can satisfy by copying from it.
-///
-/// `value` is what the buffer parsed to, not the buffer: an `enum` of numbers is
-/// the numbers, and comparing a typed `"1"` against a published `1` is a
-/// comparison of strings.
-///
-/// [`items`] and [`numbers`] each build their `enum` arm with it, from the set
-/// `bounds.choices` holds. A closed set spelled as a `oneOf` of `const`s lands
-/// in the kind instead, and [`table`] and [`items`] answer for it through
-/// [`takes_one_of`].
+/// [`items`] and [`numbers`] build their `enum` arms with it, and the refusal
+/// lists the set because an `enum` is the rule an operator can satisfy by
+/// copying from it. `value` is what the buffer parsed to, not the buffer.
 fn enum_refusal(key: &str, bounds: &Bounds, value: &Value, shown: &str) -> Option<Refusal> {
     if bounds.choices.is_empty()
         || bounds
@@ -336,13 +223,11 @@ fn choice_text(choice: &Value) -> String {
 }
 
 /// One refusal sentence, with what the field takes read off the same table
-/// the explanation panel prints. Sharing the table is the point: a form
-/// added to one is added to the other, and neither can name a spelling the
-/// parser has stopped taking.
+/// the explanation panel prints. A form added to one is added to the other,
+/// so neither can name a spelling the parser has stopped taking.
 ///
 /// `shown` is what may be printed, which [`shown_value`] has already
-/// resolved. Naming the parameter for the raw buffer invited a caller to
-/// pass one.
+/// resolved.
 fn refuse(key: &str, shown: &str, what: &str, forms: &[Form]) -> Refusal {
     let takes: Vec<&str> = forms.iter().map(|form| form.text).collect();
     Refusal {
@@ -380,12 +265,10 @@ mod tests {
 
     /// Driven through the same schema shape a real dog publishes:
     /// `shep-log-rotate` spells `max_age` as `Option<UpDuration>`, so the
-    /// grammar sits two hops from the property, behind an `anyOf` and a
-    /// `$ref`.
+    /// grammar sits two hops from the property.
     ///
     /// `1d` is the natural spelling of a retention window and shep's
-    /// grammar tops out at hours (`docs/specs/deferred.md`), so the panel
-    /// must not offer it and the gate must refuse it.
+    /// grammar tops out at hours (`docs/specs/deferred.md`).
     #[test]
     fn a_dogs_nullable_duration_refuses_a_day() {
         let field = duration_field();
@@ -426,15 +309,11 @@ mod tests {
         }
     }
 
-    /// The size half, which had no test of its own here: it was reached
-    /// only through `pane/edit.rs`'s `max_memory` case, so a change to
-    /// that test's field would have taken this arm's coverage with it
-    /// without failing anything.
+    /// The size half, reached before only through `pane/edit.rs`'s
+    /// `max_memory` case.
     ///
-    /// `10MB` is the spelling to refuse rather than a nonsense word.
-    /// shep's grammar is `10M`, so `10MB` is what somebody writes who
-    /// knows what they mean, and the sentence has to be the one that tells
-    /// them the unit is a single letter.
+    /// `10MB` is the spelling to refuse rather than a nonsense word: shep's
+    /// grammar is `10M`, so the sentence has to say the unit is one letter.
     #[test]
     fn a_size_field_refuses_a_spelling_shep_does_not_take() {
         let mut field = text_field("max_size");
@@ -457,12 +336,9 @@ mod tests {
 
     /// A secret's value must not reach the status bar, and both doors a
     /// schema opens onto this gate have to be shut: a `pattern`, and a
-    /// `$ref` grammar. `ConfigPane::begin_typing` seeds a secret's editor
-    /// empty and its row draws `<set>`, so a refusal echoing the buffer
-    /// would be the one place in the pane a credential appears.
+    /// `$ref` grammar.
     ///
-    /// Exact strings, both for the sentence and for the `Debug`, which is
-    /// what IR-41 asks for on anything that can carry one.
+    /// Exact strings, for the sentence and for the `Debug`, as IR-41 asks.
     #[test]
     fn a_secrets_value_never_reaches_the_sentence_or_the_debug() {
         const CREDENTIAL: &str = "sk_live_HUNTER2";

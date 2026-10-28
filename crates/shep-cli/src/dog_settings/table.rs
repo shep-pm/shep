@@ -1,44 +1,13 @@
 //! One proposed dog table, asked whether the schema that describes it takes
 //! it: [`table_refusal`].
 //!
-//! The door [`super::refusal`] walks one keystroke through is the same door a
-//! write needs before it sends a whole table, and a table is what
-//! `Request::SetDogConfig` and `Request::SetSheepDogSettings` carry. This
-//! half answers the table: it takes the schema a dog answered (`--schema` for
-//! its own section, the `x-shep-sheep` value for its table on a sheep) and
-//! the table about to be written, and answers the first refusal it finds,
-//! with the key path the value sits at and the reason for it. [`table_refusal`]
-//! covers every key the schema names; [`touched_refusal`] covers only the keys
-//! its caller chose, with the same arms, the same order and the same sentences.
+//! It is the same door [`super::refusal`] walks one keystroke through, read
+//! off the same [`crate::lookout::field::flattened`] walk: one module, not a
+//! copy in the pane and a copy in the CLI.
 //!
-//! Every rule is the one [`super`] already applies to a typed buffer, read
-//! off the same [`crate::lookout::field::flattened`] walk of the schema: the
-//! same bounds, the same two shep grammars, the same `pattern`, the same item
-//! schema for an element of a list, the same arms of a tagged union, and the
-//! same nested tables flattened to dotted leaves. A value cannot pass one
-//! door and fail the other, which is the whole reason there is one module
-//! rather than a copy in the pane and a copy in the CLI.
-//!
-//! One rule belongs to a table alone, because a table is JSON and a buffer is
-//! text: a value has to be the JSON type the schema names before any rule on
-//! it is read. `keep = "8"` in a dog's section is a string, and the pane's
-//! door would never have filed one for an `integer`; handing it to the same
-//! parse as text would take it. So each arm asks what kind of value it was
-//! given, and refuses with the sentence the pane already uses for a value of
-//! the wrong kind.
-//!
-//! Two things it does not do, both because shep is not the authority on a
-//! dog's config beyond what that dog published:
-//!
-//! - It refuses nothing a schema says nothing about. A key the schema does
-//!   not name rides along through a write untouched, a map of arbitrary keys
-//!   is taken as it comes, and a read-only row ([`FieldKind::Opaque`], which
-//!   is what a nullable item list and a table that holds itself flatten to)
-//!   is not checked.
-//! - It refuses nothing for a key the table does not carry, with one
-//!   exception: a field the arm a tagged union names lists as required. An
-//!   absent key and a `null` both mean unset, which is the pane's own unset
-//!   spelling and, for a dog, the way a value goes back to the dog's default.
+//! One rule belongs to a table alone: a value has to be the JSON type the
+//! schema names before any rule on it is read. It refuses nothing a schema
+//! says nothing about, and nothing for a key the table does not carry.
 
 use std::collections::BTreeSet;
 
@@ -58,13 +27,9 @@ use super::{
 ///
 /// `path` is the property path the value sits at, one segment per table, so
 /// a caller can name the key it came from even when the sentence spells it
-/// dotted. `text` is the sentence, built by the same arms [`super::refusal`]
-/// and [`super::item_refusal`] build theirs.
+/// dotted.
 ///
-/// `Debug` is derived (IR-41), and safe for the same reason [`super::Refusal`]'s
-/// is: every sentence here resolves what it may print through
-/// [`crate::dog_settings::shown_value`] before it builds one, so a secret's
-/// value never reaches `text`. Pinned by an exact-string test.
+/// `Debug` is derived (IR-41), safe for [`super::Refusal`]'s reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableRefusal {
     /// The key path, from the top of the table down, in property names.
@@ -114,20 +79,10 @@ fn report(scope: Scope<'_>, path: &[String], text: String) -> Option<TableRefusa
 /// Why `table` is not a table `schema` takes, or [`None`] when nothing in it
 /// disagrees with the schema.
 ///
-/// `schema` is the whole answer, not a `properties` map: a dog's own section
-/// schema, or its `x-shep-sheep` value with the root's `$defs` attached, the
-/// same shape [`crate::lookout::pane::ConfigPane::dog`] and
-/// [`crate::lookout::pane::ConfigPane::sheep_dog`] build their rows from. The
-/// walk is [`crate::lookout::field::flattened`], so the leaves this checks
-/// are the leaves the pane edits, one per row, dotted for a nested table.
-///
-/// The first refusal in row order, not every one: an operator fixes the key
-/// the sentence names and reads what comes back, and a schema that disagrees
-/// with a table in four places has four sentences to be told in turn.
-///
-/// [`None`] is not a promise that the dog accepts the table. It says no rule
-/// the schema published is broken by it, which is all shep can know about a
-/// config its author wrote in another binary.
+/// `schema` is the whole answer, not a `properties` map, and the walk is
+/// [`crate::lookout::field::flattened`], so the leaves this checks are the
+/// leaves the pane edits. The first refusal in row order, not every one.
+/// [`None`] says no published rule is broken, nothing more.
 #[must_use]
 pub fn table_refusal(schema: &Value, table: &Map<String, Value>) -> Option<TableRefusal> {
     flattened_refusal(&flattened(schema), table, &[], "", Scope::Whole)
@@ -135,17 +90,10 @@ pub fn table_refusal(schema: &Value, table: &Map<String, Value>) -> Option<Table
 
 /// [`table_refusal`] over only the keys in `touched`.
 ///
-/// `touched` holds property paths, the same paths [`crate::lookout::field::flattened`]
-/// built the row keys from: `["models", "provider"]` for a nested table's
-/// leaf, `["clients", "0", "name"]` for one field of one entry of an array of
-/// tables. A refusal the walk finds at any other key is not reported, so a
-/// caller that writes a table it only partly chose asks about the part it
-/// chose. Nothing else changes: the same arms, the same order, the same
-/// sentences.
-///
-/// An unreported refusal does not end the walk. A bad value the caller did not
-/// choose rides along in the write either way, and stopping there would hide
-/// the refusal at the key it did choose, which is the one it can act on.
+/// `touched` holds property paths, the same paths
+/// [`crate::lookout::field::flattened`] built the row keys from. A refusal
+/// found at any other key is not reported, and does not end the walk: a bad
+/// value the caller did not choose rides along either way.
 #[must_use]
 pub fn touched_refusal(
     schema: &Value,
@@ -182,11 +130,8 @@ fn flattened_refusal(
 /// One leaf row, and the value `table` holds at `rest`.
 ///
 /// `rest` is the row's own path below `base_path`, which is what both the
-/// lookup and the sentence key are built from: [`crate::lookout::field::flattened`]
-/// built `field.key` out of exactly those segments, quoting any of them a dot
-/// would split. `base_path` and `base_key` are where `table` sits in the table
-/// the caller started at, and only the reported path and key carry them: a
-/// nested table is looked up from its own top.
+/// lookup and the sentence key are built from. Only the reported path and
+/// key carry `base_path`: a nested table is looked up from its own top.
 fn leaf_refusal(
     flat: &Flattened,
     field: &Field,
@@ -234,15 +179,10 @@ fn leaf_refusal(
 /// `value` against `field`, as a refusal naming `key` and the path `path` it
 /// sits at, for every kind that holds a value rather than a table of its own.
 ///
-/// The arms are [`super`]'s, with the row's key replaced by the full path:
-/// [`integer_refusal`] and [`number_refusal`] for the two numeric kinds,
-/// [`refusal`] for a string's grammar or `pattern`, and [`item_refusal`] for
-/// one element of a list, against the bounds its item schema published.
-///
+/// The arms are [`super`]'s, with the row's key replaced by the full path.
 /// Each arm is reached through the value's JSON type first, and a value of
-/// the wrong one is refused with [`not_a_whole_number`], [`not_a_number`],
-/// [`not_a_string`] or [`not_a_list`] rather than handed to a parse that
-/// would read it as text.
+/// the wrong one is refused rather than handed to a parse that would read it
+/// as text.
 fn scalar_refusal(
     field: &Field,
     value: &Value,
@@ -300,9 +240,8 @@ fn scalar_refusal(
                 let element_path = below_path(path, &index.to_string());
                 // The element's own type before its item schema's rules, for
                 // [`FieldKind::Integer`]'s reason: [`text_of`] would hand `8`
-                // to a string list's `pattern` as "8" and `true` as "true",
-                // and `ListPane::apply_typing` files an integer element as
-                // `Value::from(i64)`.
+                // to a string list's `pattern` as "8", and
+                // `ListPane::apply_typing` files it as `Value::from(i64)`.
                 let shown_element = shown_for(field.secret, element);
                 // An element this caller did not choose is not an answer to
                 // give, and not a reason to stop looking at the ones it did:
@@ -400,17 +339,9 @@ fn entries_refusal(
 /// arm it names is held to its own bounds, and the arm's own `required` list
 /// is enforced.
 ///
-/// A required field the table does not hold is the one refusal this walk gives
-/// for a key that is absent, and it is reported at the union rather than at
-/// the field: the key the operator has to fix is the table that holds no value
-/// for it. A field this pane has no editor for is not asked for, the same rule
-/// [`crate::lookout::pane::ConfigPane`] applies to the pane's filed edits
-/// through `incomplete_union`, which builds its sentence through
-/// [`required_field`] as this door does.
-///
-/// A union is never a secret row: a schema that reaches a secret is read as
-/// no [`crate::lookout::field::Union`] at all, so nothing here has to redact
-/// a tag.
+/// A required field the table does not hold is the one refusal this walk
+/// gives for an absent key, reported at the union, because that is the table
+/// the operator has to fix. A union is never a secret row.
 fn union_refusal(
     union: &Union,
     value: &Value,

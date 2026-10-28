@@ -6,20 +6,12 @@
 
 use super::Refusal;
 
-/// [`super::refusal`] for a string field whose schema published a `pattern` and
-/// whose type shep does not know: the dog's own grammar, enforced as the
-/// dog wrote it.
+/// [`super::refusal`] for a string field whose schema published a `pattern`
+/// and whose type shep does not know: the dog's own grammar, as it wrote it.
 ///
 /// The field's own `accepts` is what the refusal names when it has any,
-/// since that is the spelling its author wrote for an operator. The raw
-/// pattern is the fallback, which is worse copy than a sentence and better
-/// than the silence it replaced. A list's item schema has no `accepts` of
-/// its own, so [`super::item_refusal`] passes none.
-///
-/// Fails open on a `pattern` that does not compile: `.ok()?`.
-///
-/// `pub(super)`: [`super::refusal`] runs it for a field whose type shep does
-/// not know, and [`super::items`] runs it for one element of a list.
+/// since that is the spelling its author wrote for an operator, and the raw
+/// pattern is the fallback. Fails open on a `pattern` that does not compile.
 pub(super) fn pattern_refusal(
     key: &str,
     pattern: Option<&str>,
