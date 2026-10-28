@@ -182,12 +182,7 @@ impl fmt::Display for LooseReason {
 /// Walks the path's own textual components upwards from its parent and stops
 /// at the first offender. `symlink_metadata`, never `metadata`: a symlinked
 /// component must be read as the link it is, owned by whoever planted it. An
-/// ancestor that does not exist, or cannot be stat'd, is skipped, since
-/// `open_append` is about to create it at `boot::DIR_MODE` as the daemon.
-///
-/// One `lstat(2)` per component per log-file open, 7.8 µs for a
-/// nine-component path on macOS, so it runs inline rather than paying a
-/// `spawn_blocking` hop.
+/// ancestor that does not exist, or cannot be stat'd, is skipped.
 #[cfg(unix)]
 fn loose_ancestor(path: &Path, daemon_uid: u32) -> Option<LooseAncestor> {
     use std::os::unix::fs::MetadataExt as _;

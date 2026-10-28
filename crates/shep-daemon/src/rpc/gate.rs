@@ -99,10 +99,8 @@ pub(super) async fn check(ctx: &RpcContext, dog: &str, request: &Request) -> Res
 /// An `EnableDog` carries the grants the CLI read from `shep.toml`, and
 /// recording them is the one way a dog's grants change. A dog holding
 /// `dogs.control` may send one for itself or for another dog, but the grants
-/// in it are not the operator's: they are replaced by what is already
-/// recorded for the name, and a name this shepherd was never told of is
-/// granted nothing. The decision log's rule, that a dog never grants anything,
-/// holds for the dogs it enables too.
+/// in it are replaced by what is already recorded for the name. A dog never
+/// grants anything, and that holds for the dogs it enables too.
 pub(super) fn pin_grants(ctx: &RpcContext, request: Request) -> Request {
     match request {
         Request::EnableDog { name, source } => {

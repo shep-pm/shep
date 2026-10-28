@@ -4,15 +4,10 @@
 //! Sends two `sd_notify` messages to `$NOTIFY_SOCKET`, the whole of the
 //! protocol shep speaks: the eight bytes `READY=1\n`, and
 //! `EXTEND_TIMEOUT_USEC=<n>\n`. No dependency and no unsafe; both address
-//! shapes systemd hands a service (a filesystem path, an `@`-prefixed
-//! abstract name) are reachable from `std` alone since 1.70.
+//! shapes systemd hands a service are reachable from `std` alone since 1.70.
 //!
 //! [`crate::boot::boot`] sends `READY=1` last, after the muster restore
-//! finishes, so a unit reports ready only once the flock is up. The restore
-//! sends [`extend_timeout`] before each stage, so the unit's start deadline
-//! follows the walk. Absent is the ordinary case: nothing sets
-//! `$NOTIFY_SOCKET` outside a real systemd unit, and [`notify_ready`]
-//! answers `Ok(false)` rather than failing.
+//! finishes. Absent is the ordinary case, and [`notify_ready`] answers `Ok(false)`.
 
 use core::fmt;
 use core::time::Duration;
@@ -26,10 +21,8 @@ use std::path::Path;
 ///
 /// Read by `shep-cli`'s hidden `daemon` subcommand, alongside every `SHEP_*`
 /// override it already reads, and never inside this crate: a test cannot
-/// establish an ambient value to observe against, because `std::env::set_var`
-/// is `unsafe` in edition 2024 and both crates refuse unsafe. What crosses
-/// the boundary is the resolved address, in
-/// [`BootOptions::notify_socket`](crate::boot::BootOptions::notify_socket).
+/// establish an ambient value, because `std::env::set_var` is `unsafe` in
+/// edition 2024 and both crates refuse unsafe.
 pub const NOTIFY_SOCKET_ENV: &str = "NOTIFY_SOCKET";
 
 /// The readiness message.
@@ -140,9 +133,7 @@ fn send_to_abstract(_name: &[u8], _message: &[u8]) -> Result<(), NotifyError> {
 /// the underlying OS diagnostic through [`core::error::Error::source`]. That
 /// costs this enum `Clone`, `PartialEq` and `Eq`, which nothing here needs.
 ///
-/// `#[non_exhaustive]`: a future transport (a named pipe, a launchd
-/// equivalent of `sd_notify`) would need its own variant, distinct from
-/// [`Self::Unsupported`]'s namespace-mismatch meaning.
+/// `#[non_exhaustive]`: a future transport would need its own variant.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum NotifyError {

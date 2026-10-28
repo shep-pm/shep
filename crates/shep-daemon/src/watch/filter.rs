@@ -26,12 +26,9 @@ const MATCH_EVERYTHING: &str = "**";
 /// that lies under `root`, nothing for the ones that don't.
 ///
 /// [`DEFAULT_IGNORE_GLOBS`] cannot cover an explicit `out_file`/`err_file`
-/// under an app's own `cwd`: unignored, it loops forever, since an
-/// automatic restart resets `max_restarts` rather than spending it.
-///
-/// Each path is canonicalized through its parent before stripping `root`,
-/// since an app's `cwd` need not already be canonical (macOS resolves
-/// `/var/…` to `/private/var/…`).
+/// under an app's own `cwd`: unignored, it loops forever, since an automatic
+/// restart resets `max_restarts` rather than spending it. Each path is
+/// canonicalized through its parent before stripping `root`.
 pub(crate) fn own_log_ignores<'a>(
     root: &Path,
     logs: impl IntoIterator<Item = &'a Path>,
@@ -151,9 +148,8 @@ impl RootedFilter {
     ///
     /// A path outside `root` never triggers, rather than falling back to
     /// matching the untouched absolute form. `root` itself never triggers
-    /// either, since it strips to an empty relative path; this matters
-    /// because macOS can deliver a spurious `Create(Folder)` for the root
-    /// the instant a watch arms.
+    /// either, since it strips to an empty relative path; macOS can deliver a
+    /// spurious `Create(Folder)` for the root the instant a watch arms.
     pub(super) fn triggers(&self, path: &Path) -> bool {
         let Ok(relative) = path.strip_prefix(&self.root) else {
             return false;

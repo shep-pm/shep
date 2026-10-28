@@ -36,12 +36,9 @@ pub enum Refusal {
 /// each last got in.
 ///
 /// Cheap to clone (one `Arc`), and shared by every connection through
-/// [`RpcContext`](crate::rpc::RpcContext).
-///
-/// A count is cleared by a successful handshake and by nothing else, which
-/// bounds the ladder: a dog that keeps being refused never clears, so it never
-/// earns a second restart. Nothing survives a handover, and a dog a successor
-/// can talk to is not stale.
+/// [`RpcContext`](crate::rpc::RpcContext). A count is cleared by a successful
+/// handshake and by nothing else, which bounds the ladder: a dog that keeps
+/// being refused never earns a second restart.
 #[derive(Debug, Clone, Default)]
 pub struct DogRefusals {
     /// Both halves under one lock: a dog seen as refused and handshook at once
@@ -149,14 +146,11 @@ impl DogRefusals {
 
 /// Records a dog's refused handshake and acts on it.
 ///
-/// The first refusal earns one restart from the binary on disk, enough where a
-/// package replaced the file and the running process is merely old. A second
-/// proves the disk binary cannot satisfy this daemon either, so the dog is
-/// reported stale and left alone. A dog that cannot get in never clears its
-/// count, so it cannot earn a second restart.
-///
-/// The restart runs on its own task: it is a full kill ladder, and the caller
-/// is a connection handler holding a socket this daemon has already refused.
+/// The first refusal earns one restart from the binary on disk, enough where
+/// a package replaced the file and the running process is merely old. A
+/// second proves the disk binary cannot satisfy this daemon either, so the
+/// dog is reported stale and left alone. The restart runs on its own task:
+/// it is a full kill ladder, and the caller holds a refused socket.
 pub fn record_refused_dog(
     name: &str,
     client_version: &str,
@@ -193,12 +187,9 @@ pub fn record_refused_dog(
 ///
 /// [`SupervisorHandle::restart_automatic`] rather than the operator door:
 /// nobody typed this, so an operator's own `stop` or `delete` landing
-/// mid-ladder takes the dog off the ladder. An exact-name selector is the only
-/// kind that reaches a dog: the supervisor keeps dogs out of `all` and out of
-/// pattern matches.
-///
-/// `pub(super)`: `dogs::silent`'s inferred-silence ladder shares this
-/// restart with the named-refusal one above, and calls it directly.
+/// mid-ladder takes the dog off the ladder. An exact-name selector is the
+/// only kind that reaches a dog: the supervisor keeps dogs out of `all` and
+/// out of pattern matches.
 pub(super) async fn restart_refused_dog(supervisor: &SupervisorHandle, name: &str) {
     match supervisor
         .restart_automatic(ProcessSelector::Name(name.to_string()))

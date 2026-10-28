@@ -70,15 +70,10 @@ pub(crate) fn read_pidfile(paths: &ShepPaths) -> Result<Option<u32>, BootError> 
 /// This daemon's exclusive claim on `$SHEP_HOME`: an `flock(2)` held on the
 /// pidfile from before [`bind_socket`](super::bind_socket) to the end of [`RunningDaemon::run`](super::RunningDaemon::run).
 ///
-/// Serializes [`bind_socket`](super::bind_socket)'s stale-socket recovery: unserialized, two
-/// daemons both see `ConnectionRefused` on a crashed predecessor's leftover
-/// and the loser's `remove_file` deletes the winner's fresh listener. A crash
-/// needs no cleanup: the kernel releases the lock with the last descriptor on
-/// the open file description.
-///
-/// Windows locks a sibling `shepd.pid.lock`, since `share_mode(0)` would deny
-/// the read-only open the loser needs to name the winner. A successor inherits
-/// the descriptor already holding the lock; see [`UnixLock`].
+/// Serializes [`bind_socket`](super::bind_socket)'s stale-socket recovery:
+/// unserialized, two daemons both see `ConnectionRefused` on a crashed
+/// predecessor's leftover and the loser's `remove_file` deletes the winner's
+/// listener. Windows locks a sibling `shepd.pid.lock` instead.
 #[derive(Debug)]
 pub(super) struct PidfileLock {
     #[cfg(unix)]
@@ -92,11 +87,9 @@ pub(super) struct PidfileLock {
 /// How this process came to hold the pidfile's `flock`.
 ///
 /// An adopted descriptor is never re-locked: `nix` has no constructor for an
-/// already-locked file that leaves it locked, and the release-then-relock
-/// window is long enough for a second daemon to claim this `$SHEP_HOME`. The
-/// lock crosses an `execve` with the descriptor, so there is nothing to redo.
-/// Either arm releases the same way, when the last descriptor on the open file
-/// description closes.
+/// already-locked file that leaves it locked, and a release-then-relock window
+/// is long enough for a second daemon to claim this `$SHEP_HOME`. The lock
+/// crosses an `execve` with the descriptor, so there is nothing to redo.
 #[cfg(unix)]
 #[derive(Debug)]
 enum UnixLock {
@@ -321,14 +314,10 @@ pub fn daemon_liveness(paths: &ShepPaths) -> Result<Shepherd, BootError> {
 
 /// What [`daemon_liveness`] found holding a home's pidfile lock.
 ///
-/// Three states, not two: [`boot`](super::boot) takes the lock and records its pid a few
-/// statements later, with the socket bind in between, and a caller that read
-/// that window as an absence would start a second daemon that then dies unable
-/// to take the lock.
-///
-/// Not `#[non_exhaustive]`, unlike [`BootError`]: the lock is free or held,
-/// and a holder has written its pid or has not, so there is no fourth state to
-/// add.
+/// Three states, not two: [`boot`](super::boot) takes the lock and records
+/// its pid a few statements later, with the socket bind in between. A caller
+/// that read that window as an absence would start a second daemon that then
+/// dies unable to take the lock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shepherd {
     /// Nothing holds this home's pidfile lock.
@@ -399,10 +388,8 @@ mod tests {
     /// refused.
     ///
     /// `mem::forget` plus `sys::adopt_handover_fd` stands in for the `execve`:
-    /// forgetting skips the `flock(fd, LOCK_UN)` a drop would run, and
-    /// adopting the number gives the descriptor one new owner. Duplicating
-    /// instead would leave a second descriptor holding the same lock, and both
-    /// assertions would hold whatever the adopted arm did.
+    /// forgetting skips the `flock(fd, LOCK_UN)` a drop would run, and adopting
+    /// the number gives the descriptor one new owner.
     #[test]
     fn the_adopted_pidfile_arm_does_not_release_the_lock() {
         let dir = tempfile::tempdir().unwrap();

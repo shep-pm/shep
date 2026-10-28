@@ -6,15 +6,10 @@ use super::*;
 /// Proves `TokioRunner::spawn`'s `command.uid`/`command.gid` calls are
 /// actually invoked, without requiring root.
 ///
-/// Spawning with your own uid/gid does not work as a regression gate:
-/// it is a permitted no-op, and std silently swallows the `EPERM` from
-/// its own privilege-drop `setgroups` call for a non-root caller. A
-/// child spawned this way looks the same whether or not the lines run.
-///
-/// This targets a uid/gid the test process does not own instead. A
-/// non-root `setuid`/`setgid` to any other id fails `EPERM`
-/// deterministically, so real calls make `spawn()` return `Err`; deleted
-/// lines let `spawn()` succeed instead.
+/// Spawning with your own uid/gid is a permitted no-op, and std silently
+/// swallows the `EPERM` from its own privilege-drop `setgroups` call for a
+/// non-root caller. A non-root `setuid`/`setgid` to an id the test process
+/// does not own fails `EPERM`, so real calls make `spawn()` return `Err`.
 #[tokio::test]
 async fn credentials_are_actually_applied_a_foreign_id_is_refused_by_the_os() {
     if nix::unistd::geteuid().is_root() {

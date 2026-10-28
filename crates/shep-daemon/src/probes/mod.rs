@@ -7,9 +7,7 @@
 //! `timeout` enforcement is [`Prober`]'s own job.
 //!
 //! Readiness picks one source: `wait_ready`, then `readiness_probe`, then
-//! neither (online at spawn). `failure_threshold` gates liveness only: a
-//! readiness timeout still goes `online` with the budget untouched, unlike
-//! liveness, which restarts and resets it.
+//! neither (online at spawn).
 
 pub(crate) mod os;
 pub(crate) mod ready;
@@ -48,10 +46,8 @@ pub enum ProbeFailure {
 /// `spawn_liveness_task` awaits [`Self::probe`] directly with no
 /// `tokio::time::timeout` wrapper, so a `probe` future that never resolves
 /// stalls that sheep's liveness loop forever. Every implementor must itself
-/// guarantee `probe` resolves within `timeout` on every path.
-///
-/// Public, with [`ProbeFailure`], because `tests/external_impls.rs`
-/// implements it from outside this crate.
+/// guarantee `probe` resolves within `timeout` on every path. Public, with
+/// [`ProbeFailure`], because `tests/external_impls.rs` implements it.
 pub trait Prober: Send + Sync + 'static {
     /// Probes `target`, giving up after `timeout`.
     ///
@@ -76,11 +72,8 @@ pub trait Prober: Send + Sync + 'static {
 /// `shep-core`'s `normalize` already rejects a smaller `interval` in a
 /// Flockfile, but that guard covers only callers that route through it.
 /// Without this floor, an unvalidated `Duration::ZERO` would hot-spin the
-/// loop (measured ~380 probes/second).
-///
-/// Same value as `shep-core`'s own floor, declared separately for the same
-/// reason `MIN_CRON_SLEEP`/`cron::MIN_MAX_SLEEP` are: this crate must not
-/// depend on that one.
+/// loop (measured ~380 probes/second). Same value as `shep-core`'s own
+/// floor, declared separately.
 const MIN_PROBE_INTERVAL: Duration = Duration::from_millis(1_000);
 
 /// A sheep whose liveness probe hit `failure_threshold`.
@@ -95,13 +88,11 @@ pub(crate) struct LivenessFailure {
 
 /// Runs a sheep's liveness probe until the returned handle is aborted.
 ///
-/// Reports through `failures` once `failure_threshold` consecutive probes have
-/// failed, then ends: a sheep that has been declared unhealthy is about to be
+/// Reports through `failures` once `failure_threshold` consecutive probes
+/// have failed, then ends: a sheep declared unhealthy is about to be
 /// restarted, and the loop for its replacement is a new one.
 ///
-/// Must be called from within a Tokio runtime context: it spawns the probing
-/// task immediately, the same way `spawn_supervisor`, `spawn_cron_worker` and
-/// `PollingEnforcer::start` already document for themselves.
+/// Must be called from within a Tokio runtime context: it spawns the task at once.
 pub(crate) fn spawn_liveness_task(
     id: u32,
     pid: u32,

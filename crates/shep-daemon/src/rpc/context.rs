@@ -35,12 +35,7 @@ pub(crate) const MAX_DEADLINE_MS: u64 = 60_000;
 /// Seeded at boot from the CLI, which owns `shep.toml`. A
 /// `Request::EnableDog` adds a name and records the grants it carries, so a
 /// dog adopted against a running shepherd needs no reload. Never shrunk:
-/// `shep disable` leaves the section in `dogs.toml`, where a disabled dog
-/// still wants configuring.
-///
-/// A name with `None` is undeclared: no grants were recorded, so every
-/// request is allowed. `Some` is exactly what the operator granted, an empty
-/// set included. A map behind a mutex because every connection holds a clone.
+/// `shep disable` leaves the section in `dogs.toml`, where a disabled dog still wants configuring.
 #[derive(Debug, Clone)]
 pub(crate) struct KnownDogs {
     dogs: Arc<Mutex<BTreeMap<String, Option<Grants>>>>,
@@ -117,9 +112,7 @@ pub(crate) struct Held(Option<Option<Grants>>);
 /// registry, and shutdown signal. The connection layer builds one from the
 /// daemon's shared state and hands it to `dispatch` once per envelope.
 ///
-/// Public because `tests/daemon_e2e.rs` holds one to drive [`Self::shutdown`]
-/// and [`Self::snapshot_now`] without going through the socket. Its fields
-/// are not.
+/// Public because `tests/daemon_e2e.rs` holds one. Its fields are not.
 #[derive(Clone, Debug)]
 pub struct RpcContext {
     /// The supervisor engine this daemon is running.
@@ -147,9 +140,7 @@ pub struct RpcContext {
     /// dogs that merely exist.
     ///
     /// Held rather than re-read from `shep.toml`, which this daemon never
-    /// reads: a later boot plan (rebuilt at shutdown, or for a staged start)
-    /// needs the same spawn list `boot` used, and this is where it survives
-    /// between requests.
+    /// reads: a later boot plan needs the same spawn list `boot` used.
     pub(crate) dog_names: Vec<String>,
     /// Which of [`Self::dog_names`] run before every sheep rather than
     /// after the flock, from `[daemon] boot_first_dogs`.
@@ -232,8 +223,7 @@ impl RpcContext {
     /// has to be inside the daemon process, because that is where the bus
     /// is. The CLI's other two writers of `dogs.toml` say nothing.
     ///
-    /// Public because the caller is `shep`'s own boot, which runs the
-    /// migration before this daemon exists.
+    /// Public because the caller is `shep`'s own boot, which runs the migration before this daemon exists.
     pub fn announce_dog_config(&self, dogs: &[String]) {
         crate::bus::publish_dog_config_changed(&self.events, dogs);
     }

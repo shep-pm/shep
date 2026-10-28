@@ -68,11 +68,9 @@ async fn a_child_without_a_channel_is_told_nothing() {
 /// messages with a reply naming which round it is, then exits 0.
 ///
 /// `read -r line <&3` blocks; a failed read exits with a distinct status
-/// instead of looping, so a broken channel ends the case promptly.
-///
-/// The round number is the child's own count of completed reads, not
-/// anything parsed from the message: the shepherd sends in order, so
-/// reply *n* still proves the child got through *n* reads.
+/// instead of looping, so a broken channel ends the case promptly. The round
+/// number is the child's own count of completed reads, not anything parsed
+/// from the message.
 pub(crate) fn channel_echo_script(rounds: u32) -> String {
     format!(
         r#"n=0
@@ -86,13 +84,10 @@ done"#
 
 /// Sends one message and returns the child's reply.
 ///
-/// Panics with the child's stderr rather than a bare timeout: a shell
-/// `read` on a non-blocking descriptor prints `read error: 0: Resource
-/// temporarily unavailable` there and nowhere else.
-///
-/// A send that fails is folded into the same report: it means the writer
-/// task already saw the child's end close, the same failure a moment
-/// earlier.
+/// Panics with the child's stderr rather than a bare timeout: a shell `read`
+/// on a non-blocking descriptor prints `read error: 0: Resource temporarily
+/// unavailable` there and nowhere else. A send that fails is folded into the
+/// same report: it means the writer task already saw the child's end close.
 async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> ChildMessage {
     let name = format!("round-{round}");
     let delivered = io
@@ -128,11 +123,7 @@ async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> Chi
 ///
 /// Two round trips: the first can pass even against a non-blocking fd 3,
 /// since the message is often already buffered before the child's first
-/// `read`. Only the second puts the child at the read first, since
-/// nothing is sent until the first reply arrives.
-///
-/// `shutdown_with_message` depends on this: it always reaches a child
-/// already parked on a read, never one still starting up.
+/// `read`. Only the second puts the child at the read first.
 #[tokio::test]
 async fn a_child_can_block_reading_the_shepherd_channel() {
     let dir = tempfile::tempdir().unwrap();

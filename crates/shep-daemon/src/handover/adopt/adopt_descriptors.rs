@@ -145,10 +145,7 @@ fn adopt_sheep(carried: &CarriedSheep) -> io::Result<AdoptedSheep> {
 /// The kind check is `peer_addr`, since
 /// `std::os::unix::net::UnixStream::from(OwnedFd)` is infallible and checks
 /// nothing: `ENOTSOCK` for anything that is not a socket, `ENOTCONN` for one
-/// that is listening rather than connected, which this daemon's own control
-/// listener is. Non-blocking is set rather than assumed, as in
-/// [`adopt_listener`]. Nothing is paired again: the child's fd 3 is the other
-/// end of this same socketpair.
+/// that is listening rather than connected.
 pub(super) fn adopt_channel(
     fd: Option<RawFd>,
     sheep: &str,
@@ -161,9 +158,7 @@ pub(super) fn adopt_channel(
 ///
 /// Checked as [`adopt_channel`] checks its socket, for the same reason: the
 /// number could name anything this process holds, and a listening socket is
-/// the one most likely to be mistaken for it. Nothing is paired again, and no
-/// handshake is owed: the dog's end of this socketpair is the child's fd 4,
-/// and it spoke its `Hello` to the predecessor.
+/// the one most likely to be mistaken for it. No handshake is owed.
 pub(super) fn adopt_dog_link(
     fd: Option<RawFd>,
     sheep: &str,

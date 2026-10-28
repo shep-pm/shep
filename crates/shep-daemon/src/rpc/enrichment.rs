@@ -20,12 +20,7 @@ use super::context::RpcContext;
 /// Stale is [`DogRefusals::stale`](crate::dogs::DogRefusals::stale): refused,
 /// restarted from the binary on disk, refused again. A version cannot answer
 /// it, since two dog builds differing only in protocol report the same one.
-///
-/// Pending has two sources: a dog refused once is mid-restart, and a
-/// supervised dog that has never handshaken has not been asked yet, which is
-/// what a carried dog is between the exec and its reconnect. Only a dog with
-/// a process counts. `shep daemon reload` polls this every 50ms, so the
-/// silent-dog ladder must stay on a clock rather than be driven from here.
+/// Pending has two sources: a dog refused once is mid-restart, and a supervised dog that has never handshaken.
 pub(super) async fn dog_staleness(ctx: &RpcContext) -> (Vec<String>, Vec<String>) {
     let stale = ctx.dog_refusals.stale();
     let mut pending = ctx.dog_refusals.restarting();
@@ -45,11 +40,7 @@ pub(super) async fn dog_staleness(ctx: &RpcContext) -> (Vec<String>, Vec<String>
 /// The sentence is rendered here rather than as a structured reason on the
 /// wire, for the reason
 /// [`Response::HandoverFitness`](shep_core::protocol::Response::HandoverFitness)
-/// gives: the client does
-/// nothing with it but print it.
-///
-/// An engine that has stopped is a refusal too, not an error: the caller
-/// asked whether to signal a shepherd.
+/// gives: the client does nothing with it but print it.
 #[cfg(unix)]
 pub(super) async fn handover_refusal(ctx: &RpcContext) -> Option<String> {
     match ctx.supervisor.handover_fitness().await {
@@ -85,10 +76,7 @@ pub(super) async fn handover_refusal(_ctx: &RpcContext) -> Option<String> {
 /// block, and the reading is a syscall walk over the host's whole process
 /// table, so it runs on a blocking-pool thread.
 ///
-/// Joined by pid, not by id: [`StatsState`] keys on the root pid it was armed
-/// against, which is the number [`ProcessInfo::pid`] carries. Only `ListFlock`
-/// and `Describe` call this; the lifecycle verbs answer with [`ProcessInfo`]
-/// too, but none of them is where an operator reads resource usage.
+/// Joined by pid, not by id: [`StatsState`] keys on the root pid it was armed against.
 pub(super) async fn with_live_stats(
     stats: &Arc<StatsState>,
     mut infos: Vec<ProcessInfo>,
@@ -115,12 +103,7 @@ pub(super) async fn with_live_stats(
 ///
 /// Connection state lives in [`DogRefusals`](crate::dogs::DogRefusals) on the
 /// RPC context, so it is joined here as `with_live_stats` is: two map lookups
-/// per row, and `stale()` called once for the whole listing. Both fields,
-/// because a dog spawned a moment ago and one this shepherd has stopped
-/// restarting are both `handshook: Some(false)` with a live process.
-///
-/// Applied to `ListFlock` and `Describe` alone. A sheep is skipped rather
-/// than set to `Some(false)`, having no handshake with this shepherd at all.
+/// per row, and `stale()` called once for the whole listing.
 pub(super) fn with_dog_contact(
     refusals: &crate::dogs::DogRefusals,
     mut infos: Vec<ProcessInfo>,
@@ -138,12 +121,10 @@ pub(super) fn with_dog_contact(
 /// Fills each row's `lambs` from a fresh walk of the process table.
 ///
 /// Applied to `Describe` and to nothing else: the walk is a second pass over
-/// every process on the machine, and a flock listing is the thing an operator
-/// leaves running in a loop.
+/// every process on the machine, and a flock listing is the thing an
+/// operator leaves running in a loop.
 ///
-/// A row with no pid is left `None` rather than `Some(vec![])`, which is the
-/// "not walked" case the field's own doc distinguishes from "walked and
-/// empty".
+/// A row with no pid is left `None` rather than `Some(vec![])`.
 pub(super) async fn with_lambs(
     stats: &Arc<StatsState>,
     mut infos: Vec<ProcessInfo>,

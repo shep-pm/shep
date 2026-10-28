@@ -1,14 +1,13 @@
 //! Both ends of a handover: becoming a successor, and handing over to one
 //!
-//! Incoming, [`successor_handover`] finds the blob a predecessor left, either
-//! through `shep-handover` or, for a predecessor from a release before it,
-//! where `SHEP_HANDOVER` points, and [`rehydrate`] adopts the descriptors it
+//! Incoming, [`successor_handover`] finds the blob a predecessor left. A
+//! current one arrives through `shep-handover`; one from an older release is
+//! where `SHEP_HANDOVER` points. [`rehydrate`] adopts the descriptors it
 //! lists, so a successor inherits the home's lock, the bound listener and
-//! every sheep instead of rebinding anything. Outgoing, the SIGHUP task calls [`hand_over_now`], which runs
-//! both gates while this image still exists to fall back to.
-//!
-//! Unix only, gated once at the module rather than on every item: Windows has
-//! no `execve`, so no image there can be a successor.
+//! every sheep instead of rebinding anything. Outgoing, the SIGHUP task calls
+//! [`hand_over_now`], which runs both gates while this image can fall back.
+//! The module is Unix-only, gated once rather than per item: Windows has no
+//! `execve`, so no image there can be a successor.
 
 use std::path::{Path, PathBuf};
 
@@ -22,10 +21,9 @@ use crate::supervisor::SupervisorHandle;
 /// The apps a successor records in its own registry, which is what the muster
 /// roll on disk is written from.
 ///
-/// Every carried sheep's, and no dog's: the roll outlives the daemon, so a dog
-/// in it would come back on a later cold boot as an unmarked sheep, ahead of
-/// `spawn_enabled_dogs`, and `shep disable metrics` could not take it out.
-/// Filtered here because `record_config` takes bare
+/// Every carried sheep's, and no dog's. The roll outlives the daemon. A dog
+/// in it returns on a later cold boot as an unmarked sheep. Filtered here
+/// because `record_config` takes bare
 /// [`AppConfig`](shep_core::config::AppConfig)s with no marker to filter on.
 pub(super) fn apps_for_the_roll(
     flock: &[crate::handover::adopt::AdoptedSheep],
@@ -39,32 +37,17 @@ pub(super) fn apps_for_the_roll(
 
 /// The handover blob this process was handed, if it is a successor.
 ///
-/// A successor is a shep image an outgoing daemon `execve`d in its own place.
-/// There are two markers. `SHEP_PROCESS_HANDOVER` is what this build leaves,
-/// and `shep-handover` reads it. `SHEP_HANDOVER`, naming a blob on disk, is
-/// what the release before it left, and it is read here so a reload from that
-/// release onto this one still hands over. The first wins.
+/// `SHEP_PROCESS_HANDOVER` is what this build leaves, and `shep-handover`
+/// reads it. `SHEP_HANDOVER`, a blob path, is what the release before it
+/// left, and is read here so a reload from that release still hands over.
+/// The first marker wins.
 ///
 /// An unusable legacy blob logs at `error` and boots as if fresh: the
-/// predecessor has already replaced itself, so refusing leaves the operator no
-/// shepherd. That is self-limiting, since a real successor also inherited the
-/// locked pidfile descriptor and the fresh boot stops at
-/// [`BootError::AlreadyRunning`] before restoring anything.
-///
-/// One `shep-handover` refused is not, and boots nothing. It has closed the
-/// descriptors it carried, the pidfile among them, so a fresh boot would take
-/// the lock, restore the roll and run every sheep a second time beside the
-/// originals. The boot is refused instead, as a failed adoption is.
-///
-/// Also answers a predecessor's probe, and exits.
-///
+/// predecessor is gone. A refused `shep-handover` boots nothing: it closed
+/// the descriptors it carried.
 /// # Errors
 ///
-/// - [`BootError::Adopt`] if `shep-handover` found the blob unreadable, in a
-///   format this build does not read, or naming a descriptor that was not
-///   inherited.
-///
-/// Unix only: Windows has no `execve`, so no image can be a successor.
+/// - [`BootError::Adopt`] if `shep-handover` found the blob unreadable or unusable.
 pub(crate) fn successor_handover() -> Result<Option<Successor>, BootError> {
     match crate::handover::arrive() {
         Ok(Some(arrival)) => return Ok(Some(Successor::Arrived(arrival))),
@@ -210,13 +193,10 @@ pub(super) async fn hand_over_now(
         .handover_snapshot(seam.fds)
         .await
         .map_err(|err| format!("the supervisor could not describe its flock: {err}"))?;
-    // Held until this function returns, which is only ever on a refusal: the
-    // numbers written into the blob stay live sockets for as long as these
-    // duplicates are open. A dog that connected after the snapshot above is
-    // not in the blob and so not carried; it falls back to the control socket.
-    // The freeze parks the tasks serving the dogs on a frame boundary, so the
-    // blob neither changes nor splits a frame until the exec, or until a
-    // refusal thaws them below.
+    // Held until this function returns, which only happens on a refusal: the
+    // numbers in the blob stay live sockets while these duplicates are open.
+    // The freeze parks the dog-serving tasks on a frame boundary, so the blob
+    // neither changes nor splits a frame until the exec or a thaw below.
     let dog_links = seam.dog_links.freeze(DOG_LINK_PARK).await;
     blob.carry_dog_links(&dog_links);
     let refusal = match hand_over_carrying(&candidates, &blob, seam) {
@@ -256,12 +236,10 @@ fn hand_over_carrying(
     if let crate::handover::Fitness::Refused(reason) = crate::handover::fitness(&borrowed) {
         return Err(reason.to_string());
     }
-    // The gate with no way back if it is skipped: past the `execve` there is
-    // no image to refuse to, and the flock runs on unsupervised. Not inside
+    // The gate with no way back if skipped: past the `execve` there is no
+    // image to refuse to, and the flock runs on unsupervised. Not inside
     // `handover::hand_over`, because the rehearsal registers objects with the
-    // tokio reactor and that fn's own self-test runs from a plain `#[test]`.
-    // The target's side of it, whether it reads this blob at all, is
-    // `hand_over`'s probe.
+    // tokio reactor and that fn's self-test runs from a plain `#[test]`.
     crate::handover::adopt::dry_run(blob).map_err(|err| {
         format!(
             "a successor could not have adopted this flock, so none was started: {err}. This is \
@@ -285,13 +263,12 @@ mod tests {
     use std::time::Duration;
 
     /// The daemon-side gate: anyone can send a signal, and the flock can
-    /// change between a client's question and the delivery, so the SIGHUP path
-    /// runs [`crate::handover::fitness`] again and refuses on its own.
+    /// change between a client's question and the delivery, so the SIGHUP
+    /// path runs [`crate::handover::fitness`] again and refuses on its own.
     ///
     /// The descriptors are invalid on purpose: if the gate stopped refusing,
-    /// `hand_over` would meet `EBADF` and return rather than exec this test
-    /// binary into a re-run of the suite. The assertion on the message is what
-    /// tells the two failures apart.
+    /// `hand_over` would meet `EBADF` rather than exec this test binary into
+    /// a re-run of the suite.
     #[tokio::test(start_paused = true)]
     async fn a_sighup_over_a_flock_it_cannot_carry_refuses_before_it_execs() {
         // A successful `boot()` installs signal listeners for this test's
@@ -352,14 +329,11 @@ mod tests {
 
     /// The second gate: a flock the fitness check passes, described by a blob
     /// no successor could have adopted, refuses here rather than after the
-    /// `execve`. Past the exec there is no predecessor to refuse to, so
-    /// `rehydrate` returns [`BootError::Adopt`], the successor exits without
-    /// serving, and the flock runs on unsupervised.
+    /// `execve`. Past the exec there is no predecessor to refuse to.
     ///
-    /// The assertion is on which refusal, not on there being one: the
-    /// exec's own descriptor check meeting `EBADF` refused these descriptors
-    /// before the gate existed. They stay invalid on purpose, since a blob past both
-    /// gates would exec this test binary into a re-run of the suite.
+    /// The assertion is on which refusal, not on there being one: the exec's
+    /// own descriptor check meeting `EBADF` refused these descriptors before
+    /// the gate existed.
     #[tokio::test]
     async fn a_sighup_over_a_blob_no_successor_could_adopt_refuses_before_it_execs() {
         // A successful `boot()` installs real signal listeners for this
@@ -416,11 +390,9 @@ mod tests {
     /// reading again.
     ///
     /// Taking the snapshot stops each pump where it stands, and nothing else
-    /// in the daemon ever sends a resume, so a missing one is a flock that
-    /// logs nothing more for the rest of the daemon's life.
-    ///
-    /// Two sheep, since the resume has to reach every pump that was reported
-    /// to rather than the one the refusal named.
+    /// in the daemon sends a resume, so a missing one is a flock that logs
+    /// nothing more. Two sheep, because the resume has to reach every pump
+    /// that was reported to.
     #[tokio::test(start_paused = true)]
     async fn an_abandoned_handover_starts_every_pump_reading_again() {
         // A successful `boot()` installs real signal listeners for this test's
@@ -516,13 +488,11 @@ mod tests {
     }
 
     /// A snapshot abandoned because a pump went quiet still owes a resume to
-    /// every pump that answered. A missed deadline is a different way into the
-    /// refusal than the sibling's config gate, and it arrives with one pump
-    /// parked and one that never was.
+    /// every pump that answered.
     ///
     /// No `boot()` and no signal: this is about what `hand_over_now` does with
-    /// a snapshot, and building the supervisor directly is what lets the clock
-    /// be paused so the deadline costs nothing to wait out.
+    /// a snapshot, and building the supervisor directly lets the clock be
+    /// paused so the deadline costs nothing to wait out.
     #[tokio::test(start_paused = true)]
     async fn a_handover_abandoned_on_a_wedged_pump_resumes_the_pumps_that_parked() {
         let dir = tempfile::tempdir().unwrap();
@@ -621,14 +591,12 @@ mod tests {
     }
 
     /// A successor rebuilds its registry from the blob, and the roll on disk
-    /// is written from that registry within seconds. `spawn_enabled_dogs`
-    /// never touches `FlockRegistry`, so a successor that recorded a dog would
-    /// put one in the roll permanently: a later cold boot restores `metrics`
-    /// as an unmarked sheep ahead of `spawn_enabled_dogs`, and `shep disable
-    /// metrics` cannot take it out.
+    /// is written from that registry. `spawn_enabled_dogs` never touches
+    /// `FlockRegistry`, so a successor that recorded a dog would put one in
+    /// the roll permanently.
     ///
-    /// Both rows are asserted, since a filter that dropped everything would
-    /// satisfy the negative half and overwrite a good roll with an empty one.
+    /// Both rows are asserted: a filter that dropped everything would satisfy
+    /// the negative half and overwrite a good roll with an empty one.
     #[test]
     fn a_carried_dog_does_not_reach_the_muster_roll() {
         let flock = vec![
@@ -727,12 +695,10 @@ mod tests {
 
     /// A reload from the release before the envelope onto this build.
     ///
-    /// That release wrote the blob where `SHEP_HANDOVER` points, set nothing
-    /// else, and `execve`d with the descriptors it named left open under their
-    /// own numbers. Here the parent plays it: a hand-written blob in that
-    /// release's layout, a pipe at the number the blob names, and a child of
-    /// this test binary started with `SHEP_HANDOVER` alone. The child is the
-    /// successor, and finds the flock through [`successor_handover`] itself.
+    /// That release wrote the blob where `SHEP_HANDOVER` points and `execve`d
+    /// with the descriptors it named left open. Here the parent plays it: a
+    /// hand-written blob in that layout, a pipe at the number it names, and a
+    /// child started with `SHEP_HANDOVER` alone.
     #[test]
     fn a_release_before_the_envelope_hands_over_to_this_one() {
         use command_fds::{CommandFdExt as _, FdMapping};

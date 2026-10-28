@@ -3,22 +3,11 @@
 //! A stop signals the sheep's process group, which misses a lamb that left
 //! it, and a natural exit signals nothing at all. [`sweep_lambs`] closes both
 //! by signalling the pids a [`LambSnapshot`] saw, and what those start while
-//! the sweep waits, one by one, after the leader is reaped. [`LambSweep`] is the seam; [`StatsSweep`] reads the real
-//! process table.
+//! the sweep waits. [`LambSweep`] is the seam; [`StatsSweep`] reads the process table.
 //!
-//! ## Pid reuse
-//!
-//! A snapshot stores each pid with the [`ProcInstant`] it was seen, not start
-//! times. A pid is a survivor only if it is alive, not a zombie, and started
-//! no later than that instant. On Linux the clock is the kernel's tick, so a
-//! pid recycled within one tick of the walk still passes: 10 ms at the usual
-//! 100 Hz. Elsewhere it is the second, so about a second. A residual,
-//! accepted. A start time from before the machine booted is never trusted.
-//!
-//! ## Windows
-//!
-//! A no-op: the job object behind `kill_tree` already reaches every process
-//! a sheep spawned, so [`StatsSweep`] finds no survivors there.
+//! A snapshot stores each pid with the [`ProcInstant`] it was seen. A pid is a
+//! survivor only if it is alive, not a zombie, and started no later than that
+//! instant, which on Linux is the kernel's tick: about 10 ms at the usual 100 Hz.
 
 use core::fmt;
 use core::time::Duration;
@@ -188,10 +177,7 @@ pub(crate) struct SweepReport {
 /// Each look, every [`SWEEP_POLL_INTERVAL`], walks from the survivors and
 /// adds what they started since, so a child is held before its parent exits
 /// and orphans it. A walk counts only if its roots survive a re-check, see
-/// [`walk_from`]. A lamb gets `SIGTERM` when first seen and `SIGKILL` at
-/// the deadline. Returns as soon as no lamb is left, waiting up to
-/// [`KILL_SETTLE`] for a `SIGKILL` to land. An empty snapshot reads nothing.
-/// A failed delivery is logged and never stops the sweep.
+/// [`walk_from`]. A failed delivery is logged and never stops the sweep.
 pub(crate) async fn sweep_lambs(
     sweep: &dyn LambSweep,
     snapshot: &LambSnapshot,

@@ -7,9 +7,7 @@
 //! than re-touching it on every restart.
 //!
 //! [`Credentials`]/`PrivilegeError` stay plain data so they can live inside
-//! the portable `SpawnSpec`/`ProcessEntry`. Only the passwd/group lookup
-//! itself is unix-specific; elsewhere an explicit `user`/`group` request is
-//! refused outright.
+//! the portable `SpawnSpec`/`ProcessEntry`.
 
 use core::fmt;
 
@@ -35,12 +33,7 @@ pub struct Credentials {
 /// Distinguishes "asked for nobody" from "not resolved yet": a plain
 /// `Option<Credentials>` on `ProcessEntry` spelled both `None`.
 ///
-/// [`assemble`](crate::assemble::assemble) still wants a settled
-/// `Option<Credentials>`, not this type.
-///
-/// `Serialize`/`Deserialize` are for the handover blob: this type's shape
-/// is part of its version-1 format, so renaming a variant or retyping a
-/// field must bump `handover::VERSION`.
+/// `Serialize`/`Deserialize` are for the handover blob: this type's shape is part of its version-1 format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpawnIdentity {
     /// `resolve` has never run for this entry.

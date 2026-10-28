@@ -5,13 +5,10 @@ use shep_core::transport::ServerStream;
 /// The daemon's end of the connection a dog was spawned holding
 ///
 /// Opened by the runner at spawn and named for the dog it belongs to, so the
-/// server that serves it never asks the peer who it is: the connection is the
-/// identity. On unix the socketpair wrapped here is made at spawn; on Windows
-/// it is a named pipe the dog opens by the name in `$SHEP_DOG_PIPE`, and the
-/// link arrives once the dog has.
-///
-/// `Debug` is derived: a name, a pid and a stream are all in `shep flock`
-/// already, and no env value reaches this type.
+/// server that serves it never asks the peer who it is: the connection is
+/// the identity. On unix the socketpair wrapped here is made at spawn; on
+/// Windows it is a named pipe the dog opens by the name in `$SHEP_DOG_PIPE`.
+/// `Debug` is derived: no env value reaches this type.
 #[derive(Debug)]
 pub struct DogLink {
     /// The dog's name, from the spec that spawned it.

@@ -132,13 +132,10 @@ async fn muster_restores_both_and_starts_only_the_one_that_was_up() {
 /// fails if a bad entry that is not LAST takes every app after it down.
 ///
 /// `FlockRegistry` is a `BTreeMap`, so the roll is alphabetical and
-/// `restorable` preserves that order: the `a-`/`b-`/`c-` names here make
-/// the roll order the production order, with the wreck in the middle.
-///
-/// One `muster` call: `shep muster`'s CLI path calls twice and the second
-/// re-registers what the first lost, so only the single unattended restore
-/// a `shep startup` unit performs can show this. `failing_to_spawn` is
-/// load-bearing, since scripts are consumed in spawn order.
+/// `restorable` preserves that order: the `a-`/`b-`/`c-` names make the roll
+/// order the production order, with the wreck in the middle. One `muster`
+/// call: `shep muster`'s CLI path calls twice, and only the single
+/// unattended restore a `shep startup` unit performs can show this.
 #[tokio::test(start_paused = true)]
 async fn a_bad_saved_app_does_not_take_the_apps_after_it_down() {
     let app = |name: &str| AppConfig::minimal(name, "./srv");
@@ -175,21 +172,13 @@ async fn a_bad_saved_app_does_not_take_the_apps_after_it_down() {
     flock.shutdown().await;
 }
 
-/// fails if ONE saved app that cannot start keeps the rest of the flock
+/// fails if one saved app that cannot start keeps the rest of the flock
 /// down at the next boot.
 ///
-/// `muster` starts under `BatchPolicy::PerApp`, not `AllOrNothing`,
-/// because the pre-registration check refuses a whole batch over one app
-/// whose script is gone, which at an unattended boot costs the machine its
-/// flock.
-///
-/// `refusing` is the preflight verdict `AllOrNothing` refuses a whole
-/// batch over, and under `PerApp` it is only warned about, so it asserts
-/// nothing here and stands for the input the two policies disagree on.
-/// `failing_to_spawn` is what makes `gone` land as a visible `Errored`
-/// row rather than vanishing, and it names the app rather than starving it
-/// of a script: the restore starts a stage's members in the plan's order,
-/// not the roll's, and `gone` sorts first.
+/// `refusing` is the preflight verdict `AllOrNothing` refuses a whole batch
+/// over, and `muster` only warns about it under `BatchPolicy::PerApp`.
+/// `failing_to_spawn` is what makes `gone` land as a visible `Errored` row,
+/// and it names the app rather than starving it of a script.
 #[tokio::test(start_paused = true)]
 async fn one_unstartable_saved_app_does_not_keep_the_rest_of_the_flock_down() {
     let roll = roll_of(vec![

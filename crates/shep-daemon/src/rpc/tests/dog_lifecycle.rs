@@ -158,10 +158,7 @@ async fn a_dog_adopted_since_boot_is_reached_through_the_running_flock() {
 ///
 /// - adopt, disable, configure, enable
 /// - adopt, the dog crashes for want of config, configure
-///
-/// The second is bark's own situation on a fresh install, and
-/// `docs/dogs.md` promises configure-then-enable works. A disabled dog
-/// stays in the flock, so it is that entry that answers for the first.
+/// A disabled dog stays in the flock, so it is that entry that answers.
 #[tokio::test(start_paused = true)]
 async fn a_dog_adopted_since_boot_stays_configurable_once_it_is_disabled() {
     let mut h = harness(vec![ProcScript::never_exits()]);

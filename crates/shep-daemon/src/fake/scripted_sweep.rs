@@ -19,9 +19,7 @@ pub(crate) fn idle_sweep() -> Arc<dyn LambSweep> {
 /// [`LambSweep::survivors`] replays one scripted list per call and repeats
 /// the last once the script runs out. An empty script never reports a
 /// survivor. A delivered `Kill` removes its pid from every later list, as
-/// the kernel would, unless the pid is [`Self::unkillable`]. A look at a
-/// sheep's own pid alone is a leader check: it answers from
-/// [`Self::with_running_leader`] and leaves the script where it was.
+/// the kernel would, unless the pid is [`Self::unkillable`].
 #[derive(Debug, Default)]
 pub(crate) struct ScriptedSweep {
     fresh: HashMap<u32, LambSnapshot>,

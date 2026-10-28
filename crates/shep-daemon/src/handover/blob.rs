@@ -37,13 +37,7 @@ const FILE_NAME: &str = "handover.json";
 /// Written just before the `execve`, read once by the incoming image, and
 /// unlinked by that reader. Besides the descriptors it names by number, this
 /// is the whole of what crosses. It carries each sheep's environment, so it
-/// goes to disk at mode `0600` and `AppConfig`'s `Debug` prints `env` as a
-/// count.
-///
-/// `ProcessEntry::started_at` is absent: a `tokio::time::Instant` has no
-/// epoch outside the runtime that read it, so
-/// [`started_at_of`](super::uptime::started_at_of) re-derives each sheep's
-/// start time from the operating system.
+/// goes to disk at mode `0600`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Handover {
     /// The format this blob was written in; see [`VERSION`].

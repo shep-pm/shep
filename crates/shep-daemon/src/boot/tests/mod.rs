@@ -22,37 +22,25 @@ use shep_core::selector::ProcessSelector;
 use shep_core::values::UpDuration;
 use std::time::Duration;
 
-/// A laid-out `$SHEP_HOME` holding a muster roll of `apps`, every one of them
-/// recorded as running.
+/// A laid-out `$SHEP_HOME` holding a muster roll of `apps`, all recorded as running.
 ///
 /// The seed a boot test that restores a flock needs: [`init_dirs`] first, so
-/// the restore reads the layout the roll was written into, and [`roll_of`] so
-/// the roll says the flock was up when the daemon last wrote it.
+/// the restore reads the layout the roll was written into, then [`roll_of`].
 ///
 /// # Panics
-///
-/// If the layout cannot be created or the roll cannot be written, which is a
-/// fixture fault rather than a condition under test.
+/// If the layout cannot be created or the roll cannot be written.
 #[track_caller]
 fn seed_roll(paths: &ShepPaths, apps: Vec<AppConfig>) {
     init_dirs(paths).unwrap();
     crate::snapshot::write_atomic(&paths.snapshot, &roll_of(apps)).unwrap();
 }
 
-/// Boots a daemon to a finished listing, and hands back the flock with every
-/// line the boot logged.
+/// Boots a daemon to a finished listing, and hands back the flock and the log lines.
 ///
-/// The shape every synchronous boot test needs, in one place:
-/// `capture_logs` scopes its subscriber to a synchronous closure, so the
-/// runtime is a current-thread one this helper drives with `block_on` rather
-/// than a `#[tokio::test]` runtime, and the daemon is dropped instead of run.
-///
-/// Seeds `roll` only when it is non-empty: a test with nothing to restore
-/// must not be handed a roll. Which test restores stays in `options`, and so
-/// does what a failure means, since the test's own name carries its claim.
-///
+/// The shape every synchronous boot test needs: `capture_logs` scopes its
+/// subscriber to a closure, so a current-thread runtime drives it with
+/// `block_on`, and the daemon is dropped instead of run.
 /// # Panics
-///
 /// If the runtime cannot be built, the boot fails, or the listing fails.
 #[track_caller]
 fn boot_blocking(

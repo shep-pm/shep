@@ -26,16 +26,6 @@ use super::verdict::{Silence, first_rung_evidence, stale_verdict};
 /// seconds is sized against the slowest legitimate silence: a dog carried
 /// across a handover has to notice its connection died and dial back, and a
 /// third-party dog is free to sleep a second first.
-///
-/// Not `shep daemon reload`'s three-second settle wait, which lives in
-/// `shep-cli` and answers how long a command holds its output open.
-///
-/// Not the budget a boot-promoted dog dies to either, though that one is
-/// also five seconds. A dog spawned by `[daemon] boot_first_dogs` meets a
-/// socket that is bound and not yet served, and `shep-client`'s own
-/// `HANDSHAKE_TIMEOUT` ends it while this watch is still unarmed. See
-/// `docs/specs/deferred.md`, "A promoted dog cannot handshake during the
-/// restore".
 pub const DOG_SILENCE_BUDGET: Duration = Duration::from_secs(5);
 
 /// Gap between two of [`spawn_silent_dog_watch`]'s looks.
@@ -144,14 +134,10 @@ pub(crate) async fn check_silent_dogs(
 /// Enters a dog that has gone quiet into the same ladder a named refusal
 /// enters, reached by inference rather than by the dog saying who it is.
 ///
-/// `record_refused_dog` is keyed on `Hello::dog_name`, which a client speaking
-/// an older protocol cannot send, so its ladder reaches only dogs new enough to
-/// name themselves. The set difference this rides on needs no cooperation from
-/// the client; peer credentials are read only to fill in `evidence`.
-///
-/// A dog that is merely slow to connect is restarted once for nothing, and
-/// heals itself: [`DogRefusals::handshook`] clears everything held against a
-/// dog the moment it handshakes.
+/// `record_refused_dog` is keyed on `Hello::dog_name`, which a client
+/// speaking an older protocol cannot send, so its ladder reaches only dogs
+/// new enough to name themselves. The set difference this rides on needs no
+/// cooperation from the client.
 async fn record_silent_dog(
     name: &str,
     info: Option<&ProcessInfo>,
@@ -208,15 +194,11 @@ async fn record_silent_dog(
 
 /// Watches for dogs that are running and have never once spoken to this
 /// shepherd, and enters each into the ladder after [`DOG_SILENCE_BUDGET`] of
-/// silence: restarted once from the binary on disk, then reported stale,
-/// then left alone.
+/// silence: restarted once from the binary on disk, then reported stale.
 ///
 /// Anchored to the daemon's boot rather than to a dog's spawn: a handover is
-/// an `execve`, so a per-dog timer would die at the exec, and `boot` runs again
-/// in the successor.
-///
-/// Its `JoinHandle` is held by the caller and aborted at teardown: the loop has
-/// no end of its own, and nothing may restart a dog during shutdown.
+/// an `execve`, so a per-dog timer would die at the exec, and `boot` runs
+/// again in the successor.
 pub fn spawn_silent_dog_watch(
     supervisor: SupervisorHandle,
     refusals: DogRefusals,
@@ -262,13 +244,8 @@ mod tests {
     ///
     /// Sleeping here is a barrier rather than a slower spin: under
     /// `start_paused` the runtime advances the clock only once every task is
-    /// idle, and work on the blocking pool holds it there. Each of
-    /// `spawn_silent_dog_watch`'s looks writes into the dog's own log, which
-    /// `narrate` puts on that pool. A `yield_now` loop keeps a task runnable,
-    /// so the runtime never idles and the clock never advances.
-    ///
-    /// Panics, naming `what`, if `settled` has not answered true within
-    /// `within` of virtual time.
+    /// idle, and work on the blocking pool holds it there. Panics, naming
+    /// `what`, if `settled` has not answered true within `within`.
     async fn settle_until(
         what: &str,
         within: Duration,
@@ -482,9 +459,7 @@ mod tests {
     /// the watcher's tick path deleted.
     ///
     /// A warm-up wider than the ladder spends the stale rung against a map that
-    /// is still cold, and `silent_dogs` then drops the dog, so no later look
-    /// reclassifies it. [`settle_until`] drives virtual time here, so this
-    /// stays in the fast tier rather than `mod slow`.
+    /// is still cold, and `silent_dogs` then drops the dog.
     #[tokio::test(start_paused = true)]
     async fn a_dog_that_never_calls_still_earns_its_rebuild_after_the_warm_up() {
         // A lower bound on when `PeerContacts` started warming, taken before

@@ -6,14 +6,11 @@ use std::collections::BTreeMap;
 
 /// The env every spawned child starts from, before the app's own `env` map
 /// is folded on top (app config always wins on conflict), plus `PATH`:
-/// without one, a bare program or interpreter name can never be found by
-/// exec, so it's seeded unconditionally rather than left to `keys`.
+/// without one, a bare program name can never be found by exec.
 ///
-/// [`build`](crate::assemble::spawn_spec::build) calls this with the platform-selected [`INHERITED`] and a
-/// `std::env::var` reader; a test can pass [`INHERITED_WINDOWS`] and a fake
-/// reader instead, on any host, without touching real process env.
-/// Mutating that from a test is unsound under a parallel test binary, and
-/// `std::env::set_var` is itself `unsafe` since edition 2024.
+/// [`build`](crate::assemble::spawn_spec::build) calls this with the
+/// platform-selected [`INHERITED`] and a `std::env::var` reader; a test can
+/// pass [`INHERITED_WINDOWS`] and a fake reader instead, on any host.
 pub(super) fn inherited_env(
     keys: &[&str],
     env_reader: &dyn Fn(&str) -> Option<String>,

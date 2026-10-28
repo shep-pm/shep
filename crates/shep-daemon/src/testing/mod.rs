@@ -1,8 +1,7 @@
 // One crate-root fixture module: every test module in this crate shares these
 // helpers instead of hand-rolling its own. The scripted doubles live in
 // `doubles`, re-exported below so every caller keeps writing
-// `crate::testing::Name`. The loopback HTTP fake lives in
-// `crate::testing_http`.
+// `crate::testing::Name`. The loopback HTTP fake lives in `crate::testing_http`.
 mod doubles;
 
 use std::path::{Path, PathBuf};
@@ -76,22 +75,17 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
 /// `tracing` caches each callsite's `Interest` process-wide on first reach.
 /// While `Dispatchers::has_just_one` holds, that value is read off whichever
 /// thread registered first, which in a test binary is routinely a sibling with
-/// no subscriber: the callsite caches `Interest::never()` and [`capture_logs`]
-/// comes back empty. A second live dispatcher makes the union
-/// `Interest::sometimes()`, which routes every event through a per-thread
-/// `enabled()`. [`tracing::Dispatch::none`] will not do: it never registers
-/// itself, so it does not count towards the flag.
+/// no subscriber, and [`capture_logs`] comes back empty.
 static SECOND_DISPATCH: LazyLock<tracing::Dispatch> =
     LazyLock::new(|| tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default()));
 
-/// Runs `f` with a subscriber scoped to THIS thread, returning everything the
-/// records it wrote rendered to.
+/// Runs `f` with a subscriber scoped to this thread, returning what it recorded.
 ///
 /// Scoped rather than global, since a global subscriber installs once per
 /// process. `f` must be synchronous and stay on this thread: a record written
-/// by a `tokio::spawn`ed task carries no thread-local dispatcher and is not
-/// captured. Forcing [`SECOND_DISPATCH`] first is load-bearing; see its doc.
-/// ANSI is off so assertions match text, and the level is `TRACE`.
+/// by a `tokio::spawn`ed task carries no thread-local dispatcher. Forcing
+/// [`SECOND_DISPATCH`] first is load-bearing; see its doc. ANSI is off so
+/// assertions match text, and the level is `TRACE`.
 pub(crate) fn capture_logs(f: impl FnOnce()) -> String {
     LazyLock::force(&SECOND_DISPATCH);
     let capture = LogCapture::default();
@@ -204,13 +198,12 @@ impl ProcessRunner for SharedRunner {
 }
 
 /// A [`ProcessRunner`] that announces each spawn on a unix datagram socket
-/// before delegating, so a test can assert on the ORDER of two events rather
+/// before delegating, so a test can assert on the order of two events rather
 /// than on the presence of one.
 ///
 /// For `boot`'s readiness-ordering case: the announcement and `boot`'s own
 /// `READY=1` land on one socket, and AF_UNIX `SOCK_DGRAM` enqueues
-/// synchronously, so the queue order read back is the program order. Unix
-/// only.
+/// synchronously, so the queue order read back is the program order.
 #[cfg(unix)]
 #[derive(Debug)]
 pub(crate) struct AnnouncingRunner<R> {
@@ -459,10 +452,8 @@ pub(crate) fn idle_stats() -> Arc<StatsState> {
 ///
 /// Takes a builder rather than a finished [`Extras`], because the harness has
 /// to own both report receivers: no reporter is spawned, so a test asserts the
-/// report itself rather than racing a restart. A caller-built `Extras` already
-/// carries senders whose receivers the harness could not recover, and
-/// overwriting `reports` afterwards does not help, since `PollingEnforcer`
-/// swallows its breach sender at construction.
+/// report itself rather than racing a restart. A caller-built `Extras` carries
+/// senders whose receivers the harness could not recover.
 pub(crate) fn harness_with_extras(
     scripts: Vec<ProcScript>,
     build_extras: impl FnOnce(ExtrasReports) -> Extras,
@@ -566,9 +557,7 @@ fn build_harness(
 /// case that needs `cron_restart` or `watch` says only that.
 ///
 /// # Panics
-///
-/// Panics if the mutated config does not normalize, which is a fixture bug at
-/// the call site rather than a condition under test.
+/// Panics if the mutated config does not normalize, which is a fixture bug.
 #[track_caller]
 pub(crate) fn app_with(name: &str, mutate: impl FnOnce(&mut AppConfig)) -> ResolvedApp {
     let mut app = AppConfig::minimal(name, "./srv");

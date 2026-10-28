@@ -5,10 +5,8 @@ use super::*;
 
 /// `TimedOut` rather than `NoChannel` is the assertion that matters: the
 /// action was really delivered and waited on, and `web`'s 3s
-/// `action_timeout` elapsed inside the request's own budget. Raise it
-/// past [`DEFAULT_DEADLINE_MS`] and the reply becomes `DeadlineExceeded`
-/// instead, which names no sheep; that ordering is pinned right below in
-/// `an_oversized_action_timeout_loses_the_race`.
+/// `action_timeout` elapsed inside the request's own budget. Raise it past
+/// [`DEFAULT_DEADLINE_MS`] and the reply becomes `DeadlineExceeded` instead.
 ///
 /// Nothing answers, because the harness keeps no handle on its runner.
 #[tokio::test(start_paused = true)]

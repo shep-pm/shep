@@ -251,17 +251,12 @@ mod tests {
     }
 
     /// Fabricates what a crashed daemon leaves behind: a socket file at
-    /// `socket` that nothing is listening on. Bind-then-drop is the shape,
-    /// since neither std nor tokio unlinks the path, but macOS marks the
-    /// descriptor close-on-exec just after `socket(2)` returns, so a child
-    /// another test forks in that window holds a duplicate and the path keeps
-    /// answering. So this waits until the path refuses a connection; only a
-    /// fresh bind can undo that. Real sleeps, not the module's paused clock:
-    /// another process's descriptor is on no clock tokio can advance.
+    /// `socket` that nothing is listening on, made by bind-then-drop. Waits
+    /// until the path refuses a connection, on real sleeps: macOS marks the
+    /// descriptor close-on-exec, so a forked child can keep it answering.
     ///
     /// # Panics
-    /// If the leftover never goes stale, or the probe fails for any reason
-    /// other than nobody listening.
+    /// If the leftover never goes stale, or the probe fails unexpectedly.
     #[track_caller]
     fn stale_socket_leftover(socket: &Path) {
         // Two loops for two holders: the inner waits out a child that copied

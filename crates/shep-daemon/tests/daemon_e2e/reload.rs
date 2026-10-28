@@ -338,8 +338,7 @@ pub(crate) async fn reload_under_load(name: &str, defiant: bool) -> Vec<Attempt>
 ///
 /// The count is asserted on Linux only. Linux load-balances new connections
 /// over every listener in the `SO_REUSEPORT` group, so the drainee keeps a
-/// share until it closes; macOS gives every new connection to the last
-/// socket to bind, so only the duration is asserted there.
+/// share until it closes; macOS gives every new connection to the last bind.
 #[tokio::test]
 async fn a_reload_costs_a_draining_app_no_connections() {
     let during = reload_under_load("drainer", false).await;
@@ -371,8 +370,7 @@ async fn a_reload_costs_a_draining_app_no_connections() {
 /// app zero downtime.
 ///
 /// The count is asserted on Linux only, for the sibling case's reason: there
-/// the defiant instance is still being handed a share of every new connection
-/// when `SIGKILL` lands, while on macOS it is killed empty.
+/// the defiant instance is still being handed a share of every new connection.
 #[tokio::test]
 async fn a_reload_costs_a_defiant_app_the_work_it_will_not_finish() {
     let during = reload_under_load("defier", true).await;
