@@ -145,20 +145,29 @@ impl App {
             KeyPress::Remove => return self.restore_default(),
             // `D` arms the removal of the env key under the cursor, `Enter`
             // confirms it, and every other key cancels: the same
-            // arm-then-`Enter` the secrets pane uses, on the same key. A field
-            // row and `+ add a key` name no key to remove, so nothing arms
-            // there and the key stays as inert as it was.
+            // arm-then-`Enter` the secrets pane uses, on the same key.
+            //
+            // The cursor is asked before the gate is, in the order
+            // [`Self::arm_secret_delete`] keeps: a field row and `+ add a key`
+            // name no key to remove, so `D` is inert there and says nothing,
+            // rather than answering a key that could never have armed anything
+            // with a "read-only" refusal.
             //
             // The gate is checked on the arm, not on the confirm, for the
             // reason [`Self::confirm_field`]'s doc gives: a refusal that
             // arrived only at the confirm would have spent the operator's
             // whole `D` for nothing.
             KeyPress::ArmDelete => {
-                let now = self.now;
-                if self.authorize_write().is_some()
-                    && let Some(pane) = self.config_pane_mut()
-                {
-                    pane.arm_env_delete(now);
+                let names_a_key = self
+                    .config_pane()
+                    .is_some_and(|pane| pane.cursor_env_key_name().is_some());
+                if names_a_key {
+                    let now = self.now;
+                    if self.authorize_write().is_some()
+                        && let Some(pane) = self.config_pane_mut()
+                    {
+                        pane.arm_env_delete(now);
+                    }
                 }
             }
             KeyPress::Action(_)
@@ -229,5 +238,60 @@ impl App {
             }
         }
         Effect::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::lookout::view::fixtures;
+
+    /// Whether the config pane holds an armed env delete.
+    fn armed(app: &App) -> Option<String> {
+        app.config_pane()
+            .expect("the pane is open")
+            .armed_env()
+            .map(|armed| armed.key.clone())
+    }
+
+    /// `D` on a row that names no key to remove is inert, and inert here means
+    /// silent: the gate's "read-only" sentence answers a write the operator
+    /// actually asked for, and no `D` on a field row ever did.
+    #[test]
+    fn d_on_a_field_row_arms_nothing_and_says_nothing() {
+        let mut app = fixtures::app_in_sheep_pane_read_only();
+        assert!(
+            app.config_pane()
+                .expect("the pane is open")
+                .cursor_env_key_name()
+                .is_none(),
+            "sanity: the cursor is on a field"
+        );
+
+        let effect = app.update(Msg::Key(KeyPress::ArmDelete));
+
+        assert!(matches!(effect, Effect::None));
+        assert!(armed(&app).is_none(), "nothing armed");
+        assert!(app.notice().is_none(), "and nothing said");
+    }
+
+    /// The same key on a row that does name a key still refuses through the
+    /// gate, with the reason the gate gives.
+    #[test]
+    fn d_on_an_env_row_refuses_through_the_gate_with_its_reason() {
+        let mut app = fixtures::app_in_sheep_pane_read_only();
+        fixtures::select_env_key(&mut app, "DB_HOST");
+
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
+
+        assert!(armed(&app).is_none(), "the gate closed the arm");
+        let notice = app.notice().map(ToString::to_string);
+        assert!(
+            notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("read-only")),
+            "and named the gate: {notice:?}"
+        );
     }
 }
