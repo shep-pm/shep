@@ -101,15 +101,11 @@ pub enum KeyPress {
     /// job. `Escape` is the only key that closes a pane or a sub-screen.
     Edit,
     /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
-    /// again, or `Escape`, closes it. Refused while a close dialog is up,
-    /// which owns the keyboard until it is answered, and consumed as a
-    /// cancel instead of opening while an action or a settings candidate
-    /// is armed, the same as every other key.
+    /// again, or `Escape`, closes it. Refused while a close dialog is up, and
+    /// consumed as a cancel while an action is armed, like every other key.
     ///
-    /// The config pane's field help draws unconditionally, wherever the
-    /// explanation panel cannot show it, so no key is needed for it: see
-    /// `view::pane::top_lines`. That is why `h` is free to mean this here
-    /// too.
+    /// The config pane's field help draws unconditionally, so no key is
+    /// needed for it: that is why `h` is free to mean this here.
     Help,
     /// `d`: arms the removal of the element under the cursor, on the config
     /// pane's list sub-screen. On a config field, restores the default by
@@ -343,13 +339,10 @@ pub enum Msg {
     },
     /// An [`Effect::LoadDogPane`]'s schema probe has answered.
     ///
-    /// The schema half only: the section arrives separately over the wire
-    /// as [`Sent::DogSection`], since it comes from the shepherd rather
-    /// than the dog's own binary. This arm parks the schema and raises the
-    /// request for the section; the pane is built once that lands.
-    ///
-    /// `Result<_, String>`, like [`Self::Settings`]: this reducer holds no
-    /// error types from `commands`.
+    /// The schema half only: the section arrives separately over the wire as
+    /// [`Sent::DogSection`], since it comes from the shepherd rather than the
+    /// dog's own binary. `Result<_, String>`, like [`Self::Settings`]: this
+    /// reducer holds no error types from `commands`.
     DogPane {
         /// The dog.
         name: String,
@@ -409,15 +402,10 @@ pub enum Msg {
     /// An [`Effect::LoadSecrets`] has answered.
     ///
     /// `Result<_, String>`, like [`Self::Settings`]: `secrets::model` cannot
-    /// fail, but the `spawn_blocking` it runs on can. Dropped when no pane
-    /// is open, the way a late config reply is.
-    ///
-    /// `environment` is the tab this read was built for, echoed back
-    /// because the pane's model is empty on the very first load and has no
-    /// tab to read it from; every later load already knows it from
-    /// [`SecretsPane::tab`], but carrying it here keeps this arm's rule
-    /// (find the requested environment in the fresh model, or fall back to
-    /// 0) the same on every load rather than only the first.
+    /// fail, but the `spawn_blocking` it runs on can. Dropped when no pane is
+    /// open, the way a late config reply is. `environment` is the tab this
+    /// read was built for, echoed back because the pane's model is empty on
+    /// the first load.
     Secrets {
         /// The environment [`crate::lookout::secrets::model`] was built for.
         environment: String,
@@ -501,18 +489,12 @@ pub enum Effect {
     /// Send a request to the shepherd. Raised by [`App::confirm`] once an
     /// armed action's Enter lands; `crate::lookout::run_ui` sends it.
     Send(Sent),
-    /// Send several requests, in the order given. Raised when a config
-    /// pane closes: nothing it edited has gone out yet, so the whole set
-    /// leaves on that one keypress.
+    /// Send several requests, in the order given. Raised when a config pane
+    /// closes: nothing it edited has gone out yet, so the whole set leaves on
+    /// that one keypress.
     ///
-    /// Its own variant rather than a `Vec` on [`Self::Send`], because
-    /// every other sender raises exactly one request and would have to
-    /// wrap it. `crate::lookout::run_ui` hands the whole batch to a spawned task
-    /// that awaits each `send` in turn on a cloned sender, so a channel
-    /// deeper than the batch never stalls the screen and a full one never
-    /// drops an entry; order survives because one task sends the whole
-    /// batch in sequence. Only a closed channel can still fail a send, and
-    /// [`Msg::BatchSent`] carries that casualty back.
+    /// Its own variant rather than a `Vec` on [`Self::Send`], because every
+    /// other sender raises exactly one request and would have to wrap it.
     SendAll(Vec<Sent>),
     /// Leave.
     Quit,
@@ -538,16 +520,10 @@ pub enum Effect {
     /// Probe one dog for its config schema; the answer lands as
     /// [`Msg::DogPane`].
     ///
-    /// A dog's schema is not persisted anywhere, so the pane asks at open:
-    /// `shep adopt` uses the answer for the vet and records only the path.
-    /// A built-in dog is this binary, so it is asked in-process
-    /// (`crate::dog::builtin_schema`); an adopted one is spawned with the
-    /// schema flag, which is why `crate::lookout::run_ui` runs this on
-    /// `spawn_blocking`: it costs up to `VERSION_BUDGET` of somebody
-    /// else's binary starting up, and the redraw task cannot wait for that.
-    ///
-    /// No [`WriteAuthority`]: this reads. The pane it opens is gated on
-    /// every keystroke that writes, the same as a sheep pane.
+    /// A dog's schema is not persisted anywhere, so the pane asks at open. An
+    /// adopted dog is spawned with the schema flag, which is why
+    /// `crate::lookout::run_ui` runs this on `spawn_blocking`. No
+    /// [`WriteAuthority`]: this reads.
     LoadDogPane {
         /// The dog.
         name: String,
@@ -598,11 +574,7 @@ pub enum Effect {
     ///
     /// Its own effect, not [`Self::WriteSetting`]: a grant is a read-modify-
     /// write of the record `shep dogs grant` writes, with the manifest check
-    /// in front of it, and `boot_first_dogs` is a name in or out of an array.
-    /// Neither is a value at a path. `spawn_blocking`, for
-    /// [`Self::WriteSetting`]'s reason: both take `shep.toml`'s lock, and a
-    /// grant reads the dog's manifest, which can cost up to
-    /// `VERSION_BUDGET` of somebody else's binary starting up.
+    /// in front of it. Neither is a value at a path.
     WriteDogTune {
         /// The change to apply.
         tune: DogTune,
@@ -619,16 +591,13 @@ pub enum Effect {
     /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
     /// store's own lock acquires with no deadline.
     LoadSecrets,
-    /// Read the one value behind `row`; the answer lands as
-    /// [`Msg::Revealed`].
+    /// Read the one value behind `row`; the answer lands as [`Msg::Revealed`].
     ///
-    /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the
-    /// read takes no lock, and a synchronous file read on the UI task stalls
-    /// the redraw, the tick and the bus drain together.
+    /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the read
+    /// takes no lock, and a synchronous file read on the UI task stalls the
+    /// redraw, the tick and the bus drain together.
     ///
-    /// No [`WriteAuthority`]: the gate on this one is
-    /// `[secrets] allow_read`, checked when it is raised and again when the
-    /// answer lands.
+    /// No [`WriteAuthority`]: the gate on this one is `[secrets] allow_read`.
     RevealSecret {
         /// The operator store to read an
         /// [`Operator`](crate::lookout::secrets::Source::Operator) row from.
@@ -645,32 +614,23 @@ pub enum Effect {
     /// [`Msg::SecretWritten`].
     ///
     /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
-    /// store's lock acquires with no deadline, and the UI task's redraw,
-    /// tick and bus drain would block with the write.
-    ///
-    /// The [`WriteAuthority`] is not decoration: this variant cannot be
-    /// named without having passed the gate.
+    /// store's lock acquires with no deadline. The [`WriteAuthority`] is not
+    /// decoration: this variant cannot be named without having passed the gate.
     WriteSecret(SecretEdit, WriteAuthority),
     /// Apply several changes to `secrets.json` in one task; the result lands
     /// as one [`Msg::SecretWritten`].
     ///
-    /// Raised by a rename, which is two changes to the store: set the new key,
-    /// then remove the old one. One task rather than two effects so one `Enter`
-    /// gets one answer and one re-read, and so the half that can lose a value
-    /// goes last. Each half still takes the store's own lock, so a rename that
-    /// fails halfway leaves the key under two names rather than under none.
-    ///
-    /// `spawn_blocking` for [`Self::WriteSecret`]'s reason, and carries the same
-    /// [`WriteAuthority`] for the same reason.
+    /// Raised by a rename, which is two changes to the store. One task rather
+    /// than two effects so one `Enter` gets one answer, and so the half that
+    /// can lose a value goes last. `spawn_blocking` and [`WriteAuthority`]
+    /// for the same reasons as [`Self::WriteSecret`].
     WriteSecrets(Vec<SecretEdit>, WriteAuthority),
     /// Sends the carried value to the terminal's clipboard over OSC 52, by
-    /// [`KeyPress::Copy`]. `crate::lookout::run_ui` writes it straight to the same
-    /// stdout handle `crate::lookout::term` uses, never through `Terminal<B>` (a
-    /// `TestBackend` has none) and never through `tracing`: the value must
-    /// not reach a log.
+    /// [`KeyPress::Copy`]. `crate::lookout::run_ui` writes it straight to the
+    /// same stdout handle `crate::lookout::term` uses, never through
+    /// `Terminal<B>` and never through `tracing`: the value must not reach a
+    /// log.
     ///
-    /// No [`WriteAuthority`]: this never touches `shep.toml`, and the value
-    /// it carries is one [`App::update`] already read off `pane.reveal`,
-    /// past the same `[secrets] allow_read` gate a reveal takes.
+    /// No [`WriteAuthority`]: this never touches `shep.toml`.
     CopyToClipboard(ClipboardValue),
 }

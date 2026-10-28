@@ -11,36 +11,22 @@ use super::*;
 /// operator has just opened.
 pub(crate) const HISTORY: usize = 140;
 
-/// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
-/// core.
+/// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one core.
 ///
 /// Without it, a flock idling at a tenth of a percent would have its own
 /// jitter scaled to full height, so the busiest thing on screen would be
-/// noise. Two percent is low enough that any real work clears it and high
-/// enough that nothing else does.
-///
-/// `pub(crate)`, not private: `pane_sheep::scale_top`'s own floor argument
-/// is this same number for the sheep pane's CPU chart, and a second
-/// constant carrying the value would be the thing that drifts.
+/// noise. Two percent is low enough that any real work clears it.
+/// `pub(crate)`, not private: `pane_sheep::scale_top` uses this same number.
 pub(crate) const CPU_CEILING_FLOOR: f32 = 2.0;
 
 impl App {
     /// Differences one CPU sample per sheep in the current flock against its
-    /// last reading, buffers RSS as read, appends the flock-wide CPU sum,
-    /// and drops every history entry (CPU, RSS and baseline) for a sheep the
-    /// new snapshot no longer carries.
+    /// last reading, buffers RSS as read, appends the flock-wide CPU sum, and
+    /// drops every history entry for a sheep the new snapshot no longer carries.
     ///
-    /// Called after `self.flock` is replaced, so it reads the fresh
-    /// snapshot rather than the one before it. A sheep with no CPU reading
-    /// contributes `0.0` and forgets its baseline: skipping the sample would
-    /// slide the whole window and make an old spike look recent, and
-    /// keeping the baseline would difference the next live reading across
-    /// the gap.
-    ///
-    /// Every touched deque is made contiguous here, while this method still
-    /// holds `&mut self`, so [`Self::cpu_history`], [`Self::rss_history`]
-    /// and [`Self::flock_cpu_history`] can hand out a slice from `&self`
-    /// alone.
+    /// A sheep with no CPU reading contributes `0.0` and forgets its baseline:
+    /// skipping the sample would slide the whole window. Every touched deque is
+    /// made contiguous here, so the history getters hand out slices from `&self`.
     pub(super) fn record_samples(&mut self, at: Instant) {
         // Collected first: the differencing below needs `&mut self.cpu_last`
         // while a walk of `self.flock` would still be borrowing it.
@@ -75,15 +61,10 @@ impl App {
                     // stays one short of the poll count rather than claiming
                     // an idle sample it never measured.
                     None => continue,
-                    // A respawn keeps the sheep's id and takes a new pid, and
-                    // `cpu_ms` counts the tree under whichever pid the
-                    // shepherd is watching now. Differencing across that
-                    // boundary subtracts a dead process's counter from a live
-                    // one's: `saturating_sub` keeps it from ever reading as a
-                    // spike, but it still underreports the new process by
-                    // exactly what the old one had spent. A new process is a
-                    // first reading, so it records a baseline and appends
-                    // nothing, the same as a sheep the pane has never seen.
+                    // A respawn keeps the sheep's id and takes a new pid, so
+                    // differencing across that boundary subtracts a dead
+                    // process's counter from a live one's. A new process is a
+                    // first reading, so it records a baseline and appends nothing.
                     Some((then_pid, _, _)) if then_pid != pid => continue,
                     Some((_, then_ms, then)) => shep_core::values::cpu_percent(
                         now_ms.saturating_sub(then_ms),
@@ -103,11 +84,9 @@ impl App {
         self.cpu_history.retain(|id, _| self.flock.contains_key(id));
         self.rss_history.retain(|id, _| self.flock.contains_key(id));
         // A departed sheep's baseline outlives its rows here unless dropped
-        // too: without this, a later id reused by an unrelated sheep would
-        // inherit a stranger's counter and difference its first honest
-        // reading against it, breaking the exact guarantee
-        // `Self::cpu_history`'s doc makes about a later id inheriting
-        // nothing.
+        // too: a later id reused by an unrelated sheep would inherit a
+        // stranger's counter and difference its first honest reading against
+        // it.
         self.cpu_last.retain(|id, _| self.flock.contains_key(id));
         self.flock_cpu.push_back(sum);
         if self.flock_cpu.len() > HISTORY {
@@ -130,21 +109,10 @@ impl App {
     /// `id`'s newest differenced CPU sample: [`Self::cpu_history`]'s last
     /// entry, the same number its sparkline's last cell draws.
     ///
-    /// `None` in two cases, both honest gaps rather than a claimed zero:
-    /// before a first difference exists (one poll after launch, on
-    /// [`Self::cpu_history`]'s own terms), and when the current snapshot's
-    /// `cpu_ms` is itself `None` (the sheep is not running, or the peer
-    /// daemon predates the field). The second check matters because
-    /// [`Self::record_samples`] still appends a zero to the history buffer
-    /// in that case, to keep the sparkline's window from sliding; reading
-    /// that zero back as a figure would report "0.0%" for a sheep whose CPU
-    /// was never sampled, the same false claim `ProcessInfo::cpu_percent`'s
-    /// own `None` exists to refuse.
-    ///
-    /// Every CPU figure lookout draws reads through here rather than
-    /// `ProcessInfo::cpu_percent`, the shepherd's own mean over a window
-    /// that resets independently of this pane's polls: reading both would
-    /// put two different numbers under one label.
+    /// `None` in two cases, both honest gaps rather than a claimed zero: before
+    /// a first difference exists, and when the snapshot's own `cpu_ms` is
+    /// `None`, since [`Self::record_samples`] still appends a zero in that
+    /// case. Every CPU figure lookout draws reads through here.
     #[must_use]
     pub fn cpu_now(&self, id: u32) -> Option<f32> {
         self.flock.get(&id)?.info.cpu_ms?;
@@ -185,14 +153,9 @@ impl App {
     /// sample any sheep has recorded in the retained window.
     ///
     /// One ceiling shared by every row is what makes the column comparable
-    /// down the table. Per-row peaks make an idle sheep and a busy one both
-    /// fill their own cells; a fixed 100% of a core makes an ordinary flock,
-    /// where nothing is above two percent, draw a screen of flat lines.
-    ///
-    /// Floored at [`CPU_CEILING_FLOOR`] so a flock that is genuinely doing
-    /// nothing stays flat instead of having its rounding noise stretched
-    /// into a shape. Below that floor there is nothing to see and saying so
-    /// is the honest answer.
+    /// down the table; per-row peaks make an idle sheep and a busy one both
+    /// fill their own cells. Floored at [`CPU_CEILING_FLOOR`] so a flock doing
+    /// nothing stays flat instead of stretching its rounding noise.
     #[must_use]
     pub fn cpu_ceiling(&self) -> f32 {
         self.cpu_history
@@ -367,13 +330,10 @@ mod tests {
     /// A respawn gives a new tree whose counter starts below the old one's.
     /// Clamped to zero, the same rule the daemon applies, and it costs one
     /// dropped sample rather than a negative spike.
-    /// A respawn keeps the id and takes a new pid, so differencing across it
-    /// would subtract a dead process's counter from a live one's.
     ///
     /// The counter rising across the boundary is the case `saturating_sub`
-    /// cannot save: it reads as a real delta and underreports the new
-    /// process by exactly what the old one had spent. A new process is a
-    /// first reading, so it records a baseline and appends nothing.
+    /// cannot save: it reads as a real delta and underreports the new process
+    /// by exactly what the old one had spent.
     #[test]
     fn a_respawn_under_the_same_id_starts_a_new_baseline() {
         let mut app = fixture();

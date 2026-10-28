@@ -9,10 +9,7 @@ impl App {
     ///
     /// The same reasoning [`Self::arm_sheep_pane`]'s own doc gives:
     /// `Msg::Snapshot` reseats the dashboard's selection whatever screen is
-    /// showing, so reading the selection here would open a neighbour's
-    /// config under the pane's own title the instant the pinned sheep left
-    /// the flock. Refuses instead of substituting. A pane is never pinned
-    /// on a dog, so [`Self::ask_for_config`]'s dog branch has no twin here.
+    /// showing. Refuses instead of substituting.
     pub(in crate::lookout::app) fn ask_for_sheep_pane_config(&mut self) -> Effect {
         let Some(row) = self.sheep_pane_row() else {
             self.notice = Some(Notice::grave(
@@ -27,16 +24,9 @@ impl App {
     /// pane's own pinned sheep, never [`Self::selected`].
     ///
     /// Arming against the selection here would be the same mistake
-    /// [`Self::sheep_pane_row`]'s own doc explains: `Msg::Snapshot` reseats
-    /// the selection whatever screen is showing, so a pinned sheep that
-    /// leaves the flock would arm an action against whichever sheep
-    /// replaced it while the pane still names the first. Refuses instead.
-    ///
-    /// The ladder is [`Self::confirm_refusal`]'s own gate and link, then one
-    /// action already in flight or held, same order [`Self::arm`] uses for
-    /// those two; [`Self::arm`]'s "nothing selected" case cannot happen
-    /// here, since the pane would not be open without a sheep, so its place
-    /// is taken by the pinned sheep having left instead.
+    /// [`Self::sheep_pane_row`]'s own doc explains. The ladder is
+    /// [`Self::confirm_refusal`]'s own gate and link, then one action already
+    /// in flight or held, same order [`Self::arm`] uses.
     pub(in crate::lookout::app) fn arm_sheep_pane(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice::grave(text));

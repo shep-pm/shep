@@ -12,18 +12,10 @@ impl App {
     /// The config pane's own keymap, in force for as long as
     /// [`Self::config_pane`] is `Some`.
     ///
-    /// Movement walks fields, `r` re-reads, `space` cycles the row under
-    /// the cursor, `Enter` or `e` edits it, `u` undoes the newest edit,
-    /// and `Escape` asks the close dialog's question if there is one to
-    /// ask, else writes everything filed and leaves. A dog's table is read
-    /// again before that write: see [`Self::reread_before_closing`]. `h`
-    /// raises the keymap overlay; see `KeyPress::Help`'s arm below.
-    /// Everything else is named rather than wildcarded, so a stray variant
-    /// cannot fall silently into an arm that ignores it.
-    ///
-    /// Nothing is armed here and no key is eaten. A keystroke that edits
-    /// files into the pane's own set and sends nothing, so a stray one
-    /// costs an `u` rather than a write to a running sheep.
+    /// Movement walks fields, `r` re-reads, `space` cycles the row under the
+    /// cursor, `Enter` or `e` edits it, `u` undoes the newest edit, and
+    /// `Escape` asks the close dialog's question if there is one: see
+    /// [`Self::reread_before_closing`]. Nothing is armed here.
     pub(super) fn on_pane_key(&mut self, key: KeyPress) -> Effect {
         self.notice = None;
         // An armed env delete is cancelled by every key but the confirm and a
@@ -48,26 +40,14 @@ impl App {
         }
         match key {
             // Unreachable: the guard above already returned. Kept rather
-            // than folded into a silent group or replaced with a wildcard,
-            // because every other arm here is named on purpose (a stray
-            // `KeyPress` variant should not fall through unnoticed), and a
-            // wildcard would defeat that for every variant, not just this
-            // one. If the guard above is ever removed, this is what Quit
-            // still does.
+            // than a wildcard, because every other arm here is named on
+            // purpose, and a wildcard would defeat that for every variant,
+            // not just this one.
             KeyPress::Quit => return Effect::Quit,
             // Backs out one level at a time: the close dialog's own
             // question first, if there is one, else the pane. `Escape`
-            // closes rather than cascading to a filter clear or a quit,
-            // exactly as it does on the settings screen.
-            //
-            // The dialog is asked before anything is taken: `esc` used to
-            // write first and ask second, which missed the very edit that
-            // made this pane's `Escape` worth asking about. Now nothing
-            // leaves the pane until the question is answered, one way or
-            // another.
-            //
-            // One press, not two: the field's help draws unconditionally
-            // now, so nothing waits behind a second `esc` for it.
+            // closes rather than cascading to a filter clear or a quit.
+            // Nothing leaves the pane until the question is answered.
             KeyPress::Escape => {
                 // An armed delete eats the first `Escape`, as it does on the
                 // secrets pane: a delete waiting on a confirm is a state the
@@ -144,19 +124,9 @@ impl App {
             // the spec does not ask for it.
             KeyPress::Remove => return self.restore_default(),
             // `D` arms the removal of the env key under the cursor, `Enter`
-            // confirms it, and every other key cancels: the same
-            // arm-then-`Enter` the secrets pane uses, on the same key.
-            //
-            // The cursor is asked before the gate is, in the order
-            // [`Self::arm_secret_delete`] keeps: a field row and `+ add a key`
-            // name no key to remove, so `D` is inert there and says nothing,
-            // rather than answering a key that could never have armed anything
-            // with a "read-only" refusal.
-            //
-            // The gate is checked on the arm, not on the confirm, for the
-            // reason [`Self::confirm_field`]'s doc gives: a refusal that
-            // arrived only at the confirm would have spent the operator's
-            // whole `D` for nothing.
+            // confirms it, and every other key cancels. The cursor is asked
+            // before the gate is: a field row names no key to remove, so `D`
+            // is inert there. The gate is checked on the arm, not the confirm.
             KeyPress::ArmDelete => {
                 let names_a_key = self
                     .config_pane()
@@ -212,9 +182,8 @@ impl App {
             }
             // `tab` and `shift-tab` walk the groups; a digit jumps straight
             // to one. All reset the cursor to the group's first field, so
-            // `j`/`k` never start on a row the new tab does not draw.
-            //
-            // The `dogs` tab lists its dogs the first time it comes up.
+            // `j`/`k` never start on a row the new tab does not draw. The
+            // `dogs` tab lists its dogs the first time it comes up.
             KeyPress::NextGroup => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.next_group();

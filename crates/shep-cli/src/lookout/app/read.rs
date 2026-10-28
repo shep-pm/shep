@@ -138,14 +138,8 @@ impl App {
         if let Some(pane) = self.bleats_pane_mut() {
             // Every row `view::bleats_full::lines` spends before the first
             // feed line: the title band always, and the filter row whenever
-            // a chip is set.
-            //
-            // Both, not just the title. A page jump larger than the body it
-            // scrolls skips lines outright rather than merely overshooting:
-            // with a chip showing, a jump of `rows - 1` over a body of
-            // `rows - 2` leaves one line between consecutive pages that
-            // `ctrl-d` alone never renders. Paging down and back up is
-            // symmetric either way, which is why nothing noticed.
+            // a chip is set. A page jump larger than the body it scrolls
+            // skips lines outright rather than merely overshooting.
             let chrome = 1 + usize::from(!pane.filters().is_empty());
             pane.set_rows(usize::from(rows).saturating_sub(chrome));
         }
@@ -155,12 +149,9 @@ impl App {
     /// wrapped line's row cost can be measured against something.
     ///
     /// Its own method rather than a second parameter on
-    /// [`Self::note_body_rows`]: the settings screen and the config pane
-    /// never need a column count, and every existing caller of that method
-    /// — production and test alike — would otherwise have to invent one it
-    /// has no use for. Called by the event loop right alongside
-    /// [`Self::note_body_rows`], from the same `Rect` both figures come
-    /// from.
+    /// [`Self::note_body_rows`]: the settings screen and the config pane never
+    /// need a column count, and every existing caller would have to invent one
+    /// it has no use for.
     pub fn note_body_width(&mut self, width: u16) {
         if let Some(pane) = self.bleats_pane_mut() {
             pane.set_width(width);

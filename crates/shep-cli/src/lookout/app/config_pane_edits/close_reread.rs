@@ -13,14 +13,11 @@ use super::super::*;
 impl App {
     /// `Escape` on a dog pane, or a sheep pane whose dogs hold tables with
     /// edits filed: reads the table again and holds the pane for the answer.
+    /// [`None`] for every other pane, and for one with nothing filed.
     ///
-    /// [`None`] for every other pane, and for one with nothing filed. Those
-    /// close at once. A second `Escape` while the read is out asks nothing
-    /// more, and neither does one arriving while a plain `r` is still out:
-    /// [`Self::reread_pane`] refuses a second read of its own accord, so
-    /// this only ever marks the one already in flight as the close's
-    /// answer instead of racing it with a fresh request neither reply could
-    /// be told apart from.
+    /// A second `Escape` while the read is out asks nothing more:
+    /// [`Self::reread_pane`] refuses a second read of its own accord, so this
+    /// only marks the one already in flight as the close's answer.
     pub(in crate::lookout::app) fn reread_before_closing(&mut self) -> Option<Effect> {
         let pane = self.config_pane()?;
         let holds_whole_table = match pane.target() {
@@ -371,13 +368,9 @@ mod tests {
     }
 
     /// `r` sends a plain read that is still out when `Escape` follows.
-    /// `Escape` must not send a second one: two outstanding reads for the
-    /// same target would answer to the same `Sent::SheepConfig`, and
-    /// nothing in the reply says which request it settles, so whichever
-    /// landed first would be free to answer the other's. `reread_pane`
-    /// refuses the second send on its own, so `Escape` comes back with
-    /// nothing to do, and the one reply that does land still closes the
-    /// pane.
+    /// `Escape` must not send a second one. Two reads out for one target
+    /// share one `Sent::SheepConfig`, and the reply cannot name the request
+    /// it settles.
     #[test]
     fn an_escape_after_a_refresh_still_out_does_not_race_it_with_a_second_read() {
         let mut app = app_in_jobs_table();

@@ -34,8 +34,7 @@ impl App {
             // Named here only to keep this keymap exhaustive: the guard above
             // already answered all three. A wildcard would let a new
             // `KeyPress` variant fall through unnoticed, which is what the
-            // long inert arms below exist to prevent; `config_pane.rs` names
-            // the `Quit` its own guard took for the same reason.
+            // inert arms below exist to prevent.
             KeyPress::FilterStart | KeyPress::StreamCycle | KeyPress::LevelCycle => Effect::None,
             // `k`/`Up`: one line toward older lines.
             KeyPress::SelectUp => {
@@ -104,10 +103,8 @@ impl App {
             }
             // `N`: the same, toward the oldest matching line, through
             // `scroll_bleats_back` so it takes the ceiling `k` and `ctrl-u`
-            // take. Calling `match_prev` directly would climb past the
-            // oldest surviving match and then `n`, `j` and `ctrl-d` would
-            // all stop appearing to work until the offset drained. The
-            // matcher guard is read here because the scroll happens here.
+            // take. Calling `match_prev` directly would climb past the oldest
+            // surviving match, and the guard is read here because the scroll is.
             KeyPress::MatchPrev => {
                 let stepping = self
                     .bleats_pane()
@@ -169,11 +166,9 @@ impl App {
     /// Scrolls the bleats pane back by `amount`, then holds the offset at the
     /// last value that changes the frame.
     ///
-    /// The ceiling has to live here rather than on the pane: it depends on
-    /// the surviving lines and their wrapped heights, which the pane cannot
-    /// see. Without it `scroll_up` saturating-adds forever and `j` stops
-    /// appearing to work, since the render clamps while the stored value
-    /// keeps climbing.
+    /// The ceiling lives here rather than on the pane: it depends on the
+    /// surviving lines and their wrapped heights, which the pane cannot see.
+    /// A filter chip costs a row, so a body is two rows shorter than the pane.
     fn scroll_bleats_back(&mut self, amount: usize) {
         let ceiling = self.bleats_pane().map_or(0, |pane| {
             crate::lookout::view::bleats_full::max_scroll_offset(self, pane)
@@ -332,9 +327,7 @@ mod tests {
         // Asserts a rendered FEED line, tagged `out`, not merely that the
         // text appears: the filter row echoes the matcher back as its own
         // `match line-119` chip, so `contains("line-119")` passes even when
-        // every feed line was skipped away. `!text.is_empty()` was weaker
-        // still, and passed in release with the clamp removed because the
-        // title and the chip alone kept the buffer non-empty.
+        // every feed line was skipped away.
         assert!(
             text.contains("out  line-119"),
             "the one surviving line is drawn in the body: {text}"
@@ -377,54 +370,12 @@ mod tests {
         );
     }
 
-    /// `ctrl-u`/`ctrl-d` move by a body height rather than a line, and the
-    /// body height is what `note_body_rows` last reported, not a hardcoded
-    /// guess.
-    /// Two pages back leave no line unseen, with a filter chip on screen.
+    /// Holding `N` past the oldest match must not deaden `n`. `k` and
+    /// `ctrl-u` route through the clamp; `N` called `match_prev` directly and
+    /// climbed past it, and the existing `n`/`N` test presses `N` once.
     ///
-    /// The chip costs a row, so the body is two rows shorter than the pane,
-    /// not one. A jump sized to the pane rather than the body skips a line
-    /// between consecutive pages: it belongs to neither window and `ctrl-u`
-    /// alone never renders it. Paging back down is symmetric either way,
-    /// which is why the round trip looked fine and the gap did not.
-    ///
-    /// Asserts every line across the two windows, not the offset: an
-    /// operator reading history by paging silently misses the gap, so a
-    /// test that only watched the number move would too.
-    /// Wrapped paging leaves no line unseen either, over a feed whose older
-    /// lines are far longer than its newest.
-    ///
-    /// Measured: with the page sized from the tail, three steps into the
-    /// wrapped stretch showed `old-32..old-35` where the step before showed
-    /// `new-4..new-15`, skipping eight lines no screen ever drew, and the
-    /// next step skipped eight more. Sized from the current window instead,
-    /// the same walk is contiguous.
-    ///
-    /// That is the off-by-one page size one level harder: sized from the
-    /// wrong place the jump was one row too many, here it is most of a
-    /// screen. Both were invisible for the same reason, that paging back
-    /// cancels the error out.
-    ///
-    /// `note_body_width` matters as much as `note_body_rows` here. The
-    /// wrap-aware path is skipped entirely while the pane's width is `0`,
-    /// which is what a test that never reports one leaves it as, so a test
-    /// missing that call passes against a page size that was never wrapped.
-    ///
-    /// Walks in one direction and asserts every line across the windows,
-    /// because paging back is symmetric and would hide the gap.
-    /// Over-scrolling does not make `j` stop working.
-    ///
-    /// `scroll_up` saturating-adds and the clamp lived only in the render, so
-    /// the stored offset climbed past anything that changes the frame.
-    /// Measured before the ceiling: a 20-line feed with a 5-row body left the
-    /// offset at 39 after 40 `k` presses, where 15 was the most that did
-    /// anything, and the operator then pressed `j` 25 times before the window
-    /// moved. `G` and `f` escape that; `j` is the reflex and it did nothing.
-    /// Holding `N` past the oldest match does not deaden `n` either.
-    ///
-    /// `k` and `ctrl-u` route through the clamp; `N` called `match_prev`
-    /// directly and climbed past it. The existing `n`/`N` test presses `N`
-    /// once, so it never reached the ceiling.
+    /// The wrap-aware path is skipped while the pane's width is `0`, so a test
+    /// that never calls `note_body_width` measures an unwrapped page size.
     #[test]
     fn over_stepping_back_through_matches_does_not_deaden_the_step_forward() {
         let mut app = fixtures::bleats_pane_with_lines(20);
@@ -492,11 +443,6 @@ mod tests {
     /// The same, walking `ctrl-d` instead. Its own test because its own
     /// arithmetic: a single shared page size drops lines in one direction
     /// whichever way it is measured.
-    ///
-    /// This one was missing when the wrapped-page fix landed, and that is
-    /// exactly why the fix was half a fix. The sibling test above presses
-    /// only `PageUp`, so a `PageDown` that skipped eight lines a step passed
-    /// the whole suite.
     #[test]
     fn wrapped_pages_down_leave_no_line_unseen() {
         /// The `old-N`/`new-N` ids the pane is drawing, in order.
@@ -629,21 +575,11 @@ mod tests {
         );
     }
 
-    /// `n` with no match axis set does nothing, rather than quietly becoming
-    /// a line-movement key.
-    /// `n` and `N` step between matches, in opposite directions, and both
-    /// stop the follow.
-    ///
-    /// The no-matcher case below covers only the inert branch, so a swapped
-    /// direction, a wrong step, or a `following` regression would all have
-    /// shipped unseen.
     /// A wrapped line's height is measured in display columns, not `char`s.
     ///
     /// Sixty full-width characters occupy 120 columns, so at this width they
     /// wrap to about twice the rows sixty ASCII characters would. Every other
-    /// wrap test here is ASCII, where the two counts agree and a regression
-    /// to `chars().count()` would pass unnoticed. This repo has fixed that
-    /// same bug on two other branches.
+    /// wrap test here is ASCII, where the two counts agree.
     #[test]
     fn a_wide_character_line_wraps_by_columns_not_char_count() {
         let mut wide = fixtures::bleats_pane_with_a_wide_line();
@@ -654,9 +590,8 @@ mod tests {
 
         // 60 double-width characters are 120 display columns. The body is
         // 40 wide less the 5-column stream tag, so 35, and 120 columns need
-        // 4 rows. Counting `char`s instead gives 60 over 35, which is 2.
-        // The title takes one more row, so 5 total by columns and 3 by
-        // `char`s: the assertion separates the two.
+        // 4 rows. Counting `char`s instead gives 60 over 35, which is 2: the
+        // assertion separates the two.
         assert!(
             wide_rows >= 5,
             "wrapped by columns that is 4 body rows plus a title; by \

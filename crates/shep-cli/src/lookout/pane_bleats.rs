@@ -22,10 +22,8 @@ pub use filters::{Filters, MatchKind};
 /// Holds the sheep it opened on rather than reading the dashboard's
 /// selection: full screen leaves no table on which to change one, so the
 /// pane describes a single sheep for as long as it is open. Also holds the
-/// filters an operator has stacked on top of that sheep's feed, and, while
-/// the match box is open, what the match axis held before the edit began.
-/// `Debug` is derived. A row key, a filter set and a snapshot of typed
-/// search text carry no env, no path and no argument vector.
+/// filters stacked on top of that sheep's feed, and, while the match box is
+/// open, what the match axis held before the edit began. `Debug` is derived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BleatsPane {
     sheep: RowKey,
@@ -35,22 +33,20 @@ pub struct BleatsPane {
     /// can restore it. `None` the rest of the time.
     match_snapshot: Option<match_edit::MatchEdit>,
     /// How many surviving lines back from the newest one the view is
-    /// scrolled, counting **filtered** lines (what [`Self::visible`]
-    /// returns), not raw ones. `0` is the newest surviving line, the tail;
-    /// it grows as the operator scrolls toward older lines. A stored value
-    /// is never trusted past a filter change: [`super::view::bleats_full`]
-    /// recomputes the window from this and the current survivor count on
-    /// every draw, so a narrowing filter cannot leave it pointing past the
-    /// end.
+    /// scrolled, counting filtered lines (what [`Self::visible`] returns),
+    /// not raw ones. `0` is the newest surviving line, the tail.
+    ///
+    /// A stored value is never trusted past a filter change:
+    /// [`super::view::bleats_full`] recomputes the window from this and the
+    /// current survivor count on every draw.
     scroll_offset: usize,
     /// Whether the view stays pinned to the newest surviving line as new
     /// ones arrive. `true` on open: an operator who has not scrolled wants
-    /// the live tail. A deliberate move off the tail clears it: every
-    /// backward step, and [`Self::match_next`], which steps toward the newest
-    /// line and clears it anyway. [`Self::scroll_down`] is the one that does
-    /// not, walking back toward a tail an earlier step left rather than away
-    /// from one. [`Self::jump_to_end`] and [`Self::toggle_follow`] (turning it
-    /// on) both restore it and reset [`Self::scroll_offset`] to `0`.
+    /// the live tail. A deliberate move off the tail clears it.
+    ///
+    /// [`Self::scroll_down`] is the one key that does not, walking back
+    /// toward a tail an earlier step left. [`Self::jump_to_end`] and
+    /// [`Self::toggle_follow`] restore it and reset [`Self::scroll_offset`].
     following: bool,
     /// The body rows available to page by, set from
     /// [`super::app::App::note_body_rows`]. `0` until the first draw.
@@ -94,10 +90,9 @@ impl BleatsPane {
     ///
     /// A thin alias for [`Filters::match_text`], `#[cfg(test)]` like
     /// [`super::app::App::bleats_pane_mut_for_tests`]: nothing in production
-    /// reads a promoted pane's carried filter back out once `b` has set it,
-    /// only `crate::lookout::app`'s own
-    /// `b_promotes_the_feed_to_full_screen_with_its_filters`, which asserts
-    /// that promotion carried it rather than dropping it.
+    /// reads a promoted pane's carried filter back out, only
+    /// `crate::lookout::app`'s own
+    /// `b_promotes_the_feed_to_full_screen_with_its_filters`.
     #[cfg(test)]
     #[must_use]
     pub(crate) fn match_filter(&self) -> Option<&str> {
@@ -140,12 +135,10 @@ impl BleatsPane {
     /// The lines from `lines` that survive every filter axis currently set.
     ///
     /// Read by [`super::view::bleats_full::draw`], both to draw only the
-    /// lines that pass and to count how many did, out of how many were in
-    /// the window.
+    /// lines that pass and to count how many did.
     ///
-    /// `levels` is how this sheep's lines are read, which is the sheep's own
-    /// business rather than the pane's: [`super::app::App::feed_classifier`]
-    /// builds it from the row the feed came from.
+    /// `levels` is how this sheep's lines are read, built by
+    /// [`super::app::App::feed_classifier`] from the row the feed came from.
     #[must_use]
     pub fn visible<'a>(&self, lines: &'a [TailLine], levels: &Classifier) -> Vec<&'a TailLine> {
         lines
@@ -259,18 +252,12 @@ impl BleatsPane {
     }
 
     /// `n`: steps one line toward the newest matching line. A no-op with no
-    /// match axis set, rather than quietly becoming a line-movement key:
-    /// with the axis off there is no "matching line" to step between at
-    /// all.
+    /// match axis set, rather than quietly becoming a line-movement key.
     ///
     /// Runs the matcher no second time: once the axis is set,
     /// [`Filters::keeps`] already dropped every non-matching line out of
-    /// [`Self::visible`], so every surviving line *is* a match, and
-    /// stepping between matches is stepping between the lines already on
-    /// screen. Clears the follow flag whenever it steps: `n` moves toward
-    /// the newest line rather than away from it, but the design still calls
-    /// it a deliberate jump the next refresh must not undo. The guard above clears nothing, so an `n` pressed with no
-    /// axis set leaves a followed view following.
+    /// [`Self::visible`]. Clears the follow flag whenever it steps, and the
+    /// no-axis guard clears nothing.
     pub fn match_next(&mut self) {
         if self.filters.match_text().is_none() {
             return;

@@ -433,14 +433,6 @@ fn closing_hands_out_every_filed_edit_and_leaves_the_pane_empty() {
     );
 }
 
-/// The confirm sentence quotes what a write would actually mean, not
-/// the digits the operator typed: this is the moment the maintainer's
-/// own report says nothing warned them.
-/// A unit field files the buffer verbatim, resolved unit or not: the
-/// daemon parses `MemSize`, so a pane that rewrote `64` as `64 B`
-/// would be a second grammar to keep in step with it. The resolving
-/// happens on the way to the screen, in `display_value`, and nowhere
-/// else.
 #[test]
 fn a_unit_field_files_the_buffer_and_never_a_resolved_form() {
     for typed in ["64", "512M"] {

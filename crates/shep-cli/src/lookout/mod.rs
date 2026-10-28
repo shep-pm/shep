@@ -2,13 +2,12 @@
 //!
 //! Four panes, one screen: the flock table, a sheep detail pane
 //! ([`view::detail`]) and a bleats feed ([`view::bleats`]) under the selected
-//! row, and a host-usage strip ([`view::host`]) above. A narrow or short
-//! terminal drops panes before columns; [`view::panes_for`] is the tier table.
+//! row, and a host-usage strip ([`view::host`]) above. A narrow terminal drops
+//! panes before columns; [`view::panes_for`] is the tier table.
 //!
-//! Two tasks: the link task ([`link::run_link`]) owns the connection, the UI
-//! loop ([`run_ui`](ui_event_loop::run_ui)) owns the screen, and they talk over an `mpsc` each way.
-//! Neither borrows the other. A dead shepherd freezes the dashboard rather
-//! than ending it; see [`link::RECONNECT_ATTEMPTS`].
+//! Two tasks talk over an `mpsc` each way: [`link::run_link`] owns the
+//! connection, [`run_ui`](ui_event_loop::run_ui) the screen. A dead shepherd
+//! freezes the dashboard; see [`link::RECONNECT_ATTEMPTS`].
 
 pub mod app;
 pub mod edits;

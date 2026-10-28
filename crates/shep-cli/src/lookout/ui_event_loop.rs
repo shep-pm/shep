@@ -15,18 +15,12 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-/// The UI loop.
+/// The UI loop, generic over the backend and the key source so a test can
+/// drive it with a `TestBackend` and get the terminal back.
 ///
-/// Generic over the backend and the key source, so a test drives it with a
-/// `TestBackend` and a finite `tail::Stream`, and gets the terminal back.
-///
-/// Five `biased` arms: `SIGTERM`, the keyboard, the link, the settings
-/// screen's finished file I/O, the heartbeat. An exhausted source is `Ready`
-/// forever, so every arm above the heartbeat is disabled once it runs dry;
-/// arm 4's is live, since an empty `FuturesUnordered` fills again. The redraw
-/// runs after the `select!`, gated on `dirty` and [`MIN_REDRAW`]; the feed
-/// and the lamb fetch ride that same gate. Eight arguments, hence the
-/// `#[allow]`.
+/// An exhausted key source is `Ready` forever, so every arm above the
+/// heartbeat is disabled once it runs dry; arm 4's is live, since an empty
+/// `FuturesUnordered` fills again.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_ui<B: Backend, S, L>(
     mut app: App,
@@ -35,12 +29,10 @@ pub async fn run_ui<B: Backend, S, L>(
     mut msgs: mpsc::Receiver<Msg>,
     polls: mpsc::Sender<()>,
     requests: mpsc::Sender<super::app::Sent>,
-    // The resolved layout. `paths.home` is `$SHEP_HOME` as this invocation
-    // resolved it, which `Effect::LoadDogPane` hands the schema probe:
-    // `commands::dogs::ask` sets `SHEP_HOME` for the probed candidate, so a
-    // home other than `--home`'s could point a probe at the live daemon's
-    // socket instead. Cloned into each `spawn_blocking` closure that outlives
-    // this stack frame.
+    // `paths.home` is `$SHEP_HOME` as this invocation resolved it, which
+    // `Effect::LoadDogPane` hands the schema probe: `commands::dogs::ask`
+    // sets `SHEP_HOME` for the probed candidate, so a home other than
+    // `--home`'s could point a probe at the live daemon's socket instead.
     paths: ShepPaths,
     mut local: L,
 ) -> Terminal<B>
@@ -63,14 +55,10 @@ where
     // Set by `Effect::RefreshSelected` and by `Effect::PollNow`, cleared once
     // the coalesced request below has gone out.
     let mut lambs_dirty = false;
-    // Set wherever `feed_dirty` is, cleared once the read below has run.
-    //
-    // The feed's cadence, not the lamb walk's: `Msg::Snapshot` answers every
-    // ordinary poll with `Effect::RefreshFeed`, and its own comment gives the
-    // reason this flag needs the same trigger, that "the selected row's log
-    // paths can change even when the selection does not". Hung off
-    // `lambs_dirty` this refreshed on a selection change and then never again
-    // while an operator sat on one sheep watching it write.
+    // Set wherever `feed_dirty` is, cleared once the read below has run. The
+    // feed's cadence, not the lamb walk's: a selected row's log paths can
+    // change while the selection does not, so this rides
+    // `Effect::RefreshFeed` rather than `lambs_dirty`.
     let mut log_size_dirty = false;
     // The settings screen's file I/O, in flight. Each entry resolves to the
     // `Msg` its result belongs in. A set, not a slot: a second write can be
@@ -86,19 +74,10 @@ where
         // shows it and never on a frame that is not about to be drawn.
         let may_draw = last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW);
         if feed_dirty && may_draw {
-            // `feed_row`, not `selected_row`: both the full-screen pane and
-            // the sheep pane's own embedded feed pin a sheep, and the
+            // `feed_row`, not `selected_row`: both feeds pin a sheep, and the
             // selection can move out from under either, so reading the
-            // selection would draw another sheep's lines under a title
-            // naming the pinned one.
-            //
-            // Nothing to read means an empty flock, or a pinned sheep that
-            // has left it, and the pane's header says which. `super::tail::read`'s
-            // `(None, None)` early return is for a different case, a sheep
-            // whose shepherd predates the `out_file`/`err_file` fields.
-            //
-            // Over a host the rows' log paths name files on that host, which
-            // this machine cannot read; the feed draws a line saying so.
+            // selection would draw another sheep's lines under a title naming
+            // the pinned one. Over a host, the paths name unreadable files.
             let tail = match app.feed_row() {
                 Some(_) if app.remote_host().is_some() => super::tail::Tail::default(),
                 None => super::tail::Tail::default(),
@@ -131,12 +110,9 @@ where
             lambs_dirty = false;
         }
         if log_size_dirty && may_draw {
-            // The detail pane's log size. Read here for the same two reasons as
-            // the walk above: `run_ui` owns the reader, and a terminal too
+            // The detail pane's log size. Read here for the same two reasons
+            // as the walk above: `run_ui` owns the reader, and a terminal too
             // short to draw the pane must not pay for a read it cannot show.
-            // It used to be two `fs::metadata` calls inside the draw, so up to
-            // sixty a second for a number that moves when the sheep writes a
-            // line.
             let height = terminal.size().map_or(0, |size| size.height);
             if super::view::panes_for(height).detail
                 && app.remote_host().is_none()
@@ -218,9 +194,8 @@ where
             _ = heartbeat.tick() => {
                 // The host sample rides this arm rather than adding one of
                 // its own: memory and a load average cost microseconds and no
-                // process-table walk. Sampled unconditionally and refused by
-                // the reducer once the link is lost, one enforcement point.
-                // Not over a host: this machine's load is not the host's.
+                // process-table walk. Not over a host: this machine's load is
+                // not the host's.
                 if app.remote_host().is_none() {
                     let _ = app.update(Msg::Host { sample: local.host() });
                 }
@@ -270,12 +245,10 @@ where
                     let _ = app.update(Msg::Unsent { sent });
                 }
             }
-            // Off this task, unlike the arm above: `try_send` would drop
-            // the tail of a batch deeper than the channel, and this task
-            // has no `.await` point in a bare loop to let the link task
-            // drain it through. `batch_dispatch::send_batch` owns a cloned sender and
-            // awaits each entry in turn, in one task, so order survives
-            // and nothing is dropped for merely being full.
+            // Off this task, unlike the arm above: `try_send` would drop the
+            // tail of a batch deeper than the channel, and this task has no
+            // `.await` point in a bare loop to let the link task drain it
+            // through. `batch_dispatch::send_batch` awaits each entry in turn.
             Effect::SendAll(batch) => {
                 inflight.push(Box::pin(send_batch(requests.clone(), batch)));
             }
@@ -297,15 +270,10 @@ where
                     Msg::Settings { result }
                 }));
             }
-            // Off this task for the same reason `Effect::WriteSetting` is:
-            // the store's own lock (`ShepToml::try_edit`'s cousin over
-            // `secrets.json`) acquires with no deadline.
-            //
-            // The environment is the current tab's, once there is one;
-            // before the first load lands there is no tab yet, so this reads
-            // the daemon's own configured default instead, and `Msg::Secrets`
-            // echoes back whichever it used so the reducer can find that
-            // environment's tab once the model arrives.
+            // Off this task for `Effect::WriteSetting`'s reason: the store's
+            // own lock acquires with no deadline. The environment is the
+            // current tab's, or the daemon's configured default before the
+            // first load lands; `Msg::Secrets` echoes back whichever it used.
             Effect::LoadSecrets => {
                 let paths = paths.clone();
                 // `all_rows`, not the filtered `keymap::rows`: READ BY has to name
@@ -339,11 +307,8 @@ where
             }
             // Off this task for `Effect::LoadSettings`'s reason: a read that
             // takes no lock still stalls the redraw, the tick and the bus
-            // drain while it opens and parses a file.
-            //
-            // The row and the environment ride back out on the `Msg`, which
-            // is where the pane decides whether the answer is still the one
-            // it asked for.
+            // drain while it opens and parses a file. The row and the
+            // environment ride back out on the `Msg` for the pane to match.
             Effect::RevealSecret {
                 store,
                 provider_cache,
@@ -506,10 +471,7 @@ where
             // One of a dog's other `[daemon] keys, off the settings screen.
             // `spawn_blocking` for `Effect::WriteSetting`'s reason: both halves
             // take `shep.toml`'s lock, and a grant reads the dog's manifest,
-            // which can cost up to `VERSION_BUDGET` of somebody else's binary
-            // starting up. The refusal is the CLI's own sentence, so a grant
-            // lookout refuses reads the same as the one `shep dogs grant`
-            // refuses. `_authority` is dropped as in `Effect::WriteSetting`.
+            // which can cost up to `VERSION_BUDGET` of a binary starting up.
             Effect::WriteDogTune {
                 tune,
                 ticket,
@@ -566,9 +528,8 @@ where
                 let store = paths.secrets.clone();
                 // The `bool` is `unset`'s own answer: `false` means there was
                 // no slot to remove. It reaches `Msg::SecretWritten` rather
-                // than being dropped, so a delete that removed nothing
-                // cannot arrive looking like a delete that worked. A `set`
-                // always changed the store, so it says `true`.
+                // than being dropped, so a delete that removed nothing cannot
+                // arrive looking like one that worked.
                 let handle = tokio::task::spawn_blocking(move || match edit.value {
                     Some(value) => {
                         shep_core::secrets::set(&store, &edit.key, &edit.environment, &value)
@@ -581,14 +542,10 @@ where
                     Msg::SecretWritten { result }
                 }));
             }
-            // A rename: both halves in one task, so one `Enter` gets one answer
-            // and one re-read. Each half still takes the store's own lock, so a
-            // rename that fails at the removal leaves the key under two names
-            // rather than under none. `_authority` is dropped as it is there.
-            //
-            // The `bool` is the same answer `Msg::SecretWritten` takes above:
-            // whether the store changed at all, which a rename always did once
-            // its set half ran.
+            // A rename: both halves in one task, so one `Enter` gets one
+            // answer and one re-read. Each half still takes the store's own
+            // lock, so a rename that fails at the removal leaves the key under
+            // two names rather than under none.
             Effect::WriteSecrets(edits, _authority) => {
                 let store = paths.secrets.clone();
                 let handle = tokio::task::spawn_blocking(
@@ -673,15 +630,10 @@ mod tests {
     /// The property, not the mechanism: with a write in flight and unable to
     /// finish, the loop still processes what comes after it.
     ///
-    /// Held up by taking `shep.toml`'s own lock from a second file descriptor.
-    /// `flock(2)` excludes per open file description, not per process, so
-    /// `ShepToml::try_edit` blocks with no deadline and nothing to wake it.
-    /// `q` after the confirm is what has to keep working. Unix only: the
-    /// Windows arm of `ConfigLock` polls a `share_mode(0)` open instead.
-    ///
-    /// The clock is the real one: a paused clock auto-advances only while the
-    /// runtime is idle, and a thread parked on a lock is not idle, so the
-    /// timeout would never fire.
+    /// Held up by taking `shep.toml`'s lock from a second file descriptor:
+    /// `flock(2)` excludes per open file description, not per process. Unix
+    /// only. No `start_paused`: a thread parked on a lock is never idle, so a
+    /// paused clock would never advance the timeout.
     #[cfg(unix)]
     #[tokio::test]
     async fn the_loop_keeps_running_while_a_settings_write_is_stuck() {
@@ -757,11 +709,8 @@ mod tests {
 
         // The other half of the same property: the write was not cancelled by
         // the loop leaving. `spawn_blocking` runs its closure to completion
-        // whatever happens to the handle, so releasing the lock here lets it
-        // land.
-        // A bound so a lost write reports rather than hangs, 3_000 * 10ms =
-        // thirty seconds. Not a claim about speed: when the blocking pool
-        // reaches the closure is the runner's business, not shep's.
+        // whatever happens to the handle. The bound is so a lost write reports
+        // rather than hangs, not a claim about speed.
         const WRITE_ATTEMPTS: usize = 3_000;
         const WRITE_POLL: Duration = Duration::from_millis(10);
         drop(held);
@@ -776,16 +725,12 @@ mod tests {
         assert!(written, "the write that was in flight still landed");
     }
 
-    /// Drives `Effect::LoadSecrets` end to end, the only test that does: every
-    /// other secrets-pane test calls `App::update` directly and inspects the
-    /// `Effect` it returns as a value, so nothing ever runs the arm that
-    /// reads `paths.secrets` and gathers who reads each key.
+    /// Drives `Effect::LoadSecrets` end to end, the only test that does: the
+    /// others call `App::update` and inspect the returned `Effect` as a value.
     ///
-    /// `reader-app` is filtered off the dashboard (`App::rows()`) by name
-    /// before `S` opens the pane, but it still names `API_KEY` in the muster
-    /// roll. `Effect::LoadSecrets` has to gather readers off
-    /// `App::all_rows()`, not `App::rows()`, or a name filter would make
-    /// `READ BY` lie about who reads a key.
+    /// `reader-app` is filtered off the dashboard by name before `S` opens the
+    /// pane, but still names `API_KEY` in the muster roll, so readers must
+    /// come from `App::all_rows()` and not `App::rows()`.
     #[tokio::test]
     async fn load_secrets_counts_a_reader_the_dashboard_filter_has_hidden() {
         // Short, not the default `$TMPDIR`: a long `$SHEP_HOME` overflows
