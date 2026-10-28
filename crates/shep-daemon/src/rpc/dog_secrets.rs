@@ -20,12 +20,8 @@ use super::error::invalid_config;
 ///
 /// The raw read comes first, so the text is the operator's own, and the
 /// store is read only when the section names a reference: a corrupt
-/// `secrets.json` cannot break a dog that asks for none. A section with none
-/// is still resolved, against an empty view, so a malformed `{{secret:` is
-/// refused rather than handed to the dog as literal text.
-///
-/// Nothing here writes `dogs.toml`. Every refusal names the section, the
-/// key path and the reference, never a value.
+/// `secrets.json` cannot break a dog that asks for none. Nothing here
+/// writes `dogs.toml`. Every refusal names a reference, never a value.
 pub(super) fn resolved_section(ctx: &RpcContext, name: &str) -> Result<DogSectionToml, RpcError> {
     let raw = crate::dogs::dog_section(&ctx.dogs_config, name).map_err(invalid_config)?;
     let view = if section_references(&raw).is_empty() {

@@ -4,15 +4,10 @@
 //! An adopted sheep has no `tokio::process::Child` and none can be built
 //! from a bare pid, so this reaper runs alongside tokio's own in the same
 //! process. `waitpid(-1, ..)` here would race tokio's reaper for a status
-//! tokio needed, losing an exit code and a signal for good; zero and
-//! negative pids are that wildcard wearing a different number, so they are
-//! refused. A targeted wait steals nothing: nothing else in this process
-//! holds a `Child` for an adopted pid, and an exec replaces the image rather
-//! than the process, so those pids are still its children. Each wait arms
-//! its own multiplexed `SIGCHLD` stream before its first look.
-//!
-//! `shep-handover` does the waiting. What stays here is the replay: a status
-//! can be taken once, and the supervisor may ask again.
+//! tokio needed, losing an exit code and a signal for good. A targeted wait
+//! steals nothing: nothing else in this process holds a `Child` for an
+//! adopted pid. Each wait arms its own multiplexed `SIGCHLD` stream.
+//! `shep-handover` does the waiting; what stays here is the replay.
 
 use std::collections::HashMap;
 use std::io;

@@ -52,11 +52,9 @@ where
 /// that helper maps `Vec<ProcessInfo>`, and `Response::Triggered` carries
 /// `Vec<ActionReply>`, a row `ProcessInfo` cannot hold a reply body on.
 ///
-/// How long each app gets to answer is `AppConfig::action_timeout`, one value
-/// per matched sheep, read where the wait is armed (`Actor::begin_action`).
-/// `shep_core::config::normalize` refuses only a value no caller could ever
-/// outlast; one past the default budget is accepted, and the caller's own
-/// deadline decides whether that pays off.
+/// How long each app gets to answer is `AppConfig::action_timeout`, one
+/// value per matched sheep, read where the wait is armed
+/// (`Actor::begin_action`).
 pub(super) async fn trigger(
     id: u64,
     spec: SelectorSpec,

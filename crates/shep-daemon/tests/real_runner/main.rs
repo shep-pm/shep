@@ -7,8 +7,7 @@
 //! The cases live one module per what it proves: `logs` the log plane,
 //! `signals` the signal paths, `channel` fd 3, `identity` the credentials a
 //! spawn asks the OS for, `environment` the `PATH` and stdin a child
-//! inherits, `adoption` the seam a successor reaches a running sheep
-//! through. This file holds what more than one of them uses.
+//! inherits, `adoption` the seam a successor reaches a running sheep through.
 
 #![cfg(unix)]
 
@@ -84,11 +83,8 @@ const LONG_DEADLINE: Duration = Duration::from_secs(10);
 /// one: nothing arrives inside `deadline`, or the pump's channel closes.
 ///
 /// `want` says what the caller was waiting for, and both panics carry it.
-/// The second `expect` this replaces had its own string at every site,
-/// seven distinct ones saying the log channel had closed.
 ///
 /// # Panics
-///
 /// If no line arrives within `deadline`, or the log channel closes first.
 async fn recv_log(io: &mut ProcIo, deadline: Duration, want: &str) -> LogLine {
     tokio::time::timeout(deadline, io.logs.recv())
@@ -135,12 +131,10 @@ async fn await_file_contents(path: &Path, expected: &str) {
 
 /// Waits for `proc` to exit, failing at `deadline`, and hands back the outcome.
 ///
-/// `why` and [`Location::caller`]'s line ride on the panic. `#[track_caller]`
-/// is a no-op on an `async fn`, so this is a plain `fn` that reads the caller
-/// before it builds the future: a test that fails names its own line.
+/// `why` and [`Location::caller`]'s line ride on the panic. `#[track_caller]` is
+/// a no-op on an `async fn`, so this is a plain `fn` that reads the caller first.
 ///
 /// # Panics
-///
 /// If `proc` has not exited within `deadline`.
 #[track_caller]
 fn reaped<'a, P: RunningProcess>(
@@ -165,11 +159,8 @@ const REAP_DEADLINE: Duration = Duration::from_secs(5);
 ///
 /// Fires only while panicking. On the success path the test has already
 /// proven these pids are gone, and signalling one the OS may have recycled
-/// is a hazard rather than a safety net.
-///
-/// SIGKILLs the whole process group (`-pid`, not `pid`): `TokioRunner`
-/// spawns every child as its own group leader, so a leader-only signal
-/// would miss a forked grandchild.
+/// is a hazard. SIGKILLs the whole process group (`-pid`, not `pid`):
+/// `TokioRunner` spawns every child as its own group leader.
 struct Reaper(Vec<i32>);
 
 impl Reaper {

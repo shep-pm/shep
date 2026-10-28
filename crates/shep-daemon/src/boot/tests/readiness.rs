@@ -54,14 +54,12 @@ async fn boot_writes_readiness_to_the_callers_pipe_after_the_socket_is_bound() {
     drop(daemon); // no run() needed; SignalTasks::drop stops the listeners
 }
 
-/// The ordering `Type=notify` was chosen for: a unit that goes green at
-/// exec time reports a flock that is not up yet, and a hung restore reads
-/// as a healthy service supervising nothing.
+/// The ordering `Type=notify` was chosen for: a unit that goes green at exec
+/// time reports a flock that is not up yet.
 ///
 /// The restore announces its own spawn on the same socket, so what is
-/// asserted is the queue order of two datagrams. Reading only `READY=1`
-/// after `boot` returns would pass on a notify moved to the top of `boot`,
-/// since the kernel keeps that datagram queued however early it was sent.
+/// asserted is the queue order of two datagrams. Reading only `READY=1` after
+/// `boot` returns would pass on a notify moved to the top of `boot`.
 #[tokio::test]
 async fn readiness_is_reported_only_once_the_roll_is_restored() {
     // Real time: binds a real socket, so this obeys SIGNAL_TEST_LOCK's
@@ -132,15 +130,11 @@ async fn readiness_is_reported_only_once_the_roll_is_restored() {
 
 /// The deadline systemd holds a `Type=notify` unit to is one number, and a
 /// staged restore spends it a stage at a time. Each stage announces the most
-/// the walk will wait on it, so the deadline follows the walk instead of the
-/// operator's guess at its depth.
+/// the walk will wait on it.
 ///
-/// A stage that is waited on announces twice, because each message sets a
-/// fresh deadline from its receipt: once before its spawns, once before its
-/// wait. The restore ends with one more for the setup before `READY=1`.
-///
-/// Different `listen_timeout`s, so a bound that was a constant, or the first
-/// stage's repeated, would not pass.
+/// A stage that is waited on announces twice: once before its spawns, once
+/// before its wait, since each message sets a fresh deadline from its receipt.
+/// Different `listen_timeout`s, so a constant bound would not pass.
 #[tokio::test]
 async fn each_restored_stage_extends_the_start_deadline_before_readiness() {
     // Real time: binds a real socket, so this obeys SIGNAL_TEST_LOCK's

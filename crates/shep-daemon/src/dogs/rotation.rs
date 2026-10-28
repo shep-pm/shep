@@ -13,14 +13,10 @@ use super::secrets::section_references;
 /// Every dog whose section in `dogs_config` names `namespace`, with the
 /// keys it names there.
 ///
-/// `namespace` is a provider's name, or `None` for the operator's own
-/// store, which an un-namespaced `{{secret:KEY}}` reads. Either way the keys
-/// come back bare.
-///
-/// A reference is read through [`section_references`], so a string that
-/// [`super::resolve_section`] would not substitute names nothing. A missing,
-/// unreadable or invalid file names nobody, and so does a section that does
-/// not parse: the change that asked is not the place to report either.
+/// `namespace` is a provider's name, or `None` for the operator's own store,
+/// which an un-namespaced `{{secret:KEY}}` reads. Either way the keys come
+/// back bare. A reference is read through [`section_references`], so a
+/// string that [`super::resolve_section`] would not substitute names nothing.
 #[must_use]
 pub fn dogs_referencing(
     dogs_config: &Path,

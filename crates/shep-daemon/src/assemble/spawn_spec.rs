@@ -12,30 +12,17 @@ use std::path::PathBuf;
 
 /// Assembles a [`SpawnSpec`] from a validated app config and instance slot.
 ///
-/// `credentials` and `secrets` are both resolved by the caller, since a
-/// passwd lookup and a store read are real I/O and this function otherwise
-/// stays pure. `interpreter = None` or `Some("none")` runs the script
-/// directly; `Some(path)` runs `path` with `[script, ...args]`.
-///
+/// `credentials` and `secrets` are resolved by the caller: a passwd lookup
+/// and a store read are real I/O. `interpreter = None` or `Some("none")`
+/// runs the script directly; `Some(path)` runs `path` with the script.
 /// Explicit `out_file`/`err_file` win over the default log path and render
-/// `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` the way `env` and `args`
-/// do; normalize refuses a `{{secret:...}}` in either, and a path that
-/// collides across instances unless `merge_logs` asked for it. A relative one
-/// is anchored at the app's `cwd`, which a `{{SHEP_HOME}}` path never is: it
-/// renders absolute, so the anchor leaves it alone.
-/// `SpawnSpec::stdin` carries `config.stdin` straight through: unlike
-/// `channel`, nothing else turns it on.
-///
-/// The spec a child is spawned from, and the only one that may be: every
-/// `{{secret:...}}` in it resolved. The crate-private `describe` is for a
-/// caller reading a spec it will not spawn.
+/// `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` as `env` and `args` do.
+/// `SpawnSpec::stdin` carries `config.stdin` straight through.
 ///
 /// # Errors
 ///
 /// - [`AssembleError::Template`]: an `env` value or an arg names a secret
-///   this view cannot resolve. [`AssembleError::is_retriable`] says whether
-///   waiting would help. A log path cannot reach here: normalize refuses a
-///   secret in one.
+///   this view cannot resolve. [`AssembleError::is_retriable`] says more.
 pub fn assemble(
     app: &ResolvedApp,
     instance: u32,
@@ -70,21 +57,8 @@ pub fn assemble(
 /// references as written instead of refusing.
 ///
 /// Never spawn this sheep's own program from what this returns. Its callers
-/// name a sheep's log files, preflight the program exec will find, or build
-/// a prober, and a refusal there would cost an operator the sheep itself:
-/// `shep add` exists to register a template whose secrets nobody has filled
-/// in yet, and an adoption that refused one would strand a running flock.
-///
-/// A prober is the caller that does spawn something. `OsProber` runs an
-/// exec probe's own command in this spec's `cwd` with this spec's `env`, so
-/// a value that fell back reaches that command as the reference itself:
-/// `PW={{secret:KEY}}`, not the value and not an empty string. Only a sheep
-/// that already spawned is armed with a probe, so the fallback is reachable
-/// there just while the store has stopped answering something it answered
-/// at the spawn.
-///
-/// The whole value falls back, not the one reference in it that missed, so a
-/// caller cannot read a half-resolved value as a resolved one.
+/// name log files, preflight the program, or build a prober, and a refusal
+/// there would cost an operator the sheep itself.
 #[must_use]
 pub(crate) fn describe(
     app: &ResolvedApp,
@@ -645,13 +619,10 @@ mod tests {
         );
     }
 
-    // Goes through `build`, the function `assemble`/`describe` actually call,
-    // rather than asserting on `INHERITED_WINDOWS.contains(...)` directly: a
-    // list-membership assert would stay green even if `build` stopped
-    // reading its `inherited` argument at all. Passes `INHERITED_WINDOWS`
-    // explicitly so this runs on any host rather than only in CI's Windows
-    // job, the same way this crate's other unit-file renderers are pinned
-    // by text without needing the OS they render for.
+    // Goes through `build`, which `assemble` and `describe` call. A
+    // list-membership assert would stay green if `build` stopped reading
+    // `inherited`. Passes `INHERITED_WINDOWS` explicitly, so this runs on
+    // any host and not only in CI's Windows job.
     #[test]
     fn windows_stdio_encoding_vars_reach_spec_env() {
         let app_config = AppConfig {

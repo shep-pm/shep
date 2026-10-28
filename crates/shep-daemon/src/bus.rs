@@ -43,16 +43,12 @@ pub fn new_bus() -> Bus {
     }
 }
 
-/// The daemon's event channel, plus the one question the channel cannot
-/// answer: whether anything is listening for log lines.
+/// The daemon's event channel, plus whether anything is listening for log lines.
 ///
 /// `broadcast::Sender::receiver_count` would always answer yes: two
-/// subscribers exist for the daemon's whole life and neither reads a log
-/// line. This counts only subscribers whose `TopicFilter` actually matches
-/// a log topic, and [`Self::publish_log`] skips the publish while it is zero.
+/// subscribers exist for the daemon's life and neither reads a log line.
 ///
 /// # Debug
-///
 /// Derived, unredacted: only a channel handle and a counter.
 #[derive(Clone, Debug)]
 pub struct Bus {
@@ -118,13 +114,10 @@ impl Deref for Bus {
 /// Announces one `config.dog.<name>` per dog whose section changed.
 ///
 /// Says only that it changed: a dog re-asks with `Request::DogConfig` and
-/// decides for itself whether to swap values, rebind a listener, or
-/// restart. Exactly one event per name, none for an empty list. A dog told
-/// twice re-asks twice, which for one that restarts on a change is two
-/// restarts an operator reads as instability.
-///
-/// Not gated by [`Bus::publish_log`]: that gate counts subscribers wanting
-/// log topics, and a dog watching its own config is not one.
+/// decides for itself whether to swap values, rebind a listener, or restart.
+/// Exactly one event per name, none for an empty list: a dog told twice
+/// re-asks twice, which reads as instability. Not gated by
+/// [`Bus::publish_log`], which counts log-topic subscribers.
 pub fn publish_dog_config_changed(bus: &Bus, dogs: &[String]) {
     for dog in dogs {
         let _ = bus.send(BusEvent::DogConfigChanged { dog: dog.clone() }.into());
@@ -166,13 +159,9 @@ pub(crate) fn test_bus(capacity: usize) -> (Bus, broadcast::Receiver<SharedEvent
 ///
 /// Both costs this removes are linear in subscriber count: a `broadcast`
 /// clone is a refcount bump instead of copying the event, and the frame is
-/// encoded once, by whichever forwarder asks first, instead of per client.
-///
+/// encoded once instead of per client.
 /// # Debug
-///
-/// Hand-written, so the cached frame and the test-only encode tally stay
-/// out: printing the frame twice tells a reader nothing, and a
-/// `#[cfg(test)]` field would make the debug string differ under `cargo test`.
+/// Hand-written: the cached frame and the test-only encode tally stay out.
 #[derive(Clone)]
 pub struct SharedEvent(Arc<Shared>);
 

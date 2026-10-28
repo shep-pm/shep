@@ -173,20 +173,12 @@ fn a_dependency_on_a_dog_the_boot_never_promotes_is_warned_about() {
 }
 
 /// fails if the unpromoted-dog warning reads the promotion list alone.
-/// [`muster`] is also the handler for an operator's `Request::Muster`,
-/// reached long after boot with both dog groups up, so a sheep waiting on
-/// an unpromoted but LIVE dog would be warned about on every
-/// `shep muster`. That is the same false-positive class `restorable`
-/// closes for a sheep-to-sheep edge.
 ///
-/// Driven through `muster` rather than through `warn_about_the_graph`
-/// with a synthetic list: the sibling cases all hand it their own
-/// arguments, so none of them can see a flock at all. The control is the
-/// same roll against a shepherd holding no dog, which is boot's case and
-/// must still warn.
-///
-/// `#[test]` with a `block_on` of its own, not `#[tokio::test]`:
-/// `capture_logs` scopes its subscriber to a synchronous closure.
+/// Driven through `muster`, which an operator's `shep muster` also reaches,
+/// long after boot with both dog groups up: the sibling cases hand
+/// `warn_about_the_graph` their own arguments and can see no flock. The
+/// control is the same roll against a shepherd holding no dog, which must
+/// still warn.
 #[test]
 fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about() {
     let rt = tokio::runtime::Builder::new_current_thread()

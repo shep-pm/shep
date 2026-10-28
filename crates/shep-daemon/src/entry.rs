@@ -32,20 +32,15 @@ pub struct ProcessEntry {
     /// Recorded when the load parks the config, against the spec held at
     /// that moment; not recomputed later, since `spec` can be rewritten by
     /// another instance's respawn before this one's own load lands. Stays
-    /// set until [`Self::pending`] is promoted. `false` whenever
-    /// [`Self::pending`] is `None`.
+    /// set until [`Self::pending`] is promoted.
     pub pending_reidentifies: bool,
     /// The [`AppConfig`](shep_core::config::AppConfig) field names an
     /// operator has set on this sheep that its current Flockfile does not
     /// declare, in field-name order. Empty for a sheep no load has ever
-    /// touched.
+    /// touched. Names only, never values.
     ///
-    /// Cached rather than read from the override store at listing time,
-    /// since `to_info` runs far more often than the store changes. Kept in
-    /// sync by every path that registers or carries a sheep: a config load
-    /// writes it from the same ledger it persists to the store; a reload
-    /// carries it off the drainee; a fresh registration reads
-    /// `Actor::overridden_for`. Names only, never values.
+    /// Cached rather than read from the override store at listing time, since
+    /// `to_info` runs far more often than the store changes.
     pub overridden: Vec<String>,
     /// Instance number within the app (for clustered apps, 0..instances-1)
     pub instance: u32,
@@ -68,25 +63,18 @@ pub struct ProcessEntry {
     /// The identity this entry's next spawn runs under.
     ///
     /// Resolved once, at the entry's first `Start` or spawn, and reused for
-    /// every later respawn, so a restart never re-touches the passwd
-    /// database or changes a running app's identity underneath it (see
-    /// [`crate::privilege::resolve`]). [`SpawnIdentity::Unresolved`] means
-    /// never looked up, not "no user configured": starting it as the
-    /// shepherd would be a silent privilege downgrade.
-    ///
-    /// The one exception: a parked `user`/`group` change
-    /// ([`Self::pending_reidentifies`]) resets this to `Unresolved` so the
-    /// promotion's spawn resolves the new identity.
+    /// every later respawn, so a restart never re-touches the passwd database
+    /// or changes a running app's identity underneath it.
+    /// [`SpawnIdentity::Unresolved`] means never looked up, not "no user
+    /// configured": starting it as the shepherd is a silent privilege downgrade.
     pub credentials: SpawnIdentity,
     /// Where this instance's stdout is appended, copied from the
     /// [`SpawnSpec`](crate::runner::SpawnSpec) that
     /// [`assemble`](crate::assemble::assemble) built.
     ///
     /// Carried here so `ProcessInfo` can report it without re-deriving the
-    /// `merge_logs`-dependent default. Set at registration and refreshed by
-    /// every respawn, since `out_file` is `ApplyGroup::NeedsRespawn`: a
-    /// config load leaves this at the old value until the respawn that
-    /// promotes [`Self::pending`] moves the child onto the new one.
+    /// `merge_logs`-dependent default. Refreshed by every respawn, since
+    /// `out_file` is `ApplyGroup::NeedsRespawn`.
     pub out_file: PathBuf,
     /// Where this instance's stderr is appended, resolved exactly as
     /// [`Self::out_file`].
@@ -100,13 +88,11 @@ pub struct ProcessEntry {
     pub dog: Option<DogSource>,
     /// How this instance's process most recently stopped existing.
     ///
-    /// Set by `Actor::handle_exited` for every exit, including an
-    /// operator's own `stop`/`delete`. `None` for an entry that has never
-    /// exited under this daemon.
+    /// Set by `Actor::handle_exited` for every exit, including an operator's
+    /// own `stop`/`delete`. `None` for an entry that has never exited under
+    /// this daemon.
     ///
-    /// Survives a respawn: `Actor::respawn` never touches this field, so it
-    /// keeps answering "why did this last stop" into the next run. A
-    /// reload's replacement entry copies it from the drainee it replaces.
+    /// Survives a respawn: `Actor::respawn` never touches this field.
     pub last_exit: Option<ExitInfo>,
 }
 
@@ -171,13 +157,10 @@ impl RestartBudget {
 /// Which half of a reload's swap a [`ProcessEntry`] is, if either.
 ///
 /// [`Self::Drainee`] and [`Self::Replacement`] are named for the role they
-/// mark, not the phase the job was in when set, since each outlives that
-/// phase. Only the drainee holds a back-reference to its replacement's id;
-/// the reverse lives on the reload job itself.
-///
-/// Serialized: a handover successor that installed an entry without this
-/// would route its exit to `decide_on_exit` instead of the reload
-/// machinery. `snake_case` to match `ProcStatus`'s wire spelling.
+/// mark, not the phase the job was in when set, since each outlives it.
+/// Only the drainee holds a back-reference to its replacement's id.
+/// Serialized: a successor that installed an entry without this would route
+/// its exit to `decide_on_exit`, not the reload machinery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReloadState {

@@ -37,14 +37,9 @@ pub(super) struct OrderedWalk {
 /// there is nothing to order.
 ///
 /// A single-target `shep restart web` therefore goes out as the one
-/// supervisor call it has always been, deadlines and refusal and all. Two
-/// matches or more is where a fold's shape starts to matter.
+/// supervisor call it has always been, deadlines and refusal and all.
 ///
-/// The match is computed the way `Actor::matching_ids` computes it, dogs and
-/// all, so the walk covers what the supervisor would have matched. It is
-/// still a second pass over a listing the actor has since moved on from: a
-/// sheep that exits between the two is one this walk names and the supervisor
-/// no longer matches, which costs a `NotFound` warning for that name.
+/// The match is computed the way `Actor::matching_ids` computes it, dogs and all.
 pub(super) fn ordered_walk(
     ctx: &RpcContext,
     selector: &ProcessSelector,
@@ -80,10 +75,8 @@ pub(super) fn ordered_walk(
         .collect();
     // A matched name the registry does not hold has no node in the plan, and
     // dropping it here would leave a sheep the operator named unrestarted
-    // while the reply says otherwise. It goes last, since nothing here can say
-    // what waits for it. A `shep dev` teardown clearing the registry under a
-    // live flock is the shape that gets here; a dog does not, since a selector
-    // reaching one is exact and an exact selector matches one name.
+    // while the reply says otherwise. It goes last, since nothing here can
+    // say what waits for it.
     let placed: BTreeSet<&str> = stages.iter().flatten().map(String::as_str).collect();
     let unplaced: Vec<String> = matched
         .iter()
@@ -108,13 +101,9 @@ pub(super) fn ordered_walk(
 ///
 /// The transitive walk is the point. A direct-edge intersection loses a
 /// dependency whose intermediate the selector missed: with `web -> mid ->
-/// db` matched at the ends only, `mid` is not in `matched`, so `web` reads
-/// as waiting for nothing and its stage restarts against a `db` no stage
-/// held. A regex or a fold selector is how that shape arrives; `All` cannot
-/// draw it, since it matches every hop.
-///
-/// `start` itself is never returned, so a name in a knot does not end up
-/// waiting for its own stage.
+/// db` matched at the ends only, `web` reads as waiting for nothing and its
+/// stage restarts against a `db` no stage held. `start` itself is never
+/// returned, so a name in a knot does not wait on its own stage.
 fn matched_dependencies(
     edges: &BTreeMap<String, Vec<String>>,
     start: &str,
@@ -141,10 +130,9 @@ fn matched_dependencies(
 ///
 /// A restart waits out `listen_timeout`; a reload waits out
 /// `graceful_timeout` as well, which is the pair its own swap is already
-/// bounded by (`Actor::arm_reload_deadline`). A name the registry does not
-/// hold falls back to nothing at all, leaving its stage the slack: nothing
-/// else here knows what that sheep's deadlines are, and a stage that
-/// advances early is better than one that hangs on a guess.
+/// bounded by (`Actor::arm_reload_deadline`).
+///
+/// A name the registry does not hold falls back to nothing at all.
 fn settle_bound(ctx: &RpcContext, name: &str, reloading: bool) -> Duration {
     let (readiness, drain) = ctx.registry.timeouts_of(name).unwrap_or_default();
     let drain = if reloading { drain } else { Duration::ZERO };
@@ -169,16 +157,9 @@ fn stage_bound(ctx: &RpcContext, stage: &[String]) -> Duration {
 ///
 /// `advance_reload` replaces one instance at a time, so a three-instance app
 /// costs three drains and three readiness waits, not one of each. A per-app
-/// bound is under a third of that at the defaults, so the stage times out,
-/// logs, and lets the dependant reload against a dependency that is still
-/// half swapped, which is the failure the walk exists to prevent, reached
-/// quietly.
-///
-/// The counts come from `waiting`, which is the instances the reload
-/// answered as `Online`. An instance a failed earlier reload left up and not
-/// serving reads `Starting` there and is missing from the count, so this
-/// bound can only be short, never long: such a stage can advance early and
-/// can never hang.
+/// bound is under a third of that at the defaults, so the stage times out
+/// and lets a dependant reload against a dependency still half swapped. The
+/// counts come from `waiting`, so this bound can only be short, never long.
 pub(super) fn reload_stage_bound(ctx: &RpcContext, waiting: &BTreeMap<String, usize>) -> Duration {
     waiting
         .iter()
@@ -252,19 +233,14 @@ pub(super) async fn walk_for(ctx: &RpcContext, selector: &ProcessSelector) -> Op
 /// a later stage waits for are back.
 ///
 /// A member that fails is warned about and the walk continues, the rule
-/// `start_in_stages` takes under `BatchPolicy::PerApp` and for its reason: a
-/// fold half restarted is worse than a fold restarted around one bad app.
+/// `start_in_stages` takes under `BatchPolicy::PerApp` and for its reason.
 ///
-/// Every member that was refused is named in the second half of the answer,
-/// the rule `reload_in_stages` states in full: a walk that restarted
-/// something still answers `Ok`, and exit 0 with a row silently missing is
-/// what carrying the names replaces.
+/// Every member that was refused is named in the second half of the answer:
+/// a walk that restarted something still answers `Ok`, and exit 0 with a
+/// row silently missing is what carrying the names replaces.
 ///
 /// # Errors
-///
-/// - The first member's refusal, when no member restarted at all. A request
-///   that moved nothing has to say so, and a selector matching one dog that
-///   is mid-shutdown would otherwise answer `Ok` with an empty table.
+/// - The first member's refusal, when no member restarted at all.
 pub(super) async fn restart_in_stages(
     ctx: &RpcContext,
     walk: &OrderedWalk,
@@ -292,11 +268,10 @@ pub(super) async fn restart_in_stages(
         for (name, outcome) in outcomes {
             match outcome {
                 Ok(infos) => restarted.extend(infos),
-                // A `NotFound` here is not necessarily a defect: the walk
-                // was planned from a listing the actor has since moved on
-                // from, so a sheep that exited in between is one this names
-                // and the supervisor no longer matches. The message says so
-                // rather than sending an operator looking for a bug.
+                // A `NotFound` here is not necessarily a defect: the walk was
+                // planned from a listing the actor has since moved on from, so
+                // a sheep that exited in between is one this names and the
+                // supervisor no longer matches.
                 Err(err) => {
                     tracing::warn!(
                         sheep = %name,
@@ -331,32 +306,15 @@ pub(super) async fn restart_in_stages(
 /// different definition of done.
 ///
 /// A stage is done when every member has emitted a `Reloaded` for each
-/// instance the reload accepted, or a `ReloadAbandoned` for the app. Which of
-/// the two reloads an app gets is still `ReloadMode::of`'s call, and the
-/// abandonment path is untouched: this waits on it rather than around it.
+/// instance the reload accepted, or a `ReloadAbandoned` for the app. Only
+/// the instances answered as `Online` are counted, so a stage holding an
+/// instance a failed earlier reload left up can advance while its last swap
+/// is still running.
 ///
-/// Only the instances the reload answered as `Online` are counted, since
-/// those are the ones `reload_eligible` lets a swap replace. An instance a
-/// failed earlier reload left up and not serving is `Starting` here and is
-/// undercounted, so a stage holding one can advance while its last swap is
-/// still running; the alternative is counting instances no swap will ever
-/// reach and paying the bound on every ordinary reload.
-///
-/// Every member that was refused is named in the second half of the answer,
-/// so the client can print the apps this walk went around and exit non-zero
-/// over them. A walk that reloaded something still answers `Ok`: refusing
-/// forty apps because one is busy is the whole-selector rule this walk
-/// exists to get away from, and exit 0 with a row silently missing is what
-/// carrying the names replaces.
+/// Every member that was refused is named in the second half of the answer.
 ///
 /// # Errors
-///
-/// - The first member's refusal, when no member was accepted. `ReloadInFlight`
-///   is the one an operator meets: the supervisor refuses a selector whole
-///   when any app it names is already reloading, and a staged walk asks per
-///   app, so an app already reloading now refuses its own stage while the
-///   rest of the fold goes ahead. Its stage is still held for the reload
-///   already running, which a dependant has the same reason to wait out.
+/// - The first member's refusal, when no member was accepted.
 async fn reload_in_stages(
     ctx: &RpcContext,
     walk: &OrderedWalk,
@@ -395,19 +353,8 @@ async fn reload_in_stages(
                 Err(err) => {
                     // An app already reloading is refused per app now, so it
                     // contributes no swaps of its own and the stage would
-                    // return at once, letting a dependant swap against a
-                    // dependency that is mid-swap. The reload in flight is
-                    // still a reload this stage's dependants have to wait
-                    // out, so it is waited for as one: any `Reloaded` or the
-                    // `ReloadAbandoned` that ends it finishes the name.
-                    //
-                    // One swap, and a clustered app owes one per instance.
-                    // Nothing here can see how far the reload in flight has
-                    // got, so a three-instance dependency finishes this wait
-                    // at whichever swap lands next and a dependant can go a
-                    // swap or two early. Accepted, for `reload_in_stages`'
-                    // own reason: a wait sized by a count this side is
-                    // guessing at can hang, and an early stage cannot.
+                    // return at once. The reload in flight is still one its
+                    // dependants have to wait out, so it is waited for as one.
                     if matches!(err, SupervisorError::ReloadInFlight(_))
                         && walk.depended_on.contains(name.as_str())
                     {

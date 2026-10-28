@@ -116,8 +116,7 @@ impl Watcher {
     ///
     /// A store that will not read logs one `warn!` and changes nothing, so
     /// the next good read is compared against the baseline from before it
-    /// broke. It is read again on every look until it reads, because the
-    /// failure may be a passing one that leaves the file unchanged. A key a dog names for the first time has no earlier value and
+    /// broke. A key a dog names for the first time has no earlier value and
     /// announces nothing.
     pub(crate) fn tick(&mut self) -> Vec<String> {
         let now = (stamp(&self.secrets), stamp(&self.dogs_config));

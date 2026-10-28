@@ -1,14 +1,12 @@
 //! The flock's two ends of the exec, on top of `shep-handover`.
 //!
 //! [`hand_over`] names the descriptors [`Handover::named_fds`] lists, each
-//! under its own number, and passes the blob as the envelope's state.
-//! `shep-handover` does the rest: the gate on the target, the probe, the
-//! envelope, close-on-exec and the `execve`. [`arrive`] and [`claim`] are the
-//! other end, which turns what it hands back into the numbers
-//! [`adopt`](super::adopt::adopt) works from.
-//!
-//! [`exec_target`] and [`record_launch_path`] are the crate's, re-exported so
-//! the shepherd and a built-in dog's program resolve the binary one way.
+//! under its own number. It passes the blob as the envelope's state.
+//! `shep-handover` does the rest: the gate, the probe, the envelope,
+//! close-on-exec and the `execve`. [`arrive`] and [`claim`] are the other
+//! end: they hand back the numbers [`adopt`](super::adopt::adopt) works from.
+//! [`exec_target`] and [`record_launch_path`] are re-exported so the
+//! shepherd and a built-in dog resolve the binary one way.
 
 use core::convert::Infallible;
 use std::io;
@@ -45,23 +43,15 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// `blob`'s flock.
 ///
 /// The target is asked first whether it reads the blob's format, so a build
-/// that cannot is refused here, with this image still running, rather than
-/// after it is gone.
-///
-/// Each descriptor `blob` names is carried under its own number as a decimal
-/// string. The exec keeps the numbers, so the blob's own are the ones the
-/// successor adopts by.
-///
-/// The gates on the flock (the fitness rules and the rehearsal of the
-/// successor's adoption) are the caller's and have already run.
-///
+/// that cannot is refused here, with this image still running. Each
+/// descriptor `blob` names is carried under its own number as a decimal
+/// string, so the blob's own are the ones the successor adopts by. The
+/// gates on the flock are the caller's and have already run.
 /// # Errors
 ///
-/// Returns only if the handover did not happen. A descriptor the blob names is
-/// not open, no binary is safe to exec, the target does not read the blob's
-/// format or could not be asked, the blob could not be written, or the exec
-/// failed. Each leaves this process still itself, with no blob on disk and
-/// every descriptor close-on-exec as before.
+/// Returns only if the handover did not happen: a named descriptor is not
+/// open, no binary is safe to exec, the target refuses the blob's format,
+/// the blob could not be written, or the exec failed.
 pub fn hand_over(blob: &Handover, paths: &ShepPaths) -> Result<Infallible, HandOverError> {
     hand_over_tuned(blob, paths, |handover| {
         handover.probe_timeout(PROBE_TIMEOUT)
@@ -215,13 +205,10 @@ mod tests {
 
     #[test]
     fn a_flock_crosses_the_exec_and_is_claimed() {
-        // Three stages of the same test binary, the first thing each does
-        // being what a shepherd's `main` does: ask `arrive`. The ordinary run
-        // re-runs this one test in a child, which writes into a pipe and
-        // hands over. The probe that `hand_over` starts first is the same
-        // binary, and `arrive` answers it and exits. The image `hand_over`
-        // execs into is the successor: it claims the flock and reads that
-        // pipe back by the number the blob names.
+        // Three stages of one test binary, each first asking `arrive` as a
+        // shepherd's `main` does. The ordinary run re-runs this test in a child,
+        // which hands over. `hand_over`'s probe runs the same binary, and `arrive`
+        // answers it and exits. The exec'd image claims the flock.
         if let Some(arrival) = arrive().expect("a successor can arrive") {
             successor_stage(arrival);
         }

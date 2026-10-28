@@ -16,9 +16,7 @@ use crate::snapshot::SnapshotError;
 /// OS diagnostic via [`core::error::Error::source`]; that costs this enum
 /// `Clone`/`PartialEq`/`Eq`.
 ///
-/// `#[non_exhaustive]`: a future boot step adds a variant rather than
-/// overloading [`Self::Io`], whose `path`/`source` shape is specific to the
-/// steps that already exist.
+/// `#[non_exhaustive]`: a future boot step adds a variant, not a wider [`Self::Io`].
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum BootError {

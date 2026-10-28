@@ -1,16 +1,13 @@
 //! Whole-flock handover: whether this daemon's flock can be replaced in
-//! place, the [`Handover`] blob that describes it, and the flock's side of the
-//! exec that carries it.
+//! place, the [`Handover`] blob that describes it, and the flock's side of
+//! the exec that carries it.
 //!
 //! The mechanism is `shep-handover`'s: carrying descriptors, the envelope,
 //! `execve` and reaping across it. What is here is the flock's own: which
-//! sheep and descriptors to carry, the blob's contents, the fitness rules and
-//! adopting the flock on the other side.
+//! sheep and descriptors to carry, the blob's contents, the fitness rules
+//! and adopting the flock on the other side.
 //!
-//! [`fitness`](fn@fitness) is the gate, and it refuses whole. One refusal: a
-//! live sheep whose log pump did not report its descriptors in time. A
-//! sheep's stdout, stderr, log files, stdin pipe and shepherd channel all
-//! cross the exec, per sheep rather than per app.
+//! [`fitness`](fn@fitness) is the gate, and it refuses whole.
 
 pub(crate) mod adopt;
 mod blob;

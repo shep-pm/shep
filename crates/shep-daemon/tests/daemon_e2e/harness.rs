@@ -100,8 +100,6 @@ impl Drop for Fixture {
     /// unwind and must not block. A `current_thread` runtime unwinding stops
     /// polling `run`, so its kill ladder never finishes and the pids are
     /// signalled here, by process group to reach a `sleep 1` grandchild.
-    ///
-    /// Unix only: a Windows sheep cannot leave its job object.
     fn drop(&mut self) {
         // `None` only once `shutdown()` has taken it: the panic path.
         if self.run.is_some() {
@@ -242,16 +240,10 @@ impl Client {
     /// Starts one `app` and hands back its row, failing at the call site.
     ///
     /// A plain `fn` reading [`Location::caller`] before it builds the future:
-    /// `#[track_caller]` is a no-op on an `async fn`, so a failure names the
-    /// test rather than this file. One app, one row: a case starting a
-    /// multi-instance app sends [`Request::Start`] itself and reads the whole
-    /// `Started`.
+    /// `#[track_caller]` is a no-op on an `async fn`, so a failure names the test.
     ///
     /// # Panics
-    ///
-    /// If the daemon refuses the start, answers anything but `Started`, or
-    /// answers `Started` with a row count other than one. The reply rides on
-    /// the message.
+    /// If the daemon refuses the start, or answers anything but a one-row `Started`.
     #[track_caller]
     pub(crate) fn start_first(&mut self, app: AppConfig) -> impl Future<Output = ProcessInfo> + '_ {
         let site = Location::caller();

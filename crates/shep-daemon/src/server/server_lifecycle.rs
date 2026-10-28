@@ -14,15 +14,10 @@ pub const HANDSHAKE_TIMEOUT_MS: u64 = 5_000;
 /// The control socket: shep's privilege boundary
 ///
 /// # Security
-///
-/// The daemon's canonical writeup; other modules link here. On unix a
-/// connection is refused unless `SO_PEERCRED`/`getpeereid` ([`check_peer`](crate::server::peer_auth::check_peer))
-/// names the daemon's own uid, and refused too when the OS will not answer.
-/// `$SHEP_HOME/run`'s `0700` is [`crate::boot::init_dirs`]'s job; Windows has
-/// neither, and refuses at open time through the pipe's ACL. Skew, frame size,
-/// a `Subscribe`'s glob count and a `/regex/` selector's compiled size are all
-/// capped, and every call carries a clamped deadline. A same-uid peer is fully
-/// trusted; there is no idle timeout and no per-uid connection cap.
+/// On unix, [`check_peer`](crate::server::peer_auth::check_peer) refuses a peer of another
+/// uid, and refuses when the OS will not answer. Windows refuses at open time through the
+/// pipe's ACL. Skew, frame size, glob count and regex size are capped, and every call
+/// carries a clamped deadline. A same-uid peer is fully trusted: no idle timeout, no cap.
 #[derive(Debug)]
 pub struct RpcServer {
     listener: Listener,
@@ -40,14 +35,9 @@ impl RpcServer {
     /// `true` or its sender drops.
     ///
     /// A failing accept never ends the loop and never retries flat out.
-    /// [`AcceptBackoff`] answers how long to wait: at once for an error that
-    /// consumed a peer or was only a signal, otherwise 5 ms doubling to 1 s,
-    /// which caps the log at one line a second. A `shutdown` that arrives
-    /// mid-wait ends the wait rather than waiting it out.
-    ///
-    /// Connection tasks are spawned and detached, so `serve` returning does
-    /// not mean every in-flight connection has finished. Draining them would
-    /// need a `tokio::task::JoinSet` here.
+    /// [`AcceptBackoff`] answers how long to wait. A `shutdown` that arrives
+    /// mid-wait ends the wait. Connection tasks are detached, so `serve`
+    /// returning does not mean every connection has finished.
     pub async fn serve(self, mut shutdown: watch::Receiver<bool>) {
         // `mut` because `Listener::accept` needs `&mut self` on both
         // platforms: a Windows named pipe server instance is consumed by
@@ -103,11 +93,8 @@ impl RpcServer {
 /// backoff instead of after it. `None` sleeps nothing. `true` means
 /// `shutdown` won and [`RpcServer::serve`] must stop.
 ///
-/// A `changed()` that resolves on a `false` is not a stop: the rest of the
-/// wait is dropped and the loop accepts again.
-///
-/// Both branches are cancel-safe: `tokio::time::sleep` and
-/// `watch::Receiver::changed` can each be dropped mid-await.
+/// A `changed()` that resolves on a `false` drops the rest of the wait and
+/// the loop accepts again. Both branches are cancel-safe.
 async fn wait_out_backoff(delay: Option<Duration>, shutdown: &mut watch::Receiver<bool>) -> bool {
     let Some(delay) = delay else {
         return false;

@@ -60,12 +60,8 @@ pub struct ProcIo {
     /// The pump is the only reader of the child's stdout and stderr, and it
     /// ends when the last of these senders drops, so hold this while the
     /// child is alive: ending the pump drops the read ends of both pipes and
-    /// the child's next write gets `EPIPE`/`SIGPIPE`. The supervisor clones
-    /// it (`SheepSlot::log_ctl`); what keeps a clone from stretching a
-    /// pump's life is the pump's own exit on the `logs` receiver going away.
-    ///
-    /// A send that fails means the pump is already gone, which makes a
-    /// reopen a no-op rather than an error.
+    /// the child's next write gets `EPIPE`/`SIGPIPE`. A send that fails
+    /// means the pump is already gone, which makes a reopen a no-op.
     pub log_ctl: mpsc::Sender<LogCtl>,
     /// The shepherd's writing end of this sheep's stdin.
     ///
@@ -73,9 +69,7 @@ pub struct ProcIo {
     /// no pipe: the runner drops the receiving end, so `is_closed()` is the
     /// one question a caller asks, the same shape [`Self::to_child`] uses.
     ///
-    /// Hold it only for as long as the child is alive: the task on the far
-    /// end parks on `recv()`, so a sender kept past the child's exit parks
-    /// that task and holds the pipe's write end with it.
+    /// Hold it only for as long as the child is alive.
     pub to_stdin: mpsc::Sender<StdinWrite>,
 }
 
@@ -102,10 +96,7 @@ pub struct StdinWrite {
 /// Produced by the successor's `handover::adopt` and consumed by
 /// [`ProcessRunner::adopt`]. The handles are owned, since adopting is taking
 /// ownership of them; `None` on a pair means the predecessor had no handle
-/// to carry.
-///
-/// `Debug` is derived: descriptor numbers, a pid and two log paths are all in
-/// `shep flock` already, and no env value reaches this type.
+/// to carry. `Debug` is derived: no env value reaches this type.
 #[cfg(unix)]
 #[derive(Debug)]
 pub struct AdoptSpec {
@@ -164,10 +155,7 @@ pub struct AdoptSpec {
 /// The line that matters runs between [`Self::Impossible`] and
 /// [`Self::Doubtful`], and it separates two kinds of claim. A path with a
 /// `/` is a claim about the filesystem, which the daemon can check. A bare
-/// command is a claim about the daemon's own environment, which is not the
-/// shell the operator tested in: `node` from homebrew or nvm resolves in a
-/// terminal and under no `shep startup` unit. Refusing a batch on the second
-/// would keep twelve apps down over one interpreter.
+/// command is a claim about the daemon's own environment, not the operator's shell.
 // `#[non_exhaustive]`: an out-of-tree consumer can match this exhaustively,
 // and a fourth verdict would break them with no version bump.
 #[non_exhaustive]
@@ -293,11 +281,7 @@ pub trait RunningProcess: Send + 'static {
     ///
     /// Dropping the returned future and calling `wait` again neither
     /// restarts the wait nor loses progress toward it, as
-    /// [`tokio::process::Child::wait`] guarantees; the scripted fake mirrors
-    /// it by fixing its exit deadline once, at spawn.
-    ///
-    /// The future is `Send` (RPITIT) because the sheep task that owns the
-    /// proc is `tokio::spawn`'ed.
+    /// [`tokio::process::Child::wait`] guarantees.
     fn wait(&mut self) -> impl core::future::Future<Output = ExitOutcome> + Send;
 
     /// Sends a signal to the sheep's whole process group

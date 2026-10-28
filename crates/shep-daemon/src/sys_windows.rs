@@ -35,12 +35,8 @@ use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken}
 /// The Windows counterpart to `shep-cli`'s `seal_inherited_fds`.
 /// `CreateProcess` with `bInheritHandles = TRUE`, which `std` passes whenever
 /// any stdio is redirected, inherits every inheritable handle the parent
-/// holds, not only the ones `std` prepared. A shepherd spawned from a shell
-/// that gave `shep` a pipe for stdout would hold that pipe open for life, so
-/// `shep start | Out-Null` never returns.
-///
-/// Called immediately before a spawn: it changes only the inherit flag, so
-/// this process goes on using its own stdio. Best-effort, nothing to report.
+/// holds. A shepherd spawned from a shell that gave `shep` a pipe for stdout
+/// would hold that pipe open for life, so `shep start | Out-Null` never returns.
 pub fn seal_std_handles() {
     for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
         // SAFETY: `GetStdHandle` takes one of the three documented standard
@@ -51,11 +47,10 @@ pub fn seal_std_handles() {
         if handle.is_null() || handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
             continue;
         }
-        // SAFETY: `handle` is a live handle owned by this process, checked
-        // just above. Clearing `HANDLE_FLAG_INHERIT` changes only whether a
-        // future `CreateProcess` passes it on; it neither closes the handle
-        // nor affects I/O through it. A failure leaves one spawn inheriting a
-        // handle it should not, which is not worth refusing a start over.
+        // SAFETY: `handle` is a live handle owned by this process, checked just
+        // above. Clearing `HANDLE_FLAG_INHERIT` changes only whether a future
+        // `CreateProcess` passes it on; it neither closes the handle nor affects
+        // I/O through it. A failure leaves one spawn inheriting a handle.
         unsafe {
             let _ = SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
         }
@@ -64,20 +59,11 @@ pub fn seal_std_handles() {
 
 /// A security descriptor that admits the shepherd's own user and nobody else
 ///
-/// A named pipe made with `CreateNamedPipe` and no descriptor gets the
-/// default one, which grants `Everyone` read, and the single accept behind a
-/// per-spawn pipe authenticates nobody. Created under this one, a pipe is
-/// refused to every other account, administrators and `SYSTEM` included: the
-/// DACL holds one ACE, `GENERIC_ALL` for the user the shepherd runs as, and is
-/// protected, so nothing inherits into it.
-///
-/// It confines nothing on the same account. A dog runs as the operator and
-/// can open any pipe the operator can; this keeps a different local account
-/// from connecting first and reading a dog's or a sheep's frames (#350).
-///
-/// Built once per pipe and handed to [`shep_core::transport::Listener::bind_with`]
-/// as its [`PipeInstances`], so the first instance and every replacement are
-/// created under it.
+/// A named pipe made with `CreateNamedPipe` and no descriptor gets the default
+/// one, which grants `Everyone` read. Under this one a pipe is refused to every
+/// other account, administrators and `SYSTEM` included: the DACL holds one ACE,
+/// `GENERIC_ALL` for the user the shepherd runs as, and is protected, so nothing
+/// inherits into it.
 pub(crate) struct UserOnly {
     /// A self-relative descriptor `LocalAlloc`ed by the converter, freed on drop.
     descriptor: *mut c_void,
@@ -113,11 +99,10 @@ impl UserOnly {
         sddl.extend(")\0".encode_utf16());
 
         let mut descriptor: *mut c_void = core::ptr::null_mut();
-        // SAFETY: `sddl` is a NUL-terminated UTF-16 string that outlives the
-        // call, and `descriptor` is a live local for the out pointer. The
-        // size out parameter is documented optional and passed null. On
-        // success the descriptor is `LocalAlloc`ed and handed to `Self`,
-        // which frees it; on failure nothing was allocated.
+        // SAFETY: `sddl` is a NUL-terminated UTF-16 string that outlives the call,
+        // and `descriptor` is a live local for the out pointer. The size out
+        // parameter is documented optional and passed null. On success the
+        // descriptor is `LocalAlloc`ed and handed to `Self`, which frees it.
         let ok = unsafe {
             ConvertStringSecurityDescriptorToSecurityDescriptorW(
                 sddl.as_ptr(),

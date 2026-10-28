@@ -2,20 +2,12 @@ use std::io;
 use std::path::Path;
 
 /// Whether `path` exists as a directory, in the one word a config-edit
-/// warning appends after printing the path — but only when the filesystem
+/// warning appends after printing the path, but only when the filesystem
 /// gives a definite answer.
 ///
 /// [`cwd_advisory`] and [`log_path_advisory`] share this rather than each
-/// re-deriving the same three-way match: a `cwd` has to be a directory
-/// itself, and a log file's parent merely has to be one to hold it, so both
-/// checks are this same question asked of a different path.
-///
-/// Only [`io::ErrorKind::NotFound`] and "exists but is a file" are
-/// conclusive enough to report. A permission error or an unsettled mount
-/// answers `None` rather than a guess, the same posture
-/// `tokio_runner`'s `definitely_absent` documents for the identical
-/// tradeoff: a false "missing" reads worse than the one real gap this
-/// misses.
+/// re-deriving the same three-way match: both ask this question of a
+/// different path.
 fn missing_directory(path: &Path) -> Option<&'static str> {
     match std::fs::metadata(path) {
         Ok(meta) if meta.is_dir() => None,
@@ -31,10 +23,7 @@ fn missing_directory(path: &Path) -> Option<&'static str> {
 ///
 /// Advisory, never a refusal: unlike a log file, `normalize` cannot
 /// substitute an empty `cwd` for a bad one, and a directory a deploy script
-/// has not created yet is a legitimate config this call cannot tell apart
-/// from a typo. The check and the spawn it warns about are not atomic —
-/// `check_log_ancestry`'s own doc comment names the identical window for
-/// its check, and this one inherits the same gap (`docs/specs/deferred.md`).
+/// has not created yet is a legitimate config this call cannot tell apart from a typo.
 #[must_use]
 pub(crate) fn cwd_advisory(cwd: &Path) -> Option<String> {
     #[cfg(windows)]
@@ -50,9 +39,7 @@ pub(crate) fn cwd_advisory(cwd: &Path) -> Option<String> {
 /// coming and going is normal and only its parent has to already be a
 /// directory.
 ///
-/// Also catches the file's own path already being a directory — a `cwd`
-/// can never be that confusion in the other direction, since nothing
-/// expects a file to sit there.
+/// Also catches the file's own path already being a directory.
 #[must_use]
 pub(crate) fn log_path_advisory(path: &Path) -> Option<String> {
     #[cfg(windows)]
@@ -79,18 +66,13 @@ fn windows_advisory(path: &Path) -> Option<String> {
     Some(format!("{} {reason}", path.display()))
 }
 
-/// Windows path restrictions no unix filesystem enforces, so nothing in
-/// this crate checked them anywhere before this: a reserved device name, a
-/// character the filesystem refuses in a path, or a full path at or over
-/// the classic per-path limit.
+/// Windows path restrictions no unix filesystem enforces: a reserved device
+/// name, a character the filesystem refuses in a path, or a full path at or
+/// over the classic per-path limit.
 ///
 /// Returns the reason alone, the same shape [`missing_directory`] returns,
 /// so [`cwd_advisory`] and [`log_path_advisory`] can prefix either with the
-/// path in one place rather than each formatting its own sentence.
-///
-/// `#[cfg(windows)]` only. Warning an operator on macOS or Linux that `CON`
-/// is a reserved name would be noise: the restriction only exists where the
-/// daemon evaluating it will actually resolve the path.
+/// path in one place.
 #[cfg(windows)]
 #[must_use]
 fn windows_name_advisory(path: &Path) -> Option<String> {
@@ -114,19 +96,14 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
     /// widens what passes; it never refuses something this check accepts.
     ///
     /// `>=` rather than `>`, because the 260 counts the terminating null: a
-    /// fully qualified path may be 259 units, so 260 is already over.
-    /// Not measurable on the reference Windows host, which has
-    /// `LongPathsEnabled` set to 1, so paths of 258 through 261 all wrote a
-    /// file there. Anyone re-checking this on that box will get four passes
-    /// and learn nothing about the boundary.
+    /// fully qualified path may be 259 units, so 260 is already over. Not
+    /// measurable on the reference Windows host, which has `LongPathsEnabled`.
     const MAX_PATH: usize = 260;
 
     // `encode_wide`, not `OsStr::len`. Windows counts this limit in UTF-16
-    // units and `len` returns WTF-8 bytes, which are only equal for ASCII.
-    // `é` is two bytes and one unit, and an emoji is four bytes and two, so
-    // `len` warns about paths Windows accepts: a 259-unit path of emoji
-    // measures 518 by bytes and would be refused an advisory it never
-    // earned.
+    // units and `len` returns WTF-8 bytes, which are only equal for ASCII: a
+    // 259-unit path of emoji measures 518 by bytes and would be refused an
+    // advisory it never earned.
     let length = path.as_os_str().encode_wide().count();
     if length >= MAX_PATH {
         return Some(format!(
@@ -146,14 +123,9 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
             return Some(format!("contains `{bad}`, which Windows refuses in a path"));
         }
         // Below U+0020 only, which is the range Windows documents. Not
-        // `char::is_control`, which also matches U+007F and the C1 block
-        // U+0080 to U+009F: those are legal in a Windows file name, so
-        // warning about them would refuse a path the filesystem accepts,
-        // the same way counting bytes did above.
-        //
-        // Named by code point, not printed. A tab or a newline reaching an
-        // advisory would otherwise rearrange the operator's line rather
-        // than appear in it, and a NUL would truncate it.
+        // `char::is_control`, which also matches U+007F and the C1 block:
+        // those are legal in a Windows file name. Named by code point, not
+        // printed, so a tab or newline cannot rearrange the operator's line.
         if let Some(control) = name.chars().find(|&c| (c as u32) < 0x20) {
             return Some(format!(
                 "contains U+{:04X}, a control character Windows refuses in a path",
@@ -161,10 +133,9 @@ fn windows_name_advisory(path: &Path) -> Option<String> {
             ));
         }
         // Up to the LAST dot, not the first. Measured on Windows 2026-09-12
-        // by creating each name and asking whether a file appeared:
-        // `CON.txt` did not (the device took it), `CON.my.txt` did, and so
-        // did `NUL.my.log`. Splitting on the first dot would warn about
-        // `CON.my.txt`, which is an ordinary file.
+        // by creating each name and asking whether a file appeared: `CON.txt`
+        // did not (the device took it), `CON.my.txt` did. Splitting on the
+        // first dot would warn about `CON.my.txt`, which is an ordinary file.
         let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
         if RESERVED
             .iter()

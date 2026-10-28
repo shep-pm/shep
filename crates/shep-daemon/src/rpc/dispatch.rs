@@ -33,16 +33,9 @@ use super::walk::{reload_request, restart_request};
 /// connection layer must do with the result.
 ///
 /// The deadline [`budget`] computes bounds the reply, not the actor's work:
-/// dropping the work future only stops the daemon waiting on the supervisor,
-/// and a command already handed to a sheep-owning task runs to completion.
-/// So a `DeadlineExceeded` reply to `Start` means no answer within the
-/// budget, not that nothing happened; a client that retries must reconcile
-/// with `ListFlock`.
-///
-/// `dog` is the dog whose own connection this arrived on, and its request is
-/// checked against its grants before anything runs. `None` is the control
-/// socket, which acts as the operator and is never checked. The check is
-/// inside the deadline: it may ask the supervisor.
+/// dropping the work future only stops the daemon waiting on the supervisor.
+/// A `DeadlineExceeded` reply to `Start` means no answer within the budget,
+/// not that nothing happened; a client that retries must reconcile with `ListFlock`.
 pub(crate) async fn dispatch(
     envelope: Envelope,
     conn: ConnId,
@@ -139,10 +132,8 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         },
         // Peer input is untrusted: re-normalize before anything is registered.
         //
-        // `AllOrNothing` no longer means the whole request is atomic: the
-        // stages are one `Command::Start` each, so a refusal in stage 1 leaves
-        // stage 0 running and nothing rolls it back. The refusal names those
-        // apps; `start_in_stages` argues why they are left alone.
+        // `AllOrNothing` no longer means the whole request is atomic: a refusal
+        // in stage 1 leaves stage 0 running and nothing rolls it back.
         Request::Start { apps } => match normalize_all(apps) {
             Err(err) => reply(Err(invalid_config(err))),
             Ok(resolved) => match staged_plan(ctx, &resolved) {
@@ -169,10 +160,6 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // same untrusted-peer rule. Recorded in the registry as `Start` is:
         // an added app is a flock member that happens to be stopped, so a
         // `shep save` after a `shep add` has to write it.
-        //
-        // The cycle refusal is shared and the stages are not: a document that
-        // cannot be started is one to refuse at the door an operator is
-        // standing at, and `add` starts nothing to order.
         Request::Add { apps } => match normalize_all(apps) {
             Err(err) => reply(Err(invalid_config(err))),
             Ok(resolved) => match staged_plan(ctx, &resolved) {
@@ -237,16 +224,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         // Staged like `Restart` above and for its reason. Which of the two
         // reloads an app gets is still `ReloadMode::of`'s call: ordering
         // decides when a stage begins and nothing about the swap inside it.
-        //
-        // `Reloading` still names an acceptance, and a single-target reload
-        // still answers before the first replacement is spawned. A walk of
-        // several stages is what that costs: it holds for the swaps of every
-        // app another matched app waits on, so the reply lands that much
-        // later, and a fold deep enough outlives the request budget and is
-        // abandoned by `with_deadline` with its last stages unreloaded.
-        // `staged_start_deadline` is how `shep start` buys the room for the
-        // same walk; `shep reload` sends `RELOAD_DEADLINE`, which is this
-        // module's own 60s ceiling and so the most it can buy.
+        // A walk of several stages holds the reply until the swaps it waits on land.
         Request::Reload { selector } => reload_request(id, selector, ctx).await,
         Request::Reopen { selector } => {
             selector_call(
@@ -435,17 +413,13 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                     // Recorded before the start is queued, not after it
                     // answers. The supervisor starts the dog whether or not
                     // this dispatch outlives its deadline, and a dog with no
-                    // entry is undeclared, with full access, so a link served
-                    // in that gap would go unchecked. The refusals below put
-                    // back what the name held.
+                    // entry is undeclared, with full access.
                     let held = ctx.known_dogs.replace(&spec.name, grants);
                     match ctx.supervisor.start_dog(app, spec.source).await {
-                        // `start_dog` is idempotent by name for anything
-                        // not at rest, so what comes back is whatever
-                        // already holds it. An unmarked entry means a sheep
-                        // holds it: nothing was spawned, so the refusal has
-                        // nothing to undo, and that is not a dog to
-                        // remember.
+                        // `start_dog` is idempotent by name for anything not
+                        // at rest, so what comes back is whatever already
+                        // holds it. An unmarked entry means a sheep holds it:
+                        // nothing was spawned, so the refusal has nothing to undo.
                         Ok(info) if info.dog.is_none() => {
                             ctx.known_dogs.restore(&spec.name, held);
                             reply(Err(invalid_config(format!(
@@ -454,16 +428,10 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                             ))))
                         }
                         Ok(info) => {
-                            // The one place this daemon learns of a dog it
-                            // was not told about at boot. `shep adopt` and
+                            // The one place this daemon learns of a dog it was
+                            // not told about at boot. `shep adopt` and
                             // `shep enable` both arrive here, and both have
-                            // just written the name into `shep.toml`, which
-                            // this crate does not read.
-                            //
-                            // Wording is about the binary this shepherd
-                            // resolved, not about a spawn having happened:
-                            // `start_dog` is idempotent by name for a dog that
-                            // is running, so this may be one that already was.
+                            // just written the name into `shep.toml`.
                             crate::dogs::narrate(
                                 &ctx.events,
                                 &info,
@@ -476,9 +444,8 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                         }
                         // A spawn that fails still registers the dog, as
                         // `Errored`, and a restart or the restart policy
-                        // brings it up: its grants stay recorded, or its
-                        // link would find none and run unchecked. Anything
-                        // else registered nothing.
+                        // brings it up: its grants stay recorded, or its link
+                        // would find none and run unchecked.
                         Err(err) => {
                             if !matches!(err, SupervisorError::SpawnFailed(_)) {
                                 ctx.known_dogs.restore(&spec.name, held);
@@ -548,14 +515,9 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         Request::SetSheepEnv { name, key, value } => {
             match ctx.supervisor.set_sheep_env(&name, &key, value).await {
                 // Recorded exactly as `Start`, `Add`, `Scale` and
-                // `ApplyConfig` record theirs, and for the reason
-                // `Scale`'s arm gives: the muster roll is written from the
-                // registry (`snapshot::muster`) and nothing on the restore
-                // path reads the override store, so an env edit that
-                // skipped this would survive a `shep daemon reload` (the
-                // handover blob carries `pending`) and vanish on a cold
-                // restart. The same field class behaving differently
-                // depending on which request set it is the bug.
+                // `ApplyConfig` record theirs, and for the reason `Scale`'s
+                // arm gives: the muster roll is written from the registry and
+                // nothing on the restore path reads the override store.
                 Ok(Some(app)) => {
                     ctx.registry.record(&[app]);
                     reply(Ok(Response::SheepEnvSet { name, key }))
@@ -582,9 +544,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 // Recorded for `SetSheepEnv`'s reason: the muster roll is
                 // written from the registry and nothing on the restore path
                 // reads the override store. `app` is `None` for a dry run,
-                // for a refused collision, and for a batch every key of
-                // which was already held, none of which wrote anything to
-                // record.
+                // for a refused collision, and for a batch that wrote nothing.
                 Ok(Some(batch)) => {
                     if let Some(app) = batch.app {
                         ctx.registry.record(&[app]);
@@ -628,12 +588,10 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         },
         Request::SetSheepField { name, key, value } => {
             match ctx.supervisor.set_sheep_field(&name, &key, value).await {
-                // Recorded exactly as `SetSheepEnv` records its own, and
-                // for that arm's reason: the muster roll is written from
-                // the registry and nothing on the restore path reads the
-                // override store, so a field edit that skipped this would
-                // survive a `shep daemon reload` and vanish on a cold
-                // restart.
+                // Recorded exactly as `SetSheepEnv` records its own, and for
+                // that arm's reason: the muster roll is written from the
+                // registry and nothing on the restore path reads the override
+                // store, so a field edit that skipped this would vanish on a cold restart.
                 Ok(Some(set)) => {
                     let pending = set.pending;
                     let warning = set.warning;
@@ -688,25 +646,10 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 Err(err) => reply(Err(rpc_error(&err))),
             }
         }
-        // The inverse of every other config door's guard: `dogs.toml`
-        // holds dogs' sections and nothing else, so what this one refuses
-        // is a sheep's name, not merely a dog no one has heard of. Asked
-        // before the file is opened, so a mistyped name leaves no stray
-        // table behind for a dog that will never exist.
-        //
-        // Guarded on `known_dogs`, not on the running flock: a guard on the
-        // flock alone would refuse the dog most in need of configuring, one
-        // that is disabled or has never started. The running flock is still
-        // consulted too, as a widening, because a dog adopted and enabled
-        // since this shepherd booted is not yet in the list the CLI handed
-        // over at boot.
-        //
-        // Written here rather than through the supervisor: `dogs.toml` is
-        // not supervisor state, and the file's path and the bus are both
-        // already in scope here. The daemon, not the client, writes it
-        // because the daemon is the only publisher of `config.dog.<name>`,
-        // and a section written with nothing publishing that topic leaves
-        // a running dog reading the old one.
+        // The inverse of every other config door's guard: `dogs.toml` holds
+        // dogs' sections and nothing else, so what this one refuses is a
+        // sheep's name. Guarded on `known_dogs`, not on the running flock: a
+        // guard on the flock would refuse the dog most in need of configuring.
         Request::SetDogConfig { name, toml } => {
             // A stopped engine runs no dogs, so "not running" is the honest
             // answer and `known_dogs` is left carrying the guard alone.
@@ -740,24 +683,9 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             }
         }
         // A provider dog's push. Unguarded by design, for the reason the
-        // variant's own doc gives.
-        //
-        // Both NAMES and every entry KEY are checked against the store's own
-        // grammar: one outside it is a name no `{{secret:...}}` reference
-        // could reach, so storing under it would answer `accepted` and
-        // resolve nothing. Values are capped at the same `MAX_VALUE_BYTES`
-        // the operator's own store enforces, since without it a socket peer
-        // sets the shepherd's memory and, with `persist`, rewrites and
-        // fsyncs whatever it sent on every later push.
-        //
-        // One offender refuses the whole push, as the namespace check
-        // already does: a partial store is one a dog would report `accepted`
-        // for and a spawn would refuse on, and the dog has the whole set to
-        // send again.
-        //
-        // Handled here rather than through the supervisor: the registry is
-        // not supervisor state, and this arm writes the cache file, which
-        // the actor must never wait on. See `crate::secrets`.
+        // variant's own doc gives. Both NAMES and every entry KEY are checked
+        // against the store's own grammar: one outside it is a name no
+        // `{{secret:...}}` reference could reach. Values are capped too.
         Request::PutSecrets {
             namespace,
             environment,
@@ -835,13 +763,10 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 })),
             }
         }
-        // The catch-all `#[serde(other)]` lands on the wire, not a panic:
-        // a client newer than this daemon gets a named refusal instead of
-        // a dropped connection, and the connection keeps serving requests
-        // this daemon does know. `daemon_version` stays `None` here: that
-        // field is reserved for a `ProtocolMismatch` refusal, the only point
-        // where `HelloAck::daemon_version` never reaches the client, and this
-        // reply follows a successful handshake that already delivered it.
+        // The catch-all `#[serde(other)]` lands on the wire, not a panic: a
+        // client newer than this daemon gets a named refusal instead of a
+        // dropped connection. `daemon_version` stays `None` here, since this
+        // reply follows a handshake that already delivered it.
         Request::Unrecognized => reply(Err(RpcError {
             code: RpcErrorCode::Unsupported,
             message: format!(

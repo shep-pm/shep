@@ -25,11 +25,7 @@ pub struct LogLine {
 /// once it resolves, every live pump has done the thing. A logrotate
 /// `postrotate` stanza needs that of [`Self::Reopen`] before it compresses
 /// what it renamed; `shep flush` needs it of [`Self::Flush`] before it
-/// truncates.
-///
-/// `#[non_exhaustive]`: this crate is published, and an out-of-tree
-/// [`ProcessRunner`](crate::runner::ProcessRunner) matching exhaustively would
-/// break on the next variant.
+/// truncates. `#[non_exhaustive]`: this crate is published.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum LogCtl {
@@ -39,15 +35,10 @@ pub enum LogCtl {
         /// Fires once the pump has finished acting on this request.
         ///
         /// `Ok` says both old handles were flushed and closed and both paths
-        /// were opened again. [`ReopenError`] says at least one path could
-        /// not be opened: the old handle is closed either way, so the rename
-        /// is safe to act on, but that stream's lines are dropped until
-        /// something reopens it.
-        ///
-        /// The channel buffers, so a request that was accepted is not one
-        /// that will be served: a pump that ends first drops this sender and
-        /// the caller's `await` resolves [`Err`](oneshot::error::RecvError).
-        /// Treat that as the stopped-sheep no-op a failed send means.
+        /// were opened again. [`ReopenError`] says at least one path could not
+        /// be opened: the old handle is closed either way. A pump that ends
+        /// first drops this sender, so the `await` resolves
+        /// [`Err`](oneshot::error::RecvError): treat that as a no-op.
         done: oneshot::Sender<Result<(), ReopenError>>,
     },
     /// Write out whatever the pump has buffered, wait for it to reach the
@@ -61,11 +52,6 @@ pub enum LogCtl {
         /// `write_all` on a [`tokio::fs::File`] returns as soon as the real
         /// `write(2)` is queued, so a line already dispatched could otherwise
         /// land at offset 0 after the file was emptied.
-        ///
-        /// [`FlushError`] says at least one stream's owed bytes never reached
-        /// its file. It does not hold up the truncate: `poll_flush` drives
-        /// the in-flight write to completion either way. A pump that ends
-        /// first drops this sender, as [`Self::Reopen`]'s does.
         done: oneshot::Sender<Result<(), FlushError>>,
     },
     /// Write out whatever the pump has buffered, wait for it to reach the
@@ -73,11 +59,8 @@ pub enum LogCtl {
     /// name for this sheep. Sent while assembling a daemon handover.
     ///
     /// Flush and report are one request: bytes still buffered behind a
-    /// descriptor the blob already claims die with the image at the `execve`,
-    /// and the successor cannot repair a gap it never saw.
-    ///
-    /// Unix only: it answers with raw descriptor numbers, and Windows has no
-    /// `execve` and no handover.
+    /// descriptor the blob already claims die with the image at the `execve`.
+    /// Unix only, as a handover is.
     #[cfg(unix)]
     ReportFds {
         /// Fires once both handles have nothing buffered and no write in
@@ -85,25 +68,17 @@ pub enum LogCtl {
         ///
         /// `CarriedFds::none` is the honest answer for a pump holding
         /// nothing, never an error: a number that names nothing is what the
-        /// successor must not be handed. A pump that ends first drops this
-        /// sender, as [`Self::Reopen`]'s does.
-        ///
-        /// `CarriedFds` is crate-private, so an out-of-tree runner can drop
-        /// this sender but cannot answer it.
+        /// successor must not be handed. `CarriedFds` is crate-private, so an
+        /// out-of-tree runner can drop this sender but cannot answer it.
         done: oneshot::Sender<crate::handover::CarriedFds>,
     },
     /// Read the sheep's streams again after a [`Self::ReportFds`] that no
     /// exec followed. Sent when a handover is abandoned.
     ///
-    /// A report parks the pump, since a snapshot only stays true while
-    /// nothing moves behind it, and normally the exec ends the park by
+    /// A report parks the pump, and normally the exec ends the park by
     /// replacing the image. Every other way out leaves this daemon with a
-    /// pump that has stopped reading for the rest of its life, so an
-    /// abandoned handover owes every pump it reported one of these.
-    ///
-    /// No acknowledgement: nobody is ordered against it, and sending one to
-    /// a pump that was never parked is a no-op, so it is safe to send widely
-    /// rather than exactly. Unix only, as [`Self::ReportFds`] is.
+    /// pump that has stopped reading for the rest of its life. No
+    /// acknowledgement: it is safe to send widely rather than exactly.
     #[cfg(unix)]
     Resume,
 }
@@ -121,11 +96,8 @@ pub struct ReopenError {
     /// streams failed. Never empty: a reopen that opened both answers `Ok`.
     ///
     /// `", "` and not `"; "` because this list nests:
-    /// [`SupervisorError::ReopenFailed`] joins one of these per sheep with
-    /// `"; "`, and one separator at both levels would punctuate one sheep
-    /// that failed on both streams like two sheep that failed on one each.
-    ///
-    /// [`SupervisorError::ReopenFailed`]: crate::supervisor::SupervisorError::ReopenFailed
+    /// [`SupervisorError::ReopenFailed`](crate::supervisor::SupervisorError::ReopenFailed)
+    /// joins one of these per sheep with `"; "`.
     pub message: String,
 }
 
@@ -141,23 +113,17 @@ impl core::error::Error for ReopenError {}
 /// verb: a pump whose pending writes would not reach the file
 /// ([`LogCtl::Flush`]), or a path that could not be truncated once they had.
 ///
-/// What the two leave behind differs: a truncate that failed leaves its file
-/// as it was, while a failed flush does not hold up the truncate, so that
-/// file ends up empty with the lines it held gone unwritten. Carries a
-/// rendered message for the reasons [`ReopenError`] gives.
+/// What the two leave behind differs: a failed truncate leaves its file as
+/// it was, while a failed flush does not hold up the truncate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlushError {
     /// Every log file the flush could not empty, as
     /// `"<path>: <what the failing call reported>"`, joined by `", "` when
     /// both of a pump's streams did. Never empty: a flush that emptied every
-    /// file answers `Ok`.
-    ///
-    /// `", "` for the reason [`ReopenError::message`] gives about its own
-    /// separator.
+    /// file answers `Ok`. `", "` for the reason [`ReopenError::message`] gives.
     ///
     /// Keyed by path and never by sheep: several sheep can share one log
-    /// path (`merge_logs`, or an explicit `out_file` on a multi-instance
-    /// app), so naming one of them would be arbitrary.
+    /// path (`merge_logs`, or an explicit `out_file` on a multi-instance app).
     pub message: String,
 }
 

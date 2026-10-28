@@ -8,10 +8,8 @@ use super::*;
 /// test running concurrently.
 ///
 /// `set_var`/`remove_var` are `unsafe fn` in edition 2024: the hazard is
-/// unsynchronized env reads from another thread. This binary is its own
-/// crate root, separate from `shep-daemon`'s `#![deny(unsafe_code)]`; no
-/// other test here touches `PATH`, and `Command::spawn` reads env through
-/// std's own synchronized path, so nothing here can race it.
+/// unsynchronized env reads from another thread. This binary is its own crate
+/// root, and `Command::spawn` reads env through std's own synchronized path.
 struct PathGuard {
     original: Option<String>,
 }

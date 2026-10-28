@@ -14,9 +14,7 @@ use super::{Contact, PeerContacts};
 ///
 /// Built from two facts and no inference: the pid the supervisor spawned the
 /// dog as, and what [`PeerContacts`] has seen arrive from that pid.
-///
-/// `pub(super)`: `dogs::contacts`'s own test drives `stale_verdict` off this
-/// type to check the warm-up gate from the contacts side.
+/// `pub(super)`: `dogs::contacts`'s own test drives `stale_verdict` off this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Silence {
     /// Nothing has ever connected from the dog's pid. The dog is not
@@ -79,9 +77,6 @@ pub(super) fn first_rung_evidence(evidence: Silence) -> String {
 /// asserting it about a connected but anonymous dog sends an operator to
 /// reinstall a binary that reinstalling cannot fix. Every arm ends in a
 /// command, since the reader is an operator mid-incident.
-///
-/// `pub(super)`: read by `dogs::silent`'s own ladder and by `dogs::contacts`'s
-/// test, which checks the warm-up gate from the contacts side.
 pub(super) fn stale_verdict(name: &str, evidence: Silence) -> String {
     let seen = "a dog restarted for never answering this shepherd has still not answered it";
     match evidence {

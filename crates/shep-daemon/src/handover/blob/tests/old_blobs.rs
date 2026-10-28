@@ -3,15 +3,11 @@
 //! Every file under `crates/shep-daemon/fixtures/handover/` is the output of
 //! that release's own serialiser, run against its own `sample_handover()`,
 //! copied here unchanged. Nothing regenerates them from this daemon's
-//! [`Handover`]: a fixture built here would follow a field rename the way
-//! [`compat`](super::compat)'s cases do, and the whole point of these is that
-//! they cannot. `crates/shep-daemon/fixtures/handover/README.md` names which
-//! tag wrote which file, and how it was dumped.
+//! [`Handover`]: a fixture built here would follow a field rename, and the
+//! whole point of these is that they cannot.
 //!
-//! Each test loads one file through [`Handover::load_value`], asserts the
-//! whole key set that release wrote at every level the shape policy counts
-//! ([`assert_the_shape`]), the values that shape wrote, and that every key the
-//! release predates reads as `None` through the accessor that reads it.
+//! Each test loads one file through [`Handover::load_value`] and asserts the
+//! whole key set that release wrote at every level the shape policy counts.
 
 use std::os::fd::RawFd;
 

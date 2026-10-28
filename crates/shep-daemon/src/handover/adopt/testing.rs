@@ -83,9 +83,7 @@ pub(super) fn blob_with(socket: &Path, sheep: Vec<CarriedSheep>) -> Handover {
 ///
 /// [`blob_with`] hands its listener and pidfile to `into_raw_fd`, which
 /// suits a case about `adopt`. [`dry_run`](crate::handover::adopt::dry_run)'s
-/// contract is that the caller
-/// still owns everything afterwards, which nothing can check against
-/// numbers no value holds.
+/// contract is that the caller still owns everything afterwards.
 pub(super) struct Predecessor {
     dir: tempfile::TempDir,
     pub(super) listener: std::os::unix::net::UnixListener,
@@ -177,12 +175,10 @@ pub(super) fn open_fd_count() -> usize {
 /// Run the real [`adopt`] over DUPLICATES of `blob`'s descriptors.
 ///
 /// `adopt` takes ownership, so a case run against a [`Predecessor`]'s own
-/// numbers would close the fixture. Duplicating renumbers, so a blob
-/// naming one descriptor twice stops naming it twice here.
+/// numbers would close the fixture. Duplicating renumbers, so a blob naming
+/// one descriptor twice stops naming it twice here.
 ///
-/// Closes every duplicate it holds, unless [`Self::release`] is called
-/// first: `sys::duplicate_fd` hands back a bare number with no owner,
-/// and a `Handover` holding it closes nothing on drop.
+/// Closes every duplicate it holds, unless [`Self::release`] is called first.
 struct Duplicates(Vec<RawFd>);
 
 impl Duplicates {

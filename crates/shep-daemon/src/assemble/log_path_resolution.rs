@@ -2,12 +2,10 @@ use std::path::{Path, PathBuf};
 
 /// Anchors an explicit log path at the sheep's `cwd` when it is relative.
 ///
-/// The shepherd opens these files itself, so a bare relative path resolves
-/// against the shepherd's directory rather than the sheep's: the same config
-/// names one file under the shepherd a handover started from and another
-/// under its successor, and `shep bleats` reads a third under the CLI's.
-///
-/// A sheep with no `cwd` already runs in the shepherd's own directory.
+/// The shepherd opens these files itself. A bare relative path resolves
+/// against its own directory, not the sheep's. The same config then names
+/// one file under a handover's predecessor and another under its successor.
+/// `shep bleats` reads a third under the CLI's.
 pub(super) fn anchor_log_path(rendered: String, cwd: Option<&Path>) -> PathBuf {
     let path = PathBuf::from(rendered);
     match cwd {

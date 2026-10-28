@@ -19,9 +19,7 @@ pub(crate) const DEFAULT_WATCH_DELAY: Duration = Duration::from_millis(500);
 /// zero, and `notify-debouncer-full` derives its poll tick as `delay / 4`:
 /// at zero that spins the debouncer thread in a tight sleep loop.
 ///
-/// One millisecond, not the full second `cron::MIN_MAX_SLEEP`
-/// uses: this is a debounce, not a polling period, so a floor that high
-/// would noticeably lengthen a save-to-restart round trip.
+/// One millisecond, not the full second `cron::MIN_MAX_SLEEP` uses.
 pub(crate) const MIN_WATCH_DELAY: Duration = Duration::from_millis(1);
 
 /// Runs one name-group's watch until the returned handle is aborted.
@@ -60,10 +58,8 @@ pub fn spawn_watch_group(
 /// an operator's `stop` racing a watch-triggered restart wins rather than
 /// being converted into it.
 ///
-/// No dirty flag: the channel's own buffering is the re-check mechanism.
-/// A batch arriving mid-restart stays queued, and the next iteration
-/// drains whatever accumulated into one combined check, so a backlog
-/// produces one restart, not one per queued send.
+/// No dirty flag: the channel's own buffering is the re-check mechanism. A
+/// batch arriving mid-restart stays queued, and the next iteration drains it.
 pub(super) async fn run_group(
     name: String,
     filter: RootedFilter,
@@ -115,11 +111,10 @@ pub(super) async fn run_group(
                 | SupervisorError::NoSuchSheep(_)
                 | SupervisorError::EnvChanged(_)),
             ) => {
-                // A restart touches no log files, starts no reload, scales
-                // nothing and registers no batch, names no dog, field, override or
-                // second sheep, so none of these twelve can arrive here. Named
-                // rather than swept into a catch-all, so a variant this path
-                // can produce still fails to compile.
+                // A restart touches no log files, starts no reload, scales nothing and
+                // registers no batch, names no dog, field, override or second sheep, so
+                // none of these twelve can arrive here. Named rather than swept into a
+                // catch-all, so a variant this path can produce still fails to compile.
                 tracing::warn!(name, %err, "watch-triggered restart reported an unrelated failure");
             }
             Err(err @ SupervisorError::EngineStopped) => {
@@ -441,14 +436,10 @@ mod tests {
         drop(tx); // kept alive until here: a dropped sender ends the loop too
     }
 
-    // The only case that constructs a real `WatchSource`, exercised by
-    // `spawn_watch_group_restarts_on_a_real_touch_and_stops_on_abort`. The
-    // touch half catches a guard dropped before the loop sees an event; the
-    // abort half only proves the loop stops, not that a leaked guard is caught.
     // A watch root that does not exist, seen from the arming entry point:
-    // fails if the arming swallows the failure, or reports `Backend`
-    // instead of `Watch` carrying the exact path handed to it. Real time,
-    // like every other case here that constructs a watcher.
+    // fails if the arming swallows the failure, or reports `Backend` instead of
+    // `Watch` carrying the exact path handed to it. Real time, like every other
+    // case here that constructs a watcher.
     #[tokio::test]
     async fn a_watch_root_that_does_not_exist_names_the_path_it_could_not_watch() {
         let (handle, _rx, _dir) = spawn_test_fixture(vec![]);

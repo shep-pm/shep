@@ -1,14 +1,12 @@
-//! A sheep serving one TCP port with `SO_REUSEPORT`, and able to
-//! ignore its stop signal. Used by `daemon_e2e.rs`'s reload
-//! measurement, since `/bin/sh` cannot set a socket option.
+//! A sheep serving one TCP port with `SO_REUSEPORT`, and able to ignore its
+//! stop signal. Used by `daemon_e2e.rs`'s reload measurement, since `/bin/sh`
+//! cannot set a socket option.
 //!
-//! Env, read once at startup: `SHEEP_PORT_BASE` + `SHEP_INSTANCE`
-//! (required, bind port); `SHEEP_HOLD_MS` (default 40, reply delay);
-//! `SHEEP_DEFIANT=1` (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (if it
-//! exists at startup, bind nothing and answer nothing).
+//! Env, read once at startup: `SHEEP_PORT_BASE` + `SHEP_INSTANCE` (required,
+//! bind port); `SHEEP_HOLD_MS` (default 40, reply delay); `SHEEP_DEFIANT=1`
+//! (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (if present, bind nothing).
 //!
-//! Protocol: the server writes `<pid>\n` and closes. Startup is
-//! announced on stdout.
+//! Protocol: the server writes `<pid>\n` and closes.
 
 // nix is unix-only, and so is everything below. The Windows CI leg
 // builds this file and gets the stub at the bottom.
@@ -130,17 +128,13 @@ mod unix {
         }
     }
 
-    /// A listening socket on `127.0.0.1:port` with `SO_REUSEPORT` set
-    /// before the bind. Shep cannot set this on an app's behalf
-    /// (`AppConfig::reuse_port` documents that division).
+    /// A listening socket on `127.0.0.1:port` with `SO_REUSEPORT` set before
+    /// the bind. Shep cannot set this on an app's behalf, a division
+    /// `AppConfig::reuse_port` documents.
     ///
-    /// `SO_REUSEADDR` rides along too: this port carries hundreds of
-    /// short connections per run. Their `TIME_WAIT` remains would
-    /// otherwise refuse the next bind.
-    ///
-    /// Hand-built rather than `TcpListener::bind`, since `std` has no
-    /// way to set a socket option before binding. `socket` hands back
-    /// an `OwnedFd`, and `TcpListener: From<OwnedFd>` takes it safely.
+    /// `SO_REUSEADDR` rides along: this port carries hundreds of short
+    /// connections per run, whose `TIME_WAIT` remains would refuse the next
+    /// bind. Hand-built because `std` cannot set a socket option before bind.
     fn bind_reuse_port(port: u16) -> TcpListener {
         let sock = socket(
             AddressFamily::Inet,

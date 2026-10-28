@@ -7,8 +7,7 @@
 //! caller what to do next (reply, forward bus events, or begin shutdown).
 //!
 //! Every envelope gets a `budget`: its own `deadline_ms`, clamped to
-//! `MAX_DEADLINE_MS` so a peer cannot pin a daemon task open, or
-//! `DEFAULT_DEADLINE_MS` when it sent none.
+//! `MAX_DEADLINE_MS` so a peer cannot pin a daemon task open, or `DEFAULT_DEADLINE_MS`.
 
 #[cfg(test)]
 use core::time::Duration;
