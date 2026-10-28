@@ -6,9 +6,8 @@ impl App {
     /// trimmed.
     ///
     /// `TextApply` arms rather than writes: an empty buffer becomes
-    /// [`SettingEdit::Unset`], anything else [`SettingEdit::Set`], and the next
-    /// `Enter` sends it. A new map entry that is not `name=value` keeps the
-    /// editor open. `TextAbandon` leaves the screen open.
+    /// [`SettingEdit::Unset`], anything else [`SettingEdit::Set`], and the
+    /// next `Enter` sends it. `TextAbandon` leaves the screen open.
     pub(in crate::lookout::app) fn on_settings_text_key(&mut self, key: KeyPress) -> Effect {
         let now = self.now;
         let Some(settings) = self.settings_mut() else {
@@ -45,8 +44,7 @@ impl App {
                         // A dog's own field leaves as its whole section, which
                         // is the request a dog pane's close sends. The prompt
                         // says which file it lands in and that the operator's
-                        // own comments survive it, because that is the part an
-                        // operator would otherwise not know.
+                        // own comments survive it.
                         Ok(TargetEdit::DogSection { name, toml }) => {
                             let text = format!(
                                 "write {name}'s section? it lands in dogs.toml, {name} is told, and \

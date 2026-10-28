@@ -26,17 +26,11 @@ pub(super) enum Axis {
 
 /// What the match axis's typed text resolves to.
 ///
-/// `/pattern/` (a leading and trailing slash, the same delimiter grep,
-/// sed and this pane's own `filters` chip agree to read) compiles as a
-/// regex; anything else is a plain substring. This is the deliberate
-/// choice for distinguishing the two, since the spec says only "text or
-/// regex" and not how an operator picks: trying to compile *every* typed
-/// string as a regex and falling back to literal on a parse error was
-/// rejected, because almost any short string a person types (`get
-/// index.html`, `(unset)`) is *already* valid regex syntax with a
-/// different meaning than its literal reading — `.` and `(` would
-/// silently stop meaning themselves. An explicit delimiter costs two
-/// characters and never reinterprets a search an operator meant literally.
+/// `/pattern/` (a leading and trailing slash, the same delimiter grep, sed
+/// and this pane's own `filters` chip agree to read) compiles as a regex;
+/// anything else is a plain substring. The delimiter is explicit because
+/// almost any short string a person types is already valid regex syntax,
+/// with a different meaning than its literal reading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchKind {
     /// Plain substring search: [`Filters::match_text`], verbatim.
@@ -73,13 +67,7 @@ impl MatchKind {
 /// have to agree and a single constructor is what makes disagreeing
 /// impossible. [`Filters::set_match`] is the only way to build one.
 ///
-/// Compiling at set time rather than at match time is the point:
-/// [`Filters::match_ranges`] runs once per rendered line, so a matcher
-/// parsed on demand recompiled the same pattern once per line on every
-/// frame. Measured over a full 80-line feed at 160x50, `/\w+@\w+\.\w+/`
-/// cost 27.0 ms a redraw that way, against [`super::super::MIN_REDRAW`]'s 33 ms
-/// frame budget. Compiled once at set time it is 24.8 us, within noise of
-/// the 21.1 us a literal axis costs: a redraw compiles nothing at all.
+/// Compiling at set time is the point: [`Filters::match_ranges`] runs per line.
 #[derive(Clone)]
 struct Matcher {
     /// The text exactly as typed, delimiters and all. Also the needle a
@@ -122,16 +110,13 @@ pub(crate) fn compiles() -> usize {
 }
 
 impl Matcher {
-    /// Compiles `text` per [`MatchKind`]'s rule, or `None` for an empty
-    /// `text`, which is an unset axis rather than a matcher hitting every
-    /// line.
+    /// Compiles `text` per [`MatchKind`]'s rule, or `None` for empty text,
+    /// which is an unset axis rather than a matcher hitting every line.
     ///
     /// The refusal lives here rather than in [`Filters::set_match`] because
     /// [`Self::is_match`] and [`Self::ranges`] disagree on an empty needle:
-    /// `str::contains` answers true for one, and `str::match_indices`
-    /// reports a hit at every byte boundary. A matcher that cannot hold
-    /// empty text is one guard instead of two, and neither method has to
-    /// know about it.
+    /// `str::contains` answers true for one, `str::match_indices` hits at
+    /// every byte boundary.
     fn new(text: String) -> Option<Self> {
         if text.is_empty() {
             return None;
@@ -228,9 +213,7 @@ pub struct Filters {
     ///
     /// Private, unlike the two axes above, because it carries a compiled
     /// regex that has to stay in step with the text it came from:
-    /// [`Self::set_match`] and [`Self::clear_match`] are the only writers,
-    /// and [`Self::match_text`], [`Self::match_kind`] and
-    /// [`Self::match_ranges`] read it back.
+    /// [`Self::set_match`] and [`Self::clear_match`] are the only writers.
     matcher: Option<Matcher>,
     /// The axes currently set, oldest first, so the newest is the last
     /// element.
@@ -302,12 +285,11 @@ impl Filters {
 
     /// Whether `line` survives every axis currently set.
     ///
-    /// Each axis short-circuits the line out the moment it fails; an axis
-    /// left `None` holds automatically, which is how the three compose
-    /// with AND rather than needing a combinator. `levels` is this sheep's
-    /// own reading of a level, built once by the caller
-    /// ([`super::BleatsPane::visible`]) rather than per line; the match axis needs
-    /// no such hoist, holding a matcher already compiled.
+    /// Each axis short-circuits the line out the moment it fails; an axis left
+    /// `None` holds automatically, which is how the three compose with AND
+    /// rather than needing a combinator.
+    ///
+    /// `levels` is built once by the caller ([`super::BleatsPane::visible`]).
     pub(super) fn keeps(&self, line: &TailLine, levels: &Classifier) -> bool {
         if let Some(stream) = self.stream
             && line.stream != stream
@@ -316,13 +298,9 @@ impl Filters {
         }
         if let Some(min) = self.min_level {
             // A line with no detectable level always passes: `None` means
-            // "unclassifiable", the ordinary case for plain app output, not
-            // "below the minimum". Treating it as a miss would make a bare
-            // `println!` line vanish the moment an operator set any floor at
-            // all, which is exactly the line the pane was opened to find.
-            // True of an app's declared rules as much as of shep's own
-            // reading: declaring rules narrows what gets a level, never what
-            // gets shown.
+            // "unclassifiable", not "below the minimum". A floor would
+            // otherwise hide a bare `println!` line, the very line the pane
+            // was opened to find.
             if let Some(level) = levels.level_of(&line.text)
                 && level < min
             {
@@ -638,8 +616,7 @@ mod tests {
 
     /// `Matcher` hand-writes `Debug`, and that impl is half of why holding a
     /// compiled regex on `Filters` was possible at all: a derived one prints
-    /// the compiled half as `Regex(Regex("po+l"))`, so an operator's search
-    /// text would appear twice in every `Filters` dump.
+    /// the compiled half as `Regex(Regex("po+l"))`.
     ///
     /// Exact-string, because nothing else pins it. `pane_sheep`'s own
     /// `Debug` test only ever sees `matcher: None`, so a later derive here

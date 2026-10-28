@@ -22,17 +22,12 @@ impl App {
     }
 
     /// `v`'s answer: a read of the selected row's stored value, or a refusal
-    /// naming the gate and the file.
-    ///
-    /// The value is not on screen when this returns. [`Self::on_revealed`]
-    /// puts it there once the read lands.
+    /// naming the gate and the file. The value is not on screen when this
+    /// returns; [`Self::on_revealed`] puts it there once the read lands.
     ///
     /// A visibility check on `pane.selected` here, through
-    /// [`SecretsPane::selected_visible_row`], because `move_by` cannot keep
-    /// it inside the visible set when that set is empty: every group folded
-    /// away and no operator row standing leaves `selected` naming a hidden
-    /// row, and nothing else writes it back. Refused silently, the same
-    /// answer every other `v` press against a pane that is not open gives.
+    /// [`SecretsPane::selected_visible_row`], because `move_by` cannot keep it
+    /// inside the visible set when that set is empty. Refused silently.
     pub(in crate::lookout::app) fn reveal_selected(&mut self) -> Effect {
         if !self.reveal_gate_open() {
             self.notice = Some(Notice::grave(
@@ -66,17 +61,10 @@ impl App {
     /// `y`'s answer: the already-revealed value, on its way to
     /// [`Effect::CopyToClipboard`], or the `allow_read` refusal.
     ///
-    /// A reveal by another route, so it takes [`Self::reveal_gate_open`]'s
-    /// own gate rather than a second one, and it copies what
-    /// [`SecretsPane::reveal`] already holds on screen rather than reading
-    /// the store afresh: a fresh read would let `y` show a value the
-    /// operator never asked [`KeyPress::Reveal`] to put on screen, past the
-    /// same gate a reveal takes.
-    ///
-    /// Silent, not the `allow_read` refusal, when the gate is open but
-    /// nothing is revealed: the gate is not what is missing there, the same
-    /// silence [`Self::reveal_selected`] falls back to for an unrelated
-    /// selection.
+    /// A reveal by another route, so it takes [`Self::reveal_gate_open`]'s own
+    /// gate rather than a second one, and it copies what
+    /// [`SecretsPane::reveal`] already holds on screen rather than reading the
+    /// store afresh. Silent when the gate is open but nothing is revealed.
     pub(in crate::lookout::app) fn copy_revealed(&mut self) -> Effect {
         if !self.reveal_gate_open() {
             self.notice = Some(Notice::grave(

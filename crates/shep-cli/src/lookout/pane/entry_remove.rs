@@ -102,13 +102,12 @@ impl ConfigPane {
     }
 
     /// Files `whole` as the new value of the entries field `key`, and
-    /// rebuilds the rows over it. The edits filed under the field's entries
-    /// are folded into `whole` by the caller and dropped from the set here,
-    /// and what that took out is kept for [`Self::restore_reshape`].
+    /// rebuilds the rows over it. `gone` is the array entry `whole` lacks,
+    /// whose open state goes with it. Edits filed under the field's entries
+    /// are folded into `whole` by the caller, and what that dropped is kept
+    /// for [`Self::restore_reshape`].
     ///
-    /// `gone` is the array entry `whole` lacks, whose open state goes with
-    /// it. A `whole` that is what the target holds files nothing, and drops
-    /// what is kept for `key`, since there is no edit left for `u` to undo.
+    /// A `whole` equal to what the target holds leaves `u` nothing to undo.
     pub(super) fn file_whole(&mut self, key: &str, whole: Value, gone: Option<&PathStep>) {
         let head = format!("{key}[");
         let reshape = Reshape {
@@ -140,13 +139,11 @@ impl ConfigPane {
 
     /// [`Self::adopt_edits`] from `previous`, less every edit filed under an
     /// array entry this pane no longer holds at the same position, and every
-    /// whole value filed for an array or map of tables that the new section
-    /// no longer matches. That is how many it dropped.
+    /// whole value filed for an array or map of tables the new section no
+    /// longer matches. That is how many it dropped.
     ///
     /// An array entry is named by its place in the array, so after another
-    /// writer inserts or removes one, the same key names a different entry,
-    /// and the edit would be written into it. A removal files the whole
-    /// array as it stood, so it would write the other writer's change away.
+    /// writer inserts or removes one, the same key names a different entry.
     pub(in crate::lookout) fn adopt_edits_from(&mut self, previous: &Self) -> usize {
         let mut kept = previous.edits.clone();
         let mut dropped = 0;

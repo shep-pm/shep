@@ -122,10 +122,8 @@ impl DogKey {
 /// Neither is a [`SettingEdit`]: `boot_first_dogs` is a name in or out of an
 /// array rather than a value at a path, and a grant is a read-modify-write of
 /// a record the CLI owns. Both are named here so the gate, the ticket and the
-/// prompt are the same for them as for every other row on this screen.
-///
-/// `Debug` is derived, not redacted: a dog's name, a boolean and a permission
-/// name. A permission names what a dog may ask, never a value.
+/// prompt are the same for them as for every other row. `Debug` is derived,
+/// not redacted: a name, a boolean and a permission name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DogTune {
     /// `[daemon] boot_first_dogs`: `name` in or out.
@@ -190,11 +188,8 @@ impl DogTune {
 ///
 /// A dog's own config needs two reads the screen cannot do inline: its schema
 /// comes from running the dog's binary, and its section comes from the
-/// shepherd. Both are asked for when the row is opened and not before, so a
-/// screen listing six dogs spends nothing on a dog nobody opened.
-///
-/// `Debug` is derived, not redacted: the pane inside carries its own redacted
-/// `Debug`, and a schema describes values without holding any.
+/// shepherd. Both are asked for when the row is opened and not before. `Debug`
+/// is derived, not redacted: the pane inside carries its own redacted `Debug`.
 #[derive(Debug, Clone)]
 pub enum DogTree {
     /// The schema probe is out. Nothing to draw yet, and the row stays closed.
@@ -302,14 +297,11 @@ pub struct Settings {
     /// sitting past its new end.
     pub(super) view: Viewport,
     /// The edit this screen is showing, or `None`. One field rather than
-    /// several `Option`s, so typing, armed and sent cannot overlap on
-    /// screen.
+    /// several `Option`s, so typing, armed and sent cannot overlap on screen.
     ///
-    /// Not the same as the one write in flight. [`Pending::Sent`] eats no
-    /// key, so a second edit can be armed and sent over it, and closing the
-    /// screen abandons it without cancelling anything: either leaves a
-    /// write with no prompt waiting for it. [`Self::resolve`] is what keeps
-    /// those answers off the edit that is here now.
+    /// Not the same as the one write in flight. [`Pending::Sent`] eats no key,
+    /// so a second edit can be armed and sent over it. [`Self::resolve`] is
+    /// what keeps those answers off the edit that is here now.
     pub(super) pending: Option<Pending>,
     /// Each dog whose row the operator opened, by name, with the two reads
     /// its own tree needs. Keyed by name rather than by index because a

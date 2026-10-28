@@ -1,18 +1,13 @@
 //! The one key/value editor the env rows and the secrets pane share.
 //!
-//! Both panes list a KEY and a VALUE, so both open the same editor over
-//! them: two [`TextBox`]es side by side, one under the cursor, `Tab` and
-//! `Shift-Tab` moving between them, `Enter` on VALUE submitting both, and
-//! `Esc` dropping the whole thing. What each pane does with what is
-//! submitted is its own: an env row files a
-//! [`PaneEdit::SetEnv`](crate::lookout::pane::PaneEdit::SetEnv), a secrets
-//! row raises a [`SecretEdit`](crate::lookout::app::SecretEdit).
+//! Both panes list a KEY and a VALUE, so both open the same editor. Two
+//! [`TextBox`]es sit side by side, one under the cursor. `Tab` and
+//! `Shift-Tab` move between them, `Enter` on VALUE submits both, and `Esc`
+//! drops the whole thing. What each pane does with the submission is its
+//! own.
 //!
-//! The editor never holds a stored value. Neither pane is ever told one:
-//! [`SheepConfigView::new`](shep_core::protocol::SheepConfigView::new) strips
-//! `env`, and a secret reaches the screen only through a reveal. So VALUE
-//! starts empty on an existing row too, and the only text this type has ever
-//! held is what the operator typed.
+//! The editor never holds a stored value. A secret reaches the screen only
+//! through a reveal.
 
 use super::app::KeyPress;
 use super::textbox::TextBox;

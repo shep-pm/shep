@@ -17,11 +17,9 @@ impl App {
     /// selected sheep and asks for its config in the same step, since the
     /// pane's own left column has nothing to draw without it.
     ///
-    /// [`Self::selected_row`], not [`Self::selected_name`]: a group row has
-    /// no single sheep to open the pane on, and a dog runs no config the
-    /// pane's own `SheepConfigView` can show (its section is a TOML table,
-    /// not a Flockfile's `AppConfig`). Both are silently refused, the same
-    /// silence [`Self::ask_for_bleats`] falls back to for a group.
+    /// [`Self::selected_row`], not [`Self::selected_name`]: a group row has no
+    /// single sheep to open the pane on, and a dog runs no config the pane's
+    /// own `SheepConfigView` can show. Both are silently refused.
     pub(super) fn open_sheep_pane(&mut self) -> Effect {
         let Some(row) = self.selected_row() else {
             return Effect::None;
@@ -91,13 +89,9 @@ impl App {
     /// the flock.
     ///
     /// Reads [`SheepPane::sheep`], never [`Self::selected`]: the same
-    /// reasoning [`Self::feed_row`]'s own doc gives. `Msg::Snapshot` reseats
-    /// the selection whatever screen is showing, so a pane pinned to a
-    /// sheep that then leaves the flock would have this read a neighbour's
-    /// row while the pane still names the first, one sheep's facts
-    /// presented as another's. The identity band draws this instead of
-    /// `App::selected_row`, and any figure it shows (a CPU reading among
-    /// them) resolves through the row this returns, not the selection.
+    /// reasoning [`Self::feed_row`]'s own doc gives. The identity band draws
+    /// this instead of `App::selected_row`, and any figure it shows resolves
+    /// through the row this returns.
     #[must_use]
     pub fn sheep_pane_row(&self) -> Option<&Row> {
         match self.sheep_pane()?.sheep() {

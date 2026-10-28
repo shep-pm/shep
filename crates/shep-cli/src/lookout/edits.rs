@@ -12,14 +12,11 @@ use super::pane::PaneEdit;
 
 /// Which field or env key an entry is filed under.
 ///
-/// Two arms rather than one string, because a config field key and an env
-/// key are both a `String` and `env` is itself an `AppConfig` field name.
-/// `Field` sorts first, so the two never interleave.
-///
-/// Derived from the [`PaneEdit`] on the way in rather than passed
-/// separately, so a `Field` value can never be filed under an `Env` key.
-///
-/// `Debug` is derived (IR-41): a key name, never a value.
+/// Two arms rather than one `String`, because `env` is itself an
+/// `AppConfig` field name. Derived from the [`PaneEdit`] on the way in, so a
+/// `Field` value can never be filed under an `Env` key. The two never
+/// interleave: `Field` sorts first. `Debug` is derived (IR-41): a key name,
+/// never a value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditKey {
     /// A config field, by its Flockfile name.
@@ -40,14 +37,11 @@ impl EditKey {
 
 /// One pending change: the write it will become, and what sending it costs.
 ///
-/// [`PaneEdit`] rather than a value type of this module's own, because it
-/// is already the shape a write takes and already carries both a config
-/// field's [`FieldValue`](super::pane::FieldValue) and an env key's
-/// [`EnvValue`](shep_core::protocol::EnvValue). A second enum beside it
-/// would say the same thing twice and make a mismatched pair expressible.
-///
-/// `Debug` is derived, safe because `PaneEdit`'s own `Debug` withholds
-/// both value types (IR-41).
+/// [`PaneEdit`] rather than a type of this module's own: it is already the
+/// shape a write takes, and carries both a config field's
+/// [`FieldValue`](super::pane::FieldValue) and an env key's
+/// [`EnvValue`](shep_core::protocol::EnvValue). `Debug` is derived, safe
+/// because `PaneEdit`'s own `Debug` withholds both value types (IR-41).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edit {
     edit: PaneEdit,
@@ -62,13 +56,8 @@ impl Edit {
     }
 
     /// What sending it costs, and [`None`] for a dog, which has no
-    /// `apply_group` table.
-    ///
-    /// Frame 1g's close dialog was expected to read this and does not: the
-    /// dialog names fields (`ConfigPane::unsent_fields_needing_a_respawn`
-    /// calls `reaches_running` directly), it does not rank a maximum. This
-    /// stays for the tests in this module, which read a filed edit's own
-    /// impact directly; `ConfigPane::cost` is what the COST column renders.
+    /// `apply_group` table. `ConfigPane::cost` is what the COST column
+    /// renders; this is one filed edit's own impact.
     #[cfg_attr(
         not(test),
         allow(

@@ -7,13 +7,10 @@ use crate::dog_settings::Refusal;
 impl App {
     /// One `Request::SetSheepEnv` reply.
     ///
-    /// `was_set` comes off the request rather than the reply: the answer
-    /// names the key and deliberately never the value, so it cannot say
-    /// which of the two things happened.
-    ///
-    /// Env is spawn-time in every case (`AppConfig::env` is
-    /// `ApplyGroup::NeedsRespawn`), so the sentence says so unconditionally
-    /// rather than reading a list that this reply does not carry.
+    /// `was_set` comes off the request rather than the reply: the answer names
+    /// the key and deliberately never the value, so it cannot say which of the
+    /// two things happened. Env is spawn-time in every case, so the sentence
+    /// says so unconditionally.
     pub(super) fn on_env_set(
         &mut self,
         name: &str,
@@ -44,15 +41,10 @@ impl App {
     /// The list sub-screen's own keymap, in force for as long as the pane
     /// holds one.
     ///
-    /// `Escape` closes the sub-screen, not the pane, the same
-    /// innermost-first rule the env screen follows. `Enter` or `e` opens
-    /// the editor on the element under the cursor, or adds one on
-    /// `+ new`. `d` removes, `K`/`J` move the element one place, and `h`
-    /// opens the keymap overlay, same as everywhere else.
-    ///
-    /// A removal and a move file the whole array, since that is what the
-    /// write carries. Nothing goes out here: the pane's own `Escape` is
-    /// what writes the set.
+    /// `Escape` closes the sub-screen, not the pane, the same innermost-first
+    /// rule the env screen follows. `Enter` or `e` opens the editor, `d`
+    /// removes, `K`/`J` move the element one place. A removal and a move file
+    /// the whole array, since that is what the write carries.
     pub(super) fn on_list_key(&mut self, key: KeyPress) -> Effect {
         if key == KeyPress::Quit {
             return Effect::Quit;
@@ -146,11 +138,8 @@ impl App {
             | KeyPress::Bleats => {}
             // Drops the newest edit, the same key the field list answers
             // and on the same terms: no control gate, since a key that
-            // unfiles something cannot write. The sub-screen re-reads the
-            // array from what is left filed, so the rows show what was
-            // restored. The set holds one entry per field, so this takes
-            // the whole array back to the shepherd's rather than one
-            // keystroke of it.
+            // unfiles something cannot write. The set holds one entry per
+            // field, so this takes the whole array back to the shepherd's.
             KeyPress::Undo => {
                 if let Some(pane) = self.config_pane_mut() {
                     pane.undo_edit();
@@ -178,10 +167,7 @@ impl App {
     ///
     /// `TextApply` files the whole array. An element the item schema refuses
     /// keeps the editor open, which is why the mode follows what the
-    /// sub-screen did rather than what the key asked for, and the sentence
-    /// naming the rule goes in the status bar: a dog's table is written
-    /// without being read, so an operator who is not told now finds out from
-    /// the dog's own log, or never.
+    /// sub-screen did rather than what the key asked for.
     pub(super) fn on_list_text_key(&mut self, key: KeyPress) -> Effect {
         let Some(pane) = self.body.config_pane_mut() else {
             return Effect::None;
@@ -221,14 +207,8 @@ impl App {
     /// [`App::on_secrets_text_key`] answers the same keys the same way,
     /// because both are driving one [`KeyValues`].
     ///
-    /// `TextApply` files, exactly as the field editor's does: nothing on an
-    /// env row reaches the shepherd before the pane closes, so an env key
-    /// typed by mistake costs an `u` rather than an override the operator
-    /// cannot read back.
-    ///
-    /// A refusal keeps the editor open with what was typed still in it, so
-    /// the mode follows what the editor did rather than what the key asked
-    /// for, the same rule the field editor's own arm above follows.
+    /// `TextApply` files, exactly as the field editor's does. A refusal keeps
+    /// the editor open with what was typed still in it.
     pub(super) fn on_env_text_key(&mut self, key: KeyPress) -> Effect {
         if key == KeyPress::Quit {
             return Effect::Quit;
@@ -382,9 +362,8 @@ mod tests {
     /// reason a scalar field's refusal is: a dog's table is written without
     /// being read.
     ///
-    /// `stop_exit_codes` is the list the Flockfile schema puts no bound on
-    /// its items, so the rule here is the one every integer list carries:
-    /// the element has to be a whole number.
+    /// `stop_exit_codes` is the list the Flockfile schema puts no bound on, so
+    /// the rule here is the one every integer list carries.
     #[test]
     fn a_refused_list_element_keeps_text_mode_on_and_says_why() {
         let mut app = fixtures::app_in_sheep_pane_with_control();

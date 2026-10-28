@@ -24,21 +24,12 @@ impl App {
         Effect::None
     }
 
-    /// The row whose log files the feed should read: the bleats pane's
-    /// pinned sheep while that pane is open, the sheep pane's own pinned
-    /// sheep while its embedded feed is open, and the selection otherwise.
+    /// The row whose log files the feed reads: the pinned sheep of whichever
+    /// feed is open, else the selection. `None` once the pinned sheep is gone.
     ///
-    /// The three are not the same and the difference is operator-visible.
-    /// Both panes pin one sheep for their lifetime, but `Msg::Snapshot`
-    /// reseats the selection whatever screen is showing, so a pinned sheep
-    /// leaving the flock moves the selection to another one. Reading the
-    /// selection here would then draw that other sheep's lines under a
-    /// title still naming the pinned sheep, which is one sheep's output
-    /// presented as another's.
-    ///
-    /// `None` once the pinned sheep is gone, so the pane shows its own
-    /// "no longer in the flock" title over nothing rather than over somebody
-    /// else's log.
+    /// Both panes pin one sheep for their lifetime, and `Msg::Snapshot`
+    /// reseats the selection whatever screen is showing, so reading the
+    /// selection would draw another sheep's lines under the pinned one's title.
     #[must_use]
     pub fn feed_row(&self) -> Option<&Row> {
         match self.bleats_pane() {
@@ -102,18 +93,11 @@ mod tests {
     use crate::lookout::view::fixtures;
 
     /// The pane opens on whatever was selected and pins it: full screen
-    /// leaves no table to change a selection with.
-    /// The feed follows the pinned sheep, not the selection.
+    /// leaves no table to change a selection with. The feed follows the
+    /// pinned sheep, not the selection.
     ///
-    /// The pane pins one sheep for its lifetime, but `Msg::Snapshot` reseats
-    /// the selection whatever screen is showing. So a pinned sheep leaving
-    /// the flock moved the selection to another one, and the next refresh
-    /// read that sheep's log files while the title still named the pinned
-    /// one: one sheep's output under another sheep's heading.
-    ///
-    /// Asserts the row the feed reads, which is the thing that was wrong.
-    /// Asserting the rendered title would have passed throughout, because
-    /// the title was always right.
+    /// Asserts the row the feed reads. The title was always right, so
+    /// asserting it would have passed throughout.
     #[test]
     fn the_feed_follows_the_pinned_sheep_when_the_selection_moves() {
         let mut app = fixtures::app_with(
@@ -149,14 +133,8 @@ mod tests {
     }
 
     /// The same regression as [`the_feed_follows_the_pinned_sheep_when_the_selection_moves`],
-    /// through the sheep pane's own embedded feed rather than the
-    /// full-screen one: `Confirm` pins the pane to sheep 9, `feed_row`
-    /// answers 9 while it is open, sheep 9 then leaves the flock and the
-    /// reseat moves the selection to 4, and `feed_row` must still answer
-    /// `None` (sheep 9 is gone) rather than 4 (the selection's own new row).
-    /// Before this task, `feed_row` had no `Body::Sheep` branch at all and
-    /// fell through to `self.selected_row()` unconditionally, so this would
-    /// have read billing's log under a pane still naming `web`.
+    /// through the sheep pane's own embedded feed. `feed_row` must answer
+    /// `None` once the pinned sheep is gone, not the selection's new row.
     #[test]
     fn the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves() {
         let mut app = fixtures::app_with(

@@ -11,10 +11,7 @@ impl App {
     ///
     /// The sentence lands whether or not the screen is still waiting on this
     /// ticket, since the operator asked for this toggle either way. Only the
-    /// prompt is `ticket`'s to clear, and only [`Self::reread_settings`]
-    /// decides whether the re-read runs: the file half has already landed, so
-    /// `DogView.enabled` is stale whatever the shepherd said. No row is
-    /// upserted; the next `ListFlock` repairs RUNNING.
+    /// prompt is `ticket`'s to clear.
     pub(super) fn on_dog_reply(
         &mut self,
         name: String,
@@ -52,16 +49,8 @@ impl App {
     ///
     /// The probe is what opening costs, and it is spent here rather than when
     /// the screen opens: a probe runs the dog's binary, so a screen listing six
-    /// dogs pays for none until an operator opens one. A dog whose row was
-    /// opened before pays nothing, because this screen kept the pane.
-    ///
-    /// Silent on every other row, not refused: `space` and `Enter` already edit
-    /// those, and a refusal that was never going to act trains an operator to
-    /// ignore the status bar.
-    ///
-    /// The dogs this can reach are exactly the rows already shown, so no
-    /// listing request is needed. An adopted-but-disabled dog stays in
-    /// that list: configure-then-enable is the ordinary order.
+    /// dogs pays for none until an operator opens one. Silent on every other
+    /// row, not refused: `space` and `Enter` already edit those.
     pub(super) fn fold_dog_row(&mut self) -> Effect {
         let Some(index) = self
             .settings()

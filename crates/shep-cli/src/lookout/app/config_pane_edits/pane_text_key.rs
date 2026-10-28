@@ -5,11 +5,8 @@ impl App {
     /// its two editors owns [`InputMode::Text`].
     ///
     /// Does not trim the buffer, for the reason
-    /// [`Self::on_settings_text_key`]'s own doc gives: this repository does
-    /// not widen an accepted input grammar without a basis in the spec.
-    ///
-    /// Both editors file on `TextApply`, and neither sends: the pane's own
-    /// `Escape` writes the whole set.
+    /// [`Self::on_settings_text_key`]'s own doc gives. Both editors file on
+    /// `TextApply`, and neither sends: the pane's own `Escape` writes the set.
     pub(in crate::lookout::app) fn on_pane_text_key(&mut self, key: KeyPress) -> Effect {
         if key == KeyPress::Quit {
             return Effect::Quit;

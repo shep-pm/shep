@@ -4,14 +4,10 @@
 //! destructive), `--butter` (attention) and `--ink-3` (muted) onto 16 or
 //! 256 terminal colours, per `docs/shep-design/README.md`.
 //!
-//! [`Palette::ground`] is the only thing in this module that paints a
-//! background, and it is for exactly two rows: the selected row and the
-//! status bar. Ordinary ground still stays [`Color::Reset`] everywhere
-//! else, so the operator's own terminal background shows through ordinary
-//! text. `--barn` is scenery-only and has no analog here.
-//!
-//! Every coloured cell's text already says the same thing, so `NO_COLOR`
-//! costs decoration, never information.
+//! [`Palette::ground`] is the only thing here that paints a background, and
+//! for exactly two rows; ordinary ground stays [`Color::Reset`]. Every
+//! coloured cell's text already says the same thing, so `NO_COLOR` costs
+//! decoration, never information.
 
 use ratatui::style::{Color, Modifier, Style};
 use std::ffi::OsStr;
@@ -71,13 +67,10 @@ impl Palette {
         let deep = crate::style::deep_colour_terminal(term, colorterm);
 
         if deep {
-            // xterm-256 indices chosen as the nearest neighbours of the design
-            // language's own hexes: 29 #00875f for --meadow #2E8B57, 166
-            // #d75f00 for --bark #E0552B, 221 #ffd75f for --butter #F3C44C,
-            // 245 #8a8a8a for --ink-3 #7A8C80. 74, 238, 235 and 236 have no
-            // hex counterpart in the design language: sky, line and the
-            // gauge's ground are lookout-only, chosen for legibility against
-            // 235's own dark ground.
+            // xterm-256 indices nearest the design language's own hexes: 29
+            // #00875f for --meadow #2E8B57, 166 #d75f00 for --bark #E0552B,
+            // 221 #ffd75f for --butter #F3C44C, 245 #8a8a8a for --ink-3
+            // #7A8C80. 74, 238, 235 and 236 are lookout-only.
             Self {
                 meadow: Some(Color::Indexed(29)),
                 bark: Some(Color::Indexed(166)),
@@ -156,18 +149,9 @@ impl Palette {
     /// Every semantic colour collapsed onto [`Self::muted`]'s one ink.
     ///
     /// What a frozen dashboard renders its data through, so no cell can be
-    /// mistaken for live: an `online` in meadow two seconds after the
-    /// shepherd died is the one lie this screen can tell.
-    ///
-    /// It reaches a sheep's own colour too. The bleats feed stops re-reading
-    /// the moment the link is lost, so a red line still bright on that screen
-    /// is a reading rather than a decoration, and [`super::view::feed_ink`
-    /// collapses it onto the same ink while keeping the run's modifiers.
-    ///
-    /// [`Self::line`] and [`Self::ground`] keep their colours. Both are
-    /// chrome rather than a reading: a rule separates regions and the
-    /// ground carries the cursor, and `j`/`k` still move while the link is
-    /// down.
+    /// mistaken for live. It reaches a sheep's own colour too, since a red
+    /// bleat line still bright on that screen is a reading.
+    /// [`Self::line`] and [`Self::ground`] keep theirs: both are chrome.
     #[must_use]
     pub fn frozen(self) -> Self {
         Self {
@@ -239,10 +223,7 @@ impl Palette {
     ///
     /// The terminal supplies the text colour from its own background, so a
     /// light terminal is right without a second palette. `REVERSED` survives
-    /// `NO_COLOR`: it is a modifier rather than a colour, and it is what keeps
-    /// a band naming the mode on a monochrome terminal.
-    ///
-    /// Called by `view::mod`'s `title_band` and `section_band`.
+    /// `NO_COLOR`: it is a modifier rather than a colour.
     #[must_use]
     pub fn band(self, role: crate::vocabulary::Role) -> Style {
         Self::fg(self.of(role)).add_modifier(Modifier::REVERSED)
@@ -250,13 +231,9 @@ impl Palette {
 
     /// The one painted background: the selected row and the status bar.
     ///
-    /// Reverses the module doc's rule for exactly two rows. Ordinary ground
-    /// still stays [`Color::Reset`], so the operator's own background shows
-    /// through everywhere else. `None` under `NO_COLOR` and on the
-    /// 16-colour tier, where the callers fall back to the ASCII marker.
-    ///
-    /// Called by `view::flock::gutter` and by the selected row's own cells
-    /// in `view::flock::row_line`/`group_line`.
+    /// Ordinary ground stays [`Color::Reset`], so the operator's own
+    /// background shows through everywhere else. `None` under `NO_COLOR`
+    /// and on the 16-colour tier, where callers fall back to an ASCII marker.
     #[must_use]
     pub fn ground(self) -> Style {
         self.paper2
@@ -481,11 +458,10 @@ mod tests {
 
     #[test]
     fn the_shallow_tier_has_no_ground_to_paint() {
-        // Pinned deliberately: the 16-colour set has no quiet dark ground,
-        // and a plain `Black` background is wrong on a light terminal, so
-        // `paper2` stays `None` here on purpose and callers fall back to an
-        // ASCII marker, exactly as they do under `NO_COLOR`. Do not "fix"
-        // this by giving the shallow arm a `paper2` colour.
+        // Pinned: the 16-colour set has no quiet dark ground, and a plain
+        // `Black` background is wrong on a light terminal. `paper2` stays
+        // `None` here, and callers fall back to an ASCII marker as they do
+        // under `NO_COLOR`.
         let shallow = Palette::detect(None, Some(OsStr::new("dumb")), None);
         assert_eq!(shallow.ground(), Style::default());
     }

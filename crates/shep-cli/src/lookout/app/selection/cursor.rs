@@ -42,17 +42,12 @@ impl App {
     }
 
     /// Selects the row at `index`, clamped to the flock, and reports whether
-    /// that changed anything.
-    ///
-    /// `direction` is which way to search past a [`RowKey::Section`] header,
-    /// and a header at row 0 searches forward whatever it says.
+    /// that changed anything. `direction` is which way to search past a
+    /// [`RowKey::Section`] header, and a header at row 0 searches forward.
     ///
     /// `Effect::None` when nothing changed: [`Effect::RefreshSelected`] reads
     /// two files and asks the shepherd for lambs, and a held `k` at the top
     /// must not do that once per keypress.
-    ///
-    /// Builds the row sequence itself. A caller that already holds it goes
-    /// through [`Self::select_in`].
     pub(in crate::lookout::app) fn select_at(&mut self, index: usize, direction: isize) -> Effect {
         let rows = self.visible_rows();
         self.select_in(&rows, index, direction)

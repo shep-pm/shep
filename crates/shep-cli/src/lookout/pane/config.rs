@@ -62,10 +62,8 @@ impl core::fmt::Debug for DogSection {
 ///
 /// `Debug` is manual and redacted (IR-41): `values` is a sheep's config with
 /// `env` already stripped by [`SheepConfigView::new`], but `args` and `cwd`
-/// are still in it and routinely carry a token or a home directory.
-/// `env_keys` is a key set, which is itself worth keeping out of a log, and
-/// the same reasoning [`SheepConfigView`]'s own `Debug` gives applies here
-/// unchanged: this type is a copy of that one's payload.
+/// are still in it and routinely carry a token or a home directory. This type
+/// is a copy of that one's payload.
 #[derive(Clone)]
 pub struct ConfigPane {
     pub(super) target: PaneTarget,
@@ -109,18 +107,10 @@ pub struct ConfigPane {
     /// The dog's `[<name>]` table as TOML text, with the schema its rows
     /// were built from, and [`None`] for a sheep.
     ///
-    /// Kept beside the parsed `values` rather than instead of them, because
-    /// the two answer different questions: `values` is what the rows render,
-    /// and this is what a write edits. `Request::SetDogConfig` replaces the
-    /// whole section, so an edit that re-rendered it from `values` would
-    /// throw away every comment the operator wrote. See
-    /// [`Self::edited_section_with`].
-    ///
-    /// The schema rides along in the same box because it is the other half
-    /// of the same question: it is what says a proposed section may go out,
-    /// and see [`crate::dog_settings::touched_refusal`]. Boxed, like
-    /// [`Self::dog_table`]: a `Value` this size does not belong in every move
-    /// of a pane that sits in [`crate::lookout::app::Body`] unboxed.
+    /// Kept beside the parsed `values` rather than instead of them: `values`
+    /// is what the rows render, and this is what a write edits.
+    /// `Request::SetDogConfig` replaces the whole section, so re-rendering it
+    /// from `values` would throw away every comment the operator wrote.
     pub(super) section: Option<Box<DogSection>>,
     /// A dog's table on a sheep, whole, and where each dotted row lives in
     /// it. [`None`] for every other target. See [`Self::sheep_dog`].
@@ -203,17 +193,11 @@ impl ConfigPane {
 
     /// A pane over one dog's `[<name>]` section.
     ///
-    /// `schema` is the dog's own answer to the schema flag, probed at
-    /// open rather than read from anywhere; `section` is the table as
+    /// `schema` is the dog's own answer to the schema flag, probed at open
+    /// rather than read from anywhere; `section` is the table as
     /// `Request::DogConfig` rendered it, empty when `dogs.toml` has none.
-    ///
     /// In schema order, with no group headers: a dog's schema carries no
-    /// `init.group`. A nested table is a row that opens and closes, with its
-    /// keys under it, as it is on that dog's table over a sheep; see
-    /// [`Self::rows`]. A [`FieldKind::List`] row opens the list sub-screen,
-    /// as a sheep's `args` does. A [`FieldKind::Map`] row, and a list
-    /// [`flattened`] closed to [`FieldKind::Opaque`], is marked not editable
-    /// and draws [`Lock::NoWidget`].
+    /// `init.group`.
     #[must_use]
     pub fn dog(
         name: String,
@@ -437,23 +421,10 @@ impl ConfigPane {
     /// The current value of `key`, rendered for a cell.
     ///
     /// A scalar shows bare, an absent or `null` value shows `(unset)`, and
-    /// anything else shows compact JSON. On a dog's pane an array or map of
-    /// tables shows how many entries it holds and nothing of them, since an
-    /// entry can hold a secret. A sheep's `env` is the one field
-    /// whose value this pane never holds, since the shepherd strips it on
-    /// the way out, so it shows its key count instead, and the sub-screen
-    /// shows the names. A sheep's `dogs` shows dog names and no value: a
-    /// table's secrets are marked only by a schema this pane does not hold.
-    ///
-    /// That special case is gated on the target, not on the key alone: a
-    /// dog's schema is somebody else's, and one declaring a field named
-    /// `env` reads its own section, not [`Self::env_keys`], which
-    /// [`Self::dog`] always leaves empty.
-    ///
-    /// This is the parseable form: what [`Self::begin_typing`] seeds an
-    /// editor with. [`Self::display_value`] is the one a row draws, and the
-    /// two disagree exactly for a [`ValueKind`] field, where a seed has to
-    /// stay something the daemon's own grammar still accepts.
+    /// anything else shows compact JSON. An array or map of tables on a dog's
+    /// pane shows only its entry count, since an entry can hold a secret, and
+    /// a sheep's `env` only its key count, since the shepherd strips it. This
+    /// is the form an editor seeds from, where a [`ValueKind`] field diverges.
     #[must_use]
     pub fn value(&self, key: &str) -> String {
         if key == "env" && matches!(self.target, PaneTarget::Sheep { .. }) {
@@ -622,12 +593,11 @@ impl ConfigPane {
 
     /// How many filed edits the running sheep already takes without a
     /// respawn: the complement of [`Self::unsent_fields_needing_a_respawn`]
-    /// within the same set. An env key never counts, for the same reason it
-    /// always counts on the other side: `env` is `ApplyGroup::NeedsRespawn`.
+    /// within the same set. An env key never counts: `env` is
+    /// `ApplyGroup::NeedsRespawn`.
     ///
-    /// What the close dialog's "everything else you changed is already
-    /// live" sentence draws on: a filed set holding only fields a respawn
-    /// applies has nothing else to say that about.
+    /// What the close dialog's "everything else you changed is already live"
+    /// sentence draws on.
     #[must_use]
     pub(in crate::lookout) fn live_edit_count(&self) -> usize {
         self.edits
@@ -661,18 +631,13 @@ impl ConfigPane {
         reload_mode(readiness, flag("reuse_port"))
     }
 
-    /// Adopts a previous pane's pending set, so a refresh does not
-    /// silently drop changes the operator has not written yet.
+    /// Adopts a previous pane's pending set, so a refresh does not silently
+    /// drop changes the operator has not written yet. The set is the
+    /// operator's and the values are the shepherd's.
     ///
-    /// The set is the operator's and the values are the shepherd's: a
-    /// re-read replaces every value on screen and keeps every edit filed
-    /// over them.
-    ///
-    /// An open editor is deliberately not carried: its buffer was seeded
-    /// from a value this refresh may have just changed, so keeping it
-    /// would put the operator halfway through editing something that is no
-    /// longer there. `App::release_text_mode_if_unowned` is what puts the
-    /// keyboard back when that happens.
+    /// An open editor is deliberately not carried: its buffer was seeded from
+    /// a value this refresh may have just changed.
+    /// `App::release_text_mode_if_unowned` is what puts the keyboard back.
     pub(in crate::lookout) fn adopt_edits(&mut self, previous: Edits) {
         self.edits = previous;
     }
@@ -723,9 +688,7 @@ pub(super) const fn reload_mode(readiness: ConfiguredReadiness, reuse_port: bool
 /// The same conversion the pane runs on the section it opens on, so the table
 /// a write is checked against is built the way the table the pane's rows were
 /// read out of is. A section that does not parse reads as empty and refuses
-/// nothing: [`crate::lookout::pane::SectionWrite::Refused`] is what stops that
-/// write, in the sentence
-/// that names the file.
+/// nothing: [`crate::lookout::pane::SectionWrite::Refused`] is what stops that.
 pub(in crate::lookout) fn toml_table(text: &str) -> Map<String, Value> {
     text.parse::<toml::Table>()
         .ok()

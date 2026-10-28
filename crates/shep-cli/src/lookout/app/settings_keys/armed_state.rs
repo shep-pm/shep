@@ -4,15 +4,10 @@ impl App {
     /// Cancels an armed settings candidate, answering whether it did.
     ///
     /// Five arms of the settings handler spend a key this way rather than
-    /// acting: `Settings`/`Escape`, `Refresh`, `Edit`, `Help`, and the four
-    /// `Select*` arms together. A change to what cancelling means, a
-    /// confirmation, a different field cleared, has to land here or the
-    /// handler starts disagreeing with itself about what an armed prompt
-    /// eats.
-    ///
+    /// acting. A change to what cancelling means has to land here or the
+    /// handler starts disagreeing with itself about what an armed prompt eats.
     /// A `bool` rather than an `Effect`, so each caller keeps its own reason
-    /// for returning: the arms are identical in what they cancel and
-    /// different in what they would otherwise have done.
+    /// for returning.
     pub(super) fn disarm_settings_candidate(&mut self) -> bool {
         if let Some(settings) = self.settings_mut()
             && settings.is_armed()

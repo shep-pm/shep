@@ -235,8 +235,7 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
             // Both modes, not `.or_else`: a code with a mapping in each
             // needs both to reach `binding`, or whichever mode lost the
             // race drops out of the overlay silently. `Backspace` has no
-            // `Normal` mapping today, which is the only reason `or_else`
-            // ever read as correct here.
+            // `Normal` mapping, which is why `or_else` reads as correct.
             for mode in [InputMode::Normal, InputMode::Text] {
                 let Some(press) = map_key(&event, mode) else {
                     continue;
@@ -291,12 +290,9 @@ mod tests {
     /// Every `KeyPress` `map_key` can produce is produced by some `PROBE`
     /// entry too.
     ///
-    /// The sweep is the whole surface: `map_key` matches on `Char`, `Esc`,
-    /// `Enter`, `Backspace`, `Tab`, `BackTab`, the four arrows, `Home`,
-    /// `End` and `F(n)`, and nothing else. A binding added to `map_key` and
-    /// not to `PROBE` fails here rather than going missing from the
-    /// overlay, which is the whole reason the rows are built by running
-    /// `map_key` instead of listed beside it.
+    /// A binding added to `map_key` and not to `PROBE` fails here rather
+    /// than going missing from the overlay. The rows are built by running
+    /// `map_key`, not listed beside it.
     #[test]
     fn every_key_map_key_binds_is_in_the_probe() {
         let probed: Vec<KeyPress> = PROBE
@@ -334,14 +330,7 @@ mod tests {
     /// `map_key`'s two modes.
     ///
     /// `rows_from` checks both modes for every entry, so a letter with no
-    /// `Normal` meaning is no more or less necessary than one that also
-    /// has one: both independently reach `TextChar` and the `any char`
-    /// row they share with every other letter, and `Backspace`, `Enter`
-    /// and `Esc` share their own row the same way. Nothing left
-    /// distinguishes a stale, unclaimed entry from a deliberate one by
-    /// removing it and checking whether its row survives, since a row
-    /// with several legitimate contributors survives losing any one of
-    /// them on purpose.
+    /// `Normal` meaning is no less necessary than one that has one.
     #[test]
     fn every_probe_entry_binds_something() {
         for (code, modifiers) in PROBE {
@@ -458,18 +447,10 @@ mod tests {
 
     /// Every key the overlay prints in a caption is a key `map_key` binds.
     ///
-    /// Catches the drift the derivation cannot: a caption edited to name a
-    /// key that was never bound. Single-character captions only, since a
-    /// caption like `g/G home/end` names four keys in one cell.
-    ///
-    /// ASCII only: a single non-ASCII character is a symbol standing for a
-    /// named `KeyCode` rather than something anyone types — `\u{21b5}` for
-    /// `Enter`, `\u{232b}` for `Backspace` — so looking it up as
-    /// `Char(that_symbol)` is the wrong query and would fail for a caption
-    /// that is correct. `view/status.rs`'s secrets hint (line ~429) writes
-    /// this same `\u{21b5}` glyph for the identical job, confirming the
-    /// glyph is the shipped convention rather than a mistake to route
-    /// around here.
+    /// Single-character captions only: `g/G home/end` names four keys in
+    /// one cell. ASCII only: a non-ASCII character is a symbol standing for
+    /// a named `KeyCode`, not something anyone types, so looking it up as
+    /// `Char(that_symbol)` is the wrong query.
     #[test]
     fn a_single_character_caption_names_a_bound_key() {
         for row in rows() {
@@ -489,28 +470,12 @@ mod tests {
         }
     }
 
-    /// `DRAWN`'s headings, which several `contains` assertions across two
-    /// modules silently rest on.
+    /// `DRAWN`'s headings, which several `contains` assertions rest on.
     ///
-    /// Non-empty first, and this is not hypothetical: `Closing`'s heading
-    /// IS `""`, deliberately, because the quit row draws no bank header.
-    /// `Closing` is not in `DRAWN`, so nothing iterating `DRAWN` meets it
-    /// today. `str::contains("")` is always true, so the day a heading
-    /// becomes empty, or `Closing` joins `DRAWN`, every "this heading
-    /// reached the screen" assertion passes on a screen that drew nothing.
-    ///
-    /// Then pairwise, which is the other way those assertions go wrong: the
-    /// column-count tests count how many of the four headings a bank row
-    /// contains, so a heading that is a substring of another is counted for
-    /// both and the count is right for the wrong reason. `MOVING`,
-    /// `LOOKING`, `CHANGING` and `DOING` are distinct and none contains
-    /// another.
-    ///
-    /// Both halves are mutation-checked, and the first mutation tried was
-    /// the wrong one: renaming `Moving` to `MOVING FAST` survives, because
-    /// there is then no separate `MOVING` for it to collide with. The
-    /// pairwise half needs one DRAWN heading to contain ANOTHER DRAWN one,
-    /// which `Looking => "DOING MORE"` does, and that fails.
+    /// Non-empty first: `str::contains("")` is always true, so an empty
+    /// heading passes every "reached the screen" assertion. Then pairwise:
+    /// a heading that is a substring of another is counted for both, so a
+    /// column count can be right for the wrong reason.
     #[test]
     fn every_drawn_heading_is_a_word_of_its_own() {
         for group in Group::DRAWN {
@@ -531,15 +496,12 @@ mod tests {
         }
     }
 
-    /// Every caption fits the cell it draws into, so nothing is cut on
-    /// screen. The widths are `view::keymap`'s, asserted here because this
-    /// is where the strings are written.
+    /// Every caption fits the cell it draws into. The widths are
+    /// `view::keymap`'s, asserted here because this is where the strings
+    /// are written.
     ///
-    /// Both bounds are a pair, because `<=` alone cannot see a caption that
-    /// is too SHORT: `visible_width("")` is 0 and fits every cell. An empty
-    /// `does` would pass that and pass `every_derived_row_is_drawn` too,
-    /// since `str::contains("")` is always true, so nothing in the suite
-    /// would have said a row drew no words.
+    /// Both bounds are a pair: `visible_width("")` is 0 and fits every
+    /// cell, so an upper bound alone cannot see a caption that is too short.
     #[test]
     fn the_cells_fit_their_widths() {
         for row in rows().into_iter().chain(rows_over(true)) {

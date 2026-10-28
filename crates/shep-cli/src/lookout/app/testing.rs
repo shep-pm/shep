@@ -158,13 +158,9 @@ pub(super) fn refresh_config(app: &mut App, env_keys: &[&str]) {
 /// `esc`, and `c` right behind it if that raised the close dialog
 /// instead of writing outright.
 ///
-/// What every write-on-close test in this module wants now: every
-/// sheep fixture here parks `kill_signal` unconditionally
-/// (`sheep_config_view`'s own default), so a bare `esc` only asks. `c`
-/// is what actually gets the write onto the wire, the same as an
-/// operator continuing past the dialog would; harmless when nothing
-/// asked, since [`App::close_dialog`] is `None` and this returns
-/// `esc`'s own effect unchanged.
+/// What every write-on-close test in this module wants: every sheep fixture
+/// here parks `kill_signal` unconditionally, so a bare `esc` only asks. `c`
+/// is what gets the write onto the wire, and is harmless when nothing asked.
 pub(super) fn close_writing(app: &mut App) -> Effect {
     let effect = app.update(Msg::Key(KeyPress::Escape));
     if app.close_dialog().is_some() {

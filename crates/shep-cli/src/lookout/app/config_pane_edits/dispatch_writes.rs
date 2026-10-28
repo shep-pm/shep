@@ -7,21 +7,10 @@ impl App {
     /// Everything the open pane has filed, as the requests that carry it,
     /// leaving the pane holding nothing.
     ///
-    /// Empty for no pane, for an empty set, and for a dog whose every filed
-    /// edit is one its section already carries, which needs no request and no
-    /// notice. Reported, not sent, for a dog whose section stopped parsing
-    /// between the read and the keystroke, or whose text holds something other
-    /// than the shape the row edits.
-    ///
-    /// A sheep's set is one request per entry and a dog's is one request
-    /// for the lot: [`Sent::SetDogSection`] and [`Sent::SetSheepDogTable`]
-    /// go out as `Request::SetDogConfig` and `Request::SetSheepDogSettings`,
-    /// each of which replaces a whole table, so a batch of edits to one is
-    /// one write. See `ConfigPane::edited_section_with` and
-    /// `ConfigPane::edited_table_with`.
-    ///
-    /// A sheep pane's open dog tables are written with it, each as its own
-    /// whole-table request.
+    /// A sheep's set is one request per entry; a dog's is one request for the
+    /// lot, since [`Sent::SetDogSection`] and [`Sent::SetSheepDogTable`] each
+    /// replace a whole table. Reported rather than sent for a dog whose
+    /// section stopped parsing between the read and the keystroke.
     pub(in crate::lookout::app) fn take_pane_writes(&mut self) -> Vec<Sent> {
         let mut writes = self.take_seated_writes();
         let edited = self
@@ -63,10 +52,7 @@ impl App {
                         // The gate is the one `shep set` uses, asked about
                         // the keys this close changed. A value the pane filed
                         // already passed the same rules on the keystroke that
-                        // filed it. A value the operator wrote into
-                        // `dogs.toml` by hand is the shepherd's own: the pane
-                        // never read it and does not speak for it, so it rides
-                        // out as it came.
+                        // filed it; a hand-written one rides out as it came.
                         if let Some(refused) = schema.as_ref().and_then(|schema| {
                             touched_refusal(
                                 schema,
@@ -114,11 +100,9 @@ impl App {
                             authority,
                         },
                         // No client-side validation, deliberately: the
-                        // daemon already re-normalizes untrusted input, so
-                        // a weaker copy here would drift the moment
-                        // `AppConfig` grows a field. An empty buffer on a
-                        // non-nullable field files `null`, refused as
-                        // `InvalidConfig`.
+                        // daemon already re-normalizes untrusted input, so a
+                        // weaker copy here would drift the moment `AppConfig`
+                        // grows a field.
                         PaneEdit::Set { key, value } => Sent::ApplyField {
                             name: name.clone(),
                             ticket: this,

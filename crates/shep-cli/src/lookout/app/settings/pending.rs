@@ -34,11 +34,9 @@ impl Settings {
     /// Whether `ticket` names the write this screen is still waiting on,
     /// clearing the prompt when it does.
     ///
-    /// A reply whose ticket is not the one [`Pending::Sent`] holds belongs
-    /// to a write the screen has moved on from: a second edit armed over
-    /// the first, or a screen closed and reopened while the first was still
-    /// in flight. Both leave a write in flight with nothing on screen
-    /// waiting for it, and neither lets its answer touch the edit that is.
+    /// A reply whose ticket is not the one [`Pending::Sent`] holds belongs to
+    /// a write the screen has moved on from, and its answer must not touch
+    /// the edit that is here now.
     pub(in crate::lookout::app) fn resolve(&mut self, ticket: u64) -> bool {
         let mine = matches!(
             self.pending,
@@ -77,11 +75,10 @@ impl Settings {
     /// The next candidate for `field`, or `None` for a key that is not a
     /// cycle: only a boolean and a closed set of names are.
     ///
-    /// Advances from a candidate already armed for this field, so a second
-    /// `space` walks one step further along the cycle. From nothing armed the
-    /// base is what the file says, which for `[style] level` is the file's
-    /// value rather than the level in force: cycling the resolved level could
-    /// propose a write that changes nothing.
+    /// Advances from a candidate already armed for this field. From nothing
+    /// armed the base is what the file says, which for `[style] level` is not
+    /// the level in force: cycling the resolved level could propose a write
+    /// that changes nothing.
     pub(in crate::lookout::app) fn next_candidate(&self, field: &Field) -> Option<String> {
         let armed_here = match &self.pending {
             Some(Pending::Armed {

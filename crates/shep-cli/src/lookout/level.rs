@@ -19,19 +19,11 @@ const LEVEL_KEYS: [&str; 3] = ["level", "lvl", "severity"];
 
 /// The level a line announces, or `None` when it announces none.
 ///
-/// Scans the first 4 whitespace-separated words, since a timestamp before
-/// the level is the common shape. A word counts as a bare level, or as a
-/// `key=value` pair keyed by `LEVEL_KEYS`. Either way the level must be a
-/// whole word once surrounding punctuation is stripped. A touching digit
-/// blocks it, so `/error404` and `info2` announce nothing. `fatal` reads as
-/// `Error`, since a line saying it is fatal is not saying something milder
-/// than one saying error.
-///
-/// This is the reading an app gets when it declares no rules of its own; see
-/// [`Classifier`].
-///
-/// `None` is the ordinary answer for app output. Callers must not treat it
-/// as "below the minimum": see the spec's decision 3.
+/// Scans the first 4 whitespace-separated words, since a timestamp before the
+/// level is the common shape. A word counts as a bare level or as a
+/// `key=value` pair keyed by `LEVEL_KEYS`, and must be a whole word once
+/// punctuation is stripped: a touching digit blocks it. `fatal` reads as
+/// `Error`. `None` is the ordinary answer, never "below the minimum".
 #[must_use]
 pub fn level_of(line: &str) -> Option<Level> {
     line.split_whitespace().take(4).find_map(|word| {

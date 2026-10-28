@@ -101,13 +101,10 @@ impl App {
 
     /// The `dogs` tab's own keys, ahead of the pane's: an armed removal, a
     /// dog's row, and a key landing inside an open table. [`None`] for every
-    /// key the pane's keymap answers the same way here as on any tab:
-    /// movement, `Escape`, `r`, the tab keys. A table with its list open
-    /// takes every key, those too.
+    /// key the pane's keymap answers the same way here as on any tab.
     ///
     /// `d` arms a removal, which `Enter` confirms and every other key but a
-    /// quit cancels, the secrets pane's rule. An armed removal eats the first
-    /// `Escape`, as it does there.
+    /// quit cancels, the secrets pane's rule.
     pub(super) fn on_dogs_tab_key(&mut self, key: KeyPress) -> Option<Effect> {
         let pane = self.config_pane()?;
         if !pane.shows_dogs() {
