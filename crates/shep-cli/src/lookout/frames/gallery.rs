@@ -116,21 +116,13 @@ mod tests {
         (plain, ansi)
     }
 
-    /// The committed gallery matches what the generator would write today.
-    ///
     /// `write_the_gallery` is `#[ignore]`d, so nothing in the ordinary
-    /// suite catches a scene that landed without also running it: its own
-    /// doc names the exact failure, both files still saying fifty scenes
-    /// and holding none of the eight keymap scenes that shipped alongside
-    /// them. Diffing against fresh output, rather than only counting
-    /// headings, catches a mismatch a count would miss too, a caption
-    /// edited without a corresponding regeneration.
+    /// suite catches a scene that landed without also running it. Diffing
+    /// against fresh output, rather than only counting headings, catches a
+    /// caption edited without a corresponding regeneration.
     ///
     /// `cfg(unix)`: same reason as `frames_are_pinned` above. `signal_label`
-    /// resolves a fixture's signal against the running platform's own
-    /// table, and the committed artifacts under `docs/lookout/` are unix
-    /// renderings, so a Windows-built binary regenerates the `cron` row
-    /// reading a bare `15` where the committed file reads `SIGTERM`.
+    /// resolves a fixture's signal against the running platform's own table.
     #[cfg(unix)]
     #[test]
     fn the_committed_gallery_matches_what_the_generator_would_write() {
@@ -167,18 +159,8 @@ mod tests {
     /// ```text
     /// cargo test -p shep --lib --all-features -- --ignored write_the_gallery
     /// ```
-    ///
-    /// A layout change cannot rot these files unnoticed: they render the
-    /// same `Scene::ALL` the pinned snapshots read, so the ordinary suite
-    /// reddens first and whoever fixes it comes back here.
-    ///
-    /// **Adding a scene without running this one is caught too, now.**
-    /// `the_committed_gallery_matches_what_the_generator_would_write`
-    /// diffs the committed files against fresh output, catching a scene
-    /// missing from both while their own preamble still carries the old
-    /// count. Run this anyway, in the same commit that adds a scene: a
-    /// missing regeneration failing there is a one-line fix, failing in
-    /// the other test means reading a full-file diff to find it.
+    /// Run it in the same commit that adds a scene: the other test catches a
+    /// missing regeneration, but only after reading a full-file diff.
     #[test]
     #[ignore = "writes into docs/lookout; run it deliberately"]
     fn write_the_gallery() {

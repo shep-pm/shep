@@ -562,25 +562,10 @@ impl Scene {
             // is exactly `FOLD_ALL`'s threshold: the one scene that needs the
             // full column set, SHARE and NOTES included.
             Self::Folds => (160, 30),
-            // The design target, and comfortably past the floor this
-            // scene actually needs. `columns_for` runs on `width - GUTTER`,
-            // and `ALL`'s own threshold is the sum of what it draws:
-            //
-            //   ALL's fixed widths        = 112
-            //   13 two-cell separators    =  26
-            //   NAME at its floor         =   8  (NAME_MIN)
-            //   112 + 26 + 8              = 146, `TIERS`'s widest entry
-            //
-            // So 148 columns is the floor and 160 leaves NAME 20 cells,
-            // which is what the frame drew. `the_frozen_scene_draws_every_
-            // column` pins the floor; the extra twelve are the design's.
-            //
-            // At the 120 this used to inherit from the default arm, the
-            // table renders the NO_SPARK tier: no CPU sparkline and no
-            // MEM/CEIL gauge, which is two of the cells the frame exists to
-            // show frozen. 30 rows, not the design's 48: the link panel is
-            // six rows where the two panes it replaces were twelve, so
-            // nothing here needs the taller frame.
+            // The design target, and past the floor this scene needs.
+            // `columns_for` runs on `width - GUTTER`, and `ALL`'s threshold
+            // is 146: 112 fixed widths, 26 separators, NAME's 8-column
+            // floor. `the_frozen_scene_draws_every_column` pins that floor.
             Self::Frozen => (160, 30),
             Self::Confirm
             | Self::Acting
@@ -599,20 +584,10 @@ impl Scene {
             // reached without scrolling, tall enough that what survives is
             // a legible section rather than a single row.
             Self::SettingsShort => (120, 14),
-            // 100: `bleats_full`'s own text width is `width - TAG_PREFIX_WIDTH`
-            // (5), so 100 - 5 = 95. The fixture's one surviving line is 153
-            // characters, so it wraps onto exactly two rows at this width
-            // (153 / 95, rounded up); a wider frame would still wrap it but
-            // would no longer pin that arithmetic. 14 rows, the same tier
-            // `Confirm` and its siblings use: a title, a filter row and two
-            // wrapped rows fit inside `body_rows`'s 12 with room to spare.
-            //
-            // The title truncates here and that is the honest render: two
-            // full log paths plus the window figures do not fit 100 columns,
-            // and `fit` cuts what a real terminal would. Widening to show
-            // them whole would unpin the wrap arithmetic above, which is what
-            // this scene exists for. `the_title_names_the_window_and_what_
-            // fell_below_it` covers the figures at a width that fits them.
+            // 100 columns: `bleats_full`'s text width is `width -
+            // TAG_PREFIX_WIDTH` (5), so 95, and the fixture's 153-character
+            // line wraps onto exactly two rows. 14 rows: a title, a filter
+            // row and two wrapped rows fit inside `body_rows`'s 12.
             Self::Bleats => (100, 14),
             // Tall enough that `content_bottom` leaves room for both
             // `draw_panels`' FOCUSED and WHO READS IT rows below the table,
@@ -683,10 +658,9 @@ impl Scene {
             // 70: `columns_for(70) == 2`, two banks of two columns each.
             Self::KeymapTwoColumn => (70, 48),
             // 16 rows: under the box's own 19, so the sheep (boxed-only) is
-            // already gone, and the borderless form has shed to its own
+            // already gone, and the borderless form has shed to
             // `Shed::Decoration`, which drops the NO_COLOR line too; every
-            // key row stays intact. 16, not 22: at 22 the box holds whole
-            // and nothing sheds.
+            // key row stays intact. At 22 the box holds whole.
             Self::KeymapShort => (160, 16),
             // HealthyWide, Errored, Grouped, WithDogs, Retrying, Refused,
             // FeedGap, FeedMissing, HostUnknown, Lambs, LambsUnknown: every

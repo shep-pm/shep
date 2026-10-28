@@ -13,9 +13,8 @@ use crate::lookout::frames::coloured_palette;
 /// Strips the leading `>` selection marker first, so a marked and
 /// unmarked row share the same token index.
 ///
-/// The numeric-id guard on token 0 is load bearing: the status bar's
-/// own lines also open `{verb} {name} (id {id})`, so without it this
-/// could match the bar line instead of a table row.
+/// The numeric-id guard on token 0 is load bearing: the status bar's own
+/// lines also open `{verb} {name} (id {id})`.
 // Dead on Windows: only the cfg(unix) tests call it.
 #[cfg_attr(windows, allow(dead_code))]
 pub(super) fn row_for<'a>(frame: &'a str, name: &str) -> Option<&'a str> {
@@ -54,14 +53,12 @@ pub(super) fn selected_line<'a>(text: &'a str, buffer: &Buffer) -> Option<&'a st
         .and_then(|y| text.lines().nth(usize::from(y)))
 }
 
-/// How many rows of `buffer`, EXCLUDING the status bar, are painted as
-/// selected: a scene invariant is exactly one, the same invariant a `>`
-/// glyph count used to check.
+/// How many rows of `buffer`, excluding the status bar, are painted as
+/// selected: a scene invariant is exactly one.
 ///
-/// The status bar is always the buffer's last row and now carries the
-/// same [`gallery_ground`] the selected row's gutter does
-/// (`Palette::ground`, painted by `view::status` in this task); it is
-/// chrome, not a candidate row, so it is excluded rather than counted.
+/// The status bar is always the buffer's last row and carries the same
+/// [`gallery_ground`] the selected row's gutter does, so it is chrome
+/// rather than a candidate row.
 pub(super) fn selected_row_count(buffer: &Buffer) -> usize {
     (0..buffer.area.height.saturating_sub(1))
         .filter(|&y| row_is_selected(buffer, y))

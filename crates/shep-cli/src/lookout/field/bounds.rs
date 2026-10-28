@@ -6,31 +6,24 @@
 //! written for a decimal, and an answer for a range that holds nothing.
 //! Normalising one into the other is the whole job here.
 //!
-//! An array's `items` schema is read the same way and hung under [`Bounds::items`],
-//! so a list element is checked against what the dog published about an
-//! element rather than about the array.
+//! An array's `items` schema is read the same way and hung under
+//! [`Bounds::items`], so a list element is checked against its own bounds.
 
 use serde_json::{Map, Number, Value};
 
 use super::schema::resolved;
 
+// A bound `Bounds` does not carry is a bound `crate::dog_settings::refusal`
+// cannot enforce, and the pane files the value: shep is not the authority on
+// a dog's own config. `Debug` is derived (IR-41): bounds describe a value
+// without carrying one.
 /// The bounds a property's schema publishes beyond its type, for the
-/// keywords this pane can actually check a keystroke against: `pattern`,
-/// `minLength`, `enum`, and the numeric range, once normalised for an integer
-/// and once as written for a decimal.
+/// keywords this pane can check a keystroke against: `pattern`, `minLength`,
+/// `enum`, and the numeric range.
 ///
 /// Read off the resolved schema, so a `$ref` into `$defs` and an
-/// `anyOf: [T, null]` are both followed first: `max_age` on a dog that
-/// spells it `Option<UpDuration>` carries its pattern two hops away from
-/// the property itself.
-///
-/// Empty for a field whose schema says nothing machine-checkable, which is
-/// most of them. A bound this type does not carry is a bound
-/// [`crate::dog_settings::refusal`] cannot enforce, and the pane
-/// files the value: shep is not the authority on a dog's own config.
-///
-/// `Debug` is derived (IR-41): a schema's bounds describe a value without
-/// carrying one.
+/// `anyOf: [T, null]` are followed first. Empty when the schema says nothing
+/// machine-checkable.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Bounds {
     /// `pattern`, as the schema wrote it. A dog's own grammar reaches the
@@ -57,9 +50,8 @@ pub struct Bounds {
     /// decimal field's floor is a decimal, and rounding `0.5` up to `1` would
     /// refuse the value the schema itself names.
     ///
-    /// A `Number` rather than an `f64` for the same reason `choices` holds
-    /// JSON values: it keeps `Bounds` an `Eq` type, and it renders back to the
-    /// operator as the schema spelled it.
+    /// A `Number` rather than an `f64`, so `Bounds` stays an `Eq` type and
+    /// renders back as the schema spelled it.
     pub number_minimum: Option<Number>,
     /// `maximum`, as the schema wrote it, for a [`super::FieldKind::Number`]
     /// field.
@@ -88,14 +80,12 @@ pub struct Bounds {
     /// the floor and `3` for being over the ceiling, one sentence at a
     /// time, and never says that no answer exists.
     pub unsatisfiable: bool,
-    /// Whether the schema's own range admits no value at all, read from the four
-    /// decimal keywords as written.
+    /// Whether the schema's own range admits no value at all, read from the
+    /// four decimal keywords as written.
     ///
     /// [`Self::unsatisfiable`] answers whether the range admits an *integer*,
-    /// which is the wrong question for a decimal field: `minimum: 1.2, maximum:
-    /// 1.8` admits no integer and admits `1.5`. This one is the field's own
-    /// emptiness, so `minimum: 2.5, maximum: 1.5` and `minimum: 5,
-    /// exclusiveMaximum: 5` are each said once as a field that takes no value.
+    /// which is the wrong question for a decimal field: `minimum: 1.2,
+    /// maximum: 1.8` admits no integer and admits `1.5`.
     pub number_unsatisfiable: bool,
     /// For an array field, what its `items` schema publishes, followed
     /// through a `$ref` and an `anyOf: [T, null]` exactly as a scalar's
@@ -106,26 +96,10 @@ pub struct Bounds {
 /// The [`Bounds`] the resolved schema publishes.
 ///
 /// A numeric bound is normalised to the integer it actually admits, because
-/// JSON Schema's bounds are inclusive: a `minimum` rounds UP and a `maximum`
-/// rounds DOWN, so `minimum: 0.5` forbids `0` and `maximum: 2.5` forbids `3`.
-/// The same four keywords are kept unnormalised beside them for a
-/// [`super::FieldKind::Number`] field, which is held to what the schema wrote
-/// rather than to a rounding of it.
-///
-/// `exclusiveMinimum` and `exclusiveMaximum` are read on the same two terms:
-/// folded into the integer pair at the next integer in, and kept as written for
-/// a decimal. A reader that took only `minimum` and `maximum` enforced nothing
-/// for `{"type": "integer", "exclusiveMinimum": 0}` and filed a `0`.
-///
-/// The fold is exact `i64` arithmetic whenever the schema wrote a whole number,
-/// because `f64` cannot name every integer: `9007199254740992.0 + 1.0` is
-/// `9007199254740992.0`, so a strict floor at `2^53` folded through a float kept
-/// the very value the schema forbade. See [`integer_end`].
-///
-/// Reading the strict spellings with `as_i64` dropped both, and a dropped bound
-/// is an accepted keystroke: the pane filed a `0` its own schema forbade. Reading
-/// them as `f64` also keeps a bound written as `1e30`, which no `i64` satisfies,
-/// apart from one written as `1`.
+/// JSON Schema's bounds are inclusive: `minimum: 0.5` forbids `0`. The four
+/// keywords stay unnormalised beside them for a [`super::FieldKind::Number`]
+/// field, and `exclusiveMinimum` and `exclusiveMaximum` are folded in the
+/// same two ways. See [`integer_end`].
 pub(super) fn bounds_of(schema: &Value, defs: &Map<String, Value>) -> Bounds {
     bounds_opening(schema, defs, &mut Vec::new())
 }
@@ -134,11 +108,9 @@ pub(super) fn bounds_of(schema: &Value, defs: &Map<String, Value>) -> Bounds {
 /// identity, each one twice: as written, and as [`resolved`] reads it.
 ///
 /// An array whose `items` names its own type, which `schemars` emits for a
-/// recursive one, publishes no item bounds rather than recursing until the
-/// stack is gone. The raw form is what makes that hold for a `$defs` entry
-/// that is only an alias: `B` resolves to `A`, so a path of resolved values
-/// alone never meets `B`, and the walk resolves `B` to `A`, pushes `A`, and
-/// finds `B` again for as long as it has stack.
+/// recursive one, publishes no item bounds. The raw form is what makes that
+/// hold for a `$defs` entry that is only an alias: a path of resolved values
+/// alone never meets `B` again.
 fn bounds_opening<'a>(
     schema: &'a Value,
     defs: &'a Map<String, Value>,
@@ -205,11 +177,7 @@ fn bounds_opening<'a>(
         // A bound past an `i64`'s reach is impossible in one direction and
         // says nothing in the other: a `minimum` above `i64::MAX` admits
         // nothing, while one below `i64::MIN` admits every integer there
-        // is, which is what `as_bound` already answered `None` for. The two
-        // strict spellings are held to the same test, since a strict floor
-        // above `i64::MAX` admits nothing either.
-        // A keyword that names an end no `i64` sits on admits nothing on its
-        // own, and a floor above the ceiling admits nothing between them.
+        // is, which is what `as_bound` already answered `None` for.
         unsatisfiable: minimum.empty
             || exclusive_minimum.empty
             || maximum.empty
@@ -246,18 +214,11 @@ struct IntegerEnd {
 
 /// `keyword` as the integer end it names.
 ///
-/// Three readings, in the order they are exact:
-///
-/// - A whole number an `i64` holds, which is what a schema writing
-///   `"exclusiveMinimum": 1` produces, gets `i64` arithmetic.
-/// - A whole number spelled with a decimal point, or one too large for an `i64`
-///   but still a whole number as a float, is converted once and gets the same
-///   arithmetic: an `f64` that is already a whole number converts exactly.
-/// - A fraction is rounded through `f64`, the only reading a fraction has, with
-///   the strict spellings stepping one past the rounding.
-///
-/// A keyword that is not a number at all bounds nothing, the same fail-open
-/// answer a `pattern` that does not compile gets.
+/// Three readings, in the order they are exact: a whole number an `i64`
+/// holds gets `i64` arithmetic; a whole number too large for an `i64` but
+/// whole as a float converts once and gets the same; a fraction is rounded
+/// through `f64`, the strict spellings stepping one past the rounding. A
+/// keyword that is not a number bounds nothing.
 fn integer_end(keyword: Option<&Value>, end: End) -> IntegerEnd {
     let Some(number) = keyword.and_then(Value::as_number) else {
         return IntegerEnd {
@@ -368,11 +329,10 @@ fn number_range_is_empty(
 /// `value` as the `i64` bound it names, or [`None`] when it sits outside
 /// what an `i64` can hold and so bounds nothing this pane can compare.
 ///
-/// [`integer_end`] reaches this only for a bound that is a fraction, or a whole
-/// number past an `i64`'s reach. The comparison is in `f64`, which cannot name
-/// every `i64` exactly near its ends. A bound within a few units of `i64::MAX`
-/// therefore saturates to it rather than being refused, which is the right
-/// answer for a field no operator is typing sixteen digits into.
+/// [`integer_end`] reaches this only for a fraction, or a whole number past
+/// an `i64`'s reach. The comparison is in `f64`, which cannot name every
+/// `i64` exactly near its ends, so a bound within a few units of `i64::MAX`
+/// saturates to it rather than being refused.
 fn as_bound(value: f64) -> Option<i64> {
     #[expect(
         clippy::cast_possible_truncation,
@@ -388,14 +348,10 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Every hop [`resolved`] follows, because a reader that followed one
-    /// and not the other reports a nullable field's bounds as absent, and
-    /// nothing downstream can tell that from a schema that published none.
-    ///
     /// Three spellings of the same `pattern`: inline on the property, one
-    /// `$ref` away, and behind the `anyOf: [{$ref}, {type: null}]` that a
-    /// dog writes for an `Option<UpDuration>`. That third one is the shape
-    /// `shep-log-rotate` publishes, so it is the shape the gate in
+    /// `$ref` away, and behind the `anyOf: [{$ref}, {type: null}]` a dog
+    /// writes for an `Option<UpDuration>`. That third is what
+    /// `shep-log-rotate` publishes, so it is the shape
     /// [`crate::dog_settings::refusal`] actually meets.
     #[test]
     fn a_pattern_is_read_through_every_hop_a_schema_can_put_it_behind() {
@@ -421,15 +377,13 @@ mod tests {
         assert_eq!(set.by_key("plain").unwrap().bounds, Bounds::default());
     }
 
-    /// The numeric half, and the reason it is here rather than only in the
-    /// gate's own tests: `shep-log-rotate` publishes `minimum: 1` on
-    /// `keep`, so the floor an operator is held to is one this reader has
-    /// to lift off somebody else's schema.
+    /// `shep-log-rotate` publishes `minimum: 1` on `keep`, so the floor an
+    /// operator is held to is one this reader lifts off somebody else's
+    /// schema.
     ///
-    /// A fractional bound is normalised to the integer it forbids, not
-    /// dropped: JSON Schema's bounds are inclusive, so a `minimum` rounds
-    /// up and a `maximum` rounds down. Dropping them accepted a `0` under
-    /// a `minimum` of `0.5`, and the pane filed it.
+    /// A fractional bound is normalised to the integer it forbids: JSON
+    /// Schema's bounds are inclusive, so a `minimum` rounds up and a
+    /// `maximum` rounds down.
     #[test]
     fn integer_bounds_are_read_and_a_fractional_one_is_normalised() {
         let p = props(json!({
@@ -774,14 +728,11 @@ mod tests {
         );
     }
 
-    /// The same loop, spelled through a `$defs` entry that is only an alias
-    /// for another one, which is how a schema author names a type twice.
+    /// The guard holds each schema as written beside the one it resolves
+    /// to. `B` resolves to `A`, so a path that holds only resolved values
+    /// never meets `B` again.
     ///
-    /// The guard has to hold each schema as written beside the one it
-    /// resolves to. `B` resolves to `A`, so a path that holds only resolved
-    /// values never meets `B` again: the walk saw `B`, resolved it to `A`,
-    /// pushed `A`, and found `B` once more for as long as it had stack.
-    /// This is a third party's schema, so the crash is an operator's
+    /// This is a third party's schema, so a runaway walk is an operator's
     /// `shep lookout` opening a dog pane.
     #[test]
     fn an_item_schema_that_is_only_an_alias_for_another_ends_the_walk() {
@@ -847,14 +798,10 @@ mod tests {
         assert!(items("open").choices.is_empty(), "no enum, no choices");
     }
 
-    /// The bounds the real Flockfile schema publishes, so a change to it
-    /// that moved one lands here rather than on an operator.
-    ///
-    /// `max_memory` and `kill_timeout` carry their grammars through
-    /// `$defs`, and `max_restarts` a floor of its own. The two string
-    /// grammars go through their own `FromStr` in the gate rather than
-    /// through these patterns, so this test is about the reader reaching
-    /// them at all.
+    /// `max_memory` and `kill_timeout` carry their grammars through `$defs`,
+    /// and `max_restarts` a floor of its own. The two string grammars go
+    /// through their own `FromStr` in the gate rather than through these
+    /// patterns, so this test is about the reader reaching them at all.
     #[test]
     fn the_real_schema_publishes_the_bounds_the_gate_reads() {
         let set = real_field_set();

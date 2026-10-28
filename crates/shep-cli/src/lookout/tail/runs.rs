@@ -6,10 +6,8 @@
 //! asked for so far, and cut into the runs `view::feed_ink` paints.
 //!
 //! A field of a parameter list remembers the separator that ended it, which is
-//! all that tells `38;2;r;g;b` from `38:2:c;r;g;b`. And every parameter takes
-//! its own sub-parameters with it, drawn or not: a code left holding a field
-//! hands that field to the next pass as the SGR code it was written as a style
-//! of.
+//! all that tells `38;2;r;g;b` from `38:2:c;r;g;b`. Every parameter also takes
+//! its own sub-parameters with it, drawn or not.
 
 use ratatui::style::{Color, Modifier, Style};
 
@@ -105,9 +103,8 @@ pub(super) fn split_runs(clean: &str) -> (String, Vec<InkRun>) {
         }
         // The final `m` is what makes the sequence styling rather than a
         // cursor move; `sanitize_log_line` only ever leaves the styling kind.
-        // A terminator that is not one is dropped and the character after it
-        // stays log text, because losing a byte of what the sheep wrote is the
-        // worse way to be wrong about it.
+        // A terminator that is not one is dropped, and the character after it
+        // stays log text.
         match chars.next() {
             Some((_, 'm')) => {}
             Some((_, other)) => {
@@ -141,9 +138,7 @@ pub(super) fn split_runs(clean: &str) -> (String, Vec<InkRun>) {
 /// The separator matters for the extended colour forms alone. `38;2;255;0;0`
 /// names its components directly, while the ITU T.416 spelling
 /// `38:2::255:0:0` carries a colorspace field between the `2` and the
-/// components, empty for the default one. Flattening both separators into one
-/// number stream reads that field as a component and shifts the colour one
-/// place, leaving a zero behind to reset the line.
+/// components. Flattening both separators reads that field as a component.
 #[derive(Clone, Copy)]
 struct Field {
     value: Option<u32>,
@@ -187,12 +182,9 @@ fn take(fields: &[Field], at: &mut usize) -> Option<Field> {
 ///
 /// `;` separates parameters and `:` separates the sub-parameters of a
 /// parameter that has them, and which one ended a field is what tells the two
-/// spellings apart. An empty parameter reads as zero, the default the grammar
-/// gives it, which is a reset.
-///
-/// Every parameter takes its own sub-parameters with it, drawn or not, so a
-/// code this pane does not draw cannot leave one behind to be read as the next
-/// code.
+/// spellings apart. An empty parameter reads as zero, which is a reset. Every
+/// parameter keeps its own sub-parameters, drawn or not, so a code this pane
+/// does not draw cannot leave one behind as the next code.
 fn apply_sgr(params: &str, sgr: &mut Sgr) {
     let fields = fields(params);
     let mut at = 0usize;
@@ -203,8 +195,7 @@ fn apply_sgr(params: &str, sgr: &mut Sgr) {
         // A field ended by `:` carries sub-parameters, and they belong to it:
         // an underline style (`4:3`), a strike style (`9:1`), a framed border
         // (`51:1`). Read them off the list rather than let the next pass take
-        // one as the SGR code it was written as a style of. The extended colour
-        // codes below read their own fields themselves.
+        // one as the SGR code it was written as a style of.
         if field.colon && !matches!(code, 38 | 48 | 58) {
             drop_subparameters(&fields, &mut at);
         }
@@ -304,9 +295,8 @@ fn extended_colour(fields: &[Field], at: &mut usize) -> Option<Color> {
             let chain = colour_fields(fields, at, mode.colon);
             // The ITU spelling may lead with a colorspace field, empty for the
             // default one and an id for a named one. xterm and kitty also take
-            // the three components with no colorspace field at all, which is
-            // what a logger that writes `38:2:255:0:0` emits, so the count of
-            // what the `2` named says which of the two this is.
+            // the three components with no colorspace field at all, so the
+            // count of what the `2` named says which of the two this is.
             let components = if mode.colon && chain.len() >= 4 {
                 &chain[1..]
             } else {

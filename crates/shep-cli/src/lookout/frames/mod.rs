@@ -65,24 +65,16 @@ pub fn scene(which: Scene) -> (&'static str, Buffer) {
 mod tests {
     use super::*;
 
+    // `cfg(unix)`: one fixture carries a synthetic signalled exit, and
+    // `signal_label` resolves it against the running platform's table. The
+    // pinned artifacts under `docs/lookout/` are unix renderings too.
     /// Frame pins, not wire fixtures: re-accepting these after a layout
     /// change is expected, unlike the rule for shep-core's protocol
     /// snapshots.
     ///
-    /// `cfg(unix)`: one fixture carries a synthetic signalled exit, and
-    /// `signal_label` resolves it against the running platform's table.
-    /// Windows never sets a signal on `ExitOutcome`, so this only runs
-    /// against a synthetic fixture; the pinned artifacts under
-    /// `docs/lookout/` are unix renderings for the same reason.
-    ///
-    /// Stays in this module rather than travelling with the rest of the
-    /// gallery machinery to `gallery.rs`: insta names a pinned snapshot's
-    /// file after the call site's `module_path!()`, not its source file, so
-    /// moving this test into any new submodule would rename all 58 of these
-    /// from `shep__lookout__frames__tests__*` to
-    /// `shep__lookout__frames__<mod>__tests__*`. Leaving it in the one
-    /// module this whole split never touches, `frames::tests` itself, is
-    /// the only placement that renames none of them.
+    /// Stays in this module: insta names a snapshot after the call site's
+    /// `module_path!()`, so moving this test to a submodule would rename all
+    /// 58 of them.
     #[cfg(unix)]
     #[test]
     fn frames_are_pinned() {

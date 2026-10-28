@@ -3,17 +3,11 @@
 //! A dog's per-sheep table can nest a table inside a table
 //! (`[app.dogs.jobs].hours = { start = ... }`), and the pane that edits it
 //! has no sub-screen for that: [`super::FieldKind::Opaque`] is read-only.
-//! [`flattened`] walks every nested table's own `properties` instead of
-//! treating it as one opaque leaf, so `hours.start` becomes its own row,
-//! built by the same [`super::field_from`] every other schema-driven pane
-//! uses. An array of strings or integers stays a list row, which the pane
-//! writes whole at its dotted path. An array of tables and a map of scalars
-//! or tables stay one `Opaque` row: neither has a shape [`flattened`] can
-//! walk back into a set of writes.
-//!
-//! The rows are flat and keyed by the dotted path, so a write never needs
-//! the nesting. The nesting is kept beside them as an [`Outline`], which is
-//! what a pane draws its rows from.
+//! [`flattened`] walks every nested table's own `properties` instead, so
+//! `hours.start` becomes its own row. An array of tables and a map of
+//! scalars or tables stay one `Opaque` row: neither has a shape
+//! [`flattened`] can walk back into a set of writes. The nesting is kept
+//! beside the rows as an [`Outline`].
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -91,18 +85,10 @@ pub(crate) enum Child {
 /// Flattens `schema`, the `x-shep-sheep` value with the root's own `$defs`
 /// attached, into [`Flattened`].
 ///
-/// A property whose resolved schema is an object with `properties` is not
-/// a leaf: its own properties become rows instead, prefixed with this
-/// property's key, however many tables deep the schema nests. Every other
-/// property becomes one leaf row, built by [`super::field_from`] so its
-/// kind, help and secret mark come out exactly as they would in any other
-/// schema-driven pane. A leaf whose kind is [`FieldKind::Map`] is shown as
-/// [`FieldKind::Opaque`] instead: a map stays read-only here, since it has
-/// no shape this flatten can write back into by path. So is a secret list,
-/// since the list sub-screen seeds its editor with the stored elements and
-/// draws what is typed unmasked. An array of tables is already
-/// [`FieldKind::Opaque`]; any other array of strings or integers is a
-/// [`FieldKind::List`], filed whole.
+/// A resolved schema that is an object with `properties` is not a leaf: its
+/// own properties become rows, prefixed with this property's key. Every
+/// other property becomes one leaf row built by [`super::field_from`]. A
+/// [`FieldKind::Map`] leaf and a secret list show as [`FieldKind::Opaque`].
 #[must_use]
 pub(crate) fn flattened(schema: &Value) -> Flattened {
     flatten_schema(schema, true, false, false)
