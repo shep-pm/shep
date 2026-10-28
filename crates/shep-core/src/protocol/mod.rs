@@ -2,40 +2,12 @@
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
-//! Version 4 bumped on an addition. Version 5 bumped on a new `AppConfig`
-//! field: that struct was `deny_unknown_fields` then, so the additive rule
-//! below did not cover it and an older daemon could not decode
-//! `depends_on`. The denial has since moved to `Flockfile::parse`, so a
-//! field change now costs an older peer the field rather than the whole
-//! payload, and still bumps.
-//! Version 6 bumped on a retype: [`Response::Reloading`] became a struct
-//! variant to carry the apps a staged reload refused, so it serializes as
-//! an object where an older peer reads an array. Version 7 bumped on the
-//! same retype applied to [`Response::Restarted`], which a staged restart
-//! refuses apps of for the same reason and had nowhere to name them.
-//! Version 8 bumped on a second new `AppConfig` field, `environment`, for
-//! the reason version 5 did. [`Request::PutSecrets`] rode in on the same
-//! commit and forced nothing: it is an additive variant, and a daemon that
-//! has never heard of it decodes [`Request::Unrecognized`] and refuses by
-//! name. Version 9 bumped on removing `increment_var`, the first shape
-//! change here to subtract a field rather than add one.
-//! [`Request::HostUsage`] and [`Response::HostUsage`] rode in after it
-//! and forced nothing either, on the terms [`Request::PutSecrets`] set
-//! above. [`Request::TailLog`] and [`Response::LogTail`] rode in on the
-//! same terms: an older shepherd decodes [`Request::Unrecognized`] and
-//! answers [`RpcErrorCode::Unsupported`] by name, and
-//! [`Request::Reset`] and [`Response::Reset`] after them. Version 10 bumped on a third new `AppConfig` field, `dogs`, for
-//! the reason version 5 did, and version 11 on a fourth, `log_timestamps`. Version 12 bumped on
-//! `grants`, a new field of both [`DogSource`] variants: an older shepherd
-//! reads a grant it was sent as nothing and enforces none, so the
-//! CLI says so. [`RpcErrorCode::Forbidden`] rode in on the same commit.
-//! The `Unrecognized` fallbacks on [`crate::status::ProcStatus`] and
-//! [`DogSource`] rode in the same way and forced nothing: this build only
-//! decodes them and never sends one.
+//!
+//! An additive change keeps the version: an older peer decodes
+//! [`Request::Unrecognized`] and refuses by name. `AppConfig` always bumps.
 //!
 //! A `*_wire_v12` test pins today's shape. A
-//! `v1_*_fixture_still_deserializes` test pins an old peer's payload and
-//! never renames.
+//! `v1_*_fixture_still_deserializes` test pins an old peer's payload.
 
 pub mod events;
 pub mod frame;
@@ -70,14 +42,8 @@ pub mod channel {
 /// Additive optional fields (new serde-defaulted `Option<T>` fields, new
 /// variants behind `#[non_exhaustive]`) keep the version. Removing,
 /// renaming, or retyping anything serialized bumps it, recorded in the
-/// CHANGELOG. Byte fixtures in each protocol module pin the deserialize
-/// direction.
-///
-/// `AppConfig` is the exception: every field change bumps, additive
-/// included. An older peer ignores a key it does not know, so it runs a
-/// config the operator did not write and says nothing. `environment`
-/// forced 8 after the denial had already moved to `Flockfile::parse`,
-/// which is the precedent.
+/// CHANGELOG. `AppConfig` is the exception: an older peer ignores a key
+/// it does not know, so it runs a config the operator did not write.
 pub const PROTOCOL_VERSION: u32 = 12;
 
 /// The oldest protocol this build accepts from a peer.
@@ -93,19 +59,10 @@ pub const MIN_SUPPORTED: u32 = 8;
 mod tests {
     use super::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
-    /// Fails whenever `PROTOCOL_VERSION` moves, which makes a bump a
-    /// deliberate edit rather than a reflex. It does not detect a shape
-    /// change that forgot to bump: the `*_wire_v12` snapshots do that, by
-    /// gaining or losing the key.
-    ///
-    /// A bump moves five things together, and only this one fails on its
-    /// own: the constant, this literal, this test's own name, the module
-    /// doc's header and its version list, and the three `*_wire_vN`
-    /// snapshots with the names that pin them.
-    ///
-    /// `depends_on` forced 5, `environment` 8, dropping `increment_var` 9,
-    /// `dogs` 10, `log_timestamps` 11, the dog `grants` 12. The `Response::Reloading` and `Response::Restarted`
-    /// retypes forced 6 and 7, an object not being an array.
+    // Fails whenever `PROTOCOL_VERSION` moves, so a bump is a deliberate
+    // edit. A shape change that forgot to bump shows up in the
+    // `*_wire_v12` snapshots instead. A bump moves the constant, this
+    // literal, this test's name, the doc header and the snapshots.
     #[test]
     fn an_added_app_config_field_forced_the_protocol_version_up() {
         assert_eq!(PROTOCOL_VERSION, 12);

@@ -82,15 +82,9 @@ impl AppConfig {
     /// The names of the fields whose values differ between `self` and
     /// `other`, in field-name order.
     ///
-    /// Names only, never values. The one caller sends this list across the
-    /// wire to be printed at an operator, and [`AppConfig::env`] carries
-    /// secrets, so a differing `env` reports `"env"` and stops there.
-    ///
-    /// Compare configs that have both been through
-    /// [`normalize`](fn@crate::config::normalize). Two configs differing only
-    /// in what normalization would have filled in are not a difference an
-    /// operator can act on, and reporting them would make the caller noisy
-    /// about nothing.
+    /// Names only, never values: the one caller prints this list at an
+    /// operator, and [`AppConfig::env`] carries secrets. Compare configs
+    /// that have both been through [`normalize`](fn@crate::config::normalize).
     ///
     /// # Example
     ///

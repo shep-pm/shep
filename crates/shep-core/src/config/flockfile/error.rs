@@ -5,10 +5,9 @@ use core::fmt;
 
 /// Error type returned from [`Flockfile::parse`](crate::config::flockfile::Flockfile::parse).
 ///
-/// `#[non_exhaustive]`: an out-of-tree consumer could otherwise match
-/// this exhaustively and a new variant would break them silently. Growth
-/// is anticipated per backend, not per format: `.js` Flockfiles never
-/// appear here, since shep-core never executes anything. The node bridge
+/// `#[non_exhaustive]`: an out-of-tree `match` would otherwise break on a
+/// new variant. Growth is per backend, not per format: `.js` Flockfiles
+/// never appear here, since shep-core executes nothing. The node bridge
 /// lives in shep-cli, which feeds its output back through
 /// [`FlockFormat::Json`].
 #[non_exhaustive]
@@ -26,17 +25,9 @@ pub enum FlockfileError {
     /// An `app` entry named one or more keys no field claims.
     ///
     /// Only a key inside an `app` entry lands here. A top-level typo is
-    /// refused earlier, by `RawFlockfile`'s own `deny_unknown_fields`,
-    /// which the backend's derived `Deserialize` enforces directly rather
-    /// than through the `serde_ignored` callback this variant collects
-    /// from: it arrives as [`FlockfileError::Parse`] naming the key.
-    ///
-    /// A Flockfile is hand-written, unlike the same [`AppConfig`](crate::config::AppConfig)/
-    /// [`ProbeConfig`](crate::config::ProbeConfig) shape riding the wire,
-    /// where an unknown field means a newer peer rather than a typo.
-    /// `keys` names every offending key (dotted path for a nested one, e.g.
-    /// `app.0.readiness_probe.<the misspelled key>`) so one refusal lists
-    /// every typo instead of one refusal per run.
+    /// refused earlier, by `RawFlockfile`'s `deny_unknown_fields`, and
+    /// arrives as [`FlockfileError::Parse`]. `keys` names every offending
+    /// key as a dotted path, so one refusal lists every typo at once.
     UnknownKeys {
         /// Every key the document named that no field claimed.
         keys: Vec<String>,

@@ -22,13 +22,10 @@ use shep_core::protocol::BusEvent;
 
 /// Live bus events for one [`crate::Client::subscribe`] call.
 ///
-/// Named rather than `impl Stream`: an anonymous return type from a
-/// method can't be spelled in a struct field or a function's own return
-/// type, both of which a caller holding a subscription needs.
-///
+/// Named rather than `impl Stream`: an anonymous return type cannot be
+/// spelled in a struct field, which a caller holding a subscription needs.
 /// Each item is `Ok(`[`BusEvent`]`)`, or `Err(`[`Lagged`]`)` when this
-/// stream's own local buffer fell behind (see [`Lagged`]'s doc for how
-/// that differs from [`BusEvent::Dropped`]). The stream ends once the
+/// stream's own local buffer fell behind. The stream ends once the
 /// connection closes; a `Lagged` item does not end it.
 #[derive(Debug)]
 pub struct EventStream {
@@ -72,11 +69,9 @@ impl Stream for EventStream {
 /// The local [`broadcast::Receiver`] behind an [`EventStream`] fell behind
 /// and discarded events before this stream could read them.
 ///
-/// Distinct from [`BusEvent::Dropped`], which is the daemon's own
-/// per-subscriber queue overflowing before an event reaches this client:
-/// that arrives as an ordinary `Ok(BusEvent::Dropped { .. })` item on this
-/// same stream. `Lagged` is the local channel discarding entries because
-/// the [`EventStream`] wasn't polled quickly enough to keep up.
+/// Distinct from [`BusEvent::Dropped`]: the daemon's own queue
+/// overflowing. That arrives as an ordinary `Ok(BusEvent::Dropped { .. })`
+/// item on this same stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lagged {
     /// How many events were discarded since this stream's last successful

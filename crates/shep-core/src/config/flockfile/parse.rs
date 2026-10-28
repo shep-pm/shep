@@ -20,17 +20,10 @@ pub(super) fn parse_into<T: serde::de::DeserializeOwned>(
     parse_into_ignoring(source, format, |_| {})
 }
 
-// The one four-arm format dispatch, shared by `parse_into` (an empty
-// `on_ignored`) and `RawFlockfile::new` (a real one). Each format's
-// `Deserializer` routes through `serde_ignored::deserialize`, calling
+// The one four-arm format dispatch. `serde_ignored::deserialize` calls
 // `on_ignored` once per key the target type did not claim, recursing into
-// nested structs (a Flockfile's `readiness_probe`/`liveness_probe` tables
-// included). The real callback is used only by `Flockfile::parse` and
-// `parse_declared`: those are the two places a document really is a
-// hand-written file, where an unrecognized key means a typo. Everywhere else
-// the same `AppConfig`/`ProbeConfig` shape rides the wire, where it means a
-// newer peer instead, which is why the two types dropped
-// `deny_unknown_fields` rather than this function replacing it everywhere.
+// nested structs. A real callback means a hand-written document, where an
+// unrecognized key is a typo. On the wire it means a newer peer.
 pub(super) fn parse_into_ignoring<T: serde::de::DeserializeOwned>(
     source: &str,
     format: FlockFormat,

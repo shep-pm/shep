@@ -8,13 +8,10 @@ use std::path::Path;
 /// The grammar shared by keys, namespaces and environment names.
 ///
 /// Non-empty, at most [`MAX_KEY_BYTES`], not starting with `.`, and drawn
-/// from `[A-Za-z0-9._-]`. Excludes `/`, so a name can never contain the
-/// separator [`SecretRef::parse`](crate::secrets::SecretRef::parse) splits a namespace from a key on.
+/// from `[A-Za-z0-9._-]`. `/` is excluded, so a name can never contain the
+/// separator [`SecretRef::parse`](crate::secrets::SecretRef::parse) splits on.
 ///
-/// Public because the daemon checks a peer's namespace and environment
-/// against it before storing anything under either: a name outside this
-/// grammar is one no `{{secret:...}}` reference could ever name, so
-/// accepting it would be a silent no-op.
+/// Public because the daemon checks a peer's namespace and environment against it.
 #[must_use]
 pub fn is_name(value: &str) -> bool {
     !value.is_empty()
@@ -77,22 +74,17 @@ pub(super) fn write_file(path: &Path, file: &SecretFile) -> Result<(), SecretErr
 
 /// Every key in the store with its per-environment values, in key order.
 ///
-/// Takes no lock, so a caller that must not block never does: the daemon
-/// reads this from inside its actor loop, once per spawn, once per app at
-/// preflight, and once more each time a sheep's extras arm on the way to
-/// `Online`. That is safe because a writer publishes by renaming a fully
-/// written file over this one, so a reader sees the whole store either
-/// before or after a `set`/`unset`, never a fragment of one. The lock
-/// [`set`] and [`unset`] take is what orders those read-modify-writes
-/// against each other.
+/// Takes no lock, so a caller that must not block never does. That is safe
+/// because a writer publishes by renaming a fully written file over this
+/// one. A reader sees the whole store before or after a `set`/`unset`,
+/// never a fragment. The lock [`set`] and [`unset`] take orders those writes.
 ///
 /// # Errors
 ///
 /// - [`SecretError::Io`]: the store could not be opened or read. A store
-///   that is simply absent is not an error: it reads as empty.
+///   that is absent reads as empty.
 /// - [`SecretError::Decode`]: the file is not the JSON this module writes.
-/// - [`SecretError::FutureVersion`]: the file's `version` is newer than
-///   [`SECRETS_VERSION`]. Nothing is read and nothing is written.
+/// - [`SecretError::FutureVersion`]: the file's `version` is newer than [`SECRETS_VERSION`].
 pub fn all(path: &Path) -> Result<BTreeMap<String, BTreeMap<String, String>>, SecretError> {
     Ok(read_file(path)?.entries)
 }
@@ -123,16 +115,12 @@ pub fn get(path: &Path, key: &str, environment: &str) -> Result<Option<String>, 
 /// # Errors
 ///
 /// - [`SecretError::InvalidKey`]: the key is outside the grammar.
-/// - [`SecretError::InvalidEnvironment`]: the environment name is outside
-///   the grammar.
+/// - [`SecretError::InvalidEnvironment`]: the environment name is outside the grammar.
 /// - [`SecretError::ValueTooLong`]: the value exceeds [`MAX_VALUE_BYTES`].
-/// - [`SecretError::FutureVersion`]: the store on disk is newer than this
-///   build understands. Nothing is written.
+/// - [`SecretError::FutureVersion`]: the store on disk is newer than this build; nothing is written.
 /// - [`SecretError::Decode`]: the existing file could not be parsed.
-/// - [`SecretError::Io`]: the lock, the temp file, the `fsync` or the
-///   `rename` failed. Nothing is written.
-/// - [`SecretError::Unsynced`]: the value is stored, but the directory flush
-///   after the `rename` failed.
+/// - [`SecretError::Io`]: the lock, temp file, `fsync` or `rename` failed; nothing is written.
+/// - [`SecretError::Unsynced`]: the value is stored; the directory flush after the `rename` failed.
 pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(), SecretError> {
     check_name(key, SecretError::InvalidKey)?;
     check_name(environment, SecretError::InvalidEnvironment)?;
@@ -151,25 +139,16 @@ pub fn set(path: &Path, key: &str, environment: &str, value: &str) -> Result<(),
 /// Stores every `(key, value)` pair for `environment` in one locked
 /// read-modify-write, so the batch lands whole or not at all.
 ///
-/// Each pair replaces any previous value in its slot and every other
-/// environment is left alone. A key repeated in `entries` keeps its last
-/// value. An empty `entries` returns `Ok(())` before anything else, the
-/// environment name included, and never opens, locks or creates the store.
+/// A key repeated in `entries` keeps its last value. An empty `entries`
+/// returns `Ok(())` before anything else, the environment name included.
+/// It never opens, locks or creates the store.
 ///
 /// # Errors
 ///
-/// - [`SecretError::InvalidEnvironment`]: the environment name is outside
-///   the grammar.
-/// - [`SecretError::InvalidKey`]: a key is outside the grammar.
+/// - [`SecretError::InvalidEnvironment`], [`SecretError::InvalidKey`]: a name outside the grammar.
 /// - [`SecretError::ValueTooLong`]: a value exceeds [`MAX_VALUE_BYTES`].
 /// - [`SecretError::FutureVersion`], [`SecretError::Decode`],
-///   [`SecretError::Io`] and [`SecretError::Unsynced`] exactly as [`set`]
-///   returns them.
-///
-/// The first three are checked for every entry before the lock is taken, so
-/// a refused batch never creates the store. The store is replaced by one
-/// rename, so every error but `Unsynced` leaves the old store whole.
-/// `Unsynced` means the whole batch is in place.
+///   [`SecretError::Io`] and [`SecretError::Unsynced`] as [`set`] returns them.
 pub fn set_many(
     path: &Path,
     environment: &str,

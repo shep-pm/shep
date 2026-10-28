@@ -45,13 +45,10 @@ pub struct RpcError {
     /// The daemon's own crate version, when it chose to name it.
     ///
     /// Set on a [`RpcErrorCode::ProtocolMismatch`] refusal, the only place a
-    /// client can learn it, since [`HelloAck::daemon_version`] never arrives
-    /// there. `None` on every other error, and on a refusal from a daemon
-    /// built before the field existed, so a reader treats `None` as unknown
-    /// and takes the conservative path.
+    /// client can learn it. `None` on every other error, and from a daemon
+    /// built before the field existed, so `None` means unknown.
     ///
-    /// Absent on the wire rather than `null`, so
-    /// [`crate::protocol::PROTOCOL_VERSION`] does not move for it.
+    /// Absent on the wire rather than `null`, so [`crate::protocol::PROTOCOL_VERSION`] did not move.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub daemon_version: Option<String>,
 }

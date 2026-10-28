@@ -24,22 +24,10 @@ use crate::protocol::{BusEvent, Reply};
 // wire format: changing existing variants is a breaking change
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
-// Growth is anticipated (progress, flow control), and it is additive for this
-// enum only, never for the wire. `Kind::of` decides a frame's kind by key, so
-// a kind keyed by none of `id`, `result`, `event`, `data` fails to decode
-// here, and what a peer then does is `route_frame`'s rule in
-// `shep-client/src/actor.rs`: it drops an undecodable frame unless `reply_id`
-// can name the request it answers, and `reply_id` matches a frame only when it
-// carries `id` and `result` together. A new kind is therefore additive to an
-// older client when it carries neither half of that pair, one reply key alone
-// included: `id` without `result` (pinned by
-// `reply_id_is_none_for_a_future_progress_frame`) and `result` without `id`
-// are both dropped with the connection intact. A kind that carries both is
-// read as an undecodable reply and fails the waiting request with
-// `RequestError::Undecodable`. Pinned by `a_frame_with_no_known_key_is_refused`
-// below, and in the client by
-// `a_frame_of_a_kind_this_build_does_not_know_is_dropped_without_disturbing_the_connection`
-// and `a_frame_with_one_half_of_the_reply_pair_is_dropped_too`.
+// Growth here is additive for this enum only, never for the wire.
+// `Kind::of` keys a frame by `id`, `result`, `event` or `data`. A new
+// kind carrying neither `id` nor `result` is dropped by an older client.
+// One carrying both fails its waiting request with `Undecodable`.
 #[non_exhaustive]
 pub enum ServerFrame {
     /// An answer to one request (from [`Envelope`](crate::protocol::Envelope))

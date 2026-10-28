@@ -1,29 +1,13 @@
 //! The one refusal shared by every Flockfile key that has to be a table.
+//! It names the key and the shape it needs, never what the document wrote.
+//! serde's default type errors print the offending value. An `env` value is
+//! a secret, so every arm that could echo one is overridden. TOML and YAML
+//! echo the source line whatever serde says. The no-value test therefore
+//! runs through JSON and JSON5.
 //!
-//! `dog`, `env` and `dogs` each read a table, and each refuses anything else
-//! in the operator's words rather than serde's: the key named, the shape it
-//! needs named, and nothing about what the document actually wrote.
-//!
-//! Two things make one visitor worth three local ones.
-//!
-//! - `deserialize_any`, not `deserialize_map`. At least one YAML backend
-//!   folds a null scalar asked for as a map into an empty map before
-//!   `deserialize_map` ever reaches a visitor, so `env:` with nothing after
-//!   it parses as "no variables". `deserialize_any` reaches that null as
-//!   `visit_unit`, which is the arm a refusal can be made to say something
-//!   from.
-//! - serde's default type errors print the offending value: `visit_str`
-//!   reports `invalid type: string "…"` with the string in it. An `env`
-//!   value is a secret and an error message reaches a log, so every arm that
-//!   could echo one is overridden to name only the key. TOML and YAML echo
-//!   the offending source line whatever serde says, which is the backend's
-//!   doing and not this visitor's; that is why the test that claims a
-//!   refusal carries no value runs through JSON and JSON5.
-//!
-//! A bare TOML date, time or datetime is the one value that arrives wearing
-//! a table's clothes, as a one-key table under the name
-//! [`TOML_PRIVATE_DATETIME_KEY`]. Without the branch in `visit_map` it lands
-//! in the parsed config as though an operator had written that key.
+//! `deserialize_any`, not `deserialize_map`. A YAML backend folds a bare
+//! `env:` into an empty map before a visitor sees it. Only `visit_unit`
+//! can refuse that.
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -65,12 +49,10 @@ where
         fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
             let mut out = BTreeMap::new();
             while let Some(name) = map.next_key::<String>()? {
-                // The marker as a table's first key is a bare TOML date,
-                // time or datetime wearing a table's clothes, not a key an
-                // operator wrote. Refused before its value is read: the
-                // value is a plain string, and a `V` that itself wants a
-                // table (a `DogTable` under `dogs`) would refuse the string
-                // first and put the wrong words in front of the operator.
+                // The marker as a first key means a bare TOML date/time
+                // value, not an operator's key. It is refused before its
+                // value is read. A `V` wanting a table would refuse the
+                // string first.
                 if out.is_empty() && name == TOML_PRIVATE_DATETIME_KEY {
                     return Err(refusal(self.key));
                 }

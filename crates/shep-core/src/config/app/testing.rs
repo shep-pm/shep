@@ -105,12 +105,9 @@ pub(super) fn probe(kind: ProbeKind, target: &str) -> ProbeConfig {
 /// Every `refuses` clause in the schema, paired with what enforces it.
 ///
 /// Ordered by field, then as the field writes them. A clause naming
-/// several spellings gets a row for each, since one of them passing
-/// says nothing about the rest.
-///
-/// Refusals only. Most fields have nothing validating them, so proving
-/// an `accepts` clause by handing `normalize` a value it never inspects
-/// would pass whatever the clause said.
+/// several spellings gets a row for each. Refusals only: most fields
+/// have nothing validating them, so an `accepts` clause would pass
+/// whatever it said.
 pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
     vec![
         refused(

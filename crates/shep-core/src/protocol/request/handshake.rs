@@ -16,12 +16,10 @@ pub struct Hello {
     /// The name this client was registered under as a dog, when it is one.
     ///
     /// `None` for every other client; a bare `Client` cannot set it. The
-    /// daemon needs it to name a dog it refuses at the handshake, which never
-    /// reaches `Request::DogConfig`. A dog reads its own name from
-    /// `$SHEP_DOG_NAME`.
+    /// daemon needs it to name a dog it refuses at the handshake, which
+    /// never reaches `Request::DogConfig`. A dog reads its name from `$SHEP_DOG_NAME`.
     ///
-    /// Absent on the wire rather than `null`, so
-    /// [`crate::protocol::PROTOCOL_VERSION`] does not move for it.
+    /// Absent on the wire rather than `null`, so [`crate::protocol::PROTOCOL_VERSION`] did not move.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dog_name: Option<String>,
 }

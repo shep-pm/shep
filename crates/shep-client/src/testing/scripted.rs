@@ -87,12 +87,6 @@ pub struct FakeDaemon {
 /// Checked in priority order per request: a buffered out-of-order request,
 /// then an armed error, event or shutdown script, then `Subscribe`, then
 /// `ListFlock`/`Describe`, falling back to `Response::Pong`.
-///
-/// One `Arc` slot per independently armed behavior, cloned from
-/// [`FakeDaemon`]'s own fields: a `Mutex` for each armed payload, an
-/// `AtomicBool` for the one armed flag. Eleven parameters: bundling them
-/// into a struct would move the coupling around, not reduce it, for this
-/// private, one-caller function.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn serve_scripted(
     mut listener: Listener,
@@ -291,11 +285,8 @@ impl FakeDaemon {
     /// Queues `event` for this connection's subscriber.
     ///
     /// Buffered in arrival order until the connection has answered a
-    /// `Request::Subscribe`, since a `broadcast::Receiver` never sees a
-    /// value sent before it existed. Written straight to the wire once
-    /// subscribed.
-    ///
-    /// Silently does nothing if the background task has already ended.
+    /// `Request::Subscribe`, since a `broadcast::Receiver` never sees a value
+    /// sent before it existed. Silently does nothing once the task has ended.
     pub async fn push(&self, event: BusEvent) {
         let _ = self
             .script
@@ -327,15 +318,11 @@ impl FakeDaemon {
 
     /// Arms this connection to close itself once it has answered its next
     /// `Request::Subscribe` and flushed anything [`Self::push`] queued
-    /// beforehand, unlike calling [`Self::close`] before the subscription
-    /// exists.
+    /// beforehand.
     ///
     /// Goes through the script channel rather than a `Mutex` flag: it arms
-    /// behavior on the same background task that drains [`Self::push`]'s
-    /// queue.
-    ///
-    /// Does not consume `self`, unlike [`Self::close`]: a caller may still
-    /// want [`Self::list_flock_count`] afterward.
+    /// behavior on the same background task that drains [`Self::push`]'s queue.
+    /// Does not consume `self`, unlike [`Self::close`].
     pub async fn close_after_subscribe(&self) {
         let _ = self.script.send(ScriptCommand::CloseAfterSubscribe).await;
     }

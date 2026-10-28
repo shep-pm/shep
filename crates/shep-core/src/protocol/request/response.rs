@@ -20,15 +20,11 @@ use crate::config::AppConfig;
 
 /// The machine the flock runs on, as the shepherd last read it.
 ///
-/// Three of the four numbers are rates, so none of them exists in a single
-/// moment: CPU, disk traffic and network traffic are all differences between
-/// two readings of a counter the kernel only ever increments. The shepherd
-/// keeps the earlier reading between its own ticks and serves the
-/// difference, which is what lets a one-shot listing carry them at all.
+/// Three of the four numbers are rates. CPU, disk traffic and network
+/// traffic are differences between two readings of a counter the kernel
+/// only increments. The shepherd keeps the earlier reading between ticks.
 ///
-/// Answered by [`Response::HostUsage`], and by nothing else: this is
-/// deliberately not a field on [`Response::Flock`], whose array shape
-/// predates it.
+/// Answered by [`Response::HostUsage`], and by nothing else.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct HostUsage {
     /// Every core's usage over the shepherd's last window, as one percentage
@@ -52,12 +48,10 @@ pub struct HostUsage {
 
 /// One RPC response (pairs with [`Request`] variants)
 ///
-/// Ten variants carry a bare `Vec<ProcessInfo>`. Do not collapse them into
-/// one: each names which request it answers, which is what lets a variant
-/// diverge without a protocol bump. `Reloading` already means an acceptance
-/// rather than a result, `Scaled` only the survivors of a scale-down, and
-/// `Mustered` every sheep of every restored app rather than what this call
-/// started.
+/// Ten variants carry a bare `Vec<ProcessInfo>`. Do not collapse them
+/// into one. Each names the request it answers, so a variant can diverge
+/// without a protocol bump. `Reloading` means an acceptance rather than a
+/// result; `Scaled` carries only the survivors of a scale-down.
 // wire format: changing existing variants is a breaking change.
 // `large_enum_variant` allowed, not fixed: clippy's remedy is to box
 // `DogStarted`'s payload, a source break for every
@@ -102,21 +96,10 @@ pub enum Response {
     /// Answer to `SheepConfig`: one sheep's config with `env` emptied and
     /// its keys listed beside it.
     ///
-    /// Boxed, and the only variant here that is. This one carries a whole
-    /// [`AppConfig`], which is several times the size of anything else in
-    /// the enum, and a `Response` is inside a `Reply` which is inside a
-    /// [`ServerFrame`](crate::protocol::ServerFrame): without the box,
-    /// every frame the daemon sends costs the largest config's worth of
-    /// stack for a variant almost none of them use.
-    ///
-    /// The enum-level `#[allow(clippy::large_enum_variant)]` below does not
-    /// cover it, and the difference is the point of that allow's own
-    /// argument: boxing `DogStarted` would be a source break for every
-    /// `Response::DogStarted(info)` in and out of this workspace, where
-    /// this variant has never shipped and so breaks nobody.
-    ///
-    /// `Box<T>` serializes exactly as `T`, so the wire bytes and the pinned
-    /// fixtures are untouched.
+    /// Boxed, and the only variant here that is. It carries a whole
+    /// [`AppConfig`], and a `Response` rides inside every frame the daemon
+    /// sends. `Box<T>` serializes exactly as `T`. The enum-level
+    /// `#[allow(clippy::large_enum_variant)]` does not cover it.
     SheepConfig(Box<SheepConfigView>),
     /// Answer to `SetSheepEnv`: the key that was set or removed.
     ///
@@ -163,22 +146,10 @@ pub enum Response {
     /// Answer to `SetSheepField`: which field moved, and whether the
     /// running child has it.
     ///
-    /// Not [`Self::Applied`]'s three lists; the difference is the
-    /// request's own shape. `applied`, `pending` and `refused` exist
-    /// because `ApplyConfig` carries N apps of M fields, so a caller cannot
-    /// otherwise tell which field went where or that one app of eleven was
-    /// refused. This request carries one field of one sheep, so `refused`
-    /// would be a second way to say no beside the `Err` arm (a client
-    /// checking only the `Err` would silently swallow the other), and the
-    /// two lists collapse to the one bit that is left.
-    ///
-    /// That bit is not redundant with the field's own
-    /// [`ApplyGroup`](crate::config::ApplyGroup), which the caller already
-    /// knows. It is the daemon's answer about state a caller cannot see:
-    /// `autostart` is `NextSpawn` and yet reports as in force, because it
-    /// is read at muster rather than at a spawn, and a `Live` field whose
-    /// config subset will not normalize on its own parks instead of
-    /// applying.
+    /// Not [`Self::Applied`]'s three lists: this request names one field of
+    /// one sheep. A second way to say no beside the `Err` arm would only be
+    /// a trap. The remaining bit is not the field's own
+    /// [`ApplyGroup`](crate::config::ApplyGroup).
     SheepFieldSet {
         /// The sheep.
         name: String,
@@ -192,18 +163,9 @@ pub enum Response {
         /// disk, `None` for every other field and for one of these four
         /// that looks fine.
         ///
-        /// Advisory, not a second way to say no: the write above still
-        /// landed. `normalize` cannot see the filesystem (a daemon and a
-        /// CLI normalizing the same config may run as different users), so
-        /// this is checked once, daemon-side, after the value is already
-        /// accepted, and a directory a deploy script has not created yet is
-        /// a real config the write must not refuse. The window between this
-        /// check and the respawn that actually needs the path is the same
-        /// one `check_log_ancestry`'s own doc comment names for its check
-        /// (`docs/specs/deferred.md`).
-        ///
-        /// Additive: absent rather than `null` on a peer built before this
-        /// field existed, so `PROTOCOL_VERSION` does not move for it.
+        /// Advisory, not a second way to say no: the write landed.
+        /// `normalize` cannot see the filesystem, so this is checked
+        /// daemon-side, after the value is accepted. Additive: absent rather than `null` on an older peer.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         warning: Option<String>,
     },
@@ -229,14 +191,9 @@ pub enum Response {
     /// Answer to `DogSheepSettings`: one dog's table from every sheep
     /// carrying one.
     ///
-    /// Empty rather than absent for a sheep naming no table, and empty
-    /// rather than [`RpcErrorCode::NotFound`] for a dog nobody names: a
-    /// dog asks this on its own name, which is never missing the way a
-    /// sheep selector can be.
-    ///
-    /// A table's values never print in a `{:?}` of this reply the way they
-    /// never print in [`AppConfig`]'s own (IR-41): [`DogTable`]'s manual
-    /// `Debug` carries that redaction wherever it rides.
+    /// Empty rather than absent for a sheep naming no table. Empty rather
+    /// than [`RpcErrorCode::NotFound`] for a dog nobody names: a dog asks
+    /// this on its own name. [`DogTable`]'s manual `Debug` redacts the values wherever it rides (IR-41).
     DogSheepSettings {
         /// Sheep name to that sheep's table for this dog.
         tables: BTreeMap<String, DogTable>,
@@ -285,13 +242,10 @@ pub enum Response {
     Enabled(Vec<ProcessInfo>),
     /// Answer to `Restart`: the sheep that were restarted, one row each.
     ///
-    /// **When the reply arrives depends on how many sheep matched.** One
-    /// sheep is answered as soon as its respawn is issued. Two or more are
-    /// restarted in dependency order, and the daemon holds each stage until
-    /// the apps a later stage waits on are back, so the reply arrives no
-    /// sooner than the last stage's respawns and the rows are stitched from
-    /// one answer per stage. A client asking for a budget sizes it for the
-    /// whole walk, not for one respawn.
+    /// When the reply arrives depends on how many sheep matched. One sheep is
+    /// answered as soon as its respawn is issued. Two or more are restarted
+    /// in dependency order. The daemon holds each stage until the apps a
+    /// later stage waits on are back. A client's budget covers the whole walk.
     Restarted {
         /// The sheep the restart reached, one row each.
         ///
@@ -310,20 +264,11 @@ pub enum Response {
     },
     /// Answer to `Reload`: acceptances, not results.
     ///
-    /// One instance costs a readiness wait plus a drain, so a clustered app
-    /// outlasts any deadline a client may ask for. Every row is therefore the
-    /// sheep as it stood when its own reload was accepted, and the swaps
-    /// report themselves on the bus (`process.reload`, `process.reloaded`,
-    /// `process.reload_abandoned`). A matched sheep with nothing to replace
-    /// is listed as the no-op success it is.
-    ///
-    /// **When the reply arrives depends on how many sheep matched.** One
-    /// sheep is answered as soon as its reload is accepted. Two or more are
-    /// reloaded in dependency order, and the daemon holds each stage until
-    /// the swaps of the apps a later stage waits on have landed, so the
-    /// reply arrives no sooner than the last stage's acceptance and the rows
-    /// are stitched from one acceptance per stage. A client asking for a
-    /// budget sizes it for the whole walk, not for one acceptance.
+    /// One instance costs a readiness wait plus a drain. Every row is the
+    /// sheep as it stood when its reload was accepted. The swaps report
+    /// themselves on the bus (`process.reload`, `process.reloaded`,
+    /// `process.reload_abandoned`). Two or more sheep reload in dependency
+    /// order, stage by stage.
     Reloading {
         /// The sheep whose reloads were accepted, one row each.
         accepted: Vec<ProcessInfo>,
@@ -404,11 +349,9 @@ pub enum Response {
     /// into the dogs it has given up on and the dogs it is still waiting on.
     ///
     /// Two lists because they answer two questions. `stale` is a finding;
-    /// `pending` is a reason to ask again, since a reading taken now would
-    /// be a guess about them.
+    /// `pending` is a reason to ask again.
     ///
-    /// Names only: two builds differing only in the protocol they speak
-    /// report the same crate version.
+    /// Names only: two builds differing only in the protocol they speak report the same crate version.
     DogStaleness {
         /// Dogs this daemon has refused twice: once on the handshake that
         /// bought them a restart from disk, and again after it. It will not

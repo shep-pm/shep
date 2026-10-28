@@ -338,16 +338,10 @@ env = { DB_HOST = "", NODE_ENV = "production" }
         );
     }
 
-    /// The top-level `dogs` key does not exist: only `[app.dogs.<name>]`,
-    /// nested under an app, does. A top-level `[dogs.jobs]` must fail the
-    /// same way `[build]` already does.
-    ///
-    /// `RawFlockfile` refuses this through its own `deny_unknown_fields`,
-    /// which the backend's derived `Deserialize` enforces directly rather
-    /// than through the `serde_ignored` callback `UnknownKeys` collects
-    /// from: unlike a typo inside an app, this key is refused before
-    /// `RawFlockfile` is ever fully built, so the error is the backend's
-    /// own rather than `FlockfileError::UnknownKeys`.
+    // A top-level `[dogs.jobs]` must fail the same way `[build]` does.
+    // `RawFlockfile`'s own `deny_unknown_fields` catches it before the
+    // callback runs. The error is the backend's own, not
+    // `FlockfileError::UnknownKeys`.
     #[test]
     fn a_top_level_dogs_table_is_refused_naming_the_key() {
         let err = Flockfile::parse(

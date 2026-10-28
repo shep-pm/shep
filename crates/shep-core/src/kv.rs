@@ -1,14 +1,13 @@
 //! `kv.json`: the shepherd's key/value store (spec §5).
 //!
-//! A flat map of short strings under `$SHEP_HOME`, for ad-hoc operator notes
-//! and dog runtime tweaks. Not the primary config path: a Flockfile
-//! configures a sheep, `shep.toml` the shepherd and its dogs. A file rather
-//! than an RPC, so `shep kv get`/`set`/`unset` work with no shepherd running.
-//! Every mutation is a read-modify-rename under a [`crate::file_lock`] on
-//! a sibling `kv.json.lock`, staged through a temp file.
+//! A flat map of short strings under `$SHEP_HOME`, for ad-hoc operator
+//! notes and dog runtime tweaks. Not the primary config path: a Flockfile
+//! configures a sheep, `shep.toml` the shepherd and its dogs. A file
+//! rather than an RPC, so `shep kv` works with no shepherd running. Every
+//! mutation is a read-modify-rename under a [`crate::file_lock`].
 //!
 //! Keys match `[A-Za-z0-9._-]`, 1 to [`MAX_KEY_BYTES`], not starting with
-//! `.`; a dot is part of a key's name, not a path.
+//! `.`. A dot is part of a key's name, not a path.
 
 // Every store writes through this same shape. Take `file_lock` and
 // `atomic_file` rather than open-coding another copy here.
@@ -58,10 +57,8 @@ impl Versioned for KvFile {
 /// `#[non_exhaustive]`: shep-core is published, so a new failure variant
 /// must not break an out-of-tree `match`.
 ///
-/// Wraps `io::Error`/`serde_json::Error` directly rather than stringifying
-/// them, matching [`BarkError`](crate::barks::BarkError), so callers keep
-/// the underlying diagnostic through [`core::error::Error::source`]; this
-/// type does not derive `Clone`/`PartialEq`/`Eq` as a result.
+/// Wraps `io::Error` and `serde_json::Error` directly, as
+/// [`BarkError`](crate::barks::BarkError) does, so `source` stays readable.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum KvError {

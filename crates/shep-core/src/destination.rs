@@ -12,12 +12,11 @@ pub const MAX_DESTINATION_BYTES: usize = 255;
 
 /// A host to reach over `ssh`, as an optional `user@` and a host.
 ///
-/// Each part is one or more of ASCII letters, digits, `.`, `_` and `-`, and
-/// neither starts with `-`. Ports, IPv6 literals and `ssh://` URIs are
+/// Each part is one or more of ASCII letters, digits, `.`, `_` and `-`.
+/// Neither starts with `-`. Ports, IPv6 literals and `ssh://` URIs are
 /// refused: they belong in `~/.ssh/config` as an alias.
 ///
-/// `Debug` is derived: a destination names a machine and maybe a user, never
-/// a secret.
+/// `Debug` is derived: a destination names a machine, never a secret.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Destination(String);
 

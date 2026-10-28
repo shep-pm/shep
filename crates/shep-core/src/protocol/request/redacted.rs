@@ -13,15 +13,11 @@ use crate::config::AppConfig;
 
 /// A dog's `[dog.<name>]` config section, carried as TOML text.
 ///
-/// Travels over the socket rather than the child's environment: a dog's
-/// section routinely holds webhook credentials, and the socket keeps them
-/// out of the process table and out of crash dumps. The manual `Debug`
-/// below prints only a length, since [`Response`] derives `Debug`.
+/// Travels over the socket rather than the child's environment. A dog's
+/// section routinely holds webhook credentials, and the socket keeps
+/// them out of the process table and out of crash dumps.
 ///
-/// [`Self::as_str`] is the only way out: a `Deref<Target = str>` would hand
-/// the type `ToString` and defeat that `Debug`.
-///
-/// `#[serde(transparent)]`: the wire representation is a bare `String`.
+/// The manual `Debug` prints only a length. [`Self::as_str`] is the only way out.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DogSectionToml(String);
@@ -50,26 +46,10 @@ impl fmt::Debug for DogSectionToml {
 
 /// One environment variable's value, on its way to a sheep.
 ///
-/// A newtype for one reason, the same one [`DogSectionToml`] exists for: an
-/// env value is the single most secret-dense thing a client can send this
-/// daemon (a database URL, an API token, a signing key), and a derived
-/// `Debug` on [`Request`] would print it in the clear the moment anything
-/// logs a request. Every other secret-bearing field on this wire is already
-/// protected by its inner type ([`AppConfig`]'s own manual `Debug` prints
-/// `env: <N vars>`), and a bare `String` here would have been the first
-/// field in the enum without that protection.
-///
-/// One direction only. Nothing ever sends one back: [`Request::SheepConfig`]
-/// answers with the env keys and no values at all.
-///
-/// [`Self::as_str`] is the only way out, for the reason
-/// [`DogSectionToml`] gives: a `Deref<Target = str>` would hand the type
-/// `ToString` too, and `.to_string()` would return the value in the clear,
-/// defeating the redacted `Debug` below.
-///
-/// `#[serde(transparent)]` makes the wire representation identical to a
-/// bare `String`, so this newtype changes nothing about
-/// [`crate::protocol::PROTOCOL_VERSION`] or the pinned snapshot fixtures.
+/// A newtype for one reason, the same one [`DogSectionToml`] exists for.
+/// A derived `Debug` on [`Request`] would print it in the clear in any
+/// log. One direction only: [`Request::SheepConfig`] answers with env
+/// keys and no values. `#[serde(transparent)]` keeps the wire form bare.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EnvValue(String);

@@ -1,13 +1,12 @@
 use std::time::Duration;
 
-/// How long the supervisor waits after its FIRST failed reconnect attempt
+/// How long the supervisor waits after its first failed reconnect attempt
 /// before trying again.
 ///
 /// The first attempt carries no delay: across a handover the listening
-/// socket stays bound, so `connect(2)` succeeds into the backlog and only
-/// the handshake waits for the successor to start accepting. 50ms is the
-/// pause before a second attempt, short enough that a successor a few
-/// milliseconds late costs one of these rather than a visible outage.
+/// socket stays bound, so `connect(2)` succeeds into the backlog. Only the
+/// handshake waits. 50ms is short enough that a late successor costs one
+/// pause, not an outage.
 pub const RECONNECT_MIN_DELAY: Duration = Duration::from_millis(50);
 
 /// The ceiling [`RECONNECT_MIN_DELAY`] doubles up to.

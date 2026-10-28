@@ -19,14 +19,10 @@ pub enum EnvCopyKind {
 /// One env key a copy touches.
 ///
 /// `old` and `new` are what [`shown_env_value`](crate::secrets::shown_env_value)
-/// lets a client read: a value that is exactly one `{{secret:...}}` reference
-/// as written, and `<redacted>` for every other value. The values themselves
-/// never leave the shepherd, as `SheepConfig` never sends them.
-///
-/// `seal` is what lets a write tell two redacted values apart: see the field.
-///
-/// `Debug` is derived: nothing here is a value, and `seal` is a keyed
-/// fingerprint that says nothing about one.
+/// lets a client read: exactly one `{{secret:...}}` reference reads as
+/// written, and every other value reads as `<redacted>`. The values
+/// themselves never leave the shepherd. `seal` tells two redacted values
+/// apart. `Debug` is derived.
 // wire format: changing field names is a breaking change
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -42,11 +38,9 @@ pub struct EnvCopyChange {
     /// A fingerprint of the real `old` and `new`, keyed by the shepherd that
     /// answered and meaningful only to it.
     ///
-    /// Two redacted values look alike, so a copy sent back with the list
-    /// it reviewed would otherwise not notice one literal swapped for
-    /// another. The key is fresh for each shepherd process, so the seal
-    /// reveals nothing about a value, and a list sealed by an earlier
-    /// shepherd no longer matches. `0` when absent on the wire.
+    /// Two redacted values look alike. A copy sent back with the list it
+    /// reviewed would not notice one literal swapped for another. The key is
+    /// fresh for each shepherd process, so the seal reveals nothing.
     #[serde(default)]
     pub seal: u64,
 }

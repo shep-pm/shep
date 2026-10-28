@@ -1,60 +1,13 @@
 //! What every dog shares: answering shep's probes, starting up, talking to
-//! its shepherd, and stopping.
+//! its shepherd, and stopping. `docs/dogs.md` has the full contract.
 //!
-//! A dog is a plugin process the shepherd supervises. Everything here is
-//! the part each dog would otherwise copy, and the copies drift apart in
-//! ways an operator reads in `shep dogs`.
+//! [`probe`] answers the flags shep uses to read a dog before adopting it.
+//! It is the first line of a dog's `main`. [`Probe`] declares a dog's
+//! schema, permissions and verbs. [`Stop`] carries a stop request, and
+//! [`DogRuntime`] reaches the shepherd and its config section.
 //!
-//! ## Answering shep's probes
-//!
-//! Before shep adopts a dog, and whenever it needs the dog's config schema,
-//! it spawns the binary with a flag and reads what comes back. [`probe`]
-//! answers both, so neither the format nor the flags are typed by a dog
-//! author. It is the first line of `main`, before anything opens a socket.
-//!
-//! `name` and `version` are arguments rather than `env!` calls in this
-//! crate, since `env!` expands where it is written and would report
-//! `shep-client`'s own version instead of the dog's.
-//!
-//! Answering is optional: with the `schema` feature off, [`probe`] still
-//! answers the version flag, and the schema flag exits without printing,
-//! which shep reads as a dog with no schema and refuses nothing for.
-//!
-//! A dog that wants `shep trigger` answers through a [`Probe`] with
-//! [`Probe::ask_for_channel`] instead. shep then opens the shepherd channel
-//! for it and stops it with a message, which the dog serves with
-//! `shep_channel::serve`, handing `on_shutdown` a [`StopRequest`].
-//!
-//! A [`Probe`] also answers `--shep-manifest` with a [`Manifest`]: the same
-//! name, version, schema and channel ask, plus whatever the dog declares
-//! through [`Probe::permission`], [`Probe::verb`], [`Probe::depends_on_dog`],
-//! [`Probe::depends_on_shep`], [`Probe::defaults`] and [`Probe::validate`].
-//!
-//! A dog that declared [`Probe::validate`] is asked before shep writes its
-//! settings: a `shep.validate` action arrives on its channel carrying the
-//! table the write would put in place, and [`validate_answer`] turns that
-//! into the reply body. A refusal, and no answer at all, stop the write.
-//!
-//! [`parse_sheep_settings`] answers a different question: a dog that acts
-//! per sheep reads its `[app.dogs.<dog>]` table off
-//! `Request::DogSheepSettings` and parses one sheep's table at a time, so a
-//! table that does not fit its type never hides the rest.
-//!
-//! ## Starting up
-//!
-//! After [`probe`], in this order:
-//!
-//! - [`parse_args`], unless the dog has a command mode of its own.
-//! - [`Stop::on_stop_signals`], or [`Stop::on_interrupt`] for a dog the
-//!   shepherd may kill outright. Before anything is awaited.
-//! - [`resolve_paths`] and [`DogIdentity::from_env`].
-//! - [`DogRuntime::start`], then [`DogRuntime::config`] for the section.
-//!
-//! ## Stopping
-//!
-//! [`ShepherdError`], [`SectionError`], [`UsageError`] and [`HomeError`]
-//! each carry an `exit_code()`, shep's own number for the same cause.
-//!
+//! A dog that wants `shep trigger` asks for the channel through
+//! [`Probe::ask_for_channel`]. It serves that with `shep_channel::serve`.
 //! ```no_run
 //! use std::process::ExitCode;
 //!

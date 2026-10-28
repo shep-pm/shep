@@ -1,29 +1,13 @@
-//! Replace a process's image with `execve` and carry on: named descriptors
+//! Replace a process's image with `execve` and carry on. Named descriptors
 //! and a state blob cross, and the children the old image started stay the
-//! new image's children.
+//! new image's children. Unix only: elsewhere these answer `Unsupported`.
 //!
-//! Any process can use it, a dog or a sheep as much as the shepherd. It
-//! depends on no other shep crate, so a dog still built against an older shep
-//! line can hand over with it.
+//! [`Handover`] is the outgoing side and [`boot`] the incoming one, which a
+//! successor calls first thing in `main`. [`wait_for_child`] reaps a child the
+//! old image started, by pid.
 //!
-//! - [`Handover`] is the outgoing side. It names each descriptor to carry
-//!   with a key, passes a caller-defined [`State`], asks a [`Fitness`] gate
-//!   whether to go ahead, and `execve`s the [`exec_target`].
-//! - [`boot`] is the incoming side. Call it first thing in `main`: it returns
-//!   the [`Arrival`] if this image is a successor, and `None` if it was
-//!   started any other way.
-//! - [`wait_for_child`] reaps a child the old image started, by pid.
-//!
-//! A handover that does not happen leaves the old image running and returns
-//! why, as a [`HandOverError`]. The caller falls back to a stop and a start.
-//! That includes a target that cannot read the state's format: before the
-//! exec, [`Handover::exec`] starts the target as a probe, and its [`boot`]
-//! answers for its [`State`] and exits, so [`boot`] has to be the first thing
-//! a target's `main` does. A handover that does happen cannot be undone.
-//!
-//! Unix only. On Windows the crate builds, and [`Handover::exec`], [`boot`]
-//! and [`wait_for_child`] answer "not supported".
-//!
+//! A failed handover leaves this image running and returns why; a completed
+//! one cannot be undone.
 //! ```no_run
 //! # #[cfg(unix)]
 //! use serde::{Deserialize, Serialize};

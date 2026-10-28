@@ -12,34 +12,24 @@ use super::DogConfig;
 #[cfg(feature = "schema")]
 use super::{config_schema, config_schema_with_sheep};
 
-/// Answers shep's probes, and returns when this run is not a probe, so a
-/// dog calls it as the first line of `main`.
+/// Answers shep's probes, and returns when this run is not a probe.
 ///
 /// Shorthand for <code>[Probe::new]\(name, version).[answer::\<T>](Probe::answer)()</code>.
-/// `name` and `version` are ordinarily `env!("CARGO_PKG_NAME")` and
-/// `env!("CARGO_PKG_VERSION")`; only the version is read by shep.
 ///
 /// # Exits
 ///
-/// Ends the process with [`process::exit`](std::process::exit), status 0,
-/// before `main` opens anything.
+/// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
 #[cfg(feature = "schema")]
 pub fn probe<T: DogConfig + schemars::JsonSchema>(name: &str, version: &str) {
     Probe::new(name, version).answer::<T>();
 }
 
-/// [`probe`], for a dog that also publishes a schema for its per-sheep
-/// `[app.dogs.<name>]` table: the schema flag answers with
-/// [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep) instead of
-/// [`config_schema::<T>`](config_schema).
-///
-/// Shorthand for
-/// <code>[Probe::new]\(name, version).[answer_with_sheep::\<T, S>](Probe::answer_with_sheep)()</code>.
+/// [`probe`], for a dog whose per-sheep `[app.dogs.<name>]` table has its own schema.
+/// The schema flag answers with [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep).
 ///
 /// # Exits
 ///
-/// Ends the process with [`process::exit`](std::process::exit), status 0,
-/// before `main` opens anything.
+/// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
 ///
 /// # Examples
 ///
@@ -67,30 +57,24 @@ where
     Probe::new(name, version).answer_with_sheep::<T, S>();
 }
 
-/// Answers shep's probes, and returns when this run is not a probe, so a
-/// dog calls it as the first line of `main`.
+/// Answers shep's probes, and returns when this run is not a probe.
 ///
-/// Shorthand for <code>[Probe::new]\(name, version).[answer::\<T>](Probe::answer)()</code>.
-/// With the `schema` feature off, the schema flag exits without printing, so
-/// shep records a dog with no schema instead of waiting out a timeout.
+/// With the `schema` feature off, the schema flag exits without printing.
 ///
 /// # Exits
 ///
-/// Ends the process with [`process::exit`](std::process::exit), status 0,
-/// before `main` opens anything.
+/// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
 #[cfg(not(feature = "schema"))]
 pub fn probe<T: DogConfig>(name: &str, version: &str) {
     Probe::new(name, version).answer::<T>();
 }
 
 /// [`probe_with_sheep`] with the `schema` feature off: behaves exactly like
-/// [`probe`] does without the feature, since there is no schema to answer
-/// with either way.
+/// [`probe`] does without the feature.
 ///
 /// # Exits
 ///
-/// Ends the process with [`process::exit`](std::process::exit), status 0,
-/// before `main` opens anything.
+/// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
 #[cfg(not(feature = "schema"))]
 pub fn probe_with_sheep<T: DogConfig, S: DogConfig>(name: &str, version: &str) {
     Probe::new(name, version).answer_with_sheep::<T, S>();
@@ -100,10 +84,8 @@ pub fn probe_with_sheep<T: DogConfig, S: DogConfig>(name: &str, version: &str) {
 /// its name and version.
 ///
 /// [`probe`] asks for nothing; build one of these only to ask. Call
-/// [`Self::answer`] as the first line of `main`, as [`probe`] would be.
-///
-/// It answers [`MANIFEST_FLAG`] with a [`Manifest`] built from what the dog
-/// gives it, and the version and schema flags as an older shep asks them.
+/// [`Self::answer`] as the first line of `main`, as [`probe`] would be. It
+/// answers [`MANIFEST_FLAG`] with a [`Manifest`] built from what the dog gives it.
 ///
 /// # Examples
 ///
@@ -209,8 +191,7 @@ impl<'a> Probe<'a> {
     ///
     /// # Exits
     ///
-    /// Ends the process with [`process::exit`](std::process::exit), status
-    /// 0, before `main` opens anything.
+    /// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
     #[cfg(feature = "schema")]
     pub fn answer<T: DogConfig + schemars::JsonSchema>(self) {
         self.answering(|| Some(config_schema::<T>().into()));
@@ -238,8 +219,7 @@ impl<'a> Probe<'a> {
     ///
     /// # Exits
     ///
-    /// Ends the process with [`process::exit`](std::process::exit), status
-    /// 0, before `main` opens anything.
+    /// Ends the process with [`process::exit`](std::process::exit), status 0, before `main` opens.
     #[cfg(not(feature = "schema"))]
     pub fn answer<T: DogConfig>(self) {
         self.answering(|| None);

@@ -68,12 +68,11 @@ impl Shepherd {
 
     /// Whether this process's channel is live right now.
     ///
-    /// False before the operator opens one, and false again once the
-    /// shepherd goes away. [`Shepherd::dropped_metrics`] never freezes
-    /// silently as a result.
+    /// False before the operator opens one, and false again once the shepherd
+    /// goes away. [`Shepherd::dropped_metrics`] never freezes silently as a
+    /// result.
     ///
-    /// Checking this is optional. Without a channel nothing is sent and no
-    /// handler runs, though registering one still succeeds.
+    /// Checking this is optional: without a channel nothing is sent.
     #[must_use]
     pub fn is_active(&self) -> bool {
         self.0
@@ -97,17 +96,10 @@ impl Shepherd {
 
     /// Registers a handler for one action name, replacing any prior one.
     ///
-    /// Called with the action's params (`None` if triggered with none) and
-    /// its name, in that order. The return value becomes the reply body.
-    ///
-    /// A handler runs on a thread of its own and may run at the same time
-    /// as another handler of the same app, which is what the `Send + Sync`
-    /// bound is for. Each reply carries the id of the action it answers, so
-    /// two handlers finishing out of order still answer the right trigger.
-    ///
-    /// Safe to call from another thread, or from inside a handler.
-    /// A `reload` action can swap its own handlers this way. The
-    /// registry's lock is never held while a handler runs.
+    /// The handler takes the action's params and its name, in that order.
+    /// Params are `None` when the trigger carried none, and the return
+    /// value becomes the reply body. Two handlers may run at once, hence
+    /// the `Send + Sync` bound. Safe to call from inside a handler.
     pub fn on_action<H>(&self, name: impl AsRef<str>, handler: H) -> &Self
     where
         H: Fn(Option<&str>, &str) -> String + Send + Sync + 'static,
@@ -122,12 +114,11 @@ impl Shepherd {
 
     /// Registers the handler run when the shepherd asks this app to stop.
     ///
-    /// Without one, a shutdown message warns and nothing else happens.
-    /// This crate never ends a process on its own judgement.
+    /// Without one, a shutdown message warns and nothing else happens. This
+    /// crate never ends a process on its own judgement.
     ///
-    /// A shutdown is looked up only after the action handlers already
-    /// running have finished, so an action handler can register this one
-    /// and still have it run for a shutdown sent right after it.
+    /// A shutdown is looked up only after the running action handlers
+    /// finish. An action handler can therefore register this one.
     pub fn on_shutdown<H>(&self, handler: H) -> &Self
     where
         H: Fn() + Send + Sync + 'static,
@@ -156,33 +147,17 @@ impl Shepherd {
 
     /// Waits for everything already queued to reach the shepherd.
     ///
-    /// [`Shepherd::ready`], [`Shepherd::metric`] and an action reply all
-    /// hand their message to a writer thread and return. A process that
-    /// ends before that thread catches up loses them, and an
-    /// `on_shutdown` handler that exits is the usual way to find that
-    /// out. Call this first and the queued replies reach the operator.
-    ///
-    /// Safe to call from a handler: the writer is a separate thread, so
-    /// this waits on nothing the caller owes. An action's own reply is
-    /// queued after its handler returns, so flushing inside one does not
-    /// wait for it.
-    ///
-    /// Returns as soon as the outbox is empty, so another thread still
-    /// emitting metrics can hold it open. `timeout` bounds the wait
-    /// either way: keep it well inside the app's `kill_timeout`, since
-    /// the shepherd is counting that down while this waits.
-    ///
-    /// Without a channel there is nothing queued and this returns
-    /// `Ok(())` at once.
+    /// `ready`, `metric` and an action reply hand their message to a writer
+    /// thread and return. A process that ends first loses them. Call this
+    /// before exiting from `on_shutdown`. Safe to call from a handler. It
+    /// returns as soon as the outbox is empty, so another thread can hold
+    /// it open. Keep `timeout` inside `kill_timeout`.
     ///
     /// # Errors
     ///
-    /// - [`ChannelError::TimedOut`] when `timeout` ran out with messages
-    ///   still waiting. The writer may yet get to them;
-    ///   [`Shepherd::pending`] says how many are left.
-    /// - [`ChannelError::Closed`] when the writer stopped before it wrote
-    ///   them, which is the shepherd having gone away. Those messages
-    ///   are lost.
+    /// - [`ChannelError::TimedOut`] when `timeout` ran out; [`Shepherd::pending`] counts what is left.
+    /// - [`ChannelError::Closed`] when the writer stopped first: the shepherd
+    ///   has gone, and those messages are lost.
     pub fn flush(&self, timeout: Duration) -> Result<(), ChannelError> {
         let Some(outbox) = &self.0.outbox else {
             return Ok(());
@@ -206,13 +181,11 @@ impl Shepherd {
 
     /// Records one metric sample. Never blocks and never fails.
     ///
-    /// A sample may be dropped if the shepherd stops reading; see
-    /// [`Shepherd::dropped_metrics`]. That trade avoids parking a hot path
-    /// on a full socket.
+    /// A sample may be dropped if the shepherd stops reading, which keeps a
+    /// hot path from parking on a full socket. See
+    /// [`Shepherd::dropped_metrics`].
     ///
-    /// Takes `impl Into<String>`, unlike `on_action`'s `impl AsRef<str>`.
-    /// This runs per sample on a hot path. An owned `String` the caller
-    /// already has moves in for free.
+    /// Unlike `on_action`, this takes `impl Into<String>`: an owned `String` moves in for free.
     pub fn metric(&self, name: impl Into<String>, value: f64) {
         if let Some(outbox) = &self.0.outbox {
             outbox.push_lossy(ChildMessage::Metric {
@@ -301,12 +274,11 @@ impl Shepherd {
 
 /// Opens this process's channel and starts serving it.
 ///
-/// Always returns a usable handle. With no channel, every call on it
-/// is a no-op. So an app needs no branch at its emit sites. One
-/// line goes to stderr when `SHEP_NAME` says this process runs under shep.
+/// Always returns a usable handle. With no channel, every call on it is a
+/// no-op. An app needs no branch at its emit sites. One line goes to stderr
+/// when `SHEP_NAME` says this process runs under shep.
 ///
-/// A process singleton: the channel is one descriptor and can be owned
-/// once. A second call returns the same handle.
+/// A process singleton: the channel is one descriptor, owned once.
 #[must_use]
 pub fn serve() -> Shepherd {
     static SHEPHERD: OnceLock<Shepherd> = OnceLock::new();
@@ -356,16 +328,10 @@ fn start() -> Shepherd {
         .name("shep-channel-writer".to_string())
         .spawn(move || writer_loop(&mut writer, &writing));
     if let Err(error) = writer_spawn {
-        // Without this thread, nothing drains the outbox.
-        // `ready()` would queue silently and `wait_ready` would hang.
-        // So the handle below is inert instead, holding no outbox at
-        // all: `ready()` and `flush()` answer `Ok(())` and `metric()`
-        // does nothing, none of them reaching the one stopped here.
-        // That stop is bookkeeping on an outbox nothing else holds,
-        // which drops on the next line. It is kept so this arm cannot
-        // leave a live outbox behind if the code above it grows a
-        // second holder.
-        // The handle still carries the version stamp, since the channel opened.
+        // Without this thread nothing drains the outbox, so `ready()` would
+        // queue silently and `wait_ready` would hang. The handle below is
+        // inert instead: it holds no outbox. Its stopped one drops on the
+        // next line.
         warn(&format!(
             "failed to spawn the shep-channel writer thread: {error}; continuing without a channel"
         ));

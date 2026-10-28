@@ -3,13 +3,11 @@
 //! Stage a fresh file beside the real one, write it, `fsync` it, `rename`
 //! it over the target, then `fsync` the directory the rename landed in. A
 //! reader sees the whole old file or the whole new one, never a fragment.
-//! [`write_json`] is all of it for a store holding one serializable value;
-//! a store that writes its own bytes stages with [`create_staging_file`]
-//! and finishes with [`publish`].
+//! [`write_json`] is all of it for a store holding one value; a store that
+//! writes its own bytes stages with [`create_staging_file`] and publishes.
 //!
-//! [`sync_dir`], which [`publish`] calls last, makes the rename durable,
-//! where the temp file's own `fsync` does not, on unix only, and only
-//! where the filesystem implements the flush.
+//! [`sync_dir`] makes the rename durable, on unix only, and only where the
+//! filesystem implements the flush.
 
 use std::path::Path;
 

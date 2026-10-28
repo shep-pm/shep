@@ -34,25 +34,19 @@ impl Client {
         resolved_dog_section(name, |body| self.request(body)).await
     }
 
-    /// The sheep `name`'s `[app.dogs.<dog>]` table with every
-    /// `{{secret:...}}` reference resolved in that sheep's own environment,
+    /// The sheep `name`'s `[app.dogs.<dog>]` table, with every
+    /// `{{secret:...}}` reference resolved in that sheep's own environment.
     /// `None` when it carries no such table.
     ///
-    /// Asks [`Request::SheepDogSettingsResolved`]. A shepherd too old to
-    /// know it is asked [`Request::DogSheepSettings`] instead, and a table
-    /// that still holds a reference is refused rather than handed over
-    /// unresolved.
+    /// Asks [`Request::SheepDogSettingsResolved`]. A shepherd too old to know
+    /// it is asked [`Request::DogSheepSettings`] instead, and a table still
+    /// holding a reference is refused rather than handed over unresolved.
     ///
     /// # Errors
     ///
-    /// As [`Self::request`], including [`RpcErrorCode::NotFound`] for a name
-    /// no sheep holds and [`RpcErrorCode::InvalidConfig`] for a reference
-    /// that cannot resolve (an older shepherd is asked `ListFlock` too, to
-    /// tell that name from a sheep without the table), and
-    /// [`RequestError::UnexpectedReply`] for any
-    /// answer but [`Response::SheepDogTable`].
-    /// [`RequestError::Rpc`] with [`RpcErrorCode::Unsupported`] when an
-    /// older shepherd's table names a secret reference it cannot resolve.
+    /// As [`Self::request`]: [`RpcErrorCode::NotFound`] for a name no sheep
+    /// holds, and [`RpcErrorCode::InvalidConfig`] for a reference that cannot
+    /// resolve. A different answer gives [`RequestError::UnexpectedReply`].
     pub async fn sheep_dog_table(
         &self,
         name: &str,

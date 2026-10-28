@@ -1,5 +1,4 @@
-//! `overrides.json`: what an operator has changed since a Flockfile was
-//! loaded.
+//! `overrides.json`: what an operator has changed since a Flockfile was loaded.
 //!
 //! A Flockfile arrives from an app's own repository, so a merged pull
 //! request must not silently change a running flock's live config. This
@@ -29,11 +28,10 @@ pub const OVERRIDES_VERSION: u32 = 1;
 /// One sheep's overrides: the fields an operator has set that its current
 /// Flockfile does not declare.
 ///
-/// `fields` is a flat JSON object rather than a typed `AppConfig`, since a
-/// newer shep may accept fields this one does not know, and reading must
-/// not silently drop them. `declared` and `declared_env` are not overrides
-/// themselves: they are the Flockfile's declared keys, kept so a merge can
-/// tell a key the Flockfile dropped apart from one it never mentioned.
+/// `fields` is a flat JSON object, not a typed `AppConfig`. A newer shep
+/// may accept fields this one does not know, and reading must not drop
+/// them. `declared` and `declared_env` are the Flockfile's own keys.
+/// A merge can tell a dropped key from an undeclared one.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppOverrides {
     /// Operator-set field values, keyed by the same names `AppConfig`'s
@@ -102,10 +100,8 @@ impl Versioned for OverridesFile {
 /// `#[non_exhaustive]`: shep-core is published, so a new failure variant
 /// must not break an out-of-tree `match`.
 ///
-/// Wraps `io::Error`/`serde_json::Error` directly rather than stringifying
-/// them, matching [`crate::kv::KvError`], so callers keep the underlying
-/// diagnostic through [`core::error::Error::source`]; this type does not
-/// derive `Clone`/`PartialEq`/`Eq` as a result.
+/// Wraps `io::Error` and `serde_json::Error` directly, as [`crate::kv`]
+/// does, so `source` stays readable.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum OverridesError {

@@ -48,17 +48,13 @@ pub(super) fn ack_from(pid: u32) -> HelloAck {
     }
 }
 
-/// Waits until the fake has accepted `accepts` connections and the
-/// client has installed the newest of them, or fails inside [`BOUND`].
+/// Waits until the fake has accepted `accepts` connections and the client
+/// has installed the newest of them, or fails inside [`BOUND`].
 ///
-/// Both halves are needed: the accept count alone rises before the
-/// handshake completes, and the link alone still reads `Connected` in
-/// the instant after a cut. The supervisor sets `Reconnecting` before
-/// it dials, so together they are unambiguous.
-///
-/// Does not observe [`ReconnectingClient::daemon`]: some tests assert
-/// on the ack, and a helper that waited on it would make those fail
-/// for an unrelated reason.
+/// The accept count alone rises before the handshake completes. The link
+/// alone still reads `Connected` in the instant after a cut. The
+/// supervisor sets `Reconnecting` before it dials, so the two together
+/// are unambiguous.
 pub(super) async fn await_reconnect(
     client: &ReconnectingClient,
     shepherds: &Handovers,

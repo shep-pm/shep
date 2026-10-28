@@ -21,20 +21,11 @@ const PATTERN_SIZE_LIMIT: usize = 1 << 20;
 
 /// Most rules one app may declare.
 ///
-/// [`PATTERN_SIZE_LIMIT`] bounds what ONE pattern may compile to, and a list
-/// of N patterns costs N of those, so leaving the count open left the same
-/// argument half made: the memory is still not this process's to choose.
-///
-/// Sixty-four because five levels need five entries to name each once, and an
-/// app whose lines announce a level several ways needs a small multiple of
-/// that. Twelve times over is past anything a real Flockfile reaches.
-///
-/// The count is what a client pays per redraw, not just once:
-/// `Classifier::new` compiles the whole list on every `visible()` call rather
-/// than holding it, which is the right call while the list is short and is
-/// only defensible because of this ceiling. At a measured 78 us for five
-/// rules, a full list costs about 1 ms a frame; unbounded, a redraw is
-/// unbounded too.
+/// [`PATTERN_SIZE_LIMIT`] bounds what one pattern may compile to, so the
+/// count has to be bounded too. Sixty-four is twelve times what five
+/// levels need. `Classifier::new` compiles the whole list on every
+/// `visible()` call: at a measured 78 us for five rules, a full list costs
+/// 1 ms a frame.
 const MAX_LEVEL_RULES: usize = 64;
 
 /// The level one log line announces.
@@ -42,15 +33,10 @@ const MAX_LEVEL_RULES: usize = 64;
 /// Ordered lowest first, so `level >= minimum` reads the way an operator
 /// setting a floor expects. `Display` renders the spelling a Flockfile
 /// writes.
-//
 // Not `config::LogLevel`, which is the shepherd's own verbosity. This is a
-// level a sheep claims for one of its own lines, and shep only reads it.
-// wire format: changing these strings is a breaking change.
-//
-// No `#[non_exhaustive]` (IR-20). These five are the universal set every
-// logging library agrees on, so growth is not anticipated; a sixth would
-// also change what every operator's stored filter means, which is a break
-// whatever this attribute says.
+// level a sheep claims for its own lines, and shep only reads it.
+// wire format: changing these strings is a breaking change. No
+// `#[non_exhaustive]` (IR-20): these five are the set every library agrees on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -113,18 +99,17 @@ pub struct LevelMatcher {
 impl LevelMatcher {
     /// Compiles `rules` in order.
     ///
-    /// An empty slice compiles to an empty matcher, which classifies
-    /// nothing. What a caller does with that is its own decision: a client
-    /// reading an app that declared no rules falls back to its own reading
-    /// of the line.
+    /// An empty slice compiles to an empty matcher, which classifies nothing.
+    /// A client reading an app that declared no rules falls back to its own
+    /// reading of the line.
     ///
     /// # Errors
-    /// - [`LevelRuleError::TooManyRules`] if `rules` is longer than this
-    ///   crate's ceiling on how many one app may declare, which the error
-    ///   carries as `limit`.
+    ///
+    /// - [`LevelRuleError::TooManyRules`] if `rules` is longer than the
+    ///   ceiling the error carries as `limit`.
     /// - [`LevelRuleError::EmptyPattern`] if a rule's pattern is empty.
     /// - [`LevelRuleError::BadPattern`] if a pattern does not compile, or
-    ///   compiles to a program over this crate's 1 MiB bound.
+    ///   compiles over this crate's 1 MiB bound.
     pub fn compile(rules: &[LevelRule]) -> Result<Self, LevelRuleError> {
         if rules.len() > MAX_LEVEL_RULES {
             return Err(LevelRuleError::TooManyRules {

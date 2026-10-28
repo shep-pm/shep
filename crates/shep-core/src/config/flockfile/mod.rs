@@ -1,15 +1,13 @@
 //! Flockfile: discovery and multi-format parsing
 //!
-//! One document shape across formats: a list of app tables under the `app`
-//! key (`[[app]]` in TOML). Parsing is strict serde, no code execution;
-//! `.js` configs are the CLI's job (it shells out to node and feeds the
-//! resulting JSON through [`FlockFormat::Json`]).
+//! One document shape across formats: a list of app tables. The key is
+//! `app`, `[[app]]` in TOML. Parsing is strict serde, no code execution.
+//! `.js` configs are the CLI's job, which feeds node's JSON through
+//! [`FlockFormat::Json`].
 //!
-//! The modules follow the path a document takes. `discovery` finds the
-//! file and `format` says what it is; `parse` runs the one per-format
-//! deserializer dispatch, with `json5` guarding the depth that backend
-//! cannot survive; `raw` is the shape serde accepts and `file` the one
-//! callers get. `error` is what any of it refuses with.
+//! `discovery` finds the file and `format` says what it is. `parse` runs
+//! the per-format dispatch, with `json5` guarding the depth that backend
+//! cannot survive. `raw` is the shape serde accepts, `file` the result.
 
 mod declared_app;
 mod discovery;

@@ -48,11 +48,9 @@ pub fn decode_frame<T: DeserializeOwned>(frame: &[u8]) -> Result<T, WireError> {
 /// Enough of a reply to recover its id when the reply's own type does not
 /// decode.
 ///
-/// `result` is required but its value is never looked at: its only job is to
-/// keep this struct from matching a frame that merely happens to carry an
-/// `id`, such as a future progress or flow-control frame. Without it,
-/// `reply_id` would misidentify that frame as an undecodable reply and fail
-/// a caller whose real reply is still in flight.
+/// `result` is required but never read. It keeps this struct from matching
+/// a frame that merely carries an `id`, such as a future progress frame.
+/// Without it `reply_id` would fail a caller whose reply is still in flight.
 #[derive(serde::Deserialize)]
 struct ReplyIdOnly {
     id: u64,

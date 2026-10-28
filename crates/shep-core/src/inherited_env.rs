@@ -19,26 +19,11 @@ pub const INHERITED_UNIX: &[&str] = &["HOME", "USER", "LANG", "TZ"];
 
 /// Variables inherited from the daemon's own environment, on top of `PATH`.
 ///
-/// Longer than the unix list because Windows children need it: many Win32
-/// APIs read `%SystemRoot%` directly, and `PATHEXT`/`COMSPEC` let a child
-/// resolve and run `.cmd` files at all. `TEMP`/`TMP` and the
-/// `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` trio are where most runtimes keep
-/// per-user state. Still a closed allowlist, not inherit-everything.
-///
-/// `PYTHONUTF8`/`PYTHONIOENCODING` are here for one specific failure: a
-/// non-console stdio handle (a pipe, which is what every spawned child gets)
-/// makes CPython up to 3.14 fall back to the legacy ANSI code page for
-/// `sys.stdout`/`sys.stderr` on Windows, and any non-ASCII byte an app prints
-/// then raises `UnicodeEncodeError`. CPython 3.15 turns UTF-8 mode on by
-/// default (PEP 686), so these two matter for an older interpreter and for
-/// anything that sets `PYTHONUTF8=0`. Neither has a unix equivalent to piggyback
-/// on. `LANG` is what decides a child's stdio encoding there and
-/// [`INHERITED_UNIX`] forwards it, which is not the same as setting one: a
-/// daemon started with no `LANG`, or with one naming a non-UTF-8 locale,
-/// hands that to its children. Windows has no variable in that role to
-/// forward at all. Setting either in the daemon's own environment now
-/// reaches every spawned app; an app can still set them itself, per-app, in
-/// its Flockfile `env`.
+/// A closed allowlist, not inherit-everything. Windows needs the longer
+/// list. Many Win32 APIs read `%SystemRoot%` directly, and `PATHEXT` and
+/// `COMSPEC` let a child run `.cmd` files. `PYTHONUTF8` and
+/// `PYTHONIOENCODING` cover a pipe stdio handle. An older CPython falls
+/// back to the ANSI code page there.
 pub const INHERITED_WINDOWS: &[&str] = &[
     "SystemRoot",
     "windir",

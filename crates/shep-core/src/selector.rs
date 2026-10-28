@@ -27,15 +27,11 @@ pub enum ProcessSelector {
     },
 }
 
-/// Whether `input` carries a glob metacharacter, and so was meant as a
-/// pattern rather than as a name.
+/// Whether `input` carries a glob metacharacter: a pattern, not a name.
 ///
-/// Checked after `all`, `fold:`, `/regex/` and the id form, so none of those
-/// can be shadowed by a name that happens to contain one of these.
-///
-/// A name with no metacharacter stays an exact name: `web.1` is the sheep
-/// called `web.1`, not a pattern where `.` means "any character". Ordinary
-/// punctuation in a name means nothing.
+/// Checked after `all`, `fold:`, `/regex/` and the id form. None of those
+/// can be shadowed by a name containing a metacharacter. A name with no
+/// metacharacter stays exact: `web.1` is the sheep called `web.1`.
 fn is_glob(input: &str) -> bool {
     input.contains(['*', '?', '[', '{'])
 }
@@ -43,17 +39,16 @@ fn is_glob(input: &str) -> bool {
 /// Compiles a glob into a regex.
 ///
 /// `globset`'s pattern is already anchored, so `web-*` matches `web-api`
-/// and not `my-web-api`. Strips the `(?-u)` prefix, since `globset`
-/// compiles for bytes and `regex::Regex` refuses that for a `String`.
-/// Returns [`ProcessSelector::Regex`] rather than its own variant: a new
-/// variant on `SelectorSpec` is a protocol change an older daemon could not
+/// and not `my-web-api`. Strips the `(?-u)` prefix: `globset` compiles
+/// for bytes and `regex::Regex` refuses that for a `String`. Returns
+/// [`ProcessSelector::Regex`] rather than its own variant. A new variant
+/// on `SelectorSpec` is a protocol change an older daemon could not
 /// deserialize.
 ///
 /// # Errors
 ///
 /// - [`SelectorError::BadGlob`]: the pattern is not a valid glob.
-/// - [`SelectorError::BadRegex`]: `globset` translated the glob to a regex
-///   that the `regex` crate itself rejects.
+/// - [`SelectorError::BadRegex`]: `globset` made a regex the `regex` crate rejects.
 fn glob_to_regex(input: &str) -> Result<regex::Regex, SelectorError> {
     let glob = globset::Glob::new(input).map_err(|e| SelectorError::BadGlob(e.to_string()))?;
     let source = glob.regex();
@@ -127,14 +122,13 @@ impl ProcessSelector {
         Ok(Self::Name(input.to_string()))
     }
 
-    /// Whether this selector names ONE entry the caller already knew of, by
-    /// its name or its id, rather than sweeping whatever matches.
+    /// Whether this selector names one entry the caller already knew of, by
+    /// name or id. Or sweeps whatever matches.
     ///
-    /// The distinction a dog turns on: a dog is a process an operator
-    /// installed, not a member of the flock `all` means, so a wildcard must
-    /// pass it by while `shep restart metrics` still reaches it.
-    /// [`Self::Regex`] and [`Self::Fold`] are wildcards even when they
-    /// happen to match one entry: the operator did not name it.
+    /// A dog is a process an operator installed, not a member of the flock
+    /// `all` means. A wildcard must pass it by; `shep restart metrics` still
+    /// reaches it. [`Self::Regex`] and [`Self::Fold`] are wildcards even when
+    /// they match one entry.
     #[must_use]
     pub const fn is_exact(&self) -> bool {
         match self {

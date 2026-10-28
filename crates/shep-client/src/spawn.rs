@@ -189,14 +189,16 @@ where
 
 /// As [`connect_or_spawn`], with caller-supplied timing.
 ///
-/// Probes with a full handshake first: [`ConnectError::Connect`] launches `launch` on a blocking thread, since a real launcher's own filesystem calls would stall the runtime if run inline; [`ConnectError::HandshakeTimeout`] means a daemon is already mid-boot, so nothing launches, and the retry loop follows either way.
-/// Each loop iteration then checks the launched child, where only [`DAEMON_ALREADY_RUNNING`] is not fatal. Only [`ConnectError::ProtocolMismatch`] propagates immediately as [`SpawnError::Connect`]; every other probe error is retried until `opts.deadline` and can surface later in [`SpawnError::DeadlineExpired::last`].
+/// The first probe is a full handshake. [`ConnectError::Connect`] launches
+/// `launch` on a blocking thread, so its filesystem calls cannot stall the
+/// runtime. [`ConnectError::HandshakeTimeout`] means a daemon is mid-boot.
 ///
 /// # Errors
 ///
-/// - [`SpawnError::Connect`]: the first probe hit anything besides [`ConnectError::Connect`] or [`ConnectError::HandshakeTimeout`], or a later probe hit [`ConnectError::ProtocolMismatch`].
+/// - [`SpawnError::Connect`]: a probe failed with anything but
+///   [`ConnectError::Connect`] or [`ConnectError::HandshakeTimeout`].
 /// - [`SpawnError::Launch`]: `launch` itself returned an `io::Error`.
-/// - [`SpawnError::DaemonExited`]: the child exited with any other status before a probe succeeded.
+/// - [`SpawnError::DaemonExited`]: the child exited before a probe succeeded.
 /// - [`SpawnError::DeadlineExpired`]: no probe succeeded before `opts.deadline`.
 pub async fn connect_or_spawn_with<L>(
     socket: &Path,
@@ -229,16 +231,12 @@ where
     probe_until_ready(socket, Some(child), opts, None).await
 }
 
-/// The retry loop shared by both entry points: keep probing `socket` until
-/// one attempt completes a handshake or `opts.deadline` elapses.
+/// The retry loop shared by both entry points. It keeps probing `socket`
+/// until one attempt completes a handshake or `opts.deadline` elapses.
 ///
-/// `child` is `None` only for the "already bound, don't launch" branch;
-/// otherwise it is the process just launched, dropped on every exit path
-/// (the caller gets a [`Client`], never the `Child`, and this function
-/// only `try_wait()`s it, never `wait()`s).
-///
-/// `seed` carries the `ConnectError` that entered the no-launch branch, so
-/// a `DeadlineExpired` reached from there still names a real failure.
+/// `child` is `None` only for the no-launch branch. Otherwise it is the
+/// process just launched, dropped on every exit path. `seed` names the
+/// `ConnectError` that entered that branch.
 async fn probe_until_ready(
     socket: &Path,
     mut child: Option<std::process::Child>,

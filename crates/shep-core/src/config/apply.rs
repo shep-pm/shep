@@ -29,12 +29,9 @@ pub enum ApplyGroup {
 /// One row of the `FIELDS` table: the field's name, the group it belongs
 /// to, and whether a write to it reaches a child that is already running.
 ///
-/// The third entry is carried by the row rather than derived from the group.
-/// [`ApplyGroup::NextSpawn`] splits: a field read off the stored spec at a
-/// muster, a boot or an ordered walk reaches the flock it is already part
-/// of, while one moved into the per-sheep task at spawn does not. Naming
-/// the answer per row is what stops a new `NextSpawn` field from skipping
-/// the question.
+/// The third entry is carried by the row rather than derived from the
+/// group. [`ApplyGroup::NextSpawn`] splits, and naming the answer per row
+/// is what stops a new `NextSpawn` field from skipping the question.
 struct FieldRow {
     field: &'static str,
     group: ApplyGroup,
@@ -44,13 +41,10 @@ struct FieldRow {
 /// Every `AppConfig` field name this table has been taught about, paired with
 /// its group and with whether a write to it reaches a running child.
 ///
-/// `apply_group`, `reaches_running` and `is_classified` all read this single
-/// list rather than keeping hand-maintained lists in step: a field named
-/// here only once cannot drift between "classified" and "has a group", and a
-/// `NextSpawn` field cannot skip the running-child answer either.
+/// `apply_group`, `reaches_running` and `is_classified` all read this one
+/// list, so a field cannot drift between "classified" and "has a group".
 ///
-/// `#[rustfmt::skip]` keeps one row per line: rustfmt puts every member of a
-/// struct literal on its own line, and this table is read across.
+/// `#[rustfmt::skip]` keeps one row per line: this table is read across.
 #[rustfmt::skip]
 const FIELDS: &[FieldRow] = &[
     // Read by `brain::decide` when a sheep exits.
@@ -145,23 +139,8 @@ pub fn apply_group(field: &str) -> ApplyGroup {
 ///
 /// `false` for every field a respawn is what applies. The shepherd parks
 /// exactly these, and `shep lookout`'s close dialog asks about exactly
-/// these, so the two read one answer rather than each deriving its own.
-///
-/// The answer is the row's own `reaches_running` entry, not something this
-/// function works out from the group. [`ApplyGroup::NextSpawn`] splits:
-/// `kill_signal`, `listen_timeout` and `readiness_probe` come off the
-/// per-sheep task's `ResolvedApp`, moved in once at spawn, while `autostart`
-/// and `depends_on` are read at a muster, a boot or an ordered walk instead,
-/// off the stored spec the moment it lands, so telling an operator to restart
-/// for either would be telling them to do nothing. A field this table has
-/// been taught about answers with its row, and the row is where the choice
-/// gets made; the test `reaches_running_agrees_with_the_group_table_for_every_field`
-/// holds every row to what its group implies.
-///
-/// An unknown name has no row, and answers `false`, the same conservative
-/// answer [`apply_group`] gives it. [`ApplyGroup`] is `#[non_exhaustive]` for
-/// an out-of-crate match, which is why `shep-cli`'s `rank` and `cost_label`
-/// carry a wildcard arm that this function does not need.
+/// these, so the two read one answer. The answer is the row's own
+/// `reaches_running` entry. An unknown name has no row and answers `false`.
 #[must_use]
 pub fn reaches_running(field: &str) -> bool {
     FIELDS
@@ -182,11 +161,8 @@ pub fn is_classified(field: &str) -> bool {
 /// Two independent axes: whether `env` is reset, and whether a key the
 /// template declares (or does not) is reset. Five of the six combinations
 /// are named here; each variant's own doc states its column values.
-///
-/// `#[non_exhaustive]` buys source compatibility only, forcing an
-/// out-of-tree match to carry a wildcard arm. It does nothing for serde:
-/// this enum has no `#[serde(other)]`, so an older build fails to
-/// deserialize a variant it predates with `unknown variant`.
+/// `#[non_exhaustive]` buys source compatibility only: an older build
+/// still fails to deserialize a variant it predates.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -205,10 +181,9 @@ pub enum ResetDepth {
     /// declare: kept, so an app stocked to four instances against a file
     /// with no `instances` line keeps its count.
     File,
-    /// Put non-`env` settings back to the template, `env` kept. Every
-    /// setting goes back, declared or not, to the value a fresh start off
-    /// the template would give it: `env` is operator data, the rest is
-    /// operator-tuned policy, and resetting policy is recoverable while
+    /// Put non-`env` settings back to the template, `env` kept. Every setting
+    /// goes back to what a fresh start off the template would give it. `env` is
+    /// operator data, the rest is tuned policy: resetting policy is recoverable,
     /// resetting data is not.
     ///
     /// `env`: kept. A key the template declares: reset. A key it does not
@@ -217,8 +192,7 @@ pub enum ResetDepth {
     /// Reset `env` back to the template and leave everything else alone.
     ///
     /// Touches data, not policy: on the settings axis this behaves like
-    /// `None`, append included, since it widens a load rather than
-    /// narrowing one.
+    /// `None`, append included, since it widens a load rather than narrowing one.
     ///
     /// `env`: reset. A key the template declares: kept, save for the same
     /// append `None` does. A key it does not declare: kept.

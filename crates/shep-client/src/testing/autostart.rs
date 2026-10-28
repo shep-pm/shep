@@ -19,14 +19,10 @@ pub fn fast_opts() -> SpawnOptions {
 }
 
 /// Binds `path`, accepts one connection, answers its handshake with
-/// [`sample_ack`], then parks, standing in for a daemon a launcher closure
-/// needs to bring into existence synchronously.
+/// [`sample_ack`], then parks as a daemon a launcher must create synchronously.
 ///
 /// Synchronous: a `connect_or_spawn` launcher is a plain
-/// `FnOnce() -> io::Result<Child>`. Its `tokio::spawn` call still gets a
-/// runtime context, since `connect_or_spawn_with` runs the launcher on
-/// `spawn_blocking`'s pool. The returned task is detached and outlives
-/// this call.
+/// `FnOnce() -> io::Result<Child>`. The returned task is detached.
 ///
 /// Panics if `path` cannot be bound.
 pub fn start_fake_daemon_answering_on(path: &Path) {

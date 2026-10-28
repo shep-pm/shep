@@ -9,13 +9,10 @@ use std::path::{Path, PathBuf};
 /// Drops the `\\?\` extended-length prefix Windows' `canonicalize` adds
 ///
 /// For paths leaving shep: written to config, shown to an operator, or
-/// handed to another program. Paths compared against each other internally,
-/// such as `serve`'s docroot containment check, must stay canonical on both
-/// sides and must not go through this.
+/// handed to another program. Paths compared internally, such as `serve`'s
+/// docroot containment check, stay canonical on both sides.
 ///
-/// Only unwraps `\\?\C:\`; a verbatim UNC path (`\\?\UNC\server\share`)
-/// passes through unchanged. Not for paths above `MAX_PATH`, where the
-/// prefix is load-bearing rather than decorative.
+/// Only unwraps `\\?\C:\`; a verbatim UNC path passes through unchanged.
 #[cfg(windows)]
 #[must_use]
 pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
@@ -43,19 +40,13 @@ pub fn strip_verbatim_prefix(path: &Path) -> std::borrow::Cow<'_, Path> {
     std::borrow::Cow::Borrowed(path)
 }
 
-/// The user's home directory, read through `var` rather than the process
-/// environment
+/// The user's home directory, read through `var` rather than the process environment
 ///
 /// The base [`ShepPaths::resolve`] joins `.shep` onto when nothing names a
 /// `$SHEP_HOME`. A variable set to the empty string counts as unset.
 ///
-/// # Platform
-///
 /// Unix reads `HOME` alone. Windows reads `HOME`, then `USERPROFILE`, then
-/// `HOMEDRIVE` and `HOMEPATH` concatenated. Windows sets none of the first:
-/// PowerShell's `$HOME` is a shell variable no child process inherits, and
-/// `cmd.exe` has no such variable at all, so a `HOME`-only lookup resolves
-/// nothing on a stock Windows session.
+/// `HOMEDRIVE` and `HOMEPATH` concatenated: no Windows shell exports `HOME`.
 #[must_use]
 pub fn user_home(var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     let named = |key: &str| var(key).filter(|value| !value.is_empty());
@@ -103,18 +94,13 @@ pub const SHEP_HOME_VAR: &str = "%SHEP_HOME%";
 /// The directory a shep home defaults to, under the user's own home.
 const DEFAULT_HOME_DIR: &str = ".shep";
 
-/// The shep home directory `$SHEP_HOME` names, or the default under
-/// `home_dir`
+/// The shep home directory `$SHEP_HOME` names, or the default under `home_dir`
 ///
 /// `None` only when nothing names a `$SHEP_HOME` and `home_dir` is `None`
-/// too, which is the same condition that leaves a `~/` path unexpandable.
+/// too. That is the condition that leaves a `~/` path unexpandable.
 ///
-/// Unlike [`user_home`], an empty `$SHEP_HOME` is taken at its word rather
-/// than read as unset, which is what [`ShepPaths::resolve`] has always done.
-/// No operator reaches that: the CLI refuses an empty `--home` or
-/// `$SHEP_HOME` before either function runs. It matters to a library caller
-/// passing its own lookup, who gets one answer from here and from the
-/// layout rather than two.
+/// Unlike [`user_home`], an empty `$SHEP_HOME` is taken at its word, not
+/// read as unset. The CLI refuses one before either function runs.
 #[must_use]
 pub fn shep_home(env: &dyn Fn(&str) -> Option<String>, home_dir: Option<&Path>) -> Option<PathBuf> {
     match home_dir {
@@ -165,12 +151,10 @@ pub struct ShepPaths {
     /// The control address the client dials and the daemon answers on.
     ///
     /// Unix: a filesystem path, `run/shep.sock`, naming a real AF_UNIX
-    /// socket file. Windows: [`Self::pipe_name`], path-shaped but naming an
-    /// object in the kernel's pipe namespace, not a file on any volume.
-    /// Never derive a directory from this field: `socket.parent()` is
-    /// meaningless on Windows. A pipe has no directory entry to watch, so
-    /// "has the daemon gone" needs a connect attempt there, not
-    /// `Path::exists`.
+    /// socket file. Windows: [`Self::pipe_name`], path-shaped but naming a
+    /// kernel pipe object, not a file on any volume. Never derive a
+    /// directory from it: `socket.parent()` is meaningless there. "Has the
+    /// daemon gone" needs a connect attempt, not `Path::exists`.
     pub socket: PathBuf,
     /// Bark history ring: `barks.jsonl`
     pub barks: PathBuf,
@@ -202,15 +186,10 @@ impl ShepPaths {
     /// Windows named-pipe identity for this home:
     /// `\\.\pipe\shep-<sanitized>-<digest>`
     ///
-    /// The sanitized stem is not unique alone: `\`, `:`, `.`, `_` and a
-    /// literal `-` all collapse to `-`, so `C:\a\b` and `C:\a-b` sanitize to
-    /// one string. The digest of the full home path is what keeps two homes
-    /// distinct; without it a collision would not error, it would refuse the
-    /// second daemon as already running and let its CLI drive the first
-    /// home's flock.
-    ///
-    /// Changing this derivation breaks any already-running daemon: it stays
-    /// bound under a name a client built afterward would never dial.
+    /// The sanitized stem is not unique alone. `\`, `:`, `.`, `_` and `-` all
+    /// collapse to `-`, so `C:\a\b` and `C:\a-b` sanitize to one string. The
+    /// digest of the full home path keeps two homes apart. Changing this
+    /// derivation breaks any already-running daemon.
     #[must_use]
     pub fn pipe_name(&self) -> String {
         // Bounds the readable half; a pipe name may be 256 characters.
@@ -233,20 +212,8 @@ impl ShepPaths {
     /// [`Self::socket`] resolves per-platform: a socket file under `run/` on
     /// unix, [`Self::pipe_name`] on Windows. Everything else is identical.
     ///
-    /// # Why `String` and not `OsString`
-    ///
-    /// [`user_home`] takes an `OsString` lookup and this takes a `String`
-    /// one, which reads like an oversight and is not. A home path does not
-    /// stay a path: it reaches the `{{SHEP_HOME}}` template, [`Self::pipe_name`]
-    /// and every log path on the wire as text, and each of those conversions
-    /// is lossy. Widening this signature would move the loss rather than
-    /// remove it, and it would break every caller of a published crate to do
-    /// so.
-    ///
-    /// The CLI refuses a home that is not valid UTF-8 instead, at the one
-    /// door an operator can name one through, so nothing lossy reaches here.
-    /// A library caller supplying its own lookup has already chosen its
-    /// encoding by building a `String`.
+    /// The lookup is a `String`, not an `OsString`. A home path reaches the
+    /// `{{SHEP_HOME}}` template and the wire as text. Each conversion is lossy.
     #[must_use]
     pub fn resolve(env: &dyn Fn(&str) -> Option<String>, home_dir: &Path) -> Self {
         Self::at(home_under(env, home_dir))

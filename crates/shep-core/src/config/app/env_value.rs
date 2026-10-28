@@ -8,12 +8,10 @@ use crate::config::table::deserialize_table;
 /// One value an `env` table may carry: a string, or a bare boolean or whole
 /// number an operator wrote without quoting.
 ///
-/// Exists only to read a Flockfile, where the document is hand-written and a
-/// bare value is a plausible shortcut. It never rides the wire: [`AppConfig`](crate::config::AppConfig)
-/// is serialized through its own impls, which see only `String`.
-///
-/// Debug does not leak an env value. A derived one would print the contents,
-/// and a `{:?}` on a config mid-parse is how a secret reaches a log.
+/// Exists only to read a Flockfile, where a bare value is a plausible
+/// shortcut. It never rides the wire: [`AppConfig`](crate::config::AppConfig)
+/// serializes through impls that see only `String`. Debug does not leak an
+/// env value.
 pub(super) enum EnvValue {
     /// A quoted value, kept verbatim
     Str(String),
@@ -50,13 +48,10 @@ impl EnvValue {
 /// Reads an `env` table, rendering each [`EnvValue`] as the string a process
 /// receives. The `deserialize_with` on [`AppConfig::env`](crate::config::AppConfig::env).
 ///
-/// The table itself goes through the shared reader in `config::table`, so an
-/// `env` that is null, or a bare TOML datetime, is refused as `` `env` must
-/// be a table `` rather than as serde's type error. A YAML `env:` with
-/// nothing after it is null, and is refused by the same arm.
-///
-/// Absent is not refused: `AppConfig`'s `#[serde(default)]` fills a key the
-/// document never named without reaching this function.
+/// The table goes through the shared reader in `config::table`, so a null
+/// `env` or a bare TOML datetime is refused as `` `env` must be a table ``.
+/// Absent is not refused: `AppConfig`'s `#[serde(default)]` fills it before
+/// this runs.
 pub(super) fn deserialize_env<'de, D: Deserializer<'de>>(
     de: D,
 ) -> Result<BTreeMap<String, String>, D::Error> {

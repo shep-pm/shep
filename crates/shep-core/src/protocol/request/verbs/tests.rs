@@ -418,12 +418,10 @@ fn request_wire_snapshots() {
                 name: "web".to_string(),
             },
         ),
-        // `value` is pinned as `Some`, because the `None` spelling is
-        // what removes the key, and a reader that guessed the two apart
-        // wrongly would delete an operator's env instead of setting it.
-        // The value is a placeholder, not a secret: this is the one
-        // request in the enum that carries an env value at all, and it
-        // travels in one direction only, nothing ever reads it back.
+        // `value` is pinned as `Some`. The `None` spelling removes the
+        // key, so a reader that guesses wrong deletes an operator's env.
+        // The value is a placeholder. This request carries an env value
+        // in one direction only.
         envelope(
             29,
             Request::SetSheepEnv {
@@ -432,12 +430,10 @@ fn request_wire_snapshots() {
                 value: Some("postgres://localhost/app".to_string().into()),
             },
         ),
-        // `SetSheepEnv`'s twin for everything that is not `env`, and
-        // pinned beside it: the two are one letter apart in the tag and
-        // a reader that crossed them would write a config field into an
-        // env map. `value` is a bare JSON value rather than a string,
-        // which is the half a hand-written reader gets wrong: an
-        // integer field is an integer here, not `"32"`.
+        // `SetSheepField` is `SetSheepEnv`'s twin, one letter apart in
+        // the tag. Crossing them writes a config field into an env map.
+        // `value` is a bare JSON value: an integer field is an integer
+        // here, not `"32"`.
         envelope(
             30,
             Request::SetSheepField {
@@ -472,12 +468,9 @@ fn request_wire_snapshots() {
                 )]),
             },
         ),
-        // `SetSheepEnvBatch`'s own doc comment calls this the densest
-        // run of secrets on the wire, so it gets two entries rather
-        // than one: a single-entry map would not distinguish an object
-        // from a map with one key. `force` and `dry_run` are both
-        // pinned away from their default so a silent default flip on
-        // either field shows up here.
+        // Two entries, not one. A single-entry map would not tell an
+        // object apart from a map with one key. `force` and `dry_run`
+        // are pinned away from their defaults, so a flip shows up.
         envelope(
             33,
             Request::SetSheepEnvBatch {

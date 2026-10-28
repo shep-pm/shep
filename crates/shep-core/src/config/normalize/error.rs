@@ -154,13 +154,9 @@ pub enum NormalizeError {
     },
     /// A value carries `{{SHEP_HOME}}` and no shep home could be determined.
     ///
-    /// The tilde's condition, one token over: nothing named a `$SHEP_HOME`
-    /// and there was no home directory to put the default under.
-    ///
-    /// No operator reaches this. The CLI refuses when neither `--home`,
-    /// `$SHEP_HOME` nor `$HOME` resolves a root, before any config is
-    /// normalised, so this guards a library caller of
-    /// [`normalize_with_home`] that supplies its own directories.
+    /// The CLI refuses this before normalising, when no `--home` or
+    /// environment variable resolves a root. It guards a library caller
+    /// of [`normalize_with_home`] supplying its own directories.
     NoShepHome {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,

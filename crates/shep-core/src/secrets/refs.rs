@@ -50,14 +50,11 @@ impl fmt::Display for SecretRef<'_> {
     }
 }
 
-/// Every `{{secret:...}}` reference `config` names, exactly as the operator
-/// wrote it (`KEY` or `namespace/KEY`, no braces), deduplicated.
+/// Every `{{secret:...}}` reference `config` names, as the operator wrote it (`KEY` or `namespace/KEY`, no braces), deduplicated.
 ///
 /// Walks `env`'s values, `args`, `out_file` and `err_file` through
 /// `template`'s own tokenizer, the same one [`template::render`] resolves
-/// against at spawn: a value this misses is one `render` would not touch
-/// either, and a positional token (`{{instance}}`, `{{name}}`) contributes
-/// nothing.
+/// against at spawn. A positional token contributes nothing.
 #[must_use]
 pub fn references(config: &AppConfig) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
@@ -81,10 +78,8 @@ pub fn references(config: &AppConfig) -> BTreeSet<String> {
 /// them (`KEY` or `namespace/KEY`, no braces), deduplicated.
 ///
 /// The same tokenizer [`references`] walks a config's fields with and
-/// [`template::render_secrets`] resolves against, so a string this reports
-/// nothing for is one `render_secrets` would not substitute. A malformed
-/// `{{secret:...}}` is not a reference here; `render_secrets` is what refuses
-/// it.
+/// [`template::render_secrets`] resolves against. A malformed
+/// `{{secret:...}}` is not a reference here; `render_secrets` refuses it.
 #[must_use]
 pub fn references_in(value: &str) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
@@ -118,13 +113,9 @@ pub(super) fn secret_references_in(value: &str, mut on_reference: impl FnMut(Sec
 /// in `env`'s own order.
 ///
 /// The keys, never the references: [`references`] answers the other
-/// direction, and a pane that wants to mark a row as sealed needs this one.
-/// A value that merely embeds a reference counts, since the store is still
-/// what fills it in.
-///
-/// `env` alone. A reference in `args` or `out_file` is real and
-/// [`references`] reports it, but it is not an env row and nothing renders
-/// it as one.
+/// direction. A value that merely embeds a reference counts: the store is
+/// still what fills it in. `env` alone. A reference in `args` or
+/// `out_file` is real, but is not an env row.
 #[must_use]
 pub fn sealed_keys(config: &AppConfig) -> Vec<String> {
     config
@@ -208,11 +199,10 @@ mod tests {
             .env
             .insert("C".into(), "{{name}}-{{secret:vercel/TWO}}".into());
         config.args = vec!["--x={{secret:ONE}}".into()];
-        // Both log paths, and for opposite reasons. `err_file` carries a
-        // reference nothing else in this config names, so dropping the
-        // log-path scan fails here rather than passing quietly; `out_file`
-        // carries positional tokens only, so a scan that ran would still
-        // return nothing for it.
+        // Both log paths, for opposite reasons. `err_file` carries a
+        // reference nothing else here names. Dropping the log-path scan
+        // fails rather than passing quietly. `out_file` carries positional
+        // tokens only, so a scan would return nothing for it.
         config.err_file = Some("{{secret:THREE}}.log".into());
         config.out_file = Some("{{SHEP_HOME}}/logs/{{instance}}.log".into());
 

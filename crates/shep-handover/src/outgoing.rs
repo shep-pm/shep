@@ -12,13 +12,12 @@ use crate::fitness::Fitness;
 use crate::state::State;
 
 /// A handover being described: the state to pass, the descriptors to carry,
-/// and the binary and arguments to exec.
+/// and the binary and arguments to exec. Built with [`new`](Self::new),
+/// refined, and consumed by [`exec`](Self::exec), which returns only if the
+/// handover did not happen.
 ///
-/// Built with [`new`](Self::new), refined, and consumed by
-/// [`exec`](Self::exec), which returns only if the handover did not happen.
-///
-/// `Debug` prints the format, the keys and the target, and leaves the state
-/// out: it may carry a secret.
+/// `Debug` prints the format, the keys and the target, not the state, which
+/// may carry a secret.
 pub struct Handover<'a, S: State> {
     state: &'a S,
     #[cfg(unix)]
@@ -80,12 +79,9 @@ impl<'a, S: State> Handover<'a, S> {
     /// Carry `fd` across the exec under `key`; the new image claims it with
     /// [`Carried::take`](crate::Carried::take).
     ///
-    /// Only the descriptors named here have close-on-exec cleared. Every
-    /// other descriptor this process opened is closed in the new image, as
-    /// long as it is close-on-exec, which is what Rust opens everything as.
-    /// One inherited without the bit is the caller's to set.
-    ///
-    /// An order for the keys is not kept, and a key carried twice makes
+    /// Only named descriptors have close-on-exec cleared. Every other one this
+    /// process opened is closed in the new image; Rust opens everything
+    /// close-on-exec. Key order is not kept, and a key carried twice makes
     /// [`exec`](Self::exec) refuse.
     #[cfg(unix)]
     #[must_use]
@@ -145,12 +141,11 @@ impl<'a, S: State> Handover<'a, S> {
 
     /// Do not start the target to ask whether it reads the state's format.
     ///
-    /// For a target that does not call [`boot`](crate::boot) first thing, which
-    /// would otherwise run as a second instance until the probe times out, or
-    /// for a caller that checks the target itself in its
-    /// [`Fitness`] gate. A target that then cannot read the
-    /// state refuses it from [`boot`](crate::boot), after the old image is
-    /// gone.
+    /// Use it for a target that does not call [`boot`](crate::boot) first
+    /// thing: the probe would run it as a second instance. Use it when a
+    /// [`Fitness`] gate checks the target itself. A target that cannot read
+    /// the format then refuses from [`boot`](crate::boot). By then the old
+    /// image is gone.
     #[must_use]
     pub const fn unprobed(mut self) -> Self {
         self.probe = None;
@@ -158,30 +153,18 @@ impl<'a, S: State> Handover<'a, S> {
     }
 
     /// Replace this process's image with the target, carrying the state and
-    /// the named descriptors.
-    ///
-    /// In order: resolve the target, ask `gate`, check the descriptors, start
-    /// the target as a probe and wait for its [`boot`](crate::boot) to say it
-    /// reads the state's format, encode the state, write the blob, clear
-    /// close-on-exec on the carried descriptors and only those, and `execve`.
-    /// The children this image started stay its children across the exec.
+    /// the named descriptors. Started children stay this process's children.
     ///
     /// The probe runs the target's `main` with `SHEP_PROCESS_HANDOVER_PROBE`
-    /// set, with the arguments the exec would pass and no standard streams.
-    /// Its [`boot`](crate::boot) exits the probe, so a target that calls it
-    /// first thing never goes further. One that does not runs until the probe
-    /// times out and is killed; see [`unprobed`](Self::unprobed).
-    ///
-    /// This blocks the calling thread for as long as the probe takes.
+    /// set and no standard streams. A probed target that never calls
+    /// [`boot`](crate::boot) is killed when the probe times out. This blocks
+    /// the calling thread for as long as the probe takes.
     ///
     /// # Errors
     ///
-    /// Returns only if the handover did not happen, and then this image is
-    /// still running with every descriptor it had, as close-on-exec as before,
-    /// and no blob on disk; see [`HandOverError`] for each way. That includes
-    /// [`HandOverError::Format`], a target that cannot read the state. On a
-    /// platform with no `execve` the error is [`HandOverError::Unsupported`],
-    /// always.
+    /// Returns only if the handover did not happen. This image is still
+    /// running, with every descriptor it had and no blob on disk. See
+    /// [`HandOverError`] for each way.
     pub fn exec(self, gate: &impl Fitness) -> Result<Infallible, HandOverError> {
         #[cfg(unix)]
         {

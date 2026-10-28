@@ -1,14 +1,13 @@
 //! The `dog_config` attribute, and nothing else.
 //!
 //! A dog publishes a JSON Schema for its config so shep can render a
-//! settings pane. One field kind needs marking: a credential, shown
-//! as `<set>` rather than its value. `schemars` can mark that by hand
-//! with `#[schemars(extend("x-shep-secret" = true))]`. But the key is
-//! a string an author can misspell silently. This attribute writes it
-//! for them, and turns a misspelled option into a compile error.
+//! settings pane. A credential field needs marking, shown as `<set>` rather
+//! than its value. `schemars` can mark it by hand with
+//! `#[schemars(extend("x-shep-secret" = true))]`. That key is a string an
+//! author can misspell silently. This attribute writes it, and turns a
+//! misspelled option into a compile error.
 //!
-//! Depend on `shep-client`, not this crate: it re-exports the attribute
-//! next to the `DogConfig` trait the expansion implements.
+//! Depend on `shep-client`, not this crate: it re-exports the attribute.
 
 #![forbid(unsafe_code)]
 
@@ -29,12 +28,13 @@ const SECRET: &str = "secret";
 const JSON_SCHEMA: &str = "JsonSchema";
 
 /// Marks which of a dog's config fields are credentials, so shep can redact
-/// them without the dog author ever typing the extension key that says so.
+/// them. The author never types the `schemars` extension key that says so.
 ///
-/// Put it above the derives on the type a dog deserializes its config into,
-/// and mark each credential field with `#[shep(secret)]`. A struct and an
-/// enum both work, and the enum matters: a bark sink is one, tagged by kind,
-/// with a webhook URL in every variant.
+/// Put it above the derives on the type a dog deserializes its config into.
+/// Mark each credential field with `#[shep(secret)]`. Structs and enums both
+/// work. A marked field with no `JsonSchema` derive below it is refused.
+///
+/// # Example
 ///
 /// ```rust
 /// use shep_client::dogs::dog_config;
@@ -54,15 +54,14 @@ const JSON_SCHEMA: &str = "JsonSchema";
 /// }
 /// ```
 ///
-/// That example runs, which needs `shep-client` as a dev-dependency
-/// of this crate. A cycle on paper, allowed since dev-dependencies
-/// sit outside the library build graph.
+/// The mark rides the field rather than naming it, so it reaches a property
+/// `schemars` renamed and one nested inside another type's subschema. A type
+/// with no marked field is unaffected: it takes no new attribute and needs no
+/// derive, which is what keeps `shep-client`'s `schema` feature optional.
+/// Every deliberate refusal is a compile error with its own message.
 ///
-/// # What it expands to
-///
-/// The type as written, with each `#[shep(secret)]` replaced by the
-/// `schemars` extension that marks the property, plus an
-/// `impl shep_client::dogs::DogConfig`:
+/// The expansion, with each `#[shep(secret)]` replaced by the `schemars`
+/// extension and an `impl shep_client::dogs::DogConfig` added:
 ///
 /// ```rust,ignore
 /// #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -77,47 +76,6 @@ const JSON_SCHEMA: &str = "JsonSchema";
 ///
 /// impl ::shep_client::dogs::DogConfig for Sink {}
 /// ```
-///
-/// The mark rides the field rather than naming it, which is what makes it
-/// reach a property `schemars` renamed and a property nested inside another
-/// type's subschema. A marked field of a type some other config merely
-/// holds is marked in that config's schema too, at whatever depth
-/// `schemars` puts it.
-///
-/// # Put it ABOVE the derives
-///
-/// The order is load-bearing, and getting it wrong is refused rather than
-/// ignored. rustc expands the attributes above this one before it runs, so a
-/// `#[derive(schemars::JsonSchema)]` listed first has already built its impl
-/// by the time the extension goes on the field, and the mark reaches no
-/// schema. A marked field with no `JsonSchema` derive left to see is that
-/// mistake, and also the plain one of forgetting the derive; both take the
-/// same message.
-///
-/// A type with no marked field is unaffected: it takes no new attribute and
-/// needs no derive, which is what keeps `shep-client`'s `schema` feature
-/// optional.
-///
-/// # Compile errors
-///
-/// Deliberate refusals, each with its own message:
-///
-/// - `#[shep(secret)]` on an unnamed field (tuple struct or variant),
-///   which `schemars` puts in `prefixItems` where a pane has no property
-///   to read;
-/// - `#[shep(...)]` on the type or on a variant, neither of which is a field;
-/// - a union, which has no serde representation to build a schema from;
-/// - `#[shep]` with no option in parentheses, including empty parentheses
-///   as in `#[shep()]`;
-/// - `#[shep(secret = ...)]`, since `secret` is a flag and takes no value;
-/// - any option other than `secret`, rejected as a likely misspelling of it;
-/// - an argument to `#[dog_config]` itself, which takes none;
-/// - a marked field with no `JsonSchema` derive below this attribute, per the
-///   section above.
-///
-/// A struct or variant with no fields, an unmarked tuple, and a
-/// unit-variant enum are accepted and carry no marks. A dog whose config
-/// holds no credential still wants the impl.
 #[proc_macro_attribute]
 pub fn dog_config(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = TokenStream2::from(args);
@@ -125,12 +83,10 @@ pub fn dog_config(args: TokenStream, input: TokenStream) -> TokenStream {
     match expand(&args, &mut input) {
         Ok(tokens) => tokens.into(),
         Err(err) => {
-            // The type is emitted even on the error path, stripped of the
-            // attributes only this macro knows. A refusal that dropped it
-            // would leave every derive above this one holding an impl for a
-            // type that no longer exists, and the author would read
-            // `cannot find type` ahead of the message that explains the
-            // problem. One error, not a cascade.
+            // The type is emitted even on the error path, stripped of
+            // attributes only this macro knows. Dropping it leaves the derives
+            // above holding an impl for a type that no longer exists. One
+            // error, not a cascade.
             strip_shep_attributes(&mut input);
             let refusal = err.into_compile_error();
             let carry_on = dog_config_impl(&input);

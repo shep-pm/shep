@@ -68,16 +68,14 @@ pub(crate) fn is_close_on_exec(fd: RawFd) -> io::Result<bool> {
 /// and make it close-on-exec again so this image's own children do not
 /// inherit it.
 ///
-/// What proves the number was inherited rather than opened here: everything
-/// this process opens is close-on-exec, and a carried descriptor had that bit
-/// cleared before the exec. A number that is close-on-exec is refused, which
-/// also refuses adopting the same number twice, since the first adoption sets
-/// the bit.
+/// A number proves it was inherited by not being close-on-exec: this process
+/// opens everything close-on-exec, and a carried descriptor had the bit
+/// cleared before the exec. A close-on-exec number is refused, which also
+/// refuses adopting one number twice.
 ///
 /// # Errors
 ///
-/// - [`io::ErrorKind::InvalidInput`] if `fd` is a standard stream, or is
-///   close-on-exec.
+/// - [`io::ErrorKind::InvalidInput`] if `fd` is a standard stream, or is close-on-exec.
 /// - The `fcntl` error if `fd` names no open descriptor.
 pub(crate) fn adopt_inherited(fd: RawFd) -> io::Result<OwnedFd> {
     if fd < RESERVED_FD_FLOOR {
@@ -92,11 +90,10 @@ pub(crate) fn adopt_inherited(fd: RawFd) -> io::Result<OwnedFd> {
             "the descriptor is close-on-exec, so this image opened it and nothing carried it",
         ));
     }
-    // SAFETY: `fd` is open, and not close-on-exec. Everything this process
-    // opens is close-on-exec, so it was inherited across the `execve` that
-    // started this image, where its previous owner cleared the bit to hand it
-    // on and then ceased to exist. The bit is set again below, so a second
-    // call for the same number is refused above and this is its only owner.
+    // SAFETY: `fd` is open and not close-on-exec. Everything this process
+    // opens is close-on-exec, so a predecessor cleared the bit before the
+    // `execve`. It is set again below. A second call for the same number is
+    // refused above, so this is its only owner.
     let owned = unsafe { OwnedFd::from_raw_fd(fd) };
     set_cloexec(fd, true)?;
     Ok(owned)

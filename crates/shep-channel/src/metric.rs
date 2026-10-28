@@ -6,12 +6,10 @@ use crate::wire::MetricType;
 
 /// The optional half of a metric sample: kind, labels and help text.
 ///
-/// Built, not configured: every method takes and returns `Self`. Names
-/// and labels carry no grammar check here, the same reason
-/// [`ChildMessage::Metric`](crate::ChildMessage::Metric) carries none:
-/// the metrics dog enforces it.
-///
-/// [`Shepherd::metric_with`](crate::Shepherd::metric_with) takes one.
+/// Built, not configured: every method takes and returns `Self`. Names and
+/// labels carry no grammar check here. The same reason
+/// [`ChildMessage::Metric`](crate::ChildMessage::Metric) carries none: the
+/// metrics dog enforces it.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct MetricOptions {
     pub(crate) kind: Option<MetricType>,

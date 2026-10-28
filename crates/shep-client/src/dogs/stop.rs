@@ -6,7 +6,8 @@
 //! finish a step before it goes.
 //!
 //! Both install their handlers before returning, so a signal arriving
-//! during startup is not lost to its default disposition.
+//! during startup is not lost to its default disposition. A handler the OS
+//! refuses is skipped, and the dog runs on.
 
 use core::future::Future;
 use core::pin::Pin;
@@ -54,14 +55,11 @@ impl Stop {
         Self::new().0
     }
 
-    /// A stop the operator's Ctrl+C requests: `SIGINT` on unix, the
-    /// console's Ctrl+C on Windows.
+    /// A stop the operator's Ctrl+C requests: `SIGINT` on unix, Ctrl+C on Windows.
     ///
-    /// `SIGTERM` keeps its default, so a supervised stop ends the process
-    /// at once. A handler the OS refuses is skipped, and the dog runs on.
+    /// `SIGTERM` keeps its default, so a supervised stop ends the process at once.
     ///
     /// # Panics
-    ///
     /// Outside a Tokio runtime, as [`tokio::spawn`] does.
     #[track_caller]
     #[must_use]
@@ -71,12 +69,10 @@ impl Stop {
 
     /// A stop the shepherd's `SIGTERM` or the operator's `SIGINT` requests.
     ///
-    /// On Windows, any console control event: Ctrl+C, Ctrl+Break, the
-    /// console closing, logoff and shutdown. A handler the OS refuses is
-    /// skipped, and the dog runs on.
+    /// On Windows, any console control event: Ctrl+C, Ctrl+Break, a close,
+    /// logoff, shutdown.
     ///
     /// # Panics
-    ///
     /// Outside a Tokio runtime, as [`tokio::spawn`] does.
     #[track_caller]
     #[must_use]

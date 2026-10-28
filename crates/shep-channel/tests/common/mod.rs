@@ -9,16 +9,12 @@ use std::path::Path;
 /// take a different door from blessing the other.
 const BLESS: &str = "SHEP_CHANNEL_BLESS";
 
-/// Writes `produced` to `path` under [`BLESS`], and otherwise asserts the
-/// committed bytes match it.
-///
-/// `stale_hint` says who else reads these bytes, since the assertion fires
-/// on a change that is correct in Rust and breaking downstream.
+/// Writes `produced` to `path` under [`BLESS`], else asserts the committed
+/// bytes match it. `stale_hint` names who else reads them.
 ///
 /// # Panics
 ///
-/// If the file cannot be written under [`BLESS`], if it cannot be read
-/// without it, or if the committed bytes differ.
+/// If the file cannot be written or read, or the committed bytes differ.
 pub fn bless_or_compare(path: &Path, produced: &str, stale_hint: &str) {
     if std::env::var_os(BLESS).is_some() {
         let parent = path.parent().expect("a committed file has a parent");

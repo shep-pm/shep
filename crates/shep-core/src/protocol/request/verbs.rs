@@ -26,11 +26,9 @@ pub enum Request {
     /// What the machine the flock runs on is doing
     ///
     /// Answers [`Response::HostUsage`]. Its own request rather than a field
-    /// on [`Response::Flock`]: that variant serializes as an array, and
-    /// giving it a second field would retype it into an object that no
-    /// shipped client can read. A daemon that has never heard of this one
-    /// decodes [`Self::Unrecognized`] and refuses by name, which costs the
-    /// caller the host block and nothing else.
+    /// on [`Response::Flock`]: that variant serializes as an array. A second
+    /// field would retype it into an object no shipped client can read. An
+    /// older daemon decodes [`Self::Unrecognized`] and refuses by name, costing the host block alone.
     HostUsage,
     /// Detailed info for matching sheep
     Describe {
@@ -46,12 +44,9 @@ pub enum Request {
     /// Register apps as flock members without starting any of them
     ///
     /// Each app lands `Stopped` and holds no pid; `shep add` is the verb.
-    ///
     /// Idempotent by name: an app the flock already has is answered as it
-    /// stands, running or not, and nothing about it changes.
-    /// [`Self::ApplyConfig`] merges a template into one the flock already
-    /// has, and `shep add` sends both.
-    ///
+    /// stands. Nothing about it changes. [`Self::ApplyConfig`] merges a
+    /// template into one the flock already has, and `shep add` sends both.
     /// Answers [`Response::Added`].
     Add {
         /// App configs, carried exactly as [`Self::Start`] carries them. The
@@ -59,15 +54,13 @@ pub enum Request {
         /// failures return [`RpcErrorCode::InvalidConfig`]
         apps: Vec<AppConfig>,
     },
-    /// Ask which of `apps` name a sheep the flock already has under a
-    /// different config
+    /// Ask which of `apps` name a sheep the flock already has under a different config
     ///
     /// Read-only. [`Self::Start`] on an already-registered name adds
     /// instances rather than reconciling config.
     ///
     /// Answers [`Response::Drifted`] with one [`SheepDrift`] per app that is
-    /// both registered and different. An app the flock does not have is
-    /// absent from the answer, not reported as unchanged.
+    /// both registered and different. An app the flock lacks is absent.
     ConfigDrift {
         /// The configs to compare against, exactly as [`Self::Start`] would
         /// carry them. The daemon must re-normalize them: peer input is
@@ -79,15 +72,9 @@ pub enum Request {
     /// Merge each declared app into the sheep of the same name, applying
     /// what can be applied and parking the rest for that sheep's next spawn
     ///
-    /// Nothing is registered, nothing is pruned and nothing running is
-    /// killed: an app the flock does not have is refused by name, and a
-    /// field the running child was spawned from waits for a `shep reload`.
-    /// Additive by default; `reset` widens it.
-    ///
-    /// Answers [`Response::Applied`] with one [`SheepApplied`] per entry in
-    /// `apps`, in the order given, found or not and changed or not. One
-    /// app's refusal rides in [`SheepApplied::refused`] and does not cost
-    /// the rest of the file its load.
+    /// Nothing is registered, pruned or killed. An app the flock does not
+    /// have is refused by name. A field the running child was spawned from
+    /// waits for a `shep reload`. Additive by default; `reset` widens it. Answers [`Response::Applied`].
     ApplyConfig {
         /// The apps to merge in, each carrying the keys its document
         /// literally wrote. The daemon must re-normalize the merge result,
@@ -109,8 +96,7 @@ pub enum Request {
     /// value never crosses the wire. Read-only: nothing about the sheep
     /// changes.
     ///
-    /// Answers [`Response::SheepConfig`], or
-    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    /// Answers [`Response::SheepConfig`], or [`RpcErrorCode::NotFound`] when no sheep has that name.
     SheepConfig {
         /// The sheep's name, not a selector: a pane edits one sheep, for
         /// the reason [`Self::Scale`] states at length.
@@ -119,18 +105,10 @@ pub enum Request {
     /// Sets, replaces, or with `None` removes one env key on one sheep,
     /// recorded as an operator override. Never reads it back.
     ///
-    /// Its own request rather than a [`Self::ApplyConfig`] depth, because
-    /// no depth does this: `ResetDepth::None` appends only, `File` and
-    /// `Policy` leave env alone, and `Env`/`All` replace the whole map with
-    /// the template's. A pane cannot send the whole map, since it is never
-    /// told the values it would have to send back.
-    ///
-    /// The running child holds the env it was spawned from, so the change
-    /// parks for the next spawn exactly as `ApplyConfig` parks a
-    /// respawn-only field, and `shep reload`/`shep restart` promote it.
-    ///
-    /// Answers [`Response::SheepEnvSet`], or
-    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    /// Its own request rather than a [`Self::ApplyConfig`] depth. No depth
+    /// writes one key, and a pane is never told the values it would have to
+    /// send back. The change parks for the next spawn, as a respawn-only
+    /// field does. Answers [`Response::SheepEnvSet`].
     SetSheepEnv {
         /// The sheep's name, not a selector, for [`Self::SheepConfig`]'s
         /// reason.
@@ -146,29 +124,11 @@ pub enum Request {
     },
     /// Sets several env keys on one sheep in a single write.
     ///
-    /// [`Self::SetSheepEnv`]'s doc says a request taking a map would need
-    /// per-key reporting back "for no caller that wants it". `shep import
-    /// env` is that caller: it writes twenty keys at once and has to refuse
-    /// the whole set rather than leave eleven of them applied.
-    ///
-    /// The daemon applies this as one read-modify-write of the override
-    /// store, so every key lands or none does. No removal arm: a pane
-    /// deletes rows one at a time through [`Self::SetSheepEnv`], and an
-    /// import never removes anything.
-    ///
-    /// A key already holding a different value is a collision. Without
-    /// `force` any collision refuses the whole request and writes nothing;
-    /// with it, the collisions are overwritten and named in the reply as
-    /// well as counted in `set`. A key already holding the same value is
-    /// `unchanged`, never a collision, so re-running an unchanged import
-    /// needs no flag.
-    ///
-    /// `dry_run` computes the three lists and writes nothing.
-    ///
-    /// Parks for the next spawn, exactly as [`Self::SetSheepEnv`] does.
-    ///
-    /// Answers [`Response::SheepEnvBatch`], or
-    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    /// `shep import env` is the caller. It writes twenty keys at once and
+    /// must be able to refuse the whole set. The daemon applies it as one
+    /// read-modify-write, so every key lands or none does. A different
+    /// value already in place is a collision: `force` overwrites and names
+    /// them. `dry_run` writes nothing. Parks for the next spawn.
     SetSheepEnvBatch {
         /// The sheep's name.
         name: String,
@@ -185,30 +145,11 @@ pub enum Request {
     },
     /// Copies one sheep's env onto another's, inside the shepherd.
     ///
-    /// Its own request because a client is never sent an env value
-    /// ([`Self::SheepConfig`]), so it has no map to hand to
-    /// [`Self::SetSheepEnvBatch`]. The shepherd reads `from`'s env itself and
-    /// writes it to `to` as operator overrides, a `{{secret:...}}` value as
-    /// the reference and never resolved.
+    /// Its own request because a client is never sent an env value. It has
+    /// no map to hand to [`Self::SetSheepEnvBatch`]. A `{{secret:...}}`
+    /// value travels as the reference and never resolved.
     ///
-    /// Merges: `to` keeps its own keys and `from`'s overwrite them. `replace`
-    /// makes `to`'s env exactly `from`'s instead, removing the keys only `to`
-    /// had. A key in `except` is left as `to` had it under either.
-    ///
-    /// `dry_run` computes the change list and writes nothing. Parks for the
-    /// next spawn, exactly as [`Self::SetSheepEnv`] does.
-    ///
-    /// `expect` is the change list a dry run answered, sent back with the
-    /// write. The shepherd computes the list again from what the two sheep
-    /// hold now, and refuses with [`RpcErrorCode::InvalidConfig`], writing
-    /// nothing, when it is not the one named, a value swapped for another
-    /// included (see [`EnvCopyChange::seal`]). Without it, an edit between
-    /// the two requests changes what lands. Absent on the wire when `None`.
-    ///
-    /// Answers [`Response::SheepEnvCopied`], or
-    /// [`RpcErrorCode::NotFound`] when either name is no sheep. Not a protocol
-    /// bump: a shepherd that has never heard of this one decodes
-    /// [`Self::Unrecognized`] and refuses by name.
+    /// Merges by default; `replace` drops the keys only `to` had. `expect` is a dry run's list, and a mismatch refuses.
     CopySheepEnv {
         /// The sheep whose env is read.
         from: String,
@@ -228,32 +169,10 @@ pub enum Request {
     /// Sets one config field on one sheep, recorded as an operator
     /// override.
     ///
-    /// [`Self::SetSheepEnv`]'s twin for everything that is not `env`, and
-    /// it exists for the reason that one does rather than by symmetry.
-    /// [`Self::ApplyConfig`] can move a single field (one [`DeclaredApp`]
-    /// declaring one key, at [`ResetDepth::File`]), but it moves it as a
-    /// template and spends the operator's override for it. That reasoning
-    /// does not hold here: a pane's value is the operator's, and the sheep
-    /// still differs from its file. Routed through `ApplyConfig`, the `*`
-    /// marker would never appear for that edit.
-    ///
-    /// One field, not a map: a pane edits one row at a time, and a request
-    /// that took several would need [`Response::Applied`]'s per-field
-    /// reporting back again for no caller that wants it.
-    ///
-    /// `env` is refused here and goes through [`Self::SetSheepEnv`]. So are
-    /// `name` and `instances`, which are
-    /// [`ApplyGroup::Structural`](crate::config::ApplyGroup::Structural):
-    /// identity and flock shape rather than runtime knobs, and the count
-    /// moves through [`Self::Scale`].
-    ///
-    /// The four-way apply classification governs exactly as it does for a
-    /// load. A `Live` field is in force at the daemon's next decision, a
-    /// `NextSpawn` field reaches the stored spec, and a `NeedsRespawn`
-    /// field parks for `shep reload` to promote.
-    ///
-    /// Answers [`Response::SheepFieldSet`], or
-    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    /// [`Self::ApplyConfig`] can move one field, but moves it as a template
+    /// and spends the operator's override. Through that route the `*` marker
+    /// never appears for a pane's own edit. `env`, `name` and `instances`
+    /// are refused here. The apply classification governs as for a load.
     SetSheepField {
         /// The sheep's name, not a selector, for [`Self::SheepConfig`]'s
         /// reason.
@@ -263,39 +182,21 @@ pub enum Request {
         /// than ignored.
         key: String,
         /// The new value, in the shape that field serializes as. The daemon
-        /// must re-validate the resulting config (peer input is untrusted)
-        /// and refuses with [`RpcErrorCode::InvalidConfig`] when it does not
-        /// deserialize or does not normalize; nothing is written in either
-        /// case.
+        /// re-validates the resulting config: peer input is untrusted. It
+        /// refuses with [`RpcErrorCode::InvalidConfig`] when the value does not
+        /// deserialize or does not normalize. Nothing is written in either case.
         ///
-        /// A bare [`serde_json::Value`] and not a redacting newtype, unlike
-        /// [`Self::SetSheepEnv`]'s [`EnvValue`], and the asymmetry is
-        /// deliberate. `env` is the one field [`AppConfig`]'s own manual
-        /// `Debug` redacts; `cwd`, `script` and `args` are printed in the
-        /// clear by every request that already carries a whole config
-        /// ([`Self::Start`], [`Self::Add`], [`Self::ApplyConfig`]). A
-        /// newtype here would protect one copy of a value this enum prints
-        /// three other ways, which reads as a guarantee the wire does not
-        /// make. Widening that protection is a change to [`AppConfig`]'s
-        /// `Debug`, not to this field.
+        /// A bare [`serde_json::Value`], not a redacting newtype. This enum
+        /// already prints `cwd`, `script` and `args` in the clear elsewhere.
         value: serde_json::Value,
     },
     /// Drops the operator's override of one config field, so the value the
     /// Flockfile gave it comes back.
     ///
     /// [`Self::SetSheepField`]'s undo. The value that returns is the one the
-    /// field held before the operator spoke for it: the Flockfile's value as
-    /// of the last load that named the field, or the value the sheep was
-    /// created with. A field overridden before that was recorded goes back to
-    /// the built-in default.
+    /// field held before the operator spoke for it, or the built-in default.
     ///
-    /// Refuses the keys [`Self::SetSheepField`] refuses, and refuses a key the
-    /// operator has not overridden: there is nothing to drop, and a silent
-    /// no-op would read as success. The apply classification governs the
-    /// restored value exactly as it governs a set one.
-    ///
-    /// Answers [`Response::SheepFieldReset`], or
-    /// [`RpcErrorCode::NotFound`] when no sheep has that name.
+    /// Refuses the keys [`Self::SetSheepField`] refuses, and a key nothing overrode: a silent no-op reads as success.
     ResetSheepField {
         /// The sheep's name, not a selector, for [`Self::SheepConfig`]'s
         /// reason.
@@ -305,16 +206,11 @@ pub enum Request {
     },
     /// One dog's `[app.dogs.<name>]` table, for every sheep carrying one.
     ///
-    /// It reads the stored spec, which is in force because `dogs` is
+    /// It reads the stored spec, in force because `dogs` is
     /// [`ApplyGroup::Live`](crate::config::ApplyGroup::Live). A sheep with
-    /// no table for `dog` is absent. `dog` is self-declared, as it is for
-    /// [`Self::DogConfig`], so the scoping is a convenience: the boundary
-    /// is the socket.
+    /// no table for `dog` is absent, and `dog` is self-declared.
     ///
-    /// Answers [`Response::DogSheepSettings`] with an empty map when no
-    /// sheep names `dog`, never [`RpcErrorCode::NotFound`]: unlike
-    /// [`Self::SheepConfig`], this does not name one sheep that could be
-    /// missing.
+    /// Answers [`Response::DogSheepSettings`] with an empty map, never [`RpcErrorCode::NotFound`].
     DogSheepSettings {
         /// The dog's own name, the config key.
         dog: String,
@@ -324,15 +220,8 @@ pub enum Request {
     /// `*` marker shows, and publishes `config.sheep.<dog>` so a running
     /// dog re-reads its tables.
     ///
-    /// A single dog's table, not the whole `dogs` map:
-    /// [`Self::SetSheepField`] refuses the key `dogs` and names this
-    /// request, the way it refuses `env`, since a whole-map write from a
-    /// pane editing one dog would overwrite a concurrent edit to another
-    /// dog's table on the same sheep.
-    ///
-    /// Answers [`Response::SheepDogSettingsSet`], [`RpcErrorCode::NotFound`]
-    /// when no sheep has `name`, and refuses a dog's own name the way
-    /// [`Self::SetSheepField`] does.
+    /// A single dog's table, not the whole `dogs` map: a whole-map write
+    /// would overwrite a concurrent edit to another dog's table.
     SetSheepDogSettings {
         /// The sheep's name, not a selector, for [`Self::SheepConfig`]'s
         /// reason.
@@ -364,19 +253,8 @@ pub enum Request {
     /// Replaces that pair rather than merging into it, so a key deleted at
     /// the provider disappears here on the next push instead of lingering.
     ///
-    /// `namespace` is the dog's own registered name. It is bookkeeping, not
-    /// authorization: `Hello::dog_name` is self-declared and nothing checks
-    /// it against the spawn. The boundary is the socket itself, which lives
-    /// under `$SHEP_HOME` at `0700`.
-    ///
-    /// The two names and every entry key are checked against
-    /// [`crate::secrets::is_name`], and a value against
-    /// [`crate::secrets::MAX_VALUE_BYTES`], the same cap the operator's own
-    /// store enforces. One offender refuses the whole push rather than
-    /// dropping its own entry, so a dog never reads `accepted` for a set
-    /// that was stored in part.
-    ///
-    /// Answers [`Response::SecretsPut`].
+    /// `namespace` is bookkeeping, not authorization: `Hello::dog_name` is
+    /// self-declared and nothing checks it against the spawn. One offender refuses the whole push.
     PutSecrets {
         /// The dog's registered name.
         namespace: String,
@@ -396,9 +274,9 @@ pub enum Request {
         /// Which sheep
         selector: SelectorSpec,
     },
-    /// Replace each matching sheep with a fresh instance of the same app, one
-    /// instance of an app at a time, so the app has a window in which it can
-    /// stay reachable across the swap
+    /// Replace each matching sheep with a fresh instance of the same app.
+    /// Instances of one app are replaced one at a time, so the app can stay
+    /// reachable across the swap
     Reload {
         /// Which sheep. No default: a reload replaces running processes.
         selector: SelectorSpec,
@@ -427,13 +305,9 @@ pub enum Request {
     },
     /// Set how many instances one app runs (see `shep stock`).
     ///
-    /// Takes a name where every other verb takes a [`SelectorSpec`]:
-    /// `instances` is a per-app number and slots are allocated against the
-    /// same-name group, so a selector matching two apps could mean four of
-    /// each or four in total.
-    ///
-    /// The count is absolute: two operators sending `+2` against the same
-    /// app would get a number neither asked for.
+    /// Takes a name where every other verb takes a [`SelectorSpec`].
+    /// `instances` is a per-app number. A selector matching two apps could
+    /// mean four of each or four in total. The count is absolute, not a delta.
     Scale {
         /// The app's name, exactly as its config spells it. Not a selector: no
         /// `all`, no regex, no `fold:`.
@@ -446,11 +320,9 @@ pub enum Request {
     /// Attach a short marker to `sheep` for `shep flock` to paint, or clear
     /// it with `None`.
     ///
-    /// By name, not a selector: a smit belongs to a sheep, and every
-    /// instance of that name shows it, one spawned after the paint included.
-    ///
-    /// Held in memory and scoped to the connection that sent it, so a
-    /// publisher republishes rather than publishing on change.
+    /// By name, not a selector: a smit belongs to a sheep. Every instance of
+    /// that name shows it, one spawned after the paint included. Held in
+    /// memory, scoped to the connection that sent it.
     SetSmit {
         /// Which sheep.
         sheep: String,
@@ -474,9 +346,8 @@ pub enum Request {
     ///
     /// Changes counters only: nothing is signalled, started or stopped.
     ///
-    /// Answers [`Response::Reset`]. Not a protocol bump, as
-    /// [`Self::TailLog`] was not: a shepherd that has never heard of this
-    /// one decodes [`Self::Unrecognized`] and refuses by name.
+    /// Answers [`Response::Reset`]. Additive: an unknown variant decodes
+    /// [`Self::Unrecognized`] and refuses by name.
     Reset {
         /// Which sheep. No default.
         selector: SelectorSpec,
@@ -484,16 +355,9 @@ pub enum Request {
     /// Read the end of one sheep's out or err log, so a client on another
     /// host reads what the shepherd's own disk holds.
     ///
-    /// Names the file by sheep and stream and never by path: the request is
-    /// not a way to make the shepherd read an arbitrary file. The shepherd
-    /// reads the `out_file` or `err_file` of the row, and sees only what the
-    /// log pump has flushed to it. An id no sheep holds fails with
-    /// [`RpcErrorCode::NotFound`]; a missing or unreadable file is an
-    /// answer, not an error.
-    ///
-    /// Answers [`Response::LogTail`]. Not a protocol bump, as
-    /// [`Self::HostUsage`] was not: a shepherd that has never heard of this
-    /// one decodes [`Self::Unrecognized`] and refuses by name.
+    /// Names the file by sheep and stream and never by path. This is not a
+    /// way to make the shepherd read an arbitrary file. It sees only what
+    /// the log pump has flushed. Answers [`Response::LogTail`]. A missing file is an answer, not an error.
     TailLog {
         /// The sheep's id; a dog's id counts
         id: u32,
@@ -551,9 +415,8 @@ pub enum Request {
     /// Ask for one dog's `[dog.<name>]` section, as the dog itself parses it
     ///
     /// The text as the operator wrote it: a `{{secret:...}}` reference comes
-    /// back as a reference. An editor must use this one. Lookout reads the
-    /// section and writes the whole text back through [`Self::SetDogConfig`],
-    /// so a resolved read would put the credential into `dogs.toml`.
+    /// back as a reference. An editor must use this one, since Lookout
+    /// writes the whole text back through [`Self::SetDogConfig`].
     ///
     /// Answers [`Response::DogSection`].
     DogConfig {
@@ -563,15 +426,10 @@ pub enum Request {
     /// Ask for one dog's section with every `{{secret:...}}` reference
     /// replaced by its value, resolved in the shepherd's own environment
     ///
-    /// For a dog that consumes its configuration. [`Self::DogConfig`] is
-    /// unchanged and stays the raw read. A reference that cannot resolve
-    /// fails the request with [`RpcErrorCode::InvalidConfig`], naming the
-    /// key path and the reference and never a value. `dogs.toml` is never
-    /// rewritten.
-    ///
-    /// Answers [`Response::DogSection`]. Not a protocol bump, as
-    /// [`Self::HostUsage`] was not: a shepherd that has never heard of this
-    /// one decodes [`Self::Unrecognized`] and refuses by name.
+    /// For a dog that consumes its configuration. [`Self::DogConfig`] stays
+    /// the raw read. A reference that cannot resolve fails with
+    /// [`RpcErrorCode::InvalidConfig`]. It names the key path and the
+    /// reference, never a value. `dogs.toml` is never rewritten. Answers [`Response::DogSection`].
     DogConfigResolved {
         /// The dog's name: the config key, not a selector
         name: String,
@@ -580,17 +438,8 @@ pub enum Request {
     /// `{{secret:...}}` reference replaced by its value, resolved in that
     /// sheep's own `environment` (the shepherd's when the sheep sets none)
     ///
-    /// For a dog that consumes a per-sheep credential. [`Self::DogSheepSettings`]
-    /// is unchanged and serves the references as written. One sheep at a
-    /// time, so one sheep's bad reference refuses only its own table and
-    /// nothing resolves a credential nobody asked for. A reference that
-    /// cannot resolve fails the request with [`RpcErrorCode::InvalidConfig`],
-    /// naming the sheep, the dog, the key path and the reference, never a
-    /// value. Nothing is written.
-    ///
-    /// Answers [`Response::SheepDogTable`], [`RpcErrorCode::NotFound`] when no
-    /// sheep has `name`, and the same for a dog's own name. Not a protocol
-    /// bump, as [`Self::DogConfigResolved`] was not.
+    /// For a dog that consumes a per-sheep credential. One sheep at a time,
+    /// so a bad reference refuses only its own table. Nothing is written. Answers [`Response::SheepDogTable`].
     SheepDogSettingsResolved {
         /// The sheep's name, not a selector, for [`Self::SheepConfig`]'s
         /// reason.
@@ -618,21 +467,15 @@ pub enum Request {
     ///
     /// Read-only, and about this daemon's own handshakes: take the reading
     /// after a reload, not before one. Never sent to an older daemon, on
-    /// [`Self::HandoverFitness`]'s terms.
-    ///
-    /// Answers [`Response::DogStaleness`].
+    /// [`Self::HandoverFitness`]'s terms. Answers [`Response::DogStaleness`].
     DogStaleness,
     /// Ask whether this daemon could hand its flock to a successor in place,
     /// rather than stopping it and starting it again (`shep daemon reload`).
     ///
-    /// Read-only: the handover itself is triggered by a signal, which reaches
-    /// a daemon that refuses the client at the handshake.
+    /// Read-only: the handover itself is triggered by a signal, which
+    /// reaches a daemon that refuses the client at the handshake.
     ///
-    /// Answers [`Response::HandoverFitness`]. A refusal is a feature the
-    /// running daemon cannot carry, not an error: the caller falls back to a
-    /// stop-and-start and prints the reason. Never sent to an older daemon:
-    /// shep-cli's `commands::daemon` gates it on the crate version the
-    /// handshake reported.
+    /// A refusal is a feature the running daemon cannot carry, not an error. Answers [`Response::HandoverFitness`].
     HandoverFitness,
     /// Graceful daemon shutdown
     KillDaemon,

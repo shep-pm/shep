@@ -9,18 +9,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 
-/// One app as the document declared it: the validated config, plus the
-/// keys the document literally wrote.
+/// One app as the document declared it: the config plus the keys written.
 ///
 /// The key set cannot be recovered from [`AppConfig`] afterwards:
-/// `#[serde(default)]` gives every field a value, so a document naming
-/// four keys deserializes identically to one naming forty.
-/// [`Flockfile::parse_declared`](crate::config::flockfile::Flockfile::parse_declared) carries the claim out for a later merge
-/// that keys on what a template declares, not on its values.
-///
-/// `Serialize`/`Deserialize` since this type travels inside a wire
-/// request, keyed on the same claim. Derived `Debug` is safe: `config`
-/// redacts its own `env`, and `declared_env` holds only key names.
+/// `#[serde(default)]` gives every field a value.
+/// [`parse_declared`](crate::config::flockfile::Flockfile::parse_declared)
+/// carries the claim out. `Debug` is derived: `config` redacts its own
+/// `env`, and `declared_env` holds key names only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclaredApp {
     /// The app, validated the same way [`Flockfile::parse`](crate::config::flockfile::Flockfile::parse) validates one

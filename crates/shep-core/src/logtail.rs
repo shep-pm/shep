@@ -14,20 +14,16 @@ use std::path::Path;
 /// memory: one arbitrarily long line with no newline would defeat it.
 pub const TAIL_WINDOW_BYTES: u64 = 256 * 1024;
 
-/// The last `limit` lines of one log file, bounded twice: a
-/// [`TAIL_WINDOW_BYTES`] window from the end of the file, then `limit`
+/// The last `limit` lines of one log file, bounded twice.
+/// A [`TAIL_WINDOW_BYTES`] window from the end of the file, then `limit`
 /// lines within it. Returns the lines and whether either bound cut them
 /// short.
 ///
-/// `std::fs`, not `tokio::fs`: the callers' tokio builds have no `fs`
-/// feature. Each line loses its daemon-added timestamp
-/// ([`crate::logstamp`]) when `stamped` says the shepherd added one, so it
-/// reads the same as a line from the bus. A non-zero seek discards bytes up
-/// to the first `\n`, rather than rendering a mid-line fragment.
+/// `std::fs`, not `tokio::fs`: the callers' tokio builds have no `fs` feature.
 ///
-/// `stamped` is a row's `log_timestamps` read the absent way: an app that
-/// turned the stamp off wrote its own prefix, and cutting 30 bytes off an
-/// RFC 3339 line of its own cuts into the app's text.
+/// `stamped` is a row's `log_timestamps` read the absent way. An app that
+/// turned the stamp off wrote its own prefix. Cutting 30 bytes off that
+/// cuts into the app's text.
 ///
 /// # Errors
 /// The file could not be opened, `stat`ed, seeked, or read.
@@ -38,11 +34,10 @@ pub fn read_tail(path: &Path, limit: usize, stamped: bool) -> io::Result<(Vec<St
     let window: &[u8] = &window;
 
     let text = String::from_utf8_lossy(window);
-    // The daemon's per-line stamp comes off here, so a `line` has one
-    // meaning across both of `bleats`' paths: the follow path reads the
+    // The daemon's per-line stamp comes off here. A `line` then means the
+    // same thing on both of `bleats`' paths. The follow path reads the
     // bus, which carries a sheep's own bytes. The stamp stays in the file
-    // for `tail`, `less` and `grep`. Only a row the shepherd stamped has a
-    // stamp to take off.
+    // for `tail`, `less` and `grep`.
     let mut lines: Vec<String> = text
         .split('\n')
         .map(|line| {
@@ -63,17 +58,13 @@ pub fn read_tail(path: &Path, limit: usize, stamped: bool) -> io::Result<(Vec<St
     Ok((lines, truncated))
 }
 
-/// The bytes of the last [`TAIL_WINDOW_BYTES`] of `source`, which holds `len`
-/// bytes, cut to whole lines, and whether the window left content behind.
+/// The bytes of the last [`TAIL_WINDOW_BYTES`] of `source`, which holds
+/// `len` bytes. Cut to whole lines, with whether the window left content
+/// behind.
 ///
-/// Reads one byte before the window when there is content before it, and
-/// drops everything up to and including the first `\n`. That is the partial
-/// line a cut mid-line leaves, or just the `\n` ending the line before when
-/// the window starts exactly on a line boundary, so a complete first line is
-/// kept.
-///
-/// Never reads more than the window plus that byte, whatever `source` has
-/// grown to since `len` was taken.
+/// Reads one byte before the window when content precedes it. It drops
+/// everything up to the first `\n`: the partial line a mid-line cut
+/// leaves. Never reads more than the window plus that byte.
 fn read_window<R: Read + Seek>(source: &mut R, len: u64) -> io::Result<(Vec<u8>, bool)> {
     let start = len.saturating_sub(TAIL_WINDOW_BYTES);
     let window_truncated = start > 0;

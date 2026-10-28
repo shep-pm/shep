@@ -15,8 +15,7 @@ use tokio_util::codec::Framed;
 /// Binds before returning, so a caller can `connect` immediately without a
 /// sleep.
 ///
-/// Panics if `path` cannot be bound or the connection fails partway
-/// through the handshake.
+/// Panics if `path` cannot be bound or the connection fails partway.
 pub async fn fake_daemon(path: &Path, reply: HelloReply) -> JoinHandle<Hello> {
     let mut listener = bind(path);
     tokio::spawn(async move {
@@ -32,9 +31,8 @@ pub async fn fake_daemon(path: &Path, reply: HelloReply) -> JoinHandle<Hello> {
 /// Binds `path`, accepts one connection, handshakes with `ack`, answers the
 /// first request with `response`, and returns the received envelope.
 ///
-/// Unlike [`fake_client_on`] and its siblings, this does not connect its own
-/// [`Client`](crate::client::Client): it only listens, for a caller (`shep-cli`'s `DogRuntime::start`)
-/// that performs its own `Client::connect`.
+/// Unlike [`fake_client_on`] and its siblings, this only listens: the
+/// caller performs its own `Client::connect`.
 ///
 /// Panics on any accept, handshake, decode or encode failure.
 pub async fn serve_one_request(
@@ -52,15 +50,10 @@ pub async fn serve_one_request(
 }
 
 /// Binds `path`, accepts one connection, completes the handshake with `ack`,
-/// and then answers nothing: the shepherd that holds a socket and a finished
-/// handshake while wedged past the point of serving a request. A request made
-/// against it times out rather than being refused or cut off.
+/// and then answers nothing: a shepherd wedged past serving a request, whose
+/// socket and handshake still look live. A request against it times out.
 ///
-/// The `handshook` flag is returned separately from the task, for the reason
-/// [`fake_daemon_accepting_repeatedly`] returns its counter separately: the
-/// task never ends, so nothing it returned could be read.
-///
-/// Synchronous, so a caller can connect straight away without a sleep.
+/// The `handshook` flag is returned separately because the task never ends.
 ///
 /// Panics if `path` cannot be bound, or on any accept or handshake failure.
 pub fn fake_daemon_wedged_after_handshake(
@@ -83,10 +76,8 @@ pub fn fake_daemon_wedged_after_handshake(
 /// Binds `path` and answers every connection, one handshake and one request
 /// each, with `reply`, until the returned handle is aborted.
 ///
-/// The `served` counter is returned separately from the task: the accept
-/// loop never ends on its own, so a `JoinHandle<u32>` could never be read
-/// (`abort()` gives `JoinError::Cancelled`, an await waits forever). The
-/// `AtomicU32` can be read while the fake is still running.
+/// The `served` counter is returned separately because the accept loop
+/// never ends on its own, so its `JoinHandle` could never be read.
 ///
 /// Panics if `path` cannot be bound.
 pub fn fake_daemon_accepting_repeatedly(

@@ -28,57 +28,20 @@ use super::{error::FlockfileError, format::FlockFormat, parse::parse_into_ignori
 pub(super) struct RawFlockfile {
     /// The editor's schema hint, read and discarded.
     ///
-    /// This is the "future schema key" the comment above anticipated, added
-    /// HERE explicitly rather than by relaxing `deny_unknown_fields`: a
-    /// typo'd key must still fail loudly, and exactly one more key is now
-    /// legal. shep does not validate against the named schema and makes no
-    /// promise about it — it is a hint for the operator's editor, which is
-    /// the only consumer that ever reads it.
+    /// Named explicitly, not by relaxing `deny_unknown_fields`, so a
+    /// typo'd key still fails loudly. shep validates nothing against it.
     ///
-    /// TOML Flockfiles do not need it: taplo's `#:schema <url>` directive is
-    /// a comment, invisible to serde. JSON and JSON5 have no comment an
-    /// editor agrees to look in, which is why this field exists at all.
+    /// TOML does not need it: taplo's `#:schema <url>` is a comment,
+    /// invisible to serde. JSON and JSON5 have no such comment.
     #[serde(default, rename = "$schema")]
     pub(super) schema: Option<String>,
     /// A dog's own per-app configuration, read and discarded.
     ///
-    /// Added the same way `$schema` was, explicitly rather than by relaxing
-    /// `deny_unknown_fields`, so a typo'd key still fails loudly and exactly
-    /// one more key is legal.
-    ///
-    /// It exists because the alternative is a Flockfile no daemon will accept.
-    /// A dog that needs per-app configuration has nowhere to put it: shep-deploy
-    /// wants a build command for the app it deploys, which belongs beside that
-    /// app's declaration and nowhere else, and a Flockfile carrying one was
-    /// refused outright by `shep start`. Measured 2026-08-28 against shep
-    /// 0.1.8: an operator following shep-deploy's own README could not register
-    /// their app at all. `unknown field `build`, expected `$schema` or `app``.
-    ///
-    /// It must BE a table. shep does not read what is inside it, does not
-    /// validate it, and makes no promise about it. Those are two different
-    /// claims and only the second one is a promise not to care: the dog that
-    /// owns a key under this table is the only thing that understands it, and
-    /// shep refusing a document because it does not recognise another
-    /// program's config is a coupling neither side wants.
-    ///
-    /// A bare TOML date, time or datetime is not a table either. `toml` hands
-    /// one to a generic deserializer as a one-key table under a private name,
-    /// and that shape is refused rather than read as a table with one odd key
-    /// in it.
-    ///
-    /// Nested under one key rather than allowing loose top-level keys, so
-    /// exactly one name is reserved and a typo anywhere else still fails.
-    ///
-    /// A map of ignored values rather than `IgnoredAny`, which would have
-    /// accepted `dog = 5` and `dog = ["a"]` as happily as a table. Not reading
-    /// what a dog wrote is the point; not caring whether it wrote a table at
-    /// all is a different thing, and it would have made the one key this file
-    /// adds the one key where a typo does not fail loudly. A defaulted map
-    /// rather than `Option`, for the same reason: `None` and `null` would
-    /// otherwise deserialize identically, and `null` is no more a table than
-    /// `5` or `["a"]` is. `deserialize_with` is the custom function below,
-    /// needed because the derived map deserializer lets `null` back through
-    /// for one YAML backend; see that function's own comment.
+    /// Named explicitly, not by relaxing `deny_unknown_fields`, so exactly
+    /// one name is reserved. A typo elsewhere still fails. It must be a
+    /// table. shep reads and validates nothing inside it: only the dog
+    /// that owns a key here understands it. A bare TOML datetime arrives
+    /// as a one-key table and is refused.
     #[serde(default, deserialize_with = "deserialize_dog_table")]
     #[cfg_attr(
         feature = "schema",
@@ -89,14 +52,10 @@ pub(super) struct RawFlockfile {
     pub(super) apps: Vec<AppConfig>,
 }
 
-// `deserialize_any`, not the derived `BTreeMap` deserializer: at least one
-// YAML backend folds a null scalar into an empty map before
-// `deserialize_map` ever reaches a visitor. `deserialize_any` reaches that
-// null as `visit_unit`, which errors by default. The shared table reader in
-// `config::table` is that visitor, given the key name so its refusal says
-// `` `dog` must be a table `` instead of serde's `invalid type: unit value,
-// expected a table`, and refuses a bare TOML datetime, which arrives as a
-// one-key table and would otherwise parse.
+// `deserialize_any`, not the derived `BTreeMap` deserializer. A YAML
+// backend folds a null scalar into an empty map before a visitor sees it.
+// `config::table` is that visitor, so the refusal names `dog` and refuses
+// a bare TOML datetime too.
 fn deserialize_dog_table<'de, D>(
     deserializer: D,
 ) -> Result<BTreeMap<String, serde::de::IgnoredAny>, D::Error>
@@ -110,11 +69,9 @@ impl RawFlockfile {
     /// Parses `source`, refusing any key no field claims.
     ///
     /// Shared by `Flockfile::parse` and `parse_declared`: both read a
-    /// Flockfile off disk (never a value off the wire), so both refuse a typo
-    /// the same way. `deny_unknown_fields` used to live on `AppConfig`
-    /// itself, which made every new Flockfile field a protocol event: the
-    /// same type rides the wire, where an unknown field means a newer peer
-    /// rather than a typo. The denial belongs here instead.
+    /// Flockfile off disk, never a value off the wire. The denial lives
+    /// here, not on `AppConfig`, which also rides the wire, where an
+    /// unknown field means a newer peer.
     pub(super) fn new(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
         let mut unknown = Vec::new();
         let raw: RawFlockfile = parse_into_ignoring(source, format, |path| {
@@ -164,15 +121,10 @@ mod tests {
         format!("[[app]]\nname = \"web\"\nscript = \"./srv\"\n{body}\n")
     }
 
-    /// fails if a Flockfile carrying a dog's own configuration is refused.
-    ///
-    /// A dog with per-app configuration has nowhere else to put it: it
-    /// belongs beside the app's declaration, in the repository the dog
-    /// deploys.
-    ///
-    /// The contents are not validated: shep does not know what a dog's
-    /// keys mean, and refusing a document for not recognising another
-    /// program's config is a coupling neither side wants.
+    // A dog with per-app configuration has nowhere else to put it. It
+    // belongs beside the app's declaration. shep does not know what a
+    // dog's keys mean. Refusing a document for not recognising another
+    // program's config is a coupling neither side wants.
     #[test]
     fn a_dog_table_is_accepted_and_ignored() {
         let src = r#"

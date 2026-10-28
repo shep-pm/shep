@@ -19,8 +19,7 @@ use tokio::time::Instant;
 ///
 /// Built for dogs, which outlive the shepherd they connected to: a dog's
 /// process crosses a daemon handover as an ordinary child, so it is still
-/// running when its socket dies. The CLI uses a bare [`Client`] instead;
-/// see this module's own docs for why.
+/// running when its socket dies. The CLI uses a bare [`Client`] instead.
 ///
 /// # Example
 ///
@@ -83,11 +82,9 @@ pub(super) struct State {
 /// Stops the supervisor when the handle goes away.
 ///
 /// Without this, a dropped `ReconnectingClient` whose daemon is gone leaves
-/// a task reconnecting forever against an address nobody will answer,
-/// holding the last generation's socket open with it. `abort` rather than a
-/// cooperative signal because the supervisor spends its life parked on
-/// either a connection's death or a connect attempt, neither of which would
-/// notice a flag until it woke.
+/// a task reconnecting forever, holding the last generation's socket open
+/// with it. `abort` rather than a cooperative signal: the supervisor is
+/// parked on a connect attempt that would not see a flag.
 impl Drop for ReconnectingClient {
     fn drop(&mut self) {
         self.supervisor.abort();
@@ -312,11 +309,9 @@ impl ReconnectingClient {
     /// The handshake acknowledgement of the daemon this client is talking
     /// to right now.
     ///
-    /// Owned rather than borrowed, unlike [`Client::daemon`]: the ack
-    /// belongs to a generation a reconnect can replace at any moment, so a
-    /// reference would either pin a stale one or need a guard in the
-    /// caller's hands. A cached ack would describe the predecessor, which
-    /// a dog publishing `daemon_version` must not do.
+    /// Owned rather than borrowed, unlike [`Client::daemon`]: a reconnect can
+    /// replace the generation this ack came from at any moment. A cached ack
+    /// would describe the predecessor.
     #[must_use]
     pub fn daemon(&self) -> HelloAck {
         self.shared.read().client.daemon().clone()
@@ -386,23 +381,15 @@ impl ReconnectingClient {
     /// `budget`, and returns at once when it already is.
     ///
     /// What a caller needing a fresh [`EventStream`] after a handover waits
-    /// on: a `Subscribe` issued against a dead generation fails at once
-    /// with [`RequestError::Closed`], which says nothing about whether a
-    /// successor is on its way.
-    ///
-    /// A returned `Ok` is where to try, never a promise that it will work.
-    /// The supervisor parks on the current connection dying, so its report
-    /// can still say [`LinkState::Connected`] for the moment between the
-    /// socket going and the supervisor waking, and a live connection can
-    /// die immediately afterwards anyway. A caller that needs a stream
-    /// asks for one and comes back here while its budget lasts.
+    /// on. A `Subscribe` issued against a dead generation fails at once with
+    /// [`RequestError::Closed`]. That says nothing about a successor on its way.
+    /// A returned `Ok` is where to try, never a promise: the report can still
+    /// say [`LinkState::Connected`] in the moment after a socket dies.
     ///
     /// # Errors
     ///
-    /// - [`LinkLost::Refused`]: a successor refused on protocol-version
-    ///   skew, so the supervisor has stopped and no later wait can succeed.
-    /// - [`LinkLost::Budget`]: `budget` ran out with the supervisor still
-    ///   dialling.
+    /// - [`LinkLost::Refused`]: a successor refused on version skew, and the supervisor stopped.
+    /// - [`LinkLost::Budget`]: `budget` ran out with the supervisor still dialling.
     pub async fn connected_within(&self, budget: Duration) -> Result<(), LinkLost> {
         let started = Instant::now();
         let mut link = self.shared.link.subscribe();
@@ -442,35 +429,24 @@ impl ReconnectingClient {
         }
     }
 
+    // A `watch` receiver keeps only the latest value. A successor that
+    // connects and dies before this task next runs is never seen as
+    // `Connected`. Its outage joins the one before it into a single budget.
+    // A shepherd flapping that fast is one a dog cannot work with.
     /// Waits until the link has been down for a whole `budget` without
     /// coming back, or has been refused.
     ///
     /// The clock runs only while the link is down, so a connection that
-    /// drops and returns inside `budget` leaves the next one a full budget
-    /// of its own. Never resolves while the link is up, which is what lets
-    /// it sit in a `select!` arm beside the work a caller does when it is.
-    ///
-    /// One case does not get that fresh budget, and it is the watch's
-    /// nature rather than a gap to close. A [`watch`] receiver keeps only
-    /// the latest value, so a successor that connects and dies again before
-    /// this task next runs is never observed as `Connected`, and its
-    /// outage and the one before it are spent as a single budget. The
-    /// answer is the same either way: a shepherd flapping that fast is a
-    /// shepherd this dog cannot work with, and exiting is what it should
-    /// do.
-    ///
-    /// A supervised dog is the caller this exists for: one whose shepherd
-    /// is genuinely gone should exit rather than wait for a shepherd that
-    /// is not coming, since a dog still running when an unrelated shepherd
-    /// later binds that socket would attach itself to that one.
+    /// drops and returns inside `budget` leaves the next one a full budget.
+    /// Never resolves while the link is up, which is what lets it sit in a
+    /// `select!` arm beside a caller's own work.
     pub async fn link_lost(&self, budget: Duration) -> LinkLost {
         let mut link = self.shared.link.subscribe();
         loop {
             // Parking here is the only await on the path a connected client
-            // takes, so it is what keeps this future yielding as well as
-            // what stops a live link spending the budget: `connected_within`
-            // returns at once while the link is up, and the outer loop would
-            // spin on it.
+            // takes. That is what keeps this future yielding. It also stops a
+            // live link spending the budget: `connected_within` answers at
+            // once while the link is up, so the outer loop would spin.
             loop {
                 let up = matches!(*link.borrow_and_update(), LinkState::Connected);
                 if !up {
@@ -651,15 +627,10 @@ mod tests {
         );
     }
 
-    /// fails if a cancelled reconnect leaves the handle on neither
-    /// connection. The old one is held until a new one has handshaken, so a
-    /// caller whose future loses a `select!` race still has the connection
-    /// it started with.
-    ///
-    /// The fake serves one connection at a time, so the second handshake
-    /// cannot finish while the first is still open. That is what holds the
-    /// reconnect open long enough for the 1ms budget to cancel it, and the
-    /// elapsed timeout is the assertion that it really was still in flight.
+    // The old connection is held until a new one has handshaken. A caller
+    // whose future loses a `select!` race still has the connection it
+    // started with. The fake serves one connection at a time. That holds the
+    // reconnect open long enough for the 1ms budget to cancel it.
     #[tokio::test]
     async fn a_cancelled_reconnect_leaves_the_handle_on_its_old_connection() {
         let dir = tempfile::tempdir().unwrap();
@@ -721,14 +692,10 @@ mod tests {
         assert_eq!(client.link(), LinkState::Connected);
     }
 
-    /// fails if a spent budget starts refusing a link that is already up.
-    ///
-    /// Pins the trap rather than the convenience. A caller looping on this
-    /// cannot use it as the loop's bound, because a live link answers `Ok`
-    /// without ever consulting the budget, and a caller whose own work
-    /// keeps failing against that live link would never leave the loop.
-    /// `ClientEvents::resubscribe` in the CLI checks the budget itself for
-    /// exactly this reason.
+    // Pins the trap rather than the convenience. A caller looping on this
+    // cannot use it as the loop's bound: a live link answers `Ok` without
+    // consulting the budget. `ClientEvents::resubscribe` in the CLI checks
+    // the budget itself for exactly this reason.
     #[tokio::test]
     async fn a_wait_on_a_live_link_answers_at_once_even_with_no_budget_left() {
         let dir = tempfile::tempdir().unwrap();

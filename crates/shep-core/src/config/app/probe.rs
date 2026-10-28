@@ -18,19 +18,9 @@ pub enum ProbeKind {
 
 /// Readiness/liveness probe configuration (spec §7)
 // wire format: changing field names/defaults is a breaking change
-// `deny_unknown_fields` used to live here. This type rides the wire inside
-// `AppConfig` (itself carried by `Request::Start`, `Request::Add`, and
-// `Response::SheepConfig`), where an unknown field means a newer peer, not
-// a typo — denying it here would make a newer daemon's reply break an
-// older client. The denial moved to `Flockfile::parse`, where the input
-// really is a hand-written file. Do not restore the serde attribute here.
-//
-// The schema-only sibling attribute below is not the same thing and stays:
-// `schemars(deny_unknown_fields)` only shapes the generated
-// `additionalProperties: false`, which an editor uses to flag a Flockfile
-// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
-// (schemars mirrors it into a synthesized attribute its own macro expansion
-// reads, not the real one), so the wire still tolerates an unknown field.
+// No `deny_unknown_fields` here: this type rides the wire, where an
+// unknown field means a newer peer. The denial lives in `Flockfile::parse`.
+// `schemars(deny_unknown_fields)` below shapes a schema only, never a parse.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]

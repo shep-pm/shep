@@ -3,12 +3,8 @@
 //! One [`Bark`] per line, appended by the bark dog on a rule fire and by
 //! the shepherd on a dog's exhausted restart budget, and read by `shep
 //! barks`. [`append`] evicts oldest-first under a byte cap by rewriting
-//! survivors to a temp file and `rename`ing it over the original, so a
-//! writer that dies mid-rewrite never leaves a fragment. [`read`] skips
-//! any unparseable line, since this file is read during an incident, and
-//! [`read_last`] answers the same question over a window of the file's
-//! end so a caller that wants only the recent records does not pay for
-//! the whole ring.
+//! survivors to a temp file and `rename`ing it over the original. [`read`]
+//! skips any unparseable line, since this file is read during an incident.
 //!
 //! The two writers are separate OS processes, so a [`crate::file_lock`] on
 //! a sibling `<path>.lock` serializes them.
@@ -28,13 +24,10 @@ use crate::file_lock::FileLock;
 pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024;
 
 /// The first window [`read_last`] reads from the end of the ring, and the
-/// factor it grows by while the window holds fewer records than were
-/// asked for. 64 KiB (65,536 bytes). Serialised records measure 149 to
-/// 173 bytes (a rule firing with one sink, delivered or failed; a
-/// shepherd-written restart-budget bark is 160), so one window holds
-/// roughly 375 records and covers a typical tail request in one read.
-/// It is 1/16 of a [`DEFAULT_MAX_BYTES`] ring: four doublings reach the
-/// whole of one.
+/// factor it grows by. 64 KiB. Serialised records measure 149 to 173
+/// bytes. One window holds roughly 375 records and covers a typical tail
+/// request in one read. It is 1/16 of a [`DEFAULT_MAX_BYTES`] ring, so
+/// four doublings reach the whole of one.
 const TAIL_WINDOW_BYTES: u64 = 64 * 1024;
 
 /// One fired alert, as it lands in `$SHEP_HOME/barks.jsonl`.
@@ -42,9 +35,8 @@ const TAIL_WINDOW_BYTES: u64 = 64 * 1024;
 /// One JSON object per line: an interrupted write then costs the reader
 /// one record, not the whole file.
 ///
-/// `Debug` is derived, not redacted. Every field here is shep's own prose
-/// or a config key, never a sink's target; a field that ever carried a
-/// webhook URL or token would need its own redacted `Debug`.
+/// `Debug` is derived, not redacted: every field is shep's own prose or a
+/// config key, never a sink's target.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bark {
     /// Unix millis when the alert fired.
@@ -79,11 +71,10 @@ pub struct SinkOutcome {
 /// Error type returned by [`append`] and [`read`].
 ///
 /// Wraps `io::Error`/`serde_json::Error` directly so callers keep the
-/// underlying diagnostic via [`core::error::Error::source`]; this enum
+/// underlying diagnostic via [`core::error::Error::source`]. This enum
 /// cannot derive `Clone`/`PartialEq`/`Eq` as a result.
 ///
-/// `#[non_exhaustive]`: shep-core is a published library, so a future
-/// failure variant must not break an out-of-tree consumer's `match`.
+/// `#[non_exhaustive]`: shep-core is a published library.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum BarkError {
@@ -181,14 +172,13 @@ pub fn read(path: &Path) -> Result<Vec<Bark>, BarkError> {
 /// whole ring: a byte window from the end of the file, grown until it
 /// holds `limit` records or the file runs out.
 ///
-/// The same answer [`read`] gives for its last `limit` records — a
-/// missing file is an empty ring, an unparseable line is skipped — so the
-/// only difference is what the reader pays for. A byte sequence the
-/// window cuts mid-character is replaced rather than refused: this file
-/// is read during an incident, and a record the reader cannot have is
-/// not worth failing the read over.
+/// The same answer [`read`] gives for its last `limit` records. A missing
+/// file is an empty ring, and an unparseable line is skipped. A byte
+/// sequence the window cuts mid-character is replaced rather than
+/// refused: this file is read during an incident.
 ///
 /// # Errors
+///
 /// - [`BarkError::Io`]: the file exists and could not be opened, stat'ed,
 ///   seeked or read.
 pub fn read_last(path: &Path, limit: usize) -> Result<Vec<Bark>, BarkError> {
@@ -289,9 +279,7 @@ fn ring_bytes(lines: &[String]) -> u64 {
 /// `path`, so an interrupted write leaves the original untouched.
 ///
 /// The name is unique per call, not a fixed `<path>.tmp`: two writers
-/// racing on a shared name can have one `rename` consume the other's
-/// staging file. [`FileLock`] already keeps two appenders apart; this is
-/// the second lock for a caller that reaches `write_ring` another way.
+/// racing on one name can have a `rename` consume the other's staging file.
 fn write_ring(path: &Path, lines: &[String]) -> Result<(), BarkError> {
     let parent = crate::atomic_file::parent_of(path);
     let file = crate::atomic_file::create_staging_file(parent, "barks", ".tmp")?;

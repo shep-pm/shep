@@ -1,14 +1,13 @@
 //! One exclusive advisory lock, keyed on the file it guards.
 //!
 //! Every store under `$SHEP_HOME` that publishes a new value by `rename`
-//! holds this across its whole read-modify-write: `kv.json`,
+//! holds this across its read-modify-write. They are `kv.json`,
 //! `overrides.json`, `secrets.json`, `barks.jsonl`, `shep.toml` and
 //! `dogs.toml`. `flock(2)` on unix, an exclusive `share_mode(0)` open on
-//! Windows.
+//! Windows. Separate from [`crate::atomic_file`], which is the replace.
 //!
-//! Separate from [`crate::atomic_file`], which is the replace itself. This
-//! is what keeps two of those replaces apart, and it is held across reads
-//! the replace never sees.
+//! This keeps two of those replaces apart, and is held across reads the
+//! replace never sees.
 
 use std::path::{Path, PathBuf};
 
@@ -16,21 +15,9 @@ use std::path::{Path, PathBuf};
 /// lives and released when it drops, including on an early `?` and by the
 /// kernel if the process dies holding it.
 ///
-/// The lock is on a sibling `<name>.lock`, never on the guarded file
-/// itself, and that is the whole design decision: a store finishes its
-/// write by `rename`ing a new file over the old one, which replaces the
-/// inode. A lock on the store would guard an inode the next successful
-/// write unlinks, and the writer after that would open the new inode, find
-/// it unlocked, and exclude nothing. The lock file is never renamed,
-/// rewritten or read; it is an inode with a stable identity, left on disk
-/// between writes so every writer keeps agreeing on which one it is.
-///
-/// Two are held at once only over `shep.toml` and `dogs.toml`, in that
-/// order, which is what keeps the callers that nest them from deadlocking;
-/// `commands::dog_migration` says so where it nests them.
-///
-/// Derives `Debug`: the fields are a held OS lock handle (a `flock(2)`
-/// wrapper on unix, a bare `File` on Windows), never a secret.
+/// The lock is on a sibling `<name>.lock`, never on the guarded file: a
+/// store publishes by `rename`, which replaces the inode. Two are held at
+/// once only over `shep.toml` then `dogs.toml`.
 #[derive(Debug)]
 pub struct FileLock {
     /// `flock(2)` is released by this handle's `Drop`. Named with a

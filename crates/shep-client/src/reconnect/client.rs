@@ -21,13 +21,10 @@ impl Client {
     /// Re-establishes this connection, retrying until `budget` is spent.
     ///
     /// Meant for a connection that has already ended, as [`Self::closed`]
-    /// reports; a live one is replaced only once the new handshake finishes.
-    /// `&mut self` holds the handle exclusively, so none of its own requests
-    /// can be in flight while this runs. A successor still coming up is
-    /// retried, from [`RECONNECT_MIN_DELAY`] doubling to
-    /// [`RECONNECT_MAX_DELAY`]; a refusal is not. An [`EventStream`](crate::events::EventStream) taken
-    /// before this call belongs to the old connection, so a caller wanting
-    /// events past it subscribes again.
+    /// reports. A successor still coming up is retried, from
+    /// [`RECONNECT_MIN_DELAY`] doubling to [`RECONNECT_MAX_DELAY`]; a refusal is
+    /// not. Safe to cancel: the old connection is held until a new one
+    /// handshakes. An [`EventStream`](crate::events::EventStream) belongs to the connection it was taken on.
     ///
     /// # Example
     ///
@@ -46,22 +43,10 @@ impl Client {
     /// # }
     /// # let _ = watch;
     /// ```
-    ///
     /// # Errors
     ///
-    /// The failure of the last attempt `budget` allowed:
-    ///
-    /// - [`ConnectError::ProtocolMismatch`]: a daemon refused on
-    ///   protocol-version skew. Returned without a retry, since asking the
-    ///   same daemon again cannot change its answer.
-    /// - Anything else [`Self::connect_with_timeout`] reports, once `budget`
-    ///   leaves no room for a further attempt.
-    ///
-    /// # Cancellation safety
-    ///
-    /// Safe to cancel. The old connection is held until a new one has
-    /// handshaken, so dropping this future leaves the handle on the
-    /// connection it already had rather than on neither.
+    /// - [`ConnectError::ProtocolMismatch`]: a daemon refused on version skew, and is not asked again.
+    /// - Anything else [`Self::connect_with_timeout`] reports, once `budget` leaves no room.
     pub async fn reconnect_within(
         &mut self,
         budget: Duration,
@@ -573,16 +558,10 @@ mod tests {
         );
     }
 
-    /// fails if the verdict follows `daemon_version` rather than the pid.
-    ///
-    /// `shep daemon reload` onto a NEW build is still an execve, so it keeps
-    /// the pid and carries the id counter across while the version changes.
-    /// A version comparison would call that a new daemon and have every
-    /// caller discard ids that are still perfectly good.
-    ///
-    /// Every other case here uses `ack_from`, which derives the version from
-    /// the pid, so the two fields always move together and neither could
-    /// tell these two rules apart.
+    // `shep daemon reload` onto a new build is still an execve. It keeps the
+    // pid and carries the id counter while the version changes. A version
+    // comparison would call that a new daemon and discard ids that are still
+    // good.
     #[tokio::test]
     async fn an_upgrade_handover_keeps_its_pid_and_reports_same_daemon() {
         let dir = tempfile::tempdir().unwrap();

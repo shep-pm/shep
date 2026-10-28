@@ -86,36 +86,10 @@ pub fn render_cycle(cycle: &[String]) -> String {
 /// Sorts `nodes` into stages.
 ///
 /// Edges to a name outside `nodes` are dropped and recorded in
-/// [`BootPlan::unresolved`], because a dependency on an app whose Flockfile
-/// lives in another repository is legitimate.
-///
-/// Nodes in a cycle are lifted out of the sort into one unordered stage, and
-/// one cycle through each knot they form is recorded in
-/// [`BootPlan::cycles`]. Refusing here would strand an unattended boot; the
-/// caller decides whether to refuse, and only the operator-facing callers
-/// do. Anything depending on a knot, directly or through a chain, follows
-/// that stage rather than preceding it, for the reason argued on
-/// `depends_on_a_cycle`.
-///
-/// Dogs default to a stage after every sheep, so an existing install keeps
-/// the order `boot.rs` argues for. Two things move one: `boot_first`, which
-/// puts it in the first stage unless it depends on a knot, in which case it
-/// plans after the cyclic stage like anything else that does; and anything
-/// depending on it, which gives it an ordinary graph position. A dog runs
-/// at the earliest stage anything asks for.
-///
-/// The stages therefore run: `boot_first` dogs, the ordinary sort, the
-/// cyclic stage, the nodes that depend on the cycle in their own edge order,
-/// then dogs nothing depends on. Those come last unconditionally, since a
-/// dog placed before a knot would answer for a flock still coming up.
-///
-/// That paragraph describes the plan this function returns, and not even
-/// shep's boot honours all of it. `shep-daemon`'s `boot` spawns dogs in two
-/// groups,
-/// the promoted ones before the restore and every other one after the last
-/// stage, so a dog's plan position between those two points is not read: a
-/// sheep depending on a dog is warned about and started anyway. The driver
-/// decides, not this plan.
+/// [`BootPlan::unresolved`]: a dependency on an app in another repository
+/// is legitimate. Nodes in a cycle are lifted into one unordered stage,
+/// recorded in [`BootPlan::cycles`], and anything depending on a knot
+/// follows that stage. Dogs come last unless something moves them.
 #[must_use]
 pub fn plan(nodes: &[BootNode]) -> BootPlan {
     let names: BTreeSet<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
@@ -183,11 +157,9 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
     // outside this set is already placed, which is what `kahn` reads a
     // missing name as.
     stages.extend(kahn(&after_cycle, &edges, &[]));
-    // Dead last, after the knot and everything hanging off it. Placing these
-    // before the cyclic stage would leave a metrics dog answering for a flock
-    // whose knot has not started, which is the case the dogs-last default
-    // exists to prevent, so "last" has to mean last even when the graph is
-    // degraded.
+    // Dead last, after the knot and everything hanging off it. A dog
+    // placed earlier answers for a flock whose knot is not up. The
+    // dogs-last default prevents exactly that, even in a degraded graph.
     if !last.is_empty() {
         stages.push(owned(last.iter().copied()));
     }
@@ -202,14 +174,11 @@ pub fn plan(nodes: &[BootNode]) -> BootPlan {
 
 /// Every node outside `in_a_cycle` with a path to one of its members.
 ///
-/// The surprising part: shep does not refuse a boot over a cycle, it warns
-/// and brings the flock up with the knot last. A dependent of the knot can
-/// never have its dependency satisfied, so it starts anyway, and the only
-/// question left is where. A plain topological sort answers "first", because
-/// the edge points at a name the sort no longer holds and an absent
-/// dependency reads as a met one. That is the worst of the available orders,
-/// so these nodes are held out of the sort too and replanted after the
-/// cyclic stage.
+/// A dependent of a knot can never have its dependency satisfied, so it
+/// starts anyway, and the only question left is where. A plain
+/// topological sort answers "first", because an absent dependency reads
+/// as a met one. These nodes are held out of the sort and replanted
+/// after the cyclic stage.
 fn depends_on_a_cycle<'a>(
     edges: &BTreeMap<&'a str, BTreeSet<&'a str>>,
     in_a_cycle: &BTreeSet<&'a str>,
@@ -271,15 +240,9 @@ fn kahn(
 /// nodes, or a lone node that depends on itself. Each component's members,
 /// sorted, and the components themselves ordered by their first member.
 ///
-/// Tarjan's algorithm rather than a search for a back edge. A back-edge walk
-/// answers "does this one walk close on itself", and marking a node explored
-/// the first time it is reached is what makes that walk finite: a second path
-/// arriving at the same node turns back without retraversing it, so of two
-/// cycles sharing a node only one is ever seen. The question this module asks
-/// is which nodes sit in a component larger than themselves, and only a
-/// component algorithm answers it.
-///
-/// Recursive, since the depth is bounded by the size of one flock.
+/// Tarjan's algorithm rather than a back-edge walk. A walk marks a node
+/// explored on first reach. Of two cycles sharing a node, only one is
+/// ever seen. Recursive, since the depth is bounded by one flock's size.
 fn knots<'a>(edges: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> Vec<BTreeSet<&'a str>> {
     let mut tarjan = Tarjan {
         index: BTreeMap::new(),
@@ -704,15 +667,10 @@ mod tests {
             edges in proptest::collection::vec((0usize..6, 0usize..6), 0..18),
             shuffle_keys in proptest::collection::vec(0u32.., 6)
         ) {
-            // fails if a node is dropped or duplicated, a cyclic node is
-            // missed or misplaced, an edge out of an acyclic node is not
-            // respected, a stage is empty or unsorted, two reported cycles
-            // share a node, or the plan changes when the same nodes are
-            // planned in a different order. Arbitrary edges, so most draws
-            // are cyclic: the DAG-by-construction case above gives the
-            // cyclic path no coverage at all. Ground truth is a transitive
-            // closure computed here, not anything the module does, so the
-            // test cannot agree with a bug by sharing its logic.
+            // Arbitrary edges, so most draws are cyclic. Ground truth is a
+            // transitive closure computed here, not anything the module
+            // does. The test cannot then agree with a bug by sharing its
+            // logic.
             const N: usize = 6;
             let mut adjacent = [[false; N]; N];
             for (from, to) in edges {
@@ -780,11 +738,9 @@ mod tests {
             };
             let cyclic: Vec<usize> = (0..N).filter(|i| reaches[*i][*i]).collect();
 
-            // An edge out of an acyclic node has to land strictly earlier,
-            // the same claim the DAG test above makes, just without the
-            // guarantee that every node here qualifies: a node inside a
-            // knot has no such promise, since its own dependency can sit in
-            // the same stage or after it.
+            // An edge out of an acyclic node has to land strictly earlier.
+            // A node inside a knot has no such promise, since its own
+            // dependency can sit in the same stage or after it.
             for i in (0..N).filter(|i| !reaches[*i][*i]) {
                 for j in (0..N).filter(|j| adjacent[i][*j]) {
                     proptest::prop_assert!(
@@ -816,10 +772,9 @@ mod tests {
                 for i in (0..N).filter(|i| !reaches[*i][*i]) {
                     let is_dependent = cyclic.iter().any(|c| reaches[i][*c]);
                     // `prop_assert!` with a comparison rather than
-                    // `prop_assert_ne!`: that macro expands to an unqualified
-                    // `prop_assert!` in proptest 1.0.0, so a path-qualified
-                    // call to it fails to compile under the minimal-versions
-                    // job even though it is fine on a current proptest.
+                    // `prop_assert_ne!`. That macro expands to an unqualified
+                    // `prop_assert!` in proptest 1.0.0. A path-qualified call
+                    // then fails to compile under the minimal-versions job.
                     proptest::prop_assert!(
                         stage_of(i) != knot,
                         "n{} is acyclic but planned into the knot's own stage: {:?}",
@@ -864,12 +819,10 @@ mod tests {
                 }
             }
 
-            // Two reported cycles never share a node: a component is a set
-            // of nodes, so two distinct components are disjoint, and this
-            // checks the reported paths against each other rather than
-            // against `components` above, since a bug that miscomputed both
-            // the same way would slip past a check that used one to verify
-            // the other.
+            // Two reported cycles never share a node: a component is a set.
+            // The reported paths are checked against each other, not
+            // against `components` above. A bug miscomputing both the same
+            // way cannot then verify itself.
             for (i, a) in out.cycles.iter().enumerate() {
                 for b in &out.cycles[i + 1..] {
                     let a_names: BTreeSet<&str> = a.iter().map(String::as_str).collect();

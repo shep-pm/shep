@@ -6,16 +6,11 @@ use super::raw::RawFlockfile;
 
 /// The committed Flockfile JSON Schema.
 ///
-/// `include_str!` makes the file a compile-time input: deleting it fails
-/// the build, and changing `AppConfig` fails
-/// `the_committed_schema_is_current` with the command that fixes it.
+/// `include_str!` makes the file a compile-time input. Deleting it fails
+/// the build, and changing `AppConfig` fails `the_committed_schema_is_current`.
 ///
-/// Lives inside this package, not the repository root: `cargo package`
-/// packs only files under the package directory, and a root-relative
-/// `include_str!` would fail every `cargo install shep`.
-///
-/// `#[allow(dead_code)]`: its only reader is `#[cfg(test)]`, so a plain
-/// `cargo build`/`clippy` sees no reader and would otherwise flag it dead.
+/// Lives inside this package: `cargo package` packs only files under the
+/// package directory. `#[allow(dead_code)]`: its only reader is `#[cfg(test)]`.
 pub const COMMITTED: &str = include_str!("../../../assets/flockfile.schema.json");
 
 /// How to regenerate the committed copy. Named in the drift test's own
@@ -27,22 +22,13 @@ pub const COMMITTED: &str = include_str!("../../../assets/flockfile.schema.json"
 const REGENERATE: &str =
     "cargo run --bin shep -- schema > crates/shep-core/assets/flockfile.schema.json";
 
-/// Renders the Flockfile JSON Schema: the document grammar, pretty-printed
-/// with a trailing newline so the committed file is a well-formed text file.
+/// Renders the Flockfile JSON Schema, pretty-printed with a trailing newline.
 ///
-/// Generated from `RawFlockfile`, the type serde actually deserializes a
-/// Flockfile into, so the schema and the parser cannot drift.
-/// `AppConfig` supplies the per-app half and lands in `$defs`.
-///
-/// Describes the deserializer, not the normalizer:
-/// `AppConfig::kill_signal` stays a plain string here even though
-/// `config::normalize` accepts only four spellings, since the schema's
-/// job is what serde parses, not what a later validation step accepts.
+/// Generated from `RawFlockfile`, so schema and parser cannot drift.
+/// `AppConfig` lands in `$defs` as the per-app half.
 ///
 /// # Panics
-/// Never in practice: schemars produces a `serde_json::Value` tree, which
-/// `to_string_pretty` cannot fail on. `#[track_caller]` so a future
-/// fallible change reports the caller.
+/// Never in practice: `to_string_pretty` cannot fail on a schemars tree.
 #[track_caller]
 #[must_use]
 pub fn flockfile_schema_string() -> String {
@@ -55,14 +41,9 @@ pub fn flockfile_schema_string() -> String {
 
 /// Returns the Flockfile JSON Schema.
 ///
-/// Generated from `RawFlockfile`, the type serde actually deserializes a
-/// Flockfile into, so the schema and the parser cannot drift. Describes
-/// the deserializer, not the normalizer: `AppConfig::kill_signal` stays a
-/// plain string here even though `config::normalize` accepts only four
-/// spellings.
-///
-/// `#[track_caller]` for the same reason as [`flockfile_schema_string`],
-/// which is the one that serializes it.
+/// Generated from `RawFlockfile`, so schema and parser cannot drift.
+/// Describes what serde parses, not what `config::normalize` accepts:
+/// `AppConfig::kill_signal` stays a plain string here.
 #[track_caller]
 #[must_use]
 pub fn flockfile_schema_json() -> Schema {

@@ -7,13 +7,8 @@ use core::fmt;
 /// `#[non_exhaustive]`: shep-core is published, so a new failure variant
 /// must not break an out-of-tree `match`.
 ///
-/// Wraps `io::Error`/`serde_json::Error` directly rather than stringifying
-/// them, matching [`crate::kv::KvError`], so callers keep the underlying
-/// diagnostic through [`core::error::Error::source`]; this type does not
-/// derive `Clone`/`PartialEq`/`Eq` as a result.
-///
-/// No variant carries a secret's value: a message names the key, the
-/// namespace or the environment, and nothing else.
+/// Wraps `io::Error` and `serde_json::Error` directly, as [`crate::kv`]
+/// does, so `source` stays readable. No variant carries a secret's value.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum SecretError {

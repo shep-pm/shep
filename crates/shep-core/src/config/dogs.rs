@@ -1,14 +1,13 @@
 //! `$SHEP_HOME/dogs.toml`, a dog's own settings.
 //!
 //! One table per dog, keyed by the name the dog was registered under, with
-//! no prefix: `[metrics]` here is what `[dog.metrics]` was in `shep.toml`
-//! before the move. The daemon serves a section verbatim over the socket as
+//! no prefix: `[metrics]` here is what `[dog.metrics]` was in `shep.toml`.
+//! The daemon serves a section verbatim over the socket as
 //! `Response::DogSection` and never interprets it, so this type parses
 //! exactly far enough to find the right table and no further.
 //!
-//! Hand-editable, not a locked shep-owned store like `overrides.json`. A
-//! dog's config is authored intent, not derived state, and an operator on
-//! a box with only a shell has to be able to set one without a dashboard.
+//! Hand-editable, not a locked shep-owned store like `overrides.json`: a
+//! dog's config is authored intent, not derived state.
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -59,15 +58,11 @@ pub enum DogsConfigError {
 
 /// Manual, not derived: `toml::de::Error`'s own `Debug` forwards to
 /// `toml_edit::TomlError`, which keeps the whole source document in a
-/// `raw` field so `Display` can quote a line of context. A derived
-/// `Debug` here would print all of it, and this is the one type in the
-/// workspace whose source document, `dogs.toml`, is where an operator
-/// pastes a webhook URL.
+/// `raw` field. A derived `Debug` here would print all of it, and
+/// `dogs.toml` is where an operator pastes a webhook URL.
 ///
-/// The redaction is the parser's short `message()`, never the line it
-/// quotes. `Display` below still shows the full line-and-column
-/// rendering, the surface meant for the operator who broke their own
-/// file; `Debug` is what a log captures instead.
+/// The redaction is the parser's short `message()`. `Display` still shows
+/// the full line-and-column rendering, the surface meant for the operator.
 impl fmt::Debug for DogsConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

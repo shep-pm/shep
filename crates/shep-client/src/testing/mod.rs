@@ -5,12 +5,9 @@
 //! `TempDir`. No dev-dependencies, so `missing_docs` and
 //! `missing_debug_implementations` apply here like any other public module.
 //!
-//! [`fake_daemon`], [`sample_ack`] and [`sample_info`] are handshake-only
-//! primitives; [`FakeDaemon`] and the `fake_client_*` helpers connect a
-//! real [`Client`](crate::client::Client) against a scripted peer; [`fast_opts`],
-//! [`start_fake_daemon_answering_on`] and [`child_exiting_with`] serve the
-//! autostart tests. [`schema_keys`] and [`printed_keys`] are a dog's own:
-//! what its tests compare its config schema against.
+//! [`fake_daemon`] and [`sample_ack`] are handshake-only primitives.
+//! [`FakeDaemon`] and the `fake_client_*` helpers connect a real
+//! [`Client`](crate::client::Client) against a scripted peer.
 
 mod autostart;
 mod client;

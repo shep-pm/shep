@@ -92,18 +92,13 @@ pub async fn fake_client_with_push(path: &Path) -> (Client, FakeDaemon) {
     fake_client_on(path).await
 }
 
-/// Binds `path` and serves every connection made to it, handshaking with
-/// `ack`, answering each request through `answer`, and forwarding each
-/// decoded [`Envelope`] onto the returned channel.
+/// Binds `path` and serves every connection made to it. It handshakes with
+/// `ack`, answers each request through `answer`, and forwards each
+/// [`Envelope`] to the channel.
 ///
 /// Unlike [`fake_client_answering`], which accepts exactly one connection:
-/// a test driving a whole CLI verb has the verb open its own connections,
-/// and a second connect against a one-shot fake would sit in the kernel's
-/// backlog. `ack` is a parameter so a test can vary
-/// [`HelloAck::daemon_version`] rather than being pinned to [`sample_ack`].
-///
-/// The task is detached and runs until the listener errors, when the
-/// caller's `TempDir` goes away.
+/// a CLI verb opens its own. The task is detached, and runs until the
+/// listener errors when the caller's `TempDir` goes away.
 pub async fn fake_daemon_answering_with_ack(
     path: &Path,
     ack: HelloAck,
@@ -137,17 +132,12 @@ pub async fn fake_daemon_answering_with_ack(
 }
 
 /// As [`fake_client_capturing_envelopes`], but `answer` decides each reply,
-/// for a test asserting on what a multi-request caller puts on the wire.
-/// `answer` is called with each decoded [`Request`] in arrival order and may
-/// close over a counter to vary its reply. The envelope reaches the channel
-/// before the reply is written, matching [`fake_client_capturing_envelopes`].
+/// called with each decoded [`Request`] in arrival order. The envelope
+/// reaches the channel before the reply is written.
 ///
-/// Unbounded, unlike every other channel in this module: a test reads these
-/// envelopes only after the call under test returns, so a bounded channel
-/// would block once `SCRIPT_CHANNEL_CAPACITY` requests are in flight.
-///
-/// The read loop ends on a closed or unreadable connection rather than
-/// panicking, since a dropped `Client` here is an ordinary end, not a fault.
+/// The channel is unbounded, unlike every other one in this module: a test
+/// reads these envelopes only after the call under test returns. The read
+/// loop ends on a closed connection rather than panicking.
 pub async fn fake_client_answering(
     path: &Path,
     answer: impl Fn(&Request) -> Response + Send + 'static,
@@ -316,13 +306,12 @@ pub async fn fake_client_that_dies_mid_request(path: &Path) -> (Client, JoinHand
 }
 
 /// Binds `path`, handshakes with [`sample_ack`], then reads nothing and
-/// replies to nothing, ever: for testing a `Client`'s own client-side
-/// deadline against a daemon that accepted the connection but stopped
-/// answering.
+/// replies to nothing, ever: for testing a `Client`'s own deadline against
+/// a daemon that accepted the connection but stopped answering.
 ///
 /// Returns `(Client, JoinHandle<()>)`, not `(Client, FakeDaemon)`:
-/// `FakeDaemon`'s `serve_scripted` loop always answers some request
-/// promptly, and no `ScriptCommand` means never answering.
+/// `FakeDaemon`'s loop always answers some request promptly, and no
+/// `ScriptCommand` means never answering.
 pub async fn fake_client_that_never_replies(path: &Path) -> (Client, JoinHandle<()>) {
     let mut listener = bind(path);
     let task = tokio::spawn(async move {
@@ -334,14 +323,12 @@ pub async fn fake_client_that_never_replies(path: &Path) -> (Client, JoinHandle<
 }
 
 /// Binds `path`, handshakes with [`sample_ack`], and answers each request
-/// with `response`, unless its wire deadline is shorter than `needs`, which
-/// it answers with `DeadlineExceeded` as the real daemon does when work
-/// outlasts the budget.
+/// with `response`. A request whose deadline is shorter than `needs` gets
+/// `DeadlineExceeded`, as a real daemon answers it.
 ///
 /// Decided from the envelope alone, with no sleep: a paused test clock
 /// auto-advances past a real socket read, so a fake that waited out `needs`
-/// would race the client's own timeout. Serves one connection, one request
-/// at a time.
+/// would race the client's own timeout.
 pub async fn fake_client_needing_budget(
     path: &Path,
     needs: Duration,
