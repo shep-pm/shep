@@ -6,8 +6,11 @@
  * first-party dog's docs page": a row in `web/public/dogs.json` whose `repo`
  * is under `github.com/shep-pm/` gets a page at `/docs/dogs/<adopt_as>`,
  * built from that repo's README at its latest release tag, never vendored and
- * never pinned. Drawing those pages is the next slice's job; this file only
- * gets the text and the tag it came from, before any page can be drawn.
+ * never pinned. Drawing those pages is another slice's job; this file gets
+ * the text and the tag it came from, and answers two questions that are not
+ * the same one: which rows can have a page and where it sits, settled from
+ * the index alone, and which pages a build actually wrote, which only the
+ * build itself can answer.
  *
  * Plain TypeScript with no `astro:` imports and no `?raw` import, the way
  * `dogs.ts` is, so `node --test scripts/verify-dog-readme.ts` can load it
@@ -35,7 +38,7 @@
  */
 
 import type { Dog } from "./dogs.ts";
-import { findRelativeMdLinks, rawFileUrl } from "./dog-readme-links.ts";
+import { dogDocRoute, findRelativeMdLinks, rawFileUrl } from "./dog-readme-links.ts";
 
 /**
  * The org prefix that makes a dog first-party. Matched as a literal prefix of
@@ -103,11 +106,69 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The rows that get a docs page: every dog this org owns. Order is the index's
- * own, so a page list follows the order a contributor filed the row in.
+ * The rows a docs page is written for: every dog this org owns. Order is the
+ * index's own, so a page list follows the order a contributor filed the row in.
+ * Whether a page actually arrived is `builtDogPages`'s question, not this one.
  */
 export function firstPartyDogs(dogs: readonly Dog[]): Dog[] {
   return dogs.filter((dog) => dog.repo.startsWith(FIRST_PARTY_REPO_PREFIX));
+}
+
+/**
+ * The two fields of a `dog-readme` entry that say which page it is.
+ *
+ * A shape rather than the collection entry itself, because this module imports
+ * nothing from `astro:` and a test can hand it an object literal.
+ */
+export interface DogPageRoute {
+  /** The `adopt_as` the page sits under. */
+  adoptAs: string;
+  /** The part of the URL after `/docs/dogs/<adoptAs>`: empty for the README. */
+  route: string;
+}
+
+/**
+ * The dogs whose own page a build wrote, as `adopt_as` values.
+ *
+ * `firstPartyDogs` says which rows a page is written for. This says which ones
+ * arrived, and the two are not the same set: `SHEP_DOGS_STRICT` is set only by
+ * `pages.yml`, so a pull request build, an offline build, and a dog whose
+ * README fetch failed or whose post-processing threw each leave a row of ours
+ * with no page behind it.
+ *
+ * Only the README counts. A sub-page belongs to a dog's README and is reached
+ * from it, so nothing outside that README has any business linking one.
+ */
+export function builtDogPages(entries: readonly DogPageRoute[]): Set<string> {
+  const written = new Set<string>();
+  for (const entry of entries) {
+    if (entry.route === "") written.add(entry.adoptAs);
+  }
+  return written;
+}
+
+/**
+ * The docs page a row links to, or `null` when it links none.
+ *
+ * Two facts have to hold and neither implies the other: the row is one of
+ * ours, which `firstPartyDogs` answers from the index, and this build wrote
+ * that page, which `builtDogPages` answers from the collection the dog route
+ * builds its own paths from. A listing that asked only the first would link a
+ * 404 in every build that wrote no page for a row of ours, which is every pull
+ * request build and every offline one.
+ *
+ * Asked of one row rather than of the index because the listing renders row by
+ * row, and `firstPartyDogs` is the one filter that decides who can have a page,
+ * so a listing testing the `repo` prefix itself would be a second answer to
+ * that question and the two would drift. The route comes from `dogDocRoute`,
+ * the same function the imported page writes into its own links, so the link a
+ * reader clicks and the file the build wrote cannot be spelled differently.
+ *
+ * @param built the `adopt_as` values `builtDogPages` read off this build.
+ */
+export function docsPageOf(dog: Dog, built: ReadonlySet<string>): string | null {
+  if (firstPartyDogs([dog]).length === 0) return null;
+  return built.has(dog.adopt_as) ? dogDocRoute(dog.adopt_as, README_PATH) : null;
 }
 
 /**

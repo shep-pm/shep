@@ -887,5 +887,30 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>probe_with_sheep::&lt;T, S&gt;</code> behaves like{" "}
       <code>probe::&lt;T&gt;</code> alone.
     </p>
+
+    <h2 id="your-dogs-own-docs-page">Your dog's own docs page</h2>
+    <p>
+      A row in <code>web/public/dogs.json</code> whose <code>repo</code> is
+      under <code>github.com/shep-pm/</code> gets a page at{" "}
+      <code>/docs/dogs/&lt;adopt_as&gt;</code>, which{" "}
+      <a href="/docs/community-dogs">the community list</a> links once the
+      build has one. That page is your repository's <code>README.md</code> read
+      at the tag of its latest GitHub release. Nothing is copied into this
+      repository, and a README no release has reached never shows up here.
+    </p>
+    <p>
+      A relative <code>.md</code> link becomes a page under your dog's page, at
+      any depth, and keeps its <code>#fragment</code>. A relative image or other
+      file points at the repository at that same tag. An absolute URL is left
+      alone, so a link off this site is one you write as absolute.
+    </p>
+    <p>
+      Your repository dispatches this site's <code>pages.yml</code> when it
+      publishes a release, which is what rebuilds the page. A release made with
+      the default <code>GITHUB_TOKEN</code> fires no{" "}
+      <code>release: published</code> another workflow can hear, so a{" "}
+      <code>release-plz</code> setup handed <code>GITHUB_TOKEN</code> never
+      dispatches: it needs a real PAT.
+    </p>
   </article>
 </DocsLayout>
