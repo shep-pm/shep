@@ -8,7 +8,8 @@ stays with whoever reads the code; this counts lines only.
 Limits, per run of consecutive comment lines of one kind:
 
     ///   at most 6 body lines after the summary, 12 when the block has an
-          `# Errors` section
+          `# Errors` section; a block with no summary, one that opens on a
+          heading, a fence or a bare `///`, spends its first line too
     //!   at most 10 lines
     //    at most 4 lines in a row
 
@@ -67,6 +68,7 @@ class Block:
     first_line: str
     counted: int
     has_errors: bool = False
+    has_summary: bool = True
 
     @property
     def budget(self) -> int:
@@ -80,10 +82,12 @@ class Block:
     def measured(self) -> int:
         """The number the budget is compared against.
 
-        A `///` block spends its budget on its body: the summary line is free,
-        since every doc comment has one.
+        A `///` block spends its budget on its body: the summary line is free.
+        A block that opens on a heading, a fence or a bare marker has no
+        summary, so its first line is spent like any other.
         """
-        return self.counted - 1 if self.kind == "///" else self.counted
+        free = self.kind == "///" and self.has_summary
+        return self.counted - 1 if free else self.counted
 
     @property
     def over(self) -> bool:
@@ -142,12 +146,27 @@ def is_heading(text: str) -> bool:
     return text.startswith("# ")
 
 
+def is_heading_at_any_level(text: str) -> bool:
+    """A markdown heading of any depth: `#`s, then a space."""
+    return text.lstrip("#").startswith(" ") and text.startswith("#")
+
+
 def is_example_heading(text: str) -> bool:
     return text.lower() in ("# example", "# examples")
 
 
 def is_errors_heading(text: str) -> bool:
     return text.lower() == "# errors"
+
+
+def opens_on_summary(first: str) -> bool:
+    """Whether a `///` block's first line, after its marker, is a summary.
+
+    A blank line, a fence and a heading are not: the block has no line the
+    limit forgives.
+    """
+    text = first.strip()
+    return bool(text) and not text.startswith("```") and not is_heading_at_any_level(text)
 
 
 def count_block(body: list[str]) -> tuple[int, bool]:
@@ -204,6 +223,7 @@ def blocks_in(path: str, text: str) -> list[Block]:
                 first_line=first_line,
                 counted=counted,
                 has_errors=has_errors,
+                has_summary=opens_on_summary(body[0]),
             )
         )
 
@@ -301,17 +321,24 @@ def write_baseline(path: Path, blocks: list[Block]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def check(blocks: list[Block], baseline_path: Path, narrowed: bool = False) -> tuple[list[str], int, int]:
+def check(
+    blocks: list[Block],
+    baseline_path: Path,
+    narrowed: bool = False,
+    read: set[str] | None = None,
+) -> tuple[list[str], int, int]:
     """Every failure to report, plus the number of blocks and of baselined blocks.
 
-    `narrowed` says the run read only the files `blocks` came from. A whole
-    repository run reads every tracked file, so every entry left unmatched is
-    stale, including one naming a file main deleted or renamed. A narrowed run
-    leaves the entries of the files it never read alone: the positional form
-    exists to check the files a change touched.
+    `narrowed` says the run read only the files in `read`, which defaults to
+    the files `blocks` came from. A file can be read and yield no block, when
+    its last baselined block was deleted. A whole repository run reads every
+    tracked file, so every entry left unmatched is stale, including one naming
+    a file main deleted or renamed. A narrowed run leaves the entries of the
+    files it never read alone: the positional form exists to check the files a
+    change touched.
     """
     offenders = [block for block in blocks if block.over]
-    checked = {block.path for block in blocks}
+    checked = read if read is not None else {block.path for block in blocks}
 
     entries = parse_baseline(baseline_path)
     remaining: dict[tuple[str, str], list[BaselineEntry]] = {}
@@ -379,7 +406,7 @@ def main(argv: list[str]) -> int:
         print(f"Wrote {sum(1 for block in blocks if block.over)} baselined block(s) to {baseline_path}")
         return 0
 
-    failures, total, baselined = check(blocks, baseline_path, narrowed)
+    failures, total, baselined = check(blocks, baseline_path, narrowed, set(files))
     for failure in failures:
         print(failure, file=sys.stderr)
 
