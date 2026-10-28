@@ -530,12 +530,9 @@ pub enum Commands {
     Save,
     /// Assemble the flock from the muster roll, starting the shepherd first
     /// if none is running.
-    // Hidden alias `resurrect` (pm2's own word for this), so the muscle
-    // memory carries over: `alias`, not `visible_aliases`, so it stays out
-    // of `--help` rather than being taught by it. A plain `//` comment
-    // rather than `///` on purpose — the paragraph above already becomes
-    // this subcommand's own `--help` text, and naming the alias there would
-    // defeat the point of keeping it hidden.
+    // Hidden alias `resurrect`: `alias`, not `visible_aliases`, so `--help`
+    // does not teach it. A `//`, not `///`, because the doc above is this
+    // verb's help text and naming the alias there would defeat the point.
     #[command(alias = "resurrect")]
     Muster,
     /// Write a commented Flockfile to start from
@@ -790,12 +787,8 @@ mod tests {
 
     /// fails if `dash` stops reaching the same verb as `lookout`.
     ///
-    /// **A resolution claim, and only that.** `try_parse_from` answers
-    /// identically whether the attribute is `visible_alias` or the hidden
-    /// `alias`, so this test cannot see the difference and must not claim to:
-    /// the visibility pin belongs in
-    /// `alias_visibility_and_hiding_are_pinned`, which already owns that job
-    /// for `flock`/`bleats`/`stock`/`whisper` and is extended below.
+    /// Resolution only: `try_parse_from` cannot tell `visible_alias` from
+    /// `alias`. Visibility is pinned by `alias_visibility_and_hiding_are_pinned`.
     #[test]
     fn dash_and_lookout_resolve_to_the_same_verb() {
         use clap::Parser;

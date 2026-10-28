@@ -8,13 +8,9 @@ use shep_core::config::{DaemonConfig, DaemonConfigError};
 /// Whether whistle's control tools exist.
 ///
 /// Not a security boundary, just a fat-finger catch: whistle runs as the
-/// operator's own uid, so anyone who can launch it can run `shep stop`
-/// directly. With the gate shut, though, text a sheep printed (which
-/// `tail_bleats` hands a model verbatim) cannot reach a tool that acts.
-///
-/// Separate from lookout's own `Control`: lookout reads the KV store since
-/// a person is at the keyboard, this reads `shep.toml` since these tools
-/// act for a client nobody is watching.
+/// operator's own uid. With the gate shut, text a sheep printed cannot reach
+/// a tool that acts. Unlike lookout's `Control`, which reads the KV store,
+/// this reads `shep.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     /// The four control tools are not registered. The default.
@@ -27,11 +23,7 @@ impl Control {
     /// The one sentence that tells an operator how to open the gate.
     ///
     /// Named rather than inlined: the tool catalogue, `get_info` and the
-    /// malformed-config stderr notice all say it, and three copies would
-    /// drift.
-    ///
-    /// Takes `self` rather than being receiverless, leaving room for the
-    /// `Allowed` arm to say something different later.
+    /// malformed-config notice all say it.
     #[must_use]
     pub const fn how_to_open(self) -> &'static str {
         "control tools are off; add `[whistle]` with `allow_control = true` to \
@@ -41,18 +33,11 @@ impl Control {
 
 /// Reads the gate out of an already-loaded `shep.toml`.
 ///
-/// An unparsable file reads as `ReadOnly`: a broken config fails closed
-/// rather than open at the worst moment. The caller prints the parse
-/// failure to stderr, so a shut gate is never silent about why.
+/// An unparsable file reads as `ReadOnly`: a broken config fails closed. The
+/// caller prints the parse failure to stderr.
 ///
-/// Takes the load's result rather than the text, so the caller parses the
-/// file once and reports from the same result. That load's environment
-/// closure is always `&|_| None`: none of `DaemonConfig::load`'s four env
-/// vars touch `allow_control`, so the answer depends only on the file's
-/// text.
-///
-/// No `SHEP_WHISTLE_ALLOW_CONTROL` exists; only `--home`/`$SHEP_HOME` can
-/// vary which `shep.toml` is read.
+/// None of `DaemonConfig::load`'s env vars touch `allow_control`, so the
+/// closure is always `&|_| None`.
 #[must_use]
 pub fn resolve_control(loaded: &Result<DaemonConfig, DaemonConfigError>) -> Control {
     match loaded {

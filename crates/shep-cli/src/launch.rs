@@ -132,7 +132,7 @@ const FD_DIR: &str = "/dev/fd";
 /// A leaked descriptor, typically the launcher's own stdout/stderr pipe,
 /// keeps a reader blocked on EOF for as long as the daemon lives. Leaked
 /// descriptors are not enumerable in advance, so this sweeps everything
-/// above stdio, and marks rather than closes: this process still needs them.
+/// above stdio. Every failure here is ignored rather than refusing to start.
 #[cfg(unix)]
 fn seal_inherited_fds() {
     let Ok(entries) = std::fs::read_dir(FD_DIR) else {

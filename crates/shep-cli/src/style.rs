@@ -5,10 +5,11 @@ use std::fmt;
 
 /// How much shep dresses up its output.
 ///
-/// One dial, not three switches: colour, boxes and sheep are not independent
-/// tastes in practice. `NO_COLOR` stays orthogonal, being a convention about
-/// colour alone. `clap::ValueEnum` so `--style` and [`Self::parse`] agree on
-/// spelling by construction.
+/// One dial, not three switches. `NO_COLOR` stays orthogonal, being a
+/// convention about colour alone.
+///
+/// [`Self::parse`] alone reads the two free-form sources, `$SHEP_STYLE` and
+/// `shep.toml`'s `[style] level`, and trims them; clap's parser does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum StyleLevel {
     /// Sheep, boxes and colour.
@@ -84,8 +85,9 @@ pub(crate) fn no_color_set(no_color: Option<&OsStr>) -> bool {
 
 /// Whether the terminal supports the 256-colour tier: `$COLORTERM`
 /// containing `truecolor`/`24bit`, or `$TERM` containing `256color`.
-/// Compared case-insensitively, because terminals do not promise a case:
-/// `COLORTERM=TrueColor` is common (#282). Anything else gets 16 colours.
+///
+/// Compared case-insensitively (#282). Anything else gets the 16-colour
+/// fallback. Lives here for the same reason [`no_color_set`] does.
 pub(crate) fn deep_colour_terminal(term: Option<&OsStr>, colorterm: Option<&OsStr>) -> bool {
     colorterm.is_some_and(|value| {
         let value = value.to_string_lossy().to_ascii_lowercase();
@@ -102,8 +104,9 @@ pub(crate) fn deep_colour_terminal(term: Option<&OsStr>, colorterm: Option<&OsSt
 /// how deep the terminal's own colour support is.
 ///
 /// Four independent axes: `level`, `colour`, `deep_colour` and `width`.
-/// None implies another. Resolved once, at [`Presentation::new`], and never
-/// per render: `width` reads the process's real controlling terminal.
+///
+/// Resolved once, at [`Presentation::new`]: `width` reads the real
+/// controlling terminal, which a per-render read would let a test depend on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Presentation {
     pub(crate) level: StyleLevel,

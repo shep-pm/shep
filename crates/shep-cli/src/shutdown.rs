@@ -4,8 +4,9 @@
 //! keep one shape: install once, `recv().await` in a `select!`.
 //!
 //! Unix listens for `SIGTERM` alone. Windows merges all five console
-//! control events, since `CTRL_CLOSE_EVENT`, `CTRL_SHUTDOWN_EVENT` and
-//! `CTRL_LOGOFF_EVENT` arrive on a closing console or a machine going down.
+//! control events, including the ones that arrive on a closing console or a
+//! machine going down.
+//!
 //! Windows terminates the process a few seconds after the handler returns.
 
 use std::io;
@@ -61,11 +62,11 @@ impl Terminate {
 
     /// Resolves when the OS asks this process to stop.
     ///
-    /// `Option<()>` because that is what `tokio::signal::unix::Signal::recv`
-    /// answers and the unix arm is a straight pass-through of it.
+    /// `Option<()>` is tokio's `Signal::recv` shape surviving on unix. Every
+    /// call site discards the value.
     ///
     /// # Cancellation safety
-    /// Safe on both platforms: each stream is documented cancel-safe.
+    /// Safe on both platforms: each underlying stream is cancel-safe.
     pub(crate) async fn recv(&mut self) -> Option<()> {
         #[cfg(unix)]
         {
@@ -86,11 +87,11 @@ impl Terminate {
 
 /// A listener for the operator's own Ctrl+C.
 ///
-/// Distinct from [`Terminate`], which is the OS asking a long-running
-/// process to stop. This is a person ending something they started at a
-/// keyboard, and a verb that has changed the terminal has to put it back.
+/// Distinct from [`Terminate`], the OS asking a process to stop. A verb that
+/// has changed the terminal has to put it back before it goes.
+///
 /// Installed rather than awaited through `tokio::signal::ctrl_c()`, which
-/// registers its handler only on the first poll.
+/// registers on the first poll: an earlier interrupt kills the process.
 pub(crate) struct Interrupt {
     #[cfg(unix)]
     signal: tokio::signal::unix::Signal,

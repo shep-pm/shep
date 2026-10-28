@@ -40,10 +40,10 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     if std::env::var_os("SHEP_TERM_PANIC_PROBE").is_some() {
         lookout::term::probe_panic_for_test();
     }
-    // `try_parse_from`, not `parse_from`: the latter prints and exits inside
-    // clap, so bare `shep` and `shep help` could not carry a status line.
-    // The grouped verb listing in `--help` is hand-written copy, so clap's
-    // own `Cli::try_parse_from` could not carry it either.
+    // `try_parse_from`, not `parse_from`: the latter exits inside clap, so
+    // bare `shep` and `shep help` could not carry a status line. The command
+    // is built here because adopted dogs join the hand-written `--help`
+    // listing, and clap bakes that render into its `--help` error.
     let mut command = Cli::command();
     if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)

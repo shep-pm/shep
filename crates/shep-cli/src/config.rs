@@ -9,11 +9,11 @@ use crate::{cli, style};
 
 /// Parses `shep.toml`'s `[interpreters]` table into an extension to
 /// interpreter map, for `lifecycle::start` to fold onto every resolved app
-/// whose own `interpreter` is still unset. Precedence: `shep.toml`, then a
-/// Flockfile's own field, then `--interpreter`.
+/// whose own `interpreter` is unset.
 ///
+/// Precedence: `shep.toml`, then a Flockfile's own field, then `--interpreter`.
 /// Empty covers every way this layer can say nothing, a file that will not
-/// parse included: `shep start` must still start a script by path.
+/// parse included.
 pub(crate) fn interpreters_from_config(
     shep_toml: Option<&str>,
 ) -> std::collections::BTreeMap<String, String> {
@@ -30,13 +30,12 @@ pub(crate) fn style_from_config(shep_toml: Option<&str>) -> Option<style::StyleL
         .and_then(|raw| style::StyleLevel::parse(&raw))
 }
 
-/// Resolves the level in force and which layer chose it: `--style`, then
-/// `$SHEP_STYLE`, then `shep.toml`'s `[style] level`, then `full`.
+/// Resolves the style level in force and which layer chose it.
 ///
-/// Reads `shep.toml` via [`resolve_paths`] rather than
-/// [`crate::home::ensure_home`], so `--style` still works with no
-/// `$SHEP_HOME` resolvable and nothing here creates a directory. Unforced:
-/// the hard rule that a piped stdout means [`style::StyleLevel::Bare`].
+/// Order: `--style`, `$SHEP_STYLE`, `shep.toml`'s `[style] level`, `full`.
+/// Reads `shep.toml` via [`resolve_paths`], so nothing here creates a
+/// directory. Unforced: [`crate::entry::run_argv`] applies the `--format json`
+/// and piped-stdout rule.
 pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::StyleSource) {
     let config_text = resolve_paths(global)
         .ok()
@@ -48,12 +47,12 @@ pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::S
     )
 }
 
-/// Whether a level [`crate::cli::Commands::Style`]'s set form just wrote to
-/// `shep.toml` is actually the level that will run.
+/// Whether the level [`crate::cli::Commands::Style`]'s set form just wrote
+/// to `shep.toml` is the level that will run.
 ///
-/// Only `Flag` and `Env` can say no: they are the two layers
-/// [`style::resolve`] puts above `shep.toml`, and so the two spellings an
-/// operator needs named when the write keeps being overridden.
+/// Only `Flag` and `Env` can say no: [`style::resolve`] puts those two above
+/// `shep.toml`. `Config` is the value just written, and `Default` cannot
+/// follow a write.
 #[cfg_attr(windows, allow(dead_code))]
 pub(crate) fn style_write_is_overridden(source: style::StyleSource) -> bool {
     matches!(source, style::StyleSource::Flag | style::StyleSource::Env)

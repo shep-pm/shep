@@ -18,9 +18,9 @@ use crate::{cli, commands, exit, output, status, welcome};
 /// Prints the one-line shepherd status to stderr, for an invocation clap
 /// answers by itself.
 ///
-/// stderr rather than stdout: `shep completions zsh > _shep` writes shell
-/// meant to be sourced, which would execute a status line as code. Silent
-/// when stderr is not a terminal or `argv` names a `--home` or `--host`.
+/// stderr, not stdout: `shep completions zsh > _shep` is sourced, which
+/// would execute a status line as code. Silent when stderr is not a
+/// terminal, or when `argv` names a `--home` or a `--host`.
 #[cfg_attr(windows, allow(dead_code))]
 pub(crate) async fn print_shepherd_status(argv: &[OsString]) {
     if !std::io::stderr().is_terminal() || names_another_shepherd(argv) {
@@ -58,17 +58,16 @@ fn names_another_shepherd(argv: &[OsString]) -> bool {
     })
 }
 
-/// Turns `--home`/`$SHEP_HOME`/the user's home directory into a resolved
-/// [`ShepPaths`].
+/// Turns `--home`/`$SHEP_HOME`/the user's home directory into [`ShepPaths`].
 ///
-/// Bridges clap's already-folded `GlobalArgs::home` back into the closure
-/// shape `ShepPaths::resolve` reads the environment through. Which variables
-/// name a home directory is [`user_home`]'s question, and differs by platform.
+/// Bridges clap's folded `GlobalArgs::home` back into the closure shape
+/// `ShepPaths::resolve` reads. [`user_home`] knows which variables name a
+/// home directory.
 ///
 /// # Errors
-/// - [`HomeRefusal::Relative`] if whichever of the two supplied the root
-///   named a path without one. Decided here rather than in
-///   [`ShepPaths::resolve`], which promises to touch no filesystem.
+///
+/// - [`HomeRefusal::Relative`] if the root came from a relative path, whose
+///   absolute form reads this process's directory.
 /// - [`HomeRefusal::Unresolved`] if neither `--home`/`$SHEP_HOME` nor a home
 ///   directory resolves a root.
 pub(crate) fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, HomeRefusal> {
@@ -264,9 +263,9 @@ impl core::fmt::Display for HomeRefusal {
 /// `path` as one word a POSIX shell will not split, for a hint an operator
 /// copies straight into one.
 ///
-/// Unquoted, `--home "/tmp/my shep"` rendered `mkdir -p /tmp/my shep`, which
-/// creates two directories and reports no error. Single quotes rather than
-/// backslashes because a path is one word and reads as one.
+/// Unquoted, `--home "/tmp/my shep"` would render `mkdir -p /tmp/my shep`,
+/// which creates two directories. Single quotes wrap it; an embedded `'`
+/// closes the quoting around an escaped one and reopens it.
 #[cfg(not(windows))]
 fn shell_quoted(path: &Path) -> String {
     format!("'{}'", one_line(path).replace('\'', r"'\''"))
@@ -275,8 +274,9 @@ fn shell_quoted(path: &Path) -> String {
 /// `path` as one argument for [`MKDIR_COMMAND`], for a hint an operator
 /// copies straight into a shell.
 ///
-/// Double quotes are the only wrap both shells honour: `cmd.exe` reads a
-/// single quote as an ordinary character. A Windows path cannot hold a `"`.
+/// Double quotes are the only wrap both shells honour. A Windows path cannot
+/// hold a `"`, so nothing inside needs escaping. `%TEMP%` and `$env:TEMP`
+/// still expand.
 #[cfg(windows)]
 fn shell_quoted(path: &Path) -> String {
     format!("\"{}\"", one_line(path))
@@ -384,6 +384,7 @@ fn ensure_home_at(paths: ShepPaths, explicit: bool) -> Result<(ShepPaths, bool),
 ///
 /// Not folded into [`welcome::on_first_run`]: the banner is suppressed under
 /// `--format json` and a piped stderr, and this mapping is written regardless.
+///
 /// Best-effort: a failure reports to stderr and continues.
 pub(crate) fn scaffold_first_run_interpreters(paths: &ShepPaths) {
     if let Err(err) = ShepToml::edit(&paths.daemon_config, ShepToml::write_starter_interpreters) {

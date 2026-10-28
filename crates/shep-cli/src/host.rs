@@ -1,13 +1,12 @@
 //! The machine the flock runs on, as one line above a listing.
 //!
-//! Nothing here reads the machine. Three of the four numbers are rates, and
-//! a rate needs two readings separated by time, so the shepherd holds the
-//! baseline and serves the difference off its own tick (`shep_daemon::host`).
+//! Nothing here reads the machine. Three of the four numbers are rates, so
+//! the shepherd holds the baseline and serves the difference off its own tick
+//! (`shep_daemon::host`).
 //!
-//! The strip is `lookout`'s, ported rather than reinvented: self-labelled
-//! segments joined in a drop order, truncated from the right. Lookout labels
-//! every segment `host` or `flock` because it mixes both halves on one line;
-//! this line has one half, so `host` is said once at the front.
+//! The strip is `lookout`'s, ported: see `lookout::view::host`. This line has
+//! one half, so `host` is said once at the front and each segment names only
+//! which number it is.
 
 use shep_core::protocol::HostUsage;
 
@@ -25,10 +24,11 @@ const SEPARATOR: &str = "   ";
 
 /// The strip, fitted to `width` and painted for `style`.
 ///
-/// `None` is a platform `sysinfo` cannot read at all, which is not the same
-/// claim as a rate with no window behind it yet: that one renders `-`. Two
-/// forms, on [`crate::style::StyleLevel::boxes`]: plain drops both gauges
-/// and is not truncated, as `render_table` drops its rules and ignores width.
+/// `None` is a platform `sysinfo` cannot read at all. A rate with no window
+/// yet renders `-` in its own segment.
+///
+/// Drawn, on [`crate::style::StyleLevel::boxes`], it carries two gauges and
+/// truncates to `width`. Plain, it drops the gauges and is never truncated.
 pub(crate) fn strip(usage: Option<HostUsage>, style: Presentation, width: usize) -> String {
     let drawn = style.level.boxes();
     let runs = runs(usage, drawn);
@@ -46,10 +46,9 @@ struct Run {
 
 /// Which colour a run wears.
 ///
-/// Most of the line is words and numbers with no status behind them, so it
-/// stays muted. The two gauges are the exception, for
-/// `lookout::view::host`'s reason: two bars on one line are unreadable
-/// without something to tell them apart by.
+/// Most of the line is muted. The two gauges are the exception, as in
+/// `lookout::view::host`: `attention` for the busy-ness bar and `sky` for the
+/// memory one, so the same number wears the same colour in both places.
 #[derive(Clone, Copy)]
 enum Ink {
     Muted,

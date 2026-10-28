@@ -99,7 +99,8 @@ struct Scope<'a> {
 /// app-supplied text the store holds as `String`, while every built-in
 /// series names itself with a `&'static str`.
 ///
-
+/// `unit` is left out. A Prometheus-side collector appends `_bytes` to a
+/// name that already ends in it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Metric<'a> {

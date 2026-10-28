@@ -45,13 +45,13 @@ use crate::{
     whistle,
 };
 
-/// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches
-/// to the verb's own module.
+/// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches.
 ///
-/// Every command receives an already-connected client; no verb module
-/// connects or autostarts, bar `Start` and `Muster` through
-/// [`connect_or_spawn_client`]. `Startup` and `Unstartup` skip the shared
-/// `$SHEP_HOME` gate: its home is the target user's, wrong under `sudo`.
+/// Every command receives an already-connected client. Only `Start` and
+/// `Muster` bring a shepherd up, through [`connect_or_spawn_client`].
+///
+/// `Startup` and `Unstartup` skip the shared `$SHEP_HOME` gate: the unit's
+/// home is the target user's, which the gate gets wrong under `sudo`.
 pub(crate) async fn run(
     cli: Cli,
     style: style::Presentation,
@@ -67,10 +67,10 @@ pub(crate) async fn run(
     // so no arm can borrow it to ask this question for itself.
     let guard = VersionGuard::for_command(&cli.command);
 
-    // Before `ensure_home`: the answer is the host's, and nothing of this
-    // machine's is read, so a fresh machine must not get a `~/.shep` or a
-    // first-run banner out of it. The lookout is the exception: it reads
-    // this machine's `lookout.allow_control` gate, so it resolves first.
+    // Before `ensure_home`: the answer is the host's, so a fresh machine must
+    // not get a `~/.shep` or a banner out of it. The lookout is the exception:
+    // it reads this machine's `lookout.allow_control` gate, so it resolves the
+    // home first and takes its host from `Link` below.
     if let Some(dest) = cli.global.host.as_deref()
         && !matches!(cli.command, Commands::Lookout(_))
     {
@@ -172,8 +172,8 @@ pub(crate) async fn run(
         }
         // Resolves the home but never creates it: a probe against a machine
         // with no shep home must leave nothing behind and print no welcome.
-        // `--autostart` creates it like a local `start` does, without the
-        // welcome: stderr crosses ssh to the operator's terminal.
+        // `--autostart` creates it like a local `start`, minus the scaffold
+        // and welcome, since stderr crosses ssh to the operator's terminal.
         Commands::DialStdio(ref args) => {
             let resolved = if args.autostart {
                 ensure_home(&cli.global).map(|(paths, _)| paths)

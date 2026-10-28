@@ -1,13 +1,13 @@
 //! Adopted dogs as part of shep's own help and completion surface.
 //!
-//! A dog's verb is `shep <name>` and only that. The registry in `shep.toml`
-//! decides which names are dogs, and [`crate::adopted`] runs one only for a
-//! token clap could not place as a verb.
+//! A dog's verb is `shep <name>`, and the registry in `shep.toml` decides
+//! which names are dogs. [`crate::adopted`] runs one only for a token clap
+//! could not place. A manifest's `verb` says how that name is described.
+//! `description` is the line `shep --help` lists. `subcommands` are what
+//! `shep <dog> --help` prints and a completion script offers.
 //!
-//! A manifest's `verb` says how the name is described. Its `description`
-//! and `subcommands` fill the help lines and the completion scripts. Every
-//! read goes to the manifest cache `shep adopt` wrote: a help screen must
-//! not spawn a dog.
+//! Every read goes to the manifest cache `shep adopt` wrote, never to the
+//! binary, so a help screen never spawns a dog.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -36,11 +36,11 @@ const VERB_COLUMN: usize = 17;
 
 /// One adopted dog, as `--help` and a completion script need it.
 ///
-/// Every string here went through [`printable`]: a manifest's text lands in
-/// a clap help template and in a completion script a shell reads.
+/// Every string went through [`printable`]: one line, no control characters,
+/// no clap placeholder braces.
 ///
-/// `Debug` is derived: a manifest's credential-carrying `defaults` never
-/// reach here.
+/// `Debug` needs no redaction: the manifest's `defaults`, which can carry a
+/// credential, never reach this type.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct AdoptedVerb {
     /// The name the operator types: `shep <name>`.
@@ -52,13 +52,11 @@ pub(crate) struct AdoptedVerb {
     pub subcommands: Vec<Subcommand>,
 }
 
-/// Every dog `[daemon] adopted_dogs` records, in name order, each with what
-/// its cached manifest declares.
+/// Every adopted dog in name order, with what its cached manifest declares.
 ///
-/// `shep.toml` is read read-only, and a file that cannot be read or parsed
-/// lists nothing: the verb that reads it has its own refusal.
-///
-/// A name a verb or alias owns is left out, as is one [`printable`] rewrites.
+/// A `shep.toml` that cannot be read or parsed lists nothing, so help still
+/// prints. A name a verb or alias owns is left out, since clap's verb wins
+/// the token. A name [`printable`] would rewrite is left out too.
 #[must_use]
 pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
     let Ok(config) = ShepToml::read_only(&paths.daemon_config) else {
@@ -93,10 +91,9 @@ pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
 
 /// One string from a manifest, fit for a help line or a completion script.
 ///
-/// [`crate::terminal_safe::sanitise`] first: a line break or an escape in a
-/// dog's own copy forges a line of shep's output. Then the placeholder
-/// braces go. clap splits its help template on `{` with no escape for a
-/// literal brace, so a spliced brace re-renders part of the template.
+/// [`crate::terminal_safe::sanitise`] first, then the placeholder braces go.
+/// clap's help template has no escape for a literal `{`, and a stray one
+/// swallows the rest of the template.
 fn printable(field: &str) -> String {
     let (cleaned, _) = crate::terminal_safe::sanitise(field);
     cleaned.replace(['{', '}'], "")
@@ -125,13 +122,11 @@ fn printable_verb(verb: Verb) -> Option<Verb> {
     Some(cleaned)
 }
 
-/// Whether this argv can want the top-level help, which is the only render
-/// the dog listing changes.
+/// Whether this argv can want the top-level help.
 ///
-/// A token scan rather than a parse: building the listing costs a read of
-/// `shep.toml` and a sha256 of every adopted dog's binary, and a plain
-/// `shep stop web` must not pay that. A `--help` aimed at one verb answers
-/// `true` and changes nothing: clap renders it with its own template.
+/// A token scan, not a parse: building the listing reads `shep.toml` and
+/// hashes every adopted binary, and `shep stop web` must not pay that. It
+/// answers `true` for a `--help` aimed at one verb, which costs but is harmless.
 #[must_use]
 pub(crate) fn top_level_help_asked(argv: &[OsString]) -> bool {
     argv.len() == 1
@@ -159,11 +154,11 @@ pub(crate) fn paths_from_argv(argv: &[OsString]) -> Option<ShepPaths> {
 
 /// Render `verbs` into the Dogs group of `command`'s help template.
 ///
-/// Does nothing when there are no dogs, so a home that has adopted none
-/// renders `HELP_TEMPLATE` byte for byte.
+/// Does nothing without dogs, so a home with none renders `HELP_TEMPLATE` as is.
 ///
 /// # Panics
-/// Panics when `HELP_TEMPLATE` has lost the `Dogs and agents` heading.
+///
+/// Panics, naming the heading, when `HELP_TEMPLATE` has lost `Dogs and agents`.
 #[track_caller]
 pub(crate) fn list_in_help(command: &mut clap::Command, verbs: &[AdoptedVerb]) {
     if verbs.is_empty() {
@@ -208,11 +203,10 @@ fn dog_lines(verbs: &[AdoptedVerb]) -> Vec<String> {
 
 /// Whether `name` is a word a shell takes as a bare word.
 ///
-/// `clap_complete` writes subcommand names into its scripts unquoted, so an
-/// unsafe name becomes shell code there. A name is what the operator types,
-/// so an unsafe one is dropped from the script rather than rewritten.
-///
-/// Letters of any script and digits, separated by `-`, `_` or `.`.
+/// `clap_complete` 4.6.9 writes subcommand names into scripts unquoted, so
+/// `$(touch>x)` runs when the script completes. An unsafe name is dropped
+/// from the script, not rewritten. Letters of any script and digits,
+/// separated by `-`, `_` or `.`, starting on a letter or digit.
 fn shell_safe(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -221,13 +215,11 @@ fn shell_safe(name: &str) -> bool {
     first.is_alphanumeric() && chars.all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
-/// Add each dog, and each declared subcommand under it, to a command tree
-/// built only to generate a completion script.
+/// Add each dog and its declared subcommands to a tree built for completion.
 ///
-/// This tree is never parsed. A dog still runs through clap's
-/// unknown-subcommand path, which keeps a manifest from claiming a verb.
-///
-/// A name [`shell_safe`] rejects is left out of this tree alone.
+/// The tree is never parsed, so a dog's argv stays a pass-through and a
+/// manifest cannot claim a verb. A name [`shell_safe`] rejects is left out
+/// of this tree alone: the dog stays in `shep --help` and still runs.
 pub(crate) fn with_completion_entries(
     command: clap::Command,
     verbs: &[AdoptedVerb],

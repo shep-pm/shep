@@ -12,13 +12,12 @@ use crate::home::resolve_paths;
 use crate::remote::refuse_host;
 use crate::{cli, commands, exit};
 
-/// Runs the token clap could not place as an adopted dog: `shep <dogname>
-/// [args...]`. Adopted dogs only, never a `$PATH` scan, which would let any
-/// stray binary become a shep verb.
+/// Runs the token clap could not place as an adopted dog: `shep <dogname> [args...]`.
+///
+/// Adopted dogs only, never a `$PATH` scan. Built-in verbs win: this runs
+/// only once clap has failed every subcommand and alias.
 ///
 /// `None` for every case that should reach clap's own unknown-verb error.
-/// The `err.kind()` check is not redundant: clap attaches
-/// `InvalidSubcommand` to `ArgumentConflict` too.
 pub(crate) fn dispatch_adopted_dog(
     argv: &[OsString],
     err: &clap::Error,
@@ -131,11 +130,9 @@ fn format_before(prefix: &[OsString]) -> Format {
 
 /// The value in a `--home=value` token, or `None` when `arg` is not one.
 ///
-/// Split on the platform's own encoding rather than through `to_str`, which
-/// answers `None` for a token whose value is not valid UTF-8. Dropped, a
-/// `--home=` falls through to `$SHEP_HOME`, which `require_utf8` refuses.
-///
-/// The refusal still comes from [`resolve_paths`].
+/// Splits on the platform's own encoding, since `to_str` drops a non-UTF-8
+/// value. A dropped `--home=` would fall through to `$SHEP_HOME`.
+/// [`resolve_paths`] still refuses the value; this only carries it there.
 #[cfg(unix)]
 fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
     use std::os::unix::ffi::OsStrExt as _;

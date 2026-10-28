@@ -209,20 +209,13 @@ pub struct ServeArgs {
     pub foreground: bool,
 }
 
-/// Arguments shared by every verb that targets an existing selection of the
-/// flock (`stop`, `restart`, `reload`, `delete`, `describe`, `thatlldo`).
+/// Arguments shared by verbs that act on an existing selection of the flock.
 ///
-/// The selector is required on every one of them, because every one of them
-/// acts on something. `flush` has the same rule and its own struct
-/// ([`FlushArgs`](crate::cli::FlushArgs)) only because it has a second target that is not a
-/// selection at all.
-///
-/// Required means no `default_value` on the field below, and that one
-/// attribute is the whole of it — adding one would turn a bare `shep stop`
-/// into `shep stop all` for every verb in the list at once. It is pinned by
-/// this module's own `a_selector_taking_verb_refuses_to_run_without_one`
-/// (named rather than linked: that module is `#[cfg(test)]`, so an intra-doc
-/// link to it does not resolve under `cargo doc`).
+/// The selector is required, with no `default_value`: one would turn a bare
+/// `shep stop` into `shep stop all`. `flush` has its own struct
+/// ([`FlushArgs`](crate::cli::FlushArgs)) for its non-selection target.
+/// Pinned by `a_selector_taking_verb_refuses_to_run_without_one`, named not
+/// linked because that module is `#[cfg(test)]`.
 #[derive(Debug, clap::Args)]
 pub struct SelectorArgs {
     /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
@@ -258,13 +251,9 @@ pub struct StockArgs {
 
 /// Arguments to `shep trigger`.
 ///
-/// Not [`SelectorArgs`]: this verb needs two more positionals than a
-/// selector, `action` and the optional `params` after it, so it carries its
-/// own struct rather than widening the one every other selector-taking verb
-/// shares. The selector is still required — no `default_value`, matching
-/// `stop`/`restart`/`reload`/`delete`/`describe` — for the same reason: this
-/// reaches a running app, so the operator names the target rather than
-/// trigger one against the whole flock by accident.
+/// Not [`SelectorArgs`]: this verb also takes `action` and an optional
+/// `params`. The selector is still required, with no `default_value`,
+/// because this reaches a running app and the operator must name it.
 #[derive(Debug, clap::Args)]
 pub struct TriggerArgs {
     /// name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`
@@ -542,29 +531,11 @@ mod tests {
 
     /// Every verb sharing [`SelectorArgs`] must refuse to run without one.
     ///
-    /// Fails if that struct's `selector` field ever gains a `default_value`.
-    /// That is a one-line edit reaching six verbs at once, and it is worth a
-    /// case of its own precisely because it looks harmless: it does not break
-    /// a single other test, and what it changes is that `shep stop` — typed
-    /// by an operator who then remembered which sheep they meant — becomes
-    /// `shep stop all` instead of a usage error. `reopen` and `bleats`
-    /// deliberately do have that default (see
-    /// [`bleats_and_reopen_default_to_every_sheep`]); the difference is that
-    /// neither of them ends a process.
-    ///
-    /// The explicit form is asserted alongside, for the reason
-    /// [`flush_refuses_to_run_without_a_selector`] gives: a verb that had
-    /// stopped accepting any selector at all would pass the first half on its
-    /// own.
-    ///
-    /// `trigger` joins this group too, but cannot share the loop above
-    /// verbatim: [`TriggerArgs`] carries two required positionals, not one,
-    /// so a bare `shep trigger web` (selector only) is already a usage error
-    /// for missing `action` regardless of whether `selector` itself has a
-    /// default — that loop's second assertion would pass by accident. What
-    /// pins `selector` specifically is the same thing
-    /// `home_flag_is_wired_to_the_shep_home_env_var` checks for `--home`:
-    /// the clap `Arg` itself, read directly off `trigger`'s own `Command`.
+    /// Fails if `selector` gains a `default_value`: `shep stop` would become
+    /// `shep stop all`. `reopen` and `bleats` default on purpose (see
+    /// [`bleats_and_reopen_default_to_every_sheep`]). The explicit form is
+    /// asserted too, as [`flush_refuses_to_run_without_a_selector`] explains.
+    /// `trigger` has two required positionals, so it reads its own `Arg`.
     #[test]
     fn a_selector_taking_verb_refuses_to_run_without_one() {
         use clap::{CommandFactory, Parser};

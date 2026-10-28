@@ -1,19 +1,12 @@
 //! `shep serve`'s worker: binds a listener, accepts connections, and
 //! answers each one against [`ServeConfig`].
 //!
-//! This binds a real listener and reads real files, as `serve::fs` does,
-//! on every target. `path`, `mime`, `listing` and `auth` stay pure; this
-//! is the module that calls them.
+//! `path`, `mime`, `listing` and `auth` stay pure; this module calls them.
+//! `answer` owns what a request gets and `response` owns writing a reply.
 //!
 //! The accept loop admits through a [`tokio::sync::Semaphore`] and wraps
-//! each connection in a [`tokio::time::timeout`]: `serve` streams files
-//! off disk, so a client that stops reading mid-transfer must not hold a
-//! task, an open file and a socket for the rest of the process's life.
-//!
-//! This file owns the connection lifecycle: what a worker was told to do,
-//! the accept loop, and one request per connection. `answer` owns what a
-//! request gets, `response` owns writing a reply and logging it, and
-//! `testing` holds the harness both modules' tests share.
+//! each connection in a [`tokio::time::timeout`], so a stalled client cannot
+//! hold a task, an open file and a socket.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

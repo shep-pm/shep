@@ -243,15 +243,14 @@ fn strip_trailing_cr(line: &[u8]) -> &[u8] {
 }
 
 /// Writes one response and nothing else: `Connection: close` on every
-/// reply, so neither side has to reason about keep-alive, pipelining, or a
-/// half-read body left in the buffer.
+/// reply, so neither side has to reason about keep-alive or pipelining.
 ///
 /// The status line's reason phrase is empty (`HTTP/1.1 200 `), which RFC
-/// 7230 §3.1.2 allows; every caller here reads the status code.
+/// 7230 §3.1.2 allows. The head goes through [`write_head`] with no extra
+/// headers.
 ///
 /// # Errors
-/// - The underlying write failed. No [`HttpError::BadHeader`] is possible:
-///   the header list is empty.
+/// - The underlying write failed. No [`HttpError::BadHeader`] is possible.
 pub async fn write_response<W: AsyncWrite + Unpin>(
     stream: &mut W,
     status: u16,
@@ -275,16 +274,16 @@ pub struct Header<'a> {
 /// Writes a response head and stops, leaving the body to the caller.
 ///
 /// [`write_response`] is the right function when the whole body is already
-/// a `&[u8]`. This one exists for `serve`, which streams a file it has not
-/// read: `content_length` comes from the file's metadata.
+/// a `&[u8]`. This one is for `serve`, which streams a file: `content_length`
+/// comes from the file's metadata. A caller that writes fewer bytes than it
+/// declared gives a truncated response rather than a hang.
 ///
-/// A 304 carries no `Content-Length` at all (RFC 9110 §8.6): a zero there
-/// reads as a length to compare a copy against.
+/// A 304 carries no `Content-Length` (RFC 9110 §8.6).
 ///
 /// # Errors
 /// - [`HttpError::Io`] if the write failed.
 /// - [`HttpError::BadHeader`] if a header name or value carries a byte
-///   outside printable ASCII. Nothing is written to the stream first.
+///   outside printable ASCII. Nothing is written first.
 pub async fn write_head<W: AsyncWrite + Unpin>(
     stream: &mut W,
     status: u16,

@@ -11,10 +11,9 @@ use crate::output::{OutputEnvelope, SCHEMA_VERSION, Streams};
 
 /// The art, with `{version}` and `{home}` substituted at render time.
 ///
-/// About a third the height of pm2's banner: the point is to be seen once
-/// and not resented. No `\` line-continuation before the first line: `\`
-/// followed by a newline strips it and the next line's leading whitespace,
-/// which would unindent the leftmost sheep by six columns.
+/// No `\` line-continuation before the first line: `\` plus a newline strips
+/// the next line's leading whitespace, which would unindent the leftmost
+/// sheep. A pinning test written the same way loses the same columns.
 const ART: &str = "      ,-~-.     ,-~-.     ,-~-.
      ( o.o )   ( o.o )   ( o.o )       shep {version}
       `-^-'     `-^-'     `-^-'        flock at {home}
@@ -59,8 +58,9 @@ pub(crate) fn render(home: &Path) -> String {
 /// The welcome as one JSON field, so `--format json` gets an envelope like
 /// every other verb rather than silence.
 ///
-/// Not a [`crate::output::Render`] impl: that trait is for tabular data and
-/// requires `headers()` and `rows()`, which free-form text has neither of.
+/// Not a [`crate::output::Render`] impl: that trait is for tabular data. The
+/// envelope is built from the same [`OutputEnvelope`] and [`SCHEMA_VERSION`]
+/// as every other verb.
 #[derive(Debug, serde::Serialize)]
 struct WelcomeData {
     /// The rendered welcome, newlines and all.
@@ -69,10 +69,10 @@ struct WelcomeData {
 
 /// Prints the welcome as a side effect of whichever command created the home.
 ///
-/// Suppressed under `--format json` and when stderr is not a terminal: a cold
-/// machine is exactly where a provisioning script runs first. The home is
-/// still created when the text is suppressed. `stderr_is_terminal` is a
-/// parameter so a test writing into a `Vec` can reach this branch.
+/// Suppressed under `--format json` and when stderr is not a terminal. The
+/// home is still created: suppression governs the output, never the side
+/// effect. `stderr_is_terminal` is a parameter so a test writing into a `Vec`
+/// can reach this branch.
 pub(crate) fn on_first_run(streams: &mut Streams<'_>, home: &Path, stderr_is_terminal: bool) {
     if streams.fmt == Format::Json || !stderr_is_terminal {
         return;

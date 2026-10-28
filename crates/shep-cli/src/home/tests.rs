@@ -392,15 +392,6 @@ fn a_drive_relative_home_is_refused_on_windows() {
     );
 }
 
-/// The gate is on the resolved root, not on `--home` alone: with no
-/// `--home`, the default home is the home directory plus `.shep`, and a
-/// The other door into the same refusal. `--home` is the one an operator
-/// types, but the home directory the OS hands back is equally capable of
-/// carrying a byte shep cannot render, and it reaches the same
-/// `to_string_lossy`.
-///
-/// `resolve_paths_in` exists to inject this closure, so the arm is
-/// reachable without mutating the process environment.
 #[cfg(unix)]
 #[test]
 fn a_home_directory_that_is_not_utf8_is_refused_and_names_its_own_variable() {
@@ -462,14 +453,6 @@ fn a_relative_home_directory_is_refused_and_names_its_own_variable() {
     );
 }
 
-/// The `# Errors` promise that `--home` works "with none at all": no
-/// `$HOME`, no `%USERPROFILE%`, nothing `user_home` reads.
-///
-/// This is the arm that hands `resolve` an empty `home_dir` as a
-/// placeholder, knowing `SHEP_HOME` answers first and the placeholder
-/// goes unread. Nothing pinned it before, because every other test here
-/// runs against a real environment where `$HOME` is set, so the arm that
-/// prefers the home directory is the one they reach.
 #[test]
 fn an_explicit_home_resolves_with_no_home_directory_at_all() {
     let nothing = |_: &str| None;

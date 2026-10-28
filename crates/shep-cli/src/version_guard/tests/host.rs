@@ -7,14 +7,8 @@
 
 use super::*;
 
-/// A remedy without `ssh <dest>` would reload this machine's shepherd,
-/// which is not the one in skew.
-///
-/// The skew here is the protocol, because over `--host` that is the only
-/// difference that refuses, and the host is the side behind it, which is why
-/// the fix runs there: see
-/// [`a_host_on_a_newer_protocol_is_refused_naming_the_local_upgrade`] and
-/// [`a_host_on_another_version_but_the_same_protocol_is_written_to_and_warns`].
+/// A remedy without `ssh <dest>` would reload this machine's shepherd, which
+/// is not the one in skew.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_protocol_skew_over_a_host_names_the_remote_reload_command() {

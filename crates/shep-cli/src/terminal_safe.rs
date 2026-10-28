@@ -2,12 +2,11 @@
 //! string an untrusted host worded, [`sanitise_multiline`] for prose shep
 //! lays out in lines itself.
 //!
-//! Lives here, at a leaf both `crate::fetch` and `dog_index` can reach: a
-//! module cycle is the wrong way to share it. Strips rather than escapes: a
-//! stripped sequence's printable tail survives as inert text (`[2J`).
+//! Strips rather than escapes: a stripped sequence's printable tail
+//! survives as inert text (`\u{1b}[2J` prints as `[2J`).
 //!
-//! Not [`crate::output::width::sanitize_cell`], which keeps a
-//! well-formed CSI sequence since shep's own colouring is made of them.
+//! Not [`crate::output::width::sanitize_cell`], which keeps a well-formed CSI
+//! sequence since shep's own colouring is made of them.
 
 /// Strips everything that could drive a terminal out of `field`,
 /// returning the cleaned text and whether anything was removed. See
@@ -21,11 +20,12 @@ pub fn sanitise(field: &str) -> (String, bool) {
 }
 
 /// [`sanitise`] with `\n` kept and whitespace left as written, so a line
-/// break and the two spaces indenting the line after it both survive.
+/// break and the indent after it both survive.
 ///
-/// `\n` is the only character spared, and the weaker guarantee is
-/// deliberate: a kept `\n` can forge a line of output, so a string an
-/// untrusted host worded goes through [`sanitise`] at its own seam.
+/// A kept `\n` can forge a line of output, so an untrusted host's string goes
+/// through [`sanitise`] instead. `\r`, `\t`, `\u{1b}` and `\u{9b}` still go.
+/// Reports `true` on [`sanitise`]'s terms, counting a kept `\n` as nothing
+/// removed.
 pub fn sanitise_multiline(field: &str) -> (String, bool) {
     strip_unprintable(field, true)
 }
@@ -60,10 +60,11 @@ fn strip_unprintable(field: &str, keep_line_breaks: bool) -> (String, bool) {
 
 /// Whether `ch` must never reach a terminal.
 ///
-/// Two groups: `char::is_control` (Unicode `Cc`, including `\u{1b}` and
-/// `\u{9b}`, the single-character CSI introducer), and a fixed list of
-/// invisible or reordering format characters: zero-width joiners, bidi
-/// overrides (`U+202E` can make `exe.gnp` read as `png.exe`), and tags.
+/// Two groups: `char::is_control` (Unicode `Cc`, including the CSI
+/// introducer `\u{9b}`), and invisible or reordering format characters:
+/// zero-width spaces and joiners, bidi overrides (`U+202E` can make
+/// `exe.gnp` read as `png.exe`), variation selectors, and tags. Stripping
+/// `U+FE0F` costs an emoji's presentation form.
 fn is_unprintable(ch: char) -> bool {
     ch.is_control()
         || matches!(ch,

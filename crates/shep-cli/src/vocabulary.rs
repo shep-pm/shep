@@ -1,13 +1,13 @@
 //! What the two flock renderings share: role names, the status mapping, and
 //! the faces.
 //!
-//! `shep flock` renders a table through `output/`, and `shep lookout`
-//! renders one through ratatui. They must agree about what `online` looks
-//! like, and they cannot share code: their colour types come from different
-//! crates.
+//! `shep flock` renders through `output/`, and `shep lookout` through
+//! ratatui. They must agree about what `online` looks like, and cannot share
+//! code: their colour types come from different crates.
 //!
 //! So this module is the only place that defines a face or a mapping. Each
-//! renderer only binds [`Role`] to its own colour type.
+//! renderer only binds [`Role`] to its own colour type: `theme.rs` to
+//! ratatui's `Color`, `output/` to `anstyle::Style`.
 
 use shep_core::status::ProcStatus;
 
@@ -47,10 +47,10 @@ pub(crate) const fn role_of(status: ProcStatus) -> Role {
 
 /// The sheep wearing that status.
 ///
-/// Five columns, ASCII, and mutually distinct: five for the table's
-/// column budget, ASCII since an emoji is double-width and cannot take a
-/// foreground colour, distinct since a face that only differs by colour
-/// tells a `NO_COLOR` reader nothing.
+/// Five columns, ASCII, and mutually distinct: five for the table's column
+/// budget, ASCII since an emoji is double-width and cannot take a foreground
+/// colour, distinct since a face that only differs by colour tells a
+/// `NO_COLOR` reader nothing.
 pub(crate) const fn face(status: ProcStatus) -> &'static str {
     match status {
         ProcStatus::Online => "(o.o)",
@@ -68,9 +68,9 @@ pub(crate) const fn face(status: ProcStatus) -> &'static str {
 /// What a STATUS cell reports: the lifecycle status the shepherd holds, or
 /// the one fact that overrides it.
 ///
-/// `ProcStatus` answers whether the process is alive. For a dog, alive is
-/// not enough: one that has never completed a handshake is not doing its
-/// job. [`Self::Silent`] is that fact, and not a `ProcStatus` variant.
+/// A dog that has never completed a handshake is not doing its job however
+/// alive it is. [`Self::Silent`] is that fact. It is not a `ProcStatus`
+/// variant, since silence is about a connection, not the wire contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reported {
     /// What the shepherd's own lifecycle state says.
@@ -86,9 +86,9 @@ pub(crate) enum Reported {
 impl Reported {
     /// What one row reports, from the two fields that decide it.
     ///
-    /// Only `Online` is overridden: every other status is already honest
-    /// about a dog not answering. `handshook` is `None` for a sheep, and for
-    /// a listing from a shepherd that predates the field.
+    /// Only `Online` is overridden: every other status is already honest about
+    /// a dog not answering. `handshook` is `None` for a sheep, and for a
+    /// shepherd that predates the field: both render as `Some(true)`.
     pub(crate) const fn of(status: ProcStatus, handshook: Option<bool>) -> Self {
         match (status, handshook) {
             (ProcStatus::Online, Some(false)) => Self::Silent,
@@ -141,9 +141,9 @@ impl Reported {
 /// The paragraph a `silent` row owes the reader, or `None` when the row is
 /// not silent.
 ///
-/// `silent` is the only STATUS a table can show that an operator cannot act
-/// on from the word alone. Never says why the dog is silent: that evidence
-/// lives only in the dog's own log, so every arm points at `shep bleats`.
+/// `silent` is the only STATUS an operator cannot act on from the word alone.
+/// This never says why the dog is silent: the evidence lives in the dog's own
+/// log, so every arm points at `shep bleats`.
 pub(crate) fn silence_note(
     name: &str,
     reported: Reported,

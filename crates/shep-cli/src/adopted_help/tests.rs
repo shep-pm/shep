@@ -23,10 +23,6 @@ fi"#;
 /// A dog that answers no flag at all: adopted, and undeclared.
 const SILENT_BODY: &str = "";
 
-/// A dog whose `verb` carries clap's own placeholder text, a line break, an
-/// escape and a subcommand name that is two words. Every one of those is a
-/// layout or a section boundary if it reaches the help template or a
-/// completion script.
 /// A dog whose `verb` names subcommands a shell cannot take as bare words: a
 /// command substitution, and a `)` that closes a `case` pattern early. Safe
 /// names here are `pipeline` and `drain`, words no other part of a generated
@@ -35,6 +31,8 @@ const SHELL_UNSAFE_BODY: &str = r#"if [ "$1" = --shep-manifest ]; then
   echo '{"manifest":1,"name":"shep-otel","version":"0.2.0","protocol":12,"verb":{"description":"exports traces","subcommands":[{"name":"pipeline","about":"show the pipeline"},{"name":"$(touch>marker)","about":"a command substitution"},{"name":"two)words","about":"a case pattern breaker"},{"name":"drain","about":"empty the export queue"}]}}'
 fi"#;
 
+/// A dog whose `verb` carries clap's own placeholder text, a line break, an
+/// escape and a subcommand name that is two words.
 const HOSTILE_BODY: &str = r#"if [ "$1" = --shep-manifest ]; then
   echo '{"manifest":1,"name":"shep-otel","version":"0.2.0","protocol":12,"verb":{"description":"spans {all-args} and\u000amore\u001b[2J","subcommands":[{"name":"one word","about":"not one word"},{"name":"status","about":"show {options}"}]}}'
 fi"#;
@@ -488,19 +486,11 @@ fn a_dog_name_the_listing_would_have_to_rewrite_is_left_out() {
     assert_eq!(adopted_verbs(&paths), Vec::<AdoptedVerb>::new());
 }
 
-/// The finding this covers. `clap_complete` 4.6.9 writes subcommand names
-/// into its scripts with no quoting at all: bash gets `opts="pipeline
-/// $(touch>marker)"` inside double quotes and `shep,two)words)` case
-/// patterns, fish gets the names inside `-n "…"`, and zsh escapes its help
-/// text while writing the name raw. A name carrying `$(…)` is then run by a
-/// shell that sources the script and completes once, and a name carrying `)`
-/// stops the bash script parsing at all.
+/// `clap_complete` writes subcommand names unquoted, so a shell sourcing the
+/// script would run `$(…)` and a `)` would stop the bash script parsing.
 ///
-/// A name is an identifier the operator types, not copy to clean, so an
-/// unsafe one is dropped from the script rather than rewritten: completing a
-/// doctored name would hand back a word no dog answers to. The dog's own help
-/// page keeps it, because the manifest declared it and the dog's argv really
-/// can hold it.
+/// An unsafe name is dropped from the script. The dog's own help page keeps
+/// it, because the manifest declared it.
 #[test]
 fn a_name_a_shell_cannot_take_as_a_bare_word_is_never_completed() {
     use clap_complete::aot::Shell;
