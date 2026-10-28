@@ -168,7 +168,15 @@ function closingTag(html: string, name: string, from: number, limit: number): nu
   return -1;
 }
 
-/** Every top-level `<table>` in the document, as a half-open span. */
+/**
+ * Every `<table>` in the document, a nested one included, as a half-open span.
+ *
+ * A table inside a cell is its own entry, because it has its own header row and
+ * `dog-readme.css` stacks it on a phone like any other: left unlabelled, its
+ * cells read as values with nothing naming their column. The scan moves past the
+ * opening tag rather than to the closing one so a nested table is met, and
+ * `rows()` jumps it for the outer table, so no cell is read as a column of both.
+ */
 function tables(html: string): Span[] {
   const found: Span[] = [];
   let i = 0;
@@ -181,7 +189,8 @@ function tables(html: string): Span[] {
     }
     const end = tableEnd(html, start);
     found.push({ start, end });
-    i = end;
+    const gt = tagEnd(html, start);
+    i = gt === -1 || gt >= end ? end : gt + 1;
   }
   return found;
 }

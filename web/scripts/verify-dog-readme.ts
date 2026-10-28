@@ -660,6 +660,29 @@ test("labelTableCells() ends a table at its own closing tag, not a nested one's"
   assert.ok(labelTableCells(html).includes(`<td data-label="col">tail</td>`), labelTableCells(html));
 });
 
+test("labelTableCells() labels a table inside a cell from its own header row", () => {
+  // `dog-readme.css` stacks a nested table too, so its cells need labels or a
+  // phone reader sees values with nothing naming their column.
+  const html = `<table><thead><tr><th>outer</th><th>col</th></tr></thead><tr><td><table>` +
+    `<thead><tr><th>in</th><th>ner</th></tr></thead><tr><td>a</td><td>b</td></tr></table>` +
+    `</td><td>tail</td></tr></table>`;
+  const out = labelTableCells(html);
+  assert.ok(out.includes(`<td data-label="ner">b</td>`), out);
+  assert.ok(out.includes(`<td data-label="col">tail</td>`), out);
+});
+
+test("labelTableCells() never reads a nested table's cells as the outer table's", () => {
+  // The inner table's `b` is not a column of the outer one, and the outer's
+  // `col` is not a column of the inner one.
+  const html = `<table><thead><tr><th>outer</th><th>col</th></tr></thead><tr><td><table>` +
+    `<thead><tr><th>in</th><th>ner</th></tr></thead><tr><td>a</td><td>b</td></tr></table>` +
+    `</td><td>tail</td></tr></table>`;
+  const out = labelTableCells(html);
+  assert.ok(!out.includes(`<td data-label="col">b`), out);
+  assert.ok(!out.includes(`<td data-label="ner">tail`), out);
+  assert.ok(out.includes("<td>a</td>"), out);
+});
+
 test("labelTableCells() returns the document untouched when it has no table", () => {
   const html = `<h2 id="x">X</h2><p>text with a <code>table</code> in it</p>`;
   assert.equal(labelTableCells(html), html);
