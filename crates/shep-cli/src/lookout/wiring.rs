@@ -30,18 +30,13 @@ mod tests {
 
     use super::super::testing::*;
 
-    /// `super::super::input::map_key` drops `KeyEventKind::Repeat`, but ordinary terminals
-    /// deliver auto-repeat as Press events, so a held `j` is twenty to thirty
-    /// moved selections a second and an uncoalesced `Effect::RefreshFeed`
-    /// would put a synchronous 128 KiB read behind every one of them, on the
-    /// task that also owns the redraw.
+    /// Ordinary terminals deliver auto-repeat as Press events, so a held `j`
+    /// is twenty to thirty moved selections a second. An uncoalesced
+    /// `Effect::RefreshFeed` would put a synchronous 128 KiB read behind
+    /// every one, on the task that owns the redraw.
     ///
-    /// `assert_eq!(1)` and not `<= 2`: the exact number is the property.
-    ///
-    /// Not `start_paused`, for the reason
-    /// `a_heartbeat_puts_the_host_strip_on_the_frame` gives: `MIN_REDRAW`
-    /// reads a real [`std::time::Instant`], which a virtual clock never
-    /// advances.
+    /// Not `start_paused`: `MIN_REDRAW` reads a real [`std::time::Instant`],
+    /// which a virtual clock never advances.
     #[tokio::test]
     async fn a_burst_of_selection_moves_costs_one_read_and_not_one_per_key() {
         let (msg_tx, msg_rx) = mpsc::channel(64);

@@ -17,23 +17,11 @@ use std::path::Path;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
-/// Runs the dashboard, and returns the [`ExitCode`] to exit with.
-///
-/// Four refusals, all before a single escape byte is written:
-/// [`ExitCode::Usage`] when stdout is not a terminal;
-/// [`ExitCode::DaemonUnreachable`] or [`ExitCode::ProtocolMismatch`] when the
-/// first connection fails; [`ExitCode::VersionSkew`] when it succeeds against
-/// a different crate version; [`ExitCode::Failure`] when the terminal cannot
-/// be put into raw mode. After that it never exits on its own.
-///
-/// `style` is `run_argv`'s already-resolved pair, handed to `App::set_style`
-/// so the settings screen reports the layer that actually won.
-///
-/// Over a [`Link::Host`] the dashboard watches that host's shepherd through
-/// [`HostShepherd`] and reads no log, host sample, settings or secrets from this
-/// machine: [`NoLocal`] is the backstop for what [`App`] already declines to
-/// ask for. Only the operator's own `lookout.allow_control` gate, in
-/// `paths.kv`, is still read here.
+/// Runs the dashboard, and returns the [`ExitCode`] to exit with. Every
+/// refusal comes before a single escape byte is written; after that it never
+/// exits on its own. Not a terminal: [`ExitCode::Usage`]. A failed first dial:
+/// [`ExitCode::DaemonUnreachable`] or [`ExitCode::ProtocolMismatch`]. A version
+/// mismatch: [`ExitCode::VersionSkew`]. Failed raw mode: [`ExitCode::Failure`].
 pub async fn lookout(
     streams: &mut Streams<'_>,
     link: &Link<'_>,
@@ -390,22 +378,12 @@ mod tests {
         );
     }
 
-    /// `Msg::Snapshot` answers every ordinary poll with `Effect::RefreshFeed`,
-    /// so the detail pane's log-size read has to hang off that rather than off
-    /// the lamb walk's `Effect::RefreshSelected`. Two snapshots with the
-    /// selection never moving between them: the second still has to read, or a
-    /// size freezes on screen while an operator watches one sheep write.
-    ///
-    /// Asserted on the reader's own counter, since `FakeLocal` answers `None`
-    /// and the pane would draw no size either way. A count of one is the
-    /// regression: the first snapshot seats the selection, which raises
-    /// `RefreshSelected` too, so hanging the read off the lamb walk still
-    /// reads exactly once.
+    /// The detail pane's log-size read hangs off `Effect::RefreshFeed`, which
+    /// every poll raises. Not off the lamb walk's `Effect::RefreshSelected`.
     ///
     /// Not `start_paused`: both reads are gated on `may_draw`, which measures
-    /// real `std::time::Instant` against `MIN_REDRAW`, and a paused clock's
-    /// virtual sleeps resolve in microseconds of real time, so the second read
-    /// would never be allowed to run.
+    /// real `std::time::Instant` against `MIN_REDRAW`. A paused clock's virtual
+    /// sleeps resolve in microseconds of real time.
     #[tokio::test]
     async fn every_poll_re_reads_the_selected_sheeps_log_sizes() {
         let (msg_tx, msg_rx) = mpsc::channel(64);
@@ -424,9 +402,8 @@ mod tests {
 
         // Each snapshot needs its own serviced iteration, so each is followed
         // by a wait past `MIN_REDRAW` and a `Msg::Resize` to wake the loop.
-        // `may_draw` is only re-checked at the top of the next iteration and
-        // the loop only wakes on a message, so two snapshots sent back to back
-        // coalesce into one read and the count cannot tell the wirings apart.
+        // `may_draw` is re-checked only at the top of the next iteration, so
+        // snapshots sent back to back coalesce into one read.
         tokio::spawn(async move {
             let _ = msg_tx
                 .send(Msg::Snapshot {
@@ -477,14 +454,11 @@ mod tests {
     }
 
     /// The end-to-end half of
-    /// `the_heartbeat_asks_the_local_reader_for_a_host_sample`: a `source::Local` that
-    /// reports a sample, one heartbeat, and the numbers on the rendered frame.
+    /// `the_heartbeat_asks_the_local_reader_for_a_host_sample`: a `source::Local`
+    /// that reports a sample, one heartbeat, and the frame's numbers.
     ///
-    /// Not `start_paused`: the redraw that carries the sample is gated on
-    /// `MIN_REDRAW`, which reads real `std::time::Instant`, and a paused
-    /// clock's virtual sleeps resolve in microseconds of real time, so the
-    /// gate would never open. The heartbeat's first tick fires regardless of
-    /// the clock, so the real wait below need only outlast `MIN_REDRAW`.
+    /// Not `start_paused`: the redraw is gated on `MIN_REDRAW`, which reads
+    /// real `std::time::Instant`. The heartbeat's first tick fires regardless.
     #[tokio::test]
     async fn a_heartbeat_puts_the_host_strip_on_the_frame() {
         let (msg_tx, msg_rx) = mpsc::channel(64);
@@ -652,22 +626,10 @@ mod tests {
         );
     }
 
-    /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
-    /// for this bug: every other secrets-pane regression lives in
-    /// `super::super::app::secrets_keys::tests` and calls `App::update` directly, so
-    /// nothing else runs this loop's own read of `pane.tab`.
-    ///
-    /// `TabNext`'s own clamp (`(tab + 1).min(last)`) re-derives the index
-    /// from whatever list is current, so it cannot go stale no matter how
-    /// far the environments list has shrunk. `TabPrev` only subtracts one
-    /// from `tab`, with no such re-derivation, so it takes two dropped
-    /// environments, not one, before it can be handed a `tab` further past
-    /// the end than a lone subtraction can walk back: three environments
-    /// down to one, sitting on the last tab, `TabPrev` once. Three down to
-    /// two self-corrects either direction, which is why the narrower
-    /// `a_shrinking_environment_list_leaves_the_tab_somewhere_valid`, over in
-    /// `super::super::app::secrets_keys::tests`, cannot exercise this arm: it is the
-    /// reducer-level half of this same bug, not this one.
+    /// Drives the loop's own `Effect::LoadSecrets` arm, which no other
+    /// secrets-pane test reaches. `TabPrev` subtracts one from `tab` with no
+    /// re-derivation, so it takes two dropped environments to read past the
+    /// end: three down to one, sitting on the last tab.
     #[tokio::test]
     async fn a_tab_past_a_shrunk_environment_list_does_not_panic_the_loop() {
         let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();

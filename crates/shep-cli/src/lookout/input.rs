@@ -10,13 +10,9 @@ use super::textbox::TextEdit;
 /// The [`KeyPress`] this event means under `mode`, or `None` for a key
 /// lookout does not bind there.
 ///
-/// Only `KeyEventKind::Press` counts: a terminal that reports repeats and
-/// releases would otherwise fire an action once per repeat of a held key.
-/// `Ctrl-C` is a binding in either mode, since raw mode delivers it as an
-/// ordinary key event and there is no `SIGINT` to catch. `Ctrl-D`/`Ctrl-U`
-/// page only in `Normal`, so paging the bleats pane never fires behind an
-/// operator's back while they are typing a match; in `Text`, `Ctrl-U` kills
-/// to the start of the line instead.
+/// Only `KeyEventKind::Press` counts: a repeat or release would fire the
+/// action again. `Ctrl-C` binds in either mode, since raw mode delivers it
+/// as an ordinary key event. `Ctrl-D`/`Ctrl-U` page only in `Normal`.
 #[must_use]
 pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
     let Event::Key(key) = event else {
@@ -31,9 +27,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
             // Guarded on `mode` here, unlike every other binding in this
             // branch: this CONTROL match runs ahead of the `InputMode::Text`
             // check below, so an unguarded `ctrl-d`/`ctrl-u` would page the
-            // pane behind an operator's back while they are typing a match
-            // into the bleats box. `ctrl-c` stays unguarded on purpose — it
-            // quits from the box too, the same way it always has.
+            // pane while an operator is typing a match into the bleats box.
             KeyCode::Char('d') if mode == InputMode::Normal => Some(KeyPress::PageDown),
             KeyCode::Char('u') if mode == InputMode::Normal => Some(KeyPress::PageUp),
             // The same guard from the other side: these have no meaning in
@@ -52,11 +46,8 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
             KeyCode::Backspace if alt => edit(TextEdit::DeleteWordBack),
             // SHIFT stays: crossterm delivers a capital as `Char('W')` with
             // SHIFT set. ALT is filtered, since `Alt-w` is never a letter.
-            // The guard never inspects which modifiers ARE present, only
-            // that ALT is absent, so a shifted `?` takes the same branch as
-            // an unshifted one and needs no separate test:
-            // `a_shifted_letter_is_still_a_letter_in_the_box` already proves
-            // the general case with `W`.
+            // Only ALT's absence is checked, so a shifted `?` takes the same
+            // branch as an unshifted one.
             KeyCode::Char(typed) if !alt => Some(KeyPress::TextChar(typed)),
             KeyCode::Backspace => Some(KeyPress::TextBackspace),
             KeyCode::Left => edit(TextEdit::Left),
@@ -98,9 +89,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Left => Some(KeyPress::TabPrev),
         KeyCode::Right => Some(KeyPress::TabNext),
         KeyCode::Char('e') => Some(KeyPress::Edit),
-        // Two keys, one meaning, which is what the design asked for. `h`
-        // was the config pane's field help until that became unconditional
-        // (`view::pane::top_lines`); `?` is new here. Both are plain keys:
+        // `h` and `?` mean the same thing here. Both are plain keys:
         // crossterm delivers `?` as `Char('?')` with SHIFT set on most
         // layouts, and SHIFT is not filtered in this branch, so the shifted
         // form lands on the same arm.
@@ -346,13 +335,9 @@ mod tests {
     }
 
     /// `Tab` and `Shift+Tab` belong to the config pane's group cycling, so
-    /// the secrets pane's tab row names `<-/->` and nothing else. It used
-    /// to name a tab alias as well, which #206 took: a caption naming a key
-    /// that lands somewhere else is worse than one key short.
-    ///
-    /// In `Text` they belong to the key/value editor instead, which is the
-    /// other half of the same two keys: a tab typed into a box is not a
-    /// character, so the box has no use for one.
+    /// the secrets pane's tab row names `<-/->` and nothing else. In `Text`
+    /// they belong to the key/value editor instead: a tab typed into a box
+    /// is not a character.
     #[test]
     fn tab_walks_the_config_pane_groups_and_the_tab_row_does_not_claim_it() {
         assert_eq!(

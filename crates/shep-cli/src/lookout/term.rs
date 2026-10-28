@@ -6,10 +6,8 @@
 //!
 //! Two mechanisms cover it: [`install_panic_hook`] restores before calling
 //! the previous hook, and [`RestoreGuard`]'s `Drop` covers every `?`, early
-//! return and a panic's own unwind, except under `panic = "abort"`, which
-//! this workspace does not set. [`restore`] is idempotent, since a panic
-//! fires both. Nothing that can panic runs between the hook and raw mode:
-//! hook, then raw mode, then the screen.
+//! return and unwind, except under `panic = "abort"`. [`restore`] is
+//! idempotent, since a panic fires both.
 
 use std::io::{self, Stdout, Write};
 
@@ -49,13 +47,11 @@ pub fn install_panic_hook() {
 
 /// Installs the panic hook, then panics on purpose.
 ///
-/// Gated behind `SHEP_TERM_PANIC_PROBE` so it never fires by accident and
-/// never appears on the command surface. `tests/term_panic_order.rs` drives
-/// it through a subprocess to check that [`install_panic_hook`] restores the
-/// terminal before the previous hook prints its backtrace.
+/// Gated behind `SHEP_TERM_PANIC_PROBE`, so it never fires by accident.
+/// `tests/term_panic_order.rs` drives it in a subprocess.
 ///
 /// # Panics
-/// Always. The message names what is being tested.
+/// Always.
 #[track_caller]
 pub fn probe_panic_for_test() -> ! {
     install_panic_hook();

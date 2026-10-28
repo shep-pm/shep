@@ -4,12 +4,9 @@ use tokio::sync::mpsc;
 /// Delivers an [`Effect::SendAll`](crate::lookout::app::Effect::SendAll) batch to the link task, in order, without
 /// blocking [`run_ui`](crate::lookout::ui_event_loop::run_ui).
 ///
-/// One task, one cloned sender, one `send` per entry, awaited in sequence:
-/// a channel deeper than the batch never stalls the screen, and a channel
-/// merely full is a wait rather than a loss. `send` only fails once the
-/// channel is closed, so the entry it hands back there is the first
-/// casualty of a shepherd that is gone; every entry after it would fail
-/// the same way, so this stops rather than piling up identical reports.
+/// One task, one cloned sender, one `send` per entry, awaited in sequence. A
+/// full channel is a wait, not a loss. `send` fails only on a closed channel,
+/// so that entry is the first of a gone shepherd.
 pub(super) async fn send_batch(requests: mpsc::Sender<Sent>, batch: Vec<Sent>) -> Msg {
     for sent in batch {
         if let Err(mpsc::error::SendError(sent)) = requests.send(sent).await {
