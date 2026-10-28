@@ -146,6 +146,11 @@ def is_heading(text: str) -> bool:
     return text.startswith("# ")
 
 
+def is_heading_at_any_level(text: str) -> bool:
+    """A markdown heading of any depth: `#`s, then a space."""
+    return text.lstrip("#").startswith(" ") and text.startswith("#")
+
+
 def is_example_heading(text: str) -> bool:
     return text.lower() in ("# example", "# examples")
 
@@ -161,7 +166,7 @@ def opens_on_summary(first: str) -> bool:
     limit forgives.
     """
     text = first.strip()
-    return bool(text) and not text.startswith("```") and not is_heading(text)
+    return bool(text) and not text.startswith("```") and not is_heading_at_any_level(text)
 
 
 def count_block(body: list[str]) -> tuple[int, bool]:

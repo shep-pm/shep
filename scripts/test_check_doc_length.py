@@ -86,6 +86,18 @@ class DocCommentLimit(unittest.TestCase):
         self.assertEqual(block.measured, 7)
         self.assertTrue(block.over)
 
+    def test_a_block_opening_on_a_deeper_heading_has_no_summary_to_forgive(self):
+        for heading in ("/// ## Notes", "/// ### Safety"):
+            with self.subTest(heading=heading):
+                block = only(heading, *doc_fixture(6)[1:])
+                self.assertEqual(block.measured, 7)
+                self.assertTrue(block.over)
+
+    def test_a_block_opening_on_an_attribute_like_hash_still_has_a_summary(self):
+        block = only("/// #[derive(Debug)] is what this type carries.", *doc_fixture(6)[1:])
+        self.assertEqual(block.measured, 6)
+        self.assertFalse(block.over)
+
     def test_a_block_opening_on_a_fence_has_no_summary_to_forgive(self):
         block = only("/// ```", "/// let x = 1;", "/// ```", *doc_fixture(7)[1:])
         self.assertEqual(block.measured, 7)
