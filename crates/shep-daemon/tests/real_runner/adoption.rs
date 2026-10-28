@@ -192,11 +192,8 @@ async fn an_adopted_pump_appends_the_carried_pipes_lines_through_the_carried_han
 /// for a spawned sheep.
 ///
 /// Spawned with `command-fds`, not `TokioRunner::spawn`: the case below is
-/// about the successor's half, so the daemon side of the socketpair has
-/// to be one this test owns rather than one the runner's pumps hold.
-///
-/// A `std::process::Command`, so tokio holds no `Child`; only the reaper
-/// ever waits it, the same reason [`adopted_child`] uses one.
+/// about the successor's half, so the daemon side of the socketpair has to be
+/// one this test owns. A `std::process::Command`, so tokio holds no `Child`.
 fn child_holding_a_channel(child_end: std::os::fd::OwnedFd, rounds: u32) -> std::process::Child {
     use command_fds::{CommandFdExt as _, FdMapping};
 
@@ -214,11 +211,10 @@ fn child_holding_a_channel(child_end: std::os::fd::OwnedFd, rounds: u32) -> std:
 /// fails if an adopted shepherd channel does not reach a real app blocked
 /// on `read -r line <&3`.
 ///
-/// Two things only a real process, not a socket pair, can check. The
-/// child is a separate open file description, so `set_nonblocking(true)`
-/// on the daemon's end must not reach it, or the child's `read` would get
-/// `EAGAIN` and die with status 3. And the reply must come back through
-/// the reader task the adoption rebuilt.
+/// Two things only a real process can check. The child is a separate open
+/// file description, so `set_nonblocking(true)` on the daemon's end must not
+/// reach it, or the child's `read` would get `EAGAIN` and die with status 3.
+/// And the reply must come back through the reader task the adoption rebuilt.
 #[tokio::test]
 #[expect(
     clippy::zombie_processes,

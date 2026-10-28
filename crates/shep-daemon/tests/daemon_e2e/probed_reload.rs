@@ -148,12 +148,11 @@ async fn a_probed_reload_of_a_working_release_still_finishes() {
 
 /// Both instances run the same command; the second finds `SHEEP_MUTE_FILE` in
 /// place and binds nothing, which is what a release whose listener moved to
-/// the wrong port does. Its first probe is otherwise answered by the
-/// instance still bound to that address.
+/// the wrong port does. Its first probe is otherwise answered by the instance
+/// still bound to that address.
 ///
 /// Two independent mechanisms cover a single-instance probed app and each is
-/// enough alone: the serial reload mode, and the post-drain probe. The flock
-/// row's status is what a deploy tool reads, so it is asserted too.
+/// enough alone: the serial reload mode, and the post-drain probe.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_replacement_that_serves_nothing_is_refused_not_reported_reloaded() {

@@ -72,15 +72,10 @@ fn cmd_spec(dir: &tempfile::TempDir, args: &[&str]) -> SpawnSpec {
 
 /// Reads `out_file` until it contains `needle`, or fails after [`SETTLE`].
 ///
-/// Polls rather than reading once: the log pump writes on its own task, so
-/// a single read right after the child exits can race it.
-///
-/// `err_file` is only read on the way to the panic. An empty log says
-/// nothing arrived, not why, and a sheep that failed to launch reports it
-/// on stderr.
+/// Polls rather than reading once: the log pump writes on its own task. `err_file`
+/// is read only on the way to the panic, since a launch failure reports on stderr.
 ///
 /// # Panics
-///
 /// If `needle` has not reached `out_file` within [`SETTLE`].
 async fn wait_for_log(out_file: &Path, err_file: &Path, needle: &str) -> String {
     let started = tokio::time::Instant::now();
@@ -152,12 +147,9 @@ fn pings_under(parent: u32) -> Vec<u32> {
 /// Kills the tree, then waits up to [`SETTLE`] for the sheep to report.
 ///
 /// A `wait` that never resolves is ignored: the cases that call this assert
-/// on what happened around the kill, not on the exit code, which
-/// [`kill_tree_stops_a_long_running_sheep_and_reports_a_recognisable_code`]
-/// pins.
+/// on what happened around the kill, not on the exit code.
 ///
 /// # Panics
-///
 /// If `kill_tree` fails to reach the live sheep.
 async fn kill_and_settle(proc: &mut impl RunningProcess) {
     proc.kill_tree().expect("kill_tree must reach a live sheep");
@@ -220,10 +212,8 @@ async fn kill_tree_reaches_a_grandchild_and_not_just_the_sheep() {
     let dir = tempfile::tempdir().unwrap();
     let mut spec = cmd_spec(&dir, &["echo", "placeholder"]);
     // `cmd` from a batch file, not `powershell -Command`: PowerShell hangs
-    // this suite.
-    //
-    // The pings count to 600 so a loaded machine cannot age them out before
-    // the kill; see `LONG_RUNNING`.
+    // this suite. The pings count to 600 so a loaded machine cannot age them
+    // out before the kill; see `LONG_RUNNING`.
     const CRLF: &str = "\r\n";
     let script = dir.path().join("lamb.cmd");
     std::fs::write(
@@ -314,12 +304,9 @@ async fn the_graceful_rung_refuses_honestly_and_names_the_way_out() {
 ///
 /// Isolates the channel from everything above it: no daemon, no
 /// `wait_ready`, just the runner's own `SHEP_CHANNEL_PIPE` and the pumps
-/// behind `ProcIo::from_child`.
-///
-/// The fixture is a `.cmd` file, not `cmd /C <script>`: `std::process::Command`
-/// escapes an argument's inner quotes MSVC-style, which `cmd.exe` reads
-/// literally, breaking a quoted redirect target. A script file's contents
-/// go through no such escaping.
+/// behind `ProcIo::from_child`. The fixture is a `.cmd` file, not
+/// `cmd /C <script>`: `std::process::Command` escapes an argument's inner
+/// quotes MSVC-style, which `cmd.exe` reads literally.
 #[tokio::test]
 async fn a_child_reaches_the_shepherd_channel_by_pipe_name() {
     let dir = tempfile::tempdir().unwrap();
