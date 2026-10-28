@@ -25,7 +25,7 @@ d            restore default
 u            undo the edit                                            
 s            shepherd settings                                        
 S            secrets                                                  
-D            delete a secret                                          
+D            delete a key                                             
 c            leave it running                                         
 ctrl-w/u/k   cut word, to ends                                        
                                                                       

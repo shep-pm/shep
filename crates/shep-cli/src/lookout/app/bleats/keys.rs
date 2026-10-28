@@ -153,11 +153,13 @@ impl App {
             | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
-            | KeyPress::SecretDelete => Effect::None,
+            | KeyPress::ArmDelete => Effect::None,
             // The group keys, `Undo` and `Continue` belong to the config pane:
             // no other screen has groups, a filed edit set or a close dialog.
             | KeyPress::NextGroup
             | KeyPress::PrevGroup
+            | KeyPress::NextField
+            | KeyPress::PrevField
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,

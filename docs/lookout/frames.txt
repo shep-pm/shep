@@ -2245,7 +2245,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐tab/S-tab    next / prev group  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
-                ▐1-9          jump to a group    /            filter, or match   D            delete a secret                                  ▌                
+                ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value                                                                   ▌                
@@ -2297,7 +2297,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌ 
  ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌ 
  ▐tab/S-tab    next / prev group  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌ 
- ▐1-9          jump to a group    /            filter, or match   D            delete a secret                                  ▌ 
+ ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌ 
  ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌ 
  ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌ 
  ▐esc          back one level     y            copy the value                                                                   ▌ 
@@ -2334,7 +2334,7 @@ ctrl-d/u     page the feed      z            collapse a fold    space        cyc
 ←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit                                       
 ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings                                   
 tab/S-tab    next / prev group  w            wrap long lines    S            secrets                                             
-1-9          jump to a group    /            filter, or match   D            delete a secret                                     
+1-9          jump to a group    /            filter, or match   D            delete a key                                        
 n/N          next / prev match  r            refresh now        c            leave it running                                    
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                   
 esc          back one level     y            copy the value                                                                      
@@ -2386,7 +2386,7 @@ ctrl-d/u     page the feed      z            collapse a fold    space        cyc
 ←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit          
 ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings      
 tab/S-tab    next / prev group  w            wrap long lines    S            secrets                
-1-9          jump to a group    /            filter, or match   D            delete a secret        
+1-9          jump to a group    /            filter, or match   D            delete a key           
 n/N          next / prev match  r            refresh now        c            leave it running       
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends      
 esc          back one level     y            copy the value                                         
@@ -2452,7 +2452,7 @@ d            restore default
 u            undo the edit                                            
 s            shepherd settings                                        
 S            secrets                                                  
-D            delete a secret                                          
+D            delete a key                                             
 c            leave it running                                         
 ctrl-w/u/k   cut word, to ends                                        
                                                                       
@@ -2505,7 +2505,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐tab/S-tab    next / prev group  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
-                ▐1-9          jump to a group    /            filter, or match   D            delete a secret                                  ▌                
+                ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value                                                                   ▌                
@@ -2557,7 +2557,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit       ▟███████▙                    ▌                
                 ▐ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings   ▜██▀ ▀██▛                    ▌                
                 ▐tab/S-tab    next / prev group  w            wrap long lines    S            secrets               ▀▘ ▀▘                      ▌                
-                ▐1-9          jump to a group    /            filter, or match   D            delete a secret                                  ▌                
+                ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
                 ▐esc          back one level     y            copy the value                                                                   ▌                
@@ -2594,7 +2594,7 @@ ctrl-d/u     page the feed      z            collapse a fold    space        cyc
 ←/→ alt-b/f  char / word move   m            minimum level      u            undo the edit                                                                      
 ctrl-a/e     home/end in a box  f            follow the tail    s            shepherd settings                                                                  
 tab/S-tab    next / prev group  w            wrap long lines    S            secrets                                                                            
-1-9          jump to a group    /            filter, or match   D            delete a secret                                                                    
+1-9          jump to a group    /            filter, or match   D            delete a key                                                                       
 n/N          next / prev match  r            refresh now        c            leave it running                                                                   
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                                                  
 esc          back one level     y            copy the value                                                                                                     

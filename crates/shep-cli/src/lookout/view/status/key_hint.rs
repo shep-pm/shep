@@ -1,4 +1,5 @@
-use super::super::super::app::{App, Body, Control, Grouping, TypingWhat};
+use super::super::super::app::{App, Body, Control, Grouping};
+use super::super::super::keyvalue::{Field, KeyValues};
 use super::super::super::pane::ConfigPane;
 use super::super::super::textbox::TextBox;
 
@@ -11,45 +12,125 @@ use super::super::super::textbox::TextBox;
 pub(super) const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
      nothing you press can reach the shepherd";
 
-/// What the pane's open editor is labelled, and what is in it.
+/// What the status bar's editor slot shows while an editor owns the keyboard:
+/// what it is labelled, the field to draw, and the keys to name beside it.
 ///
-/// Four editors, one slot: a field edit is labelled with the field, an
-/// env edit with `env` and the key, a list edit with the field and the
-/// element's position, a map's `+ new` entry with the map, and either
-/// `+ new`/`+ add a key` row with what it wants, since there is nothing yet
-/// to name.
-pub(super) fn pane_editor(pane: &ConfigPane) -> Option<(String, &TextBox)> {
+/// A struct rather than a tuple because the third thing is not the label's
+/// other half. The two key/value panes read one [`editor_hint`] for one focused
+/// field, and a caller that read the slot as two things would put the config
+/// pane's fixed sentence where the editor's own belongs.
+pub(super) struct Editor<'a> {
+    /// What the editor is called.
+    pub label: String,
+    /// The field under the cursor, drawn with its cursor in it.
+    pub buffer: &'a TextBox,
+    /// The keys to name beside it.
+    pub keys: &'static str,
+}
+
+/// The keys a key/value editor names, for whichever field holds the cursor.
+///
+/// One function, read by both panes, so the env rows and the secrets pane
+/// cannot drift apart in what they tell an operator to press.
+#[must_use]
+pub(super) const fn editor_hint(field: Field) -> &'static str {
+    match field {
+        Field::Key => "tab value   enter next   esc cancels",
+        Field::Value => "tab key   enter writes   esc cancels",
+    }
+}
+
+/// What a key/value editor is called: the pane's own noun, the key, and which
+/// of its two fields the cursor is in.
+///
+/// `noun` is what the pane calls its list — `env` for a sheep's environment
+/// rows, `secret` for the secrets pane's own table — so the two read the same
+/// shape over their own words. A key nothing has been typed into yet is named
+/// `new`, the way both panes already name the row it will land on.
+#[must_use]
+pub(super) fn editor_label(editor: &KeyValues, noun: &str) -> String {
+    let field = match editor.focus() {
+        Field::Key => "KEY",
+        Field::Value => "VALUE",
+    };
+    let key = editor.key().as_str();
+    if key.is_empty() {
+        return format!("new {noun} {field}");
+    }
+    format!("{noun} {key} {field}")
+}
+
+/// The pane's own editor slot: the list sub-screen's, the key/value editor's,
+/// or the field editor's.
+///
+/// Three editors, one slot: a list edit is labelled with the field and the
+/// element's position, a key/value edit with [`editor_label`], a field edit
+/// with the field, and a map's `+ new` entry with the map. Only the key/value
+/// editor names keys of its own; the other two are one-field boxes and keep
+/// the bar's standing sentence.
+pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
+    const ONE_FIELD: &str = "enter applies   esc cancels";
     if let Some(list) = pane.list() {
         return match list.typing()? {
-            (Some(index), buffer) => Some((format!("{} {index} =", list.key()), buffer)),
-            (None, buffer) => Some((format!("new {} element", list.key()), buffer)),
+            (Some(index), buffer) => Some(Editor {
+                label: format!("{} {index} =", list.key()),
+                buffer,
+                keys: ONE_FIELD,
+            }),
+            (None, buffer) => Some(Editor {
+                label: format!("new {} element", list.key()),
+                buffer,
+                keys: ONE_FIELD,
+            }),
         };
     }
-    if let Some(env) = pane.env_typing() {
-        return match env.key() {
-            Some(key) => Some((format!("env {key} ="), env.buffer())),
-            None => Some(("new env KEY=value".to_owned(), env.buffer())),
-        };
+    if let Some(editor) = pane.env_typing() {
+        return Some(Editor {
+            label: editor_label(editor, "env"),
+            buffer: focused_field(editor),
+            keys: editor_hint(editor.focus()),
+        });
     }
     let typing = pane.typing()?;
     if let Some(entries) = pane.new_entry_editor() {
-        return Some((format!("new {entries} key"), &typing.buffer));
+        return Some(Editor {
+            label: format!("new {entries} key"),
+            buffer: &typing.buffer,
+            keys: ONE_FIELD,
+        });
     }
-    Some((format!("editing {}", typing.key), &typing.buffer))
+    Some(Editor {
+        label: format!("editing {}", typing.key),
+        buffer: &typing.buffer,
+        keys: ONE_FIELD,
+    })
 }
 
-/// The secrets pane's open input, labelled by which step it is: the
-/// `+ new key` row's name, or a key's value.
-pub(super) fn secrets_typing(app: &App) -> Option<(String, &TextBox)> {
+/// The secrets pane's open editor, labelled the same way the env rows label
+/// theirs.
+pub(super) fn secrets_typing(app: &App) -> Option<Editor<'_>> {
     let Body::Secrets(pane) = app.body() else {
         return None;
     };
-    let typing = pane.typing.as_ref()?;
-    let label = match &typing.what {
-        TypingWhat::NewKey => "new key".to_string(),
-        TypingWhat::ValueFor(key) => format!("value for {key}"),
-    };
-    Some((label, &typing.buffer))
+    let editor = pane.typing.as_ref()?;
+    Some(Editor {
+        label: editor_label(editor, "secret"),
+        buffer: focused_field(editor),
+        keys: editor_hint(editor.focus()),
+    })
+}
+
+/// The field of `editor` that holds the cursor, which is the one the bar draws.
+fn focused_field(editor: &KeyValues) -> &TextBox {
+    match editor.focus() {
+        Field::Key => editor.key(),
+        Field::Value => editor.value(),
+    }
+}
+
+/// The key an armed `D` would remove from a sheep's env rows, or `None`.
+pub(super) fn env_armed(pane: &ConfigPane) -> Option<&str> {
+    pane.armed_env().map(|armed| armed.key.as_str())
 }
 
 /// The key an armed `D` would delete, or `None`.

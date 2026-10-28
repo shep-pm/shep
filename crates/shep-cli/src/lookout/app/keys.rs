@@ -147,6 +147,8 @@ impl App {
             | KeyPress::StepDown
             | KeyPress::NextGroup
             | KeyPress::PrevGroup
+            | KeyPress::NextField
+            | KeyPress::PrevField
             | KeyPress::Group(_)
             | KeyPress::Undo
             | KeyPress::Continue => Effect::None,
@@ -180,7 +182,7 @@ impl App {
             | KeyPress::TabNext
             | KeyPress::Reveal
             | KeyPress::Copy
-            | KeyPress::SecretDelete => Effect::None,
+            | KeyPress::ArmDelete => Effect::None,
             // Also the read, not the open: the pane shows the shepherd's
             // answer or nothing. `selected_row` is `None` for a group too,
             // but a group's name is what `Request::SheepConfig` wants, so

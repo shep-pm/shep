@@ -192,6 +192,17 @@ impl App {
         {
             pane.hide();
         }
+        // The config pane's one armed thing, on the same clock and for the
+        // same reason as the secrets pane's own below: an env delete waiting on
+        // a confirm that never comes is no less stale for the operator having
+        // walked away, and the bar already promised any other key cancels it.
+        if let Some(pane) = self.config_pane_mut()
+            && pane
+                .armed_env()
+                .is_some_and(|armed| now.saturating_duration_since(armed.at) >= CONFIRM_EXPIRY)
+        {
+            pane.disarm_env_delete();
+        }
         // Outside the link guard for the same reason as the reveal
         // above: an armed delete that can never be sent is no less
         // stale for the shepherd being gone. `now`, not `self.now`.
