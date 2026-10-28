@@ -92,12 +92,10 @@ struct Scope<'a> {
     version: &'a str,
 }
 
-/// `metrics[]`. Exactly one of `gauge` or `sum` is set, which is how OTLP
-/// spells a metric's type in JSON.
+/// `metrics[]`. Exactly one of `gauge` or `sum` is set.
 ///
-/// `name` and `description` are `Cow` because a channel sample's are
-/// app-supplied text the store holds as `String`, while every built-in
-/// series names itself with a `&'static str`.
+/// `name` and `description` are `Cow`. A channel sample's name is
+/// app-supplied text; a built-in series names itself with a `&'static str`.
 ///
 /// `unit` is left out. A Prometheus-side collector appends `_bytes` to a
 /// name that already ends in it.
