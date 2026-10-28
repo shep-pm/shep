@@ -87,8 +87,15 @@ pub(crate) fn revision_of(dir: &Path) -> Result<Vcs, Absent> {
 fn find_git_dir(dir: &Path) -> Result<PathBuf, Absent> {
     for candidate in dir.ancestors() {
         let dot_git = candidate.join(".git");
-        let Ok(meta) = fs::symlink_metadata(&dot_git) else {
+        let Ok(found) = fs::symlink_metadata(&dot_git) else {
             continue;
+        };
+        // A link is followed, as git does: one to a git dir is that dir, and
+        // one that dangles is a `.git` that cannot be read.
+        let meta = if found.is_symlink() {
+            fs::metadata(&dot_git).map_err(|_| Absent::Unreadable)?
+        } else {
+            found
         };
         if meta.is_dir() {
             return Ok(dot_git);

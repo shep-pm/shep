@@ -164,3 +164,25 @@ fn the_nearest_dot_git_decides_even_when_it_is_unreadable() {
 
     assert_eq!(revision_of(&inner), Err(Absent::Unreadable));
 }
+
+/// `ln -s /data/repo.git .git` is a checkout to git, so it is one here.
+#[cfg(unix)]
+#[test]
+fn a_dot_git_that_links_to_a_git_dir_is_read() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let repo = checkout_with_head(&format!("{SHA1}\n"));
+    std::os::unix::fs::symlink(repo.path().join(".git"), dir.path().join(".git")).expect("link");
+
+    assert_eq!(read_revision(dir.path()), Some(Vcs::new(SHA1)));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dot_git_link_that_dangles_ends_the_walk() {
+    let outer = checkout_with_head(&format!("{SHA1}\n"));
+    let inner = outer.path().join("inner");
+    fs::create_dir_all(&inner).expect("inner");
+    std::os::unix::fs::symlink(outer.path().join("gone"), inner.join(".git")).expect("link");
+
+    assert_eq!(revision_of(&inner), Err(Absent::Unreadable));
+}

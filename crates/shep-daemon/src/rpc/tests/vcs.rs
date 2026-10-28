@@ -28,7 +28,7 @@ async fn start_web_in(h: &Harness, cwd: Option<&Path>, instances: u32) {
 #[cfg(feature = "vcs")]
 mod enabled {
     use super::*;
-    use crate::rpc::enrichment::fill_vcs;
+    use crate::rpc::enrichment::{VcsReads, fill_vcs};
     use crate::vcs::Absent;
     use shep_core::protocol::Vcs;
     use std::path::PathBuf;
@@ -74,6 +74,7 @@ mod enabled {
             h.ctx.supervisor.list().await,
             &h.ctx.supervisor.working_dirs().await.expect("dirs"),
             Duration::from_secs(5),
+            &VcsReads::default(),
             Arc::new(move |_: &Path| {
                 counted.fetch_add(1, Ordering::SeqCst);
                 Ok(Vcs::new(REVISION))
@@ -96,6 +97,7 @@ mod enabled {
             h.ctx.supervisor.list().await,
             &h.ctx.supervisor.working_dirs().await.expect("dirs"),
             Duration::from_secs(5),
+            &VcsReads::default(),
             Arc::new(move |_: &Path| {
                 counted.fetch_add(1, Ordering::SeqCst);
                 Ok(Vcs::new(REVISION))
@@ -140,6 +142,7 @@ mod enabled {
             h.ctx.supervisor.list().await,
             &h.ctx.supervisor.working_dirs().await.expect("dirs"),
             Duration::from_millis(50),
+            &VcsReads::default(),
             Arc::new(move |_: &Path| {
                 let _ = parked.lock().expect("parked").recv();
                 Err::<Vcs, _>(Absent::Unreadable)
@@ -148,6 +151,40 @@ mod enabled {
         .await;
 
         assert_eq!(rows[0].vcs, None);
+        drop(release);
+    }
+
+    // A timed-out read still holds its blocking thread, so asking again must
+    // not start a second one. The first reader parks until `release` drops.
+    #[tokio::test]
+    async fn a_directory_whose_read_is_stuck_is_not_read_again() {
+        let h = harness(vec![ProcScript::never_exits()]);
+        start_web_in(&h, Some(&PathBuf::from("/srv/web")), 1).await;
+        let dirs = h.ctx.supervisor.working_dirs().await.expect("dirs");
+        let reads = VcsReads::default();
+        let (release, parked) = std::sync::mpsc::channel::<()>();
+        let parked = std::sync::Mutex::new(parked);
+        let started = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&started);
+
+        let reader = Arc::new(move |_: &Path| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            let _ = parked.lock().expect("parked").recv();
+            Err::<Vcs, _>(Absent::Unreadable)
+        });
+        for _ in 0..3 {
+            let rows = fill_vcs(
+                h.ctx.supervisor.list().await,
+                &dirs,
+                Duration::from_millis(50),
+                &reads,
+                Arc::clone(&reader),
+            )
+            .await;
+            assert_eq!(rows[0].vcs, None);
+        }
+
+        assert_eq!(started.load(Ordering::SeqCst), 1);
         drop(release);
     }
 }

@@ -12,11 +12,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(feature = "vcs")]
+use std::sync::{LazyLock, Mutex, PoisonError};
+#[cfg(feature = "vcs")]
 use std::time::Duration;
 
 #[cfg(feature = "vcs")]
 use shep_core::protocol::Vcs;
 use shep_core::protocol::{Lamb, ProcessInfo};
+#[cfg(feature = "vcs")]
+use tokio::sync::Semaphore;
 
 use crate::limits::stats::StatsState;
 
@@ -32,6 +36,39 @@ use crate::vcs::{Absent, revision_of};
 /// `Describe` reply must not wait on it.
 #[cfg(feature = "vcs")]
 const VCS_READ_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The directories a revision read is still running for, one read each.
+///
+/// A timed-out read cannot be cancelled: its blocking thread stays parked until
+/// the mount answers, and one more per `Describe` would fill the pool every
+/// other `spawn_blocking` in the shepherd shares. A directory holds one permit,
+/// owned by its read until the read ends, and a later request waits on it
+/// inside its own timeout.
+#[cfg(feature = "vcs")]
+#[derive(Debug, Default)]
+pub(super) struct VcsReads {
+    slots: Mutex<HashMap<PathBuf, Arc<Semaphore>>>,
+}
+
+#[cfg(feature = "vcs")]
+impl VcsReads {
+    /// The permit for `dir`, made on first use.
+    fn slot(&self, dir: &Path) -> Arc<Semaphore> {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(
+            slots
+                .entry(dir.to_path_buf())
+                .or_insert_with(|| Arc::new(Semaphore::new(1))),
+        )
+    }
+
+    /// Drops every entry no read holds, so the table stays the size of the
+    /// directories with a read still running.
+    fn forget_idle(&self) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        slots.retain(|_, slot| Arc::strong_count(slot) > 1);
+    }
+}
 
 /// The dogs this daemon has given up on, and the dogs it is still waiting to
 /// hear from.
@@ -194,50 +231,76 @@ pub(super) async fn with_vcs(
         // rather than fail the request over a decoration.
         return infos;
     };
-    fill_vcs(infos, &dirs, VCS_READ_TIMEOUT, Arc::new(revision_of)).await
+    // One table for the whole shepherd: a stuck read outlives the request
+    // that started it.
+    static READS: LazyLock<VcsReads> = LazyLock::new(VcsReads::default);
+    fill_vcs(
+        infos,
+        &dirs,
+        VCS_READ_TIMEOUT,
+        &READS,
+        Arc::new(revision_of),
+    )
+    .await
 }
 
 /// [`with_vcs`] over a directory table and a reader the caller supplies.
 ///
 /// One read per distinct directory, each on the blocking pool under its own
 /// `timeout`, so instances of one app share a read and one hung mount does not
-/// cost the rows beside it.
+/// cost the rows beside it. `reads` keeps a hung mount to one parked thread
+/// however often it is asked: see [`VcsReads`].
 #[cfg(feature = "vcs")]
 pub(super) async fn fill_vcs<R>(
     mut infos: Vec<ProcessInfo>,
     dirs: &HashMap<u32, PathBuf>,
     timeout: Duration,
+    reads: &VcsReads,
     read: Arc<R>,
 ) -> Vec<ProcessInfo>
 where
     R: Fn(&Path) -> Result<Vcs, Absent> + Send + Sync + 'static,
 {
     let distinct: BTreeSet<&PathBuf> = infos.iter().filter_map(|info| dirs.get(&info.id)).collect();
-    let reads = distinct.into_iter().map(|dir| {
+    let pending = distinct.into_iter().map(|dir| {
         let dir = dir.clone();
         let read = Arc::clone(&read);
+        let slot = reads.slot(&dir);
         async move {
-            let task = tokio::task::spawn_blocking({
-                let dir = dir.clone();
-                move || read(&dir)
-            });
-            let outcome = tokio::time::timeout(timeout, task).await;
+            let outcome = tokio::time::timeout(timeout, async {
+                // Held by the blocking closure, so it frees when the read
+                // ends and not when this request stops waiting for it.
+                let permit = slot.acquire_owned().await.ok()?;
+                let target = dir.clone();
+                tokio::task::spawn_blocking(move || {
+                    let found = read(&target);
+                    drop(permit);
+                    found
+                })
+                .await
+                .ok()
+            })
+            .await;
             (dir, outcome)
         }
     });
     let mut found: HashMap<PathBuf, Vcs> = HashMap::new();
-    for (dir, outcome) in futures_util::future::join_all(reads).await {
+    for (dir, outcome) in futures_util::future::join_all(pending).await {
         match outcome {
-            Ok(Ok(Ok(vcs))) => {
+            Ok(Some(Ok(vcs))) => {
                 found.insert(dir, vcs);
             }
-            Ok(Ok(Err(absent))) => {
+            Ok(Some(Err(absent))) => {
                 tracing::debug!(dir = %dir.display(), %absent, "no revision to report")
             }
-            Ok(Err(_)) => tracing::debug!(dir = %dir.display(), "revision read did not finish"),
-            Err(_) => tracing::debug!(dir = %dir.display(), "revision read timed out"),
+            Ok(None) => tracing::debug!(dir = %dir.display(), "revision read did not finish"),
+            Err(_) => tracing::debug!(
+                dir = %dir.display(),
+                "revision read timed out, or an earlier read of it is still stuck"
+            ),
         }
     }
+    reads.forget_idle();
     for info in &mut infos {
         match dirs.get(&info.id) {
             Some(dir) => info.vcs = found.get(dir).cloned(),
