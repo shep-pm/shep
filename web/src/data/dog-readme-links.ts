@@ -89,10 +89,9 @@ function hasMdExtension(path: string): boolean {
 
 /**
  * Which page of this site a repo-relative `.md` path becomes: the dog's own
- * page for `README.md`, and a page under it for anything deeper.
- *
- * @throws nothing, but a `path` with no `.md` is passed through as written,
- * because only a Markdown page has a route here.
+ * page for `README.md`, and a page under it for anything deeper. A `path`
+ * with no `.md` is passed through as written, because only a Markdown page
+ * has a route here.
  */
 export function dogDocRoute(adoptAs: string, path: string): string {
   const base = `/docs/dogs/${adoptAs}`;
@@ -185,7 +184,7 @@ function rewriteTarget(value: string, page: DogPageAddress): string | undefined 
 
 /** One `href` or `src` the walker reports, and what the visitor returns for it. */
 interface LinkAttribute {
-  tag: string;
+  /** Which of the two it was. */
   attribute: string;
   value: string;
 }
@@ -201,9 +200,7 @@ interface LinkAttribute {
  * @throws {Error} when a relative link climbs above the repository root.
  */
 export function rewriteLinks(html: string, page: DogPageAddress): string {
-  return walkLinkAttributes(html, ({ attribute, value }) =>
-    attribute === "href" || attribute === "src" ? rewriteTarget(value, page) : undefined,
-  );
+  return walkLinkAttributes(html, ({ value }) => rewriteTarget(value, page));
 }
 
 /**
@@ -430,7 +427,7 @@ function walkLinkAttributes(
       for (const attribute of tag.attributes) {
         if (!LINK_ATTRIBUTES.has(attribute.name)) continue;
         const value = html.slice(attribute.valueStart, attribute.valueEnd);
-        const replacement = visit({ tag: tag.name, attribute: attribute.name, value });
+        const replacement = visit({ attribute: attribute.name, value });
         if (replacement !== undefined && replacement !== value) {
           edits.push([attribute, replacement]);
         }
