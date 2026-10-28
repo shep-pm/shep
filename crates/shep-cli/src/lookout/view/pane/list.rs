@@ -142,21 +142,7 @@ pub(super) fn list_body_from(
         drawn += 1;
     }
     let hidden_below = total.saturating_sub(offset + drawn);
-    if hidden_below > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
-    if offset > 0 {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {offset} above"),
-                palette.muted(),
-            )),
-        );
-    }
+    scroll::window_markers(&mut lines, hidden_below, offset, palette);
     Attempt {
         cursor_drawn: drawn > 0 && (offset..offset + drawn).contains(&cursor_row),
         lines,
