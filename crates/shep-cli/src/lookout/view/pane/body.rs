@@ -5,7 +5,7 @@
 //! same budget as the rows, so this is where a short terminal sheds the
 //! legend, then the tab row, and finally everything but the cursor.
 
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 
 use super::super::super::pane::{ConfigPane, PaneRow};
 use super::super::super::theme::Palette;
@@ -233,21 +233,7 @@ pub(super) fn body_from(
     // see spent, so its answer and this one disagree the moment the chrome
     // costs anything.
     let hidden_below = total.saturating_sub(offset + drawn);
-    if hidden_below > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
-    if offset > 0 {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {offset} above"),
-                palette.muted(),
-            )),
-        );
-    }
+    scroll::window_markers(&mut lines, hidden_below, offset, palette);
 
     Attempt {
         cursor_drawn: drawn > 0 && (offset..offset + drawn).contains(&cursor_row),
@@ -303,21 +289,7 @@ pub(super) fn cursor_only(
         lines.push(row_line(pane, row, true, width, palette, show_lands));
     }
     let hidden_below = rows.len().saturating_sub(cursor_row + 1);
-    if cursor_row > 0 && lines.len() < budget {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {cursor_row} above"),
-                palette.muted(),
-            )),
-        );
-    }
-    if hidden_below > 0 && lines.len() < budget {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
+    scroll::cursor_markers(&mut lines, hidden_below, cursor_row, budget, palette);
     lines
 }
 

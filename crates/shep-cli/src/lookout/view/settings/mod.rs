@@ -131,21 +131,7 @@ fn cursor_only(
     }
 
     let hidden_below = rows.len().saturating_sub(cursor_row + 1);
-    if cursor_row > 0 && lines.len() < budget {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {cursor_row} above"),
-                palette.muted(),
-            )),
-        );
-    }
-    if hidden_below > 0 && lines.len() < budget {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
+    super::scroll::cursor_markers(&mut lines, hidden_below, cursor_row, budget, palette);
     lines
 }
 
@@ -252,21 +238,7 @@ fn body_from(
     // see spent, so its answer and this one disagree once the chrome costs
     // anything.
     let hidden_below = total_rows.saturating_sub(offset + drawn);
-    if hidden_below > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
-    }
-    if offset > 0 {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {offset} above"),
-                palette.muted(),
-            )),
-        );
-    }
+    super::scroll::window_markers(&mut lines, hidden_below, offset, palette);
 
     // One prompt line under the table, echoing the status bar's Slot 1
     // (`view::status::status_line`): `attention` styled while it waits on
