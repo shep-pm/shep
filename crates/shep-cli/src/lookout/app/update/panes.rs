@@ -154,10 +154,11 @@ impl App {
 
     /// `Msg::DogEnvWritten`'s arm.
     ///
-    /// A dog's `env` has no daemon half of its own: the shepherd is told the
-    /// values when it starts the dog, and nothing here starts it. So the
-    /// landed write reports itself, and the requests the same close built
-    /// (a section edit filed beside the env edit) go out behind it.
+    /// A dog's `env` has no daemon half of its own: the shepherd builds it
+    /// when it builds the dog's app, which it does at boot, on a reload, and
+    /// on an enable of a dog at rest. A dog already up keeps the environment
+    /// it was started with, so the notice names the two verbs that give it
+    /// this one. The requests the same close built go out behind it.
     pub(super) fn on_dog_env_written(
         &mut self,
         name: &str,
@@ -171,8 +172,8 @@ impl App {
         match result {
             Ok(()) => {
                 self.notice = Some(Notice::info(format!(
-                    "{name}: its env is recorded, and the shepherd gives it these when it next \
-                     starts the dog"
+                    "{name}: its env is written. A dog already up keeps the one it started with; \
+                     `shep disable {name}` then `shep enable {name}` gives it this one"
                 )));
                 if then.is_empty() {
                     Effect::None

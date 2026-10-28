@@ -256,6 +256,39 @@ pub fn app_in_adopted_dog_pane_with_env() -> App {
     app
 }
 
+/// An adopted dog's pane, with one `env` key carried in, whose `dogs.toml`
+/// section holds text where its schema has a table. No field edit of that
+/// section can be written back, which is the refusal a close has to report
+/// beside the `env` edit it filed in the same keystroke.
+pub fn app_in_adopted_dog_pane_with_an_unwriteable_section() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::DogPane {
+        name: "kelpie".to_string(),
+        adopted_path: Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+        env_keys: vec!["PADDOCK_KEY".to_string()],
+        result: Ok(serde_json::json!({
+            "type": "object",
+            "properties": { "models": { "$ref": "#/$defs/Models" } },
+            "$defs": {
+                "Models": {
+                    "type": "object",
+                    "properties": { "model": { "type": "string" } },
+                },
+            },
+        })),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "kelpie".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "models = \"old\"\n".to_owned().into(),
+        }),
+    });
+    app
+}
+
 /// Walks the open dog pane's cursor onto the row that opens and closes at
 /// the open-set key `path`: a nested table, an array or map of tables, or
 /// one of their entries. A field inside an entry is found by its row key.

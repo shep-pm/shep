@@ -69,6 +69,14 @@ impl App {
                     });
                     ticket += 1;
                 }
+                // A refused section half takes the file half with it: one
+                // close is one outcome, and an env edit that went nowhere has
+                // to be named rather than left for the operator to rediscover.
+                let dropped = if writes.env.is_some() {
+                    ", its env edit with it"
+                } else {
+                    ""
+                };
                 let schema = pane.schema().cloned();
                 match pane.edited_section_with(&edits) {
                     SectionWrite::Written(toml) => {
@@ -83,7 +91,8 @@ impl App {
                                 &pane.touched_paths(&edits),
                             )
                         }) {
-                            self.notice = Some(Notice::grave(format!("{name}: {}", refused.text)));
+                            self.notice =
+                                Some(Notice::grave(format!("{name}: {}{dropped}", refused.text)));
                             return PaneWrites::default();
                         }
                         writes.requests.push(Sent::SetDogSection {
@@ -101,7 +110,8 @@ impl App {
                     SectionWrite::Nothing => {}
                     SectionWrite::Refused => {
                         self.notice = Some(Notice::grave(format!(
-                            "{name}: its section in dogs.toml does not parse, or is not shaped for the edit"
+                            "{name}: its section in dogs.toml does not parse, or is not shaped for \
+                             the edit{dropped}"
                         )));
                         return PaneWrites::default();
                     }
@@ -514,7 +524,11 @@ mod tests {
         );
         let notice = app.notice().expect("the write reports itself").to_string();
         assert!(notice.contains("kelpie"), "{notice}");
-        assert!(notice.contains("next starts the dog"), "{notice}");
+        assert!(
+            notice.contains("keeps the one it started with"),
+            "a running dog is not silently re-handed its environment: {notice}"
+        );
+        assert!(notice.contains("shep disable kelpie"), "{notice}");
     }
 
     /// A `shep.toml` this process cannot write means no section goes to a
@@ -557,6 +571,48 @@ mod tests {
         });
         assert_eq!(effect, Effect::None, "nothing goes to the shepherd");
         assert!(app.notice().expect("the refusal says so").is_grave());
+    }
+
+    /// A section half this writer cannot finish takes the file half with it,
+    /// and `pane.close()` has already drained the edits, so the notice is the
+    /// only thing that can say the `env` edit went nowhere too. "Its section
+    /// does not parse" alone reads as an env edit still waiting to be made.
+    #[test]
+    fn a_refused_dog_section_names_the_env_edit_it_drops_with_it() {
+        let mut app = fixtures::app_in_adopted_dog_pane_with_an_unwriteable_section();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(
+            app.config_pane().unwrap().cursor(),
+            Some(PaneRow::Env(0)),
+            "PADDOCK_KEY, the fixture's only env key"
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "sk_live_1".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        pane_to(&mut app, "models.model");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "large".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+
+        let sent = read_dog_close(&mut app);
+        let effect = app.update(Msg::Replied {
+            sent,
+            result: Ok(Response::DogSection {
+                toml: "models = \"old\"\n".to_owned().into(),
+            }),
+        });
+        assert_eq!(
+            effect,
+            Effect::None,
+            "the close writes neither half: {effect:?}"
+        );
+        let notice = app.notice().expect("the refusal says so").to_string();
+        assert!(notice.contains("env edit"), "{notice}");
     }
 
     /// Asserted on the whole `Effect`, as `a_write_effects_debug_names_no_value`
