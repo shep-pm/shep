@@ -6,10 +6,7 @@
 //! shepherd running.
 //!
 //! Reading a value back is gated on `[secrets] allow_read` in `shep.toml`.
-//! Nothing else here is: `list` names keys and the environments each has a
-//! value for, and `set`/`unset` report the slot they touched, so a value
-//! reaches stdout down exactly one path, in `get`, whichever format is
-//! asked for.
+//! A value reaches stdout down exactly one path, in `get`.
 
 use std::io::Read;
 
@@ -37,13 +34,11 @@ pub(crate) const HOW_TO_ALLOW_READ: &str = "printing a stored secret back is off
 
 /// The exit code each [`SecretError`] maps to.
 ///
-/// `InvalidKey`/`InvalidEnvironment`/`ValueTooLong` are `Usage`: the
-/// operator typed it. `FutureVersion`/`Decode` are `InvalidConfig`: the file
-/// on disk is the problem. `SecretError` is `#[non_exhaustive]`, so a future
-/// variant falls through to [`ExitCode::Failure`].
+/// `InvalidKey`/`InvalidEnvironment`/`ValueTooLong` are `Usage`: the operator
+/// typed it. `FutureVersion`/`Decode` are `InvalidConfig`: the file on disk
+/// is the problem.
 ///
-/// `pub(crate)`: `commands::import::dotenv` reads and writes the same store
-/// and must refuse the same input the same way.
+/// `commands::import::dotenv` writes the same store and must refuse alike.
 pub(crate) fn exit_code_for(err: &SecretError) -> ExitCode {
     match err {
         SecretError::InvalidKey(_)
@@ -109,17 +104,9 @@ pub fn secret(streams: &mut Streams<'_>, paths: &ShepPaths, args: &SecretArgs) -
 /// or it will not parse.
 ///
 /// A broken file leaves the gate shut and the host environment at its
-/// default, matching [`crate::whistle::gate::resolve_control`]: a config
-/// nobody can parse is the worst moment for a gate to disappear. None of
-/// `DaemonConfig`'s environment overrides touch either field, so the
-/// closure is always `&|_| None`.
+/// default, matching [`crate::whistle::gate::resolve_control`].
 ///
-/// `pub(crate)`: `commands::query`'s `describe` reads the same default
-/// host environment this verb's `get` falls back to, for the same reason.
-///
-/// Silent about why it fell back, for callers with no stream to say it on
-/// (the lookout pane draws over the terminal). [`daemon_config_diagnosed`]
-/// is the one for a caller that can.
+/// Silent about why it fell back, for callers with no stream to say it on.
 pub(crate) fn daemon_config(paths: &ShepPaths) -> DaemonConfig {
     daemon_config_diagnosed(paths).0
 }
@@ -165,25 +152,15 @@ pub(crate) fn host_environment(streams: &mut Streams<'_>, paths: &ShepPaths) -> 
 /// stripped, and one `\r` immediately before it if present, then decoded as
 /// UTF-8.
 ///
-/// Only that one newline is trimmed. Leading and interior whitespace can be
-/// part of a credential, so `echo "$PW" | shep secret set KEY --stdin` and
-/// `printf %s "$PW" | shep secret set KEY --stdin` both store exactly what
-/// was piped, and nothing wider is touched.
+/// Only that one newline is trimmed: leading and interior whitespace can be
+/// part of a credential.
 ///
 /// Bounded at [`STDIN_READ_CAP`] rather than read whole: nothing over
 /// [`secrets::MAX_VALUE_BYTES`] can be stored, so buffering a stream that
-/// size just to refuse it lets whatever is on the other end of the pipe
-/// decide how much memory this process takes.
-///
-/// `reader` rather than reading `std::io::stdin()` directly keeps this
-/// testable without touching the test process's real stdin; [`secret`]
-/// passes the real one.
+/// size lets the pipe decide this process's memory.
 ///
 /// # Errors
-/// The read failed, the value is over [`secrets::MAX_VALUE_BYTES`], or the
-/// trimmed bytes are not valid UTF-8. Each failure carries the code it exits
-/// with, so this verb's two ways of supplying a value refuse the same input
-/// with the same code.
+/// The read failed, the value is too long, or the bytes are not valid UTF-8.
 fn resolve_stdin_value(reader: &mut dyn Read) -> Result<String, (ExitCode, String)> {
     let mut bytes = Vec::new();
     reader
@@ -245,28 +222,11 @@ fn set(
 
 /// `shep secret get <key> [--env <environment>]`.
 ///
-/// `Format::Table` writes the value and a newline to `streams.out` and
-/// nothing else: the whole point is
-/// `DB_PASSWORD=$(shep secret get DB_PASSWORD)`, and a table with a KEY
-/// column would give the substitution something to strip. `Format::Json`
-/// wraps the same value in the standard envelope instead, through
-/// [`SecretValueRow`], the same shape [`crate::commands::kv`]'s own
-/// single-key `get` wraps a value in: `--format json` has to answer the
-/// contract every command but `bleats` does
-/// (`web/src/pages/docs/json-output.astro`), and a bare credential like
-/// `hunter2` is not even valid JSON.
+/// `Format::Table` writes the value and a newline and nothing else: the
+/// whole point is `DB_PASSWORD=$(shep secret get DB_PASSWORD)`. `Format::Json`
+/// wraps the same value in the standard envelope.
 ///
-/// `--env` reads that slot exactly. Without it the value resolves against
-/// `host_environment`, [`daemon_config`]'s `[daemon] environment` default:
-/// this verb takes no sheep name, so it cannot read a Flockfile's own
-/// `environment` override, and an app that sets one may resolve
-/// differently. `--env` is how to check exactly what a given environment
-/// holds.
-///
-/// Exits [`ExitCode::NotFound`] for a key with no value, writing nothing to
-/// `streams.out`, so `shep secret get k || echo default` works in a script.
-/// The gate is read before the store is, so a refusal cannot say whether
-/// the key exists.
+/// Exits [`ExitCode::NotFound`] writing nothing, so `get k || echo default` works.
 fn get(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -311,19 +271,14 @@ fn get(
 /// slot, then [`ALL_ENVIRONMENTS`].
 ///
 /// `host_environment` is [`get`]'s own parameter, not a sheep's actual
-/// environment: this verb takes no sheep name, so it cannot tell whether
-/// some app's Flockfile sets its own `environment` and would resolve a
-/// value differently.
+/// environment: this verb takes no sheep name.
 ///
-/// The operator's own store alone. A provider dog's namespace is not
-/// reachable from here: those values live in the shepherd's memory, are not
-/// an operator's to edit, and reading one through this verb would say they
-/// are.
+/// The operator's own store alone. A provider dog's namespace lives in the
+/// shepherd's memory and is not an operator's to edit.
 ///
 /// # Errors
-/// [`SecretError::InvalidKey`] for a key outside the grammar, which
-/// includes any `namespace/key` reference, plus `Io`, `Decode` and
-/// `FutureVersion` exactly as [`secrets::all`] returns them.
+/// [`SecretError::InvalidKey`] for a key outside the grammar, which includes
+/// any `namespace/key` reference, plus `Io`, `Decode` and `FutureVersion`.
 fn resolve(
     paths: &ShepPaths,
     key: &str,

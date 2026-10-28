@@ -1,6 +1,5 @@
-//! Rendering the five init-system units shep can start at boot: a systemd
-//! unit, a launchd plist, an openrc script, and the FreeBSD and OpenBSD
-//! `rc.d` scripts.
+//! Rendering the five init-system units shep can start at boot: systemd,
+//! launchd, openrc, and the FreeBSD and OpenBSD `rc.d` scripts.
 //!
 //! Every renderer is pure `format!` over a [`UnitSpec`]: no filesystem
 //! access, no environment reads, nothing that could fail. Resolving a real
@@ -34,19 +33,11 @@ pub(crate) struct UnitSpec {
 
 /// Renders the systemd unit, `Type=notify`.
 ///
-/// No `TimeoutStartSec`, so systemd's own default applies, 90s on a stock
-/// installation. Readiness is reported after the restore, and the restore
-/// walks the muster roll in dependency order, holding each stage until its
-/// members are ready. The shepherd sends `EXTEND_TIMEOUT_USEC` around each
-/// stage, set to that stage's own bound, so the deadline follows the walk and
-/// no number here has to cover the sum of the stages. systemd only moves a
-/// deadline later, so a `TimeoutStartSec` the operator sets higher is never
-/// cut. A single stage that overruns its own bound still lets systemd kill the
-/// shepherd and start it again on `RestartSec`.
-///
-/// `RestartPreventExitStatus` is [`ExitCode::DaemonAlreadyRunning`]: a
-/// shepherd started by hand already holds this home, and restarting into its
-/// lock every `RestartSec` stays under systemd's start limit forever.
+/// No `TimeoutStartSec`: systemd's default applies, and the shepherd sends
+/// `EXTEND_TIMEOUT_USEC` around each muster-restore stage, so the deadline
+/// follows the walk rather than a fixed sum. `RestartPreventExitStatus` is
+/// [`ExitCode::DaemonAlreadyRunning`]: a hand-started shepherd holds the
+/// home lock.
 pub(crate) fn systemd_unit(spec: &UnitSpec) -> String {
     let home = systemd_environment_value(&spec.home.display().to_string());
     let path = systemd_environment_value(&spec.path.to_string_lossy());
@@ -157,15 +148,10 @@ fn xml_text(value: &str) -> String {
 /// Renders the openrc init script.
 ///
 /// `supervise-daemon` (openrc >= 0.21) supervises the foreground process
-/// like systemd, instead of tracking a pidfile.
-///
-/// openrc has no `sd_notify` analogue: `start_post` polls `shep flock`
-/// instead, since the daemon binds its control socket before restoring
-/// the muster roll but does not accept until after. `flock` routes
-/// through `connect_client`, which never spawns a shepherd of its own.
-///
-/// Every interpolated value goes through [`sh_double_quoted`]: these land
-/// inside double-quoted assignments in a script that runs as root at boot.
+/// like systemd, instead of tracking a pidfile. openrc has no `sd_notify`
+/// analogue, so `start_post` polls `shep flock`, which never spawns a
+/// shepherd of its own. Every interpolated value goes through
+/// [`sh_double_quoted`]: these land in a script that runs as root at boot.
 pub(crate) fn openrc_script(spec: &UnitSpec) -> String {
     let user = sh_double_quoted(&spec.user);
     let exec = sh_double_quoted(&spec.exec.display().to_string());
@@ -221,16 +207,11 @@ pub(crate) fn openrc_script(spec: &UnitSpec) -> String {
 
 /// Renders the FreeBSD `rc.d` script, `/usr/local/etc/rc.d/shep_<user>`.
 ///
-/// `start_postcmd` polls the shepherd's own control socket, since
-/// `daemon(8)` reports the service started as soon as it forks, before
-/// the muster restore runs. `spec.user` must already pass
-/// [`super::privilege_check::is_rc_safe_user`]: `name`, `rcvar` and `shep_<user>_*` are
-/// shell identifiers, interpolated raw; any other single-shell value
-/// uses [`sh_double_quoted`] alone.
-///
-/// `${name}_env` and `command_args` are re-read by a second shell or
-/// program (`env(1)`'s word-split, `daemon(8)`'s argv): `home`, `path`
-/// and `exec` there are `sh_double_quoted(shell_quote(value))` instead.
+/// `start_postcmd` polls the shepherd's control socket, since `daemon(8)`
+/// reports the service started as soon as it forks. `spec.user` must pass
+/// [`super::privilege_check::is_rc_safe_user`]: it is interpolated raw into
+/// shell identifiers. A value a second shell re-reads, in `${name}_env` and
+/// `command_args`, is `sh_double_quoted(shell_quote(value))` instead.
 pub(crate) fn freebsd_rc_script(spec: &UnitSpec) -> String {
     let user = &spec.user;
     let exec = sh_double_quoted(&spec.exec.display().to_string());
@@ -289,16 +270,11 @@ pub(crate) fn freebsd_rc_script(spec: &UnitSpec) -> String {
 
 /// Renders the OpenBSD `rc.d` script, `/etc/rc.d/shep_<user>`.
 ///
-/// Like [`freebsd_rc_script`], `spec.user` must already pass
+/// Like [`freebsd_rc_script`], `spec.user` must pass
 /// [`super::privilege_check::is_rc_safe_user`] and is interpolated raw as an identifier.
-/// OpenBSD's `rc.subr(8)` has no post-start hook: `rc_pre` runs before
-/// `start`, `rc_post` after *stop*; `shep --home <home> flock` is the
-/// manual readiness check instead.
-///
-/// The environment is passed as `VAR=value` prefixes inside the string
-/// `rc_exec` hands to `su -fl ... -c "..."`, not exported: `su -l`
-/// discards the environment. `su`'s spawned shell reads `home`, `path`
-/// and `exec` a second time: `sh_double_quoted(shell_quote(value))`.
+/// `rc.subr(8)` has no post-start hook, so `shep --home <home> flock` is
+/// the readiness check. The environment travels as `VAR=value` prefixes
+/// inside the `su -fl ... -c "..."` string: `su -l` discards the rest.
 pub(crate) fn openbsd_rc_script(spec: &UnitSpec) -> String {
     let user = &spec.user;
     let exec = sh_double_quoted(&shell_quote(&spec.exec.display().to_string()));
@@ -348,9 +324,8 @@ pub(crate) fn openbsd_rc_script(spec: &UnitSpec) -> String {
 ///
 /// Distinct from [`super::shell_quote`]: that produces a standalone
 /// single-quoted word for a human to paste, this escapes content already
-/// inside double quotes. Where a value is re-evaluated by a second shell
-/// (OpenBSD's `rc_start` string, FreeBSD's `${name}_env`), the two
-/// compose, innermost first: `sh_double_quoted(shell_quote(value))`.
+/// inside double quotes. A value a second shell re-evaluates composes the
+/// two, innermost first: `sh_double_quoted(shell_quote(value))`.
 fn sh_double_quoted(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -534,15 +509,12 @@ mod tests {
     }
 
     /// systemd's own parser is the only thing that can say the generated
-    /// unit is well-formed; every assertion above is only our opinion of
-    /// it. Skips, loudly, when the tool is absent (an ordinary macOS
-    /// state); runs on the Linux CI leg.
+    /// unit is well-formed; every assertion above is our opinion of it.
+    /// Skips, loudly, when the tool is absent, as on macOS.
     ///
     /// Builds its own spec rather than [`spec`]'s: `verify` resolves
-    /// `ExecStart`/`ExecReload`/`ExecStop` against the real filesystem and
-    /// rejects a unit whose command is not an existing, executable file.
-    /// This process's own executable always exists and is executable, so
-    /// it stands in for `spec()`'s fixture path.
+    /// `ExecStart`/`ExecReload`/`ExecStop` against the real filesystem, so
+    /// this process's own executable stands in for `spec()`'s fixture path.
     #[test]
     fn systemd_analyze_accepts_the_generated_unit() {
         let Ok(analyze) = which_systemd_analyze() else {

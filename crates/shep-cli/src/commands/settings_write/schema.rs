@@ -12,12 +12,11 @@ use crate::dog::builtin_schema;
 
 /// A dog the shepherd knows, which is a wider set than the dogs it runs.
 ///
-/// The same three sources the daemon builds its own guard from
-/// (`commands/daemon/lifecycle.rs`'s `known_dogs`), because
-/// [`shep_core::protocol::Request::SetDogConfig`] is guarded on that one and for the same reason:
-/// the dog most in need of configuring is one that is disabled or has never
-/// started. A name outside this set is refused here rather than sent, so a
-/// typo never reaches the daemon as a write.
+/// The same three sources the daemon builds its own guard from, because
+/// [`shep_core::protocol::Request::SetDogConfig`] is guarded on that one: the
+/// dog most in need of configuring is one that is disabled or has never started.
+///
+/// A name outside this set is refused here rather than sent.
 pub(super) fn known_dogs(paths: &ShepPaths) -> BTreeSet<String> {
     let from_file = ShepToml::read_only(&paths.daemon_config)
         .map(|doc| {

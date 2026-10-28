@@ -6,10 +6,8 @@
 //! what a key means; this module only adds or removes the ones each verb owns.
 //!
 //! [`ShepToml::edit`] and [`ShepToml::try_edit`] are the whole write path:
-//! `$SHEP_HOME` at `0700`, an exclusive advisory lock on a sibling
-//! `shep.toml.lock` across the read-modify-write, and the document staged
-//! `0600`, `fsync`ed and `rename`d. A `try_edit` closure's own `Err` leaves
-//! `path` untouched.
+//! `$SHEP_HOME` at `0700`, an exclusive advisory lock on `shep.toml.lock`
+//! across the read-modify-write, and a `0600` `fsync`ed `rename`.
 
 // Fires only on Windows: `ShepTomlError` crosses the lint's 128-byte
 // threshold there and stays under it elsewhere.
@@ -60,14 +58,9 @@ const INTERPRETERS_STARTER_COMMENT: &str = "\
 /// The one writer of `$SHEP_HOME/shep.toml` in this binary.
 ///
 /// A missing file is created as an empty document, `$SHEP_HOME` with it; a
-/// file that will not parse is refused rather than overwritten, since it may
-/// hold every knob a daemon boots with, credentials included.
-///
-/// [`Self::edit`] and [`Self::try_edit`] are the only paths that write, and
-/// they hold the document's lock for exactly as long as the closure runs.
-/// Reading and writing are not separate public steps: a caller that could
-/// read, think, and then write is the lost update this type takes a lock to
-/// prevent.
+/// file that will not parse is refused rather than overwritten. Reading and
+/// writing are not separate public steps: a caller that could read, think
+/// and then write is the lost update this lock prevents.
 pub struct ShepToml {
     path: PathBuf,
     doc: DocumentMut,
@@ -193,16 +186,13 @@ impl ShepToml {
         Self::open(path)
     }
 
-    /// Renders the in-memory document exactly as [`Self::save`] would
-    /// write it, without touching disk.
+    /// Renders the in-memory document exactly as [`Self::save`] writes it.
     ///
-    /// `commands::settings::apply_setting` mutates, renders, and hands the
-    /// text to [`DaemonConfig::load`](shep_core::config::DaemonConfig::load)
-    /// before calling [`Self::save`], so a refusal never stages or renames.
+    /// `commands::settings::apply_setting` renders before it saves, so a
+    /// refusal never stages or renames.
     ///
     /// A named method rather than a `Display` impl: this text can carry a
-    /// dog's webhook token, and `format!("{doc}")` is what a future caller
-    /// reaches for without thinking about that.
+    /// dog's webhook token.
     #[must_use]
     pub(crate) fn rendered(&self) -> String {
         self.doc.to_string()
@@ -369,12 +359,8 @@ impl ShepToml {
     /// keyed by name with the `dog.` prefix dropped.
     ///
     /// Handed back as live [`Item`]s: a comment an operator wrote around
-    /// `[dog.metrics]` travels with the section. Only table-like entries
-    /// come back; `[dog] stray = 5` and `[[dog.x]]` are dropped. A document
-    /// with no `[dog]` table yields an empty map, left byte-identical.
-    ///
-    /// Takes everything: a partial move would leave one key readable from
-    /// two files.
+    /// `[dog.metrics]` travels with the section. Takes everything: a partial
+    /// move would leave one key readable from two files.
     pub fn take_dog_sections(&mut self) -> BTreeMap<String, Item> {
         let Some(item) = self.doc.remove("dog") else {
             return BTreeMap::new();
@@ -535,13 +521,10 @@ impl ShepToml {
     /// Forgets `name`'s adoption in this file: out of `enabled_dogs`,
     /// `adopted_dogs` and `channel_dogs`.
     ///
-    /// The whole of a removal's config half, run by `shep delete <name>` and
-    /// by the hidden `shep rehome <name>`. A `[dog.<name>]` an un-migrated
-    /// `shep.toml` still carries stays, as the `[<name>]` in `dogs.toml`
-    /// does: the settings an operator wrote are theirs, and a removal forgets
-    /// only where the binary lived. The difference from
-    /// [`Self::disable_dog`] is `adopted_dogs`, so recovery needs a fresh
-    /// `shep adopt <path>` rather than an `enable`.
+    /// A `[dog.<name>]` an un-migrated `shep.toml` still carries stays, as
+    /// the `[<name>]` in `dogs.toml` does: a removal forgets only where the
+    /// binary lived. Unlike [`Self::disable_dog`], this drops
+    /// `adopted_dogs`, so recovery needs a fresh `shep adopt <path>`.
     pub fn rehome_dog(&mut self, name: &str) {
         self.disable_dog(name);
         if let Some(adopted_dogs) = self
@@ -587,14 +570,10 @@ impl ShepToml {
 
     /// Writes the starter `[interpreters]` mapping, a script extension to
     /// the interpreter shep runs it with, under
-    /// `INTERPRETERS_STARTER_COMMENT`.
+    /// `INTERPRETERS_STARTER_COMMENT`. A no-op when it already exists.
     ///
     /// Written live rather than commented out: shep never infers an
-    /// interpreter on its own, and a fresh `$SHEP_HOME` still has to run the
-    /// `shep start server.js` that `welcome.rs` and `--help` advertise.
-    ///
-    /// A no-op when `[interpreters]` already exists, so a hand-edited
-    /// `shep.toml` is never clobbered or duplicated.
+    /// interpreter on its own.
     pub fn write_starter_interpreters(&mut self) {
         if self.doc.contains_key("interpreters") {
             return;
@@ -671,13 +650,8 @@ impl ShepToml {
 /// via `DirBuilderExt`, rather than `create_dir_all` and a later `chmod`.
 ///
 /// `$SHEP_HOME` holds webhook URLs, and on a host that has never booted a
-/// shepherd this call is the one that creates it: `boot::init_dirs`, which
-/// force-chmods it, does not run until the first `shep muster`. A
-/// `create_dir_all` would leave it at the ambient umask, typically `0755`,
-/// until that boot, and asking for the mode at `mkdir` time leaves no window
-/// in which the directory exists wider.
-///
-/// Reuses `shep_daemon::boot::DIR_MODE` rather than restating `0o700`.
+/// shepherd this call is the one that creates it: `boot::init_dirs` does not
+/// run until the first `shep muster`.
 fn create_home_dir(dir: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);

@@ -133,8 +133,7 @@ pub(super) async fn run(
         // The ask waits on the dog's own `action_timeout`, which is a second
         // window of the same kind the question already was: a dashboard filing
         // its own write on another key of this holder while the dog thinks is
-        // the edit this plan would silently overwrite. The plan is as stale as
-        // it was before the ask, and the dog's yes says nothing about it.
+        // the edit this plan would silently overwrite.
         if let Some(code) =
             stale_holder(client, streams, name, &plan.write, verb, &report.path).await
         {
@@ -310,16 +309,11 @@ async fn stale_holder(
 /// [`Request::SetDogConfig`] replaces a whole section and
 /// [`Request::SetSheepDogSettings`] replaces a whole table, so what this sends
 /// carries every key it read, not only the one the operator named. Between the
-/// read and the answer the lookout config pane can file a write of its own on a
-/// different key of the same holder, and the text read before the question would
-/// overwrite it with no warning. A sheep's own field is the one write of one key
-/// rather than of a whole holder, so it has nothing to re-read, and neither does
-/// dropping its override.
+/// read and the answer the lookout config pane can file a write of its own on
+/// a different key of the same holder.
 ///
-/// The comparison is on the whole holder rather than on the key the operator
-/// named: a holder that moved anywhere is one this plan no longer describes, and
-/// re-planning against it here would write a change the operator never saw the
-/// old value of.
+/// The comparison is on the whole holder: a holder that moved anywhere is one
+/// this plan no longer describes.
 ///
 /// # Errors
 /// The [`ExitCode`] already reported to `streams`.

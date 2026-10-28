@@ -1,22 +1,12 @@
 //! `shep get <name>[.<path>]`: one read for any settings in the flock.
 //!
-//! A sheep's name addresses its config and the `dogs.<dog>` tables inside it,
-//! and a dog's name addresses its own section of `dogs.toml`. A sheep is
-//! looked for first, among the names of the flock `shep copy` reads its
-//! addresses from. Anything no sheep is goes to `dogs.toml`, where the dog is
-//! the longest run of segments the shepherd answers a section for:
-//! `kelpie.worker` is the `worker` table of the dog `kelpie`, because
-//! `dogs.toml` spells that table as a header path rather than as a name.
+//! A sheep's name addresses its config and the `dogs.<dog>` tables inside
+//! it; a dog's name addresses its own section of `dogs.toml`. A sheep is
+//! looked for first, and anything no sheep is goes to `dogs.toml`, where the
+//! dog is the longest run of segments the shepherd answers a section for.
 //!
-//! The answer is the TOML the address names, spelled as the file it lives in
-//! spells it: a sheep's fragment carries its `dogs.<dog>` headers, a dog's
-//! carries `[<name>]`. Nothing is rewritten on the way out, so a dog's own
-//! comments inside its section survive the read.
-//!
-//! Two requests do the reading: `Request::SheepConfig` for a sheep, and
-//! `Request::DogConfig` for a dog. The dog read is the unresolved one, so a
-//! `{{secret:...}}` in a dog's section prints as the reference and this verb
-//! never touches the secret store.
+//! The answer is the TOML the address names, spelled as that file spells it,
+//! so a dog's comments inside its section survive the read.
 
 use std::fmt;
 
@@ -205,15 +195,10 @@ async fn get_sheep(
 /// One dog's own section, or the fragment of it the address named.
 ///
 /// The name is the longest run of segments the shepherd answers a section for,
-/// which is what tells `kelpie` and `kelpie.worker` apart: `dogs.toml` spells a
-/// dog's sub-table as `[kelpie.worker]`, a header path rather than a name. A
-/// sheep is already ruled out by the caller, so one read per candidate is the
-/// whole cost, and a flock with no dog and no section pays it for every
-/// candidate it has.
+/// which is what tells `kelpie` and `kelpie.worker` apart.
 ///
-/// The section is read as a document and re-rooted under the dog's name rather
-/// than re-rendered from a parsed table, which is what keeps the comments the
-/// operator wrote inside it.
+/// The section is read as a document and re-rooted, which keeps the comments
+/// the operator wrote inside it.
 async fn get_dog(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -223,8 +208,7 @@ async fn get_dog(
     // A dog in the flock with nothing written for it is a different answer
     // from a name nothing in the product knows: the first says the settings
     // are all defaults, the second says the name is wrong. The name kept is
-    // the candidate the flock carries, not the address, so the sentence names
-    // the dog it actually found.
+    // the candidate the flock carries, so the sentence names the dog it found.
     let mut named: Option<String> = None;
     for name in dog_candidates(segments) {
         let section = match read_dog_section(client, streams, &name).await {
@@ -293,10 +277,7 @@ fn no_such_name(segments: &[String]) -> String {
 ///
 /// `dog` is the name the flock carries and `address` is what the operator
 /// typed, kept apart on purpose: `kelpie.worker.token` names a path inside
-/// `kelpie`, and a dog whose own name is dotted is that whole name. Calling
-/// the address a dog would name a path as a settings holder, and pointing
-/// `shep enable` at its first segment would name a dog the flock does not
-/// have.
+/// `kelpie`.
 fn all_defaults(dog: &str, address: &[String]) -> String {
     let typed = address.join(".");
     let path = if typed == dog {
@@ -403,12 +384,10 @@ fn sheep_steps(
 /// The key path inside a dog's section that the segments after its name name.
 ///
 /// Each step takes the longest run of segments one of the tables actually
-/// holds as one key, the rule [`address::resolve_keys`] applies to a sheep's
-/// dog table: `kelpie.api.token` is the one key `api.token` when the section
-/// holds that key, and `api` then `token` when it holds a table under `api`.
+/// holds as one key, the rule [`address::resolve_keys`] applies to a sheep's dog table.
 ///
-/// `pub(crate)`: `shep set` writes at the path this names (issue #1096), so
-/// the key it changes is the key `shep get` printed.
+/// `shep set` writes at the path this names, so the key it changes is the
+/// key `shep get` printed.
 pub(crate) fn dog_steps(root: &Table, rest: &[String]) -> Vec<String> {
     let mut steps = Vec::new();
     let mut current: Option<&dyn toml_edit::TableLike> = Some(root);
@@ -417,10 +396,8 @@ pub(crate) fn dog_steps(root: &Table, rest: &[String]) -> Vec<String> {
         let taken = longest_toml_key(&rest[next..], current);
         // One lookup for the key `longest_toml_key` found, not one per segment
         // of it. A section can hold a key spelled with a dot in it
-        // (`[kelpie."api.token"]`, which holds `auth.key`), and looking for
-        // `api` then `token` loses the table that key names: the walk lands
-        // outside the section and the rest of the path is read as segments
-        // nothing holds.
+        // (`[kelpie."api.token"]`), and looking for `api` then `token` loses
+        // the table that key names.
         let key = taken.join(".");
         steps.push(key.clone());
         current = current
@@ -591,12 +568,7 @@ fn json_item(value: &Json) -> Option<Item> {
             // A map with no keys at all is a table the operator wrote a header
             // for and left empty: `[app.dogs.kelpie.options]` with no entries.
             // A header is the only way to say it is there, and a dog's settings
-            // are opaque to shep, so an empty table cannot be told apart from
-            // a missing setting.
-            //
-            // A map that holds nothing but tables is a step on the way down to
-            // what has something: `[dogs.kelpie]` is the header a Flockfile
-            // spells, `[dogs]` is not.
+            // are opaque to shep, so an empty table is not a missing setting.
             let a_step_down = !map.is_empty() && table.iter().all(|(_, item)| item.is_table());
             table.set_implicit(a_step_down);
             Item::Table(table)

@@ -21,13 +21,10 @@ const PRESERVATION_SEED: &str =
 /// Asserts a write over [`PRESERVATION_SEED`] kept every comment the seed
 /// carries, and kept `log_level` before `log_json`.
 ///
-/// Reads each comment out of the seed rather than naming it here, so the
-/// seed stays the one place the file under test is written down.
+/// Reads each comment out of the seed rather than naming it here.
 ///
 /// # Panics
-///
-/// If `written` drops a seed comment, or `log_json` no longer follows
-/// `log_level`.
+/// If `written` drops a seed comment, or `log_json` no longer follows it.
 #[track_caller]
 fn assert_preserves_comments_and_key_order(written: &str) {
     for line in PRESERVATION_SEED.lines() {

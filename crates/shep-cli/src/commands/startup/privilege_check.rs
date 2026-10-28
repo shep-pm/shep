@@ -2,9 +2,8 @@
 ///
 /// `rcvar` and `rcctl` turn the service name into shell variable names
 /// (`shep_<user>_enable`, `shep_<user>_flags`). A `-` or `.` in `user`
-/// produces an invalid `sh` identifier, and the script then fails at
+/// makes an invalid `sh` identifier, and the script fails at
 /// `load_rc_config` with a syntax error naming a line number, not a user.
-///
 /// systemd and openrc name files, not variables, and are unaffected.
 pub(crate) fn is_rc_safe_user(user: &str) -> bool {
     let mut chars = user.chars();

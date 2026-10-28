@@ -4,13 +4,9 @@
 //! Validation lives in [`apply_setting`], the only function that puts a
 //! mutated [`ShepToml`] and a real [`DaemonConfig::load`] in one place.
 //!
-//! [`load_settings`] reads the document, never a loaded [`DaemonConfig`]:
-//! every section is `#[serde(default)]`, so a loaded config cannot tell a
-//! key written at its own default from a key nobody wrote, which is the
-//! distinction this screen exists to show.
-//!
-//! Which keys exist is not decided here. The screen's rows come from
-//! [`shep_toml_shape`], and an edit names its key by path.
+//! [`load_settings`] reads the document, never a loaded [`DaemonConfig`]: a
+//! loaded config cannot tell a key written at its own default from a key
+//! nobody wrote, which is the distinction this screen exists to show.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -312,12 +308,10 @@ pub struct DogView {
     pub grants: DogGrants,
     /// The permissions the settings screen offers as a checklist under this
     /// dog's `grants` row: what its manifest declares, for a dog that has a
-    /// `[daemon] dog_grants` record. Empty for a dog with no record, which is
-    /// the same fact `shep dogs grant` refuses on.
+    /// `[daemon] dog_grants` record. Empty for a dog with no record.
     ///
-    /// Read off the file rather than off the dog's binary: a built-in dog's
-    /// manifest is one call away, and an adopted dog's record was written out
-    /// of its manifest when `shep enable` asked.
+    /// Read off the file rather than off the dog's binary: an adopted dog's
+    /// record was written out of its manifest when `shep enable` asked.
     pub offered: Vec<String>,
 }
 
@@ -531,17 +525,10 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
 /// The checklist the settings screen offers under `name`'s `grants` row.
 ///
 /// A dog with no `[daemon] dog_grants` entry offers nothing, which is the same
-/// fact [`crate::commands::dogs::record_change`] refuses on: a grant has no
-/// record to add itself to, and `shep enable` is what writes the first one.
+/// fact [`crate::commands::dogs::record_change`] refuses on.
 ///
-/// A built-in dog is this binary, so what it declares is one call away and the
-/// checklist is that list: a permission the record holds that its build has
-/// come to drop gets no row, the same way [`crate::commands::dogs::record_change`]
-/// refuses to grant it. An adopted dog's record is its declaration of record,
-/// written out of its manifest when `shep enable` asked. Reading that binary
-/// again here would spend a probe on a screen that only reads files, and
-/// [`crate::commands::dogs::record_change`] re-reads the manifest before it
-/// writes either way.
+/// A built-in dog's checklist is what this binary declares; an adopted dog's
+/// is its record, written out of its manifest when `shep enable` asked.
 fn offered(name: &str, built_in: bool, grants: &DogGrants) -> Vec<String> {
     if !matches!(grants, DogGrants::Recorded(_)) {
         return Vec::new();
