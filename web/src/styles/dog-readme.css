@@ -1,0 +1,199 @@
+/*
+ * The body of an imported dog page, imported by
+ * `src/pages/docs/dogs/[dog]/[...page].astro`.
+ *
+ * A fetched README is somebody else's markdown drawn by Astro's own renderer, so
+ * this styles whatever that renderer emits — `<pre>`, `<ul>`, `<blockquote>`,
+ * `<img>`, `<table>` — rather than the hand-built panels every chapter page
+ * uses. It is scoped under `.dog-readme`, the wrapper the page puts around the
+ * rendered body, so none of it reaches a chapter page: `docs-page.css` already
+ * owns h1, h2, h3 and p for the whole docs shell and this adds to it.
+ *
+ * The width rule is the one that actually bites. A README is written for a
+ * GitHub page of its own and carries things this column cannot hold: a fenced
+ * block with a 120-column line in it, a diagram exported at its natural size, a
+ * six-column table. `main` is capped at 860px and already has `min-width: 0`, so
+ * each of those gets `max-width: 100%` here and scrolls inside itself instead of
+ * widening the page.
+ */
+
+.dog-readme {
+  min-width: 0;
+}
+
+/* The line naming the release tag the page was read at, and the sub-page's link
+   back up to its dog. Both sit above the README's own h1. */
+.dog-readme .dog-source,
+.dog-readme .dog-back {
+  font-family: "Space Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+.dog-readme .dog-source {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dog-readme .dog-back {
+  margin-bottom: 26px;
+}
+
+/* Lists. The renderer emits them bare, and the browser's default padding is
+   small enough for a list's bullet to land on top of the text beside it. */
+.dog-readme ul,
+.dog-readme ol {
+  margin: 0 0 20px;
+  padding-left: 26px;
+}
+
+.dog-readme li {
+  font-size: 16.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0 0 8px;
+}
+
+/* A list item whose body is a paragraph, which is what a README writes when a
+   bullet needs two sentences. The `p` rule in docs-page.css would otherwise add
+   18px under every item. */
+.dog-readme li > p {
+  margin: 0 0 8px;
+}
+
+.dog-readme li > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Images. A README's diagram is exported at whatever size it was drawn. */
+.dog-readme img {
+  max-width: 100%;
+  height: auto;
+}
+
+/*
+ * Fenced blocks. The renderer highlights them with Shiki, which writes the
+ * block's own background and token colors as inline styles, so this supplies the
+ * chrome around it and nothing about the colors.
+ *
+ * `pre code` undoes the inline-code chip `DocsLayout` puts on every `code` in
+ * `main` — a chip behind a whole fenced block reads as one grey slab.
+ */
+.dog-readme pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  margin: 0 0 24px;
+  padding: 18px 20px;
+  font-family: "Space Mono", monospace;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.dog-readme pre code {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: inherit;
+  overflow-wrap: normal;
+}
+
+.dog-readme blockquote {
+  margin: 0 0 20px;
+  padding: 2px 0 2px 18px;
+  border-left: 3px solid var(--line);
+  color: var(--ink-2);
+}
+
+.dog-readme hr {
+  border: 0;
+  border-top: 3px solid var(--line);
+  margin: 34px 0;
+}
+
+/*
+ * The tables a README writes with pipes.
+ *
+ * The same shape as `.metrics-table` in docs-page.css — a 3px rule, rounded
+ * corners, a monospace uppercase header band, hairline rows — built on
+ * `border-collapse: separate` so the corners are the table's own and the cells
+ * never poke past them.
+ */
+.dog-readme table {
+  max-width: 100%;
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.dog-readme th,
+.dog-readme td {
+  padding: 11px 18px;
+  text-align: left;
+  vertical-align: top;
+  border: 0;
+  border-bottom: 2px solid var(--hair);
+}
+
+.dog-readme tr:last-child th,
+.dog-readme tr:last-child td {
+  border-bottom: 0;
+}
+
+.dog-readme thead th {
+  background: var(--paper-2);
+  font-family: "Space Mono", monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+
+.dog-readme tbody td {
+  color: var(--ink-2);
+}
+
+.dog-readme td code,
+.dog-readme th code {
+  font-family: "Space Mono", monospace;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  /*
+   * One column, header row gone, each cell naming its own column.
+   *
+   * This is what `dog-readme-tables.ts` pays for: without the `data-label` it
+   * puts on every cell past the first, a stacked table here is a run of values
+   * with nothing saying which column each one is.
+   */
+  .dog-readme table,
+  .dog-readme tbody,
+  .dog-readme tr,
+  .dog-readme th,
+  .dog-readme td {
+    display: block;
+  }
+
+  .dog-readme thead {
+    display: none;
+  }
+
+  .dog-readme td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.62;
+    margin-bottom: 2px;
+  }
+}

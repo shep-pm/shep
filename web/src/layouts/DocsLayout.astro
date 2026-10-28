@@ -23,9 +23,20 @@ import "../styles/docs-page.css";
 interface Props {
   /** Sidebar slug to highlight, e.g. "getting-started". */
   activeSlug: string;
+  /**
+   * The page's own title, for a page `docs-nav.ts` does not name.
+   *
+   * Only an imported page passes this: a fetched dog page at
+   * `/docs/dogs/<adopt_as>` is not a chapter of the docs book, so there is no
+   * nav entry for it to take a title from. Every chapter page leaves it off and
+   * keeps the one docs-nav.ts supplies.
+   */
+  title?: string;
+  /** The crumb, for the same reason as `title`. */
+  crumb?: string;
 }
 
-const { activeSlug } = Astro.props;
+const { activeSlug, title: givenTitle, crumb: givenCrumb } = Astro.props;
 
 /*
  * The chapter's name and part both come from docs-nav.ts, so moving a
@@ -54,9 +65,17 @@ if (!found) {
  * something once you already use shep.
  */
 const { label, plain } = found.chapter.item;
-const title = plain ? `${label} (${plain})` : label;
+/*
+ * `title` and `crumb` are overrides, not a second path through this file: the
+ * nav lookup above still runs, because the sidebar highlight, the chapter bar
+ * and the meta description all come from the chapter an imported page is filed
+ * under. A dog page passes `activeSlug="community-dogs"` and names its own
+ * title and crumb, which is what lets it read as a dog's page while sitting in
+ * the Dogs part of the sidebar.
+ */
+const title = givenTitle ?? (plain ? `${label} (${plain})` : label);
 const description = found.chapter.item.summary;
-const crumb = `${found.chapter.part} / ${found.chapter.item.label}`;
+const crumb = givenCrumb ?? `${found.chapter.part} / ${found.chapter.item.label}`;
 ---
 
 <Base title={`shep docs · ${title}`} description={description}>
