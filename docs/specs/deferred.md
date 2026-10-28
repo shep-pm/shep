@@ -45,9 +45,10 @@ on 2026-08-26.
 
 ## Committed to v1.1+ by design (spec §2)
 
-Five deliberate scope cuts, not oversights — spec §2 carries the reasoning.
-There were six until 2026-08-26, when the Windows tier stopped being one
-of them: it shipped, and its entry moved to "Not deferred" below.
+Deliberate scope cuts, not oversights — spec §2 carries the reasoning. The
+list has shrunk twice: the Windows tier shipped on 2026-08-26 and the `vcs`
+feature on 2026-10-28, and each entry moved to "Not deferred" in
+[deferred-history.md](deferred-history.md).
 
 - HTTP/SSE MCP transport (whistle ships stdio-only first). Tracked as https://github.com/shep-pm/shep/issues/343
 - cgroup v2 enforcement (`enforce = "kernel"`) — `LimitEnforcer`'s polling
@@ -55,7 +56,6 @@ of them: it shipped, and its entry moved to "Not deferred" below.
   line never mentioned: see the subsection below. Tracked as https://github.com/shep-pm/shep/issues/344
 - `@shep/io` npm shim (built on demand). Tracked as https://github.com/shep-pm/shep/issues/362, with Python
   alongside it at https://github.com/shep-pm/shep/issues/363
-- vcs metadata (`vcs` feature, off by default). Tracked as https://github.com/shep-pm/shep/issues/345
 - `shep web` JSON status endpoint. Resolved, 2026-08-13: the metrics dog
   does not cover this — it serves Prometheus exposition text for a
   scraper, and `shep web` was a hand-fetched JSON payload for a
@@ -1012,10 +1012,10 @@ entries under "Known debt" that are actually still open. The reload-readiness
 entry followed on 2026-10-15, once the serial reload had made it a closed
 record rather than open debt.
 
-The two files now run 1412 lines there against 1056 here. Both counts were
+The two files now run 1457 lines there against 1021 here. Both counts were
 stated once and then drifted, which is the failure this file warns about
 elsewhere; they are counted, not remembered, and this pair was counted after
-the 2026-10-15 move.
+the 2026-10-28 move.
 
 This file answers "what is not built". That one answers "what was not built,
 and what happened to it".

@@ -33,9 +33,9 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         Windows ships today with three named limits: no graceful stop
         signal unless the app opts into the shepherd channel, no{" "}
         <code>user</code>/<code>group</code>, and no <code>shep startup</code>.
-        Five smaller cuts are deferred past v1 on purpose (whistle's HTTP
-        transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, VCS
-        metadata, a JSON status endpoint).
+        Several smaller cuts are deferred past v1 on purpose (whistle's HTTP
+        transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, a
+        JSON status endpoint).
       </p>
     </ShortVersion>
 
@@ -139,7 +139,7 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       one. Windows has no equivalent to pass.
     </p>
 
-    <h2 id="five-smaller-cuts-argued-for-rather-than-just-missing">Five smaller cuts, argued for rather than just missing</h2>
+    <h2 id="five-smaller-cuts-argued-for-rather-than-just-missing">Smaller cuts, argued for rather than just missing</h2>
     <p>
       Spec §2 names these as deliberate v1.1+ scope, not oversights:
     </p>
@@ -159,10 +159,6 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         <strong>The <code>@shep/io</code> npm shim.</strong> Built on
         demand, not before anyone's asked for it. Tracked as <a href="https://github.com/shep-pm/shep/issues/362">issue 362</a>,
         with Python alongside it at <a href="https://github.com/shep-pm/shep/issues/363">issue 363</a>.
-      </li>
-      <li>
-        <strong>VCS metadata</strong> (the <code>vcs</code> feature). Off by
-        default, not wired into the build. Tracked as <a href="https://github.com/shep-pm/shep/issues/345">issue 345</a>.
       </li>
       <li>
         <strong>A JSON status endpoint.</strong> Resolved rather than just

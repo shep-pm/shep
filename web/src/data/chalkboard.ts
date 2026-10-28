@@ -13,9 +13,9 @@
  *     The list is empty and the guard below is not: the next item deferred.md
  *     queues with no entry here fails the build.
  *   - "Committed to v1.1+ by design (spec §2)" is the deliberate cuts, and
- *     Windows is the largest. Its items are top-level `- ` bullets, some
- *     bold and some not, so the anchor is each bullet's head: its text up
- *     to the first parenthesis, em dash, or sentence end.
+ *     cgroup v2 enforcement is the largest. Its items are top-level `- `
+ *     bullets, some bold and some not, so the anchor is each bullet's head:
+ *     its text up to the first parenthesis, em dash, or sentence end.
  *
  * A section ends at the next heading of any depth, not at the next `## `.
  * Either section can carry a `### ` subsection expanding on one of its
@@ -53,7 +53,6 @@ const cutItems: ChalkboardItem[] = [
   { anchor: "HTTP/SSE MCP transport", display: "HTTP/SSE MCP transport" },
   { anchor: "cgroup v2 enforcement", display: "cgroup v2 enforcement" },
   { anchor: "@shep/io npm shim", display: "@shep/io npm shim" },
-  { anchor: "vcs metadata", display: "vcs metadata" },
   { anchor: "shep web JSON status endpoint", display: "shep web JSON endpoint" },
 ];
 
