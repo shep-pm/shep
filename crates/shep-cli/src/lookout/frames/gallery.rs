@@ -79,7 +79,7 @@ the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
-confirm, the socket editor mid-type, the dogs table's own drift, the same
+confirm, the socket editor mid-type, every dog on its own folded row, the same
 screen at 45 columns and the same screen too short to hold every row each get
 a frame of their own.
 ";

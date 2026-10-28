@@ -66,7 +66,7 @@ the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
-confirm, the socket editor mid-type, the dogs table's own drift, the same
+confirm, the socket editor mid-type, every dog on its own folded row, the same
 screen at 45 columns and the same screen too short to hold every row each get
 a frame of their own.
 
@@ -945,10 +945,10 @@ The settings screen with some keys declared. `shep.toml` and `the default` sit s
   hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
-[0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
-  bark                                                                no       built-in                  not running    [0m
-  metrics                                                             yes      built-in                  not running    [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
+  ▸ bark                                                            no       built-in                  not running      [0m
+  ▸ metrics                                                         yes      built-in                  not running      [0m
+                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -980,12 +980,12 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
   hosts               none                            the default  the next command reads it                                                                                        [0m
                                                                                                                                                                                     [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                                                                            [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                                                                                  [0m
-[0m[38;5;245m  NAME                                                                                                                            IN FILE  SOURCE                    RUNNING        [0m
-  bark                                                                                                                            no       built-in                  not running    [0m
-  metrics                                                                                                                         yes      built-in                  not running    [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   [0m
+  ▸ bark                                                                                                                        no       built-in                  not running      [0m
+  ▸ metrics                                                                                                                     yes      built-in                  not running      [0m
                                                                                                                                                                                     [0m
 [0m[38;5;221m  set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   [0m
+                                                                                                                                                                                    [0m
                                                                                                                                                                                     [0m
                                                                                                                                                                                     [0m
 [0m[38;5;221m[48;5;235mset daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other…[0m[38;5;245m[48;5;235m control enabled[0m
@@ -1015,19 +1015,19 @@ The socket editor open mid-path. The status bar names the field being typed, not
   hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
-[0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
-  bark                                                                no       built-in                  not running    [0m
-  metrics                                                             yes      built-in                  not running    [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
+  ▸ bark                                                            no       built-in                  not running      [0m
+  ▸ metrics                                                         yes      built-in                  not running      [0m
                                                                                                                         [0m
 [0m[38;5;221m  editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           [0m
+                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mediting daemon.socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                             [0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_dogs  (120x30) ===
-The dogs table showing the drift it exists to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent.
+Every dog on its own folded row, showing the drift those rows exist to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
                                                                                                                         [0m
@@ -1050,11 +1050,11 @@ The dogs table showing the drift it exists to reveal: otel running while disable
   hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
-[0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
-  otel                                                                no       /usr/local/bin/shep-otel  online         [0m
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    [0m
-  bark                                                                yes      built-in                  silent         [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           [0m
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      [0m
+  ▸ bark                                                            yes      built-in                  silent           [0m
+                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -1062,7 +1062,7 @@ The dogs table showing the drift it exists to reveal: otel running while disable
 
 
 === settings_narrow  (45x30) ===
-The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
+The same screen at 45 columns. Both kinds of row have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dog header rows have lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep 2 in the flock[0m
                                              [0m
@@ -1085,11 +1085,11 @@ The same screen at 45 columns. Both of its tables have dropped a column rather t
   hosts               none        the default[0m
                                              [0m
 [0m[38;5;245m  [dogs][0m                                     [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no …[0m
-[0m[38;5;245m  NAME               IN FILE  RUNNING        [0m
-  otel               no       online         [0m
-  ledger             yes      not running    [0m
-  bark               yes      silent         [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; …[0m
+  ▸ otel           no       online           [0m
+  ▸ ledger         yes      not running      [0m
+  ▸ bark           yes      silent           [0m
+                                             [0m
                                              [0m
                                              [0m
                                              [0m
@@ -1097,21 +1097,21 @@ The same screen at 45 columns. Both of its tables have dropped a column rather t
 
 
 === settings_short  (120x14) ===
-The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the dogs caption and column header cost the same height a row does.
+The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
-[0m[38;5;245m  ... 13 above[0m                                                                                                          [0m
+[0m[38;5;245m  ... 12 above[0m                                                                                                          [0m
+    level             full                            shep.toml    the next command reads it                            [0m
   ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
     py                python3                         shep.toml    the next command reads it                            [0m
 [0m[38;5;245m    + add an entry                                                                                                      [0m
   hosts               none                            the default  the next command reads it                            [0m
                                                                                                                         [0m
 [0m[38;5;245m  [dogs][0m                                                                                                                [0m
-[0m[38;5;245m  space arms, Enter applies; a dog needs no reload                                                                      [0m
-[0m[38;5;245m  NAME                                                                IN FILE  SOURCE                    RUNNING        [0m
-  otel                                                                no       /usr/local/bin/shep-otel  online         [0m
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    [0m
-> bark                                                                yes      built-in                  silent         [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           [0m
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      [0m
+> ▸ bark                                                            yes      built-in                  silent           [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 

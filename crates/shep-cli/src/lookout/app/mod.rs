@@ -59,7 +59,7 @@ use super::tail::Stream;
 use super::textbox::{TextBox, TextEdit};
 use super::theme::Palette;
 use super::viewport::Viewport;
-use crate::commands::settings::{SettingEdit, SettingsSnapshot};
+use crate::commands::settings::{DogView, SettingEdit, SettingsSnapshot};
 use crate::style::{StyleLevel, StyleSource};
 use crate::vocabulary::Reported;
 pub(in crate::lookout) use settings_confirm::apply_needs;
@@ -97,6 +97,8 @@ mod secrets_write;
 mod selection;
 mod settings;
 mod settings_confirm;
+#[cfg(test)]
+mod settings_dog_tree_tests;
 mod settings_dogs;
 mod settings_keys;
 mod sheep_pane;

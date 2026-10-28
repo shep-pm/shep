@@ -66,7 +66,7 @@ the dashboard. The seven before
 that are the settings screen, `s` from the dashboard. It owns the whole body
 between the title and the status bar rather than sharing it
 with the flock table, so a fresh $SHEP_HOME, some scalars declared, an armed
-confirm, the socket editor mid-type, the dogs table's own drift, the same
+confirm, the socket editor mid-type, every dog on its own folded row, the same
 screen at 45 columns and the same screen too short to hold every row each get
 a frame of their own.
 
@@ -915,10 +915,10 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  bark                                                                no       built-in                  not running    
-  metrics                                                             yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ bark                                                            no       built-in                  not running      
+  ▸ metrics                                                         yes      built-in                  not running      
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -949,12 +949,12 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                                                                                        
                                                                                                                                                                                     
   [dogs]                                                                                                                                                                            
-  space arms, Enter applies; a dog needs no reload                                                                                                                                  
-  NAME                                                                                                                            IN FILE  SOURCE                    RUNNING        
-  bark                                                                                                                            no       built-in                  not running    
-  metrics                                                                                                                         yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   
+  ▸ bark                                                                                                                        no       built-in                  not running      
+  ▸ metrics                                                                                                                     yes      built-in                  not running      
                                                                                                                                                                                     
   set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   
+                                                                                                                                                                                    
                                                                                                                                                                                     
                                                                                                                                                                                     
 set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other… control enabled
@@ -983,18 +983,18 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  bark                                                                no       built-in                  not running    
-  metrics                                                             yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ bark                                                            no       built-in                  not running      
+  ▸ metrics                                                         yes      built-in                  not running      
                                                                                                                         
   editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           
+                                                                                                                        
                                                                                                                         
                                                                                                                         
 editing daemon.socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                              control enabled
 
 === settings_dogs  (120x30) ===
-The dogs table showing the drift it exists to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent.
+Every dog on its own folded row, showing the drift those rows exist to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent.
 
 shep lookout   /home/ada/.shep                                                                            2 in the flock
                                                                                                                         
@@ -1017,18 +1017,18 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  otel                                                                no       /usr/local/bin/shep-otel  online         
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    
-  bark                                                                yes      built-in                  silent         
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
+  ▸ bark                                                            yes      built-in                  silent           
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled
 
 === settings_narrow  (45x30) ===
-The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
+The same screen at 45 columns. Both kinds of row have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dog header rows have lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else.
 
 shep lookout   /home/ada/.shep 2 in the flock
                                              
@@ -1051,32 +1051,32 @@ shep lookout   /home/ada/.shep 2 in the flock
   hosts               none        the default
                                              
   [dogs]                                     
-  space arms, Enter applies; a dog needs no …
-  NAME               IN FILE  RUNNING        
-  otel               no       online         
-  ledger             yes      not running    
-  bark               yes      silent         
+  space arms, Enter applies; e opens a dog; …
+  ▸ otel           no       online           
+  ▸ ledger         yes      not running      
+  ▸ bark           yes      silent           
+                                             
                                              
                                              
                                              
 esc/s close   j/k select   g… control enabled
 
 === settings_short  (120x14) ===
-The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the dogs caption and column header cost the same height a row does.
+The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does.
 
 shep lookout   /home/ada/.shep                                                                            2 in the flock
-  ... 13 above                                                                                                          
+  ... 12 above                                                                                                          
+    level             full                            shep.toml    the next command reads it                            
   ▾ interpreters      1 entry                         shep.toml    the next command reads it                            
     py                python3                         shep.toml    the next command reads it                            
     + add an entry                                                                                                      
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  otel                                                                no       /usr/local/bin/shep-otel  online         
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    
-> bark                                                                yes      built-in                  silent         
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
+> ▸ bark                                                            yes      built-in                  silent           
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled
 
 === bleats  (100x14) ===

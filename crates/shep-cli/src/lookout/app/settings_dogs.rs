@@ -1,5 +1,6 @@
-//! The dog rows on the settings screen: the toggle, the two halves it writes,
-//! and the schema probe.
+//! The dog rows on the settings screen: the enable toggle and the two halves
+//! it writes, `e` opening a row onto the dog's other `[daemon] keys` and its
+//! own config tree, and the two writes a grant and a boot-first toggle are.
 
 use super::*;
 
@@ -47,30 +48,170 @@ impl App {
         self.reread_settings()
     }
 
-    /// `e` on the settings screen: probe the dog under the cursor for its
-    /// schema.
+    /// `e` on a dog's row: open it, or close it.
     ///
-    /// Silent on a scalar row, not refused: `space` and `Enter` already
-    /// edit those, and a refusal that was never going to act trains an
-    /// operator to ignore the status bar.
+    /// The probe is what opening costs, and it is spent here rather than when
+    /// the screen opens: a probe runs the dog's binary, so a screen listing six
+    /// dogs pays for none until an operator opens one. A dog whose row was
+    /// opened before pays nothing, because this screen kept the pane.
+    ///
+    /// Silent on every other row, not refused: `space` and `Enter` already edit
+    /// those, and a refusal that was never going to act trains an operator to
+    /// ignore the status bar.
     ///
     /// The dogs this can reach are exactly the rows already shown, so no
     /// listing request is needed. An adopted-but-disabled dog stays in
     /// that list: configure-then-enable is the ordinary order.
-    pub(super) fn probe_dog_schema(&mut self) -> Effect {
-        let Some(settings) = self.settings() else {
+    pub(super) fn fold_dog_row(&mut self) -> Effect {
+        let Some(index) = self
+            .settings()
+            .and_then(|settings| match settings.cursor() {
+                Some(SettingsRow::Dog(index)) => Some(index),
+                _ => None,
+            })
+        else {
             return Effect::None;
         };
-        let Some(SettingsRow::Dog(index)) = settings.cursor() else {
+        let Some(settings) = self.body.settings_mut() else {
             return Effect::None;
         };
-        let Some(dog) = settings.snapshot().dogs.get(index) else {
-            return Effect::None;
-        };
-        Effect::LoadDogPane {
-            name: dog.name.clone(),
-            adopted_path: dog.adopted_path.clone(),
+        match settings.toggle_dog(index) {
+            // Mid-read: the read this screen already asked for is the one
+            // coming back, and asking again would spend a second probe.
+            DogFold::Nothing => Effect::None,
+            DogFold::Probe { name, adopted_path } => Effect::LoadDogPane { name, adopted_path },
+            // A tree this screen already holds needs no read to open, and a
+            // closed one keeps holding its pane for the same reason a dog pane
+            // keeps its [`DogProbe`]: nothing else recorded the schema.
+            DogFold::Opened | DogFold::Closed => Effect::None,
         }
+    }
+
+    /// `space` on one of a dog's other `[daemon] key` rows.
+    ///
+    /// Only `boot first` arms here: `source` and `channel` are refused in
+    /// [`App::cycle_setting`] before the gate is even consulted, and `grants`
+    /// is the row its checklist hangs under rather than a toggle of its own.
+    pub(super) fn cycle_dog_key(&mut self, dog: usize, key: DogKey) -> Effect {
+        let DogKey::BootFirst = key else {
+            return Effect::None;
+        };
+        let Some(settings) = self.body.settings_mut() else {
+            return Effect::None;
+        };
+        let Some((name, first)) = settings
+            .dog(dog)
+            .map(|dog| dog.name.clone())
+            .zip(settings.next_boot_first(dog))
+        else {
+            return Effect::None;
+        };
+        let tune = DogTune::BootFirst { name, first };
+        let text = tune.text();
+        settings.pending = Some(Pending::DogTuneArmed {
+            tune,
+            text,
+            at: self.now,
+        });
+        Effect::None
+    }
+
+    /// `space` on one item of a dog's grants checklist: arms the opposite of
+    /// what `[daemon] dog_grants` records for that permission.
+    ///
+    /// Arming is not granting. What decides whether the permission can be held
+    /// at all is [`crate::commands::dogs::record_change`], which both this
+    /// screen and `shep dogs grant` write through, so a row this screen offers
+    /// and the verb would refuse cannot be written by either.
+    pub(super) fn cycle_dog_grant(&mut self, dog: usize, index: usize) -> Effect {
+        let Some(settings) = self.body.settings_mut() else {
+            return Effect::None;
+        };
+        let Some((name, permission, grant)) = settings
+            .dog(dog)
+            .map(|dog| dog.name.clone())
+            .zip(settings.next_grant(dog, index))
+            .map(|(name, (permission, grant))| (name, permission, grant))
+        else {
+            return Effect::None;
+        };
+        let tune = DogTune::Grant {
+            name,
+            permission,
+            grant,
+        };
+        let text = tune.text();
+        settings.pending = Some(Pending::DogTuneArmed {
+            tune,
+            text,
+            at: self.now,
+        });
+        Effect::None
+    }
+
+    /// One `Sent::GrantDog` answer: the prompt this grant raised clears, one
+    /// sentence lands, and the screen re-reads `shep.toml` so the checklist
+    /// shows the record rather than what was armed.
+    pub(super) fn on_dog_grant_reply(
+        &mut self,
+        name: String,
+        ticket: u64,
+        result: Result<Response, RequestError>,
+    ) -> Effect {
+        if let Some(settings) = self.settings_mut() {
+            settings.resolve(ticket);
+        }
+        match result {
+            Ok(Response::DogStarted(_)) => {
+                self.notice = Some(Notice::info(format!(
+                    "{name}: the running dog is told its new grants"
+                )));
+            }
+            other => {
+                self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
+            }
+        }
+        self.reread_settings()
+    }
+
+    /// Says on the dog named `name`'s own row that its config could not be
+    /// read, naming `dogs.toml` as the place to edit instead, which is what a
+    /// dog pane does when the same probe fails.
+    pub(super) fn refuse_settings_dog(&mut self, name: &str, why: String) {
+        let Some(settings) = self.body.settings_mut() else {
+            return;
+        };
+        let Some(index) = settings
+            .snapshot
+            .dogs
+            .iter()
+            .position(|dog| dog.name == name)
+        else {
+            return;
+        };
+        settings.refuse_dog(index, why);
+    }
+
+    /// Opens the dog named `name`'s row onto `pane`, built from `schema` and
+    /// the section the shepherd answered with.
+    pub(super) fn open_settings_dog(
+        &mut self,
+        name: &str,
+        pane: ConfigPane,
+        schema: serde_json::Value,
+    ) {
+        let Some(settings) = self.body.settings_mut() else {
+            return;
+        };
+        let Some(index) = settings
+            .snapshot
+            .dogs
+            .iter()
+            .position(|dog| dog.name == name)
+        else {
+            return;
+        };
+        settings.open_dog(index, pane, schema);
     }
 
     /// `space` on a [`SettingsRow::Dog`] row: arms the opposite of the file's

@@ -176,7 +176,13 @@ export const BUDGETS: Record<string, number> = {
   // `validate` manifest field, the `shep.validate` ask, and what a refusal
   // prints. Surface a dog author and an operator both have to be able to
   // read, not prose to trim back out to fit.
-  "lookout-config": 3970,
+  //
+  // Raised on #1191 for the settings screen's dog rows: what `e` opens, the
+  // four per-dog keys under the header, which two of them are read-only and
+  // why, that a grant tick runs the verb's own check, and that a schema is
+  // probed when a row opens rather than when the screen does. Required
+  // content for a surface an operator has to be able to read.
+  "lookout-config": 4160,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line

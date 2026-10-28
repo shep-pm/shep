@@ -23,12 +23,12 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  bark                                                                no       built-in                  not running    
-  metrics                                                             yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ bark                                                            no       built-in                  not running      
+  ▸ metrics                                                         yes      built-in                  not running      
                                                                                                                         
   editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           
+                                                                                                                        
                                                                                                                         
                                                                                                                         
 editing daemon.socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                              control enabled

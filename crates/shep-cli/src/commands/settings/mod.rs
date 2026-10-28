@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 use shep_core::config::{DaemonConfig, DaemonConfigError, parse_daemon_bool};
 
-use crate::commands::shep_toml::{PathError, ShepToml, ShepTomlError};
+use crate::commands::shep_toml::{GrantRecord, PathError, ShepToml, ShepTomlError};
 use crate::dog::BUILT_IN_DOGS;
 use crate::lookout::field::{Field, FieldKind, segment, shep_toml_shape};
 use crate::style::{StyleLevel, StyleSource};
@@ -287,10 +287,13 @@ fn render_value(value: &Value) -> String {
     }
 }
 
-/// One row of the dogs table
+/// One dog's row on the settings screen: the file joined against the flock,
+/// and the four `[daemon]` keys that belong to that one dog.
 ///
-/// `Debug` is derived, not redacted: a name, a bool and a binary's path.
-/// The dog's own config, which can hold a secret, lives in `dogs.toml`.
+/// `Debug` is derived, not redacted: a name, three bools, a binary's path and
+/// what `[daemon] dog_grants` records, which is permission names and never a
+/// value. The dog's own config, which can hold a secret, lives in `dogs.toml`
+/// and is not here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DogView {
     /// The dog's name.
@@ -299,6 +302,114 @@ pub struct DogView {
     pub enabled: bool,
     /// `None` for a built-in dog; the adopted binary's path otherwise.
     pub adopted_path: Option<PathBuf>,
+    /// Whether `[daemon] boot_first_dogs` names it: the next boot starts it
+    /// ahead of the whole flock.
+    pub boot_first: bool,
+    /// Whether `[daemon] channel_dogs` names it. Read-only here: it is what
+    /// the dog's binary asked for when `shep adopt` ran it, not a setting.
+    pub channel: bool,
+    /// What `[daemon] dog_grants.<name>]` records.
+    pub grants: DogGrants,
+    /// The permissions the settings screen offers as a checklist under this
+    /// dog's `grants` row: what its manifest declares, for a dog that has a
+    /// `[daemon] dog_grants` record. Empty for a dog with no record, which is
+    /// the same fact `shep dogs grant` refuses on.
+    ///
+    /// Read off the file rather than off the dog's binary: a built-in dog's
+    /// manifest is one call away, and an adopted dog's record was written out
+    /// of its manifest when `shep enable` asked.
+    pub offered: Vec<String>,
+}
+
+impl DogView {
+    /// A built-in dog with nothing recorded beyond `enabled`: no
+    /// `adopted_dogs` entry, not boot first, not on the channel, no grants.
+    ///
+    /// A real state a `shep.toml` can hold, and the one a test that only
+    /// needs a dog on screen means to name.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "the dog fixtures in `lookout::view::fixtures` and `lookout::frames::fixtures` \
+                      are the only callers; `load_settings` builds every live row field by field"
+        )
+    )]
+    #[must_use]
+    pub fn built_in(name: &str, enabled: bool) -> Self {
+        Self {
+            name: name.to_owned(),
+            enabled,
+            adopted_path: None,
+            boot_first: false,
+            channel: false,
+            grants: DogGrants::Undeclared,
+            offered: Vec::new(),
+        }
+    }
+
+    /// An adopted dog whose binary is `path`, with nothing else recorded.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "the dog fixtures in `lookout::view::fixtures` and `lookout::frames::fixtures`                       are the only callers; `load_settings` builds every live row field by field"
+        )
+    )]
+    #[must_use]
+    pub fn adopted(name: &str, enabled: bool, path: &Path) -> Self {
+        Self {
+            adopted_path: Some(path.to_path_buf()),
+            ..Self::built_in(name, enabled)
+        }
+    }
+}
+
+/// What `[daemon] dog_grants.<name>]` says about one dog.
+///
+/// Three answers rather than an `Option`, because "no entry" and "an entry
+/// shep cannot read" are different facts and the second one means the next
+/// boot refuses the file.
+///
+/// `Debug` is derived, not redacted: [`GrantRecord`] holds permission names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DogGrants {
+    /// No entry. The dog declares nothing and runs with full access, or was
+    /// never asked, which is what `shep enable` asks about.
+    Undeclared,
+    /// The recorded entry.
+    Recorded(GrantRecord),
+    /// The entry is there and the shepherd could not read it. Carries the
+    /// refusal, which names the dog and what is wrong.
+    Unreadable(String),
+}
+
+impl DogGrants {
+    /// Every permission the record names, in `granted`, `waiting` or
+    /// `revoked`: the set the operator has been asked about.
+    ///
+    /// An undeclared dog has none, and an unreadable one has none worth
+    /// naming. [`DogView::offered`] is this filtered by what the dog declares.
+    #[must_use]
+    pub fn permissions(&self) -> Vec<String> {
+        let Self::Recorded(record) = self else {
+            return Vec::new();
+        };
+        let mut names: BTreeSet<&str> = BTreeSet::new();
+        names.extend(record.granted.names());
+        names.extend(record.waiting.names());
+        names.extend(record.revoked.names());
+        names.into_iter().map(str::to_owned).collect()
+    }
+
+    /// Whether the record grants `permission`.
+    #[must_use]
+    pub fn grants(&self, permission: &str) -> bool {
+        let Self::Recorded(record) = self else {
+            return false;
+        };
+        record.granted.names().any(|held| held == permission)
+    }
 }
 
 /// What [`apply_setting`] can fail with
@@ -385,6 +496,7 @@ pub(crate) fn snapshot_of(
 /// `pub(crate)`: lookout's dogs sub-screen probes the same list.
 pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
     let enabled = doc.enabled_dog_names();
+    let boot_first = doc.boot_first_dog_names();
     let mut names: BTreeSet<String> = BUILT_IN_DOGS
         .iter()
         .map(|name| (*name).to_string())
@@ -395,13 +507,56 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
         .map(|name| {
             let adopted_path = doc.adopted_dog_path(&name);
             let is_enabled = enabled.contains(&name);
+            let is_first = boot_first.contains(&name);
+            let channel = doc.asked_for_channel(&name);
+            let grants = match doc.grant_record(&name) {
+                Ok(None) => DogGrants::Undeclared,
+                Ok(Some(record)) => DogGrants::Recorded(record),
+                Err(err) => DogGrants::Unreadable(err.to_string()),
+            };
+            let offered = offered(&name, adopted_path.is_none(), &grants);
             DogView {
                 name,
                 enabled: is_enabled,
                 adopted_path,
+                boot_first: is_first,
+                channel,
+                grants,
+                offered,
             }
         })
         .collect()
+}
+
+/// The checklist the settings screen offers under `name`'s `grants` row.
+///
+/// A dog with no `[daemon] dog_grants` entry offers nothing, which is the same
+/// fact [`crate::commands::dogs::record_change`] refuses on: a grant has no
+/// record to add itself to, and `shep enable` is what writes the first one.
+///
+/// A built-in dog is this binary, so what it declares is one call away and the
+/// checklist is that list: a permission the record holds that its build has
+/// come to drop gets no row, the same way [`crate::commands::dogs::record_change`]
+/// refuses to grant it. An adopted dog's record is its declaration of record,
+/// written out of its manifest when `shep enable` asked. Reading that binary
+/// again here would spend a probe on a screen that only reads files, and
+/// [`crate::commands::dogs::record_change`] re-reads the manifest before it
+/// writes either way.
+fn offered(name: &str, built_in: bool, grants: &DogGrants) -> Vec<String> {
+    if !matches!(grants, DogGrants::Recorded(_)) {
+        return Vec::new();
+    }
+    let recorded = grants.permissions();
+    if !built_in {
+        return recorded;
+    }
+    crate::dog::builtin_manifest(name).map_or(recorded, |manifest| {
+        manifest
+            .permissions
+            .into_iter()
+            .map(|declared| declared.name)
+            .collect()
+    })
 }
 
 /// Applies one edit under the config lock, validating before it saves

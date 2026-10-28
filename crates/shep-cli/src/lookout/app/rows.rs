@@ -113,6 +113,26 @@ pub enum Sent {
         /// other.
         ticket: u64,
     },
+    /// One dog's newly recorded grants, after `[daemon] dog_grants` landed:
+    /// the same `Request::EnableDog` `shep dogs grant` sends, so a dog that is
+    /// already running is judged by what the record now says rather than by
+    /// what it was started with.
+    ///
+    /// Not [`Self::Dog`]: that variant's `enable` says which way the toggle
+    /// went, and a grant changes no toggle. Reusing it would report a grant as
+    /// an enable, in the status bar and in the sentence the shepherd's answer
+    /// lands under.
+    GrantDog {
+        /// The dog.
+        name: String,
+        /// The source carrying the grants the record now holds, exactly as the
+        /// config write answered.
+        source: DogSource,
+        /// The ticket the file half went out with, carried on so the
+        /// shepherd's answer resolves the prompt that grant raised and no
+        /// other.
+        ticket: u64,
+    },
     /// One sheep's effective config, for the config pane. Raised by `e` on
     /// the dashboard and by `r` from inside an open pane.
     ///
@@ -271,6 +291,13 @@ impl Sent {
                 enable: false,
                 ..
             } => Request::DisableDog { name: name.clone() },
+            // The same request an enable sends, for the reason
+            // `Self::GrantDog`'s own doc gives: the shepherd records the
+            // grants a source carries before it finds the dog already running.
+            Self::GrantDog { name, source, .. } => Request::EnableDog {
+                name: name.clone(),
+                source: source.clone(),
+            },
             Self::SheepConfig { name } => Request::SheepConfig { name: name.clone() },
             // One field, recorded as an operator override, not an
             // `ApplyConfig`: see this variant's own doc for the marker that
@@ -324,6 +351,7 @@ impl Sent {
             Self::Lambs { .. }
             | Self::Action { .. }
             | Self::Dog { .. }
+            | Self::GrantDog { .. }
             | Self::SheepConfig { .. }
             | Self::DogSection { .. } => None,
         }
@@ -338,6 +366,37 @@ pub struct DogEdit {
     pub name: String,
     /// `true` to enable, `false` to disable.
     pub enable: bool,
+}
+
+/// What one of a dog's other `[daemon] keys left in `shep.toml`.
+///
+/// Two answers because the two keys do different things: `boot_first_dogs` is
+/// read by the next boot and reaches no running anything, and a grant is read
+/// by the shepherd when it starts the dog, so it has a daemon half.
+///
+/// `Debug` is derived, not redacted: [`DogSource`] holds a binary's path and
+/// permission names, and `shep_core::protocol`'s own `Debug` prints them the
+/// same way `shep dogs grant` prints them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DogTuneLanded {
+    /// `[daemon] boot_first_dogs` changed. Nothing to tell the shepherd: the
+    /// order is read at boot.
+    BootOrder,
+    /// `[daemon] dog_grants` changed, carrying the source the record now
+    /// describes and whether the dog is in `enabled_dogs`.
+    ///
+    /// `enabled` is the one `record_change` read under the lock, which is why
+    /// it travels here rather than being re-read from the screen: the settings
+    /// screen can be closed, or re-read, between the write landing and this
+    /// answer, and a dog that is running does not stop being enabled because the
+    /// operator pressed `Esc`. `shep dogs grant` decides the same way, from the
+    /// `Applied` it just computed.
+    Grants {
+        /// What the record now describes, which is what telling the shepherd needs.
+        source: DogSource,
+        /// Whether the dog is enabled, as the file read it under the lock.
+        enabled: bool,
+    },
 }
 
 /// A dog's schema, and the binary it was probed from.

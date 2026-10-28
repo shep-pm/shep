@@ -392,6 +392,20 @@ pub enum Msg {
         /// not.
         result: Result<DogSource, String>,
     },
+    /// An [`Effect::WriteDogTune`] has landed. `Ok` carries what the file now
+    /// says, which for a grant is the [`DogSource`] the record describes and
+    /// which [`Sent::GrantDog`] then rides to the shepherd, so the request
+    /// cannot disagree with the file.
+    DogTuneWritten {
+        /// The change that was sent, echoed back: the cursor can have moved on
+        /// while the write was in flight.
+        tune: DogTune,
+        /// The ticket it went out with, echoed back for
+        /// [`Self::SettingWritten`]'s reason.
+        ticket: u64,
+        /// What the file now says, or why it says the same thing as before.
+        result: Result<DogTuneLanded, String>,
+    },
     /// An [`Effect::LoadSecrets`] has answered.
     ///
     /// `Result<_, String>`, like [`Self::Settings`]: `secrets::model` cannot
@@ -575,6 +589,26 @@ pub enum Effect {
         /// Which write this is, for [`Self::WriteSetting`]'s reason. It
         /// rides on to [`Sent::Dog`], so both halves of one toggle answer
         /// under the same ticket.
+        ticket: u64,
+        /// Proof the control gate was open.
+        authority: WriteAuthority,
+    },
+    /// Apply one of a dog's other `[daemon] keys; the result lands as
+    /// [`Msg::DogTuneWritten`].
+    ///
+    /// Its own effect, not [`Self::WriteSetting`]: a grant is a read-modify-
+    /// write of the record `shep dogs grant` writes, with the manifest check
+    /// in front of it, and `boot_first_dogs` is a name in or out of an array.
+    /// Neither is a value at a path. `spawn_blocking`, for
+    /// [`Self::WriteSetting`]'s reason: both take `shep.toml`'s lock, and a
+    /// grant reads the dog's manifest, which can cost up to
+    /// `VERSION_BUDGET` of somebody else's binary starting up.
+    WriteDogTune {
+        /// The change to apply.
+        tune: DogTune,
+        /// Which write this is, for [`Self::WriteSetting`]'s reason. It rides
+        /// on to [`Sent::GrantDog`], so both halves of one grant answer under
+        /// the same ticket.
         ticket: u64,
         /// Proof the control gate was open.
         authority: WriteAuthority,

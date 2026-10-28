@@ -1,15 +1,27 @@
 //! The settings screen's rows, its pending edit, and the sentence each confirm
 //! shows.
+//!
+//! Four modules under this one, one per reason to change: [`rows`] builds the
+//! sequence the cursor walks and holds the viewport over it, [`pending`] holds
+//! the candidate a write is waiting on, [`edit`] answers where a keypress opens
+//! an editor and what it removes, and [`dogs`] holds each dog's opened tree and
+//! the two `[daemon] keys` this screen can write.
 
 use super::*;
 use crate::commands::settings::{STYLE_LEVEL_KEY, Shape, dotted};
 use crate::lookout::field::{Child, Field, FieldKind, shep_toml_shape};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+mod dogs;
+mod edit;
+mod pending;
+mod rows;
 
 /// One row the settings screen's cursor can sit on.
 ///
 /// The indexes are into [`shep_toml_shape`]: a table of its outline, or a
-/// field of its field set.
+/// field of its field set. The dog rows index [`SettingsSnapshot::dogs`] and
+/// what [`DogTree`] holds under it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsRow {
     /// A section, which folds.
@@ -25,8 +37,256 @@ pub enum SettingsRow {
     },
     /// The row under a map's entries that adds one.
     AddEntry(usize),
-    /// Index into [`SettingsSnapshot::dogs`].
+    /// A dog's header row: index into [`SettingsSnapshot::dogs`]. It folds,
+    /// and `space` toggles `[daemon] enabled_dogs` for it.
     Dog(usize),
+    /// One of the dog at `dog`'s other `[daemon] keys`, under its header.
+    DogKey {
+        /// Which dog.
+        dog: usize,
+        /// Which key.
+        key: DogKey,
+    },
+    /// One permission in the grants checklist under the dog at `dog`'s
+    /// `grants` row, by its place in the checklist.
+    DogGrant {
+        /// Which dog.
+        dog: usize,
+        /// Which permission.
+        index: usize,
+    },
+    /// One row of the dog at `dog`'s own config tree, by its place in that
+    /// tree's [`ConfigPane::rows`].
+    DogField {
+        /// Which dog.
+        dog: usize,
+        /// Which row of its tree.
+        row: usize,
+    },
+}
+
+/// Which of a dog's `[daemon] keys a [`SettingsRow::DogKey`] names.
+///
+/// `enabled` is absent: the dog's header row carries that toggle, and its
+/// `IN FILE` cell is where it shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DogKey {
+    /// `[daemon] boot_first_dogs`: a toggle.
+    BootFirst,
+    /// `[daemon] dog_grants`: the row its checklist hangs under.
+    Grants,
+    /// `[daemon] adopted_dogs`: read-only, because changing the path means
+    /// vetting a new binary, which is `shep adopt`.
+    Source,
+    /// `[daemon] channel_dogs`: read-only, because it is the dog's own answer
+    /// when it was adopted rather than a setting.
+    Channel,
+}
+
+impl DogKey {
+    /// Every key the screen draws under a dog's header, in the order it draws
+    /// them.
+    const ALL: [Self; 4] = [Self::BootFirst, Self::Grants, Self::Source, Self::Channel];
+
+    /// The word the row's NAME cell shows.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BootFirst => "boot first",
+            Self::Grants => "grants",
+            Self::Source => "source",
+            Self::Channel => "channel",
+        }
+    }
+
+    /// Why `space` on this row writes nothing, in the words the row itself
+    /// gives. `None` for a row that does change the file.
+    #[must_use]
+    pub const fn read_only_reason(self) -> Option<&'static str> {
+        match self {
+            Self::BootFirst | Self::Grants => None,
+            Self::Source => Some(
+                "the path is `shep adopt`'s to change: it vets the binary before the \
+                 shepherd will run it",
+            ),
+            Self::Channel => Some(
+                "the dog asked for the channel itself when `shep adopt` ran it; this is what \
+                 it answered, not a setting",
+            ),
+        }
+    }
+}
+
+/// One of a dog's `[daemon] keys` the settings screen changes on its own row.
+///
+/// Neither is a [`SettingEdit`]: `boot_first_dogs` is a name in or out of an
+/// array rather than a value at a path, and a grant is a read-modify-write of
+/// a record the CLI owns. Both are named here so the gate, the ticket and the
+/// prompt are the same for them as for every other row on this screen.
+///
+/// `Debug` is derived, not redacted: a dog's name, a boolean and a permission
+/// name. A permission names what a dog may ask, never a value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DogTune {
+    /// `[daemon] boot_first_dogs`: `name` in or out.
+    BootFirst {
+        /// Which dog.
+        name: String,
+        /// `true` to put it in.
+        first: bool,
+    },
+    /// `[daemon] dog_grants`: one permission of `name` held or taken away.
+    Grant {
+        /// Which dog.
+        name: String,
+        /// Which permission.
+        permission: String,
+        /// `true` to grant it, `false` to revoke it.
+        grant: bool,
+    },
+}
+
+impl DogTune {
+    /// The dog this change names.
+    #[must_use]
+    pub fn dog(&self) -> &str {
+        match self {
+            Self::BootFirst { name, .. } | Self::Grant { name, .. } => name,
+        }
+    }
+
+    /// The question the confirm asks, which is also what the status bar and
+    /// the sent line repeat while the write is in flight.
+    ///
+    /// Each names what applying it does rather than promising a reload:
+    /// `boot_first_dogs` is read at boot and a grant is read when the dog is
+    /// started, and neither is a key the shepherd reloads.
+    #[must_use]
+    pub fn text(&self) -> String {
+        match self {
+            Self::BootFirst { name, first: true } => {
+                format!("boot {name} first? the next shepherd boot starts it ahead of the flock")
+            }
+            Self::BootFirst { name, first: false } => {
+                format!("stop booting {name} first? it starts with the rest of the flock")
+            }
+            Self::Grant {
+                name,
+                permission,
+                grant: true,
+            } => format!(
+                "grant {name} `{permission}`? it may ask the shepherd for it from its next start"
+            ),
+            Self::Grant {
+                name,
+                permission,
+                grant: false,
+            } => format!("revoke `{permission}` from {name}? it stops being able to ask for it"),
+        }
+    }
+}
+
+/// One dog the operator opened on the settings screen.
+///
+/// A dog's own config needs two reads the screen cannot do inline: its schema
+/// comes from running the dog's binary, and its section comes from the
+/// shepherd. Both are asked for when the row is opened and not before, so a
+/// screen listing six dogs spends nothing on a dog nobody opened.
+///
+/// `Debug` is derived, not redacted: the pane inside carries its own redacted
+/// `Debug`, and a schema describes values without holding any.
+#[derive(Debug, Clone)]
+pub enum DogTree {
+    /// The schema probe is out. Nothing to draw yet, and the row stays closed.
+    Probing,
+    /// The schema landed and the section read is out. Carries the schema,
+    /// which is what the tree is built from once the section answers, and
+    /// which is never re-probed while this screen holds it.
+    Reading {
+        /// What the dog's binary answered the schema flag with.
+        schema: serde_json::Value,
+    },
+    /// One of the two reads failed. The dog's header row says why, naming
+    /// `dogs.toml` as the place to edit instead, and the row stays closed.
+    Refused {
+        /// The refusal, already worded.
+        why: String,
+    },
+    /// Open: the rows under the dog's header come from this pane, which is
+    /// the same [`ConfigPane::dog`] an `e` from the flock builds. The schema
+    /// rides beside it for the same reason [`DogProbe`] does for a dog pane:
+    /// a landed write re-reads the section and rebuilds the tree from it, and
+    /// nothing else holds a copy of the schema.
+    Open {
+        /// The dog's own tree.
+        pane: Box<ConfigPane>,
+        /// What the dog's binary answered the schema flag with.
+        schema: serde_json::Value,
+    },
+    /// Closed after a successful open. The pane is kept so re-opening the row
+    /// does not respawn the dog's binary, the same reason `r` inside a dog
+    /// pane re-reads the section without re-probing.
+    Shut {
+        /// The dog's own tree, kept for the next opening.
+        pane: Box<ConfigPane>,
+        /// What the dog's binary answered the schema flag with.
+        schema: serde_json::Value,
+    },
+}
+
+impl DogTree {
+    /// The schema this tree's pane was built from, or [`None`] while there is
+    /// none yet.
+    #[must_use]
+    pub fn schema(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Reading { schema } | Self::Open { schema, .. } | Self::Shut { schema, .. } => {
+                Some(schema)
+            }
+            Self::Probing | Self::Refused { .. } => None,
+        }
+    }
+
+    /// The pane this tree draws its rows from, or [`None`] while there is
+    /// nothing to draw.
+    #[must_use]
+    pub fn pane(&self) -> Option<&ConfigPane> {
+        match self {
+            Self::Open { pane, .. } | Self::Shut { pane, .. } => Some(pane),
+            Self::Probing | Self::Reading { .. } | Self::Refused { .. } => None,
+        }
+    }
+
+    /// Whether the row shows what is under it.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        matches!(self, Self::Open { .. })
+    }
+
+    /// Whether this tree is waiting on a read it already asked for.
+    #[must_use]
+    pub fn is_reading(&self) -> bool {
+        matches!(self, Self::Probing | Self::Reading { .. })
+    }
+}
+
+/// What opening or closing a dog's row asks the caller to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DogFold {
+    /// Nothing to do: the row is mid-read already.
+    Nothing,
+    /// The row opened for the first time, or reopened after a refusal, and
+    /// needs its schema probe.
+    Probe {
+        /// Which dog.
+        name: String,
+        /// The adopted binary, or [`None`] for a built-in.
+        adopted_path: Option<PathBuf>,
+    },
+    /// The row opened onto a tree this screen already read.
+    Opened,
+    /// The row closed.
+    Closed,
 }
 
 /// The settings screen's own state. `None` on [`App`] is the dashboard.
@@ -51,6 +311,11 @@ pub struct Settings {
     /// write with no prompt waiting for it. [`Self::resolve`] is what keeps
     /// those answers off the edit that is here now.
     pub(super) pending: Option<Pending>,
+    /// Each dog whose row the operator opened, by name, with the two reads
+    /// its own tree needs. Keyed by name rather than by index because a
+    /// re-read can reorder or drop a dog, and an index that survived would
+    /// name a different one.
+    pub(super) dog_trees: BTreeMap<String, DogTree>,
 }
 
 /// The settings screen's own in-flight edit.
@@ -78,6 +343,30 @@ pub(super) enum Pending {
     DogArmed {
         /// The candidate toggle, ready to send.
         edit: DogEdit,
+        /// The question this candidate reads as, rendered once at arm time.
+        text: String,
+        /// When it was armed. Only an armed edit expires.
+        at: Instant,
+    },
+    /// [`App::confirm_setting`]'s `Enter` for a [`SettingsRow::DogKey`] or
+    /// [`SettingsRow::DogGrant`] row: one of the dog's `[daemon] keys, sent
+    /// through [`Effect::WriteDogTune`].
+    DogTuneArmed {
+        /// The change, ready to send.
+        tune: DogTune,
+        /// The question this candidate reads as, rendered once at arm time.
+        text: String,
+        /// When it was armed. Only an armed edit expires.
+        at: Instant,
+    },
+    /// [`App::confirm_setting`]'s `Enter` for a [`SettingsRow::DogField`] row:
+    /// the dog's whole section with that one row's change applied, sent as
+    /// [`Sent::SetDogSection`], the same request a dog pane's close sends.
+    DogSectionArmed {
+        /// Which dog.
+        name: String,
+        /// The section, edit applied. Redacted in every `{:?}`.
+        toml: DogSectionToml,
         /// The question this candidate reads as, rendered once at arm time.
         text: String,
         /// When it was armed. Only an armed edit expires.
@@ -112,6 +401,17 @@ pub(super) enum Target {
         /// The map's segments.
         path: Vec<String>,
     },
+    /// One field of one dog's own section, which leaves as the whole section
+    /// with that field changed.
+    DogValue {
+        /// Which dog.
+        name: String,
+        /// Which field of its section.
+        key: String,
+        /// Which row of the dog's tree it sits on, which is what the pane copy
+        /// is pointed at before the text is handed to it.
+        row: usize,
+    },
 }
 
 impl Target {
@@ -120,36 +420,74 @@ impl Target {
         match self {
             Self::Value { path, .. } => dotted(path),
             Self::NewEntry { path } => format!("new {} entry", dotted(path)),
+            Self::DogValue { name, key, .. } => format!("{name} {key}"),
         }
     }
 
     /// The edit `text` stands for, or why it stands for none.
-    pub(super) fn edit(&self, text: &str) -> Result<SettingEdit, &'static str> {
+    ///
+    /// Takes `settings` because a dog's own field has no meaning on its own:
+    /// what one field's text becomes is that dog's whole section with the
+    /// field changed, which is the dog pane's [`ConfigPane::edited_section_with`]
+    /// answering, gate and all. A refusal there is the field's own schema
+    /// refusing the text, worded by [`crate::dog_settings`].
+    pub(super) fn edit(&self, settings: &Settings, text: &str) -> Result<TargetEdit, String> {
         match self {
             Self::Value { path, .. } if text.is_empty() => {
-                Ok(SettingEdit::Unset { path: path.clone() })
+                Ok(TargetEdit::Setting(SettingEdit::Unset {
+                    path: path.clone(),
+                }))
             }
-            Self::Value { path, shape } => Ok(SettingEdit::Set {
+            Self::Value { path, shape } => Ok(TargetEdit::Setting(SettingEdit::Set {
                 path: path.clone(),
                 shape: *shape,
                 value: text.to_owned(),
-            }),
+            })),
             Self::NewEntry { path } => {
-                let (name, value) = text.split_once('=').ok_or("type name=value")?;
+                let (name, value) = text.split_once('=').ok_or("type name=value".to_owned())?;
                 let (name, value) = (name.trim(), value.trim());
                 if name.is_empty() || value.is_empty() {
-                    return Err("type name=value");
+                    return Err("type name=value".to_owned());
                 }
                 let mut path = path.clone();
                 path.push(name.to_owned());
-                Ok(SettingEdit::Set {
+                Ok(TargetEdit::Setting(SettingEdit::Set {
                     path,
                     shape: Shape::Text,
                     value: value.to_owned(),
-                })
+                }))
+            }
+            Self::DogValue { name, key, row } => {
+                match settings.dog_section_edit(name, *row, text) {
+                    Ok(Some(toml)) => Ok(TargetEdit::DogSection {
+                        name: name.clone(),
+                        toml,
+                    }),
+                    Ok(None) => Err(format!(
+                        "{name} already says {text} for {key}, so there is nothing to write"
+                    )),
+                    Err(why) => Err(why),
+                }
             }
         }
     }
+}
+
+/// What a finished editor stands for.
+///
+/// Two shapes because the screen writes two files: `shep.toml`, one key at a
+/// time, and a dog's section, which `Request::SetDogConfig` replaces whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum TargetEdit {
+    /// One key of `shep.toml`.
+    Setting(SettingEdit),
+    /// One dog's whole section, with the edited field changed.
+    DogSection {
+        /// Which dog.
+        name: String,
+        /// The section to send. Redacted in every `{:?}`.
+        toml: DogSectionToml,
+    },
 }
 
 /// What the settings screen's status line shows for its one in-flight edit.
@@ -160,307 +498,6 @@ pub struct SettingsPrompt<'a> {
     pub text: &'a str,
     /// False while it is a question, true once it has gone out.
     pub sent: bool,
-}
-
-impl Settings {
-    /// A freshly opened screen, cursor on the first row, every section open.
-    pub(super) fn new(snapshot: SettingsSnapshot) -> Self {
-        Self {
-            snapshot,
-            folded: BTreeSet::new(),
-            view: Viewport::new(),
-            pending: None,
-        }
-    }
-
-    /// The armed candidate and its prompt, or `None`.
-    #[must_use]
-    pub fn pending(&self) -> Option<SettingsPrompt<'_>> {
-        match &self.pending {
-            Some(Pending::Armed { text, .. } | Pending::DogArmed { text, .. }) => {
-                Some(SettingsPrompt { text, sent: false })
-            }
-            Some(Pending::Sent { text, .. }) => Some(SettingsPrompt { text, sent: true }),
-            Some(Pending::Typing { .. }) | None => None,
-        }
-    }
-
-    /// Whether `ticket` names the write this screen is still waiting on,
-    /// clearing the prompt when it does.
-    ///
-    /// A reply whose ticket is not the one [`Pending::Sent`] holds belongs
-    /// to a write the screen has moved on from: a second edit armed over
-    /// the first, or a screen closed and reopened while the first was still
-    /// in flight. Both leave a write in flight with nothing on screen
-    /// waiting for it, and neither lets its answer touch the edit that is.
-    pub(super) fn resolve(&mut self, ticket: u64) -> bool {
-        let mine = matches!(
-            self.pending,
-            Some(Pending::Sent { ticket: waiting, .. }) if waiting == ticket
-        );
-        if mine {
-            self.pending = None;
-        }
-        mine
-    }
-
-    /// Whether a candidate is waiting on `Enter`: the one state a stray key
-    /// (movement, `Escape`, `Settings`, `Refresh`) eats rather than also doing
-    /// its ordinary job.
-    pub(super) fn is_armed(&self) -> bool {
-        matches!(
-            self.pending,
-            Some(Pending::Armed { .. } | Pending::DogArmed { .. })
-        )
-    }
-
-    /// The label and buffer of an in-flight free-text edit, or `None`.
-    #[must_use]
-    pub fn typing(&self) -> Option<(String, &TextBox)> {
-        match &self.pending {
-            Some(Pending::Typing { target, buffer }) => Some((target.label(), buffer)),
-            _ => None,
-        }
-    }
-
-    /// The next candidate for `field`, or `None` for a key that is not a
-    /// cycle: only a boolean and a closed set of names are.
-    ///
-    /// Advances from a candidate already armed for this field, so a second
-    /// `space` walks one step further along the cycle. From nothing armed the
-    /// base is what the file says, which for `[style] level` is the file's
-    /// value rather than the level in force: cycling the resolved level could
-    /// propose a write that changes nothing.
-    pub(super) fn next_candidate(&self, field: &Field) -> Option<String> {
-        let armed_here = match &self.pending {
-            Some(Pending::Armed {
-                edit: SettingEdit::Set { value, .. },
-                ..
-            }) if self.armed_for(field) => Some(value.clone()),
-            _ => None,
-        };
-        let base = armed_here
-            .or_else(|| {
-                self.snapshot.file_value(&field.key).map(|value| {
-                    value
-                        .as_str()
-                        .map_or_else(|| value.to_string(), str::to_owned)
-                })
-            })
-            .or_else(|| {
-                field.default_value.as_ref().map(|value| {
-                    value
-                        .as_str()
-                        .map_or_else(|| value.to_string(), str::to_owned)
-                })
-            })
-            // The schema carries no default for `[style] level`; `full` is
-            // what `style::resolve` falls back to.
-            .or_else(|| {
-                (field.key == STYLE_LEVEL_KEY).then(|| crate::style::StyleLevel::Full.to_string())
-            });
-        match &field.kind {
-            FieldKind::Bool => Some((base.as_deref() != Some("true")).to_string()),
-            FieldKind::Choice(names) => {
-                let at = base
-                    .and_then(|base| names.iter().position(|name| *name == base))
-                    .map_or(0, |index| index + 1);
-                names.get(at % names.len().max(1)).cloned()
-            }
-            _ => None,
-        }
-    }
-
-    /// Whether the armed candidate is an edit of `field`.
-    fn armed_for(&self, field: &Field) -> bool {
-        matches!(
-            &self.pending,
-            Some(Pending::Armed { edit, .. }) if edit.key() == field.key
-        )
-    }
-
-    /// What the screen reads off disk, and renders every row's value and source
-    /// from.
-    ///
-    /// A landed write does not update this in place: it raises a fresh
-    /// [`Effect::LoadSettings`], so `Set` and `Unset` land the same way and
-    /// neither can drift from the rest of the document.
-    #[must_use]
-    pub fn snapshot(&self) -> &SettingsSnapshot {
-        &self.snapshot
-    }
-
-    /// Every row the cursor can sit on: the sections and their keys in the
-    /// order the screen draws them, a map's entries under it, then one row
-    /// per candidate dog.
-    #[must_use]
-    pub fn rows(&self) -> Vec<SettingsRow> {
-        let shape = shep_toml_shape();
-        let mut rows = Vec::new();
-        self.push_children(&shape.outline.roots, &mut rows);
-        rows.extend((0..self.snapshot.dogs.len()).map(SettingsRow::Dog));
-        rows
-    }
-
-    fn push_children(&self, children: &[Child], rows: &mut Vec<SettingsRow>) {
-        let shape = shep_toml_shape();
-        for child in children {
-            match *child {
-                Child::Table(index) => {
-                    rows.push(SettingsRow::Table(index));
-                    let table = &shape.outline.tables[index];
-                    if !self.folded.contains(&table.path) {
-                        self.push_children(&table.children, rows);
-                    }
-                }
-                Child::Leaf(index) => {
-                    rows.push(SettingsRow::Field(index));
-                    let field = &shape.fields.fields()[index];
-                    if field.kind == FieldKind::Map && !self.folded.contains(&field.key) {
-                        let entries = self.snapshot.entries(&field.key).len();
-                        rows.extend((0..entries).map(|entry| SettingsRow::Entry {
-                            map: index,
-                            index: entry,
-                        }));
-                        rows.push(SettingsRow::AddEntry(index));
-                    }
-                }
-            }
-        }
-    }
-
-    /// How many rows [`Self::rows`] would build.
-    #[must_use]
-    pub fn rows_len(&self) -> usize {
-        self.rows().len()
-    }
-
-    /// The row the cursor sits on. `None` only if [`Self::rows`] is empty,
-    /// which the schema's sections make unreachable.
-    #[must_use]
-    pub fn cursor(&self) -> Option<SettingsRow> {
-        let rows = self.rows();
-        rows.get(self.view.cursor().min(rows.len().saturating_sub(1)))
-            .copied()
-    }
-
-    /// Folds the table or map under the cursor if it is open, opens it if it
-    /// is folded. Answers whether the cursor was on one.
-    pub(super) fn toggle_fold(&mut self) -> bool {
-        let shape = shep_toml_shape();
-        let key = match self.cursor() {
-            Some(SettingsRow::Table(index)) => shape.outline.tables[index].path.clone(),
-            Some(SettingsRow::Field(index))
-                if shape.fields.fields()[index].kind == FieldKind::Map =>
-            {
-                shape.fields.fields()[index].key.clone()
-            }
-            _ => return false,
-        };
-        if !self.folded.remove(&key) {
-            self.folded.insert(key);
-        }
-        true
-    }
-
-    /// Where an editor opened on the cursor's row writes, and what it opens
-    /// with. `None` on a row that cycles, folds or is not a key.
-    pub(super) fn editor_at_cursor(&self) -> Option<(Target, String)> {
-        let shape = shep_toml_shape();
-        let fields = shape.fields.fields();
-        match self.cursor()? {
-            SettingsRow::Field(index) => {
-                let field = &fields[index];
-                if !field.editable || !is_typed(&field.kind) {
-                    return None;
-                }
-                let path = shape.paths.get(&field.key)?.clone();
-                let kind = Shape::of(&field.kind)?;
-                Some((
-                    Target::Value { path, shape: kind },
-                    self.snapshot.seed(field),
-                ))
-            }
-            SettingsRow::Entry { map, index } => {
-                let key = &fields[map].key;
-                let (name, value) = self.snapshot.entries(key).into_iter().nth(index)?;
-                Some((
-                    Target::Value {
-                        path: vec![key.clone(), name],
-                        shape: Shape::Text,
-                    },
-                    value,
-                ))
-            }
-            SettingsRow::AddEntry(map) => Some((
-                Target::NewEntry {
-                    path: shape.paths.get(&fields[map].key)?.clone(),
-                },
-                String::new(),
-            )),
-            SettingsRow::Table(_) | SettingsRow::Dog(_) => None,
-        }
-    }
-
-    /// The edit that removes the cursor's row from `shep.toml`, or `None`
-    /// where there is nothing to remove: a section, a dog, or a key the file
-    /// never wrote.
-    pub(super) fn removal_at_cursor(&self) -> Option<SettingEdit> {
-        let shape = shep_toml_shape();
-        let fields = shape.fields.fields();
-        match self.cursor()? {
-            SettingsRow::Field(index) => {
-                let field = &fields[index];
-                self.snapshot.file_value(&field.key)?;
-                Some(SettingEdit::Unset {
-                    path: shape.paths.get(&field.key)?.clone(),
-                })
-            }
-            SettingsRow::Entry { map, index } => {
-                let key = &fields[map].key;
-                let (name, _) = self.snapshot.entries(key).into_iter().nth(index)?;
-                Some(SettingEdit::Unset {
-                    path: vec![key.clone(), name],
-                })
-            }
-            SettingsRow::Table(_) | SettingsRow::AddEntry(_) | SettingsRow::Dog(_) => None,
-        }
-    }
-
-    /// Whether the table or map at the dotted `key` shows what is inside it.
-    #[must_use]
-    pub fn is_open(&self, key: &str) -> bool {
-        !self.folded.contains(key)
-    }
-
-    /// Moves the cursor by `delta` rows, clamped to [`Self::rows`], never
-    /// wrapping.
-    pub(super) fn move_by(&mut self, delta: isize) {
-        let len = self.rows_len();
-        self.view.move_by(delta, len);
-    }
-
-    pub(super) fn move_to_first(&mut self) {
-        let len = self.rows_len();
-        self.view.move_to(0, len);
-    }
-
-    pub(super) fn move_to_last(&mut self) {
-        let len = self.rows_len();
-        self.view.move_to(len.saturating_sub(1), len);
-    }
-
-    /// The viewport, for the renderer.
-    #[must_use]
-    pub fn view(&self) -> &Viewport {
-        &self.view
-    }
-
-    /// Records the terminal's height.
-    pub fn set_rows(&mut self, rows: usize) {
-        let len = self.rows_len();
-        self.view.set_rows(rows, len);
-    }
 }
 
 /// Whether a key of this kind is typed into an editor, rather than flipped,

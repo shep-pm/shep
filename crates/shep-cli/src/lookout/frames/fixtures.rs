@@ -2,7 +2,7 @@
 //! flock rows, dog rows, config views, settings snapshots and the bleats
 //! feed.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
@@ -526,16 +526,8 @@ pub(super) fn settings_snapshot_for_gallery() -> SettingsSnapshot {
         // The document declares it, so the file and resolved value agree.
         style: (StyleLevel::Full, StyleSource::Config),
         dogs: vec![
-            DogView {
-                name: "bark".to_string(),
-                enabled: false,
-                adopted_path: None,
-            },
-            DogView {
-                name: "metrics".to_string(),
-                enabled: true,
-                adopted_path: None,
-            },
+            DogView::built_in("bark", false),
+            DogView::built_in("metrics", true),
         ],
     }
 }
@@ -551,21 +543,9 @@ pub(super) fn settings_snapshot_with_dog_drift() -> SettingsSnapshot {
             // Both carry a real path: a non-built-in dog with
             // `adopted_path: None` is not a row `load_settings` can
             // produce from a document shep wrote.
-            DogView {
-                name: "otel".to_string(),
-                enabled: false,
-                adopted_path: Some(PathBuf::from("/usr/local/bin/shep-otel")),
-            },
-            DogView {
-                name: "ledger".to_string(),
-                enabled: true,
-                adopted_path: Some(PathBuf::from("/opt/ledger/bin/dog")),
-            },
-            DogView {
-                name: "bark".to_string(),
-                enabled: true,
-                adopted_path: None,
-            },
+            DogView::adopted("otel", false, Path::new("/usr/local/bin/shep-otel")),
+            DogView::adopted("ledger", true, Path::new("/opt/ledger/bin/dog")),
+            DogView::built_in("bark", true),
         ],
         ..settings_snapshot_for_gallery()
     }

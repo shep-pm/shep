@@ -6,19 +6,13 @@
 //! than spilling into the next column.
 //!
 //! A boolean and a closed set of names cycle; every other key is free text
-//! via [`Settings::typing`], where an empty buffer unsets it. The dogs
-//! table's RUNNING column ([`dog_rows`]) joins the file's own
-//! `enabled`/`SOURCE` against the live flock.
+//! via [`Settings::typing`], where an empty buffer unsets it. A dog's header
+//! row joins the file's own `enabled`/`SOURCE` against the live flock, and `e`
+//! opens that dog's own tree under it.
 //!
-//! `dogs` holds the dogs table and its columns, `tree` the rows above it and
-//! their widths; this module lays the screen out around them.
+//! `dogs` holds the dog header rows and their columns, `tree` every other row
+//! and its widths; this module lays the screen out around them.
 
-// `pub(super)`, not private to `settings`: the two re-exported functions
-// below hand back this module's `DogColumn` and `DogRow`, and a private
-// `dogs` would leave those types nameable nowhere a caller of
-// `view::settings::columns_for` stands. `view::flock` keeps its own columns
-// the same way (`pub(super) mod columns;` behind a re-exported
-// `columns_for`).
 pub(super) mod dogs;
 mod tree;
 
@@ -31,10 +25,8 @@ use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
 use super::scroll::Attempt;
 
-use dogs::{DOGS_CAPTION, dog_header_line, dog_line};
+use dogs::{DOGS_CAPTION, dog_header_line};
 use tree::tree_line;
-
-pub use dogs::{columns_for, dog_rows};
 
 /// The width the rows themselves are laid out in: the terminal minus
 /// [`GUTTER`].
@@ -55,8 +47,8 @@ fn section_header(label: &str, palette: Palette) -> Line<'static> {
 /// which [`Settings::rows`] alone defines, would otherwise land on a row this
 /// function drew somewhere else.
 ///
-/// Takes `app` as well as `settings`: [`dog_rows`] needs the live flock,
-/// which lives on `App`, not on `Settings`.
+/// Takes `app` as well as `settings`: a dog header row joins its `RUNNING`
+/// cell against the live flock, which lives on `App`, not on `Settings`.
 ///
 /// `height` is the body's row budget; zero means unlimited, for a test
 /// with no real terminal. [`Viewport`] scrolls in data rows while height
@@ -101,8 +93,8 @@ fn content_lines(
 ///
 /// The last resort, reached only when every offset down to the cursor's own
 /// left it undrawn. `MIN_HEIGHT` is six rows, four of body, and a dog row
-/// needs the blank line, the `[dogs]` header, the caption and the column
-/// header above it before it may be drawn at all: five lines for one row.
+/// needs the blank line, the `[dogs]` header and the caption above it before
+/// it may be drawn at all: four lines for one row.
 /// A screen that declares a minimum height should draw something at it,
 /// and the selected row is the something.
 ///
@@ -121,10 +113,14 @@ fn cursor_only(
     let mut lines = Vec::new();
     match rows.get(cursor_row) {
         Some(SettingsRow::Dog(index)) => {
-            let dogs = dog_rows(app, table_width);
-            if let Some(dog) = dogs.get(*index) {
-                lines.push(dog_line(dog, columns_for(table_width), table_width, true));
-            }
+            lines.push(dog_header_line(
+                app,
+                settings,
+                *index,
+                true,
+                table_width,
+                palette,
+            ));
         }
         Some(row) => lines.push(tree_line(settings, *row, true, table_width, palette)),
         None => {}
@@ -197,39 +193,46 @@ fn body_from(
     // columns before its first cell.
     let table_width = body_width(width);
     if !full {
-        let mut dogs_header = vec![Line::default(), section_header("[dogs]", palette)];
-        // fitted: the caption is 48 columns and the screen draws from
-        // `view::MIN_TERM_WIDTH` (33) up.
-        dogs_header.push(Line::from(Span::styled(
-            format!("  {}", fit(DOGS_CAPTION, table_width)),
-            palette.muted(),
-        )));
-        let rendered_columns = columns_for(table_width);
-        dogs_header.push(dog_header_line(rendered_columns, table_width, palette));
-
-        let dogs = dog_rows(app, table_width);
-        if dogs.is_empty() {
-            // Nothing to gate a header this function will never draw
-            // otherwise: the empty flock still gets to say "[dogs]", same
-            // as `flock::render_table`'s own header for an empty payload.
-            if lines.len() + dogs_header.len() + above <= budget {
-                lines.append(&mut dogs_header);
+        // The section's own chrome, spent once, before the first dog row this
+        // pass draws wherever that row is. `pending` because it is drained as
+        // it is used: a header is not owed to a row the offset skipped.
+        let mut pending = vec![
+            Line::default(),
+            section_header("[dogs]", palette),
+            // fitted: the caption is 68 columns and the screen draws from
+            // `view::MIN_TERM_WIDTH` (33) up.
+            Line::from(Span::styled(
+                format!("  {}", fit(DOGS_CAPTION, table_width)),
+                palette.muted(),
+            )),
+        ];
+        if total_rows == tree_len {
+            // Nothing to gate a header this function would otherwise never
+            // draw: an empty flock still gets to say "[dogs]", same as
+            // `flock::render_table`'s own header for an empty payload.
+            if lines.len() + pending.len() + above <= budget {
+                lines.append(&mut pending);
             }
-        } else {
-            let mut pending_dogs_header = dogs_header;
-            for (index, dog) in dogs.iter().enumerate() {
-                let global_index = tree_len + index;
-                if global_index < offset {
-                    continue;
-                }
-                if !room(lines.len(), pending_dogs_header.len() + 1, global_index) {
-                    break;
-                }
-                lines.append(&mut pending_dogs_header);
-                let selected = cursor == Some(SettingsRow::Dog(index));
-                lines.push(dog_line(dog, rendered_columns, table_width, selected));
-                drawn += 1;
+        }
+        for (index, row) in rows.iter().copied().enumerate().skip(tree_len) {
+            if index < offset {
+                continue;
             }
+            if !room(lines.len(), pending.len() + 1, index) {
+                break;
+            }
+            lines.append(&mut pending);
+            let selected = cursor == Some(row);
+            lines.push(match row {
+                SettingsRow::Dog(dog) => {
+                    dog_header_line(app, settings, dog, selected, table_width, palette)
+                }
+                // A dog's own keys, its grants checklist and its config tree
+                // are rows like every other row on this screen, drawn by the
+                // same function at one indent deeper than the key above them.
+                other => tree_line(settings, other, selected, table_width, palette),
+            });
+            drawn += 1;
         }
     }
 
@@ -285,9 +288,9 @@ fn body_from(
 
 /// Draws the settings screen into `area`, straight into `buffer`.
 ///
-/// `app` supplies the palette and the live flock [`dog_rows`] joins against;
-/// every other fact this screen shows, including its one armed or in-flight
-/// prompt line, comes off `settings`.
+/// `app` supplies the palette and the live flock a dog header row joins
+/// against; every other fact this screen shows, including its one armed or
+/// in-flight prompt line, comes off `settings`.
 pub fn draw_settings(app: &App, settings: &Settings, area: Rect, buffer: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -315,11 +318,26 @@ mod tests {
     use crate::output::width::visible_width;
 
     /// The snapshot pins the section order, every row's four columns, and
-    /// the dogs table underneath.
+    /// the dog rows underneath.
     #[test]
     fn settings_at_a_comfortable_width() {
         let app = fixtures::app_in_settings();
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        terminal
+            .draw(|frame| super::super::draw(&app, frame))
+            .unwrap();
+        insta::assert_snapshot!(render_text(terminal.backend().buffer()));
+    }
+
+    /// One dog opened on its own row: the four `[daemon] keys under its header,
+    /// the grants checklist under `grants`, and the dog's own tree under those.
+    /// The header row itself is unchanged, which is the point of folding rather
+    /// than opening a pane over the screen.
+    #[test]
+    fn a_dog_opened_on_its_own_row() {
+        let (_dir, _paths, mut app) = fixtures::settings_over(fixtures::BARK_RECORDED);
+        fixtures::open_dog_row(&mut app, "bark");
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
         terminal
             .draw(|frame| super::super::draw(&app, frame))
             .unwrap();

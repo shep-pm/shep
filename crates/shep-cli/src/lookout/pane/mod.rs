@@ -48,6 +48,7 @@ mod union;
 mod union_tests;
 mod walk;
 
+pub(in crate::lookout) use choices::ChoiceRow;
 pub(in crate::lookout) use config::toml_table;
 pub use config::{ConfigPane, ReloadKind};
 pub(in crate::lookout) use dogs::DogToggle;

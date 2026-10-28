@@ -7,7 +7,7 @@
 //! terminal has lines, and both pay for chrome the viewport cannot see.
 //! The scroll walk is shared ([`super::scroll::to_cursor`]); the layout
 //! below is this pane's own, since a field list under nine headers and a
-//! settings screen with a dogs table share almost no lines.
+//! settings screen with one row per dog share almost no lines.
 //!
 //! A sheep pane is 40 rows plus a title, nine headers and eight blank
 //! separators: eighteen lines of chrome before a marker is paid for.

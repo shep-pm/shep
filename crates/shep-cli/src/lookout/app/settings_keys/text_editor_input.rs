@@ -33,11 +33,28 @@ impl App {
             }
             KeyPress::TextApply => {
                 if let Some(Pending::Typing { target, buffer }) = settings.pending.take() {
-                    match target.edit(buffer.as_str()) {
-                        Ok(edit) => {
+                    match target.edit(settings, buffer.as_str()) {
+                        Ok(TargetEdit::Setting(edit)) => {
                             let text = confirm_text(&edit, settings.snapshot.style.1);
                             settings.pending = Some(Pending::Armed {
                                 edit,
+                                text,
+                                at: now,
+                            });
+                        }
+                        // A dog's own field leaves as its whole section, which
+                        // is the request a dog pane's close sends. The prompt
+                        // says which file it lands in and that the operator's
+                        // own comments survive it, because that is the part an
+                        // operator would otherwise not know.
+                        Ok(TargetEdit::DogSection { name, toml }) => {
+                            let text = format!(
+                                "write {name}'s section? it lands in dogs.toml, {name} is told, and \
+                                 its comments and key order stay"
+                            );
+                            settings.pending = Some(Pending::DogSectionArmed {
+                                name,
+                                toml,
                                 text,
                                 at: now,
                             });

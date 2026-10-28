@@ -68,13 +68,21 @@ pub(super) fn selected_row_count(buffer: &Buffer) -> usize {
         .count()
 }
 
-/// The dogs table's own row lookup: unlike [`row_for`], a dog row opens
+/// A dog row's own lookup: unlike [`row_for`], a dog row opens
 /// with `mark` and a name, never a numeric id, so the same "first two
-/// tokens" shape does not apply.
+/// tokens" shape does not apply. A settings-screen dog row carries the fold
+/// glyph between the mark and the name, so a leading glyph is skipped.
 pub(super) fn dog_row_for<'a>(frame: &'a str, name: &str) -> Option<&'a str> {
-    frame
-        .lines()
-        .find(|line| line.trim_start_matches('>').split_whitespace().next() == Some(name))
+    frame.lines().find(|line| {
+        let mut tokens = line.trim_start_matches('>').split_whitespace();
+        let first = tokens.next();
+        let named = if matches!(first, Some("\u{25b8}" | "\u{25be}")) {
+            tokens.next()
+        } else {
+            first
+        };
+        named == Some(name)
+    })
 }
 
 /// A sheep's `dogs` tab row for `name`: [`dog_row_for`] with the open or

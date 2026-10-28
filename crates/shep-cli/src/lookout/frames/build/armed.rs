@@ -558,18 +558,18 @@ mod tests {
         );
         assert!(
             dog_row_for(&narrow, "otel").is_some_and(|row| row.contains("online")),
-            "the dogs table keeps RUNNING: {narrow:?}"
+            "the dog header rows keep RUNNING: {narrow:?}"
         );
         assert!(!narrow.contains("built-in"), "and loses SOURCE: {narrow:?}");
 
         // "The same screen at 14 rows, which is fewer than it has to draw.
         //  The cursor is on the last dog, so the view has scrolled to reach
-        //  it and `... 5 above` says how much is off the top. The scroll is
-        //  counted in lines rather than in rows: a section header and the
-        //  dogs caption cost the same height a row does."
+        //  it and `... 12 above` says how much is off the top. The scroll is
+        //  counted in lines rather than in rows: the blank line and the dogs
+        //  caption cost the same height a row does."
         let short = render_text(&scene(Scene::SettingsShort).1);
         assert!(
-            short.contains("... 13 above"),
+            short.contains("... 12 above"),
             "the marker names how many rows are off the top: {short:?}"
         );
         assert!(
@@ -585,7 +585,7 @@ mod tests {
         );
         assert!(
             short.contains("interpreters") && short.contains("[dogs]"),
-            "what survives is the tail of the tree and the dogs table, headers and all: {short:?}"
+            "what survives is the tail of the tree and the dog rows, caption and all: {short:?}"
         );
     }
 

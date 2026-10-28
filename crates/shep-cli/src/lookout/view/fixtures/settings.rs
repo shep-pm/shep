@@ -1,16 +1,18 @@
-//! The settings screen, its snapshot, and its dogs table.
+//! The settings screen, its snapshot, and its dog rows.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use shep_core::protocol::{DogSource, ProcessInfo};
+use shep_core::protocol::{DogSource, ProcessInfo, Response};
 use shep_core::status::ProcStatus;
 
 use crate::commands::settings::{DogView, SettingEdit, SettingsSnapshot, Shape};
-use crate::lookout::app::{App, Control, KeyPress, Msg, Settings, SettingsRow};
+use crate::lookout::app::{App, Control, Effect, KeyPress, Msg, Sent, Settings, SettingsRow};
 use crate::lookout::field::shep_toml_shape;
+use crate::lookout::pane::PaneRow;
 use crate::style::{StyleLevel, StyleSource};
 
+use super::dog_pane::dog_section;
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
 
@@ -41,16 +43,8 @@ pub fn settings_snapshot() -> SettingsSnapshot {
         // agree.
         style: (StyleLevel::Full, StyleSource::Config),
         dogs: vec![
-            DogView {
-                name: "bark".to_string(),
-                enabled: false,
-                adopted_path: None,
-            },
-            DogView {
-                name: "metrics".to_string(),
-                enabled: true,
-                adopted_path: None,
-            },
+            DogView::built_in("bark", false),
+            DogView::built_in("metrics", true),
         ],
     }
 }
@@ -67,7 +61,9 @@ pub fn app_in_settings() -> App {
 }
 
 /// The dotted key a settings row stands for: a section's path, a key's own,
-/// a map's entry as `map.name`, and the row that adds one as `map+`.
+/// a map's entry as `map.name`, the row that adds one as `map+`, and anything
+/// under a dog as `dog.<name>...` so a test can name a dog's own row the same
+/// way it names a key of `shep.toml`.
 fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
     let shape = shep_toml_shape();
     let fields = shape.fields.fields();
@@ -80,7 +76,24 @@ fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
             format!("{key}.{name}")
         }
         SettingsRow::AddEntry(map) => format!("{}+", fields[map].key),
-        SettingsRow::Dog(_) => return None,
+        SettingsRow::Dog(index) => format!("dog.{}", settings.dog(index)?.name),
+        SettingsRow::DogKey { dog, key } => {
+            format!("dog.{}.{}", settings.dog(dog)?.name, key.label())
+        }
+        SettingsRow::DogGrant { dog, index } => {
+            format!("dog.{}.grant.{}", settings.dog(dog)?.name, index)
+        }
+        SettingsRow::DogField { dog, row } => {
+            let pane = settings.dog_tree(dog)?.pane()?;
+            let PaneRow::Field(field) = pane.rows().get(row)?.to_owned() else {
+                return None;
+            };
+            format!(
+                "dog.{}.{}",
+                settings.dog(dog)?.name,
+                pane.fields().fields().get(field)?.key
+            )
+        }
     })
 }
 
@@ -166,9 +179,96 @@ pub fn app_in_settings_with_control() -> App {
     app
 }
 
-/// [`settings_snapshot`]'s own keys, with `dogs` replaced, for the
-/// dogs-table tests, which need particular names, `enabled` bits, and a
-/// matching or mismatching flock.
+/// [`app_in_settings_with_control`] with `bark`'s dog row opened: `e` on its
+/// row, then the schema its binary answers with, then the section the shepherd
+/// answers with, each fed as [`crate::lookout::ui_event_loop`] feeds it.
+///
+/// The screen never changes: `bark`'s own tree fills in under its header row,
+/// which is the whole difference from [`app_in_dog_pane`], where the same two
+/// reads replace the dashboard with a pane.
+pub fn app_in_settings_with_a_dog_open() -> App {
+    let mut app = app_in_settings_with_control();
+    open_dog_row(&mut app, "bark");
+    app
+}
+
+/// `e` on the row of the dog named `name`, then the two reads that opening it
+/// asks for, answered the way the event loop answers them: the schema the dog's
+/// binary publishes, and the section the shepherd holds.
+///
+/// A built-in dog only, because the schema comes from this binary rather than
+/// from probing a path.
+///
+/// # Panics
+///
+/// If `name` is not a row of the open settings screen, or is not a built-in dog.
+#[track_caller]
+pub fn open_dog_row(app: &mut App, name: &str) {
+    select_setting(app, &format!("dog.{name}"));
+    let effect = app.update(Msg::Key(KeyPress::Edit));
+    if !matches!(effect, Effect::LoadDogPane { .. }) {
+        panic!("opening a dog row asks for its schema, got {effect:?}");
+    }
+    app.update(Msg::DogPane {
+        name: name.to_owned(),
+        adopted_path: None,
+        result: Ok(crate::dog::builtin_schema(name).expect("the fixture's dog is a built-in")),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: name.to_owned(),
+        },
+        result: Ok(Response::DogSection {
+            toml: dog_section().into(),
+        }),
+    });
+}
+
+/// `bark` enabled with a grants record: `flock.read` held, `events:log.` left
+/// waiting. The one `shep.toml` state that has a grants checklist to draw.
+pub const BARK_RECORDED: &str = "[daemon]\nenabled_dogs = [\"bark\"]\n\n[daemon.dog_grants.bark]\ngranted = [\"flock.read\"]\nwaiting = [\"events:log.\"]\nreviewed = true\n";
+
+/// A shep home whose `shep.toml` is `text`, and the paths under it. The tempdir
+/// is returned so a test that writes through those paths keeps its home alive.
+pub fn home_with(text: &str) -> (tempfile::TempDir, shep_core::paths::ShepPaths) {
+    let dir = tempfile::tempdir().expect("a temp shep home");
+    let paths = shep_core::paths::ShepPaths::resolve(&|_| None, dir.path());
+    std::fs::create_dir_all(&paths.home).expect("the home exists");
+    std::fs::write(&paths.daemon_config, text).expect("shep.toml is written");
+    (dir, paths)
+}
+
+/// The socket default the settings fixtures report, the same stand-in
+/// [`settings_snapshot`] uses. A fixture's own temp dir would reach a snapshot
+/// as this machine's path, which is a different string on every machine that
+/// runs the test.
+const FAKE_SOCKET: &str = "/home/ada/.shep/run/shep.sock";
+
+/// [`home_with`], with the settings screen open over it and the control gate
+/// open. The snapshot is the one [`load_settings`] reads off the file, so a
+/// dog's grants record and its checklist are the real ones. Only the socket
+/// default is [`FAKE_SOCKET`]: nothing here reads that socket, and a drawn
+/// snapshot must not name the machine that drew it.
+pub fn settings_over(text: &str) -> (tempfile::TempDir, shep_core::paths::ShepPaths, App) {
+    let (dir, paths) = home_with(text);
+    let snapshot = crate::commands::settings::load_settings(
+        &paths.daemon_config,
+        Path::new(FAKE_SOCKET),
+        (StyleLevel::Full, StyleSource::Default),
+    )
+    .expect("the fixture's shep.toml parses");
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Settings));
+    app.update(Msg::Settings {
+        result: Ok(snapshot),
+    });
+    (dir, paths, app)
+}
+
+/// [`settings_snapshot`]'s own keys, with `dogs` replaced, for the tests
+/// that need particular names, `enabled` bits, and a matching or mismatching
+/// flock.
 fn settings_snapshot_with_dogs(dogs: Vec<DogView>) -> SettingsSnapshot {
     SettingsSnapshot {
         dogs,
@@ -178,7 +278,7 @@ fn settings_snapshot_with_dogs(dogs: Vec<DogView>) -> SettingsSnapshot {
 
 /// `otel` runs online while the file disables it: a removed name still
 /// running. `ledger` is enabled in the file and absent from the flock: a dog
-/// that failed to start. Exercises [`crate::lookout::view::settings::dog_rows`]'s join, not
+/// that failed to start. Exercises [`dog_header_line`]'s join, not
 /// the toggle.
 pub fn app_in_settings_with_dog_drift() -> App {
     let flock = vec![
@@ -193,23 +293,15 @@ pub fn app_in_settings_with_dog_drift() -> App {
         result: Ok(settings_snapshot_with_dogs(vec![
             // Real paths, not `None`: `otel` and `ledger` are adopted dogs,
             // and every value in `[daemon] adopted_dogs` is a path.
-            DogView {
-                name: "otel".to_string(),
-                enabled: false,
-                adopted_path: Some(PathBuf::from("/usr/local/bin/shep-otel")),
-            },
-            DogView {
-                name: "ledger".to_string(),
-                enabled: true,
-                adopted_path: Some(PathBuf::from("/opt/ledger/bin/dog")),
-            },
+            DogView::adopted("otel", false, Path::new("/usr/local/bin/shep-otel")),
+            DogView::adopted("ledger", true, Path::new("/opt/ledger/bin/dog")),
         ])),
     });
     app
 }
 
 /// `bark` is up but has never completed a handshake
-/// (`handshook: Some(false)`), so [`crate::lookout::view::settings::dog_rows`] must read it
+/// (`handshook: Some(false)`), so [`dog_header_line`] must read it
 /// `silent`, not `online`, the same correction [`crate::vocabulary::Reported`]
 /// makes for the flock table.
 pub fn app_in_settings_with_silent_dog() -> App {
@@ -223,11 +315,9 @@ pub fn app_in_settings_with_silent_dog() -> App {
     let mut app = app_with(flock, plain());
     app.update(Msg::Key(KeyPress::Settings));
     app.update(Msg::Settings {
-        result: Ok(settings_snapshot_with_dogs(vec![DogView {
-            name: "bark".to_string(),
-            enabled: true,
-            adopted_path: None,
-        }])),
+        result: Ok(settings_snapshot_with_dogs(vec![DogView::built_in(
+            "bark", true,
+        )])),
     });
     app
 }
@@ -236,16 +326,8 @@ pub fn app_in_settings_with_silent_dog() -> App {
 /// enabled, so a test can pick whichever direction it means to arm.
 fn settings_snapshot_for_toggle_tests() -> SettingsSnapshot {
     settings_snapshot_with_dogs(vec![
-        DogView {
-            name: "metrics".to_string(),
-            enabled: false,
-            adopted_path: None,
-        },
-        DogView {
-            name: "otel".to_string(),
-            enabled: true,
-            adopted_path: Some(PathBuf::from("/usr/local/bin/shep-otel")),
-        },
+        DogView::built_in("metrics", false),
+        DogView::adopted("otel", true, Path::new("/usr/local/bin/shep-otel")),
     ])
 }
 
