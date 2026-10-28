@@ -27,19 +27,20 @@
  * `dogs/index.html` is left out: `/docs/dogs` is a page this site writes, and
  * verify-heading-anchors.ts already reads its source.
  *
- * The last check is the other end of the same fact. An imported page is worth
- * writing only if a reader can reach it, and `/docs/community-dogs` is where
- * they look for one. That page is this site's own, and its entries link the
- * imported ones, so this reads the built listing against the index and asks
- * every row the listing's own question, `docsPageOf`, rather than a second
- * one that could answer differently.
+ * The last two checks are the other end of the same fact. An imported page is
+ * worth writing only if a reader can reach it, and `/docs/community-dogs` is
+ * where they look for one. That page is this site's own, so this reads its
+ * built entries against the built routes rather than against any rule the
+ * listing could answer on its own: a build that wrote no dog page must draw no
+ * Docs link, and a build that wrote one must draw the link that reaches it.
+ * The check before them reads every built page for the same thing, because a
+ * hand-written page can hard-code a dog route the build never fetched.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { builtDocsPages, type BuiltPage } from "./built-pages.ts";
 import { anchorOf, dogs } from "../src/data/dogs.ts";
-import { docsPageOf, firstPartyDogs } from "../src/data/dog-readme-fetch.ts";
 
 /** A heading on a built page: its tag, its text, and the id it carries. */
 export interface BuiltHeading {
@@ -181,6 +182,31 @@ export function dogEntryBlocks(html: string): string[] {
   );
 }
 
+/**
+ * The dog routes a built page links to, as routes: `dogs/deploy`,
+ * `dogs/deploy/docs/setup`, with any trailing slash and `#fragment` off.
+ *
+ * `/docs/dogs` on its own is not one of them: that is the index this site
+ * writes, and the sidebar carries it on every docs page.
+ */
+export function dogHrefs(html: string): string[] {
+  return [...html.matchAll(/href="\/docs\/(dogs\/[^"]*)"/g)]
+    .map((match) => match[1].split("#")[0].split("?")[0].replace(/\/$/, ""))
+    .filter((route) => route !== "");
+}
+
+/**
+ * The href a listing would use for each dog page a page list wrote.
+ *
+ * A dog's own page is `dogs/<adopt_as>`; anything deeper is a page some
+ * README links to, which a row has no business linking.
+ */
+export function dogReadmeHrefs(pages: BuiltPage[]): string[] {
+  return dogPages(pages)
+    .filter(([route]) => !route.slice("dogs/".length).includes("/"))
+    .map(([route]) => `/docs/${route}`);
+}
+
 /** A listing with one entry that links a docs page and one that does not. */
 const LISTING =
   `<article class="dog-entry"><h3 id="ours"><a href="#ours">shep-ours (Ours)</a></h3>` +
@@ -202,33 +228,80 @@ test("dogEntryBlocks() ignores a docs link the page's own chrome carries", () =>
   assert.equal(dogEntryBlocks(html).length, 2);
 });
 
-test("the built listing links a row of ours to its docs page and no other row", async () => {
-  const listing = (await builtDocsPages()).find(([route]) => route === "community-dogs");
+test("dogHrefs() reads a dog's pages and not the index this site writes", () => {
+  const html =
+    `<a href="/docs/dogs">Dogs</a> <a href="/docs/dogs/deploy">Docs</a> ` +
+    `<a href="/docs/dogs/deploy/docs/setup#install">Setup</a> ` +
+    `<a href="https://github.com/shep-pm/shep-deploy">Repository</a>`;
+  assert.deepEqual(dogHrefs(html), ["dogs/deploy", "dogs/deploy/docs/setup"]);
+});
+
+test("dogHrefs() reads a link to a page no build wrote as a link", () => {
+  // The point of the check below: a route is a route whether or not anything
+  // sits at it, and only the build output says which is which.
+  assert.deepEqual(dogHrefs(`<a href="/docs/dogs/gone">Docs</a>`), ["dogs/gone"]);
+});
+
+test("dogReadmeHrefs() names each dog's own page and not the pages below it", () => {
+  const pages: BuiltPage[] = [
+    ["", ""],
+    ["dogs", ""],
+    ["dogs/deploy", ""],
+    ["dogs/deploy/docs/setup", ""],
+    ["community-dogs", ""],
+  ];
+  assert.deepEqual(dogReadmeHrefs(pages), ["/docs/dogs/deploy"]);
+});
+
+test("no built page links a dog route this build never wrote", async () => {
+  const pages = await builtDocsPages();
+  const built = new Set(pages.map(([route]) => `/docs/${route}`));
+  for (const [route, html] of pages) {
+    for (const href of dogHrefs(html)) {
+      assert.ok(
+        built.has(`/docs/${href}`),
+        `/docs/${route} links /docs/${href}, and this build wrote no page there. A dog's page is text the build fetched from another repository at its latest release tag, so a build that could not fetch it writes nothing at that route and every link into it is a 404. Link the route only where the build has it, as \`docsPageOf\` does, or write it as text rather than as a link.`,
+      );
+    }
+  }
+});
+
+test("the built listing links a Docs page only where this build wrote one", async () => {
+  const pages = await builtDocsPages();
+  const listing = pages.find(([route]) => route === "community-dogs");
   assert.ok(listing, "no built /docs/community-dogs page to read");
+
   const blocks = dogEntryBlocks(listing[1]);
   assert.equal(
     blocks.length,
     dogs.length,
     `the built listing draws ${blocks.length} entries for an index of ${dogs.length} rows`,
   );
+
+  const built = new Set(pages.map(([route]) => `/docs/${route}`));
+  const written = new Set(dogReadmeHrefs(pages));
+  const linked: string[] = [];
+
   for (const dog of dogs) {
     const block = blocks.find((entry) => entry.includes(`id="${anchorOf(dog)}"`));
     assert.ok(block, `the built listing has no entry for "${dog.package}"`);
-    const docs = docsPageOf(dog);
-    if (docs === null) {
+    const hrefs = dogHrefs(block);
+    assert.ok(
+      hrefs.length <= 1,
+      `${dog.package}'s entry carries ${hrefs.length} Docs links: ${hrefs.join(", ")}. A row has one page.`,
+    );
+    for (const href of hrefs) {
       assert.ok(
-        !block.includes("/docs/dogs/"),
-        `${dog.package} is not this org's row, so its entry links a docs page this site never wrote`,
+        built.has(`/docs/${href}`),
+        `${dog.package}'s entry links /docs/${href}, which this build wrote no page at.`,
       );
-      continue;
+      linked.push(`/docs/${href}`);
     }
-    assert.ok(block.includes(`href="${docs}"`), `${dog.package}'s entry has no Docs link to ${docs}`);
   }
-  const linked = blocks.filter((entry) => entry.includes("/docs/dogs/")).length;
-  const ours = firstPartyDogs(dogs).length;
-  assert.equal(
-    linked,
-    ours,
-    `the listing links ${linked} entries to a docs page and the index has ${ours} rows of ours`,
+
+  assert.deepEqual(
+    linked.sort(),
+    [...written].sort(),
+    `the listing links ${linked.length} dog page(s) and this build wrote ${written.size}. A page a build wrote that no row links is a page no reader can reach, and a link to a page no build wrote is a 404.`,
   );
 });
