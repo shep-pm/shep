@@ -9,18 +9,12 @@ use super::*;
 
 impl<R: ProcessRunner> Actor<R> {
     /// Resolves `selector`, puts one action on the shepherd channel of every
-    /// matched sheep that can take one, and answers with a row per match once
-    /// the last of those waits has ended.
+    /// matched sheep that can take one, and answers with a row per match.
     ///
-    /// Shaped like [`Self::begin_manual`], except that the rows are joined in
-    /// [`spawn_trigger_task`] rather than in `pending`. Nothing is awaited
-    /// here, for the reason [`Self::handle_reopen`] gives.
-    ///
-    /// Both refusals are decided ahead of the wait, since a sheep refused
-    /// after one was armed would leave a wait nothing drives home: no open
-    /// [`SheepSlot::open_channel`] is [`ActionOutcome::NoChannel`], or
-    /// [`ActionOutcome::DogNoChannel`] for a dog spawned without one, and a
-    /// drainee is [`ActionOutcome::Skipped`]. A replacement is not skipped.
+    /// The rows are joined in [`spawn_trigger_task`], not in `pending`, so
+    /// nothing is awaited here; see [`Self::handle_reopen`]. Both refusals are
+    /// decided before the wait: a sheep refused after one was armed would
+    /// leave a wait nothing drives home.
     pub(super) fn begin_action(
         &mut self,
         selector: &ProcessSelector,
@@ -97,13 +91,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Delivers one signal to every matched sheep's own process.
     ///
     /// Off the actor loop, like [`Self::begin_action`]: each delivery is a
-    /// round trip through a sheep task. There is nothing to wait out, so the
-    /// fan-out is bounded by the syscall rather than a configured timeout.
-    ///
-    /// A sheep with no live task answers [`SignalOutcome::NotRunning`] without
-    /// a round trip: `slot.signals` is `None` for exactly the states with no
-    /// process. A reload drainee is signalled like any other live sheep,
-    /// unlike in [`Self::begin_action`]: a signal expects nothing back.
+    /// round trip through a sheep task, bounded by the syscall rather than a
+    /// timeout. A sheep with no live task answers
+    /// [`SignalOutcome::NotRunning`] without one. A drainee is signalled like
+    /// any other live sheep: a signal expects nothing back.
     pub(super) fn begin_signal(
         &mut self,
         selector: &ProcessSelector,
@@ -150,18 +141,13 @@ impl<R: ProcessRunner> Actor<R> {
         spawn_signal_task(settled, waits, reply);
     }
 
-    /// Writes one line to every matched sheep's stdin. Off the actor loop,
-    /// like [`Self::begin_signal`]: each write is a round trip through a sheep
-    /// task.
+    /// Writes one line to every matched sheep's stdin, off the actor loop like
+    /// [`Self::begin_signal`].
     ///
     /// A sheep with no live task, or one running without `stdin = true`,
-    /// answers [`LineOutcome::NoStdin`] off [`SheepSlot::open_stdin`], the one
-    /// fact that decides whether a pipe exists. A reload drainee gets the
-    /// line, as [`Self::begin_signal`] delivers a signal to one.
-    ///
-    /// The enqueue is `try_send`, never an awaited send: a full queue is the
-    /// condition [`LineOutcome::NotWritten`] names, and awaiting into one
-    /// would park the actor loop on a wedged sheep's pipe.
+    /// answers [`LineOutcome::NoStdin`] off [`SheepSlot::open_stdin`]. A
+    /// drainee gets the line. The enqueue is `try_send`: awaiting into a full
+    /// queue would park the actor loop on a wedged sheep's pipe.
     pub(super) fn begin_send_line(
         &mut self,
         selector: &ProcessSelector,
@@ -337,13 +323,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// One sheep's transition to `Online`: emits the event, then arms every
     /// lifecycle extra its configuration asks for.
     ///
-    /// The arming site for every ordinary transition, reached by all three.
-    /// Arming happens at the transition, not the spawn: a liveness probe
-    /// armed against an app that has not finished starting fails its
-    /// threshold and restarts the app before it ever comes up. An abandoned
-    /// reload's replacement is the one instance armed without going through
-    /// here: it never becomes `Online`, so [`Actor::reload_ready_result`] and
-    /// [`Actor::handle_reload_verified`] call [`Self::arm_extras`] directly.
+    /// Arming happens at the transition, not the spawn: a liveness probe armed
+    /// against an app that has not finished starting fails its threshold and
+    /// restarts the app before it comes up. An abandoned reload's replacement
+    /// is armed without going through here, since it never becomes `Online`.
     pub(super) fn went_online(&mut self, id: u32, info: ProcessInfo, manually: bool) {
         // Whatever an earlier reload concluded about this instance, it is
         // serving now. See `SheepSlot::ready_failed`.
@@ -357,11 +340,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Arms `id`'s lifecycle extras, rebuilding the spec the running process
     /// was spawned from.
     ///
-    /// Rebuilding is what makes a shared arming body possible: a caller holds
-    /// an id and nothing else, and `describe` is pure over a `spec`,
-    /// `instance` and `credentials` that never change. The store it reads can
-    /// move under a running sheep, which is why this is [`describe`] and not
-    /// [`assemble`].
+    /// Rebuilding is what makes one arming body possible: a caller holds an id
+    /// and nothing else, and `describe` is pure over a `spec`, `instance` and
+    /// `credentials` that never change. The store it reads can move under a
+    /// running sheep, hence [`describe`] and not [`assemble`].
     pub(super) fn arm_extras(&mut self, id: u32) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -391,16 +373,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// Disarms `id`'s lifecycle extras, and its name-group's cron worker and
     /// watch when `id` was the last armed instance of `name`.
     ///
-    /// Called from every terminal transition: `respawn_failed`,
-    /// `apply_immediate`'s Stop and Delete arms, and each of `handle_exited`'s
-    /// four. `spawn_fresh`'s runner-`Err` arm is the one terminal `Errored`
-    /// that does not disarm, its id fresh from `next_id` and never armed; its
-    /// refused-assembly arm reaches `respawn_failed` and so does disarm, which
-    /// on a never-armed id is the no-op below. A sheep on its
-    /// way to `WaitingRestart` keeps its arming, the respawn replacing its
-    /// liveness loop.
-    ///
-    /// Re-disarming is a no-op, so a duplicate site costs nothing and a
+    /// Called from every terminal transition. A sheep on its way to
+    /// `WaitingRestart` keeps its arming, the respawn replacing its liveness
+    /// loop. Re-disarming is a no-op, so a duplicate site costs nothing and a
     /// missing one leaks a task.
     pub(super) fn disarm_extras(&mut self, id: u32, name: &str) {
         self.registry.disarm(id, name);
@@ -458,15 +433,11 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// Full flock listing, grouped by app name.
     ///
-    /// Sorted by [`sort_flock`], the one rule every operator-facing listing in
-    /// shep takes: name, then instance slot, then id. The slot is in the key
-    /// because a replacement gets a fresh id at the drainee's slot number, so
-    /// id alone puts slot 0 last. A listing whose rows all report `None` for
-    /// [`ProcessInfo::instance`] collapses to `(name, id)` order.
-    ///
-    /// Applied here once rather than per verb: every listing reply is built
-    /// from this function, so the metrics dog and bark read the operator's
-    /// order.
+    /// Sorted by [`sort_flock`], the rule every operator-facing listing takes:
+    /// name, then instance slot, then id. The slot is in the key because a
+    /// replacement gets a fresh id at the drainee's slot number. A listing
+    /// whose rows all report `None` for [`ProcessInfo::instance`] collapses to
+    /// `(name, id)` order.
     pub(super) fn snapshot_all(&self) -> Vec<ProcessInfo> {
         let mut listing: Vec<ProcessInfo> = self
             .sheep

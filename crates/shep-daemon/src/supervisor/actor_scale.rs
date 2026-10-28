@@ -12,13 +12,9 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Scaling up, [`instance_slots`] hands out the lowest free slots, exactly
     /// as a `Start` does. Scaling down, the highest-numbered slots are
-    /// deregistered first, the same thing `Delete` does: a `Stop` would leave
-    /// them holding their slots. The reply does not wait for the departures,
-    /// which report themselves on the bus as `process.delete`.
-    ///
-    /// Refused while departures are in flight, since a departing instance stays
-    /// registered and [`SheepSlot::pending_delete`] until its exit lands. That
-    /// reaches the operator as [`SupervisorError::InvalidScale`].
+    /// deregistered first, the same thing `Delete` does. The reply does not
+    /// wait for the departures. Refused while departures are in flight, since
+    /// a departing instance stays registered until its exit lands.
     pub(super) fn handle_scale(
         &mut self,
         name: &str,
@@ -187,13 +183,9 @@ impl<R: ProcessRunner> Actor<R> {
         for id in survivors.iter().chain(orphaned_by_failed_spawn.iter()) {
             if let Some(slot) = self.sheep.get_mut(id) {
                 // `out_file`/`err_file` need no refresh here: `stored` only
-                // moves `instances`, and no token an accepted log path may
-                // carry reads that. `normalize` refuses a `{{secret:...}}`
-                // in either field (`SecretInLogPath`), which leaves
-                // `{{instance}}` and `{{name}}`; a survivor's own `instance`
-                // is untouched by a scale and its name cannot move. Note it
-                // is `normalize` that narrows this and not `render`, which
-                // resolves secret references too.
+                // moves `instances`, and `normalize` refuses a `{{secret:...}}`
+                // in either field, which leaves `{{instance}}` and `{{name}}`,
+                // neither of which a scale moves for a surviving slot.
                 slot.entry.spec = stored.clone();
                 match &mut slot.entry.pending {
                     // A slot already owed a config keeps it, with the count

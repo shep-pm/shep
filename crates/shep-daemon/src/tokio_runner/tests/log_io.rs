@@ -80,18 +80,13 @@ async fn narration_cannot_tear_a_line_the_pump_is_writing() {
     assert_eq!(lines, 1800, "every record reached the file exactly once");
 }
 
-/// Fails if a line the child wrote before its sheep task let go never
-/// reaches the log file.
+/// The pump's `select!` has a branch for the sheep task dropping its `logs`
+/// receiver, for a lamb that holds the pipe open past the child's own exit.
+/// That branch competes with the read branches rather than following them, so
+/// a child that writes and exits can leave both ready in the same poll.
 ///
-/// The pump's `select!` has a branch for the sheep task dropping its
-/// `logs` receiver, for a lamb that holds the pipe open past the
-/// child's own exit. That branch competes with the read branches rather
-/// than following them, so a child that writes and exits can leave both
-/// ready in the same poll.
-///
-/// No child here: the harness writes the line itself and then does what
-/// `run_sheep` does on return, isolating the race from the process
-/// lifecycle that normally hides it.
+/// No child here: the harness writes the line and then does what `run_sheep`
+/// does on return, isolating the race from the process lifecycle.
 #[tokio::test]
 async fn a_last_line_written_before_the_sheep_task_lets_go_reaches_the_file() {
     for attempt in 0..RACE_ATTEMPTS {
@@ -114,17 +109,13 @@ async fn a_last_line_written_before_the_sheep_task_lets_go_reaches_the_file() {
     }
 }
 
-/// The same line, lost the other way: through the control channel
-/// rather than through `logs`.
+/// The same line, lost the other way: through the control channel rather than
+/// through `logs`.
 ///
-/// `logs` and `log_ctl` do not close together ordinarily: the sheep task
-/// drops `logs` when its child exits, while the slot's `log_ctl` sender
-/// outlives it until a delete or shutdown. Those are the cases where
-/// both close at once, giving the control arm's own `None` a fourth way
-/// out of the loop that can win the same random pick.
-///
-/// The drain runs once, on the way out, not inside whichever branch
-/// triggered it, so it cannot matter which exit was taken.
+/// `logs` and `log_ctl` do not close together ordinarily: the sheep task drops
+/// `logs` when its child exits, while the slot's `log_ctl` sender outlives it.
+/// Those are the cases where both close at once, giving the control arm's own
+/// `None` a fourth way out of the loop that can win the same random pick.
 #[tokio::test]
 async fn a_last_line_survives_the_control_channel_closing_with_the_logs() {
     for attempt in 0..RACE_ATTEMPTS {
@@ -209,21 +200,13 @@ impl AsyncWrite for WriteCounter {
     }
 }
 
-/// A [`LogFile`] writing through `sink`, for the cases that drive one
-/// directly rather than through [`PumpHarness`].
+/// A [`LogFile`] writing through `sink`, for the cases that drive one directly
+/// rather than through [`PumpHarness`]. The one place these tests name
+/// [`LogFile`]'s fields, and generic over the sink for the same reason
+/// [`LogFile`] is.
 ///
-/// The one place these tests name [`LogFile`]'s fields, and generic over the
-/// sink for the same reason [`LogFile`] is: a case that counts the writes
-/// reaching a stream hands in a [`WriteCounter`], a case that wants a real
-/// file hands in the [`tokio::fs::File`] it opened. Neither goes through
-/// [`LogFile::open`], which is the one that swallows a failed open, and
-/// neither is the unix-only [`LogFile::from_file`], which exists for a handle
-/// a handover carried.
-///
-/// The record lock is the one any other handle on `path` takes, the handle is
-/// the production [`LOG_BUFFER`] over `sink`, and an empty `stamp` with
-/// `Some(Stamper::default())` is what [`LogFile::open`] builds for a stamped
-/// sheep: the scratch string every line is joined in.
+/// Neither goes through [`LogFile::open`], which is the one that swallows a
+/// failed open. The buffer is the production [`LOG_BUFFER`] over `sink`.
 fn buffered_log<W: AsyncWrite + Unpin>(path: &Path, sink: W) -> LogFile<W> {
     LogFile {
         record: record_lock(path),
@@ -235,15 +218,12 @@ fn buffered_log<W: AsyncWrite + Unpin>(path: &Path, sink: W) -> LogFile<W> {
     }
 }
 
-/// Fails if an appended line still costs one write to the file.
+/// `tokio::fs::File` hands each write to the blocking pool: 32.8 us of daemon
+/// CPU per line against 0.99 us for the `write(2)` underneath. A buffer turns
+/// N writes into one per bufferful, and the write count is the only observable
+/// that shows it.
 ///
-/// `tokio::fs::File` hands each write to the blocking pool: 32.8 us of
-/// daemon CPU per line against 0.99 us for the `write(2)` underneath.
-/// A buffer turns N writes into one per bufferful, and the write count
-/// is the only observable that shows it.
-///
-/// Paused clock: no time passes, so [`IDLE_FLUSH`] never fires, and
-/// every write counted is the buffer spilling or the closing flush.
+/// Paused clock: no time passes, so [`IDLE_FLUSH`] never fires.
 #[tokio::test(start_paused = true)]
 async fn a_run_of_lines_costs_one_write_per_bufferful_not_one_per_line() {
     // 69 characters: `append`'s newline makes a 70-byte line, the size
@@ -281,16 +261,12 @@ async fn a_run_of_lines_costs_one_write_per_bufferful_not_one_per_line() {
 }
 
 /// Fails if a line only leaves the buffer when the buffer fills or when
-/// something asks: that is, if [`IDLE_FLUSH`] bounds nothing.
+/// something asks: that is, if [`IDLE_FLUSH`] bounds nothing. A sheep that logs
+/// once and goes quiet, with no `Flush`, no reopen, and no second line.
 ///
-/// A sheep that logs once and goes quiet, with no `Flush`, no reopen,
-/// and no second line to push the first out. One line is nowhere near
-/// [`LOG_BUFFER`], so only the idle flush can write it through.
-///
-/// Paused clock: the wait is on [`IDLE_FLUSH`], and a real 50ms would be
-/// a claim about the machine. Counting sink: a file would only confirm
-/// the bytes left once the blocking pool caught up, the same claim
-/// through the filesystem.
+/// Paused clock: the wait is on [`IDLE_FLUSH`], and a real 50ms would be a
+/// claim about the machine. Counting sink: a file would only confirm the bytes
+/// left once the blocking pool caught up.
 #[tokio::test(start_paused = true)]
 async fn a_line_from_a_sheep_that_then_goes_quiet_still_reaches_its_file() {
     const LINE: &str = "the-only-line";
@@ -339,14 +315,12 @@ async fn a_sheep_with_log_timestamps_off_gets_its_lines_as_written() {
     assert_eq!(raw(&pump.err_path), "err before\n");
 }
 
-/// `mtime` answers for the whole file and only until something touches
-/// it again, so a per-line stamp is what an operator can trust after a
-/// rotation.
+/// `mtime` answers for the whole file and only until something touches it
+/// again, so a per-line stamp is what an operator can trust after a rotation.
 ///
-/// Asserts the shape and width, not a value: the value is the wall
-/// clock, and pinning it would test the clock instead. The width is
-/// what every reader stripping the prefix depends on, and what
-/// [`LOG_STAMP_BYTES`] claims.
+/// Asserts the shape and width, not a value: the value is the wall clock, and
+/// pinning it would test the clock instead. The width is what every reader
+/// stripping the prefix depends on, and what [`LOG_STAMP_BYTES`] claims.
 #[tokio::test]
 async fn a_line_carries_the_time_it_was_written() {
     let dir = tempfile::tempdir().unwrap();
@@ -424,15 +398,12 @@ async fn the_idle_flush_window_is_measured_from_the_oldest_buffered_line() {
     );
 }
 
-/// Fails if a rotation loses or duplicates what the buffers were
-/// holding.
+/// Every line below fits in [`LOG_BUFFER`], so at the rename the file may hold
+/// none of them: a reopen that dropped its handle without flushing would lose
+/// the lot, and one that flushed after swapping handles would write them into
+/// the fresh file.
 ///
-/// Every line below fits in [`LOG_BUFFER`], so at the rename the file may
-/// hold none of them: a reopen that dropped its handle without flushing
-/// would lose the lot, and one that flushed after swapping handles would
-/// write them into the fresh file, leaving a gap in the archive and
-/// stale lines in the live log. Exact equality on both paths tells
-/// those apart from a reopen that got it right.
+/// Exact equality on both paths tells those apart from a reopen that got it right.
 #[tokio::test]
 async fn a_rotation_lands_every_buffered_line_exactly_once() {
     let mut pump = PumpHarness::start();
@@ -538,18 +509,13 @@ async fn a_reopened_handle_still_appends_so_a_truncation_leaves_no_hole() {
     assert_file_settles(&pump.out_path, "third\n").await;
 }
 
-/// Fails if [`open_append`] stops opening through `open_log_path`:
-/// without its `O_NOFOLLOW`, a symlink planted at a sheep's `out_file`
-/// would be followed, and every line the sheep writes would land in
-/// whatever it points at. No other case here can see this, since every
-/// other one opens a real file.
+/// Fails if [`open_append`] stops opening through `open_log_path`: without its
+/// `O_NOFOLLOW`, a symlink planted at a sheep's `out_file` would be followed,
+/// and every line the sheep writes would land in whatever it points at. No
+/// other case here can see this, since every other one opens a real file.
 ///
-/// Asserts the target's bytes are unchanged, the discriminator from a
-/// followed link, and asserts the error message, which
-/// `LogFile::reopen` hands to an operator.
-///
-/// `cfg(unix)`: needs `std::os::unix::fs::symlink`. `O_NOFOLLOW` has no
-/// Windows counterpart wired up yet, a gap named in the operator docs.
+/// Asserts the target's bytes are unchanged. `cfg(unix)`: `O_NOFOLLOW` has no
+/// Windows counterpart wired up yet.
 #[cfg(unix)]
 #[tokio::test]
 async fn opening_a_symlinked_log_path_is_refused_rather_than_followed() {
@@ -602,15 +568,12 @@ async fn a_reopen_is_answered_while_both_streams_are_idle() {
 }
 
 /// Fails if the pump waits for room on `logs` with a bare
-/// `logs_tx.send(...).await` inside the `select!` handler: a handler is
-/// not cancellable, so the control channel goes unpolled for as long as
-/// that wait lasts, and with nothing draining `logs` it lasts forever.
+/// `logs_tx.send(...).await` inside the `select!` handler: a handler is not
+/// cancellable, so the control channel goes unpolled for as long as that wait
+/// lasts, and with nothing draining `logs` it lasts forever.
 ///
-/// One layer up this is the cycle `Actor::claim_manual` documents: the
-/// party that drains `logs` is the sheep task, so anything that makes
-/// the sheep task wait on an acknowledgement closes the loop: actor
-/// waiting on the ack, sheep task waiting on the actor, pump waiting on
-/// the sheep task.
+/// One layer up this is the cycle `Actor::claim_manual` documents: the party
+/// that drains `logs` is the sheep task.
 #[tokio::test]
 async fn a_reopen_is_answered_while_the_logs_channel_is_full() {
     let mut pump = PumpHarness::start();
@@ -664,15 +627,10 @@ async fn a_stream_that_has_ended_is_still_reopened() {
     pump.feed(false, "before-out").await;
     pump.feed(true, "before-err").await;
 
-    // stdout at EOF with stderr still live: what a child that closes one
-    // stream early leaves behind, and what the pump holds in between the
-    // two EOFs of an ordinary exit.
-    //
-    // `shutdown` rather than `drop`: the reopen below is a method on the
-    // harness, and moving a writer out of it leaves `pump` partly moved,
-    // which no method call can borrow. A duplex writer's `shutdown`
-    // closes its write end, which is what gives the pump's reader its
-    // EOF.
+    // stdout at EOF with stderr still live: what a child that closes one stream
+    // early leaves behind, and what the pump holds in between the two EOFs of
+    // an ordinary exit. `shutdown` rather than `drop`: the reopen below is a
+    // method on the harness, and moving a writer out leaves `pump` partly moved.
     pump.out_writer
         .shutdown()
         .await
@@ -736,17 +694,13 @@ async fn a_send_fails_once_the_pump_has_ended() {
     assert!(ack.await.is_err());
 }
 
-/// Fails if the pump acknowledges a reopen it could not carry out.
+/// A path the pump cannot open leaves that stream with no file at all and
+/// every later line dropped, so answering `Ok` tells a rotator its rotation
+/// worked while the sheep logs into nothing, the same silent failure a reopen
+/// exists to end, moved one layer up.
 ///
-/// A path the pump cannot open leaves that stream with no file at all
-/// and every later line dropped, so answering `Ok` tells a rotator its
-/// rotation worked while the sheep logs into nothing, the same silent
-/// failure a reopen exists to end, moved one layer up.
-///
-/// A directory in the log's place is the failure with no permission
-/// games in it: `open(2)` on a directory fails for every uid, root
-/// included, so this cannot pass for the wrong reason on a privileged
-/// runner.
+/// A directory in the log's place is the failure with no permission games in
+/// it: `open(2)` on a directory fails for every uid, root included.
 #[tokio::test]
 async fn a_reopen_that_cannot_open_a_path_again_answers_with_the_failure() {
     let pump = PumpHarness::start();
@@ -784,17 +738,13 @@ async fn a_reopen_that_cannot_open_a_path_again_answers_with_the_failure() {
     );
 }
 
-/// Fails if the `Flush` arm never reaches the files, never answers, or
-/// drops a handle the way `Reopen` does.
+/// No polling: an answered flush means the files hold every line already
+/// handed to them, and a `Flush` that dropped a handle would leave the pump
+/// writing the stream nowhere from then on.
 ///
-/// No polling: an answered flush means the files hold every line
-/// already handed to them, and a `Flush` that dropped a handle would
-/// leave the pump writing the stream nowhere from then on.
-///
-/// Does not catch a `LogFile::flush` that answers without asking its
-/// file: on a write this small the content assertion would win that
-/// race anyway. `a_flush_reports_the_write_its_file_never_took` pins
-/// that leg deterministically instead.
+/// Does not catch a `LogFile::flush` that answers without asking its file: on
+/// a write this small the content assertion would win that race anyway.
+/// [`a_flush_reports_the_write_its_file_never_took`] pins that leg.
 #[tokio::test]
 async fn a_flush_lands_both_streams_and_keeps_writing_afterwards() {
     let mut pump = PumpHarness::start();
@@ -816,22 +766,12 @@ async fn a_flush_lands_both_streams_and_keeps_writing_afterwards() {
 }
 
 /// Fails if [`LogFile::flush`] stops asking the file anything: an early
-/// `return Ok(())`, or a `map_err` traded for `.ok()`.
+/// `return Ok(())`, or a `map_err` traded for `.ok()`. `tokio::fs::File`
+/// reports a failed write on the next operation rather than the one that
+/// failed, so a flush that answered without asking would swallow the only
+/// signal a sheep's log went unwritten.
 ///
-/// `tokio::fs::File` reports a failed write on the next operation
-/// rather than the one that failed, since `write_all` returns once the
-/// real `write(2)` is queued. `flush` is the one that asks, so a flush
-/// that answered without asking would swallow the only signal a
-/// sheep's log went unwritten.
-///
-/// Driven against a [`LogFile`] directly, not [`PumpHarness`]: a handle
-/// opened for reading alone makes the write fail deterministically on every
-/// platform, since `write(2)` on `O_RDONLY` is `EBADF` for every uid and
-/// `WriteFile` on a handle opened without write access is refused.
-///
-/// Built through [`buffered_log`] rather than [`LogFile::from_file`], so the
-/// case runs on Windows too: what it pins is [`LogFile::flush`] asking the
-/// handle it holds, which is true of any handle.
+/// A handle opened for reading alone makes the write fail on every platform.
 #[tokio::test]
 async fn a_flush_reports_the_write_its_file_never_took() {
     let dir = tempfile::tempdir().unwrap();
@@ -854,18 +794,13 @@ async fn a_flush_reports_the_write_its_file_never_took() {
     );
 }
 
-/// Fails if a log handle carried across a handover writes anywhere but
-/// the end of the file.
-///
 /// `O_APPEND` is a file status flag on the open file description, so it
-/// crosses an exec with the descriptor. A handle that lost it writes at
-/// its own tracked offset instead, overwriting the first line here, or
-/// leaving a sparse hole after a `copytruncate` rotation. Reading both
-/// lines is what tells the two apart, not just checking non-empty.
+/// crosses an exec with the descriptor. A handle that lost it writes at its own
+/// tracked offset instead, overwriting the first line here, or leaving a sparse
+/// hole after a `copytruncate` rotation.
 ///
-/// `cfg(unix)` alongside the constructor it drives, and the whole
-/// handover with it: Windows has no `execve`, so no image there is ever
-/// handed a log handle it did not open.
+/// Reading both lines is what tells the two apart. `cfg(unix)` alongside the
+/// constructor it drives: Windows has no `execve`.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_log_file_from_an_open_handle_still_appends() {
@@ -888,18 +823,13 @@ async fn a_log_file_from_an_open_handle_still_appends() {
     );
 }
 
-/// Fails if the pump can only notice a departed `logs` receiver from
-/// inside `deliver_line`, that is, if it has no `select!` branch of its
-/// own for it.
+/// Fails if the pump can only notice a departed `logs` receiver from inside
+/// `deliver_line`, that is, if it has no `select!` branch of its own for it.
 ///
-/// Without that branch a pump ends on a line it cannot deliver, on both
-/// streams reaching EOF, or on its last control sender dropping. A child
-/// that forked a lamb holding its pipes open satisfies none of the
-/// three: the lamb keeps both streams from EOF whether or not it ever
-/// writes, and the supervisor keeps a control sender for as long as the
-/// sheep stays registered (`SheepSlot::log_ctl`). The pump task, both
-/// `LogFile` handles and both pipe read ends would then live until that
-/// sheep was deleted or the daemon exited.
+/// A child that forked a lamb holding its pipes open satisfies none of the
+/// other ways out: the lamb keeps both streams from EOF, and the supervisor
+/// keeps a control sender while the sheep stays registered
+/// (`SheepSlot::log_ctl`).
 #[tokio::test]
 async fn dropping_the_logs_receiver_ends_a_pump_with_no_line_to_carry_the_news() {
     let pump = PumpHarness::start();

@@ -116,12 +116,11 @@ async fn assert_no_event_within(
 
 /// A bare actor over `sheep`, running `scripts` and reachable at `tx`.
 ///
-/// The bus receiver is dropped here, as every fixture already dropped its
-/// own: a bus with no subscriber still takes every send.
+/// The bus receiver is dropped here, as every fixture already dropped its own:
+/// a bus with no subscriber still takes every send.
 ///
 /// `next_id` is one past the slots, which the contiguous ids every fixture
-/// assigns make right. A case that needs another value, or `extras`,
-/// writes it with struct-update syntax over this.
+/// assigns make right. A case that needs another value writes it over this.
 fn test_actor(
     paths: ShepPaths,
     scripts: Vec<ProcScript>,
@@ -236,14 +235,10 @@ type Started = (
 /// The apps in `apps`, all started through one `Start`, their runner and a
 /// bus subscriber.
 ///
-/// `bus_capacity` is a parameter, not one size for every case: the cases
-/// that read a whole run off one receiver, `shutdown.rs`'s `drain_kinds`,
-/// stop at the first `Lagged`, so a bus narrower than the run's event count
-/// drops events the case asserts on. A case that only waits for named events
-/// can hold a narrow one, and `started` does.
-///
-/// The runner is shared rather than moved so a case can read
-/// `kill_counts().len()`, the number of spawns that succeeded.
+/// `bus_capacity` is a parameter, not one size for every case: the cases that
+/// read a whole run off one receiver, `shutdown.rs`'s `drain_kinds`, stop at
+/// the first `Lagged`. The runner is shared rather than moved so a case can
+/// read `kill_counts().len()`, the number of spawns that succeeded.
 async fn started_apps(
     dir: &tempfile::TempDir,
     apps: Vec<AppConfig>,
@@ -925,14 +920,13 @@ const fn counters(next_id: u32) -> Counters {
     }
 }
 
-/// A real child for the adoption cases below to take over, running
-/// `script` under `/bin/sh`, and its pid.
+/// A real child for the adoption cases below to take over, running `script`
+/// under `/bin/sh`, and its pid.
 ///
-/// Its own process group is load-bearing: `TokioProc::signal` and
-/// `kill_tree` both address the group, so a child that inherited this test
-/// binary's group is not a group leader, `killpg` answers `ESRCH`, and the
-/// ladder delivers nothing. The `Child` handle is dropped rather than
-/// waited on, so the adopted flock's own reaper collects the status.
+/// Its own process group is load-bearing: `TokioProc::signal` and `kill_tree`
+/// both address the group, so a child that inherited this test binary's group
+/// is not a group leader, `killpg` answers `ESRCH`, and the ladder delivers
+/// nothing. The `Child` handle is dropped, not waited on.
 #[cfg(unix)]
 fn adoptable_child(script: &str) -> u32 {
     use std::os::unix::process::CommandExt as _;

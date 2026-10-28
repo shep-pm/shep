@@ -7,14 +7,11 @@
 use super::*;
 
 /// A secret nobody has set is a person's to fix, so a [`BatchPolicy::PerApp`]
-/// batch leaves the sheep `Errored` at once rather than spawning it. A
-/// restart ladder in front of it would only postpone the same report by
-/// sixteen turns.
+/// batch leaves the sheep `Errored` at once rather than spawning it. A restart
+/// ladder in front of it would only postpone the same report by sixteen turns.
 ///
 /// `PerApp` because that is the policy under which such an app is still
 /// registered: a boot restore, or a dog.
-/// `a_batch_with_one_unresolvable_secret_registers_none_of_it` is the
-/// other half.
 #[tokio::test(start_paused = true)]
 async fn a_key_nobody_has_set_errors_the_sheep_without_a_spawn() {
     let dir = tempfile::tempdir().unwrap();
@@ -380,15 +377,13 @@ fn live_handles(slot: &SheepSlot) -> Vec<&'static str> {
     .collect()
 }
 
-/// A respawn that could not start leaves no handle behind on either status
-/// it can land on: a sender kept past its process leaks the task parked on
-/// the other end of it, and a `ready_tx` whose sheep is gone wakes nothing.
-/// `log_ctl` is the one exception, for the reason on `SheepSlot::log_ctl`.
+/// A respawn that could not start leaves no handle behind on either status it
+/// can land on: a sender kept past its process leaks the task parked on the
+/// other end of it. `log_ctl` is the one exception, for the reason on
+/// `SheepSlot::log_ctl`.
 ///
-/// The two routes are the two refusals a secret can make. A key nobody has
-/// set is nobody's to retry, so `respawn_failed` lands it `Errored`; a
-/// namespace no dog has pushed to under this app's environment clears
-/// itself, so `refuse_spawn` lands it `WaitingRestart` on the ladder.
+/// The two routes are the two refusals a secret can make: `respawn_failed`
+/// lands a key nobody has set `Errored`.
 #[tokio::test(start_paused = true)]
 async fn a_refused_respawn_clears_every_handle_but_the_log_pump() {
     let dir = tempfile::tempdir().unwrap();

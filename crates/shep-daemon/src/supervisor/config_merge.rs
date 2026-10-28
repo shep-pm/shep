@@ -25,37 +25,13 @@ pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "liveness_probe",
 ];
 
-/// Records what a load's `env` branch just merged: the file's env keys are
-/// established from here, and an override of one is spent, unless it is a
-/// tombstone, which is spent by nothing a load can do.
+/// Records what a load's `env` branch merged. The file's env keys are
+/// established from here, and an override of one is spent. A tombstone is
+/// spent by nothing a load can do: it means a key is absent.
 ///
-/// # Why a tombstone survives and a value does not
-///
-/// Spending an override the file declares is right for a value: the file
-/// now supplies that key, so the operator's copy has nothing left to say.
-/// A tombstone means the absence of a key, and the file declaring that key
-/// is exactly the case where it still has work to do: the file says
-/// `DB_PASS=fromfile`, the sheep has no `DB_PASS`, and those two are not
-/// the same app. Spending it anyway would make `AppOverrides::fields` come
-/// back empty after the first load, so `ProcessEntry::overridden` would
-/// stop naming `env` and the `CFG` column would claim a match that is not
-/// there.
-///
-/// # Call order does not matter
-///
-/// Called after the env merge in both arms. Swapping the two cannot
-/// resurrect a removed value: the merge loop skips a key already in the
-/// map, and this function never takes one back out, so there is nothing
-/// for an ordering to expose.
-///
-/// Called only from the two arms that merge `env`. [`ResetDepth::Policy`] and
-/// [`ResetDepth::File`] touch `env` not at all, so calling it for them would
-/// establish keys no plain load could then append. `declared_env` is a
-/// high-water mark, never a snapshot of the current file.
-///
-/// Known gap: under [`ResetDepth::None`] an env key skipped because an
-/// override already holds it is established anyway, so clearing that override
-/// later leaves the key out of scope for good.
+/// A file declaring that key is where a tombstone still has work to do.
+/// Known gap, under [`ResetDepth::None`]: an env key an override holds is
+/// established anyway. Clearing that override leaves the key out of scope.
 fn establish_env(next: &mut AppOverrides, incoming: &DeclaredApp) {
     if let Some(serde_json::Value::Object(env)) = next.fields.get_mut("env") {
         for key in &incoming.declared_env {
@@ -266,17 +242,10 @@ pub(super) fn reached_spec<'a>(
 /// The field names `entry`'s parked config differs from its running spec on,
 /// or empty when nothing is parked.
 ///
-/// Two readers ask this and they must never disagree about the same sheep:
+/// Two readers ask this and must never disagree about the same sheep:
 /// [`ProcessInfo::pending`], which every listing renders, and
-/// [`Actor::handle_sheep_config`], which a config pane renders. One
-/// definition so the pane and the flock table cannot drift, the same reason
-/// [`Actor::representative_id`] is one function.
-///
-/// An empty answer covers two different states: nothing parked, and a
-/// parked config that turned out identical to the spec. The callers
-/// part company there rather than here: `ProcessInfo::pending` reports
-/// `None` for both, because its own doc says `None` means nothing parked and
-/// an empty list is not nothing parked.
+/// [`Actor::handle_sheep_config`], which a config pane renders. An empty
+/// answer covers both nothing parked and a parked config equal to the spec.
 pub(super) fn pending_fields(entry: &ProcessEntry) -> Vec<String> {
     entry.pending.as_ref().map_or_else(Vec::new, |parked| {
         entry.spec.config().drifted_fields(parked.config())
@@ -288,9 +257,7 @@ pub(super) fn pending_fields(entry: &ProcessEntry) -> Vec<String> {
 /// Four doors say it: [`Actor::apply_one`], where a Flockfile named a dog;
 /// [`Actor::handle_sheep_config`], where a pane asked to read one; and
 /// [`Actor::handle_set_sheep_env`] and [`Actor::handle_set_sheep_field`],
-/// where a pane asked to write one. An operator who meets it from any of
-/// them is being told the same thing and pointed at the same verb, which is
-/// the reason it is one function rather than four literals that drift.
+/// where a pane asked to write one.
 pub(super) fn dog_config_refusal(name: &str) -> String {
     format!(
         "{name} is a dog, and a dog's config comes from `shep adopt` rather than \

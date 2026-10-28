@@ -11,11 +11,8 @@ use super::*;
 ///
 /// Every await a reopen needs lives in here, off the actor loop; see
 /// [`Actor::handle_reopen`] for the cycle that rules out doing it inline, and
-/// for why `pumps` is every writer to a path a sheep in `matched` writes to,
-/// a wider set than `matched`, while the reply is not.
-///
-/// Visited one after another, unlike [`spawn_handover_task`]: the caller
-/// carries `rpc`'s own per-request budget.
+/// for why `pumps` is wider than `matched`. Visited one after another, unlike
+/// [`spawn_handover_task`]: the caller carries `rpc`'s own per-request budget.
 pub(super) fn spawn_reopen_task(
     matched: Vec<ProcessInfo>,
     pumps: Vec<(ProcessInfo, mpsc::Sender<LogCtl>)>,
@@ -65,12 +62,7 @@ pub(super) async fn reopen_logs(log_ctl: &mpsc::Sender<LogCtl>) -> Result<(), Re
 /// Every pump in `pumps` is flushed before any path in `paths` is truncated:
 /// `write_all` on a [`tokio::fs::File`] returns once the real `write(2)` is
 /// queued, so a dispatched line can land at offset 0 of a file truncated in
-/// between. One barrier is also the only ordering that stays correct when
-/// several sheep share one path.
-///
-/// `pumps` is every writer to a path in `paths`, a wider set than `matched`;
-/// see [`Actor::handle_flush`]. All of them are visited before anything is
-/// reported.
+/// between. `pumps` is wider than `matched`; see [`Actor::handle_flush`].
 pub(super) fn spawn_flush_task(
     matched: Vec<ProcessInfo>,
     pumps: Vec<mpsc::Sender<LogCtl>>,

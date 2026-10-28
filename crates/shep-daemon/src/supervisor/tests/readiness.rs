@@ -4,12 +4,10 @@
 //! its deadline elapses. The awkward cases are the ones where it is stopped,
 //! restarted or exits while that wait is still outstanding.
 //!
-//! The probe cases wait on the probe's own traffic (a request reaching
-//! the test's fake, a marker file the probe command writes) rather than on a
-//! wall-clock window, and let the probe pass only where the test itself says
-//! so: a queued 2xx reply, a marker file the test writes. Their readiness
-//! deadlines sit far past the test's patience, so an `Online` can only have
-//! come from a passing probe.
+//! The probe cases wait on the probe's own traffic rather than on a wall-clock
+//! window, and let the probe pass only where the test itself says so. Their
+//! readiness deadlines sit far past the test's patience, so an `Online` can
+//! only have come from a passing probe.
 
 use super::*;
 use crate::testing_http::{HttpReply, loopback_http};
@@ -51,13 +49,10 @@ async fn wait_ready_app_stays_starting_until_the_channel_signals() {
 // does not move the OS.
 #[tokio::test]
 async fn readiness_probe_app_stays_starting_until_the_probe_passes() {
-    // The fake holds its port for the whole test. A port released between
-    // "the probe must fail" and "the probe must pass" is a race: a sibling
-    // test could bind that ephemeral port, and the probe would pass against
-    // it. The fail-then-pass flip is test-held the same way: the fake
-    // answers only what this test queues, so no probe can pass before the
-    // `queue_reply` that says so, and the `Starting` assertions cannot race
-    // the probe loop's pacing.
+    // The fake holds its port for the whole test. A port released between "the
+    // probe must fail" and "the probe must pass" is a race: a sibling test
+    // could bind that ephemeral port. The fake answers only what this test
+    // queues, so no probe can pass before the `queue_reply` that says so.
     let mut gate = loopback_http(Vec::new()).await;
 
     let (events, mut rx) = crate::bus::test_bus(64);
@@ -143,9 +138,7 @@ async fn an_exec_readiness_probe_sees_the_assembled_env_not_the_apps_own() {
     // Wait on the probe's own traffic: the marker is named through
     // `$SHEP_INSTANCE`, so `probe-attempt-0` proves one probe ran with the
     // assembled env. `ready-0` is absent until this test writes it, so that
-    // probe's verdict was a failure and `Starting` is settled, not a guess
-    // about elapsed time. A probe whose env lacked `SHEP_INSTANCE` writes
-    // `probe-attempt-` and this wait never lands.
+    // probe's verdict was a failure and `Starting` is settled, not a guess.
     await_file(&attempt_file, Duration::from_secs(5)).await;
     assert_eq!(handle.list().await[0].status, ProcStatus::Starting);
 

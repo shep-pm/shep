@@ -57,14 +57,8 @@ pub(super) fn bind(kind: &str, what: &str) -> Result<(PathBuf, Listener), Runner
 /// On a task, since a spawn is synchronous and the dog cannot connect until it
 /// is started. The link carries `name` and `pid` as the unix one does, so the
 /// connection is the identity. `gone` bounds the wait: a dog that never opens
-/// the pipe would otherwise hold the listener for the daemon's life, and the
-/// receiver behind `gone` is dropped when the dog's log pump ends with it. A
-/// send that fails means nothing is serving links, and the dog falls back to
-/// the control pipe.
-///
-/// Whoever opens the pipe first is the dog, so a process running as the same
-/// user could claim the name. That is no new reach: a dog runs as the
-/// operator and could open the control pipe as them.
+/// the pipe would hold the listener for the daemon's life. Whoever opens the
+/// pipe first is the dog, which is no new reach.
 pub(super) fn serve_dog_link<T: Send + 'static>(
     mut listener: Listener,
     name: String,

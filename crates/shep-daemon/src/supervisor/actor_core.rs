@@ -363,8 +363,6 @@ impl<R: ProcessRunner> Actor<R> {
     /// two live processes under one name, dog or not. A dog entry at rest is
     /// the exception, since no process stands behind it: it spawns in place
     /// from `app` and `source`, which win over what it was registered with.
-    /// A dog that ran and stopped is not at rest, so a boot that names it
-    /// again leaves it stopped.
     pub(super) fn do_start_dog(
         &mut self,
         app: ResolvedApp,
@@ -430,9 +428,6 @@ impl<R: ProcessRunner> Actor<R> {
     /// fails that check, and the error names every one that did. A spawn that
     /// fails anyway still leaves the batch part-registered: only exec knows
     /// for certain.
-    ///
-    /// `dog` is written onto every entry this registers, and is `None` for
-    /// every caller but [`Self::do_start_dog`]; see [`ProcessEntry::dog`].
     pub(super) fn do_start(
         &mut self,
         apps: Vec<ResolvedApp>,
