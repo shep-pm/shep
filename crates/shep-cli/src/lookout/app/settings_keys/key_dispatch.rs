@@ -99,7 +99,7 @@ impl App {
                 | KeyPress::Copy
                 | KeyPress::TabPrev
                 | KeyPress::TabNext
-                | KeyPress::SecretDelete
+                | KeyPress::ArmDelete
                 | KeyPress::Collapse => {}
                 KeyPress::StreamCycle
                 | KeyPress::LevelCycle
@@ -115,6 +115,8 @@ impl App {
                 // to undo, or a close dialog to answer.
                 | KeyPress::NextGroup
                 | KeyPress::PrevGroup
+                | KeyPress::NextField
+                | KeyPress::PrevField
                 | KeyPress::Group(_)
                 | KeyPress::Undo
                 | KeyPress::Continue => {}

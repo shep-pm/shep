@@ -66,6 +66,11 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
             KeyCode::Delete => edit(TextEdit::Delete),
             KeyCode::Enter => Some(KeyPress::TextApply),
             KeyCode::Esc => Some(KeyPress::TextAbandon),
+            // The key/value editor's two fields. `Tab` and `Shift-Tab` mean
+            // groups in `Normal`, and a box owns the keyboard while it is
+            // open, so the same two keys mean fields here.
+            KeyCode::Tab => Some(KeyPress::NextField),
+            KeyCode::BackTab => Some(KeyPress::PrevField),
             _ => None,
         };
     }
@@ -102,7 +107,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('h' | '?') => Some(KeyPress::Help),
         KeyCode::Char(' ') => Some(KeyPress::Cycle),
         KeyCode::Char('d') => Some(KeyPress::Remove),
-        KeyCode::Char('D') => Some(KeyPress::SecretDelete),
+        KeyCode::Char('D') => Some(KeyPress::ArmDelete),
         KeyCode::Char('K') => Some(KeyPress::StepUp),
         KeyCode::Char('J') => Some(KeyPress::StepDown),
         KeyCode::Char('F') => Some(KeyPress::FoldView),
@@ -225,7 +230,7 @@ mod tests {
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('D')), InputMode::Normal),
-            Some(KeyPress::SecretDelete)
+            Some(KeyPress::ArmDelete)
         );
         assert_eq!(
             map_key(&key(KeyCode::Char('K')), InputMode::Normal),
@@ -344,6 +349,10 @@ mod tests {
     /// the secrets pane's tab row names `<-/->` and nothing else. It used
     /// to name a tab alias as well, which #206 took: a caption naming a key
     /// that lands somewhere else is worse than one key short.
+    ///
+    /// In `Text` they belong to the key/value editor instead, which is the
+    /// other half of the same two keys: a tab typed into a box is not a
+    /// character, so the box has no use for one.
     #[test]
     fn tab_walks_the_config_pane_groups_and_the_tab_row_does_not_claim_it() {
         assert_eq!(
@@ -360,8 +369,16 @@ mod tests {
         );
         assert_eq!(
             map_key(&key(KeyCode::Tab), InputMode::Text),
-            None,
-            "and neither reaches an open input, where a tab is not a character"
+            Some(KeyPress::NextField),
+            "and in a key/value editor the same key steps to the other field"
+        );
+        assert_eq!(
+            map_key(
+                &Event::Key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
+                InputMode::Text
+            ),
+            Some(KeyPress::PrevField),
+            "with shift-tab stepping back"
         );
     }
 

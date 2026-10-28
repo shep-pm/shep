@@ -14,10 +14,10 @@ use super::super::textbox::{TextBox, TextEdit};
 use super::{ConfigPane, PaneEdit, PaneRow, PaneTarget, UNSET};
 use crate::dog_settings::{self as validation, Refusal};
 
-// Link-only (IR-32): the env editor this one is never open beside, and
+// Link-only (IR-32): the key/value editor this one is never open beside, and
 // the group a structural field carries.
 #[cfg(doc)]
-use super::EnvTyping;
+use crate::lookout::keyvalue::KeyValues;
 #[cfg(doc)]
 use shep_core::config::ApplyGroup;
 
@@ -30,8 +30,8 @@ use shep_core::config::ApplyGroup;
 /// that no longer exist.
 ///
 /// A field's key always exists before its edit starts, which is what keeps
-/// this a bare `key: String` rather than the [`Option`] [`EnvTyping`] needs
-/// for its `+ add a key` row.
+/// this a bare `key: String`: [`KeyValues`] has to be able to hold a key that
+/// does not exist yet, so it carries both halves as boxes.
 ///
 /// `Debug` is manual and redacted (IR-41), exact-string-tested below. The
 /// buffer is what the operator is halfway through typing.

@@ -57,13 +57,7 @@ impl App {
         // step before an unrecoverable write. No keypress reaches here with
         // an `all` row armed today, since a tab move and a reload both
         // disarm, so this is depth rather than a live path.
-        let refuses = pane
-            .model
-            .rows
-            .iter()
-            .find(|row| row.key == key)
-            .is_some_and(|row| deletes_the_all_slot(row, &environment));
-        if refuses {
+        if pane.unset_reaches_the_all_slot(&key, &environment) {
             self.notice = Some(Notice::grave(ALL_SLOT_REFUSAL.to_string()));
             return Effect::None;
         }
@@ -110,7 +104,7 @@ mod tests {
         );
 
         let mut armed = fixtures::app_with_secrets_and_control();
-        let _ = armed.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = armed.update(Msg::Key(KeyPress::ArmDelete));
 
         let effect = armed.update(Msg::Key(KeyPress::Confirm));
 
@@ -128,7 +122,7 @@ mod tests {
     #[test]
     fn escape_disarms_before_it_closes_the_pane() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         let _ = app.update(Msg::Key(KeyPress::Escape));
 
@@ -149,7 +143,7 @@ mod tests {
     #[test]
     fn moving_the_selection_disarms() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         let _ = app.update(Msg::Key(KeyPress::SelectDown));
 
@@ -197,7 +191,7 @@ mod tests {
     #[test]
     fn moving_the_tab_disarms() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         let _ = app.update(Msg::Key(KeyPress::TabNext));
 
@@ -210,7 +204,7 @@ mod tests {
     #[test]
     fn a_reload_disarms() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         assert!(armed_of(&app).is_some(), "the delete armed");
 
         let _ = app.update(Msg::Secrets {
@@ -230,7 +224,7 @@ mod tests {
     #[test]
     fn h_disarms_a_secret_delete_before_opening_the_overlay() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         assert!(armed_of(&app).is_some(), "the delete armed");
 
         let _ = app.update(Msg::Key(KeyPress::Help));
@@ -249,7 +243,7 @@ mod tests {
     #[test]
     fn an_armed_delete_expires_like_every_other_armed_thing() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         assert!(armed_of(&app).is_some(), "the delete armed");
 
         let later = Instant::now() + CONFIRM_EXPIRY;
@@ -261,7 +255,7 @@ mod tests {
     #[test]
     fn an_armed_delete_survives_a_tick_just_before_the_deadline() {
         let mut app = fixtures::app_with_secrets_and_control();
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         assert!(armed_of(&app).is_some(), "the delete armed");
 
         let almost = Instant::now() + CONFIRM_EXPIRY - Duration::from_secs(1);
@@ -274,7 +268,7 @@ mod tests {
     fn a_delete_refuses_without_the_control_gate() {
         let mut app = fixtures::app_with_secrets_read_only();
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         assert!(armed_of(&app).is_none());
         assert!(notice_of(&app).is_some_and(|n| n.contains("read-only")));
@@ -284,7 +278,7 @@ mod tests {
     fn a_provider_row_refuses_a_delete() {
         let mut app = fixtures::app_with_a_pushed_secret_selected_and_control();
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         assert!(armed_of(&app).is_none());
         assert!(notice_of(&app).is_some_and(|n| n.contains("pushed by a dog")));
@@ -296,7 +290,7 @@ mod tests {
     fn a_provider_row_is_refused_by_delete_and_by_write_with_one_sentence() {
         let mut app = fixtures::app_with_a_pushed_secret_selected_and_control();
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         let deleted = notice_of(&app);
         assert!(armed_of(&app).is_none(), "it must refuse before it arms");
 
@@ -319,7 +313,7 @@ mod tests {
         let mut app = fixtures::app_with_secrets_on_a_named_tab_and_control();
         select_the_all_slot_row(&mut app);
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         assert!(armed_of(&app).is_none(), "it must refuse before it arms");
         assert!(
@@ -335,7 +329,7 @@ mod tests {
     fn the_all_tab_still_deletes_an_all_slot() {
         let mut app = fixtures::app_with_secrets_and_control();
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
         let effect = app.update(Msg::Key(KeyPress::Confirm));
 
         let Effect::WriteSecret(edit, _) = effect else {
@@ -381,7 +375,7 @@ mod tests {
             "sanity: `G` landed on the affordance"
         );
 
-        let _ = app.update(Msg::Key(KeyPress::SecretDelete));
+        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
 
         assert!(
             armed_of(&app).is_none(),

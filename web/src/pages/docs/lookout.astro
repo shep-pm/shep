@@ -681,6 +681,44 @@ esc/s close   j/k select   g… control enabled`;
       characters dropped. With no box open it does nothing.
     </p>
 
+    <h2 id="editing-a-key-and-a-value">Editing a key and a value</h2>
+    <p>
+      A sheep's env keys and the secrets pane are both lists of a KEY and a
+      VALUE, and both open one editor over a row, so the same keys drive each.
+    </p>
+    <ul>
+      <li>
+        <code>Enter</code> on <code>+ add a key</code> or{" "}
+        <code>+ new key</code> opens both fields side by side, KEY first.
+      </li>
+      <li>
+        <code>Tab</code> and <code>Shift-Tab</code> move between them. Leaving
+        KEY is where the name is checked: a name outside the grammar is refused
+        there, cursor still on KEY.
+      </li>
+      <li>
+        <code>Enter</code> on KEY makes that move; on VALUE it submits both.
+        <code>Esc</code> drops the whole thing.
+      </li>
+      <li>
+        <code>Enter</code> on an existing row opens its VALUE with the cursor
+        at the end. <code>Shift-Tab</code> reaches its key, and renaming it
+        writes the new one and removes the old from the same
+        <code>Enter</code>.
+      </li>
+      <li>
+        <code>D</code> arms deleting the row under the cursor in either pane;
+        <code>Enter</code> confirms it, any other key cancels it.
+      </li>
+    </ul>
+    <p class="fine">
+      The status line names the keys for the field holding the cursor:{" "}
+      <code>tab value enter next esc cancels</code> on KEY,{" "}
+      <code>tab key enter writes esc cancels</code> on VALUE. No pane is ever
+      told a stored value, so a row's VALUE starts empty and an env key keeps
+      reading <code>(set)</code>.
+    </p>
+
     <h2 id="when-the-terminal-is-small">When the terminal is small</h2>
     <p>
       Panes drop before columns do, least-diagnostic-first: the detail pane
@@ -784,7 +822,9 @@ esc/s close   j/k select   g… control enabled`;
       Four panes write rather than read: settings, secrets, a sheep's
       Flockfile fields and a dog's own schema. They are their own chapter,{" "}
       <a href="/docs/lookout-config">Editing config in lookout</a>, because
-      they are a different job from reading a flock table.
+      they are a different job from reading a flock table, and the two that
+      write a key and a value share{" "}
+      <a href="/docs/lookout#editing-a-key-and-a-value">one editor</a>.
     </p>
 </article>
 </DocsLayout>

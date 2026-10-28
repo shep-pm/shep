@@ -22,6 +22,7 @@ mod entry;
 pub mod frames;
 pub mod input;
 mod keymap;
+pub mod keyvalue;
 pub mod level;
 pub mod link;
 pub mod pane;

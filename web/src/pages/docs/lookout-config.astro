@@ -423,8 +423,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
         gated on <code>allow_read</code>
       </li>
       <li>
-        <code>Enter</code> opens a value input on an operator row, or
-        confirms an armed delete
+        <code>Enter</code> opens the <a href="/docs/lookout#editing-a-key-and-a-value">key and value editor</a> on an operator row, or confirms an armed delete
       </li>
       <li>
         <code>D</code> arms deleting the selected key; like every other
@@ -456,7 +455,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     </p>
     <p class="fine">
       A row taking its value from the <code>all</code> slot refuses{" "}
-      <code>D</code> on a named tab: removing that slot changes every
+      <code>D</code> and a rename on a named tab: removing that slot changes every
       environment at once, so the <code>all</code> tab is where you do it
       deliberately. A delete that finds no value to remove says so rather
       than reporting a success it did not have.
@@ -662,10 +661,10 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       <code>process</code> tab's fields and on no other tab, rather than
       behind their own row. No value ever appears there, because the
       shepherd never sends one: every key reads{" "}
-      <code>(set)</code>. <code>e</code> or <code>Enter</code> on a
-      key types a new value for it, and filing an empty one removes the
-      key. Either on the <code>+ new</code> row takes{" "}
-      <code>KEY=value</code>.
+      <code>(set)</code>. <code>e</code> or <code>Enter</code> on a key opens
+      the{" "}
+      <a href="/docs/lookout#editing-a-key-and-a-value">key and value editor</a>{" "}
+      the secrets pane also drives, and filing an empty value removes the key.
     </p>
     <p>
       An env write files the same way a field does, a set as much as a

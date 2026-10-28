@@ -82,6 +82,7 @@ impl ConfigPane {
             typing: None,
             edits: Edits::default(),
             env_typing: None,
+            armed_env: None,
             list: None,
             dogs_tab: Box::default(),
             section: None,
@@ -542,7 +543,7 @@ mod tests {
         let pane = jobs_pane();
         assert_eq!(
             format!("{pane:?}"),
-            r#"ConfigPane { target: SheepDog { sheep: "web", dog: "jobs" }, fields: 6, env_keys: 0, cursor: 0 }"#
+            r#"ConfigPane { target: SheepDog { sheep: "web", dog: "jobs" }, fields: 6, env_keys: 0, armed: false, cursor: 0 }"#
         );
         let state = pane.dog_table.as_ref().expect("a table pane");
         assert_eq!(format!("{state:?}"), "SheepDogTable { rows: 6, keys: 5 }");

@@ -1,4 +1,5 @@
-use super::super::super::app::{REVEAL_HOLDS, Reveal, SecretsPane, TypingWhat};
+use super::super::super::app::{REVEAL_HOLDS, Reveal, SecretsPane};
+use super::super::super::keyvalue::{Field, KeyValues};
 use super::super::super::secrets::SecretRow;
 use super::super::super::textbox::TextBox;
 use super::super::super::theme::Palette;
@@ -24,6 +25,24 @@ pub(super) fn typed_cell(buffer: &TextBox, width: u16) -> String {
     buffer.drawn(width.saturating_sub(1))
 }
 
+/// One field of the open editor, drawn for a cell `width` wide.
+///
+/// The cursor is drawn only in the field that holds it, which is how the row
+/// says which of the two the operator is typing into. The unfocused field
+/// still draws what has been typed in it: a rename is unreadable if the key
+/// being renamed disappears the moment `Tab` moves off it.
+fn field_cell(editor: &KeyValues, field: Field, width: u16) -> String {
+    let buffer = match field {
+        Field::Key => editor.key(),
+        Field::Value => editor.value(),
+    };
+    if editor.focus() == field {
+        typed_cell(buffer, width)
+    } else {
+        buffer.as_str().to_owned()
+    }
+}
+
 /// What one row shows in `VALUE`.
 ///
 /// A run proportional to the value's length rather than equal to it: the
@@ -38,11 +57,11 @@ pub(super) fn typed_cell(buffer: &TextBox, width: u16) -> String {
 pub(super) fn value_cell(
     row: &SecretRow,
     revealed: Option<&Reveal>,
-    typing: Option<&TextBox>,
+    typed: Option<String>,
     width: u16,
 ) -> String {
-    if let Some(buffer) = typing {
-        return fit(&typed_cell(buffer, width), width);
+    if let Some(typed) = typed {
+        return fit(&typed, width);
     }
     if let Some(reveal) = revealed {
         return fit(&reveal.value, width);
@@ -112,13 +131,21 @@ fn row_cell(
     row: &SecretRow,
     column: Column,
     revealed: Option<&Reveal>,
-    typing: Option<&TextBox>,
+    editor: Option<&KeyValues>,
     environment_count: usize,
     now: Instant,
 ) -> String {
     match column {
-        Column::Key => row.key.clone(),
-        Column::Value => value_cell(row, revealed, typing, column.width()),
+        Column::Key => editor.map_or_else(
+            || row.key.clone(),
+            |editor| field_cell(editor, Field::Key, column.width()),
+        ),
+        Column::Value => value_cell(
+            row,
+            revealed,
+            editor.map(|editor| field_cell(editor, Field::Value, column.width())),
+            column.width(),
+        ),
         Column::InForce => row.in_force.clone().unwrap_or_else(|| "-".to_string()),
         Column::SetIn => set_in_cell(row, environment_count),
         Column::ReadBy => {
@@ -153,20 +180,19 @@ pub(super) fn row_line(
         Style::default()
     };
     let revealed = pane.reveal.as_ref().filter(|reveal| reveal.key == row.key);
-    let typing = if selected {
-        pane.typing.as_ref().and_then(|typing| match &typing.what {
-            TypingWhat::ValueFor(key) if key == &row.key => Some(&typing.buffer),
-            TypingWhat::ValueFor(_) | TypingWhat::NewKey => None,
-        })
-    } else {
-        None
-    };
+    // The editor belongs to this row when it was opened under this row's key,
+    // which is the same fact a rename is measured against: it keeps drawing on
+    // the row it opened on while its KEY field names something else.
+    let editor = selected
+        .then_some(pane.typing.as_ref())
+        .flatten()
+        .filter(|editor| editor.opened_under() == Some(row.key.as_str()));
     let environment_count = pane.model.environments.len();
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
         let text = fit_owned(
-            row_cell(row, *column, revealed, typing, environment_count, now),
+            row_cell(row, *column, revealed, editor, environment_count, now),
             column.width(),
         );
         spans.push(Span::styled(text, ground));
@@ -176,9 +202,10 @@ pub(super) fn row_line(
     Line::from(spans)
 }
 
-/// The `+ new key` row's own [`Line`]: `KEY` names the affordance, `VALUE`
-/// echoes the name step's own buffer while it is open, and every other
-/// column is blank: there is no key yet for any of them to describe.
+/// The `+ new key` row's own [`Line`]: `KEY` names the affordance, and while
+/// the editor is open its KEY field draws in that column and its VALUE field
+/// in `VALUE`. Every other column is blank: there is no key yet for any of
+/// them to describe.
 pub(super) fn new_key_row_line(
     pane: &SecretsPane,
     columns: &[Column],
@@ -191,18 +218,24 @@ pub(super) fn new_key_row_line(
     } else {
         Style::default()
     };
-    let typing_name = selected
+    // An editor opened on an existing row never draws here: the add row is
+    // under no key, and `opened_under` is how the two are told apart.
+    let editor = selected
         .then_some(pane.typing.as_ref())
         .flatten()
-        .and_then(|typing| matches!(typing.what, TypingWhat::NewKey).then_some(&typing.buffer));
+        .filter(|editor| editor.opened_under().is_none());
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());
     let mut used = 0u16;
     for column in columns {
         let text = match column {
-            Column::Key => "+ new key".to_string(),
-            Column::Value => {
-                typing_name.map_or_else(String::new, |buffer| typed_cell(buffer, column.width()))
-            }
+            Column::Key => match editor {
+                None => "+ new key".to_string(),
+                Some(editor) => field_cell(editor, Field::Key, column.width()),
+            },
+            Column::Value => match editor {
+                None => String::new(),
+                Some(editor) => field_cell(editor, Field::Value, column.width()),
+            },
             Column::InForce | Column::SetIn | Column::ReadBy | Column::Lands => String::new(),
         };
         spans.push(Span::styled(fit(&text, column.width()), ground));

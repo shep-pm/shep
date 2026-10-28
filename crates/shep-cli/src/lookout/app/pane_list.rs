@@ -130,7 +130,7 @@ impl App {
             | KeyPress::Copy
             | KeyPress::TabPrev
             | KeyPress::TabNext
-            | KeyPress::SecretDelete
+            | KeyPress::ArmDelete
             | KeyPress::Collapse
             // Bound only in the close dialog; with none up on a list
             // sub-screen, `c` is a stray key the same way an action key is.
@@ -159,6 +159,10 @@ impl App {
             // The groups belong to the field list; the sub-screen is one
             // field's own array and has none to walk.
             KeyPress::NextGroup | KeyPress::PrevGroup | KeyPress::Group(_) => {}
+            // The key/value editor's two field steps belong to the env
+            // editor and the secrets pane: a list sub-screen edits one
+            // element at a time and has no second field to step to.
+            KeyPress::NextField | KeyPress::PrevField => {}
         }
         Effect::None
     }
@@ -213,29 +217,55 @@ impl App {
     }
 
     /// The env editor's own text keymap, in force for as long as
-    /// [`ConfigPane::env_typing`] is `Some`.
+    /// [`ConfigPane::env_typing`] is `Some`. The secrets pane's
+    /// [`App::on_secrets_text_key`] answers the same keys the same way,
+    /// because both are driving one [`KeyValues`].
     ///
-    /// `TextApply` files, exactly as the field editor's does: nothing on
-    /// an env row reaches the shepherd before the pane closes, so an env
-    /// key typed by mistake costs an `u` rather than an override the
-    /// operator cannot read back.
+    /// `TextApply` files, exactly as the field editor's does: nothing on an
+    /// env row reaches the shepherd before the pane closes, so an env key
+    /// typed by mistake costs an `u` rather than an override the operator
+    /// cannot read back.
+    ///
+    /// A refusal keeps the editor open with what was typed still in it, so
+    /// the mode follows what the editor did rather than what the key asked
+    /// for, the same rule the field editor's own arm above follows.
     pub(super) fn on_env_text_key(&mut self, key: KeyPress) -> Effect {
-        let Some(pane) = self.body.config_pane_mut() else {
-            return Effect::None;
-        };
+        if key == KeyPress::Quit {
+            return Effect::Quit;
+        }
         match key {
-            KeyPress::TextChar(typed) => pane.type_env_char(typed),
-            KeyPress::TextBackspace => pane.type_env_backspace(),
-            KeyPress::TextEdit(edit) => pane.edit_env_text(edit),
+            KeyPress::NextField | KeyPress::PrevField => {
+                let back = key == KeyPress::PrevField;
+                let refused = self
+                    .body
+                    .config_pane_mut()
+                    .and_then(|pane| pane.step_env_field(back));
+                if let Some(refused) = refused {
+                    self.notice = Some(Notice::grave(refused));
+                }
+            }
             KeyPress::TextApply => {
-                pane.apply_env_typing();
-                self.mode = InputMode::Normal;
+                let submitted = self
+                    .body
+                    .config_pane_mut()
+                    .map_or(EnvSubmit::Filed, ConfigPane::submit_env_typing);
+                match submitted {
+                    EnvSubmit::Refused(text) => self.notice = Some(Notice::grave(text)),
+                    EnvSubmit::Moved => {}
+                    EnvSubmit::Filed => self.mode = InputMode::Normal,
+                }
             }
             KeyPress::TextAbandon => {
-                pane.abandon_env_typing();
+                if let Some(pane) = self.body.config_pane_mut() {
+                    pane.abandon_env_typing();
+                }
                 self.mode = InputMode::Normal;
             }
-            _ => {}
+            _ => {
+                if let Some(pane) = self.body.config_pane_mut() {
+                    pane.type_env_text(key);
+                }
+            }
         }
         Effect::None
     }

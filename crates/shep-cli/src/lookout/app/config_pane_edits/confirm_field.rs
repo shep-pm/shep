@@ -1,9 +1,10 @@
 use super::super::*;
 
 impl App {
-    /// The operator's `Enter` on the config pane. Six meanings, picked in
+    /// The operator's `Enter` on the config pane. Seven meanings, picked in
     /// this order:
     ///
+    /// - A `D` is armed on an env row: files that key's removal and disarms.
     /// - The cursor is on a table of a dog's pane, or on a list of choices:
     ///   opens it if it is closed and closes it if it is open.
     /// - The cursor is on `+ new` under an array or map of tables: adds an
@@ -12,8 +13,8 @@ impl App {
     ///   gate, like an edit.
     /// - The cursor is on a name in a list of choices: toggles it, as
     ///   `space` does.
-    /// - The cursor is on an env row or `+ add a key`: opens the env
-    ///   editor, in place, on the same row.
+    /// - The cursor is on an env row or `+ add a key`: opens the shared
+    ///   KEY/VALUE editor in place, on the same row.
     /// - The cursor is on an array field: opens the list sub-screen.
     /// - The cursor is on a typed field: opens the editor and switches
     ///   [`InputMode::Text`] on.
@@ -23,6 +24,22 @@ impl App {
     /// is checked on the keystroke that would file an edit, not on the
     /// close that writes them.
     pub(in crate::lookout::app) fn confirm_field(&mut self) -> Effect {
+        // An armed env delete outranks every other meaning of `Enter` here,
+        // the same way an armed delete outranks it on the secrets pane: a
+        // delete waiting on a confirm that reopened the editor instead would
+        // file nothing and say nothing.
+        if self
+            .config_pane()
+            .is_some_and(|pane| pane.armed_env().is_some())
+        {
+            if self.authorize_write().is_none() {
+                return Effect::None;
+            }
+            if let Some(pane) = self.config_pane_mut() {
+                pane.confirm_env_delete();
+            }
+            return Effect::None;
+        }
         if let Some(pane) = self.config_pane_mut()
             && pane.toggle_table()
         {
@@ -145,13 +162,22 @@ mod tests {
         assert_eq!(app.config_pane().unwrap().cursor(), Some(PaneRow::AddEnv));
         let _ = app.update(Msg::Key(KeyPress::Confirm));
         assert_eq!(app.mode(), InputMode::Text, "enter opens the env editor");
-        for typed in "API_TOKEN=hunter2".chars() {
+        for typed in "API_TOKEN".chars() {
             let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
         }
         assert_eq!(
             app.update(Msg::Key(KeyPress::TextApply)),
             Effect::None,
-            "applying the editor files; it does not send"
+            "enter on KEY moves to VALUE and files nothing"
+        );
+        assert_eq!(app.mode(), InputMode::Text, "the editor is still open");
+        for typed in "hunter2".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::TextApply)),
+            Effect::None,
+            "enter on VALUE files; it does not send"
         );
         assert_eq!(app.mode(), InputMode::Normal);
 
