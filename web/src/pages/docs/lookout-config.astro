@@ -853,7 +853,9 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       and its editor opening empty. <code>Esc</code> writes that half to{" "}
       <code>shep.toml</code> first, then sends the field edits to{" "}
       <code>dogs.toml</code>. A built-in dog has no entry to hold an{" "}
-      <code>env</code>, so its pane shows none.
+      <code>env</code>, so its pane shows none. A dog already up keeps the{" "}
+      <code>env</code> it started with; <code>shep disable</code> and{" "}
+      <code>shep enable</code> give it this one.
     </p>
     <p class="fine">
       <code>r</code> re-reads the section and not the schema, so a keystroke
