@@ -23,12 +23,12 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                                                                                        
                                                                                                                                                                                     
   [dogs]                                                                                                                                                                            
-  space arms, Enter applies; a dog needs no reload                                                                                                                                  
-  NAME                                                                                                                            IN FILE  SOURCE                    RUNNING        
-  bark                                                                                                                            no       built-in                  not running    
-  metrics                                                                                                                         yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   
+  ▸ bark                                                                                                                        no       built-in                  not running      
+  ▸ metrics                                                                                                                     yes      built-in                  not running      
                                                                                                                                                                                     
   set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   
+                                                                                                                                                                                    
                                                                                                                                                                                     
                                                                                                                                                                                     
 set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other… control enabled

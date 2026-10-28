@@ -242,17 +242,24 @@ pub(super) fn fail_enable_unknown_dog(
     name: &str,
     adopted: &[String],
 ) -> ExitCode {
+    streams.fail(ExitCode::InvalidConfig, &unknown_dog_message(name, adopted))
+}
+
+/// The refusal of a name that answers to no dog: [`fail_enable_unknown_dog`]'s
+/// own sentence, handed back as text so a caller with no streams to write it
+/// through can still say it. `commands::dogs::grant` needs it for the same
+/// check.
+pub(super) fn unknown_dog_message(name: &str, adopted: &[String]) -> String {
     let valid: Vec<String> = crate::dog::BUILT_IN_DOGS
         .iter()
         .map(|built_in| format!("{built_in:?}"))
         .chain(adopted.iter().map(|dog| format!("{dog:?}")))
         .collect();
-    let message = format!(
+    format!(
         "`{name}` is not a dog; valid names are {} -- if you meant a third-party dog, \
          run `shep adopt {name}` first",
         join_with_and(&valid)
-    );
-    streams.fail(ExitCode::InvalidConfig, &message)
+    )
 }
 
 /// Joins `items` as an English list: `a`, `a and b`, `a, b, and c`.

@@ -358,6 +358,22 @@ impl ConfigPane {
         });
     }
 
+    /// Opens an editor on the cursor's row and fills it with `text`.
+    ///
+    /// [`Self::begin_typing`]'s seed is what the row shows, which is the right
+    /// seed for a character-at-a-time editor and the wrong one for a caller
+    /// that already holds the whole text: the settings screen keeps its own
+    /// text box for every row, dog's own field included, and hands the finished
+    /// buffer here rather than retyping it. Validation and the typed-to-kind
+    /// conversion stay in [`Self::apply_typing`], so this is the same gate a
+    /// keystroke in a pane goes through.
+    pub(in crate::lookout) fn type_over(&mut self, text: &str) {
+        self.begin_typing();
+        if let Some(typing) = self.typing.as_mut() {
+            typing.buffer = TextBox::from(text);
+        }
+    }
+
     /// Inserts one typed character at the cursor.
     pub fn type_char(&mut self, typed: char) {
         if let Some(typing) = self.typing.as_mut() {

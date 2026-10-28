@@ -165,8 +165,12 @@ impl App {
         if let Some(settings) = self.settings_mut() {
             let expired = matches!(
                 settings.pending,
-                Some(Pending::Armed { at, .. } | Pending::DogArmed { at, .. })
-                    if now.saturating_duration_since(at) >= CONFIRM_EXPIRY
+                Some(
+                    Pending::Armed { at, .. }
+                    | Pending::DogArmed { at, .. }
+                    | Pending::DogTuneArmed { at, .. }
+                    | Pending::DogSectionArmed { at, .. },
+                ) if now.saturating_duration_since(at) >= CONFIRM_EXPIRY
             );
             if expired {
                 settings.pending = None;

@@ -173,6 +173,17 @@ impl ConfigPane {
         self.view.clamp(len);
     }
 
+    /// Lands on the `index`th of its own rows.
+    ///
+    /// The settings screen's dog tree works on a *copy* of the pane to see what
+    /// one row's change would write, and a copy has to be pointed at the row
+    /// the operator's cursor is on before its `cycle` or its editor means
+    /// anything to that row.
+    pub(in crate::lookout) fn move_to_index(&mut self, index: usize) {
+        let len = self.rows().len();
+        self.view.move_to(index, len);
+    }
+
     /// Lands on the `index`th group, as carried from a pane this one replaces.
     pub(in crate::lookout) fn adopt_group(&mut self, index: usize) {
         if index < GROUP_ORDER.len() {

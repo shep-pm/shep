@@ -22,9 +22,12 @@ impl App {
                 ticket,
                 ..
             } => self.on_dog_reply(name, enable, ticket, result),
+            Sent::GrantDog { name, ticket, .. } => self.on_dog_grant_reply(name, ticket, result),
             Sent::SheepConfig { name } => self.on_sheep_config(&name, result),
             Sent::DogSection { name } => self.on_dog_section(&name, result),
-            Sent::SetDogSection { name, .. } => self.on_dog_section_set(&name, result),
+            Sent::SetDogSection { name, ticket, .. } => {
+                self.on_dog_section_set(&name, ticket, result)
+            }
             Sent::SetSheepDogTable {
                 name, dog, table, ..
             } => self.on_table_set(&name, &dog, table.is_none(), result),
@@ -96,6 +99,18 @@ impl App {
             // is reported, and so is a write nobody took.
             Sent::DogSection { name } => {
                 self.config_read_in_flight = false;
+                // A settings row left mid-read would otherwise sit there
+                // holding nothing: the tree was put back to `Reading` for a
+                // re-read that never went out.
+                if self
+                    .settings()
+                    .is_some_and(|settings| settings.is_reading_a_dog(&name))
+                {
+                    self.refuse_settings_dog(
+                        &name,
+                        format!("{name}: its config was not asked for"),
+                    );
+                }
                 self.notice = Some(Notice::grave(format!(
                     "{name}: its config was not asked for{}",
                     self.end_close()
@@ -119,6 +134,18 @@ impl App {
                 }
                 let verb = if enable { "enable" } else { "disable" };
                 self.notice = Some(Notice::grave(format!("{verb} {name}: it was not sent")));
+                Effect::None
+            }
+            // The record is already in the file by the time this half goes
+            // out, so the sentence says the shepherd was not told rather than
+            // that nothing happened.
+            Sent::GrantDog { name, ticket, .. } => {
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                }
+                self.notice = Some(Notice::grave(format!(
+                    "{name}: its new grants were not sent, and the running dog keeps the old ones"
+                )));
                 Effect::None
             }
         }

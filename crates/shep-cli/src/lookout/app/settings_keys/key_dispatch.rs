@@ -59,14 +59,17 @@ impl App {
                     }
                     return Effect::LoadSettings;
                 }
-                // The probe, not the open, same reasoning as `on_key`'s `e`:
-                // the pane shows the dog's real schema and section or nothing.
-                // An armed candidate eats it first, like every other key here.
+                // The open, not just the probe: a dog's tree is built from the
+                // probe's answer, and re-opening a row this screen already read
+                // costs nothing. Same reasoning as `on_key`'s `e` on the
+                // dashboard: the tree shows the dog's real schema and section
+                // or nothing. An armed candidate eats it first, like every
+                // other key here.
                 KeyPress::Edit => {
                     if self.disarm_settings_candidate() {
                         return Effect::None;
                     }
-                    return self.probe_dog_schema();
+                    return self.fold_dog_row();
                 }
                 // An armed candidate eats this too, on the same terms as
                 // `Refresh` and `Edit` above: a prompt left standing behind the
@@ -233,7 +236,7 @@ mod tests {
         );
         assert!(
             matches!(rows.last(), Some(SettingsRow::Dog(_))),
-            "the dogs table sits below the tree"
+            "the dog rows sit below the tree"
         );
     }
 

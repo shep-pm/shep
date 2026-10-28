@@ -59,6 +59,28 @@ impl App {
                     authority,
                 }
             }
+            Some(Pending::DogTuneArmed { tune, text, .. }) => {
+                settings.pending = Some(Pending::Sent { text, ticket });
+                Effect::WriteDogTune {
+                    tune,
+                    ticket,
+                    authority,
+                }
+            }
+            // Not an `Effect`: a dog's section goes to the shepherd, which is
+            // the only thing that can write `dogs.toml` for a dog, so this is
+            // the same `Sent::SetDogSection` a dog pane's close raises.
+            Some(Pending::DogSectionArmed {
+                name, toml, text, ..
+            }) => {
+                settings.pending = Some(Pending::Sent { text, ticket });
+                Effect::Send(Sent::SetDogSection {
+                    name,
+                    ticket,
+                    toml,
+                    authority,
+                })
+            }
             other => {
                 settings.pending = other;
                 Effect::None

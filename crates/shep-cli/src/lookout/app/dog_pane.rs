@@ -21,6 +21,23 @@ impl App {
         adopted_path: Option<PathBuf>,
         result: Result<serde_json::Value, String>,
     ) -> Effect {
+        // The settings screen asked for this dog's own tree, so the answer
+        // belongs to a row rather than to a pane: the screen stays up and the
+        // tree fills in under the dog's header.
+        if self.settings().is_some_and(|s| s.is_reading_a_dog(&name)) {
+            return match result {
+                Ok(schema) => {
+                    if let Some(settings) = self.settings_mut() {
+                        settings.dog_schema(&name, schema);
+                    }
+                    Effect::Send(Sent::DogSection { name })
+                }
+                Err(message) => {
+                    self.refuse_settings_dog(&name, message);
+                    Effect::None
+                }
+            };
+        }
         match result {
             Ok(schema) => {
                 self.dog_target = Some(DogProbe {
@@ -53,6 +70,11 @@ impl App {
         name: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
+        // The settings screen's own read, routed by the row's state rather
+        // than by `dog_target`, which is what a dog pane holds its probe in.
+        if self.settings().is_some_and(|s| s.is_reading_a_dog(name)) {
+            return self.on_settings_dog_section(name, result);
+        }
         let Some(probe) = self.dog_target.clone().filter(|probe| probe.name == name) else {
             return Effect::None;
         };
@@ -71,6 +93,45 @@ impl App {
             other => {
                 self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
             }
+        }
+        Effect::None
+    }
+
+    /// The settings screen's own half of a `Request::DogConfig` reply: the
+    /// schema this screen already parked beside the row, the section the
+    /// shepherd just answered with, and a [`ConfigPane::dog`] built from both,
+    /// which is the same constructor `e` from the flock builds. The tree fills
+    /// in under the dog's header; the screen never leaves.
+    ///
+    /// A refusal closes the row and puts the sentence on it, which is what the
+    /// dog pane does with the same failure and what the issue asks for here:
+    /// the operator is pointed at `dogs.toml` rather than left with a row that
+    /// opened onto nothing.
+    fn on_settings_dog_section(
+        &mut self,
+        name: &str,
+        result: Result<Response, RequestError>,
+    ) -> Effect {
+        let Some((schema, adopted_path)) = self.settings().and_then(|settings| {
+            let schema = settings.dog_tree_named(name)?.schema()?.clone();
+            let adopted_path = settings
+                .dog_named(name)
+                .and_then(|dog| dog.adopted_path.clone());
+            Some((schema, adopted_path))
+        }) else {
+            return Effect::None;
+        };
+        match result {
+            Ok(Response::DogSection { toml }) => {
+                let pane = ConfigPane::dog(
+                    name.to_owned(),
+                    adopted_path,
+                    schema.clone(),
+                    toml.as_str().to_owned(),
+                );
+                self.open_settings_dog(name, pane, schema);
+            }
+            other => self.refuse_settings_dog(name, format!("{name}: {}", failed_reply(other))),
         }
         Effect::None
     }
@@ -135,10 +196,19 @@ impl App {
     pub(super) fn on_dog_section_set(
         &mut self,
         name: &str,
+        ticket: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
         match result {
             Ok(Response::DogConfigSet { .. }) => {
+                // The settings screen's own write: its prompt is this ticket's
+                // to clear, and its tree goes back to waiting on the re-read
+                // raised below so the row shows what the file now says rather
+                // than what was typed into it.
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                    settings.reload_dog(name);
+                }
                 self.notice = Some(Notice::info(format!(
                     "{name}: its config is written, and {name} is told"
                 )));
@@ -147,6 +217,9 @@ impl App {
                 })
             }
             other => {
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                }
                 self.notice = Some(Notice::grave(format!("{name}: {}", failed_reply(other))));
                 Effect::None
             }
@@ -296,9 +369,23 @@ mod tests {
         assert!(app.notice().is_none(), "and says nothing about it");
     }
 
+    /// The flock with the built-in dog `name` as its only row, the gate open,
+    /// and the cursor already on it: the door a dog pane has always opened
+    /// from, which `e` on a settings row no longer is.
+    #[track_caller]
+    fn flock_on_dog(name: &str) -> App {
+        let dog = ProcessInfo::builder(91, name, ProcStatus::Online)
+            .pid(Some(91_000))
+            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .build();
+        let mut app = fixtures::app_with(vec![dog], fixtures::plain());
+        app.set_control_for_tests(Control::Allowed);
+        app
+    }
+
     #[test]
     fn a_dog_with_no_schema_gets_no_pane_and_is_told_where_to_edit() {
-        let mut app = fixtures::app_in_settings_on_dog("otel");
+        let mut app = flock_on_dog("otel");
         app.update(Msg::Key(KeyPress::Edit));
         assert_eq!(
             app.update(Msg::DogPane {
@@ -310,8 +397,8 @@ mod tests {
         );
         assert!(app.config_pane().is_none());
         assert!(
-            app.settings().is_some(),
-            "the screen the operator pressed `e` on is still there"
+            app.settings().is_none(),
+            "the flock table the operator pressed `e` on is still there"
         );
         let notice = app.notice().expect("a refusal is reported").to_string();
         assert!(notice.contains("dogs.toml"), "{notice}");
@@ -323,7 +410,7 @@ mod tests {
     /// has no copy of.
     #[test]
     fn a_schema_asks_for_the_section_and_the_section_opens_the_pane() {
-        let mut app = fixtures::app_in_settings_on_dog("metrics");
+        let mut app = flock_on_dog("metrics");
         app.update(Msg::Key(KeyPress::Edit));
         assert_eq!(
             app.update(Msg::DogPane {
@@ -349,7 +436,7 @@ mod tests {
         assert_eq!(pane.value("bind"), "0.0.0.0:9615");
         assert!(
             app.settings().is_none(),
-            "the settings screen closes once there is something to look at"
+            "a dog pane from the flock never goes through the settings screen"
         );
     }
 
@@ -358,7 +445,7 @@ mod tests {
     /// `open_or_refresh_config_pane`'s.
     #[test]
     fn a_dog_sections_reply_that_lands_with_the_overlay_up_closes_it() {
-        let mut app = fixtures::app_in_settings_on_dog("metrics");
+        let mut app = flock_on_dog("metrics");
         app.update(Msg::Key(KeyPress::Edit));
         app.update(Msg::DogPane {
             name: "metrics".to_string(),

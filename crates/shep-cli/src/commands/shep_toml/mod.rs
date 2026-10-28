@@ -270,6 +270,43 @@ impl ShepToml {
         }
     }
 
+    /// Puts `name` in or takes it out of `[daemon] boot_first_dogs`, which
+    /// promotes a dog ahead of the whole flock at boot.
+    ///
+    /// Writes nothing else: a dog outside the list still runs, so the list
+    /// only says it runs first, and a name in it has already been through
+    /// `shep enable` to get a section at all. Taking the last name out takes
+    /// the key with it, the way [`Self::forget_channel_dog`] does, since an
+    /// older shep refuses a `shep.toml` holding a key it predates.
+    ///
+    /// # Errors
+    /// [`ShepTomlError::WrongShape`] when `daemon` or `boot_first_dogs` holds
+    /// something other than a table and an array.
+    pub fn set_boot_first_dog(&mut self, name: &str, first: bool) -> Result<(), ShepTomlError> {
+        if first {
+            return self.push_daemon_name("boot_first_dogs", name);
+        }
+        self.forget_daemon_name("boot_first_dogs", name);
+        Ok(())
+    }
+
+    /// Takes `name` out of the `[daemon]` array under `key`, and the key out
+    /// with it once nothing is left in it. A missing key or a key of another
+    /// shape is left exactly as it is: this is the forget side, which has
+    /// nothing to refuse.
+    fn forget_daemon_name(&mut self, key: &'static str, name: &str) {
+        let Some(daemon) = self.doc.get_mut("daemon").and_then(Item::as_table_mut) else {
+            return;
+        };
+        let Some(names) = daemon.get_mut(key).and_then(Item::as_array_mut) else {
+            return;
+        };
+        names.retain(|v| v.as_str() != Some(name));
+        if names.is_empty() {
+            daemon.remove(key);
+        }
+    }
+
     /// Records `name`'s binary in `[daemon] adopted_dogs` and enables it.
     ///
     /// `channel` is what the binary's own `--version` answer asked for, and
@@ -315,16 +352,7 @@ impl ShepToml {
     /// Takes `name` out of `[daemon] channel_dogs`, and the key with it once
     /// empty: an older shep refuses a `shep.toml` holding a key it predates.
     fn forget_channel_dog(&mut self, name: &str) {
-        let Some(daemon) = self.doc.get_mut("daemon").and_then(Item::as_table_mut) else {
-            return;
-        };
-        let Some(channel_dogs) = daemon.get_mut("channel_dogs").and_then(Item::as_array_mut) else {
-            return;
-        };
-        channel_dogs.retain(|v| v.as_str() != Some(name));
-        if channel_dogs.is_empty() {
-            daemon.remove("channel_dogs");
-        }
+        self.forget_daemon_name("channel_dogs", name);
     }
 
     /// Whether `name` is in `[daemon] channel_dogs`: an adopted dog whose
@@ -394,8 +422,22 @@ impl ShepToml {
     /// not enabled, or built in and enabled without ever being adopted.
     #[must_use]
     pub fn enabled_dog_names(&self) -> Vec<String> {
+        self.daemon_names("enabled_dogs")
+    }
+
+    /// The names in `[daemon] boot_first_dogs`, in file order: the dogs the
+    /// next boot starts ahead of the whole flock.
+    #[must_use]
+    pub fn boot_first_dog_names(&self) -> Vec<String> {
+        self.daemon_names("boot_first_dogs")
+    }
+
+    /// The strings in the `[daemon]` array under `key`, in file order. A
+    /// missing key, a missing `[daemon]`, or a key that is not an array is an
+    /// empty list: a reader has nothing to refuse.
+    fn daemon_names(&self, key: &str) -> Vec<String> {
         self.table("daemon")
-            .and_then(|daemon| daemon.get("enabled_dogs"))
+            .and_then(|daemon| daemon.get(key))
             .and_then(Item::as_array)
             .map(|names| {
                 names
