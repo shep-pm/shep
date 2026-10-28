@@ -3,13 +3,11 @@
 //!
 //! The transport is [`crate::fetch`]'s, the same hand-rolled HTTP/1.1 over
 //! `tokio-rustls` bark delivers webhooks with, so export adds no
-//! dependency. The body is [`encode()`]'s OTLP/JSON, and the answer is read
-//! by [`reply::rejection`].
+//! dependency. The body is [`encode()`]'s OTLP/JSON, read by [`reply::rejection`].
 //!
 //! One export per interval, no retry and no queue: a failed export is
-//! reported once and the next tick sends current values anyway. A 2xx whose
-//! body names a `partialSuccess` counts as one. Nothing here can take the
-//! scrape server or the dog's exit code down with it.
+//! reported once and the next tick sends current values anyway. Nothing here
+//! can take the scrape server or the dog's exit code down with it.
 
 pub mod encode;
 mod reply;
@@ -249,15 +247,11 @@ pub fn spawn(
 
 /// One export per `interval`, until the process ends.
 ///
-/// A fresh [`tokio::time::interval`] ticks immediately. Consuming that first
-/// tick is what puts the first export one whole interval after the dog
-/// starts, so a dog that lives for ten seconds on a 60s cadence exports
-/// nothing rather than stamping a reading taken before the shepherd's own
-/// sampling has run once.
+/// A fresh [`tokio::time::interval`] ticks immediately, and consuming that
+/// first tick puts the first export one whole interval after the dog starts.
 ///
-/// `Delay` rather than the default `Burst`: an export that outlived its
-/// interval is a slow collector, and queueing the missed ticks up would send
-/// stale readings back to back. Each tick sends current values anyway.
+/// `Delay` rather than the default `Burst`: queueing missed ticks would send
+/// stale readings back to back.
 async fn export_loop(
     exporter: Exporter,
     client: Arc<ReconnectingClient>,
@@ -515,14 +509,9 @@ mod tests {
     /// A 500 is a failed export, and a failed export is a log line: the
     /// loop keeps ticking, and the next tick sends current values.
     ///
-    /// The 250ms cadence is against `wait_for`'s 20ms look, not a taste. The
-    /// direct export above lands one request, so the count this asserts is
-    /// two ticks, and at a 20ms cadence a third tick can land before the poll
-    /// has looked at the second: `wait_for` hands back four and the count is
-    /// wrong on a runner with a coarse clock, where a 20ms sleep rounds up to
-    /// the ~16ms Windows quantum. Measured on the ticker and the poll alone,
-    /// no sockets: 3 overshoots in 300 runs at 20ms, 0 in 1000 at 250ms with
-    /// twelve spinning threads running.
+    /// The 250ms cadence is against `wait_for`'s 20ms look, not a taste: at
+    /// 20ms a third tick can land before the poll has seen the second, and
+    /// the count is wrong on a runner with a coarse clock.
     #[tokio::test]
     async fn a_5xx_is_a_failed_export_and_the_next_tick_still_runs() {
         let collector = collector(vec![500]).await;

@@ -218,9 +218,8 @@ fn a_senders_restart_moves_the_start_of_its_counter() {
 /// move, because a start that changes between two exports of a counter that
 /// never reset reads to a collector as a reset too.
 ///
-/// `uptime_ms` is millisecond-truncated and measured by the shepherd at the
-/// listing rather than by the dog at the encode, so the derived instant
-/// carries a millisecond of noise. The start is floored to a whole second so
+/// `uptime_ms` is millisecond-truncated and measured by the shepherd, so
+/// the derived instant carries noise. The start is floored to a second so
 /// that noise cannot move it.
 #[test]
 fn one_instances_counter_start_does_not_move_between_exports() {

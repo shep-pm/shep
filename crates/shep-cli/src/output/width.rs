@@ -19,10 +19,6 @@ pub(crate) fn char_columns(c: char) -> usize {
 /// measures the four characters `[31m`, its `\x1b` zero-width as `Cc`.
 /// The lookout view hands `ratatui` spans rather than terminal bytes, so
 /// an escape that arrives there is data, not styling.
-///
-/// Not [`visible_width`], which discounts a well-formed escape to zero and
-/// is right only for text this crate writes to a real terminal. A
-/// combining mark measures zero here exactly as it does there.
 #[must_use]
 pub(crate) fn text_columns(s: &str) -> usize {
     s.chars().map(char_columns).sum()
@@ -32,12 +28,8 @@ pub(crate) fn text_columns(s: &str) -> usize {
 ///
 /// Sums [`char_columns`], not bytes or `char` count: `羊` is one `char` and
 /// two columns, and a combining mark measures zero and rides along with its
-/// base character. Assumes a caller never splits a string between a base
-/// character and its mark.
-///
-/// Callers must run [`sanitize_cell`] first: this function only measures,
-/// and a raw control character still measures zero without being safe to
-/// print.
+/// base character. Callers must run [`sanitize_cell`] first: this function
+/// only measures.
 #[must_use]
 pub(crate) fn visible_width(s: &str) -> usize {
     let mut width = 0;
@@ -74,12 +66,10 @@ fn is_csi_final(c: char) -> bool {
 /// A cell, with every control character escaped or stripped so it cannot
 /// split a table row or hand a terminal a raw byte it never chose to print.
 ///
-/// A well-formed ANSI escape (the `\x1b[` introducer through a final byte
-/// in `\u{40}..=\u{7e}`) survives untouched, since that is
+/// A well-formed ANSI escape survives untouched, since that is
 /// [`super::paint::style_for`]'s own colouring. An escape that never closes
 /// is dropped whole. `\n`, `\r` and `\t` become their two-character
-/// spellings (`\\n`, `\\r`, `\\t`); every other control character is
-/// dropped.
+/// spellings; every other control character is dropped.
 #[must_use]
 pub(crate) fn sanitize_cell(s: &str) -> String {
     sanitize(s, true)

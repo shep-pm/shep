@@ -66,11 +66,9 @@ async fn next_start(
 /// The apps inside the envelope [`next_start`] handed back
 ///
 /// Takes the envelope rather than the receiver: `#[track_caller]` is a
-/// no-op on an `async fn`, and a panic from here has to name the site that
-/// asked for a `Start`.
+/// no-op on an `async fn`, and a panic from here has to name the caller.
 ///
 /// # Panics
-///
 /// If `envelope` is not a `Request::Start`.
 #[track_caller]
 fn start_apps(envelope: shep_core::protocol::Envelope) -> Vec<AppConfig> {
@@ -409,11 +407,9 @@ fn adopted_dog(dir: &Path, name: &str, answer: &str) -> ShepPaths {
 /// The answer a dog gives when its binary was built against a
 /// protocol below the floor this shep's handshake still accepts.
 ///
-/// Was `PROTOCOL_VERSION + 1` under the name `stale_answer`, back
-/// when the restart check compared for exact equality. The
-/// handshake now accepts anything at or above
-/// [`shep_core::protocol::MIN_SUPPORTED`], so a newer protocol is
-/// no longer stale; only one below the floor is.
+/// The handshake accepts anything at or above
+/// [`shep_core::protocol::MIN_SUPPORTED`], so only a protocol below the
+/// floor is stale.
 #[cfg(unix)]
 fn below_floor_answer() -> String {
     format!(

@@ -21,12 +21,8 @@ pub(super) type Snapshot = (Vec<OwnedCandidate>, Handover, ParkedPumps);
 ///
 /// Taking the snapshot parks every pump that answers it, because a report is
 /// only true while nothing moves behind it. A pump that missed
-/// [`REPORT_DEADLINE`] is not in here: it never parked. The exec normally ends
-/// the park by replacing the image; every other way out leaves this daemon
-/// running with pumps that have stopped reading.
-///
-/// The party that parked them hands them back rather than the abort path
-/// re-reading the actor's slots: what is owed a resume is what was reported.
+/// [`REPORT_DEADLINE`] never parked, so it is not in here. The party that
+/// parked them hands them back.
 #[cfg(unix)]
 #[derive(Debug, Default)]
 pub(crate) struct ParkedPumps(Vec<mpsc::Sender<LogCtl>>);
@@ -77,9 +73,8 @@ pub(super) struct HandoverDraft {
     ///
     /// Read here rather than taken from the pump's report: the pump reports
     /// the number it was told at the spawn and cannot learn that the channel
-    /// died, after which the number names whatever the kernel has since handed
-    /// to the next `open`. [`SheepSlot::open_channel`] is the fact that decides
-    /// delivery, and is only reachable from the actor loop.
+    /// died, after which the number names whatever the kernel handed to the
+    /// next `open`.
     pub(super) channel_open: bool,
 }
 
@@ -87,14 +82,9 @@ pub(super) struct HandoverDraft {
 /// caller; must be called from within a Tokio runtime context.
 ///
 /// Every await lives in here, off the actor loop; see
-/// [`Actor::handle_reopen`] for the cycle that rules out doing it inline.
-///
-/// The sheep are visited concurrently because the deadline on the other end is
-/// fixed at `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`. Serially, N wedged pumps
-/// cost N times [`REPORT_DEADLINE`], and past thirty that outlasts the client,
-/// which falls back to a predecessor still serving and exits 0 mid-sweep.
-/// `join_all` returns results in input order, so `drafts`' id-sorted order
-/// survives into `candidates` and `carried` with no re-sort.
+/// [`Actor::handle_reopen`] for the cycle that rules out doing it inline. The
+/// sheep are visited concurrently because the deadline on the other end is
+/// fixed at `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`.
 #[cfg(unix)]
 pub(super) fn spawn_handover_task(
     drafts: Vec<HandoverDraft>,
@@ -164,10 +154,7 @@ pub(super) fn spawn_handover_task(
 /// A pump that cannot be reached and a pump that is wedged both have no
 /// descriptors to give and mean opposite things: the first is a sheep that has
 /// stopped, the second a live sheep whose four descriptors this daemon does
-/// not know. Folding the second into [`CarriedFds::none`] would carry it,
-/// silently dropping its stdout, stderr and both log handles.
-///
-/// [`CarriedFds::none`]: CarriedFds::none
+/// not know.
 #[cfg(unix)]
 #[derive(Debug)]
 pub(super) enum PumpReport {
@@ -190,16 +177,10 @@ pub(super) enum PumpReport {
 
 /// How long a snapshot waits for one log pump to report its descriptors.
 ///
-/// The work it bounds is a handful of `write(2)`s of at most 8 KiB:
-/// microseconds on a healthy filesystem, single-digit milliseconds on a busy
-/// one, so two seconds is three orders of magnitude clear of it. Firing early
-/// costs the whole flock its handover; firing late costs a few seconds.
-///
-/// Per pump but paid once: [`spawn_handover_task`] visits every pump
-/// concurrently, so a flock of wedged pumps costs one deadline, not N. `shep
-/// daemon reload` gives the successor `admin::KILL_TEARDOWN_WAIT` (60s, and
-/// 10s until the staged teardown raised it), which a sweep scaling with N
-/// would outlast at thirty wedged pumps.
+/// The work it bounds is a handful of `write(2)`s of at most 8 KiB, so two
+/// seconds is three orders of magnitude clear of it. Firing early costs the
+/// whole flock its handover; firing late costs a few seconds. Per pump but
+/// paid once: [`spawn_handover_task`] visits every pump concurrently.
 #[cfg(unix)]
 pub(super) const REPORT_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -208,11 +189,8 @@ pub(super) const REPORT_DEADLINE: Duration = Duration::from_secs(2);
 /// [`REPORT_DEADLINE`] for the answer.
 ///
 /// Not reaching a pump at all is [`PumpReport::Gone`], not an error: a stopped
-/// sheep has nothing to carry and nothing to lose, and the fitness gate does
-/// not refuse it.
-///
-/// The deadline covers the send as well as the answer, since a pump that has
-/// stopped serving its mailbox fills it and blocks the send instead.
+/// sheep has nothing to carry. The deadline covers the send as well as the
+/// answer, since a pump that has stopped serving its mailbox blocks the send.
 #[cfg(unix)]
 pub(super) async fn report_fds(log_ctl: &mpsc::Sender<LogCtl>) -> PumpReport {
     let (done, ack) = oneshot::channel();

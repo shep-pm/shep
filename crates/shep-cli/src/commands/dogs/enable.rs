@@ -148,20 +148,14 @@ pub(super) async fn enable_asking(
 ///
 /// "First" is a dog with no `dog_grants` entry that is not already enabled:
 /// one an operator declined at `shep adopt`, hand-wrote into
-/// `[daemon.adopted_dogs]`, or a built-in nobody has enabled. A built-in
-/// declares itself with no probe ([`crate::dog::builtin_manifest`]) and asks
-/// like any other. A name that is no dog is left for [`enable_in_config`] to
-/// refuse. A config
-/// that cannot be read is reported here: carrying on would enable the dog
-/// without the question.
+/// `[daemon.adopted_dogs]`, or a built-in nobody has enabled.
 ///
 /// `Ok` holds the grants to record with the enable; `Ok(None)` is nothing to
 /// record, either because no question was due or because the dog is
 /// undeclared and keeps full access.
 ///
 /// # Errors
-/// The [`ExitCode`] to stop with, already reported: a refusal, or a no, which
-/// leaves the dog disabled with nothing granted.
+/// The [`ExitCode`] to stop with, already reported: a refusal, or a no.
 fn ask_before_first_enable(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,

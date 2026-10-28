@@ -2,23 +2,12 @@
 //! [`crate::dog::metrics::exposition::render`] serves, in the shape a
 //! collector reads, the channel samples included.
 //!
-//! A sample lands after every built-in group, in the store's own name order,
-//! the way `render` appends them: the sender's kind decides `gauge` or
-//! `sum`, its help text is the `description`, and its labels are attributes
-//! in the order the store built them.
+//! The two renderers share no code on purpose: `render` is allocation-tuned,
+//! and a neutral intermediate model would spend allocations on every scrape.
+//! `the_payload_names_every_series_the_exposition_names` is the drift guard.
 //!
-//! The two renderers share no code on purpose. `render` is allocation-tuned
-//! (one escaped label prefix per sheep, shared by its six status series) and
-//! a neutral intermediate model would spend allocations on every scrape to
-//! serve a path that is not the scrape. The drift guard is
-//! `the_payload_names_every_series_the_exposition_names` in this module's
-//! tests, which compares names, types, descriptions, point counts and every
-//! series' own labels between the two, over a reading that carries channel
-//! samples as well as a flock.
-//!
-//! Two modules hold what this one does not: [`payload`] is the OTLP/JSON shape,
-//! with its 64-bit values spelled as decimal strings, and [`samples`] is the
-//! channel-sample mapping.
+//! [`payload`] holds the OTLP/JSON shape, [`samples`] the channel-sample
+//! mapping.
 
 use shep_core::status::ProcStatus;
 
@@ -61,15 +50,11 @@ pub struct ExportContext<'a> {
 
 /// Encodes `reading` as one OTLP/JSON `ExportMetricsServiceRequest` body.
 ///
-/// Timestamps and `host.name` come from `context`, so the payload is a pure
-/// function of its inputs.
+/// Timestamps and `host.name` come from `context`. A non-finite value is
+/// dropped rather than encoded, since OTLP has no number for it.
 ///
 /// # Panics
-///
-/// Never in practice: every value here is a string, a `u64`, a finite `f64`
-/// or a `bool`, and there is no writer for an I/O failure to come from. A
-/// non-finite `cpu_percent` or sample value is dropped rather than encoded,
-/// since OTLP has no number for it.
+/// Never: every value here is a string, `u64`, finite `f64` or `bool`.
 #[track_caller]
 pub fn encode(reading: &Reading, context: &ExportContext<'_>) -> String {
     let now = Nanos::new(context.now_unix_nano);

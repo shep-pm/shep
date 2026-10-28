@@ -1,16 +1,11 @@
 //! Every rendered payload type in the binary, and the [`super::Render`] impl
-//! that
-//! makes each one's table and JSON renderings one source of truth.
+//! that makes each one's table and JSON renderings one source of truth.
 //!
 //! They live here rather than under `commands/` because nothing here carries
 //! a `cfg`, so a test on the Windows leg can name every one. Split by the
-//! payload each group renders: [`process`] for a sheep's own
-//! `ProcessInfo` rows, [`lambs`] for its lamb tree, [`dogs`] for the
-//! dog-specific ones, [`toolkit`] for the paint/cell rules both share,
-//! [`lifecycle`] for one-shot verb results, [`replies`] for a daemon
-//! action's reply, [`secrets`] for the KV store and `shep secret`, [`settings`]
-//! for `shep get`, [`settings_write`] for `shep set`, [`hosts`] for
-//! `shep host`.
+//! payload each group renders: [`process`], [`lambs`], [`dogs`],
+//! [`toolkit`] for the paint and cell rules both share, [`lifecycle`],
+//! [`replies`], [`secrets`], [`settings`], [`settings_write`] and [`hosts`].
 
 mod copy;
 mod dogs;
@@ -122,9 +117,6 @@ pub(crate) mod tests {
     /// `json_key_for`, every row's cell count against `headers().len()`, and
     /// each non-`formatted` cell against its own JSON value, which is what
     /// catches two same-arity cells swapped.
-    ///
-    /// `formatted` lists headers whose cell is a human rendering rather than
-    /// the field's raw value.
     pub(crate) fn assert_no_drift<T: Render>(
         value: &T,
         first_record: fn(&serde_json::Value) -> &serde_json::Value,
@@ -531,11 +523,9 @@ pub(crate) mod tests {
         assert_eq!(dashboard_totals.count, flock.len());
         assert_eq!(dashboard_totals.restarts, table_totals.restarts, "restarts");
         // CPU is the one field these two surfaces do NOT agree on, by
-        // design: `shep flock` reads `ProcessInfo::cpu_percent`, the
-        // shepherd's own running mean, while lookout differences its own
-        // polls and has had only one here, so it honestly has nothing yet.
-        // A one-shot listing has nothing to difference against, so the two
-        // surfaces answering differently is correct rather than drift.
+        // design: `shep flock` reads the shepherd's running mean, while
+        // lookout differences its own polls and has had only one here. A
+        // one-shot listing has nothing to difference against.
         assert_eq!(table_totals.cpu, Some(9.4), "the table keeps cpu_percent");
         assert_eq!(
             dashboard_totals.cpu, None,
@@ -608,10 +598,8 @@ pub(crate) mod tests {
 
         // The CPU cell specifically, not a substring search of the whole
         // line: FOLD and SMIT are blank-instance dashes too, so `" - "`
-        // shows up in the rendered row whatever the CPU cell holds. `key_line`
-        // pushes one span per column (a "  " separator span between them,
-        // two text spans only for `Column::MemCeil`), so walking `columns_for`
-        // the same way it does finds the exact span the CPU cell landed in.
+        // shows up whatever the CPU cell holds. Walking `columns_for` the
+        // way `key_line` does finds the exact span the cell landed in.
         let mut cpu_span = None;
         let mut span_index = 0;
         for (index, column) in dashboard_columns.iter().enumerate() {

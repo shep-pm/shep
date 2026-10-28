@@ -1,13 +1,10 @@
 //! The supervisor actor: owns the flock's lifecycle state machine.
 //!
 //! [`spawn_supervisor`] starts the actor task and hands back a
-//! [`SupervisorHandle`]. Every registered instance ("sheep") gets its own task
-//! owning the live `(proc, ProcIo)` pair; the actor holds one lifecycle entry
-//! plus two senders per id, so the loop never awaits process I/O. However a
-//! sheep ends, it reaches the actor as exactly one `Msg::Exited`.
-//!
-//! `stop`/`restart`/`delete` and `shutdown` resolve their selector up front,
-//! then answer once every matched sheep is terminal.
+//! [`SupervisorHandle`]. Every registered sheep gets its own task owning the
+//! live `(proc, ProcIo)` pair; the actor holds one lifecycle entry plus two
+//! senders per id, so the loop never awaits process I/O. However a sheep ends,
+//! it reaches the actor as exactly one `Msg::Exited`.
 //!
 //! This file holds the `Actor` struct and the mailbox capacities. The impl is
 //! split across the `actor_*` modules, one per group of handlers.

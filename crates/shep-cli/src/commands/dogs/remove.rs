@@ -4,14 +4,10 @@
 //! Both verbs stop the dog, deregister it from this shepherd, and strike the
 //! adoption from `shep.toml`: out of `[daemon] enabled_dogs`,
 //! `[daemon] adopted_dogs` and `[daemon] channel_dogs`. What stays is the
-//! `[<name>]` section in `dogs.toml`, which is the operator's own writing, so
-//! re-adopting the dog finds those settings waiting. Saying so is part of the
-//! verb: "forget an adopted dog" no longer describes all of what it does.
+//! `[<name>]` section in `dogs.toml`, which is the operator's own writing.
 //!
 //! A built-in dog is refused here rather than only in the CLI's help text:
-//! it is an argv branch of this binary, with no registration to forget and no
-//! binary to lose, and `disable` is the verb that exists for it. The shepherd
-//! refuses the same request for a CLI too old to have this guard.
+//! `disable` is the verb that exists for it.
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;

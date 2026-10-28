@@ -91,8 +91,7 @@ impl<R: ProcessRunner> Actor<R> {
         // The last word on the mark, under every door that reaches a respawn:
         // the crash ladder's timer, an extra's report, a manual restart's
         // exit. The doors that can tell an operator from the daemon answer
-        // before this (`restart_unless_disabled`), so what arrives here is
-        // dropped whoever asked, and left stopped.
+        // before this, so what arrives here is dropped whoever asked.
         if self.is_disabled_id(id) {
             let slot = self.sheep.get(&id).expect("respawn: unknown id");
             tracing::info!(
@@ -227,10 +226,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// reaches: `Errored`, every handle cleared, its lifecycle extras
     /// disarmed.
     ///
-    /// `reason` is logged here rather than by the caller. The `Errored` event
-    /// carries no reason and the deferred aggregation reply has no per-id error
-    /// slot, so this log line is the only place an operator learns why a
-    /// restart produced no process.
+    /// `reason` is logged here rather than by the caller: the `Errored` event
+    /// carries no reason and the deferred aggregation reply has no per-id
+    /// error slot.
     pub(super) fn respawn_failed(
         &mut self,
         id: u32,
@@ -255,15 +253,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// A spawn that never happened because a `{{secret:...}}` would not
     /// resolve, routed to the status its refusal deserves.
     ///
-    /// The two shapes must not collapse into one. A namespace no provider
-    /// dog has pushed to yet clears itself without anybody doing anything,
-    /// so the sheep waits on the same budget a crash loop spends and errors
-    /// when that runs out. A key nobody has set waits on a person instead,
-    /// and a ladder in front of it would only postpone the report by
-    /// sixteen turns.
-    ///
-    /// The slot must already exist: `spawn_fresh` registers before it calls
-    /// this, so the sheep is visible whichever way the refusal goes.
+    /// The two shapes must not collapse into one. A namespace no provider dog
+    /// has pushed to yet clears itself without anybody doing anything, so the
+    /// sheep waits on the same budget a crash loop spends. A key nobody has
+    /// set waits on a person instead.
     pub(super) fn refuse_spawn(
         &mut self,
         id: u32,
@@ -309,14 +302,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// kill ladder if nothing else already has.
     ///
     /// The first manual command to reach a running sheep owns its marker and
-    /// its one live `Kill`. A later command racing the same in-flight kill
-    /// rides the same eventual `Msg::Exited`, so a `stop()` caller is never
-    /// handed back an `Online` `ProcessInfo`. One carve-out: an operator's
-    /// command takes the marker off an in-flight automatic restart, which has
-    /// nobody waiting behind it.
-    ///
-    /// `cap` decides how long the ladder this may start waits before `SIGKILL`,
-    /// and is read only on the arm that sends a `Kill`.
+    /// its one live `Kill`; a later command racing the same in-flight kill
+    /// rides the same eventual `Msg::Exited`. An operator's command takes the
+    /// marker off an in-flight automatic restart, which waits on nobody.
     pub(super) fn claim_manual(&mut self, id: u32, manual: PendingManual, cap: LadderCap) {
         let Some(slot) = self.sheep.get_mut(&id) else {
             return;
@@ -389,13 +377,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// exit (if running) or applies the command immediately (if not).
     ///
     /// Immediate results are collected up front and folded into the same
-    /// `PendingReply` as the deferred ids, so a mixed selector's reply carries
-    /// every match and fires once the last running one goes terminal.
-    ///
-    /// A `Delete` that reaches a built-in dog is refused whole, before any id
-    /// is claimed: the dog has no registration to forget, and a command that
-    /// took the sheep beside it and refused the dog would leave the operator
-    /// reading a listing rather than a refusal.
+    /// `PendingReply` as the deferred ids, so a mixed selector's reply fires
+    /// once the last running match goes terminal. A `Delete` that reaches a
+    /// built-in dog is refused whole, before any id is claimed.
     pub(super) fn begin_manual(
         &mut self,
         selector: ProcessSelector,
@@ -506,13 +490,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// live task right now (already `Stopped`/`Errored`/`WaitingRestart`).
     ///
     /// `handle_exited`'s branches cannot cover these: a sheep waiting out its
-    /// restart backoff still holds every extra its last `Online` armed, and its
-    /// exit already happened, so stopping or deleting it here is the moment it
-    /// goes terminal. Without it, `shep stop web` during a backoff leaves the
-    /// group's watcher and cron worker armed.
-    ///
-    /// `origin` feeds the `manually` flag on the events below: a cron
-    /// occurrence landing on a mid-backoff name restarts it from here.
+    /// restart backoff still holds every extra its last `Online` armed, and
+    /// its exit already happened. `origin` feeds the `manually` flag on the
+    /// events below.
     pub(super) fn apply_immediate(
         &mut self,
         id: u32,

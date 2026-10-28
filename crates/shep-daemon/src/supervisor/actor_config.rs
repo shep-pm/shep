@@ -11,14 +11,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Merges each declared app into the sheep of the same name, one app at a
     /// time, refusing whole any app whose merge does not normalize.
     ///
-    /// A load never registers an app the flock does not have, and never prunes
-    /// one the file omits: the loop walks the declared apps, never the flock.
-    /// Under [`ResetDepth::None`] it never kills either: a field the running
-    /// child holds parks in [`ProcessEntry::pending`] for its next spawn, while
-    /// `spec` goes on describing what the child was spawned from. A reset can,
-    /// since `instances` routes through [`Self::handle_scale`], whose
-    /// `Ordering::Less` arm deletes the instances above the new count.
-    /// [`ResetDepth::Env`] and `shutting_down` never reach that function.
+    /// A load never registers an app the flock does not have and never prunes
+    /// one the file omits. Under [`ResetDepth::None`] it never kills one: a
+    /// field the running child holds parks in [`ProcessEntry::pending`] for
+    /// its next spawn.
     pub(super) fn handle_apply_config(
         &mut self,
         apps: Vec<DeclaredApp>,
@@ -79,13 +75,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// The slot that stands in for `name`'s whole app, for a command that
     /// holds a name rather than an id.
     ///
-    /// Not `ids_of_name(name).first()`: during a reload the drainee holds
-    /// the lower id, so the first id is the instance on its way out, and a
-    /// config read off it describes what the app is leaving behind rather
-    /// than what it is becoming. Falls back to the first id when every slot
-    /// is draining, so a command arriving inside a serial reload's drain
-    /// window still finds its app rather than being told it is not
-    /// registered.
+    /// Not `ids_of_name(name).first()`: during a reload the drainee holds the
+    /// lower id, so the first id is the instance on its way out. Falls back to
+    /// the first id when every slot is draining.
     pub(super) fn representative_id(&self, name: &str) -> Option<u32> {
         self.sheep
             .iter()
@@ -98,11 +90,9 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// `overrides` is this app's record as the one store read found it, and
     /// `changes` is where its replacement goes: the write is the caller's, so
-    /// a file of eleven apps costs one lock rather than eleven.
-    ///
-    /// Every refusal that answers "this app was not touched" is raised before
-    /// the instance count is routed: a refusal after the scale would report an
-    /// untouched app while the flock had already been reshaped.
+    /// a file of eleven apps costs one lock rather than eleven. Every refusal
+    /// that answers "this app was not touched" is raised before the instance
+    /// count is routed.
     pub(super) fn apply_one(
         &mut self,
         incoming: &DeclaredApp,
@@ -226,13 +216,9 @@ impl<R: ProcessRunner> Actor<R> {
         }
 
         // Built from the running config, plus only the fields that can reach a
-        // running process: a `NeedsRespawn` field written here would erase the
-        // record of what the child was actually spawned from.
-        //
-        // A subset of a config that normalized can still fail, since normalize
-        // checks fields against each other: `watch` needs a `cwd`, and a file
-        // declaring both leaves the `cwd` behind. That parks rather than
-        // refuses.
+        // running process: a `NeedsRespawn` field here would erase the record
+        // of what the child was spawned from. A subset of a normalized config
+        // can still fail: normalize checks fields against each other.
         let next_spec = reached_spec(
             &running,
             merged.config(),
@@ -297,8 +283,7 @@ impl<R: ProcessRunner> Actor<R> {
         // `autostart` and `depends_on` are the two `NextSpawn` fields that
         // report as applied: neither is read at a spawn. `restorable()` reads
         // `autostart` at a muster or a boot, and `plan_for_names` reads
-        // `depends_on` whenever a batch is ordered, so both are in force the
-        // moment they land on the stored spec.
+        // `depends_on` whenever a batch is ordered.
         let (already_in_force, later): (Vec<String>, Vec<String>) = next_spawn
             .into_iter()
             .partition(|field| matches!(field.as_str(), "autostart" | "depends_on"));
@@ -429,14 +414,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// [`EXTRAS_FIELDS`] value reaches the worker enforcing it.
     ///
     /// [`ExtrasRegistry::rearm_name`] rather than [`Self::arm_extras`] per id:
-    /// `arm` preserves a live cron or watch task, which is right for a reload's
-    /// overlap and wrong here.
-    ///
-    /// Gated on `Online` with a live pid, as every other arming site is:
-    /// [`ExtrasRegistry::arm`] decides group membership from the configuration,
-    /// so arming a stopped instance puts it in a group whose cron occurrence
-    /// would start a process the operator had stopped. One prober per instance,
-    /// since [`describe`] bakes `SHEP_INSTANCE` into a prober's environment.
+    /// `arm` preserves a live cron or watch task, which is wrong here. Gated
+    /// on `Online` with a live pid: arming a stopped instance puts it in a
+    /// group whose cron occurrence would start a process the operator stopped.
     pub(super) fn rearm_name(&mut self, name: &str) {
         let Some(extras) = self.extras.as_ref() else {
             return;
@@ -482,13 +462,9 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// One [`SecretView`] per distinct environment across `entries`, not one
     /// for the group: `environment` is a `NeedsRespawn` field and
-    /// [`Self::promote_pending`] rewrites a single slot, so two instances of
-    /// a name can hold different environments at once and each resolves
-    /// against its own.
-    ///
-    /// [`describe`] rather than [`assemble`]: this sheep is up, and a probe
-    /// it can no longer build an environment for must not cost it its watch
-    /// and its cron worker too.
+    /// [`Self::promote_pending`] rewrites a single slot. [`describe`] rather
+    /// than [`assemble`]: a sheep that is up must not lose its watch and cron
+    /// worker over a probe it can no longer build an environment for.
     pub(super) fn rearm_specs(&self, entries: &[&ProcessEntry]) -> HashMap<u32, SpawnSpec> {
         let mut views: HashMap<&str, SecretView> = HashMap::new();
         let mut specs = HashMap::with_capacity(entries.len());

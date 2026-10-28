@@ -111,10 +111,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// replacement exists, and takes the drain marker off that instance so
     /// its exit is an ordinary stop.
     ///
-    /// Any other phase is left alone. A serial reload's replacement is
-    /// already registered and phased `DrainOld` by then, so its exit under the
-    /// disable's stop goes the ordinary route and leaves a `Stopped` row; an
-    /// overlap swap keeps the old instance's row the same way.
+    /// Any other phase is left alone: a serial reload's replacement is already
+    /// registered by then, so its exit goes the ordinary route and leaves a
+    /// `Stopped` row.
     fn abandon_serial_drain(&mut self, name: &str) {
         let Some(job) = self.reloads.get(name) else {
             return;

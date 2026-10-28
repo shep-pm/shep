@@ -25,14 +25,8 @@ use crate::output::{
 /// external rotator that has renamed them.
 ///
 /// A zero exit means every matched sheep's pump holds a handle on the
-/// recreated path, so a `postrotate` stanza waiting on this command knows no
-/// live pump is still filling the archive. The daemon reaches every writer to
-/// a path it rotates, not only the sheep named: several instances can share
-/// one file. A sheep that is not running has no pump and is reported like the
-/// rest; a pump that cannot open its path again fails the command.
-///
-/// Sent with [`LOG_PLANE_DEADLINE`]: the daemon visits matched sheep serially
-/// with no per-sheep bound, so the client's 5s default would time out.
+/// recreated path, so a `postrotate` stanza waiting on this knows no live pump
+/// is still filling the archive. Sent with [`LOG_PLANE_DEADLINE`].
 pub async fn reopen(client: &Client, streams: &mut Streams<'_>, args: &ReopenArgs) -> ExitCode {
     let selector = match parse_selector_spec(streams, &args.selector) {
         Ok(selector) => selector,
@@ -58,11 +52,7 @@ pub async fn reopen(client: &Client, streams: &mut Streams<'_>, args: &ReopenArg
 ///
 /// Those paths are ordinary config values, never checked against the log
 /// directory, so an `out_file` naming something that is not a log is emptied
-/// too, with the shepherd's privileges. Several sheep can share a path: it is
-/// truncated once, and a sharing sheep the selector skipped is emptied too.
-///
-/// The shepherd's own two logs are out of reach of any selector and are
-/// [`flush_daemon`]'s. Sent with [`LOG_PLANE_DEADLINE`], as [`reopen`] is.
+/// too, with the shepherd's privileges. Sent with [`LOG_PLANE_DEADLINE`].
 pub async fn flush(client: &Client, streams: &mut Streams<'_>, args: &FlushArgs) -> ExitCode {
     // `main` routes `--daemon` away and clap requires a selector otherwise,
     // so this arm is a guard against a dispatch bug.
@@ -92,15 +82,11 @@ pub async fn flush(client: &Client, streams: &mut Streams<'_>, args: &FlushArgs)
 
 /// Empties the shepherd's own two log files: `shep flush --daemon`.
 ///
-/// The CLI owns these files: `launch::launch_command` creates them before the
-/// daemon exists and hands them over as fds 1 and 2, so the daemon knows no
-/// path for them. This is the one flush that works with the shepherd down.
+/// The CLI owns these files: `launch::launch_command` creates them before
+/// the daemon exists and hands them over as fds 1 and 2, so the daemon knows
+/// no path for them. This is the one flush that works with the shepherd down.
 ///
-/// No flush barrier, unlike the flock half: the daemon's records reach fd 2
-/// synchronously. The next line lands at offset 0 because
-/// [`launch::launch_command`] opens both files `O_APPEND`; a daemon holding
-/// a descriptor from elsewhere keeps writing at the offset it remembers. A
-/// missing file is reported `absent` rather than created.
+/// No flush barrier: the daemon writes fd 2 synchronously.
 pub fn flush_daemon(streams: &mut Streams<'_>, paths: &ShepPaths) -> ExitCode {
     let mut emptied = Vec::new();
     let mut failures = Vec::new();

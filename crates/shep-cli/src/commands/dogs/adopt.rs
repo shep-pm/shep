@@ -126,10 +126,7 @@ pub(super) async fn adopt_asking(
         // A home that still holds `[dog.<name>]` values in `shep.toml` must
         // move them before a seeded section could sit beside them: seeding
         // first would write a second copy of a section the boot's migration
-        // then refuses to move for holding values in both files. The
-        // migration is what the next boot runs anyway, and it is idempotent,
-        // so running it here only moves that boot's work earlier, where the
-        // operator is watching. Same report as `shep reload` gives.
+        // then refuses to move for holding values in both files.
         match migrate_dog_sections(paths) {
             Ok(moved) if moved.is_empty() => {}
             Ok(moved) => streams.aside(
@@ -227,19 +224,11 @@ fn ask_before_adopting(
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
 /// [`vet_binary`]: as given, with a leading `~/` expanded against `home`,
-/// then looked up on `path_var`. First hit wins. A step moves on only when
-/// its lookup proves the path absent: one that fails, an unsearchable
-/// directory say, counts as a hit, so `vet_binary` reports it as
-/// [`AdoptRefusal::Inaccessible`](super::vet::AdoptRefusal::Inaccessible).
-/// If no step finds anything, `raw` comes back unchanged and `vet_binary`
-/// reports the same [`AdoptRefusal::Missing`](super::vet::AdoptRefusal::Missing)
-/// it always has.
+/// then looked up on `path_var`. A step moves on only when its lookup
+/// proves the path absent, so a failed lookup counts as a hit.
 ///
 /// `home` and `path_var` are parameters, read once by [`adopt`], so this
-/// stays a pure function of its inputs: this crate forbids `unsafe`, and a
-/// test cannot reach `std::env::set_var`. All three routes funnel into the
-/// one [`vet_binary`] call, so this changes what `adopt` can find, never
-/// what it vets.
+/// stays a pure function of its inputs: a test cannot reach `std::env::set_var`.
 fn resolve_adopt_path(raw: &Path, home: Option<&Path>, path_var: Option<&OsStr>) -> PathBuf {
     // Only a lookup that proves absence moves on: one that fails, an
     // unsearchable directory say, leaves `vet_binary` to report why.
@@ -318,10 +307,7 @@ fn lookup_on_path(name: &Path, path_var: Option<&OsStr>) -> Option<PathBuf> {
 /// its execute bit is set, whatever it is called.
 ///
 /// Windows resolves a bare command through `%PATHEXT%`, and `cargo install`
-/// writes `foo.exe`, never `foo`. The bare name is tried first, so an
-/// extensionless file is still found; the extensions follow in `%PATHEXT%`
-/// order. The fallback list is the documented default for a system where
-/// the variable is unset.
+/// writes `foo.exe`, never `foo`. The bare name is tried first.
 fn candidate_file_names(name: &Path) -> Vec<std::ffi::OsString> {
     #[cfg(unix)]
     {
@@ -363,10 +349,8 @@ fn default_dog_name(path: &Path) -> String {
 /// <name>` dispatches to the built-in verb first.
 ///
 /// Read off the real `clap::Command` tree rather than a hand-copied list, so
-/// a verb added later is refused automatically. The tree is built first
-/// because clap generates its `help` subcommand at build time: an unbuilt
-/// `Cli::command()` holds no `help`, and `shep help` prints shep's own help
-/// rather than reaching a dog.
+/// a verb added later is refused automatically. The tree is built first:
+/// clap generates its `help` subcommand at build time.
 pub(crate) fn collides_with_a_verb(name: &str) -> bool {
     use clap::CommandFactory as _;
     let mut command = crate::cli::Cli::command();

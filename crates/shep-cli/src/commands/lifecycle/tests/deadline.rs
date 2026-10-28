@@ -5,8 +5,7 @@ fn a_staged_start_allows_the_daemon_its_slack_on_every_stage() {
     // fails if the client's slack is flat: the daemon spends
     // `boot_order::STAGE_SLACK` (5s) per stage, so over three stages its
     // worst case is 60s of timeouts plus 15s of slack, and a single 10s
-    // made the client abandon at 70s a start the shepherd would still be
-    // running at 75s
+    // made the client abandon a start the shepherd would still be running.
     let apps: Vec<AppConfig> = ["db", "api", "web"]
         .iter()
         .map(|name| {

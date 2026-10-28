@@ -1,24 +1,13 @@
 //! `shep delete`: the one way to remove a sheep or a dog, and it sticks.
 //!
-//! The verb takes selectors, as it always has. What it now asks depends on
-//! what each selector names in this home's `shep.toml`: a dog goes through
-//! [`crate::commands::dogs::remove_dog`], which strikes the adoption as well
-//! as asking the shepherd to deregister it, so the next boot does not bring it
-//! back. Everything else goes through the shepherd, unchanged.
+//! What each selector asks depends on what it names in this home's
+//! `shep.toml`: a dog goes through [`crate::commands::dogs::remove_dog`],
+//! which strikes the adoption as well as deregistering it.
 //!
-//! A built-in dog's name is deliberately left out of the dog half. It is in
-//! neither `enabled_dogs` nor `adopted_dogs` unless an operator wrote it
-//! there, and the question "is this name a dog or a sheep that kept the name"
-//! has one honest answerer: the shepherd that is holding the entry. So the
-//! name travels the sheep path and the shepherd either refuses it or deletes
-//! the sheep, whichever it is.
+//! A built-in dog's name is left out of the dog half: the shepherd holding
+//! the entry is the only honest answerer to "is this a dog or a sheep".
 //!
-//! A `shep.toml` that exists and cannot be read or parsed answers that same
-//! question for no name, so a name selector is refused there rather than sent
-//! off to be guessed at. The shepherd would delete the live entry, the
-//! adoption would survive in the file the next boot reads, and a verb that
-//! promises "for good" would exit 0 saying `deleted 1 sheep`. A sweep needs no
-//! answer and is untouched.
+//! An unreadable `shep.toml` answers that for no name, so a name selector refuses.
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
@@ -38,32 +27,17 @@ use crate::version_guard::{VersionGuard, connect_client};
 
 /// `shep delete <selectors...>`
 ///
-/// Dogs first, then sheep: a dog's removal is the one that edits `shep.toml`,
-/// and a sheep's failure says nothing about whether that edit landed.
+/// Dogs first, then sheep: a dog's removal is the one that edits `shep.toml`.
 ///
 /// Each half renders its own outcome, so `--format json` on a command that
-/// names both gets one envelope per half. A mixed `delete` is rare enough that
-/// the alternative, one payload holding a dog's row beside a sheep's ids, was
-/// not worth a row type neither verb asked for.
+/// names both gets one envelope per half.
 ///
-/// Over a [`Link::Host`] there is no dog half. The `shep.toml` here is this
-/// machine's, not the host's, and the host's shepherd never edits its own, so
-/// a dog it has registered could be deregistered but not struck: the next boot
-/// there would bring it back. The host's flock is listed first, and an exact
-/// selector that names an adopted or unrecognized dog refuses the whole
-/// command with the `ssh` line that runs `shep delete` on the host. Every
-/// other selector goes to the host's shepherd, which answers `NotFound` for a
-/// name it holds no entry under and refuses a built-in dog itself.
+/// Over a [`Link::Host`] there is no dog half: the `shep.toml` here is this
+/// machine's, and the host's shepherd never edits its own.
 ///
 /// # Errors
-/// [`ExitCode::InvalidConfig`] or [`ExitCode::Failure`] after writing what
-/// went wrong, when this home's `shep.toml` exists and cannot be read or
-/// parsed and a selector is an exact name. Nothing is sent and nothing is
-/// deleted on that arm.
-///
-/// [`ExitCode::Usage`] when, over a host, an exact selector names a dog the
-/// host adopted, and the code of a failed listing when the host's flock
-/// cannot be read. Nothing is deleted on either arm.
+/// [`ExitCode::InvalidConfig`] or [`ExitCode::Failure`] when this home's
+/// `shep.toml` cannot be read or parsed and a selector is an exact name.
 pub(crate) async fn delete(
     streams: &mut Streams<'_>,
     link: &Link<'_>,

@@ -67,12 +67,8 @@ where
 ///
 /// A pump parked on a full `logs` channel is parked for as long as the sheep
 /// task takes, which is unbounded, so without the idle-flush branch the line
-/// just appended would sit in the buffer for exactly that long.
-///
-/// A `select!` handler is not cancellable, so a bare `send().await` inside
-/// one stops the pump polling `ctl_rx` for as long as the wait lasts. The
-/// party that makes room on `logs` is the sheep task, the same party a
-/// reopen's acknowledgement travels back to, so that would close a cycle.
+/// just appended would sit in the buffer for exactly that long. A `select!`
+/// handler is not cancellable, so a bare `send().await` in one is a cycle.
 async fn reserve_slot<'tx, O, E>(
     logs_tx: &'tx mpsc::Sender<LogLine>,
     files: &mut LogFiles,
@@ -118,10 +114,9 @@ where
 /// once there is no stream left to read.
 ///
 /// The pump's `select!` needs a branch it can leave in place after a stream
-/// ends: a ready `None` would be re-selected on every poll and spin the
-/// loop, while pending forever drops the branch out of contention.
-///
-/// Cancel-safe, as a `select!` branch must be: see [`LineReader::read_line`].
+/// ends: a ready `None` would be re-selected on every poll and spin the loop,
+/// while pending forever drops the branch out of contention. Cancel-safe, as a
+/// `select!` branch must be: see [`LineReader::read_line`].
 async fn next_line_ref<R>(lines: &mut Option<LineReader<R>>) -> io::Result<Option<&str>>
 where
     R: AsyncRead + Unpin,
@@ -190,11 +185,9 @@ fn with_read_buffer<R: AsyncRead>(reader: R) -> BufReader<R> {
 /// reach them.
 ///
 /// [`LogCtl::ReportFds`] is served from two places, the pump's own `select!`
-/// and [`reserve_slot`]'s, and a local would be visible to only one.
-///
-/// `None` per stream is one that has reached EOF or failed. The pump drops
-/// the reader at that moment, which closes the descriptor, so a stream with
-/// no reader has neither a number nor bytes left to write.
+/// and [`reserve_slot`]'s, and a local would be visible to only one. `None`
+/// per stream is one that has reached EOF or failed, and the pump drops the
+/// reader at that moment, which closes the descriptor.
 pub(super) struct Streams<O, E> {
     /// The stdout reader, until stdout ends.
     pub(super) out: Option<LineReader<O>>,
@@ -207,13 +200,8 @@ pub(super) struct Streams<O, E> {
 ///
 /// This is what a descriptor report owes the successor: the reader has taken
 /// up to [`super::READ_BUFFER`] off the pipe the successor will never see
-/// there, and the `execve` destroys it. Reading the pipe here would refill
-/// the reader as fast as it empties it; stopping at "no whole line is
-/// buffered" makes the buffer strictly shrink, since a `read_line` that
-/// finds its delimiter already buffered returns without a syscall.
-///
-/// The partial line at the end of the buffer is left behind. Nothing drained
-/// here goes on `logs_tx`: those bus subscribers go with the image.
+/// there, and the `execve` destroys it. Stopping at "no whole line is
+/// buffered" makes the buffer strictly shrink.
 #[cfg(unix)]
 pub(super) async fn drain_ready<R>(lines: &mut Option<LineReader<R>>, file: &mut LogFile)
 where
@@ -233,17 +221,12 @@ where
 }
 
 /// Writes out what the streams still hold once the sheep task has let go,
-/// and stops after [`FINAL_DRAIN`] however much is left.
-///
-/// Files only: `logs_tx` is closed, which is what brought us here.
+/// and stops after [`FINAL_DRAIN`] however much is left. Files only:
+/// `logs_tx` is closed, which is what brought us here.
 ///
 /// Each stream is retired on EOF or a read failure, so a child that has
-/// exited ends this in one poll per stream. The budget covers the other
-/// case: a lamb that inherited a write end keeps the pipe open, and without
-/// a bound the pump would follow it for as long as it cared to talk.
-///
-/// A retired stream does not clear its number from `files.pipes` and does
-/// not need to: the caller `break`s as soon as this returns.
+/// exited ends this in one poll per stream. The budget covers the other case:
+/// a lamb that inherited a write end keeps the pipe open.
 async fn final_drain<O, E>(files: &mut LogFiles, streams: &mut Streams<O, E>)
 where
     O: AsyncRead + Unpin,
@@ -279,17 +262,9 @@ where
 /// whole time it does.
 ///
 /// Every line is appended to its stream's file and then forwarded on
-/// `logs_tx`. A [`LogCtl`] is served between lines, while no line is flowing
-/// at all, and while the pump waits for room on `logs_tx`. One task for both
-/// streams, so one [`LogCtl::Reopen`] swaps both files and answers once.
-///
-/// The file write is issued before the line is forwarded but lands in a
-/// [`BufWriter`](tokio::io::BufWriter), so a line seen on `logs_tx` need not
-/// be in the file yet. [`LogCtl::Reopen`], [`LogCtl::Flush`] and
-/// [`super::IDLE_FLUSH`] are the barriers. A reopen waits behind the pump's
-/// own file I/O, with no timeout.
-///
-/// `stamped` is the sheep's `log_timestamps`, and it holds for both files.
+/// `logs_tx`, which lands in a [`BufWriter`](tokio::io::BufWriter): a line
+/// seen there need not be in the file yet. One task for both streams, so one
+/// [`LogCtl::Reopen`] swaps both files and answers once.
 #[allow(
     clippy::too_many_arguments,
     reason = "eight: both streams, both sinks, both channels, the fds, the stamp"
@@ -396,15 +371,10 @@ pub(super) fn spawn_log_pump<O, E>(
 /// Writes lines to one child's stdin, one at a time, acknowledging each.
 ///
 /// Serial on purpose: two concurrent writers to one pipe can interleave
-/// mid-line, and a REPL reading the result would see a command neither
-/// caller sent. A line queued behind one the app is not reading waits, so
-/// the caller bounds its own wait; abandoning a write halfway would leave a
-/// partial line in the pipe.
-///
-/// A request whose caller has stopped listening is dropped rather than
-/// written: delivering later would send a line the operator was told was not
-/// written. The line already inside `write_all` is past that point. Ends
-/// when the last sender drops, giving the app EOF on stdin.
+/// mid-line, and a REPL reading the result would see a command neither caller
+/// sent. A line queued behind one the app is not reading waits, so the caller
+/// bounds its own wait; abandoning a write halfway would leave a partial line.
+/// A request whose caller has stopped listening is dropped, not written.
 pub(super) fn spawn_stdin_pump<W>(stdin: Option<W>, mut rx: mpsc::Receiver<StdinWrite>)
 where
     W: AsyncWrite + Unpin + Send + 'static,
@@ -446,8 +416,7 @@ where
 ///
 /// Generic over the transport: the daemon's end is a `UnixStream` half of a
 /// socketpair on unix and an accepted named-pipe server instance on Windows.
-/// `tokio::io::split` rather than `UnixStream::into_split`, since
-/// `NamedPipeServer` has no `into_split` of its own.
+/// `tokio::io::split`, since `NamedPipeServer` has no `into_split` of its own.
 pub(super) fn spawn_channel_pumps<S>(
     daemon_end: S,
     from_child_tx: mpsc::Sender<ChildMessage>,

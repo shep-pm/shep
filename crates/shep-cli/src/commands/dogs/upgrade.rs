@@ -1,17 +1,12 @@
 //! The upgrade path of a dog's grants: what a shep that first knows about
-//! grants, or a dog rebuilt to ask for more, does to `shep.toml` so that
-//! access never widens unseen.
+//! grants, or a dog rebuilt to ask for more, does to `shep.toml` so access
+//! never widens unseen. [`upgrade_grants`] runs at every boot and reload.
 //!
 //! - An enabled dog with a manifest and no record is granted what the
 //!   manifest declares, marked not reviewed, once.
-//! - A dog with a record whose manifest now declares a permission it holds
-//!   neither as granted nor as revoked has that permission put in `waiting`.
-//!   The shepherd judges `granted` alone, so the dog keeps running on what it
-//!   had.
+//! - A dog whose manifest declares a permission it holds neither as granted
+//!   nor as revoked has it put in `waiting`, and keeps running on what it had.
 //! - A dog with no manifest is left alone: undeclared, with full access.
-//!
-//! [`upgrade_grants`] runs at every daemon boot and reload. `shep enable`
-//! runs [`upgrade_one`] for the dog it is about to turn on.
 
 use std::path::Path;
 

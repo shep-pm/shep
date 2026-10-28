@@ -167,12 +167,10 @@ pub(crate) fn refuse_local_read(
 /// Registers what `args` resolves to and starts none of it
 ///
 /// The app lands registered and stopped, so a template shipping `env = {
-/// DB_HOST = "" }` can be filled in before it spawns. The order is
-/// register, fill in, start.
+/// DB_HOST = "" }` can be filled in before it spawns.
 ///
 /// An app the flock already has is merged into and left as it is, running
-/// or not, so re-running this after editing a template cannot stop a
-/// service.
+/// or not, so re-running this cannot stop a service.
 pub async fn add(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -333,11 +331,9 @@ async fn set_assignments(
 ///
 /// The flag is a value the operator typed, so it travels as an operator
 /// override, not as a declared key: `merge_declared` at
-/// [`ResetDepth::None`] takes a declared key only when nobody has
-/// established it. Being
-/// [`ApplyGroup::NeedsRespawn`](shep_core::config::ApplyGroup::NeedsRespawn),
-/// it parks: the shepherd's `pending` answer is reported, and a refused
-/// write stops the caller.
+/// [`ResetDepth::None`] takes a declared key only when nobody has established it.
+///
+/// It parks: the shepherd's `pending` answer is reported.
 async fn set_log_timestamps_off(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -469,8 +465,6 @@ async fn load_one(
                 // to a sheep reads no file, so `shep start web` cannot apply
                 // whatever Flockfile sits in the operator's directory. A
                 // reset flag is refused: there is no template to reset to.
-                // Instances of one name are one sheep; two names are two, and
-                // an assignment names neither of them.
                 if let Some(flag) = reset_flag(args) {
                     let message = format!(
                         "{flag} needs a Flockfile to reset to; {token} names a sheep, not a file"

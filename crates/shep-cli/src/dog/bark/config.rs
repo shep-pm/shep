@@ -87,10 +87,7 @@ mod tests {
     ///
     /// Both marks, because they cover different views: `Sink`'s redacts each
     /// URL inside the sub-screen the map opens, and the map's redacts the
-    /// collapsed map a pane shows before anyone opens it. The `$defs/Sink`
-    /// half is the one that covers bark if the map mark is ever judged to be
-    /// over-redaction. `rules::Rule` is checked under `$defs` too, the one
-    /// place a marker could wrongly land on `Rule::sinks`.
+    /// collapsed map a pane shows before anyone opens it.
     #[test]
     fn the_bark_schema_marks_every_sink_url_and_leaves_the_rules_plain() {
         let schema = shep_client::dogs::config_schema::<BarkConfig>();

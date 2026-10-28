@@ -11,15 +11,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Accepts a reload: answers the caller at once, then starts one swap per
     /// matched app.
     ///
-    /// The answer is an acceptance, not a result. One instance costs
-    /// `listen_timeout` + `graceful_timeout` against `crate::rpc`'s 60s ceiling
-    /// on a request budget, so the reply is the matched sheep as they stood
-    /// when the reload was accepted; the swaps report themselves on the bus.
-    ///
-    /// Only an `Online` instance is replaced, and everything else the selector
-    /// matched is a no-op success: a `Starting` sheep is excluded too, since a
-    /// second live process in its slot buys an overlap nobody can use yet.
-    /// Nothing here re-reads configuration.
+    /// The answer is an acceptance, not a result: one instance costs
+    /// `listen_timeout` + `graceful_timeout` against `crate::rpc`'s 60s request
+    /// ceiling. The reply is the matched sheep as they stood at acceptance; the
+    /// swaps report on the bus. Only an `Online` instance is replaced.
     pub(super) fn handle_reload(
         &mut self,
         selector: &ProcessSelector,
@@ -34,11 +29,8 @@ impl<R: ProcessRunner> Actor<R> {
 
         // Refused whole, before anything is spawned: a partly-accepted
         // selector is worse than a refused one. The rule holds per supervisor
-        // call rather than per request now, since `rpc::reload_in_stages`
-        // walks a multi-sheep selector one name at a time and so reaches this
-        // once per app. That walk carries every refusal back on
-        // `Response::Reloading`, so a fold reloaded around a busy app is
-        // still named at the operator rather than being a missing row.
+        // call, since `rpc::reload_in_stages` walks a multi-sheep selector one
+        // name at a time and carries every refusal back on `Response::Reloading`.
         if selector.is_exact() {
             let names = matched
                 .iter()
@@ -72,10 +64,9 @@ impl<R: ProcessRunner> Actor<R> {
                     .expect("handle_reload: `matched` holds ids read off this map a moment ago");
                 let mut info = to_info(&slot.entry, &self.smits);
                 // Only where a swap is actually coming: the queue below is
-                // built on the same predicate, so a row carrying a number
-                // is a row this reload will try to replace. A number beside
-                // an instance nothing will touch would have a reader
-                // waiting out a deadline for a swap that was never queued.
+                // built on the same predicate, so a row carrying a number is a
+                // row this reload will try to replace. A number beside an
+                // instance nothing will touch reads as a swap that never ran.
                 info.reload_deadline_ms = reload_eligible(slot).then(|| {
                     u64::try_from(swap_budget(slot.entry.spec.config()).as_millis())
                         .unwrap_or(u64::MAX)
@@ -120,13 +111,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// The one door into `SpawnNew`, so "one instance at a time" and, through
     /// [`Self::arm_reload_deadline`], "every swap is bounded" are properties of
-    /// this function rather than rules spread over its callers.
-    ///
-    /// An instance that stopped being `Online`, or whose next exit something
-    /// already claimed, is skipped: a swap against a claimed exit is doomed,
-    /// landing inside `AwaitReady` carrying the marker. A replacement that
-    /// cannot be spawned ends the reload, leaving the old instances running.
-    /// [`ReloadMode::Serial`] reaches `SpawnNew` from [`Self::reap_drainee`].
+    /// this function. An instance that stopped being `Online`, or whose next
+    /// exit something already claimed, is skipped.
     pub(super) fn advance_reload(&mut self, name: &str, mut queue: VecDeque<u32>) {
         // Defence in depth: a shutdown clears every job before anything can
         // reach here. A replacement spawned now would be a child outside the
@@ -197,9 +183,8 @@ impl<R: ProcessRunner> Actor<R> {
     /// Read off [`Self::intended_spec`], the config the replacement will be
     /// spawned from, so the mode and the spawn cannot decide from two different
     /// files. Not off the stored spec: `readiness_probe` lands there at once
-    /// while `wait_ready` parks, so a migrating app holds both, `wait_ready`
-    /// wins in [`ReadinessSource::of`], and the mode would overlap against a
-    /// probe the drainee can answer.
+    /// while `wait_ready` parks, and `wait_ready` wins in
+    /// [`ReadinessSource::of`].
     pub(super) fn reload_mode_of(&self, old_id: u32) -> ReloadMode {
         let config = self
             .intended_spec(old_id)
@@ -214,10 +199,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// The mirror of the overlap arm of [`Self::advance_reload`], with the
     /// spawn moved to [`Self::reap_drainee`]. The drainee's `Reload` is emitted
-    /// here, since a reload silent until its drain was over would look like one
-    /// that never started. The watchdog is armed against the drainee's entry,
-    /// there being no replacement yet: without one, an instance wedged past its
-    /// own `SIGKILL` leaves a job nothing can remove.
+    /// here. The watchdog is armed against the drainee's entry, there being no
+    /// replacement yet.
     pub(super) fn begin_serial_drain(&mut self, name: &str, old_id: u32, queue: VecDeque<u32>) {
         let drainee = self
             .sheep
@@ -259,14 +242,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// new id, and returns that id.
     ///
     /// Same slot, so `SHEP_INSTANCE`, templated env and log paths follow the
-    /// drainee; new id, since two live processes per id breaks the property
-    /// test; readiness gated even for `Heuristic`, or `DrainOld` would kill the
-    /// drainee at once. `restarts` carries over, the budget does not.
-    ///
-    /// Marks the drainee `Stopping` before spawning, or `handle_extra_restart`
-    /// would restart a drainee mid-`AwaitReady`. Under [`ReloadMode::Serial`]
-    /// the drainee is already dead, so the `Reload` event and restore-on-failure
-    /// are skipped, and this must run before `deregister_on_exit`.
+    /// drainee; readiness gated even for `Heuristic`, or `DrainOld` would kill
+    /// the drainee at once. `restarts` carries over, the budget does not. The
+    /// drainee is marked `Stopping` before the spawn.
     pub(super) fn spawn_replacement(
         &mut self,
         old_id: u32,
@@ -431,11 +409,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// A reload is the one caller for which a readiness deadline elapsing is a
     /// failure: a replacement that cannot answer has not proved it can take
-    /// over, so it is never marked `Online` on a `TimedOut`.
-    ///
-    /// Keyed on the [`Readiness`] verdict and never on the deadline, which is
-    /// what makes it correct for all three sources: `await_ready`'s `Heuristic`
-    /// arm reports `Ready`, since for a heuristic the elapse is the signal.
+    /// over, so it is never marked `Online` on a `TimedOut`. Keyed on the
+    /// [`Readiness`] verdict and never on the deadline.
     pub(super) fn reload_ready_result(
         &mut self,
         new_id: u32,
@@ -467,11 +442,8 @@ impl<R: ProcessRunner> Actor<R> {
             }
             // With nothing to fall back to, the reload ends here. The
             // replacement is left running and `Starting`, never `Online`: a
-            // deploy tool reads `Online` as "the new release is serving". That
-            // costs it the extras `went_online` arms. Armed here instead, so a
-            // `liveness_probe` or `max_memory` this app configures still
-            // watches it: `handle_extra_restart`'s guard admits a
-            // `ready_failed` sheep precisely so this arming is not a dead end.
+            // deploy tool reads `Online` as "the new release is serving". It is
+            // armed here, so a `liveness_probe` still watches it.
             tracing::warn!(
                 name,
                 new_id,
@@ -499,10 +471,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// The ladder runs under `graceful_timeout` rather than `kill_timeout` (see
     /// [`LadderCap`]): this is the stop that expects the instance to stop
-    /// accepting, finish what it already has, and exit.
-    ///
-    /// Marks the swap committed first, so a later abandonment leaves the
-    /// replacement where it is instead of undoing a kill already in flight.
+    /// accepting, finish what it has, and exit. The swap is marked committed
+    /// first, so a later abandonment does not undo a kill already in flight.
     pub(super) fn begin_drain(&mut self, name: &str) {
         let Some(job) = self.reloads.get_mut(name) else {
             return;
@@ -531,13 +501,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// the reload moves on to the next instance (or ends).
     ///
     /// The `Reloaded` this announces is the one event that says a swap
-    /// succeeded, through [`Self::commit_swap_success`]. It is owed only to a
-    /// replacement that is serving: one that went down inside the drain window
-    /// keeps its row, and the event would name a process that is not there.
-    /// Anything else ends the reload as an abandonment, the queue with it being
-    /// the rest of a clustered app left on the old code. An overlapping reload
-    /// of a probed app defers the success and asks again with the drainee gone,
-    /// since its `Online` may rest on a probe the drainee answered.
+    /// succeeded, through [`Self::commit_swap_success`], and is owed only to a
+    /// replacement that is serving. Anything else ends the reload as an
+    /// abandonment; a probed app is asked again once the drainee is gone.
     pub(super) fn finish_swap(&mut self, name: &str) {
         let Some(job) = self.reloads.remove(name) else {
             return;
@@ -594,11 +560,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// `Some` only for an overlapping reload of an app whose readiness comes
     /// from a probe: the two instances shared a `SO_REUSEPORT` group, so the
     /// probe that put the replacement `Online` may have been answered by the
-    /// instance now reaped.
-    ///
-    /// `None` everywhere else. A serial reload already asked with the slot
-    /// empty; `Channel` readiness is the replacement's own; `Heuristic` has
-    /// nothing to re-run.
+    /// instance now reaped. `None` everywhere else.
     pub(super) fn post_drain_probe(
         &self,
         new_id: u32,
@@ -616,11 +578,8 @@ impl<R: ProcessRunner> Actor<R> {
     /// back as [`Msg::ReloadVerified`].
     ///
     /// The wait is bounded by the app's own `listen_timeout`, which extends how
-    /// long a reload of a `reuse_port` app can take: a deploy tool sizing its
-    /// patience off `listen_timeout + graceful_timeout` has to know.
-    ///
-    /// A task rather than a call, since a probe is I/O and the actor loop never
-    /// awaits. The reply comes back as a message.
+    /// long a reload of a `reuse_port` app can take. A task rather than a call,
+    /// since a probe is I/O and the actor loop never awaits.
     pub(super) fn spawn_verify_task(&self, name: &str, new_id: u32, source: ReadinessSource) {
         let slot = self
             .sheep

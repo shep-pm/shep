@@ -290,11 +290,10 @@ pub(crate) fn walk<'a>(root: &'a Value, keys: &[String]) -> Option<&'a Value> {
 /// Writes `value` at `keys` under `root`, creating the tables on the way.
 ///
 /// `Err(held)` names the dotted path, under `root`, of the value this write
-/// would have to turn into a table. Writing through a scalar or an array is a
-/// change to that value, and the caller reports it or refuses it rather than
-/// making it on the way to the key it was asked to write.
+/// would have to turn into a table: a change to that value, which the caller
+/// reports rather than making on the way to the key it was asked to write.
 ///
-/// `pub(crate)`: `shep set` writes through the same rule (issue #1096).
+/// `pub(crate)`: `shep set` writes through the same rule.
 pub(crate) fn set_path(root: &mut Value, keys: &[String], value: Value) -> Result<(), String> {
     write_at(root, keys, "", value)
 }

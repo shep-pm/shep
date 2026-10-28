@@ -29,12 +29,10 @@ pub(super) fn record_env_edit(
     let file_declares = record.declared_env.contains(key);
     let map = env_override_map(&mut *record, name)?;
     let was_overridden = map.contains_key(key);
-    // A tombstone is left alone rather than removed and re-inserted,
-    // which makes a second removal of the same key a no-op instead of
-    // a deletion. Without this, removing an already-removed key drops
-    // the tombstone (there is nothing in the config to remove, so the
-    // re-insert below does not fire) and the next load of a file that
-    // still declares the key puts its value back.
+    // A tombstone is left alone rather than removed and re-inserted, which
+    // makes a second removal of the same key a no-op instead of a deletion.
+    // Without it, removing an already-removed key drops the tombstone and
+    // the next load of a file that still declares the key puts its value back.
     let tombstoned = map.get(key).is_some_and(serde_json::Value::is_null);
     match value {
         Some(value) => map.insert(
@@ -44,44 +42,18 @@ pub(super) fn record_env_edit(
         None if tombstoned => None,
         None => map.remove(key),
     };
-    // Dropping the operator's own value is only half an answer: for a
-    // key the operator never set, `map.remove` is a no-op, the store
-    // comes back `{}`, and the edit lives only in
-    // `ProcessEntry::pending`, lost to a cold restart and invisible in
-    // the CFG column.
-    //
-    // So a removal leaves a JSON `null` tombstone under the key
-    // whenever the key was in the config and something other than
-    // this store put it there. Three cases fall out of the condition
-    // below:
-    //
-    // - the key came from the app's config and was never overridden:
-    //   tombstone, since the removal is the operator's only record of
-    //   it;
-    // - the key was an operator override the file also declares:
-    //   tombstone, since dropping the override alone would let the
-    //   file's value read as current;
-    // - the key was an operator override and nothing else supplies
-    //   it: plain removal, since the sheep now matches its file. A
-    //   tombstone here would mark a sheep forever for a key that
-    //   exists nowhere.
-    //
-    // A null never becomes a config value: `merge_declared`'s env
-    // branch reads this map for its keys only, so a null just marks
-    // "somebody has spoken for this key" and stops a later plain load
-    // from restoring it. `--reset=env` and `--reset=all` clear it
-    // through `merge_declared`'s own `next.fields.remove("env")`, not
-    // through `establish_env`, which by then has nothing left to find
-    // and deliberately preserves a tombstone it does find.
+    // Dropping the operator's own value is half an answer: for a key the
+    // operator never set, `map.remove` is a no-op and the edit lives only in
+    // `ProcessEntry::pending`, lost to a cold restart. A `null` tombstone
+    // marks "somebody spoke for this key" and never becomes a config value.
     if value.is_none() && was_in_config && (!was_overridden || file_declares) {
         map.insert(key.to_string(), serde_json::Value::Null);
     }
     let emptied = map.is_empty();
-    // A removal that left nothing behind takes the `env` key with it,
-    // for the reason `merge_declared` states where it spends an
-    // override: a field nobody is holding a value for must stop
-    // reporting in `ProcessEntry::overridden`, or the CFG column
-    // marks a sheep that no longer differs from its Flockfile.
+    // A removal that left nothing behind takes the `env` key with it: a
+    // field nobody is holding a value for must stop reporting in
+    // `ProcessEntry::overridden`, or the CFG column marks a sheep that no
+    // longer differs from its Flockfile.
     if emptied {
         record.fields.remove("env");
     }
@@ -118,13 +90,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// `f` is the mutation, which is the only part of a pane write that is
     /// not this: the store read, the empty record a first edit needs, the
     /// field names an operator has spoken for, and the one-record write back.
-    /// A refusal out of `f` lands before the store is written, so a config
-    /// this build will not take leaves no record behind.
+    /// A refusal out of `f` lands before the store is written.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::Overrides`] - the store could not be read or
-    ///   written.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - Whatever `f` refuses.
     pub(super) fn mutate_override(
         &self,
@@ -181,12 +150,10 @@ impl<R: ProcessRunner> Actor<R> {
         let Some(slot) = self.sheep.get(&id) else {
             return Ok(None);
         };
-        // [`Self::intended_spec`], not the running `spec`: a pane has to
-        // show what the sheep is meant to be, or an operator's own parked
-        // edit reads as never having landed. `pending` beside it is what
-        // says the running child does not have it yet, and it is computed
-        // off the same helper the listing uses, so the pane and the flock
-        // table never disagree about the same sheep.
+        // [`Self::intended_spec`], not the running `spec`: a pane has to show
+        // what the sheep is meant to be, or an operator's own parked edit
+        // reads as never having landed. `pending` beside it is what says the
+        // running child does not have it yet.
         let Some(config) = self.intended_spec(id).map(|spec| spec.config().clone()) else {
             return Ok(None);
         };
@@ -198,34 +165,18 @@ impl<R: ProcessRunner> Actor<R> {
     }
 
     /// Records `key` on `name`'s env as an operator override, or removes it
-    /// with `value: None`, and parks the result for that sheep's next spawn.
+    /// with `value: None`, parks it for the next spawn, and answers `false`
+    /// when no sheep has that name.
     ///
-    /// `Ok(false)` when no sheep has that name.
-    ///
-    /// # Ordering
-    ///
-    /// Validate, then write the store, then park. A refusal is therefore
-    /// raised before anything is touched, so an operator whose key
-    /// `normalize` will not take is left with the env they already had
-    /// rather than a store that disagrees with the flock.
-    ///
-    /// # Why it parks rather than applies
-    ///
-    /// The running child was handed its environment at `execve` and cannot
-    /// be handed another one, so `env` is a `NeedsRespawn` field wherever it
-    /// appears (`config::apply`'s table) and this takes the same route
-    /// [`Self::apply_one`] takes for one: onto every slot's
-    /// [`ProcessEntry::pending`], for a `shep reload` or `shep restart` to
-    /// promote.
+    /// Validate, then write the store, then park: a refusal is raised before
+    /// anything is touched. A running child was handed its environment at
+    /// `execve` and cannot be handed another, so this parks onto every slot's
+    /// [`ProcessEntry::pending`] for a `shep reload` to promote.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
-    ///   the store is read, so nothing was written.
-    /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
-    ///   `normalize` refuses. Nothing was written.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written. Nothing was parked.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's.
+    /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     pub(super) fn handle_set_sheep_env(
         &mut self,
         name: &str,
@@ -239,11 +190,10 @@ impl<R: ProcessRunner> Actor<R> {
         // [`Self::ensure_not_dog`] is why, and [`Self::apply_one`] refuses a
         // Flockfile that names a dog with the same sentence.
         self.ensure_not_dog(name, id)?;
-        // The config an unchanged next spawn would use, which is a parked
-        // one when an earlier load left one: building on the running config
+        // The config an unchanged next spawn would use, which is a parked one
+        // when an earlier load left one: building on the running config
         // instead would drop that load's change on the floor, which is
-        // `apply_one`'s own reason for reading `intended` rather than
-        // `running`.
+        // `apply_one`'s own reason for reading `intended` rather than `running`.
         let Some(mut intended) = self.intended_spec(id).map(|spec| spec.config().clone()) else {
             return Ok(None);
         };
@@ -266,42 +216,19 @@ impl<R: ProcessRunner> Actor<R> {
         Ok(Some(parked))
     }
 
-    /// Records several env keys on `name` as operator overrides in one
-    /// write, and parks them for the next spawn.
+    /// Records several env keys on `name` as operator overrides in one write,
+    /// parks them for the next spawn, and answers `None` for no such name.
     ///
-    /// `Ok(None)` when no sheep has that name.
-    ///
-    /// # Why this is not a loop over [`Self::handle_set_sheep_env`]
-    ///
-    /// That function writes the store once per key. Twenty keys would be
-    /// twenty read-modify-writes, and a failure at the eleventh would leave
-    /// half an import applied with no record of which half. This validates
-    /// every key against the intended config first, then writes once.
-    ///
-    /// # Collisions
-    ///
-    /// A key already holding a different value in the intended config
-    /// collides. Without `force`, one collision refuses the whole batch and
-    /// nothing is written. A key holding the same value is `unchanged` and
-    /// is not rewritten, so a repeated identical batch is a no-op.
-    ///
-    /// # What a dry run answers
-    ///
-    /// Everything the real send would, refusals included: `normalize` runs
-    /// on the merged config before this returns, so a preview that reports
-    /// a key as `set` is one the real send takes. `app` is `None` here, as
-    /// it is for a refused batch and for one whose keys were all
-    /// `unchanged`: nothing was written for the caller to record.
+    /// Not a loop over [`Self::handle_set_sheep_env`]: that writes the store
+    /// once per key, so a failure part-way would leave half an import applied
+    /// with no record of which half. A key already holding a different value
+    /// collides; without `force` one collision refuses the whole batch. A dry
+    /// run answers everything the real send would, refusals included.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
-    ///   the store is read, for [`Self::handle_set_sheep_env`]'s reason.
-    /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
-    ///   `normalize` refuses. Nothing was written, on a dry run or a real
-    ///   send alike.
-    /// - [`SupervisorError::Overrides`] - the store could not be read or
-    ///   written. Nothing was parked.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's.
+    /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     pub(super) fn handle_set_sheep_env_batch(
         &mut self,
         name: &str,
@@ -406,24 +333,17 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// Drops the operator's override of `key` on `name`, so the value it held
     /// before comes back, and applies or parks that value as
-    /// [`Self::write_sheep_field`] does.
+    /// [`Self::write_sheep_field`] does. `Ok(None)` for no such name.
     ///
     /// The value that returns is the override record's `template` for the key:
     /// the Flockfile's value as of the last load that named it, or the value
-    /// the sheep held when the operator first spoke for it. A record written
-    /// before that was kept has none, and the key goes back to the built-in
-    /// default, which is the value a pane's `d` restores too.
-    ///
-    /// `Ok(None)` when no sheep has that name.
+    /// the sheep held when the operator first spoke for it. A record with no
+    /// template goes back to the built-in default.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::InvalidField`] - the key is one
-    ///   [`Self::handle_set_sheep_field`] refuses, or the operator has not
-    ///   overridden it, or the value it goes back to will not normalize.
-    ///   Nothing was written.
-    /// - [`SupervisorError::IsADog`] and [`SupervisorError::Overrides`], as
-    ///   [`Self::write_sheep_field`] raises them.
+    /// - [`SupervisorError::InvalidField`] - an unknown key, one not overridden,
+    ///   or a value that will not normalize.
+    /// - [`SupervisorError::IsADog`] and [`SupervisorError::Overrides`].
     pub(super) fn handle_reset_sheep_field(
         &mut self,
         name: &str,
@@ -433,59 +353,19 @@ impl<R: ProcessRunner> Actor<R> {
         self.apply_sheep_field(name, key, FieldSource::Reset)
     }
 
-    /// Records `key` on `name` as an operator override, applies what can
-    /// reach the running process, and parks the rest for its next spawn.
+    /// Records `key` on `name` as an operator override, applies what can reach
+    /// the running process, and parks the rest for its next spawn.
     ///
-    /// `Ok(None)` when no sheep has that name.
-    ///
-    /// # Why this is not `ApplyConfig`
-    ///
-    /// One [`DeclaredApp`] declaring one key, at [`ResetDepth::File`],
-    /// moves exactly this one field and nothing else, and then
-    /// [`merge_declared`] spends the override for it. That reasoning does
-    /// not hold here: a key put back to the template is not a key an
-    /// operator is still holding a value for, but a pane's value is the
-    /// operator's, and the sheep still differs from its file. Routed that
-    /// way, an edit would drop out of [`ProcessEntry::overridden`], so the
-    /// `*` would never render. This writes the override directly instead
-    /// of pretending to be a template.
-    ///
-    /// # Ordering
-    ///
-    /// Validate, then write the store, then apply. Every refusal below is
-    /// raised before [`Self::mutate_override`], so an operator whose value
-    /// this build will not take is left with the config they already had
-    /// rather than a store that disagrees with the flock, the same rule
-    /// [`Self::handle_set_sheep_env`] states and its own test pins.
-    ///
-    /// # Which fields reach a running process
-    ///
-    /// [`apply_group`]'s table, exactly as [`Self::apply_one`] reads it. A
-    /// [`ApplyGroup::Live`] field goes onto the stored spec and is in force
-    /// at the daemon's next decision; a [`ApplyGroup::NextSpawn`] field
-    /// goes onto the stored spec too but is not in force until a spawn
-    /// reads it, so it reports as pending, except `autostart`, which
-    /// `restorable()` reads at muster rather than at a spawn and so is in
-    /// force the moment it lands, the same carve-out `apply_one` makes. A
-    /// [`ApplyGroup::NeedsRespawn`] field only parks.
-    ///
-    /// # `warning`, the one field this can answer besides `pending`
-    ///
-    /// `cwd`, `script`, `out_file` and `err_file` get a filesystem check
-    /// nothing before this ran anywhere: `normalize` cannot see the
-    /// filesystem, and a spawn is the daemon's own first look. A problem
-    /// here never refuses the write; it names what the next respawn will
-    /// otherwise fail on with a bare OS error. See [`FieldSet::warning`].
+    /// Validate, then write the store, then apply: every refusal is raised
+    /// before [`Self::mutate_override`]. Which fields reach a running process
+    /// is [`apply_group`]'s table, read as [`Self::apply_one`] reads it.
+    /// `cwd`, `script`, `out_file` and `err_file` get a filesystem check in
+    /// `warning` that `normalize` cannot make.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's. Raised before
-    ///   the store is read, so nothing was written.
-    /// - [`SupervisorError::InvalidField`] - `AppConfig` has no such key,
-    ///   the value will not deserialize into it, or `normalize` refuses
-    ///   the result. Nothing was written.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written. Nothing was parked.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's.
+    /// - [`SupervisorError::InvalidField`] - no such key, or `normalize` refuses.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     pub(super) fn write_sheep_field(
         &mut self,
         name: &str,
@@ -589,10 +469,9 @@ impl<R: ProcessRunner> Actor<R> {
             Vec::new()
         };
         // A subset of a valid config can still fail to normalize, because
-        // `normalize` checks fields against each other: `watch` needs a
-        // `cwd`, and a `cwd` left behind as `NeedsRespawn` takes the watch
-        // down with it. `apply_one` treats that as "this app needs a
-        // restart" rather than as an invalid request, and so does this.
+        // `normalize` checks fields against each other: `watch` needs a `cwd`,
+        // and a `cwd` left behind as `NeedsRespawn` takes the watch down with
+        // it. That parks rather than refuses, as it does in `apply_one`.
         let next_spec = reached_spec(&running, merged.config(), &reaching, running.instances).ok();
         let park_all = next_spec.is_none();
 

@@ -91,20 +91,10 @@ fn points(count: u64) -> &'static str {
 /// Why a collector's 2xx answer says it dropped points, `None` when it took
 /// the whole payload.
 ///
-/// An empty body is a 204, or a 200 that said nothing, and a `partialSuccess`
-/// naming neither a count nor a reason is a clean export echoed back: all
-/// three mean "everything landed". A body that is not that object is reported
-/// rather than passed: an answer this cannot read is not evidence that
-/// anything was accepted.
-///
-/// The reason carries the collector's own text, so it goes through
-/// [`crate::terminal_safe::sanitise`] before the count and the separator are
-/// built around it, and the whole line is cut at [`MAX_REASON_CHARS`].
-///
-/// # Panics
-///
-/// Never: every arm is a `String` built from a parsed count and text already
-/// read from the body.
+/// An empty body, or a `partialSuccess` naming neither a count nor a reason,
+/// means everything landed. A body this cannot read is reported rather than
+/// passed. The reason carries the collector's own text, so it is sanitised
+/// and cut at [`MAX_REASON_CHARS`].
 pub fn rejection(body: &str) -> Option<String> {
     let trimmed = body.trim();
     if trimmed.is_empty() {

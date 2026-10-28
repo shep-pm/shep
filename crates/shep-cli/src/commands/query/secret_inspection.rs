@@ -14,22 +14,13 @@ use shep_core::secrets::Resolution;
 use shep_core::secrets::{self, SecretRef, SecretView};
 use std::collections::BTreeMap;
 
-/// `describe` and `flock_display::fold`'s shared body: one `Request::Describe` against
-/// `selector`, rendered through [`emit_described`] as the sheep table and
-/// each sheep's lamb tree beneath it. `command` is the verb name the output
-/// envelope reports.
+/// `describe` and `flock_display::fold`'s shared body: one `Request::Describe`
+/// against `selector`, rendered as the sheep table and each lamb tree.
 ///
-/// `secrets` alone gates [`gather_secrets`]: this machine's home and the host
-/// environment it resolves against. `flock_display::fold` passes `None`
-/// and stays byte-identical to before this section existed, because `flock_display::fold`
-/// is a group view across a selector's sheep, not the single-sheep
-/// diagnostic this feature was built for. The caller reads it, so a
-/// `shep.toml` that would not read is reported once per run rather than
-/// once per selector.
+/// `secrets` alone gates [`gather_secrets`]: `flock_display::fold` passes `None`.
 ///
-/// Not routed through [`request_and_render`](crate::commands::rpc::request_and_render): `emit_described` renders one
-/// `Vec<ProcessInfo>` into two tables, which no single
-/// [`crate::output::Render`] impl can express.
+/// Not routed through [`request_and_render`](crate::commands::rpc::request_and_render):
+/// it renders one `Vec<ProcessInfo>` into two tables.
 pub(super) async fn describe_selector(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -69,18 +60,13 @@ pub(super) async fn describe_selector(
     }
 }
 
-/// Renders one sheep's secret references the way `describe`'s table form
-/// would: one line per reference, the reference as written, the environment
-/// it resolved in, and a verdict. Never a value: `Resolution::Found`'s
-/// payload is read only to tell it apart from a miss.
+/// Renders one sheep's secret references as `describe`'s table form would:
+/// one line per reference, its environment, and a verdict. Never a value.
 ///
-/// The verdict word comes from [`SecretStatus::from_resolution`](crate::output::SecretStatus::from_resolution), the same
-/// classifier [`gather_secrets`] uses for the JSON form, so the two can
-/// never name a different verdict for the same reference.
+/// The verdict word comes from
+/// [`SecretStatus::from_resolution`](crate::output::SecretStatus::from_resolution), the same classifier [`gather_secrets`] uses.
 ///
-/// Test-only: `emit_described` renders the actual table now, so this exists
-/// to exercise [`SecretStatus::from_resolution`](crate::output::SecretStatus::from_resolution)'s three verdicts in
-/// isolation, without a fake daemon connection.
+/// Test-only: it exercises those three verdicts without a fake daemon.
 #[cfg(test)]
 pub(super) fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) -> String {
     let mut rendered = String::new();
@@ -95,36 +81,9 @@ pub(super) fn render_describe_secrets(entries: &[(&str, &str, Resolution<'_>)]) 
 /// the JSON-safe rows [`emit_described`] both serializes beside `data` and
 /// renders as the table's own "Secrets for `<name>`:" block.
 ///
-/// Reads three local files rather than asking the shepherd: the muster roll
-/// for each name's [`shep_core::config::AppConfig`] (which can trail a
-/// config change that has not yet reached disk by
-/// `shep_daemon::snapshot`'s debounce window), the operator's own secret
-/// store, and the provider cache [`secrets::provider_cache_on_disk`]
-/// reads. A namespace whose provider pushed with `persist = false` never
-/// reaches that cache, so this can call a namespace uncached when the
-/// running shepherd already has it in memory; only the shepherd itself can
-/// answer that half.
-///
-/// A name the roll does not know, or one with no `{{secret:...}}` at all,
-/// contributes nothing: this reports references that exist, not a claim
-/// that every sheep has one.
-///
-/// The second half of the answer is why the operator's own store is empty,
-/// when it is empty because it would not read. Folding that into an empty
-/// store on its own would print `missing` beside every bare reference and
-/// send the operator to `shep secret set` for values the store may already
-/// hold. Rows are still produced, so a sheep needing nothing still
-/// describes; the caller has the [`Streams`] to say so on.
-///
-/// One [`SecretView`] per distinct environment across `procs`, not one per
-/// name: a view owns its copy of both maps, and neither map varies by name,
-/// so a flock sharing one environment copies them once. Not one view for
-/// the whole flock either, because an app's Flockfile can pin an
-/// `environment` of its own and each has to resolve against that one.
-///
-/// `host_environment` is what a sheep with no `environment` of its own
-/// resolves against; the caller reads it, so it can report a `shep.toml`
-/// that would not read.
+/// Reads three local files rather than asking the shepherd: the muster roll,
+/// the operator's own secret store, and the provider cache. A store that
+/// would not read is reported unreadable, not folded into a `missing` verdict.
 pub(super) fn gather_secrets(
     paths: &ShepPaths,
     host_environment: &str,

@@ -60,20 +60,14 @@ impl SupervisorHandle {
     /// readiness deadline, so a later stage can wait on it.
     ///
     /// # Errors
-    ///
     /// - [`SupervisorError::CannotStart`]: only reachable under
-    ///   [`BatchPolicy::AllOrNothing`] (`Self::start`'s policy); nothing in
-    ///   this batch was registered. Carries one `"<name>: <reason>"` per
-    ///   refused app, never one per failed check. A staged start sends one
-    ///   batch per stage, so an earlier stage of it can be running;
-    ///   `boot_order::start_in_stages` is what says so.
+    ///   [`BatchPolicy::AllOrNothing`]; nothing in this batch was registered.
+    ///   Carries one `"<name>: <reason>"` per refused app, never one per
+    ///   failed check.
     /// - [`SupervisorError::SpawnFailed`]: an instance that failed to spawn.
-    ///   Under `AllOrNothing` this is the first such failure, and every
-    ///   already-registered app in the batch persists regardless. Under
-    ///   [`BatchPolicy::PerApp`] (the muster restore's policy) every app
-    ///   was attempted and this carries one `"<name>: <reason>"` entry per
-    ///   app that could not start, joined by `"; "`; each such app is
-    ///   registered `Errored` and visible.
+    ///   Under [`BatchPolicy::PerApp`] every app was attempted and this carries
+    ///   one `"<name>: <reason>"` entry per app that could not start, joined
+    ///   by `"; "`; each such app is registered `Errored` and visible.
     /// - [`SupervisorError::EngineStopped`]: the actor is gone.
     pub(crate) async fn start_staged(
         &self,
@@ -200,28 +194,17 @@ impl SupervisorHandle {
     }
 
     /// Sets `key` on `name`'s env, or removes it with `None`, recorded as an
-    /// operator override. Answers `Ok(None)` when no sheep has that name.
+    /// operator override. Answers `Ok(None)` when no sheep has that name, and
+    /// `Some` with the config now parked for that sheep's next spawn.
     ///
-    /// The `Some` carries the config now parked for that sheep's next spawn.
-    /// `rpc/dispatch.rs` hands it to [`crate::snapshot::FlockRegistry::record`], the
-    /// way the `Scale` and `ApplyConfig` arms hand it theirs: the muster roll
-    /// is written from the registry and nothing on the restore path reads the
-    /// override store, so an edit that skipped this survives a
-    /// `shep daemon reload` (the handover blob carries `pending`) and is lost
-    /// by a cold restart.
-    ///
-    /// The running child holds the env it was spawned from, so the change
-    /// parks for that sheep's next spawn rather than reaching it now, and
-    /// `shep reload`/`shep restart` promote it. See
-    /// [`Actor::handle_set_sheep_env`].
+    /// `rpc/dispatch.rs` hands that config to
+    /// [`crate::snapshot::FlockRegistry::record`]: the muster roll is written
+    /// from the registry, so an edit that skipped it is lost by a cold restart.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's
-    ///   config is not an operator's to edit through a pane.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's.
     /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written, so nothing was recorded and nothing parked.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - [`SupervisorError::EngineStopped`] - the actor is gone.
     pub(crate) async fn set_sheep_env(
         &self,
@@ -238,22 +221,17 @@ impl SupervisorHandle {
         .await?
     }
 
-    /// Sets several env keys on one sheep as operator overrides, in one
-    /// write.
+    /// Sets several env keys on one sheep as operator overrides, in one write.
     ///
-    /// [`Actor::handle_set_sheep_env_batch`] states what `force` and
-    /// `dry_run` do and when the batch is refused whole. The `Some` carries
-    /// [`EnvBatch`], whose `app` is the config now parked for that sheep's
-    /// next spawn and is `None` whenever nothing was written; `rpc/dispatch.rs` hands
-    /// it to the registry for [`Self::set_sheep_env`]'s reason.
+    /// [`Actor::handle_set_sheep_env_batch`] states what `force` and `dry_run`
+    /// do and when the batch is refused whole. `EnvBatch::app` is the config
+    /// now parked for the next spawn, and is `None` whenever nothing was
+    /// written; `rpc/dispatch.rs` records it for [`Self::set_sheep_env`]'s reason.
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's
-    ///   config is not an operator's to edit through a pane.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's.
     /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written, so nothing was recorded and nothing parked.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - [`SupervisorError::EngineStopped`] - the actor is gone.
     pub(crate) async fn set_sheep_env_batch(
         &self,
@@ -279,19 +257,15 @@ impl SupervisorHandle {
     /// Copies `from`'s env onto `to` as operator overrides, in one write.
     ///
     /// [`Actor::handle_copy_sheep_env`] states what `replace`, `except` and
-    /// `dry_run` do. [`EnvCopy::app`] is the config now parked for `to`'s next
-    /// spawn, and is `None` whenever nothing was written; `rpc/dispatch.rs`
-    /// hands it to the registry for [`Self::set_sheep_env`]'s reason.
+    /// `dry_run` do, and when [`EnvCopy::app`] is `None`; `rpc/dispatch.rs`
+    /// records what it is for [`Self::set_sheep_env`]'s reason.
     ///
     /// # Errors
-    ///
     /// - [`SupervisorError::NoSuchSheep`] - `from` or `to` is no sheep.
     /// - [`SupervisorError::IsADog`] - `from` or `to` is a dog's.
     /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
-    /// - [`SupervisorError::EnvChanged`] - `expect` is not the change list the
-    ///   two sheep give now.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written, so nothing was recorded and nothing parked.
+    /// - [`SupervisorError::EnvChanged`] - `expect` is not the current list.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - [`SupervisorError::EngineStopped`] - the actor is gone.
     pub(crate) async fn copy_sheep_env(
         &self,
@@ -319,14 +293,11 @@ impl SupervisorHandle {
     /// [`Actor::handle_set_sheep_field`].
     ///
     /// # Errors
-    ///
-    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's
-    ///   config is not an operator's to edit through a pane.
+    /// - [`SupervisorError::IsADog`] - the name is a dog's, and a dog's config
+    ///   is not an operator's to edit through a pane.
     /// - [`SupervisorError::InvalidField`] - the key, the value, or the
-    ///   resulting config is one this build will not take. Nothing was
-    ///   written.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written, so nothing was recorded and nothing parked.
+    ///   resulting config is one this build will not take. Nothing was written.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - [`SupervisorError::EngineStopped`] - the actor is gone.
     pub(crate) async fn set_sheep_field(
         &self,
@@ -394,21 +365,18 @@ impl SupervisorHandle {
             .await
     }
 
-    /// Sets `dog`'s table on `name`, or removes it with `None`, as an
-    /// operator override of the whole `dogs` field. `Ok(None)` when no sheep
-    /// has that name.
+    /// Sets `dog`'s table on `name`, or removes it with `None`, as an operator
+    /// override of the whole `dogs` field. `Ok(None)` when no sheep has that
+    /// name. See [`Actor::handle_set_sheep_dog_settings`].
     ///
     /// The dispatch arm records [`FieldSet::app`] to the muster roll, for
-    /// [`Self::set_sheep_env`]'s reason. See
-    /// [`Actor::handle_set_sheep_dog_settings`].
+    /// [`Self::set_sheep_env`]'s reason.
     ///
     /// # Errors
-    ///
     /// - [`SupervisorError::IsADog`] - the name is a dog's.
     /// - [`SupervisorError::InvalidField`] - `normalize` refuses the result,
-    ///   as it does an empty dog name. Nothing was written.
-    /// - [`SupervisorError::Overrides`] - the override store could not be
-    ///   read or written, so nothing was recorded.
+    ///   as it does an empty dog name.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     /// - [`SupervisorError::EngineStopped`] - the actor is gone.
     pub(crate) async fn set_sheep_dog_settings(
         &self,
@@ -858,7 +826,6 @@ impl SupervisorHandle {
     /// For callers that need not tell "actor gone" from "empty flock".
     ///
     /// # Panics
-    ///
     /// Panics if the actor has shut down.
     #[must_use]
     pub async fn list(&self) -> Vec<ProcessInfo> {

@@ -130,11 +130,9 @@ fn params_set_colour(params: &str) -> bool {
 /// stdout green; `"err"` bark, the stderr red), unless `style.colour` is
 /// off or the line already carries an SGR of its own.
 ///
-/// Call it on a [`sanitize_log_line`] output: `sets_colour` then reads
-/// only the escapes that survived as styling. A line that is painted has
-/// no SGR but bare resets, and those are dropped first: left in, a
-/// logger's own reset would cancel the wrapper's colour from that point
-/// on, printing the rest of the line uncoloured.
+/// Call it on a [`sanitize_log_line`] output: `sets_colour` then reads only
+/// the escapes that survived as styling. Bare resets are dropped first, so
+/// a logger's own reset cannot cancel the wrapper's colour.
 #[must_use]
 pub(crate) fn paint_default(line: &str, stream: &str, style: Presentation) -> String {
     if !style.colour || sets_colour(line) {

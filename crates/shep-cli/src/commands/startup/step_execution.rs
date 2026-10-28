@@ -25,12 +25,11 @@ pub(super) struct Refusal {
 
 /// Installs the init unit that starts the shepherd at boot.
 ///
-/// `explicit_home` is `--home`/`$SHEP_HOME` as clap already folded it, and
-/// `run` has already refused one that is not there. When it names nothing
-/// the unit carries the target user's own `<passwd home>/.shep`, never
-/// this process's `$HOME`: under `sudo` that is root's, and a unit built
-/// from it restores nothing after a reboot. A default that is this
-/// process's own is created first; see [`StartupPlan::own_default_home`].
+/// `explicit_home` is `--home`/`$SHEP_HOME` as clap folded it, and `run` has
+/// already refused one that is not there. When it names nothing the unit
+/// carries the target user's own `<passwd home>/.shep`, never this
+/// process's `$HOME`: under `sudo` that is root's, and a unit built from it
+/// restores nothing after a reboot. See [`StartupPlan::own_default_home`].
 pub fn startup(
     streams: &mut Streams<'_>,
     explicit_home: Option<&Path>,
@@ -68,17 +67,9 @@ pub fn unstartup(streams: &mut Streams<'_>, args: &StartupArgs) -> ExitCode {
 ///
 /// Refused, in order, before anything is written: a `$SHEP_HOME` that is
 /// not a directory ([`ExitCode::Usage`]); a unit that already exists
-/// ([`ExitCode::Usage`], naming `unstartup`, since rewriting a loaded
-/// unit's file would leave it disagreeing with the running service); then
-/// [`Privilege::Unprivileged`], which prints the resolved `sudo` command
-/// and exits [`ExitCode::Failure`].
-///
-/// A shepherd already holding that home is not a refusal: the unit is
-/// enabled but not started, and a notice says how to hand the flock over.
-///
-/// If [`plan`] saw `$SUDO_USER` set, [`secure_path_warning`] also warns:
-/// `sudo` typically replaces `PATH` with its own `secure_path`, and shep
-/// has no login `PATH` left to compare against.
+/// ([`ExitCode::Usage`], naming `unstartup`); then
+/// [`Privilege::Unprivileged`], which prints the `sudo` command. A running
+/// shepherd is not a refusal, and a set `$SUDO_USER` adds a notice.
 pub(crate) fn install(
     streams: &mut Streams<'_>,
     plan: &StartupPlan,
@@ -143,12 +134,11 @@ pub(crate) fn install(
 
 /// Disables and removes the unit, or prints the command that would.
 ///
-/// A missing unit is a success carrying one `absent` row; that check runs
-/// before the privilege gate, so `shep unstartup` on a host that never ran
+/// A missing unit is a success carrying one `absent` row, checked before
+/// the privilege gate, so `shep unstartup` on a host that never ran
 /// `startup` answers without demanding root. Otherwise this needs root:
 /// without it, prints `sudo <exec> unstartup --user <user>` (no `--home`,
-/// since removal is addressed by path and label alone) and exits
-/// [`ExitCode::Failure`].
+/// since removal is addressed by path and label alone).
 pub(crate) fn remove(
     streams: &mut Streams<'_>,
     plan: &StartupPlan,
@@ -257,14 +247,12 @@ fn report(streams: &mut Streams<'_>, command: &str, steps: Vec<StartupStep>) -> 
 }
 
 /// Quotes one word of a printed command so the line can be pasted rather
-/// than read and repaired.
+/// than read and repaired. A `$SHEP_HOME` with a space is a legal path;
+/// unquoted it becomes two arguments.
 ///
-/// A `$SHEP_HOME` with a space is a legal path; unquoted, it would become
-/// two arguments and paste a command carrying half the path.
-///
-/// `pub(crate)`: [`super::unit::freebsd_rc_script`] and [`super::unit::openbsd_rc_script`]
-/// reuse it as the single-quote former for a value re-evaluated by a
-/// nested shell, distinct from `unit`'s own double-quote escaper.
+/// `pub(crate)`: [`super::unit::freebsd_rc_script`] and
+/// [`super::unit::openbsd_rc_script`] reuse it as the single-quote former
+/// for a value a nested shell re-evaluates.
 pub(crate) fn shell_quote(word: &str) -> String {
     let safe = |b: &u8| b.is_ascii_alphanumeric() || b"_./:@%+=-".contains(b);
     if !word.is_empty() && word.as_bytes().iter().all(safe) {

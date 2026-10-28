@@ -12,39 +12,18 @@ use super::*;
 
 impl<R: ProcessRunner> Actor<R> {
     /// Copies `from`'s intended env onto `to` as operator overrides, in one
-    /// write, and parks the result for `to`'s next spawn.
+    /// write, parking the result for `to`'s next spawn.
     ///
-    /// The values are read here and never leave: a `{{secret:...}}` is copied
-    /// as the reference, unresolved, and the returned changes carry only what
-    /// [`shown_env_value`] allows.
-    ///
-    /// # Merging
-    ///
-    /// `to` keeps its own keys, and `from`'s overwrite them. `replace` makes
-    /// `to`'s env exactly `from`'s instead, so a key only `to` had is removed.
-    /// A key in `except` is left as `to` had it under either, and is not
-    /// brought over when `to` lacks it.
-    ///
-    /// # What a dry run answers
-    ///
-    /// Everything the real copy would, refusals included: `normalize` runs on
-    /// the result before this returns. `app` is `None` for a dry run and for a
-    /// copy that changes nothing.
+    /// `to` keeps its own keys and `from`'s overwrite them; `replace` makes
+    /// `to`'s env exactly `from`'s. A key in `except` is left as `to` had it.
+    /// A `{{secret:...}}` is copied as the reference, unresolved.
     ///
     /// # Errors
-    ///
     /// - [`SupervisorError::NoSuchSheep`] - `from` or `to` is no sheep.
-    /// - [`SupervisorError::IsADog`] - `from` or `to` is a dog's. Raised before
-    ///   the store is read, for [`Self::handle_set_sheep_env`]'s reason, and
-    ///   for `from` because a dog's env is not a pane's to read either.
-    /// - [`SupervisorError::EnvChanged`] - `expect` is not the change list the
-    ///   two sheep give now, a value swapped for another included. Raised
-    ///   before anything is written, so a key another client edited since the
-    ///   caller's dry run is never replaced or removed unseen.
-    /// - [`SupervisorError::InvalidEnv`] - the resulting config is one
-    ///   `normalize` refuses. Nothing was written.
-    /// - [`SupervisorError::Overrides`] - the store could not be read or
-    ///   written. Nothing was parked.
+    /// - [`SupervisorError::IsADog`] - `from` or `to` is a dog's.
+    /// - [`SupervisorError::EnvChanged`] - `expect` differs from the list.
+    /// - [`SupervisorError::InvalidEnv`] - `normalize` refuses the result.
+    /// - [`SupervisorError::Overrides`] - the store could not be read or written.
     pub(super) fn handle_copy_sheep_env(
         &mut self,
         from: &str,

@@ -15,8 +15,7 @@ use shep_core::values::UpDuration;
 /// it, not a dog silently serving on a port the operator did not choose.
 ///
 /// `dog_config` marks `otlp_headers`, the one key here that carries a
-/// credential. The derive is still what lets `config_schema` publish this
-/// section, and a config type with nothing to mark still wants the impl.
+/// credential.
 #[dog_config]
 #[derive(Clone, PartialEq, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields, default)]
@@ -34,9 +33,7 @@ pub struct MetricsConfig {
     ///
     /// The collector's `/v1/metrics` path is appended here, so
     /// `"http://127.0.0.1:4318"` and `"http://127.0.0.1:4318/otlp"` both
-    /// reach a working URL. Export needs the `otel` cargo feature: a build
-    /// without it refuses this key at startup rather than sitting there
-    /// exporting nothing while looking healthy.
+    /// reach a working URL. Export needs the `otel` cargo feature.
     pub otlp_endpoint: Option<String>,
     /// How long between exports. The first lands one interval after the dog
     /// starts.

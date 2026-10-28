@@ -1,17 +1,13 @@
-//! `bleats` (alias `logs`): following a sheep's log stream. The only
-//! streaming verb, and the only one whose output skips
-//! [`crate::output`]'s envelope: a follow has no end, so there is nothing
-//! to wrap.
+//! `bleats` (alias `logs`): following a sheep's log stream, the only
+//! streaming verb and the only one whose output skips [`crate::output`]'s
+//! envelope: a follow has no end, so there is nothing to wrap.
 //!
 //! One `Request::ListFlock` resolves an id -> [`ProcessInfo`] cache before
-//! subscribing, since the daemon's topic filter carries no sheep identity:
-//! selector filtering happens client-side against that cache.
+//! subscribing: the daemon's topic filter carries no sheep identity.
 //!
-//! `--no-follow` never subscribes: it tails each matched sheep's log files
-//! and exits. `--follow` prints that same tail first, then subscribes.
-//!
-//! Under `--host` those files are the remote's, so [`source::LogSource`] asks
-//! its shepherd for each tail and the rest of the loop is shared.
+//! `--no-follow` tails each matched sheep's log files and exits; `--follow`
+//! prints that same tail, then subscribes. Under `--host` the remote's
+//! shepherd supplies each tail through [`source::LogSource`].
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -136,10 +132,9 @@ fn selector_allows(selector: &ProcessSelector, cache: &HashMap<u32, ProcessInfo>
 /// here, so a replayed line and a followed line render identically.
 ///
 /// `stream` is `"out"` or `"err"`, the sheep stream the line came from,
-/// not `out`'s own identity: every line this function is called with
-/// lands on [`Streams::out`]. Table format sanitises the line and puts
-/// the stream's default colour on the line text, never on the `name |`
-/// label; JSON carries the raw line, sanitiser never applied.
+/// not `out`'s own identity: every line here lands on [`Streams::out`].
+/// Table format sanitises the line and colours the line text, never the
+/// `name |` label; JSON carries the raw line.
 fn write_line(
     streams: &mut Streams<'_>,
     id: u32,
@@ -250,21 +245,15 @@ fn path_unknown_notice(
 /// order, and returns the exit code that reports how that went.
 ///
 /// Within one sheep, `out_file` (unless `--err`) prints before `err_file`
-/// (unless `--out`), with no merge between them. `cache` is a `HashMap`, so
-/// matched sheep are sorted first, by name, then instance slot, then id.
-/// Each file is read through `source`, one at a time in that order.
+/// (unless `--out`), with no merge. `cache` is a `HashMap`, so matched sheep
+/// are sorted by name, then instance slot, then id.
 ///
-/// A `None` path (a shepherd predating
-/// [`shep_core::protocol::ProcessInfo::out_file`]) is a `log_path_unknown`
-/// notice. A file that is not there is a `log_missing` notice and leaves
-/// the exit code alone. Any other read failure is a `log_unreadable`
-/// notice and sets [`ExitCode::Failure`]; the rest of the flock still
-/// prints.
+/// A `None` path is a `log_path_unknown` notice, a missing file a
+/// `log_missing` notice that leaves the exit code alone, and any other read
+/// failure a `log_unreadable` notice that sets [`ExitCode::Failure`].
 ///
 /// # Errors
-/// The [`RequestError`] from a read over a host that got no answer. Nothing
-/// is printed for it here: the caller reports it, or explains it away as the
-/// operator's interrupt. The files after it are not read.
+/// The [`RequestError`] from a read over a host that got no answer.
 async fn tail_log_files(
     streams: &mut Streams<'_>,
     quiet: bool,
@@ -290,8 +279,7 @@ async fn tail_log_files(
     // One file, one read. Several instances can resolve to one path: every
     // `merge_logs` app does, and so does any app that set `out_file`
     // explicitly.
-    // Every path here is a `&str` borrowed out of `cache`, which outlives
-    // this function, so neither set keys on an owned copy.
+    // Every path here is borrowed out of `cache`, which outlives this call.
     let mut seen_paths: HashSet<&str> = HashSet::new();
     let mut seen_notices: HashSet<String> = HashSet::new();
 
@@ -384,9 +372,6 @@ fn stop_a_read(source: LogSource<'_>) -> impl FnOnce(&mut Streams<'_>, &RequestE
 /// `stream` is `"out"` or `"err"`, the sheep stream the line came from.
 /// `suppressed` is the flag saying the operator asked not to see it:
 /// `args.err` for an out line, `args.out` for an err one.
-///
-/// Eight parameters: the follow's read-only context plus the two things
-/// the two arms differ in.
 #[allow(clippy::too_many_arguments)]
 fn handle_log_line(
     streams: &mut Streams<'_>,
@@ -529,16 +514,9 @@ async fn bleats_armed(
 /// that does not need a real `SIGINT`.
 ///
 /// One `Request::ListFlock` builds the id -> name cache both paths share.
-/// `--no-follow` stops there and hands off to [`tail_log_files`], issuing
-/// no `Request::Subscribe`. `--follow` subscribes and loops on
-/// `tokio::select!`: a line renders, a `Lagged` item is noted and the
-/// follow continues, a request or a stream that stops answering ends on
-/// [`link_gone`], and `interrupt` firing exits [`ExitCode::Success`].
-///
-/// Every step before the loop is raced against `interrupt` by [`raced`], so
-/// a Ctrl+C ends the verb wherever it lands, not only once the loop arms.
-///
-/// `streams.out` is flushed on every exit path, or buffered lines are lost.
+/// `--no-follow` hands off to [`tail_log_files`], issuing no
+/// `Request::Subscribe`. Every step before the loop is raced against
+/// `interrupt` by [`raced`]. `streams.out` is flushed on every exit path.
 pub async fn bleats_with_signal(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -552,18 +530,10 @@ pub async fn bleats_with_signal(
 /// What a request whose link closed mid-flight means.
 ///
 /// Over a host the ssh child dies on the same Ctrl+C as this process, so a
-/// closed connection is equally consistent with the operator ending the verb:
-/// the interrupt gets [`crate::remote::HOST_INTERRUPT_GRACE`] to say so, and
-/// ends the verb at [`ExitCode::Success`] with no error printed. A shepherd
-/// that answered with a refusal is answering, so only [`RequestError::Closed`]
-/// gets the grace, and locally a Ctrl+C closes no connection at all.
-///
-/// `streams.out` is flushed before either way out, or a backlog this verb
-/// already printed stays in the writer's buffer.
-///
-/// Polling `interrupt` here is what ends a follow on an interrupt that landed
-/// before its loop armed: [`bleats_armed`] installed the listener, and tokio
-/// queued the signal.
+/// closed connection is equally consistent with the operator ending the
+/// verb. Only [`RequestError::Closed`] gets
+/// [`crate::remote::HOST_INTERRUPT_GRACE`], and only over a host: locally a
+/// Ctrl+C closes no connection at all.
 async fn link_gone<F, R>(
     streams: &mut Streams<'_>,
     host: Option<&str>,
@@ -590,14 +560,11 @@ where
 
 /// One step of the verb, raced against the operator's Ctrl+C.
 ///
-/// Each step can wait on a round trip or a backlog read while the interrupt
-/// listener is installed, so a step that never polled the interrupt would
-/// hold the operator's key press until it finished. `None` means the
-/// interrupt landed while the step was still waiting, and the caller owes
-/// only what the step had already printed.
+/// A step that never polled the interrupt would hold the operator's key
+/// press until it finished. `None` means the interrupt landed while the
+/// step was still waiting, and the caller owes only what it printed.
 ///
-/// The work arm is polled first: a shepherd that answered answered, whatever
-/// the operator pressed at the same moment.
+/// The work arm is polled first: a shepherd that answered answered.
 async fn raced<F, T, W>(interrupt: &mut F, work: W) -> Option<T>
 where
     F: std::future::Future<Output = ()> + Unpin,
@@ -672,9 +639,8 @@ async fn bleats_over(
 
     // Backlog before subscribing, so a line in the gap is missed rather
     // than printed twice. The tail's exit code is discarded: an unreadable
-    // log for one sheep must not stop the follow over the whole flock. A host
-    // that gave no answer to a read stops it, since it would give none to the
-    // subscribe either.
+    // log for one sheep must not stop the flock, but a host that answered
+    // nothing to a read would answer nothing to the subscribe either.
     if args.lines > 0 {
         let backlog = tail_log_files(streams, quiet, &cache, &selector, args, source);
         match raced(&mut interrupt, backlog).await {

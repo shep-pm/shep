@@ -42,9 +42,6 @@ fn access_cell(access: Option<&DogAccess>) -> String {
 /// The dogs half of a flock listing: the `ProcessInfo`s whose `dog` marker
 /// is set.
 ///
-/// Every column the two tables share sits in the same order; each table's own
-/// columns come last:
-///
 /// ```text
 /// common:  ID  NAME  STATUS  PID  RESTARTS  EXIT  CPU  MEM  UPTIME
 /// sheep:   ... + FOLD  SMIT
@@ -167,11 +164,9 @@ impl Render for DogRows {
 /// `DogActionRow`'s STATUS cell and the SHEPHERD cell beside it, as one
 /// choice.
 ///
-/// The two are never independent: a dog verb reaches for one of its own
-/// `no shepherd` sentences exactly when no shepherd answered, and for a
-/// status the shepherd reported exactly when it did. Holding the pair in one
-/// type is what makes the other combination a type error instead of a field
-/// no test read.
+/// The two are never independent: a dog verb has a `no shepherd` sentence
+/// exactly when no shepherd answered. Holding the pair in one type makes
+/// the other combination a type error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DogActionStatus {
     /// No shepherd answered: the verb wrote the config and reports what the
@@ -203,14 +198,9 @@ impl DogActionStatus {
 /// one-row reply: what the config edit and, if a shepherd was reached, the
 /// resulting RPC did.
 ///
-/// [`Self::shepherd_acted`] and [`Self::status`] are how a `--format json`
-/// consumer tells the two outcomes apart. Both come out of the one
-/// [`DogActionStatus`] the row is built from, so they cannot disagree.
-///
-/// `source` keeps the whole [`DogSource`], so JSON carries an adopted
-/// binary's path; the SOURCE column renders the kind alone, which is all a
-/// column has room for. `None` is a removal's case alone: it reads the source
-/// before the edit forgets it, and a dog that was never adopted has none.
+/// `source` keeps the whole [`DogSource`] so JSON carries an adopted
+/// binary's path; the SOURCE column renders the kind alone. `None` is a
+/// removal's case alone: a dog that was never adopted has none.
 #[derive(Debug, Serialize)]
 pub struct DogActionRow {
     name: String,

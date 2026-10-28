@@ -2,15 +2,12 @@
 //! [`deliver`] that POSTs a rendered body to it.
 //!
 //! Hand-rolled HTTP/1.1 over `tokio-rustls`, not `reqwest`: fewer
-//! transitive dependencies and no C toolchain. The connect, TLS setup,
-//! write and status-line check live in `crate::fetch`, shared with
-//! `shep dogs --available`.
+//! transitive dependencies and no C toolchain. The connect, TLS and
+//! status-line check live in `crate::fetch`.
 //!
 //! `http://` is accepted for a [`Sink::Json`] endpoint; only
-//! [`require_usable_url`] rejects it, for Discord and Slack. No
-//! redirect is ever followed. This module's own tests exercise only the
-//! plaintext path; the TLS handshake is `rustls`'s tested surface, not
-//! this module's.
+//! [`require_usable_url`] rejects it, for Discord and Slack. No redirect
+//! is ever followed.
 
 use core::fmt;
 use std::time::Duration;
@@ -26,14 +23,10 @@ use crate::terminal_safe;
 /// One named entry under `[bark.sinks]`.
 ///
 /// `Debug` is REDACTED (IR-41): every variant carries a webhook URL, and a
-/// Discord or Slack webhook URL is a bearer credential — anyone holding it
-/// can post to that channel. A sink printed into a log, a panic message or
-/// an error chain leaks it to whoever reads the log.
-///
-/// `#[shep(secret)]` says the same thing to a schema that the `Debug` says
-/// to a log. The mark travels with the field, so it is in every schema that
-/// holds a sink: this type's own, and [`super::BarkConfig`]'s under
-/// `$defs/Sink`.
+/// Discord or Slack webhook URL is a bearer credential. A sink printed into
+/// a log, a panic message or an error chain leaks it to whoever reads it.
+/// `#[shep(secret)]` says the same to a schema, and travels with the field
+/// into [`super::BarkConfig`]'s `$defs/Sink`.
 #[dog_config]
 #[derive(Clone, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -145,19 +138,13 @@ impl core::error::Error for SinkConfigError {}
 /// `http://`, or any sink carrying credentials before the host.
 ///
 /// A Discord or Slack webhook url is the bearer credential; `http://`
-/// would let anyone on the wire capture it. discord.com and slack.com
-/// serve `https://` only, so no legitimate use is removed.
-/// [`Sink::Json`] is left permissive: an operator's own endpoint may
-/// legitimately have no TLS.
-///
-/// One function rather than two called in sequence: the caller asks
-/// whether this sink's url is usable, and the next rule to be added
-/// belongs here rather than in a line somebody has to remember to add at
-/// the call site.
+/// would let anyone on the wire capture it. Those hosts serve `https://`
+/// only, so no legitimate use is removed. [`Sink::Json`] is left
+/// permissive: an operator's own endpoint may have no TLS.
 ///
 /// # Errors
 /// - [`SinkConfigError::UrlCredentials`]: `sink`'s url carries a `user@`
-///   or `user:pass@` prefix, whichever kind it is.
+///   or `user:pass@` prefix.
 /// - [`SinkConfigError::InsecureScheme`]: `sink` is [`Sink::Discord`] or
 ///   [`Sink::Slack`] with a url not starting `https://`.
 pub fn require_usable_url(name: &str, sink: &Sink) -> Result<(), SinkConfigError> {
@@ -275,9 +262,7 @@ pub fn render_body(sink: &Sink, bark: &Bark) -> Result<String, SinkError> {
 ///
 /// A single forward pass, never sequential `.replace()` calls: a
 /// substituted value can itself contain another token's literal text (a
-/// sheep named `{at_ms}`), and a sequential replace would rewrite it on a
-/// later pass. `rest` only shrinks from the front, so a token can never
-/// match inside text already written to `out`.
+/// sheep named `{at_ms}`).
 fn substitute(template: &str, bark: &Bark) -> String {
     let tokens: [(&str, String); 4] = [
         ("{subject}", json_escape(&bark.subject)),
@@ -310,10 +295,8 @@ fn substitute(template: &str, bark: &Bark) -> String {
 /// surrounding quotes.
 ///
 /// serde_json's own writer rather than an escape table of our own:
-/// [`substitute`] hands its output to [`render_body`], which parses the
-/// result with serde_json, so the escaping and the parsing have to agree
-/// on every character. Going through the writer makes them agree by
-/// construction instead of by maintenance.
+/// [`render_body`] parses the result with serde_json, so the escaping and
+/// the parsing have to agree on every character.
 fn json_escape(s: &str) -> String {
     let quoted = serde_json::to_string(s).expect("a str always serializes as a JSON string");
     quoted[1..quoted.len() - 1].to_owned()
@@ -372,17 +355,12 @@ async fn deliver_inner(target: &Target, body: &str) -> Result<(), SinkError> {
 const MAX_DIAGNOSTIC_BYTES: usize = 1024;
 
 /// Reads the status line off `stream`; a 2xx reply is read no further. A
-/// non-2xx reads past the remaining header lines to the blank line that
-/// ends them, or to EOF, then takes one more line for
-/// [`SinkError::Status`]'s diagnostic.
-///
-/// The status line is [`fetch::parse_status_line`]'s to judge, and the
-/// diagnostic is the peer's wording, so it is
-/// [`terminal_safe::sanitise`]d here, where it becomes an owned string.
+/// non-2xx reads past the headers to the blank line that ends them, or to
+/// EOF, then one more line for [`SinkError::Status`]'s diagnostic.
 ///
 /// The peer sizes neither, so both are bounded: the status line and header
-/// block share [`fetch::MAX_HEADER_BYTES`] through a `Take`, and the
-/// diagnostic is cut at [`MAX_DIAGNOSTIC_BYTES`].
+/// block share [`fetch::MAX_HEADER_BYTES`], the diagnostic
+/// [`MAX_DIAGNOSTIC_BYTES`].
 async fn read_response<S: AsyncRead + Unpin>(stream: S) -> Result<(), SinkError> {
     let mut reader = BufReader::new(stream).take(fetch::MAX_HEADER_BYTES as u64);
     let mut status_line = String::new();

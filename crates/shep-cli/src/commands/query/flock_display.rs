@@ -118,8 +118,7 @@ pub async fn flock_local(
     flock_from(client, streams, None, Some(paths)).await
 }
 
-/// [`flock`] for the shepherd `origin` names, as typed after `--host`, or this
-/// machine's for `None`.
+/// [`flock`] for the shepherd `origin` names, or this machine's for `None`.
 ///
 /// Under `--format json` every row of a named origin carries it; see
 /// [`print_listing`].
@@ -157,8 +156,7 @@ pub async fn flock_from(
 /// The one place a local listing and a host's go through, so a fleet listing
 /// prints each shepherd exactly as `shep flock` prints one.
 ///
-/// A JSON listing with an `origin` tags every row with it, and one without
-/// is byte-identical to what [`emit_flock`] writes.
+/// A JSON listing with an `origin` tags every row with it.
 pub(super) fn print_listing(
     streams: &mut Streams<'_>,
     procs: Vec<ProcessInfo>,
@@ -191,17 +189,10 @@ pub(super) fn print_listing(
 /// What the shepherd says the machine is doing, or `None` where it will not
 /// say.
 ///
-/// The two answers inside the `Some` are different claims and a reader
-/// renders them differently: a reading, and a platform `sysinfo` cannot read
-/// at all.
+/// The two answers inside the `Some` are different claims: a reading, and a
+/// platform `sysinfo` cannot read at all.
 ///
-/// The outer `None` is a shepherd that refused the request, which today
-/// means one built before `Request::HostUsage` existed. It decodes
-/// `Request::Unrecognized` and answers `RpcErrorCode::Unsupported` by name,
-/// and the listing then prints no strip: exactly what `shep flock` printed
-/// before this existed. Not a warning line, which would fire on every
-/// listing for as long as the skew lasts, on the verb an operator types
-/// most.
+/// The outer `None` is a shepherd that refused the request, and prints no strip.
 pub(super) async fn host_usage(client: &Client) -> Option<Option<HostUsage>> {
     match client.request(Request::HostUsage).await {
         Ok(Response::HostUsage(usage)) => Some(usage),
@@ -231,20 +222,10 @@ pub(super) fn sheep_flourish(listing: &[ProcessInfo]) -> Option<String> {
 /// `shep flock --follow`: the same listing, painted over itself every
 /// `interval` until the operator interrupts it or the shepherd goes.
 ///
-/// Each redraw is one `Request::ListFlock` rendered into a buffer and then
-/// written over the screen in a single write. Rendering before clearing is
-/// what keeps the terminal from sitting blank for the length of the round
-/// trip. The main screen, not the alternate one, so the last frame is still
-/// there afterwards. No flourish, which redrawn every second is noise.
+/// Each redraw is one `Request::ListFlock` rendered into a buffer and
+/// written in a single write, so the terminal never sits blank mid-round-trip.
 ///
-/// An interrupt ends the follow at [`ExitCode::Success`], a shepherd that
-/// goes away mid-follow ends it carrying that refusal's own code. The two
-/// must not read as the same thing. Over a host the two arrive together, so
-/// a lost link waits [`crate::remote::HOST_INTERRUPT_GRACE`] for the interrupt
-/// before it counts as a lost shepherd.
-///
-/// Why each of those beat its alternative: `docs/decisions.md`, "Following
-/// the flock".
+/// An interrupt ends the follow at [`ExitCode::Success`]; a lost shepherd does not.
 pub(crate) async fn flock_follow(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -260,8 +241,7 @@ pub(crate) async fn flock_follow(
     // The hook covers a panic, the guard covers every other way out of this
     // function, and `term::restore` is documented idempotent because a panic
     // fires both. The guard shows the cursor and stops there: hiding it is
-    // the only change this verb makes to the terminal, where `lookout` also
-    // takes raw mode and the alternate screen.
+    // the only change this verb makes to the terminal.
     term::install_panic_hook();
     let _cursor = term::RestoreGuard::with_action(|| {
         let _ = crossterm::execute!(io::stdout(), Show);
@@ -307,8 +287,7 @@ pub(crate) async fn flock_follow(
         // One reading, used twice. Measured before the frame is built
         // rather than after it, because the strip fits itself to the window
         // and a window resized between redraws has to be read again. Two
-        // readings would let a resize land between them, fitting the strip
-        // to the old width and then trimming the frame to the new one.
+        // readings would let a resize land between them.
         let size = crossterm::terminal::size().ok();
         // A width of zero is not a window. `terminal_fitting::fit_rows` answers that case for
         // itself, further down, by declining to trim at all.
@@ -329,9 +308,7 @@ pub(crate) async fn flock_follow(
         // Not discarded. A follow whose terminal has gone (the emulator
         // closed, an ssh session dropped) writes into a dead descriptor
         // forever otherwise, and keeps asking the shepherd for a listing it
-        // cannot paint. `write_outcome` keeps a broken pipe at
-        // `ExitCode::Success`, which is the reader leaving rather than a
-        // failure.
+        // cannot paint.
         let painted = paint(streams.out, &frame);
         if painted.is_err() {
             return write_outcome(painted);
@@ -447,13 +424,11 @@ mod tests {
     }
 
     /// The version-skew arm, and the reason a refusal is silent: a shepherd
-    /// built before `Request::HostUsage` existed decodes
-    /// `Request::Unrecognized` and answers `RpcErrorCode::Unsupported` by
-    /// name.
+    /// built before `Request::HostUsage` existed answers
+    /// `RpcErrorCode::Unsupported` by name.
     ///
     /// fails if a refusal starts failing the verb, or starts being told
-    /// apart from a reading of `None`, which is a platform answer rather
-    /// than a version one.
+    /// apart from a reading of `None`.
     #[tokio::test]
     async fn a_shepherd_that_refuses_the_host_request_answers_for_no_strip() {
         let dir = tempfile::tempdir().unwrap();

@@ -121,15 +121,13 @@ impl core::error::Error for AdoptRefusal {}
 /// reboot, from whatever directory the init system gave it. Checks in order,
 /// each refusing before the next: existence, file-ness, the execute bit,
 /// [`writability`], then the manifest probe, and `--version` and `--schema`
-/// when it has no manifest. A probe runs the binary under `home` and `name`,
-/// the environment the adopted dog gets.
+/// when it has no manifest.
 ///
 /// # Errors
 /// [`AdoptRefusal`] when the path does not resolve, is not a file this
 /// kernel will exec, answers a protocol this shep cannot speak, or declares
 /// `validate` without the channel [`AdoptRefusal::ValidateWithoutChannel`]
-/// needs. Silence is not an error: unknown protocol, [`DogSchema::Silent`]
-/// schema.
+/// needs. Silence is not an error.
 pub fn vet_binary(path: &Path, home: &Path, name: &str) -> Result<VettedBinary, AdoptRefusal> {
     vet_binary_within(path, home, name, VERSION_BUDGET)
 }
@@ -232,13 +230,10 @@ fn lookup_refusal(err: std::io::Error) -> AdoptRefusal {
 /// The whole environment a dog is run with here: what the daemon would give
 /// it, and nothing else.
 ///
-/// Every caller pairs this with `env_clear`, and both of them run a binary
-/// shep did not write: `ask`'s adopt probe, and `hook::run_on_remove`.
-/// `SHEP_HOME` and `SHEP_DOG_NAME` are in here rather than left to the
-/// caller so a third variable cannot reach one spawn and miss the other.
+/// Every caller pairs this with `env_clear`, and both run a binary shep did
+/// not write. `SHEP_HOME` and `SHEP_DOG_NAME` are here, not left to the caller.
 ///
-/// Shares the allowlist with `shep_daemon::assemble::environment_inheritance::inherited_env`
-/// through [`shep_core::inherited_env`].
+/// Shares the allowlist through [`shep_core::inherited_env`].
 pub(crate) fn dog_env(home: &Path, name: &str) -> Vec<(String, OsString)> {
     dog_env_with(home, name, INHERITED, std::env::var_os)
 }
@@ -333,11 +328,10 @@ fn ask(
 /// SIGKILLs the probe, and on unix everything it forked
 ///
 /// A dog that does not recognise the flag runs its ordinary job instead, so
-/// a probe can fork before it answers. `Child::kill` reaches only the
-/// leader. A descendant that calls `setsid` leaves the group and survives.
+/// a probe can fork before it answers. A descendant that calls `setsid`
+/// leaves the group and survives.
 ///
-/// Failure is never reported: an empty group answers `ESRCH`, and the
-/// caller's answer is the same either way.
+/// Failure is never reported: an empty group answers `ESRCH`.
 fn kill_probe_tree(child: &mut Child) {
     // `Child` skips the syscall once it holds a status, so a child already
     // reaped here is never signalled through a pid the OS may have recycled.
@@ -379,15 +373,10 @@ fn ask_version(
 /// Asks `path` for its config schema with [`SCHEMA_FLAG`], and reads the
 /// answer as JSON.
 ///
-/// `pub(crate)`: `shep lookout`'s dog config pane calls this too.
-///
 /// No `Result`: nothing a candidate does to this probe can refuse an adopt.
-/// A failure to spawn arrives as [`DogSchema::Silent`], like a dog that has
-/// never heard of the flag.
+/// A failure to spawn arrives as [`DogSchema::Silent`].
 ///
-/// The answer is written down by nothing. `cargo install` replaces a dog's
-/// binary with nothing watching, and a stale schema mislabels which field is
-/// a credential.
+/// The answer is written down by nothing: a stale schema mislabels a credential.
 pub(crate) fn ask_schema(path: &Path, home: &Path, name: &str, budget: Duration) -> DogSchema {
     // Empty output is a dog with no schema, not a schema that failed to
     // parse: empty input is invalid JSON, so without the guard the ordinary
@@ -470,17 +459,12 @@ impl core::fmt::Debug for DogSchema {
 }
 
 /// How long [`ask`] gives a binary to answer one probe flag, and separately
-/// how long it then waits for that answer to reach the reader thread. Each
-/// flag is asked in its own spawn and gets the whole budget.
+/// how long it waits for that answer to reach the reader thread. Each flag
+/// is asked in its own spawn and gets the whole budget.
 ///
-/// One second, against the milliseconds a `println!` and an exit take. The
-/// headroom is for a cold, dynamically linked binary on a loaded machine,
-/// where a probe takes 180 to 300ms against single-digit milliseconds idle.
-/// Too short records an unknown protocol for a slow dog; too long stalls
-/// every adopt of the dogs that exist today, none of which answer at all.
+/// The headroom is for a cold, dynamically linked binary on a loaded machine.
 ///
-/// `restart` asks with the same number. A binary that hangs is killed at the
-/// budget and the restart proceeds unwarned.
+/// `restart` asks with the same number.
 pub(crate) const VERSION_BUDGET: Duration = Duration::from_secs(1);
 
 /// How often [`answer_text`] polls within [`VERSION_BUDGET`].
@@ -488,14 +472,10 @@ const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 /// The most a probe will read from a candidate, per spawn.
 ///
-/// One mebibyte, against a version answer of two lines and a JSON Schema of
-/// single-digit kilobytes. Without a bound the read is limited only by the
-/// budget and the candidate's write speed, which reached roughly 290MB
-/// resident for a second of spew.
-///
-/// Truncation is never a refusal: a cut-off version answer is the unknown
-/// protocol it already was, and a cut-off schema is
-/// [`DogSchema::Unreadable`].
+/// A version answer is two lines and a JSON Schema is single-digit
+/// kilobytes. Without a bound the read is limited only by the budget and
+/// the candidate's write speed. Truncation is never a refusal: a cut-off
+/// schema is [`DogSchema::Unreadable`].
 const PROBE_OUTPUT_LIMIT: u64 = 1024 * 1024;
 
 /// Drains `stdout` to end on a thread, handing the text back through the
@@ -503,9 +483,7 @@ const PROBE_OUTPUT_LIMIT: u64 = 1024 * 1024;
 ///
 /// A thread, because neither read can be bounded: before the candidate
 /// exits a read blocks until it writes, and after it exits a read blocks
-/// for as long as anything it spawned still holds the inherited pipe open.
-/// On the timeout path the thread ends when the pipe closes, holding only a
-/// `String` and a sender.
+/// for as long as anything it spawned holds the inherited pipe open.
 fn read_in_background(stdout: std::process::ChildStdout) -> Receiver<String> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -521,18 +499,13 @@ fn read_in_background(stdout: std::process::ChildStdout) -> Receiver<String> {
     rx
 }
 
-/// Waits, bounded by `budget`, for `child` to answer, and returns what it
-/// printed.
+/// Waits, bounded by `budget`, for `child` to answer, and returns its output.
 ///
 /// Twice `budget` is the worst case: the wait for the exit and the wait for
-/// the reader thread's text are bounded separately. Only a child that has
-/// already exited successfully reaches the second, which is there for a
-/// grandchild still holding the inherited pipe open.
+/// the reader thread's text are bounded separately.
 ///
-/// `None` is no answer, never a refusal: no pipe to read, no exit inside the
-/// budget, or a non-zero exit. `docs/dogs.md` asks a dog to answer on stdout
-/// and exit 0, so lines from a run that then failed are not an answer.
-/// `Some` may still be empty.
+/// `None` is no answer, never a refusal: no pipe, no exit inside the budget,
+/// or a non-zero exit.
 fn answer_text(
     child: &mut Child,
     reading: Option<Receiver<String>>,
@@ -615,9 +588,7 @@ const PROBE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_micro
 ///
 /// macOS's `posix_spawn` fast path is not synchronous for an exec-format
 /// failure: the fork has already happened when `spawn` returns `Ok`, and a
-/// file the kernel cannot recognize is re-executed through `/bin/sh`, which
-/// refuses it and exits `126`. That happens within a few milliseconds, well
-/// inside [`PROBE_BUDGET`], while a runnable binary is still running.
+/// file the kernel cannot recognize is re-executed through `/bin/sh`.
 #[cfg(target_os = "macos")]
 fn macos_deferred_exec_failure(child: &mut std::process::Child) -> Option<String> {
     let start = std::time::Instant::now();
@@ -743,20 +714,12 @@ pub(super) fn warn_unreadable_schema(streams: &mut Streams<'_>, name: &str) {
 const DOG_BINARY_SKEW_NOTICE: &str = "dog_binary_skew";
 
 /// Warns, before `restart` sends anything, about a dog whose binary on disk
-/// speaks a protocol below [`MIN_SUPPORTED`], the floor this shepherd's
-/// handshake still accepts.
+/// speaks a protocol below [`MIN_SUPPORTED`].
 ///
 /// The running dog works, the binary it would come back from does not, and
-/// the two meet at the next restart. A warning, never a refusal: the binary
-/// may be exactly what the operator just installed. A dog built against a
-/// newer protocol than this shep is inside the window and gets no warning.
-/// A dog that does not answer [`VERSION_FLAG`] is unknown rather than stale
-/// and gets nothing.
+/// the two meet at the next restart. A warning, never a refusal.
 ///
-/// Only a `Name` selector is probed: a built-in dog has no `[daemon]
-/// adopted_dogs` entry, an `all` or `/regex/` sweep names no dog, and an
-/// `Id` would cost a round trip. `budget` is a parameter for the reason
-/// [`vet_binary_within`] is.
+/// Only a `Name` selector is probed: a built-in dog has no entry to probe.
 pub fn warn_of_a_dog_a_restart_would_break(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,

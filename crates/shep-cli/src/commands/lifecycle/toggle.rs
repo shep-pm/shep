@@ -163,11 +163,9 @@ fn names_a_dog(paths: &ShepPaths, name: &str) -> bool {
 /// The sheep half of [`toggle`], against a connected shepherd
 ///
 /// An app name, a fold, a regex or `all` is sent as typed: the shepherd owns
-/// what a sweep reaches. An id or `name:slot` is refused here, naming the
-/// app, so an operator never marks a whole app by naming one instance of it.
+/// what a sweep reaches. An id or `name:slot` is refused here, naming the app.
 ///
-/// `dogs` is every name a dog answers to. A name that matches nothing is
-/// refused with them listed, since a mistyped dog is the usual cause.
+/// A name that matches nothing is refused with `dogs` listed.
 pub(crate) async fn toggle_sheep(
     client: &Client,
     streams: &mut Streams<'_>,

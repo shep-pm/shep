@@ -235,11 +235,9 @@ pub(super) async fn one_shot_sink(
 /// A sink that accepts one connection and then never answers, plus a
 /// signal that fires the moment it has accepted.
 ///
-/// The signal lets a caller assert an order rather than a duration,
-/// which would be a claim about how a runner schedules two tasks.
-///
-/// The hang is permanent. A caller that needs the delivery hanging on it
-/// to end takes [`slow_sink_with_release`] and sends on its handle.
+/// The signal lets a caller assert an order rather than a duration, which
+/// would be a claim about how a runner schedules two tasks. The hang is
+/// permanent; [`slow_sink_with_release`] ends it.
 pub(super) async fn slow_sink() -> (SocketAddr, tokio::sync::oneshot::Receiver<()>) {
     let (addr, connected, release) = slow_sink_with_release().await;
     // Dropped without sending, which is how a caller asks for no release.
@@ -251,10 +249,7 @@ pub(super) async fn slow_sink() -> (SocketAddr, tokio::sync::oneshot::Receiver<(
 ///
 /// Sending on `release` makes the sink task let go of the accepted
 /// connection, so a delivery waiting on it finishes on that rather than
-/// sitting out its own `sink_timeout`. A test that asserts an order and
-/// then wants the delivery to finish can hold `sink_timeout` far above
-/// every guard in it, which is what turns the order into a claim about
-/// the delivery rather than about how fast the machine is.
+/// sitting out its own `sink_timeout`.
 pub(super) async fn slow_sink_with_release() -> (
     SocketAddr,
     tokio::sync::oneshot::Receiver<()>,

@@ -3,8 +3,7 @@
 //!
 //! [`serve`] does both halves, and every refusal and notice before either:
 //! the registered sheep is this same binary re-invoked with `--foreground`
-//! ([`sheep_args`]), so the shepherd's spawn of it runs back through here
-//! and re-derives them against its own stderr, where `shep bleats` reads.
+//! ([`sheep_args`]), so the shepherd's spawn runs back through here.
 //!
 //! Dispatched from `lib.rs` ahead of the shared `$SHEP_HOME`-gated, locked
 //! block: `--foreground` runs until signalled, and a `StdoutLock` held for
@@ -179,11 +178,9 @@ fn follow_symlinks_notice(follow_symlinks: bool) -> Option<String> {
 /// `std::env::args`
 ///
 /// The operator's cwd is not the shepherd's, and one canonical flag order
-/// makes `shep describe` show the same line however it was typed. `root`
-/// and `auth` must both arrive canonical; this only emits what it is
-/// handed. `--name` and `--fold` are registration-time facts and stay out.
-/// Every worker-time flag goes in, `--follow-symlinks` included: a restart
-/// that dropped it would silently change what the worker serves.
+/// makes `shep describe` show the same line however it was typed.
+///
+/// `--name` and `--fold` are registration-time facts and stay out.
 fn sheep_args(root: &Path, auth: Option<&Path>, args: &ServeArgs) -> Vec<String> {
     let mut out = vec!["serve".to_string(), root.display().to_string()];
     out.push("--port".to_string());

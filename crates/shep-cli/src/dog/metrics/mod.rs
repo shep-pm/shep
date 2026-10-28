@@ -7,8 +7,7 @@
 //! handshake. The channel samples in [`Reading::samples`] are kept between
 //! scrapes by [`samples::SampleStore`], which [`feed::run`] fills off the bus
 //! and which drops a sender's samples when that sender stops or restarts.
-//! [`collect_reading`] is the poll, and both the scrape server and the OTLP
-//! exporter call it.
+//! [`collect_reading`] is the poll, and both renderers call it.
 
 pub mod exposition;
 
@@ -115,16 +114,9 @@ pub(crate) fn sample_host() -> Option<HostReading> {
 /// [`sample_host`] on the blocking pool, awaited.
 ///
 /// The walk is one long blocking sweep of the process table. Run inline
-/// inside an `async fn` it stalls every other task on that tokio worker
-/// for the length of the walk — the dog's own shepherd channel, or a
-/// model's next tool call, included — so both async callers (this dog's
-/// `handle_connection` and the whistle's `get_metrics`) come here
-/// instead. The function borrows nothing from the async context, so it
-/// moves as it stands.
-///
-/// A panic inside the pool reads as `None`: `sample_host` is sysinfo
-/// calls that do not panic, so this cannot happen, and answering without
-/// the host block beats taking the caller down with it.
+/// inside an `async fn` it stalls every other task on that tokio worker,
+/// so both async callers come here instead. A panic inside the pool reads
+/// as `None`.
 pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
     tokio::task::spawn_blocking(sample_host)
         .await
@@ -136,11 +128,8 @@ pub(crate) async fn sample_host_off_worker() -> Option<HostReading> {
 /// dog has kept.
 ///
 /// The one reading both paths take: [`handle_connection`] renders it as
-/// Prometheus text and the OTLP exporter encodes it as a POST body, so a
-/// collector and a scraper see the same numbers.
-///
-/// `store` is snapshotted against the listing this call just took, which is
-/// what lets the same call drop a sender the flock no longer reports.
+/// Prometheus text and the OTLP exporter encodes it as a POST body.
+/// `store` is snapshotted against the listing this call just took.
 ///
 /// # Errors
 /// - [`RequestError`], as [`ReconnectingClient::list_flock`] gives it: the
@@ -170,20 +159,10 @@ pub(crate) async fn collect_reading(
 
 /// Runs the metrics dog until it is signalled.
 ///
-/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`,
-/// or until its shepherd has been gone for a whole
-/// [`SHEPHERD_RETURN_BUDGET`](super::SHEPHERD_RETURN_BUDGET).
-/// `SIGTERM` is the first rung of the shepherd's kill ladder, so a dog
-/// deaf to it rides that ladder to `SIGKILL` on every `shep disable`.
-///
-/// The third exit is new, and it is a behaviour change rather than a
-/// tightening: this dog used to stay up for as long as the machine did,
-/// reconnecting against an address nobody would answer. It now exits
-/// `DaemonUnreachable`.
-///
-/// A refused bind is fatal: a dog running but bound to nothing looks
-/// healthy from the outside. So is a refused OTLP endpoint: it takes
-/// `InvalidConfig`, the same code a bad `bind` takes.
+/// Binds [`MetricsConfig::bind`] and serves until `SIGINT` or `SIGTERM`, or
+/// until its shepherd has been gone for a whole
+/// [`SHEPHERD_RETURN_BUDGET`](super::SHEPHERD_RETURN_BUDGET). A refused bind
+/// or a refused OTLP endpoint is fatal, the latter taking `InvalidConfig`.
 pub async fn run(runtime: DogRuntime) -> ExitCode {
     let config = match runtime.config::<MetricsConfig>() {
         Ok(config) => config,
@@ -361,15 +340,12 @@ mod tests {
         }
 
         /// fails if a metrics dog whose shepherd is gone waits for it
-        /// forever. Nothing else here would notice: this dog touches its
-        /// client only when something scrapes it, so an unscraped one sits
-        /// reconnecting against an address nobody answers, and attaches
-        /// itself to whatever shepherd binds that socket next, beside that
-        /// shepherd's own metrics dog.
+        /// forever. This dog touches its client only when something scrapes
+        /// it, so an unscraped one sits reconnecting against an address
+        /// nobody answers.
         ///
-        /// Also fails if it exits the moment the connection drops, which is
-        /// the whole distinction: a reload drops the connection on purpose
-        /// and this dog is meant to cross it.
+        /// Also fails if it exits the moment the connection drops: a reload
+        /// drops it on purpose and this dog crosses it.
         #[tokio::test]
         async fn a_metrics_dog_whose_shepherd_is_gone_waits_its_budget_and_then_exits() {
             let dir = tempfile::tempdir().unwrap();

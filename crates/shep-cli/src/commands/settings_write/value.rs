@@ -109,10 +109,8 @@ fn spelling(float: f64) -> &'static str {
 /// holds none.
 ///
 /// TOML spells `nan`, `inf` and `-inf`, and the JSON the shepherd's requests
-/// carry have no cell: `serde_json` renders a non-finite number as `null`. A
-/// value that parses as TOML's `nan` would arrive at the flock as a write of
-/// nothing, printing `null` as the new value and clearing the key it aimed at
-/// wherever the daemon takes a null.
+/// carry have no cell: `serde_json` renders a non-finite number as `null`,
+/// which clears the key it aimed at.
 fn non_finite(value: &TomlValue) -> Option<String> {
     under("", value).map(|path| path.join("."))
 }

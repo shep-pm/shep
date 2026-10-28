@@ -12,11 +12,8 @@ use crate::output::Streams;
 /// The handover arm does not stop the flock, so nothing here may announce that
 /// it did or assume a sheep has a new pid.
 ///
-/// `restored` says which arm ran, and decides how the flock is asked for.
-/// Under the stop arm the successor has already restored the roll, so
-/// `Request::Muster` spawns nothing new. Under the handover arm it must not
-/// muster: a successor answers its socket as soon as the listener is carried,
-/// before its rehydrate has finished, so `ListFlock` asks for nothing.
+/// `restored` says which arm ran. Under the handover arm `ListFlock` asks for
+/// nothing: a successor answers its socket before its rehydrate has finished.
 pub(super) async fn report_reload(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -62,11 +59,7 @@ const DOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(
 /// from all of them.
 ///
 /// The waiting is the point: a dog's recorded crate version describes the
-/// process that was running when it connected, so a reading taken before the
-/// reload answers for the wrong daemon.
-///
-/// Silent unless something is wrong. A shepherd that will not answer is left
-/// alone: the reload has already succeeded by the time this runs.
+/// process running when it connected. Silent unless something is wrong.
 async fn report_dog_staleness(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -122,16 +115,13 @@ fn stale_dog_report(stale: &[String], daemon_version: &str) -> String {
     }
 }
 
-/// The sentence for dogs that had not answered within the reload's settle
-/// wait.
+/// The sentence for dogs that had not answered within the settle wait.
 ///
-/// Silence would read like a clean reload: the reading was taken before these
-/// dogs answered, so it speaks for the rest of the flock and not for them.
+/// Silence would read like a clean reload: the reading was taken before
+/// these dogs answered, so it speaks for the rest of the flock.
 ///
-/// The ladder restarts a silent dog at
-/// [`shep_daemon::dogs::DOG_SILENCE_BUDGET`] and marks it stale five seconds
-/// later, both after this reload's own wait, so a dog stuck on a protocol it
-/// cannot speak lands here rather than in [`stale_dog_report`].
+/// A dog stuck on a protocol it cannot speak lands here rather than in
+/// [`stale_dog_report`].
 fn unsettled_dog_report(pending: &[String], wait: std::time::Duration) -> String {
     let budget = shep_daemon::dogs::DOG_SILENCE_BUDGET;
     match pending {

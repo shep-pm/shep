@@ -45,10 +45,9 @@ pub(crate) fn unit_path_for(init: Init, user: &str) -> PathBuf {
 /// was not, else a message naming `sudo_user` and showing `spec.path` in
 /// full, so the operator can check it against that user's login `PATH`.
 ///
-/// A pure function of the two values, not an environment read of its own:
-/// this crate is `#![forbid(unsafe_code)]`, so a test cannot call
-/// `std::env::set_var` to establish an ambient `$SUDO_USER` for [`plan`](crate::commands::startup::target_resolution::plan)
-/// to read.
+/// A pure function of its two values, not an environment read of its own:
+/// a test cannot call `std::env::set_var` to establish an ambient
+/// `$SUDO_USER` for [`plan`](crate::commands::startup::target_resolution::plan) to read.
 pub(super) fn secure_path_warning(sudo_user: Option<&str>, spec: &UnitSpec) -> Option<String> {
     let sudo_user = sudo_user?;
     Some(format!(
@@ -148,8 +147,7 @@ struct OpenrcRunning(bool);
 /// tie: `/run/systemd/system` is what `sd_booted(3)` checks, so both
 /// present means openrc leftovers on a systemd host, not the reverse.
 ///
-/// [`current_init`]'s Linux arm is the only non-test caller; `#[cfg]`-ed
-/// away on every other target rather than blanket-`#[allow(dead_code)]`ed.
+/// [`current_init`]'s Linux arm is the only non-test caller.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const fn linux_init(systemd: SystemdBooted, openrc: OpenrcRunning) -> Option<Init> {
     if systemd.0 {
@@ -166,11 +164,8 @@ const fn linux_init(systemd: SystemdBooted, openrc: OpenrcRunning) -> Option<Ini
 ///
 /// Linux is a runtime probe: `target_os` cannot tell systemd and openrc
 /// apart. The ordering lives in [`linux_init`]; this function is the two
-/// filesystem reads that feed it. Every other target is a compile-time
-/// fact.
-///
-/// A Linux container with no `/run/systemd/system` and no openrc is
-/// refused rather than guessed at; `--init` overrides this entirely.
+/// filesystem reads that feed it. A container with neither is refused
+/// rather than guessed at; `--init` overrides this entirely.
 pub(super) fn current_init() -> Option<Init> {
     #[cfg(target_os = "linux")]
     {

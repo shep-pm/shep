@@ -229,13 +229,10 @@ fn taking_dog_sections_keeps_an_inline_table_dog() {
 }
 
 /// Three keys under `[daemon]` are written by the dog verbs and hand-edited
-/// by operators, and all three used to `.expect()` on a shape they did not
-/// write. `shep dog enable` on a file holding `daemon = "loud"` panicked,
-/// while `shep kv set daemon.log_json` refused the same file politely, because
-/// the scalar setters went through `section_table_mut` and these did not.
+/// by operators, and all three refuse a shape they did not write instead of
+/// `.expect()` on it.
 ///
-/// One case each, and each asserts the file is left alone: a refusal that
-/// half-writes is worse than the panic it replaced.
+/// One case each, and each asserts the file is left alone.
 #[test]
 fn a_hand_edited_daemon_key_is_refused_rather_than_panicked_on() {
     let cases = [

@@ -50,17 +50,13 @@ async fn a_pump_reports_the_descriptors_it_holds() {
     assert_eq!(distinct.len(), 4, "four descriptors, four numbers: {fds:?}");
 }
 
-/// Fails if both pipes filled to capacity cannot be drained.
-///
 /// The bound [`super::super::FINAL_DRAIN`] rests on: a reaped child cannot
-/// leave more than its pipes' capacity behind, so two full pipes is the
-/// worst case. Both streams, since `final_drain` selects between them.
-/// Runs over real pipes, since the kernel's capacity is the one that
-/// matters; the line count is read off the fill rather than assumed.
+/// leave more than its pipes' capacity behind, so two full pipes is the worst
+/// case. Both streams, since `final_drain` selects between them. Runs over
+/// real pipes, since the kernel's capacity is the one that matters.
 ///
-/// Waits [`PUMP_DEADLINE`], not [`super::super::FINAL_DRAIN`]: binding to
-/// the latter would assert this machine's scheduling speed rather than
-/// the drain's completeness.
+/// Waits [`PUMP_DEADLINE`], not [`super::super::FINAL_DRAIN`]: binding to the
+/// latter would assert this machine's scheduling speed rather than completeness.
 #[tokio::test]
 async fn both_pipes_filled_to_capacity_drain_inside_the_budget() {
     let pump = PumpHarness::start_over_pipes();
@@ -98,17 +94,13 @@ async fn both_pipes_filled_to_capacity_drain_inside_the_budget() {
     }
 }
 
-/// Fails if two instances of one `merge_logs` app end up naming one
-/// descriptor number for the file they share.
-///
-/// `handover::adopt::refuse_repeated_fds` rejects the entire handover on
-/// any repeated number, so a shared descriptor here would fail every
-/// reload of every flock containing the app, not just this one.
+/// `handover::adopt::refuse_repeated_fds` rejects the entire handover on any
+/// repeated number, so a shared descriptor here would fail every reload of
+/// every flock containing the app, not just this one.
 ///
 /// One inode, two `open`s, two numbers: each instance runs its own
-/// `LogFile::open` rather than sharing a handle. `merge_logs` makes
-/// both instances resolve to the same two paths, since `assemble` drops
-/// the `-<instance>` suffix.
+/// `LogFile::open` rather than sharing a handle. `merge_logs` makes both
+/// instances resolve to the same two paths, since `assemble` drops the suffix.
 #[tokio::test]
 async fn two_pumps_on_one_log_path_report_different_numbers() {
     let dir = tempfile::tempdir().unwrap();
@@ -175,21 +167,13 @@ async fn two_pumps_on_one_log_path_report_different_numbers() {
     drop(writers);
 }
 
-/// Fails if a report still names a stream whose descriptor the pump has
-/// already let go of.
+/// Exercises the `files.pipes.out = None` clearing in the `StreamEnded` arm:
+/// [`a_pump_reports_the_descriptors_it_holds`] reports while both streams are
+/// live, so it passes with or without that clearing.
 ///
-/// Exercises the `files.pipes.out = None` clearing in the `StreamEnded`
-/// arm: [`a_pump_reports_the_descriptors_it_holds`] reports while both
-/// streams are live, so it passes with or without that clearing.
-///
-/// A closed number is free for the next `open` in this process, so a
-/// stale report risks the successor adopting an unrelated file as this
-/// sheep's stdout. `err_pipe` staying at its own number is what keeps
-/// this a case about the ended stream, not a dead pump.
-///
-/// Settles on the report's own `out_pipe` rather than on the number going
-/// closed: the same number is open again the moment any other test in this
-/// process opens a file.
+/// A closed number is free for the next `open` in this process, so a stale
+/// report risks the successor adopting an unrelated file as this sheep's
+/// stdout. Settles on the report's own `out_pipe`, not on the number closing.
 #[tokio::test]
 async fn a_report_after_a_stream_ends_names_no_descriptor_for_it() {
     let mut pump = PumpHarness::start_over_pipes();
@@ -215,15 +199,12 @@ async fn a_report_after_a_stream_ends_names_no_descriptor_for_it() {
     );
 }
 
-/// Fails if a report is answered before what the pump is holding has
-/// reached the file.
+/// Written before the report, readable on disk after it, with no settling in
+/// between: not [`super::assert_file_settles`], since polling would let
+/// `IDLE_FLUSH` pass a case the report's own flush should have covered.
 ///
-/// Written before the report, readable on disk after it, with no
-/// settling in between: not [`super::assert_file_settles`], since
-/// polling would let `IDLE_FLUSH` pass a case the report's own flush
-/// should have covered. A blob whose descriptors are ready but whose
-/// bytes are not is a log gap the successor cannot repair, since the
-/// bytes died with the image at the exec.
+/// A blob whose descriptors are ready but whose bytes are not is a log gap
+/// the successor cannot repair, since the bytes died with the image at the exec.
 #[tokio::test]
 async fn reporting_flushes_first() {
     let mut pump = PumpHarness::start_over_pipes();
@@ -236,14 +217,12 @@ async fn reporting_flushes_first() {
     assert_eq!(log_text(&pump.err_path), "and-on-stderr\n");
 }
 
-/// Fails if a pump goes on reading its sheep's streams after it has
-/// reported.
+/// A report is a snapshot: descriptors, and a flush that empties the write
+/// buffer behind them, taken before the exec that consumes it. Anything read
+/// afterward is written by an image about to be replaced, landing in neither
+/// the pipe the successor inherits nor the buffer it could have been handed.
 ///
-/// A report is a snapshot: descriptors, and a flush that empties the
-/// write buffer behind them, taken before the exec that consumes it.
-/// Anything read afterward is written by an image about to be replaced,
-/// landing in neither the pipe the successor inherits nor the buffer it
-/// could have been handed. Parking keeps the snapshot true until used.
+/// Parking keeps the snapshot true until used.
 #[tokio::test]
 async fn a_pump_that_has_reported_stops_reading_until_it_is_resumed() {
     let mut pump = PumpHarness::start();
@@ -264,12 +243,10 @@ async fn a_pump_that_has_reported_stops_reading_until_it_is_resumed() {
     assert_file_settles(&pump.out_path, "before-the-report\nafter-1\nafter-2\n").await;
 }
 
-/// Fails if a report leaves lines stranded in the pump's reader.
-///
-/// A quiet sheep leaves the reader empty at every instant a report
-/// could land, so this needs a busy one: filling `logs` first leaves
-/// everything past that sitting in a userspace buffer the exec destroys
-/// and no descriptor carries.
+/// A quiet sheep leaves the reader empty at every instant a report could
+/// land, so this needs a busy one: filling `logs` first leaves everything past
+/// that sitting in a userspace buffer the exec destroys and no descriptor
+/// carries.
 ///
 /// Asserted with no settling: the report's own flush is the barrier.
 #[tokio::test]
@@ -300,18 +277,13 @@ fn sized_run() -> String {
     (1..=lines).map(|n| format!("{n:07}\n")).collect()
 }
 
-/// Fails if a report takes bytes off a pipe that it does not write.
+/// Every byte the sheep wrote must be in the log file or still in the pipe
+/// when the report answers, since the successor inherits the pipe by descriptor
+/// number. A byte in neither is destroyed at the `execve`. The inherited handle
+/// is a `try_clone` sharing one open file description with the reader.
 ///
-/// Every byte the sheep wrote must be in the log file or still in the
-/// pipe when the report answers, since the successor inherits the pipe
-/// by descriptor number. A byte in neither is destroyed at the `execve`.
-///
-/// The inherited handle is a `try_clone` sharing one open file
-/// description with the reader, so it sees what the successor would.
-///
-/// `drain_ready`'s documented residual is the one line of slack: a
-/// part-way line splits between the reader's buffer and its scratch buffer,
-/// unreachable here. Fails at two lines lost, not one.
+/// `drain_ready`'s documented residual is the one line of slack. Fails at two
+/// lines lost, not one.
 #[tokio::test]
 async fn a_report_leaves_in_the_pipe_everything_it_did_not_write() {
     let dir = tempfile::tempdir().unwrap();
@@ -370,14 +342,12 @@ async fn a_report_leaves_in_the_pipe_everything_it_did_not_write() {
     );
 }
 
-/// Fails if a report follows a sheep that is still writing instead of
-/// rescuing what its reader already held.
+/// A reader can strand at most one [`super::super::READ_BUFFER`], and the
+/// drain writes whole lines out of that buffer without reading the pipe behind
+/// it, so it cannot write more than the buffer held however fast the sheep is
+/// writing.
 ///
-/// A reader can strand at most one [`super::super::READ_BUFFER`], and
-/// the drain writes whole lines out of that buffer without reading the
-/// pipe behind it, so it cannot write more than the buffer held however
-/// fast the sheep is writing. The slack is one line: the `LineReader`
-/// may have been part-way through one before the buffer was filled.
+/// The slack is one line: the `LineReader` may have been part-way through one.
 #[tokio::test]
 async fn a_report_drains_at_most_one_bufferful() {
     let mut pump = PumpHarness::start_over_pipes();

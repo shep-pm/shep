@@ -39,13 +39,8 @@ pub(super) fn plan_dog_table(
     let mut after = before.clone();
     // A table the sheep already holds is not replaced by a value that is not
     // one, which is the same rule the `dogs.toml` half follows through
-    // [`set_toml`]: the write lands at the key named, and a key that holds a
-    // table holds it until an operator names a table to put there.
-    //
-    // A whole table is not this refusal. `dogs.kelpie` with nothing under it is
-    // the sheep holding no table for that dog at all, and `before` is the empty
-    // table this built to write into. The sentence an operator needs there is
-    // the one below, that a whole dog table takes a value that is one.
+    // [`set_toml`]: a key that holds a table holds it until an operator names
+    // a table to put there.
     if !keys.is_empty() && !value.is_object() && walk(&before, keys).is_some_and(Json::is_object) {
         let at = if keys.is_empty() {
             format!("{sheep}.dogs.{dog}")
@@ -95,21 +90,16 @@ pub(super) fn plan_dog_table(
 /// The plan for one dog's section, edited in place.
 ///
 /// The document is what the shepherd answered, so the text this hands back is
-/// that text with one key changed: every comment the operator wrote inside the
-/// section survives, and a table the section spells as a header stays a header.
-///
-/// `keys` empty is the whole section, which is the one write that replaces a
-/// document rather than editing one, and the one that loses the comments in it.
-///
-/// `name` is the dog the address named, so a refusal reads as the address the
-/// operator typed rather than as a fragment of the section this walked.
+/// that text with one key changed: every comment the operator wrote inside
+/// the section survives. `keys` empty is the whole section, the one write
+/// that replaces a document rather than editing one, and the one that loses
+/// the comments in it.
 ///
 /// # Errors
-/// [`WriteRefusal::Refused`] when the write would have to go through a value
-/// that is not a table, when it would erase a table with a value that is not
-/// one, when it would replace an array of tables, or when the value has no
-/// TOML to write. [`WriteRefusal::Usage`] when the whole section is named and
-/// the value is not a table.
+/// [`WriteRefusal::Refused`] when the write would go through a value that is
+/// not a table, erase a table with one, or replace an array of tables.
+/// [`WriteRefusal::Usage`] when the whole section is named and the value is
+/// not a table.
 pub(super) fn plan_section(
     doc: DocumentMut,
     name: &str,
@@ -196,11 +186,9 @@ pub(super) fn name_the_path(changes: &mut [Change], keys: &[String]) {
 /// Every property path under `keys` that `value` puts a leaf at.
 ///
 /// A scalar is one path. A table is one path per leaf inside it, because the
-/// schema door walks leaves, and a table written whole has to be held to the
-/// rules of every key in it.
+/// schema door walks leaves.
 ///
-/// Empty `keys` is the whole-table write, which answers the empty set and is
-/// asked whole by [`schema_refusal`].
+/// Empty `keys` is the whole-table write, which answers the empty set.
 pub(super) fn touched_paths(keys: &[String], value: &Json) -> BTreeSet<Vec<String>> {
     let mut touched = BTreeSet::new();
     if !keys.is_empty() {
@@ -231,9 +219,7 @@ fn leaves(path: Vec<String>, value: &Json, out: &mut BTreeSet<Vec<String>>) {
 ///
 /// A plan that replaces a whole table is asked whole: every key in it is one
 /// the operator chose. A plan that writes one key is asked about that key and
-/// the leaves under it, so a value the operator wrote into `dogs.toml` or the
-/// Flockfile by hand rides along untouched, exactly as it does through a
-/// lookout pane close.
+/// the leaves under it.
 pub(super) fn schema_refusal(plan: &Plan, name: &str, path: &str) -> Option<WriteRefusal> {
     let schema = plan.schema.as_ref()?;
     let table = &plan.table;
