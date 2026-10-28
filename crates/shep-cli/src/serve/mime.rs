@@ -4,16 +4,11 @@
 //! the request path already resolved by `serve::path` and returns the
 //! `Content-Type` header value the worker writes for it.
 
-/// Extension → content type. About twenty-five entries, ASCII-lowercased on
-/// lookup, `application/octet-stream` for anything else.
-///
-/// A fixed table rather than `mime_guess`: this is a `match` over the
-/// extensions a static site actually contains, and a dependency for it would
-/// be a crate in the tree for a lookup, plus a second opinion about `.js`
-/// nobody asked for.
+/// Extension → content type, ASCII-lowercased on lookup, with
+/// `application/octet-stream` for anything else.
 ///
 /// `charset=utf-8` is on the text types: without it a browser falls back
-/// to a locale-dependent encoding and a UTF-8 page renders as mojibake.
+/// to a locale-dependent encoding.
 const TYPES: &[(&str, &str)] = &[
     ("html", "text/html; charset=utf-8"),
     ("htm", "text/html; charset=utf-8"),

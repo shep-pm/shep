@@ -49,42 +49,15 @@
 
 8 crates/shep-channel/tests/wire_export.rs // ChildMessage is one line the app writes to the shepherd.
 
-11 crates/shep-cli/src/adopted.rs /// Runs the token clap could not place as an adopted dog: `shep <dogname>
-11 crates/shep-cli/src/adopted.rs /// The value in a `--home=value` token, or `None` when `arg` is not one.
 
-12 crates/shep-cli/src/adopted_help.rs //! Adopted dogs as part of shep's own help and completion surface.
-10 crates/shep-cli/src/adopted_help.rs /// One adopted dog, as `--help` and a completion script need it.
-13 crates/shep-cli/src/adopted_help.rs /// Every dog `[daemon] adopted_dogs` records, in name order, each with what
-8 crates/shep-cli/src/adopted_help.rs /// One string from a manifest, fit for a help line or a completion script.
-8 crates/shep-cli/src/adopted_help.rs /// Whether this argv can want the top-level help, which is the only render
-9 crates/shep-cli/src/adopted_help.rs /// Render `verbs` into the Dogs group of `command`'s help template.
-14 crates/shep-cli/src/adopted_help.rs /// Whether `name` is a word a shell takes as a bare word.
-9 crates/shep-cli/src/adopted_help.rs /// Add each dog, and each declared subcommand under it, to a command tree
 
-7 crates/shep-cli/src/adopted_help/tests.rs /// A dog whose `verb` carries clap's own placeholder text, a line break, an
-12 crates/shep-cli/src/adopted_help/tests.rs /// The finding this covers. `clap_complete` 4.6.9 writes subcommand names
 
 9 crates/shep-cli/src/cli/dogs.rs /// Grant a dog one permission it declared.
-8 crates/shep-cli/src/cli/dogs.rs /// Arguments to the hidden `shep rehome`, and to the hidden `shep dog`
 17 crates/shep-cli/src/cli/dogs.rs /// Arguments to `shep enable`.
-9 crates/shep-cli/src/cli/dogs.rs /// Arguments to `shep adopt`.
 
-12 crates/shep-cli/src/cli/flock.rs /// The floor and the default for `shep flock --follow`'s `--interval`, in
 12 crates/shep-cli/src/cli/flock.rs /// Keep the listing current: redraw it in place until Ctrl+C
 10 crates/shep-cli/src/cli/flock.rs /// Close the dashboard's action gate. Actions are permitted by default.
 
-10 crates/shep-cli/src/cli/help.rs /// The verb groups [`HELP_TEMPLATE`] renders, and the source of truth the
-9 crates/shep-cli/src/cli/help.rs /// `--help`'s shape.
-9 crates/shep-cli/src/cli/help.rs /// `shep --version`'s extra line, naming the protocol this build speaks and
-16 crates/shep-cli/src/cli/help.rs /// The test above exercises `version_text()`, the free function. It
-11 crates/shep-cli/src/cli/help.rs // `propagate_version = true` on `Cli` is supposed to carry the same
-7 crates/shep-cli/src/cli/help.rs /// `web/`, three directories above this file, only when it actually
-7 crates/shep-cli/src/cli/help.rs /// Reads `web/{relative}`, or `None` outside the workspace checkout
-13 crates/shep-cli/src/cli/help.rs /// The workspace root, only when this build really sits inside this
-10 crates/shep-cli/src/cli/help.rs /// fails when the README's own copy of the grouped verb listing --
-12 crates/shep-cli/src/cli/help.rs /// fails when a visible verb or subcommand is missing from the docs
-11 crates/shep-cli/src/cli/help.rs /// fails when the committed CLI reference has no block for something
-7 crates/shep-cli/src/cli/help.rs /// Every visible alias is named in `--help`, and only real ones are.
 
 14 crates/shep-cli/src/cli/hosts.rs /// Add a machine to the list
 
@@ -93,33 +66,21 @@
 
 8 crates/shep-cli/src/cli/kv.rs /// Store a value in the shepherd's key/value store.
 
-26 crates/shep-cli/src/cli/logs.rs /// Arguments to `shep flush`.
 10 crates/shep-cli/src/cli/logs.rs /// How many existing lines of each stream to print before following
-7 crates/shep-cli/src/cli/logs.rs /// Pins [`DEFAULT_SELECTOR`] on both verbs that carry it.
-12 crates/shep-cli/src/cli/logs.rs /// The other side of [`bleats_and_reopen_default_to_every_sheep`]: the
-9 crates/shep-cli/src/cli/logs.rs /// Fails if `--daemon` stops replacing the selector — either by gaining a
 
-15 crates/shep-cli/src/cli/mod.rs //! The clap command tree: [`Cli`], [`Commands`], and every argument struct.
-14 crates/shep-cli/src/cli/mod.rs // `bin_name = "shep"` below is load-bearing, not decoration. Without it, clap
 8 crates/shep-cli/src/cli/mod.rs /// Reach another host's shepherd over ssh
-10 crates/shep-cli/src/cli/mod.rs // Declared last on purpose. It was the first global option anyone read,
-14 crates/shep-cli/src/cli/mod.rs /// Which init system a unit is written for.
 
 41 crates/shep-cli/src/cli/sheep.rs /// Selectors, script paths, Flockfiles, or `-` to read Flockfile JSON
 8 crates/shep-cli/src/cli/sheep.rs /// Interpreter to run the script with, overriding both shep.toml's
 9 crates/shep-cli/src/cli/sheep.rs /// Widen a Flockfile load past its additive default: append nothing,
-13 crates/shep-cli/src/cli/sheep.rs /// Arguments shared by every verb that targets an existing selection of the
 10 crates/shep-cli/src/cli/sheep.rs /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
-8 crates/shep-cli/src/cli/sheep.rs /// Arguments to `shep trigger`.
-24 crates/shep-cli/src/cli/sheep.rs /// Every verb sharing [`SelectorArgs`] must refuse to run without one.
 
-9 crates/shep-cli/src/cli/system.rs /// Arguments to the hidden `shep daemon` subcommand.
 
 14 crates/shep-cli/src/cli/verbs.rs /// Register a sheep without starting it.
 21 crates/shep-cli/src/cli/verbs.rs /// Serve a directory over plain HTTP, as a managed sheep.
 28 crates/shep-cli/src/cli/verbs.rs /// Restart one or more sheep.
 55 crates/shep-cli/src/cli/verbs.rs /// Reload one or more sheep, one instance at a time.
-16 crates/shep-cli/src/cli/verbs.rs /// Delete one or more sheep, or one or more dogs, from the flock, for
+22 crates/shep-cli/src/cli/verbs.rs /// Delete one or more sheep, or one or more dogs, from the flock, for
 15 crates/shep-cli/src/cli/verbs.rs /// Set how many instances one app runs — the stocking rate.
 12 crates/shep-cli/src/cli/verbs.rs /// List the flock.
 13 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog back on. A sheep named here has its disabled
@@ -137,13 +98,10 @@
 16 crates/shep-cli/src/cli/verbs.rs /// Store the values a Flockfile refers to and never carries.
 41 crates/shep-cli/src/cli/verbs.rs /// Copy one setting, one dog's table, or a sheep's env from one sheep onto
 23 crates/shep-cli/src/cli/verbs.rs /// Print a sheep's or a dog's settings as TOML.
-6 crates/shep-cli/src/cli/verbs.rs // Hidden alias `resurrect` (pm2's own word for this), so the muscle
 20 crates/shep-cli/src/cli/verbs.rs /// Boot a shepherd in this process, run one Flockfile's flock in the
 12 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in an isolated, throwaway foreground
 23 crates/shep-cli/src/cli/verbs.rs /// Install an init unit so the shepherd starts at boot.
-7 crates/shep-cli/src/cli/verbs.rs /// fails if `dash` stops reaching the same verb as `lookout`.
 
-9 crates/shep-cli/src/client.rs /// Renders a failed connect for an operator rather than for a library caller.
 
 21 crates/shep-cli/src/commands/admin.rs /// How long `kill` waits for the control address to stop answering after the
 7 crates/shep-cli/src/commands/admin.rs /// Stops a shepherd without the socket, for when the socket is the problem.
@@ -403,13 +361,7 @@
 
 11 crates/shep-cli/src/commands/whisper.rs //! `whisper`: write one line to matched sheep's stdin.
 
-7 crates/shep-cli/src/config.rs /// Parses `shep.toml`'s `[interpreters]` table into an extension to
-11 crates/shep-cli/src/config.rs /// Resolves the level in force and which layer chose it: `--style`, then
-7 crates/shep-cli/src/config.rs /// Whether a level [`crate::cli::Commands::Style`]'s set form just wrote to
 
-14 crates/shep-cli/src/dispatch.rs /// Parses, resolves `$SHEP_HOME` for the verbs that need it, and dispatches
-6 crates/shep-cli/src/dispatch.rs // Before `ensure_home`: the answer is the host's, and nothing of this
-5 crates/shep-cli/src/dispatch.rs // Resolves the home but never creates it: a probe against a machine
 
 11 crates/shep-cli/src/dog/bark/clock.rs //! The bark dog's wall clock: the one reader of `SystemTime`, and what a
 
@@ -506,86 +458,25 @@
 7 crates/shep-cli/src/dog/mod.rs /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
 12 crates/shep-cli/src/dog/mod.rs /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
 
-16 crates/shep-cli/src/dog_index/mod.rs //! The community dog index: fetching it, validating it, and treating every
-13 crates/shep-cli/src/dog_index/mod.rs /// The string literals of the array `declaration` names in `dogs.ts`.
 
-17 crates/shep-cli/src/dog_settings/forms.rs //! The type table: what each kind of field takes and turns down, in the
 
-28 crates/shep-cli/src/dog_settings/items.rs /// Why one typed element of a list field was not filed, in the operator's
 
-36 crates/shep-cli/src/dog_settings/mod.rs //! The one gate over a dog's settings: what a field accepts, in the
-9 crates/shep-cli/src/dog_settings/mod.rs /// What may be printed for `typed`: [`REDACTED`] when `secret`, the value
-12 crates/shep-cli/src/dog_settings/mod.rs /// Why a typed buffer was not filed, in the operator's words.
-34 crates/shep-cli/src/dog_settings/mod.rs /// Whether `field` takes `typed`, and why not when it does not.
-8 crates/shep-cli/src/dog_settings/mod.rs // Every path below quotes `typed` back at the operator, and
-11 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for a [`FieldKind::Integer`] buffer that is not a number.
-12 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for a [`FieldKind::Number`] buffer that is not a finite number.
-11 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for a field whose own numeric range admits nothing.
-9 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for an arm of a tagged union that holds no value for a field
-14 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for a value a closed set does not name, where the set is the
-19 crates/shep-cli/src/dog_settings/mod.rs /// The refusal for a value a schema's `enum` does not list, [`None`] when the
-7 crates/shep-cli/src/dog_settings/mod.rs /// One refusal sentence, with what the field takes read off the same table
-7 crates/shep-cli/src/dog_settings/mod.rs /// Driven through the same schema shape a real dog publishes:
-8 crates/shep-cli/src/dog_settings/mod.rs /// The size half, which had no test of its own here: it was reached
-7 crates/shep-cli/src/dog_settings/mod.rs /// A secret's value must not reach the status bar, and both doors a
 
-8 crates/shep-cli/src/dog_settings/numbers.rs /// `typed` as the whole number it names, or the sentence saying it names
-8 crates/shep-cli/src/dog_settings/numbers.rs /// The floor and ceiling `bounds` sets on an integer already parsed.
-17 crates/shep-cli/src/dog_settings/numbers.rs /// [`super::refusal`] for a [`crate::lookout::field::FieldKind::Number`] field: the empty
 
-13 crates/shep-cli/src/dog_settings/patterns.rs /// [`super::refusal`] for a string field whose schema published a `pattern` and
 
-41 crates/shep-cli/src/dog_settings/table.rs //! One proposed dog table, asked whether the schema that describes it takes
-10 crates/shep-cli/src/dog_settings/table.rs /// Why a proposed table is not one the dog's schema takes.
-16 crates/shep-cli/src/dog_settings/table.rs /// Why `table` is not a table `schema` takes, or [`None`] when nothing in it
-12 crates/shep-cli/src/dog_settings/table.rs /// [`table_refusal`] over only the keys in `touched`.
-7 crates/shep-cli/src/dog_settings/table.rs /// One leaf row, and the value `table` holds at `rest`.
-11 crates/shep-cli/src/dog_settings/table.rs /// `value` against `field`, as a refusal naming `key` and the path `path` it
-5 crates/shep-cli/src/dog_settings/table.rs // The element's own type before its item schema's rules, for
-14 crates/shep-cli/src/dog_settings/table.rs /// A tagged union: the table has to name one of the arms, every field of the
 
-23 crates/shep-cli/src/dog_settings/validate.rs //! The dog's own say in a write to its settings.
-16 crates/shep-cli/src/dog_settings/validate.rs /// Asks `dog` whether it accepts `table`, and answers for it when there is
-9 crates/shep-cli/src/dog_settings/validate.rs /// The dog a request writes settings for, the table it would leave behind,
-14 crates/shep-cli/src/dog_settings/validate.rs /// Whether `dog` declared `validate`: from its cached manifest when this exact
 
-6 crates/shep-cli/src/dog_settings/validate_tests.rs // `None` is a dog this machine never adopted, which is the built-in case:
 
-7 crates/shep-cli/src/entry.rs // `try_parse_from`, not `parse_from`: the latter prints and exits inside
 
-10 crates/shep-cli/src/exit.rs /// This binary and the shepherd it reached disagree about shep.
 
-16 crates/shep-cli/src/fetch/mod.rs //! A bounded, redirect-refusing GET over `tokio-rustls`: [`get`], plus the
-8 crates/shep-cli/src/fetch/mod.rs /// The most this module will read before the blank line that ends a
-10 crates/shep-cli/src/fetch/mod.rs /// A URL, parsed into what [`get`] needs to reach it.
-8 crates/shep-cli/src/fetch/mod.rs /// `url` did not parse as an absolute `http://`/`https://` URL. Carries
-12 crates/shep-cli/src/fetch/mod.rs /// How `url` may be named in a message: itself, or a fixed placeholder.
-15 crates/shep-cli/src/fetch/mod.rs /// Whether `url`'s authority carries a `user@` or `user:pass@` prefix.
-19 crates/shep-cli/src/fetch/mod.rs /// Parses `url` into a [`Target`] naming where [`get`] should connect.
-5 crates/shep-cli/src/fetch/mod.rs // Ahead of the host/port split, which trusts the last colon: without
 
-22 crates/shep-cli/src/fetch/post.rs /// Posts `body` to `target` as `application/json`, bounded end to end by
 
-8 crates/shep-cli/src/fetch/transport.rs /// A transport failure the peer had a hand in wording, sanitised.
 
-9 crates/shep-cli/src/flourish.rs /// The flock is back, or however much of it actually came back.
 
-8 crates/shep-cli/src/home.rs /// Prints the one-line shepherd status to stderr, for an invocation clap
-17 crates/shep-cli/src/home.rs /// Turns `--home`/`$SHEP_HOME`/the user's home directory into a resolved
-7 crates/shep-cli/src/home.rs /// `path` as one word a POSIX shell will not split, for a hint an operator
-7 crates/shep-cli/src/home.rs /// `path` as one argument for [`MKDIR_COMMAND`], for a hint an operator
-8 crates/shep-cli/src/home.rs /// Writes `shep.toml`'s starter `[interpreters]` mapping the moment
 
-8 crates/shep-cli/src/home/tests.rs /// The gate is on the resolved root, not on `--home` alone: with no
-7 crates/shep-cli/src/home/tests.rs /// The `# Errors` promise that `--home` works "with none at all": no
 
-20 crates/shep-cli/src/host.rs //! The machine the flock runs on, as one line above a listing.
-13 crates/shep-cli/src/host.rs /// The strip, fitted to `width` and painted for `style`.
-7 crates/shep-cli/src/host.rs /// Which colour a run wears.
 
-13 crates/shep-cli/src/http.rs /// Writes one response and nothing else: `Connection: close` on every
 
-11 crates/shep-cli/src/launch.rs /// Marks every descriptor this process holds above stdio close-on-exec, so
 
 8 crates/shep-cli/src/lookout/app/action.rs /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
 7 crates/shep-cli/src/lookout/app/action.rs /// Arms a confirm, or refuses and says why.
@@ -1375,73 +1266,29 @@
 9 crates/shep-cli/src/output/width.rs /// Columns `s` occupies once ANSI escapes are discounted.
 8 crates/shep-cli/src/output/width.rs /// A cell, with every control character escaped or stripped so it cannot
 
-13 crates/shep-cli/src/secret_readers.rs /// Every app in `procs` that the roll has a config for and that names at
-7 crates/shep-cli/src/secret_readers.rs /// One sheep that names a secret, and whether it is running now.
-7 crates/shep-cli/src/secret_readers.rs /// How long ago the muster roll was written.
 
-10 crates/shep-cli/src/serve/listing.rs /// Renders a directory listing as one HTML document.
-7 crates/shep-cli/src/serve/listing.rs /// Percent-encodes one path segment for a URL.
 
-9 crates/shep-cli/src/serve/mime.rs /// Extension → content type. About twenty-five entries, ASCII-lowercased on
 
-12 crates/shep-cli/src/serve/path.rs //! Request-target resolution, pure tier.
 
-11 crates/shep-cli/src/serve/worker/answer.rs //! What a request gets: the target's path, the order the checks run in,
-8 crates/shep-cli/src/serve/worker/answer.rs /// Streams `file` (already open, `len` bytes long per its own metadata)
 
-16 crates/shep-cli/src/serve/worker/mod.rs //! `shep serve`'s worker: binds a listener, accepts connections, and
 
-12 crates/shep-cli/src/shutdown.rs //! One "the OS asked us to stop" signal, on both platforms.
-13 crates/shep-cli/src/shutdown.rs /// Resolves when the OS asks this process to stop.
-10 crates/shep-cli/src/shutdown.rs /// A listener for the operator's own Ctrl+C.
 
-10 crates/shep-cli/src/status.rs /// Asks the socket whether anyone is home, and makes them answer.
-8 crates/shep-cli/src/status.rs /// A shepherd wedged past its own handshake is not online: `probe`
 
-10 crates/shep-cli/src/style.rs /// How much shep dresses up its output.
-8 crates/shep-cli/src/style.rs /// Whether the terminal supports the 256-colour tier: `$COLORTERM`
-10 crates/shep-cli/src/style.rs /// The level the operator chose, whether colour survived `NO_COLOR`, and
 
-13 crates/shep-cli/src/terminal_safe.rs //! Two sanitisers for text on its way to a terminal: [`sanitise`] for a
-8 crates/shep-cli/src/terminal_safe.rs /// [`sanitise`] with `\n` kept and whitespace left as written, so a line
-11 crates/shep-cli/src/terminal_safe.rs /// Whether `ch` must never reach a terminal.
 
-7 crates/shep-cli/src/version_guard.rs /// The verbs a version skew must never refuse, spelled the way an operator
-7 crates/shep-cli/src/version_guard.rs /// The verbs that only read the flock, spelled the way an operator types
-7 crates/shep-cli/src/version_guard.rs /// Whether a shepherd this build cannot write to refuses this invocation.
-17 crates/shep-cli/src/version_guard.rs /// What the handshake this client already completed says about versions, in
-18 crates/shep-cli/src/version_guard.rs /// Refuses a shepherd this link cannot write to, or notices the difference
-18 crates/shep-cli/src/version_guard.rs /// `shep flock`'s own dispatch, split out of [`run`](crate::dispatch::run) so
-11 crates/shep-cli/src/version_guard.rs /// `shep flock --follow`'s own dispatch: two refusals, then
 
-7 crates/shep-cli/src/version_guard/tests/host.rs /// A remedy without `ssh <dest>` would reload this machine's shepherd,
 
-11 crates/shep-cli/src/vocabulary.rs //! What the two flock renderings share: role names, the status mapping, and
-9 crates/shep-cli/src/vocabulary.rs /// The sheep wearing that status.
-10 crates/shep-cli/src/vocabulary.rs /// What a STATUS cell reports: the lifecycle status the shepherd holds, or
-9 crates/shep-cli/src/vocabulary.rs /// What one row reports, from the two fields that decide it.
-9 crates/shep-cli/src/vocabulary.rs /// The paragraph a `silent` row owes the reader, or `None` when the row is
 
-9 crates/shep-cli/src/welcome.rs /// The art, with `{version}` and `{home}` substituted at render time.
-7 crates/shep-cli/src/welcome.rs /// The welcome as one JSON field, so `--format json` gets an envelope like
-11 crates/shep-cli/src/welcome.rs /// Prints the welcome as a side effect of whichever command created the home.
 
-7 crates/shep-cli/src/whistle/control.rs /// Restarts an already-registered sheep by name; cannot start a script
 
 12 crates/shep-cli/src/whistle/facts.rs /// Every list-shaped tool's payload: rows under a named field.
 9 crates/shep-cli/src/whistle/facts.rs /// Whether the shepherd has GIVEN UP on this dog — restarted it once
+8 crates/shep-cli/src/whistle/facts.rs /// The host this flock came from, spelled as the caller asked for it;
 
-9 crates/shep-cli/src/whistle/gate.rs /// Whether whistle's control tools exist.
-7 crates/shep-cli/src/whistle/gate.rs /// The one sentence that tells an operator how to open the gate.
-13 crates/shep-cli/src/whistle/gate.rs /// Reads the gate out of an already-loaded `shep.toml`.
 
-12 crates/shep-cli/src/whistle/mod.rs //! `shep whistle`: the MCP interface, over stdio.
-10 crates/shep-cli/src/whistle/mod.rs /// Runs `shep whistle`: resolves the control gate, then serves the MCP
 
 7 crates/shep-cli/src/whistle/read.rs /// The argument every sheep-scoped tool takes.
-11 crates/shep-cli/src/whistle/read.rs /// The two handshake fields are the only place a model is told which
 
-8 crates/shep-cli/src/whistle/shepherd.rs /// A request failure, as an in-band tool error carrying the shepherd's words.
 
 7 crates/shep-cli/tests/cli_e2e/assertions.rs /// Asserts `info`, one `data[]` element of an envelope, carries the dynamic
 10 crates/shep-cli/tests/cli_e2e/assertions.rs /// Nulls every value under `host`, having first checked the two that are

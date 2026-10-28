@@ -56,13 +56,9 @@ pub struct StyleArgs {
 /// Arguments to the hidden `shep daemon` subcommand.
 ///
 /// The last four are the CLI-flag layer of spec §5's `file < env < flags`,
-/// one per `SHEP_*` variable `DaemonConfig::load` already reads. They live
-/// here rather than on `GlobalArgs` because they configure **the shepherd**,
-/// and this is the only invocation that runs one — `--log-level` on
-/// `shep flock` would configure nothing.
-///
-/// Their real audience is an init unit's `ExecStart`, which can now say
-/// `shep daemon --foreground --log-level info` without a config file.
+/// one per `SHEP_*` variable `DaemonConfig::load` reads. They live here, not
+/// on `GlobalArgs`, because they configure the shepherd and this is the only
+/// invocation that runs one.
 #[derive(Debug, clap::Args)]
 pub struct DaemonArgs {
     /// What to do to the shepherd. Omit to BE the shepherd.

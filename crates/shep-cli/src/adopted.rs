@@ -12,18 +12,12 @@ use crate::home::resolve_paths;
 use crate::remote::refuse_host;
 use crate::{cli, commands, exit};
 
-/// Runs the token clap could not place as an adopted dog: `shep <dogname>
-/// [args...]`, git and cargo's external-subcommand precedent.
+/// Runs the token clap could not place as an adopted dog: `shep <dogname> [args...]`.
 ///
-/// Adopted dogs only, never a `$PATH` scan, which would let any stray binary
-/// become a shep verb. Built-in verbs win structurally: this runs only once
-/// clap has failed every subcommand and alias, and
-/// `commands::dogs::collides_with_a_verb` refuses a colliding name.
+/// Adopted dogs only, never a `$PATH` scan. Built-in verbs win: this runs
+/// only once clap has failed every subcommand and alias.
 ///
-/// `None` for every case that should reach clap's own unknown-verb error. The
-/// `err.kind()` check is not redundant with the `InvalidSubcommand` context
-/// match below it: clap attaches that context to `ArgumentConflict` too,
-/// unreachable while [`cli::Cli`] sets no `args_conflicts_with_subcommands`.
+/// `None` for every case that should reach clap's own unknown-verb error.
 pub(crate) fn dispatch_adopted_dog(
     argv: &[OsString],
     err: &clap::Error,
@@ -136,16 +130,9 @@ fn format_before(prefix: &[OsString]) -> Format {
 
 /// The value in a `--home=value` token, or `None` when `arg` is not one.
 ///
-/// Split on the platform's own encoding rather than through `to_str`, which
-/// answers `None` for the whole token when the value is not valid UTF-8 and
-/// so drops a `--home=` an operator did type. Dropped, [`home_before`] falls
-/// through to `$SHEP_HOME` and an adopted dog runs against a home nobody
-/// named, which is the substitution `require_utf8` exists to refuse. The
-/// spaced `--home value` form never had this, since it copies the token
-/// whole.
-///
-/// The refusal still comes from [`resolve_paths`]; this only carries the
-/// value far enough to be refused.
+/// Splits on the platform's own encoding, since `to_str` drops a non-UTF-8
+/// value. A dropped `--home=` would fall through to `$SHEP_HOME`.
+/// [`resolve_paths`] still refuses the value; this only carries it there.
 #[cfg(unix)]
 fn home_equals_value(arg: &std::ffi::OsStr) -> Option<PathBuf> {
     use std::os::unix::ffi::OsStrExt as _;

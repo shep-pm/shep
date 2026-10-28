@@ -32,29 +32,18 @@ pub struct PostReply {
     pub body: String,
 }
 
-/// Posts `body` to `target` as `application/json`, bounded end to end by
-/// `timeout`, and takes any 2xx as an accepted export.
+/// Posts `body` to `target` as `application/json`, bounded by `timeout`.
 ///
-/// `headers` go out verbatim after the four this function builds. A value
-/// carrying a control byte would end a header line early and let whatever
-/// followed be read as another one, so a caller refuses those first: the
-/// metrics dog's OTLP exporter does.
-///
-/// Unlike [`super::get`], a missing `Content-Length` is not an error here: it
-/// is a 204. A 2xx whose body this could not size, or that came
-/// `Transfer-Encoding: chunked`, is refused rather than guessed at, so a
-/// caller never reads a partial answer as a whole one.
-///
+/// Any 2xx is an accepted export. `headers` go out verbatim, so a caller
+/// refuses a control byte first. A 2xx whose body this could not size, or
+/// that came chunked, is refused.
 /// # Errors
 /// Every [`FetchError`] variant except [`FetchError::Url`] and
-/// [`FetchError::Redirect`] can come out of this call: a connect or TLS
-/// failure, a malformed status line or header line, a header block over
-/// [`MAX_HEADER_BYTES`], a `Transfer-Encoding` as [`FetchError::Chunked`], a
-/// body over [`MAX_POST_BODY_BYTES`] as [`FetchError::TooLarge`], a peer that
-/// closed the connection early as [`FetchError::Truncated`], a non-2xx status
-/// as [`FetchError::Status`], or the deadline as [`FetchError::Timeout`]. A
-/// 3xx is refused as its status: this is a POST, and following a redirect
-/// would resend a body to a host the collector chose.
+/// [`FetchError::Redirect`] can come out: a connect or TLS failure, a
+/// malformed head, a header block over [`MAX_HEADER_BYTES`],
+/// [`FetchError::Chunked`], [`FetchError::TooLarge`] over
+/// [`MAX_POST_BODY_BYTES`], [`FetchError::Truncated`], [`FetchError::Status`]
+/// for a non-2xx, or [`FetchError::Timeout`]. A 3xx is refused as its status.
 pub async fn post_json(
     target: &Target,
     headers: &[(String, String)],

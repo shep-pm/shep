@@ -2,18 +2,12 @@
 //! string in it as hostile input.
 //!
 //! `shep dogs --available` prints this document to a terminal, so every
-//! string that survives is passed through [`sanitise`] first. Response
-//! headers are hostile too and are sanitised a layer below, in
-//! [`crate::fetch`], which cannot import from here without a cycle.
+//! surviving string passes through [`sanitise`]. Response headers are
+//! sanitised a layer below, in [`crate::fetch`].
 //!
-//! shep re-validates every entry itself: `SHEP_DOG_INDEX` can point
-//! anywhere. A malformed entry is skipped and counted, never fatal. Only
-//! [`IndexError::InsecureUrl`] names the URL; callers render these as
-//! `reading the dog index from {url}: {err}`.
-//!
-//! [`parse`] owns the document grammar: the version check, the
-//! per-entry validation and the field helper. This file owns the types,
-//! the URL policy and the fetch.
+//! A malformed entry is skipped and counted, never fatal. Only
+//! [`IndexError::InsecureUrl`] names the URL. [`parse`] owns the document
+//! grammar; this file owns the types, the URL policy and the fetch.
 use core::fmt;
 use std::time::Duration;
 
@@ -324,18 +318,11 @@ mod tests {
 
     /// The string literals of the array `declaration` names in `dogs.ts`.
     ///
-    /// Stops at the array's closing `]` rather than at `];`. A declaration
-    /// may close with `] as const;`, and a parser looking for `];` then runs
-    /// on into the rest of the file and collects every string it finds
-    /// there.
-    ///
-    /// Splits past the `=` first, because a declaration's own type can carry
-    /// a string: `SOURCE_KINDS` is written
-    /// `readonly DogSource["kind"][] = [...]`.
+    /// Stops at the array's closing `]` rather than at `];`, since a
+    /// declaration may close with `] as const;`. Splits past the `=` first.
     ///
     /// # Panics
-    /// If `declaration` is absent, or has no initialiser, or its array is
-    /// never closed. All three are drift these guards exist to catch.
+    /// If `declaration` is absent, has no initialiser, or never closes.
     #[track_caller]
     fn docs_site_array<'a>(dogs_ts: &'a str, declaration: &str) -> Vec<&'a str> {
         let after = dogs_ts

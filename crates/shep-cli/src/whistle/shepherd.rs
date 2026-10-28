@@ -1,19 +1,13 @@
 //! One connection per tool call.
 //!
-//! lookout holds a long-lived connection with a reconnect ladder and a
-//! freeze state, because a dashboard must keep showing what it last knew.
-//! whistle has no screen: it connects, sends, and drops. A shepherd
-//! restarted between two calls is invisible; there is no stale handle to
-//! notice it.
+//! lookout holds a long-lived connection with a reconnect ladder, because a
+//! dashboard must keep showing what it last knew. whistle has no screen: it
+//! connects, sends, and drops. One handshake per call is cheap.
 //!
-//! One connection and one handshake per call, over the local control
-//! transport, is cheap between calls a model makes seconds apart.
-//!
-//! A read tool that names a host makes the same one call over ssh instead:
+//! A read tool that names a host makes the same call over ssh instead:
 //! `ssh -T -- <dest> shep dial-stdio`, through
 //! [`Client::connect_ssh_with`](shep_client::Client::connect_ssh_with), with
-//! no prompts and a bound. Nothing past the handshake differs between the two
-//! targets, which is why they are one [`Shepherd`] and not two types.
+//! no prompts and a bound. The two targets are one [`Shepherd`].
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -29,12 +23,9 @@ use crate::whistle::read::unexpected_response;
 
 /// How long a host call's ssh dial may take before the tool call gives up.
 ///
-/// Twice `crate::commands::hosts::HOST_CONNECT_TIMEOUT`'s five seconds, which
-/// is the bound a fleet listing dials under: that one dials every listed host
-/// at once and abandons a slow one so the others still print, while a whistle
-/// call dials one host and has nothing else to print. The caller is a model
-/// waiting on one tool result, and a refusal that arrives at ten seconds is
-/// worth more to it than a timeout at five.
+/// Twice `crate::commands::hosts::HOST_CONNECT_TIMEOUT`: a fleet listing
+/// abandons a slow host so the others print, while a whistle call dials one
+/// host for a model waiting on one result.
 const HOST_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The ssh settings every host call runs under: no prompts, and bounded.
@@ -196,15 +187,9 @@ impl Shepherd {
 /// Refuses `client` if its shepherd disagrees with this binary's crate
 /// version, reusing [`crate::version_guard::refuse_version_skew`].
 ///
-/// Never writes to stdout: `out` is [`std::io::sink`] and only `err` is
-/// the real stderr, since stdout is whistle's MCP transport. The model
-/// sees a separate, in-band [`CallToolResult`] built here.
-///
-/// A client reached over ssh is asked a different question, and
-/// `crate::version_guard::skew_of` states which: that host has its own
-/// install, so only a wire-protocol difference refuses, and the fix it names
-/// runs on whichever side of the gap is behind. `host_skew` is that answer in
-/// one line, and this module's own wording could only have guessed at it.
+/// Never writes to stdout, which is whistle's MCP transport: the model sees
+/// an in-band [`CallToolResult`]. Over ssh only a wire-protocol difference
+/// refuses; `crate::version_guard::skew_of` states why.
 ///
 /// # Errors
 ///
@@ -257,34 +242,22 @@ fn refuse_if_skewed(client: &Client) -> Result<(), CallToolResult> {
 
 /// A connect failure, as an in-band tool error that says which half failed.
 ///
-/// `host` is the destination this call dialled, `None` when it dialled this
-/// home's socket. The two targets fail in different words, and a model that
-/// branches on the code must not read one as the other: nothing listening at
-/// this machine's socket is "no shepherd is running", while a host that
-/// opened an ssh session and then refused, or stalled, is a host with a live
-/// sshd on it.
-///
-/// `ConnectError`'s `Display` is kept whole in every arm. It already prints
-/// the socket path, and in its `Ssh` arm the destination and which half
-/// failed ("no shepherd is running on `amp2`", "ssh could not reach
-/// `amp2`"), so the local sentence is added only where there is no other, and
-/// the destination only where `ConnectError` does not carry one.
+/// `host` is the destination this call dialled, `None` for this home's
+/// socket. The two targets fail in different words, and a model that
+/// branches on the code must not read one as the other.
 ///
 /// # Errors
 ///
 /// A [`CallToolResult`] with `is_error: true`, never an [`rmcp::ErrorData`]:
 /// `no_shepherd` for this machine's socket and for a host whose shepherd is
-/// not running, `version_skew` for a shepherd that turns the handshake down
-/// on a protocol difference, `host_unreachable` for a host whose session
-/// opened and never completed the handshake, and `invalid_config` for a
-/// listed entry `Destination::parse` turns down.
+/// not running, `version_skew` for a protocol difference, `host_unreachable`
+/// for a host whose session never completed the handshake, and
+/// `invalid_config` for a listed entry `Destination::parse` turns down.
 fn connect_refusal(err: &ConnectError, host: Option<&str>) -> CallToolResult {
     // A refusal is not an absence. The far side answered the handshake and
-    // said the two builds do not speak, and `shep_client::ssh::explain`
-    // returns a refusal as it is, so a live host reaches this arm rather than
-    // the ssh one. Its `Display` already names which side of the gap to
-    // replace, which is the answer `refuse_if_skewed` gives when a host
-    // answers and agrees to disagree.
+    // said the two builds do not speak, so a live host reaches this arm rather
+    // than the ssh one. Its `Display` already names which side of the gap to
+    // replace.
     if matches!(err, ConnectError::ProtocolMismatch { .. }) {
         return own_refusal(ExitCode::VersionSkew.code_str(), err.to_string());
     }
@@ -308,13 +281,9 @@ fn connect_refusal(err: &ConnectError, host: Option<&str>) -> CallToolResult {
 
 /// A request failure, as an in-band tool error carrying the shepherd's words.
 ///
-/// `structured_error`, not `Err(ErrorData)`: MCP reserves protocol errors
-/// for unknown tools and malformed params, and a daemon refusal is an
-/// execution failure the model must see and can act on.
-///
-/// The message passes through unaltered, even when the code is imprecise:
-/// `rpc.rs` maps `SupervisorError::ReloadInFlight` to `RpcErrorCode::Internal`
-/// under protest, since the wire has no conflict code yet.
+/// `structured_error`, not `Err(ErrorData)`: MCP reserves protocol errors for
+/// unknown tools and malformed params. The message passes through unaltered,
+/// even when the code is imprecise: the wire has no conflict code yet.
 fn refusal(err: &RequestError) -> CallToolResult {
     let (code, message) = match err {
         // `exit.rs` is the one place this binary spells a daemon error

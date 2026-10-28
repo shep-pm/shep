@@ -1,16 +1,12 @@
 //! The four tools that act, and the only ones the gate can withhold.
 //!
-//! Registered only when [`super::gate::Control::Allowed`]; when the gate is
-//! shut this router is never constructed, so `tools/list` omits them and
-//! `tools/call` on one answers rmcp's own `-32602 tool not found`.
+//! Registered only when [`super::gate::Control::Allowed`]. With the gate shut
+//! this router is never constructed, so `tools/list` omits them and
+//! `tools/call` answers rmcp's own `-32602 tool not found`.
 //!
-//! `ToolAnnotations` is wire-visible: an agent host reads it to decide
-//! whether to ask a human first, so a mutating tool must never claim
-//! `readOnlyHint: true`.
-//!
-//! All four act on this machine's flock. `read::SheepName` carries the `host`
-//! field `describe_sheep` needs, and these four refuse it rather than act
-//! locally on a call that named another machine: see [`local_name`].
+//! `ToolAnnotations` is wire-visible: a mutating tool must never claim
+//! `readOnlyHint: true`. All four act on this machine's flock and refuse the
+//! `host` field `describe_sheep` takes: see [`local_name`].
 
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::CallToolResult;
@@ -28,13 +24,11 @@ use super::shepherd;
 #[tool_router(router = control_router, vis = "pub(crate)")]
 impl Whistle {
     /// Restarts an already-registered sheep by name; cannot start a script
-    /// or Flockfile the flock does not already know, since that would be
-    /// arbitrary code execution handed to a model.
+    /// or Flockfile the flock does not already know.
     ///
-    /// The running check is TOCTOU: it reads `Request::Describe` before
-    /// `Request::Restart` ever reaches the wire, across two separate
-    /// connections, so a sheep that comes online in the gap is restarted
-    /// anyway. Refuses the whole call if any matched instance is running.
+    /// The running check is TOCTOU: it reads `Request::Describe` and
+    /// `Request::Restart` across two connections, so a sheep that comes online
+    /// in the gap is restarted anyway.
     #[tool(
         name = "start_sheep",
         description = "Start a registered sheep that is currently stopped. Cannot register new processes: the sheep must already be in the flock. The running check is a courtesy, not a guarantee: a sheep that comes up between the check and the call is restarted. For a multi-instance app, the whole call is refused if any instance is running.",
