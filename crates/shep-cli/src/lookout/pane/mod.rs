@@ -2,21 +2,10 @@
 //!
 //! The pane is a [`FieldSet`](super::field::FieldSet) over one target, plus
 //! the values that target currently holds and a
-//! [`Viewport`](super::viewport::Viewport) over the rows. It writes too, and
-//! it writes once: every keystroke files a [`PaneEdit`] into
-//! [`Edits`](super::edits::Edits), and the whole set leaves together when
-//! the pane closes, each entry as a `Request::SetSheepField` or, for `env`,
-//! a `Request::SetSheepEnv`. Both write an operator override for one key;
-//! neither pretends to be a template. See [`PaneEdit`] for why not
-//! `Request::ApplyConfig`.
-//!
-//! `config` holds the pane and everything it answers; `edit`, `env` and
-//! `list` hold what it does when a key lands, and `choices` the checklist a
-//! list of choices opens to; `dogs` holds a sheep's dogs tab
-//! and `sheep_dog` the pane over one dog's table on it; `types`
-//! and `fields` hold what the rest read and write; `section_write` turns a
-//! filed set back into a dog's TOML text; `walk` holds the rows and the
-//! cursor's walk through them.
+//! [`Viewport`](super::viewport::Viewport) over the rows. It writes once:
+//! every keystroke files a [`PaneEdit`] into [`Edits`](super::edits::Edits),
+//! and the whole set leaves together when the pane closes. See [`PaneEdit`]
+//! for why not `Request::ApplyConfig`.
 
 mod choices;
 mod config;

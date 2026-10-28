@@ -17,16 +17,10 @@ use super::ConfigPane;
 
 /// Which thing the pane is editing.
 ///
-/// Three targets, two shapes of edit. A sheep's config is shep's own document, so shep
-/// knows what every field costs; a dog's section, and a dog's table on a
-/// sheep, belong to the dog, so shep publishes the change and the dog
-/// decides what to reload, which is what [`ConfigPane::cost`]'s [`Option`]
-/// is for.
-///
-/// `Debug` is derived (IR-41): names and a binary's path, none of them a
-/// value the pane withholds. A section or a table can carry a credential and
-/// is held on [`ConfigPane`] instead, behind that type's own redacted
-/// `Debug`.
+/// Three targets, two shapes of edit. A sheep's config is shep's own document,
+/// so shep knows what every field costs; a dog's section, and a dog's table on
+/// a sheep, belong to the dog, which is what [`ConfigPane::cost`]'s [`Option`]
+/// is for. `Debug` is derived (IR-41): names and a binary's path, no value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneTarget {
     /// One sheep, by name.
@@ -67,11 +61,9 @@ impl PaneTarget {
 
 /// Why a row cannot be edited in place.
 ///
-/// Two different facts, and an operator has to be able to tell them apart:
-/// one says the field is beyond editing anywhere, and one says only that
-/// this screen has no widget for its shape and a Flockfile still can.
-/// Collapsing them into `Field::editable` alone is what made six rows claim
-/// the wrong one.
+/// Two different facts, and an operator has to be able to tell them apart: one
+/// says the field is beyond editing anywhere, and one says only that this
+/// screen has no widget for its shape and a Flockfile still can.
 ///
 /// `Debug` is derived (IR-41): a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,11 +80,9 @@ pub enum Lock {
 
 /// One row of the pane.
 ///
-/// Nine variants, not one: the env sub-screen is gone, and its keys now
-/// walk the same cursor as every field, so this enum has to name a row in
-/// either territory. A dog's nested table is a row of its own too. Named rather than left as a bare index anyway, a
-/// `usize` travelling between [`ConfigPane::rows`], the viewport and the
-/// renderer says nothing about what it indexes, and this one says.
+/// Nine variants, not one: the env sub-screen is gone, and its keys now walk
+/// the same cursor as every field, so this enum has to name a row in either
+/// territory. A dog's nested table is a row of its own too.
 ///
 /// `Debug` is derived (IR-41): an index, or a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,9 +138,7 @@ pub enum PaneRow {
 /// A property is a [`Self::Key`], an entry of an array of tables is its
 /// [`Self::Index`], and an entry of a map is the [`Self::Key`] it is stored
 /// under. A key is a real key, never a dotted one: `"a.b"` is one step.
-///
-/// `Debug` is derived (IR-41): property names, map keys and an index, none of
-/// them a value.
+/// `Debug` is derived (IR-41): property names, map keys and an index.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::lookout) enum PathStep {
     /// A property of a table.
@@ -161,23 +149,10 @@ pub(in crate::lookout) enum PathStep {
 
 /// One config field's new value, on its way out of the pane.
 ///
-/// A newtype for the reason [`EnvValue`] is one: `cwd` and `script`
-/// routinely hold a home directory and `args` holds a token, so
-/// [`ConfigPane`]'s own `Debug` already withholds the map these come out
-/// of. A bare [`Value`] travels on into `Sent::ApplyField`, which derives
-/// `Debug`, so the newtype rides with the value wherever it goes rather
-/// than depending on every type along the way to redact it separately.
-///
-/// The wire field itself (`Request::SetSheepField`) stays a bare
-/// [`Value`] deliberately: `env` is the one field `AppConfig`'s own
-/// `Debug` redacts, and `cwd` prints in the clear on every request that
-/// carries a whole config, so a newtype there would protect one copy of
-/// a value the protocol prints three other ways. This one guards
-/// lookout, where a live value must never print.
-///
-/// `Debug` is manual and redacted (IR-41), exact-string-tested below. It
-/// names the JSON type and nothing else, which is what a diagnostic
-/// needs and is not a value.
+/// A newtype for the reason [`EnvValue`] is one: `cwd` and `script` routinely
+/// hold a home directory and `args` holds a token, and a bare [`Value`] travels
+/// on into `Sent::ApplyField`, which derives `Debug`. This guards lookout,
+/// where a live value must never print. `Debug` is manual and redacted (IR-41).
 #[derive(Clone, PartialEq, Eq)]
 pub struct FieldValue(Value);
 
@@ -188,14 +163,12 @@ impl FieldValue {
         &self.0
     }
 
-    /// The value, printed, when printing it cannot leak anything: a bool or
-    /// a number can never hold a secret, a token or a home directory
-    /// (IR-41). Every other kind stays [`None`], for the same reason
-    /// [`Debug`](core::fmt::Debug) above never prints one either.
+    /// The value, printed, when printing it cannot leak anything: a bool or a
+    /// number can never hold a secret, a token or a home directory (IR-41).
+    /// Every other kind stays [`None`].
     ///
-    /// Exists so a notice that reports a field being set can say which way
-    /// it moved (`reuse_port set to true` versus `false`) without touching
-    /// the kinds this type exists to guard.
+    /// Exists so a notice that reports a field being set can say which way it
+    /// moved (`reuse_port set to true` versus `false`).
     #[must_use]
     pub fn safe_summary(&self) -> Option<String> {
         match &self.0 {
@@ -233,17 +206,10 @@ impl core::fmt::Debug for FieldValue {
 /// One edit, ready to send.
 ///
 /// Two variants, and they leave by their own doors: a [`Self::Set`] as a
-/// `Request::SetSheepField` and a [`Self::SetEnv`] as a
-/// `Request::SetSheepEnv`. Both record an operator override for one key,
-/// never a template merge: a one-app `Request::ApplyConfig` at
-/// `ResetDepth::File` would treat the edit as a template load, so it would
-/// vanish from `overridden` the moment it landed and the pane's `*` marker
-/// would never appear for it.
-///
-/// `Debug` is derived, safe because both value types redact themselves:
-/// [`FieldValue`] names a JSON type and [`EnvValue`] names a byte count.
-/// One mechanism on the value beats two on the types that carry it; see
-/// [`FieldValue`].
+/// `Request::SetSheepField` and a [`Self::SetEnv`] as a `Request::SetSheepEnv`.
+/// Both record an operator override for one key, never a template merge: a
+/// `Request::ApplyConfig` at `ResetDepth::File` would treat it as a load.
+/// `Debug` is derived, safe because both value types redact themselves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneEdit {
     /// Set the config field `key` to `value`.
@@ -267,14 +233,8 @@ pub enum PaneEdit {
 ///
 /// Three answers rather than two, because the caller treats two of them as a
 /// finished close and one as a refusal it has to explain. They cannot share a
-/// result: a pane carries its filed edits across a re-read, so an edit can
-/// become one the file already carries between the keystroke that filed it and
-/// the keystroke that writes it. Calling that a broken `dogs.toml` tells the
-/// operator their file is wrong when it already says what they asked for.
-///
-/// `Debug` is derived, safe because [`DogSectionToml`] prints a byte count and
-/// never the section body: a dog's section routinely holds the credential the
-/// pane itself refuses to draw.
+/// result: an edit can become one the file already carries between being filed
+/// and being written. `Debug` is derived: [`DogSectionToml`] prints a byte count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SectionWrite {
     /// The section text to send, every landed edit applied.

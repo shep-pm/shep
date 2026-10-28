@@ -6,9 +6,8 @@
 //! and no text is typed. An element the config already carried that is not
 //! in the set is drawn after the names and stays unless toggled off.
 //!
-//! A toggle files the whole array through [`ConfigPane::file_field`], like
-//! the list sub-screen does, keeping the stored order: a name toggled on is
-//! appended and a name toggled off leaves where it was.
+//! A toggle files the whole array through [`ConfigPane::file_field`], keeping
+//! the stored order.
 
 use serde_json::Value;
 
