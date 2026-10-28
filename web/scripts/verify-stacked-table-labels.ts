@@ -419,7 +419,7 @@ test("unstackedElementTables() catches a dog page that stacks table and keeps it
   assert.deepEqual(
     unstackedElementTables(
       DOG_TABLE,
-      `@media (width<=640px){.dog-readme table,.dog-readme td{display:block}}`,
+      `@media (width<=640px){.dog-readme table{display:block}}`,
     ),
     ["Flag"],
   );
