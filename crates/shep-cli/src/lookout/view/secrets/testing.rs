@@ -7,14 +7,12 @@ use crate::lookout::view::fixtures;
 use ratatui::buffer::Buffer;
 use std::collections::HashSet;
 
-/// The first data row `draw_layout::draw` places, fixed regardless of which source
-/// the first group is.
-/// `160x48`: the width and height every test in this module renders
-/// at, and so the exact chrome above the first data row: the title
-/// band and its blank line the dashboard draws before handing off to
-/// [`super::draw`], then this pane's own band, the store's terms, the
-/// two gates, the roll's own status, the tab row, the heading row, the
-/// hairline and the operator group's header.
+/// The first data row `draw_layout::draw` places, fixed regardless of which
+/// source the first group is.
+///
+/// `160x48`: the size every test in this module renders at, and so the
+/// exact chrome above the first data row, down to the operator group's
+/// header.
 pub(super) fn first_row() -> u16 {
     10
 }

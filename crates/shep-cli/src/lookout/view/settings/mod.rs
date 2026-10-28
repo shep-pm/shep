@@ -1,17 +1,13 @@
-//! The settings screen: the `shep.toml` tree, then `[dogs]`, drawn straight
-//! into the buffer since this screen owns the whole body between the title and
-//! the status bar.
+//! The settings screen: the `shep.toml` tree, then `[dogs]`.
+//! It draws straight into the buffer. This screen owns the whole body between
+//! the title and the status bar.
 //!
-//! Every row goes through [`fit`]: a value cut short ends in `…` rather
-//! than spilling into the next column.
+//! Every row goes through [`fit`]: a value cut short ends in `…` rather than
+//! spilling into the next column. A boolean and a closed set of names cycle.
+//! Every other key is free text via [`Settings::typing`], where an empty
+//! buffer unsets it. `e` on a dog's header row opens that dog's own tree.
 //!
-//! A boolean and a closed set of names cycle; every other key is free text
-//! via [`Settings::typing`], where an empty buffer unsets it. A dog's header
-//! row joins the file's own `enabled`/`SOURCE` against the live flock, and `e`
-//! opens that dog's own tree under it.
-//!
-//! `dogs` holds the dog header rows and their columns, `tree` every other row
-//! and its widths; this module lays the screen out around them.
+//! `dogs` holds the dog header rows, `tree` every other row and their widths.
 
 pub(super) mod dogs;
 mod tree;
@@ -43,23 +39,10 @@ fn section_header(label: &str, palette: Palette) -> Line<'static> {
 /// Every line of the screen's body, top to bottom: the tree, one line a row,
 /// then `[dogs]`'s caption and table.
 ///
-/// Walks [`Settings::rows`] rather than listing the tree again: the cursor,
-/// which [`Settings::rows`] alone defines, would otherwise land on a row this
-/// function drew somewhere else.
-///
-/// Takes `app` as well as `settings`: a dog header row joins its `RUNNING`
-/// cell against the live flock, which lives on `App`, not on `Settings`.
-///
-/// `height` is the body's row budget; zero means unlimited, for a test
-/// with no real terminal. [`Viewport`] scrolls in data rows while height
-/// counts lines, so its offset is only a starting point: this walks
-/// forward from it until the cursor's row fits, through
-/// [`super::scroll::to_cursor`], shared with the config pane.
-///
-/// [`cursor_only`] is that walk's last resort, for a body too short for
-/// even one row's own chrome.
-///
-/// [`Viewport`]: crate::lookout::viewport::Viewport
+/// Walks [`Settings::rows`], which alone defines the cursor, rather than
+/// listing the tree again. `height` is the body's row budget, and zero means
+/// unlimited. [`to_cursor`](super::scroll::to_cursor) walks from the viewport's
+/// offset until the cursor's row fits.
 fn content_lines(
     app: &App,
     settings: &Settings,
@@ -92,14 +75,9 @@ fn content_lines(
 /// that row's section costs.
 ///
 /// The last resort, reached only when every offset down to the cursor's own
-/// left it undrawn. `MIN_HEIGHT` is six rows, four of body, and a dog row
-/// needs the blank line, the `[dogs]` header and the caption above it before
-/// it may be drawn at all: four lines for one row.
-/// A screen that declares a minimum height should draw something at it,
-/// and the selected row is the something.
-///
-/// Markers are added around it while they fit, the cursor's row first: it
-/// is the one line this function exists to guarantee.
+/// left it undrawn. A dog row spends four lines of chrome before it may
+/// draw, and `MIN_HEIGHT` has four lines of body. Markers are added while
+/// they fit.
 fn cursor_only(
     app: &App,
     settings: &Settings,
@@ -134,11 +112,9 @@ fn cursor_only(
 /// Lays the body out from data row `offset`, spending at most `budget`
 /// lines.
 ///
-/// Every line pushed is counted, including the ones no data row owns. The
-/// `... N above` marker and the `... N below` marker are both reserved for
-/// before a row is admitted rather than appended afterwards, so a height
-/// that binds cuts a row instead of cutting the sentence that says a row
-/// was cut.
+/// Every line pushed is counted, including the ones no data row owns. Both
+/// hidden-count markers are reserved before a row is admitted, so a binding
+/// height cuts a row rather than the sentence that says a row was cut.
 fn body_from(
     app: &App,
     settings: &Settings,

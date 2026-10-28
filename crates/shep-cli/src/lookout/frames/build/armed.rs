@@ -137,8 +137,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
                     // Every row's `readers` comes off the muster roll, and
                     // so does this: a model carrying one without the other
                     // is a state `secrets::model` cannot produce, and the
-                    // frame would name a reader under a line saying no roll
-                    // was ever written.
+                    // frame would name a reader under an empty roll.
                     roll_age: Some(Duration::from_secs(184)),
                     allow_read: true,
                     ..SecretsModel::default()
@@ -370,10 +369,9 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
         | Scene::CloseDialogNarrow
         | Scene::CloseDialogParked => {
             // The same `e` on `api` (id 2) that opens every edit-pane
-            // scene, but replied with a view that already carries one
-            // parked field, `listen_timeout`, so the close dialog has
-            // something to say about the parked half without any edit of
-            // the operator's own.
+            // scene, but replied with a view carrying one parked field,
+            // `listen_timeout`, so the close dialog has something to say
+            // about the parked half without any edit of the operator's.
             app.update(Msg::Key(KeyPress::Edit));
             app.update(Msg::Replied {
                 sent: Sent::SheepConfig {
@@ -564,9 +562,8 @@ mod tests {
 
         // "The same screen at 14 rows, which is fewer than it has to draw.
         //  The cursor is on the last dog, so the view has scrolled to reach
-        //  it and `... 12 above` says how much is off the top. The scroll is
-        //  counted in lines rather than in rows: the blank line and the dogs
-        //  caption cost the same height a row does."
+        //  it and `... 12 above` says how much is off the top. The scroll
+        //  is counted in lines rather than in rows."
         let short = render_text(&scene(Scene::SettingsShort).1);
         assert!(
             short.contains("... 12 above"),

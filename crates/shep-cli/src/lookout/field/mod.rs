@@ -102,9 +102,7 @@ pub enum ListItem {
 /// of the digits an operator typed.
 ///
 /// Read off the schema's `$ref` name rather than guessed from the field
-/// key: a dog's own schema can reuse either grammar under any name it
-/// likes, and the Flockfile schema already names both types for exactly
-/// this reason.
+/// key: a dog's schema can reuse either grammar under any name it likes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
     /// `$ref: MemSize`. A bare number is bytes.
@@ -113,20 +111,11 @@ pub enum ValueKind {
     UpDuration,
 }
 
+// `Debug` is derived rather than redacted (IR-41): a schema describes a
+// value without carrying one. `default` is the only value here, and it comes
+// from a static constant, never from this flock. A live value reaches the
+// pane through `ConfigPane`, whose `Debug` is redacted by hand.
 /// One field of a form.
-///
-/// `Debug` is derived rather than redacted (IR-41): this is a schema, and a
-/// schema describes a value without carrying one. A secret's shape is not a
-/// secret.
-///
-/// `default` is the one field that could weaken that, since it is a value
-/// rather than a description of one, and it does not: a schema's `default`
-/// comes from a static constant, either the committed
-/// `crates/shep-core/assets/flockfile.schema.json` or a dog's own
-/// `--schema` answer, which is its binary describing itself. Neither has
-/// ever seen this flock. A live value reaches the pane through
-/// `ConfigPane`'s own values map instead, which is why that type's `Debug`
-/// is redacted by hand while this one is derived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Field {
     /// The property name, which is also the key a write carries.
@@ -147,13 +136,11 @@ pub struct Field {
     pub default: Option<String>,
     /// The schema's own `default`, in the shape a write carries. `None` for
     /// an absent or `null` default, the same two cases [`Self::default`]
-    /// collapses to one for: a field with no schema default and a field
-    /// whose default genuinely is `null` (an `Option<T>` unset by design)
-    /// both restore the same way, by filing `Value::Null`, so neither needs
-    /// its own entry here. Kept alongside the rendered string rather than
-    /// parsed back out of it: `kill_timeout`'s default is the string
-    /// `"1600"` and `args`' is `[]`, and neither round-trips through
-    /// display text.
+    /// collapses to one for: both restore by filing `Value::Null`.
+    ///
+    /// Kept alongside the rendered string rather than parsed back out of it:
+    /// `kill_timeout`'s default is `"1600"` and `args`' is `[]`, and neither
+    /// round-trips through display text.
     pub default_value: Option<Value>,
     /// `x-shep-secret`. The pane shows `<set>` and never reads the value.
     pub secret: bool,
@@ -207,11 +194,9 @@ impl FieldSet {
     /// Reads a schema's `properties`, resolving one level of `$ref` into
     /// `defs`, and orders the result by `group_order`.
     ///
-    /// Within a group, fields keep the order `properties` yields them.
-    /// `serde_json::Map` without `preserve_order` yields alphabetical, which
-    /// is what the Flockfile schema already is on disk. A field whose group
-    /// is not in `group_order` sorts after every group that is; a field with
-    /// no group sorts last.
+    /// Within a group, fields keep the order `properties` yields them. A
+    /// field whose group is not in `group_order` sorts after every group
+    /// that is; a field with no group sorts last.
     #[must_use]
     pub fn from_properties(
         properties: &Map<String, Value>,

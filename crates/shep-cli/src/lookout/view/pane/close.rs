@@ -42,14 +42,12 @@ const fn needs_or_need(count: usize) -> &'static str {
 /// own mock, which puts `catcher is online, pid 71578` there.
 const HEADING_SHEEP_COLUMN: usize = 36;
 
-/// The heading row: the question on the left, the sheep it is about on
-/// the right.
+/// The heading row: the question on the left, the sheep it is about on the
+/// right.
 ///
-/// The right clause goes first when `body` cannot hold both. The left
-/// clause is the question itself, and the pane's own title band names the
-/// sheep too but is dimmed behind the box, which is the whole reason the
-/// right clause exists: an operator answering a question that restarts a
-/// process should not have to read around the dialog to learn which one.
+/// The right clause goes first when `body` cannot hold both. The left clause
+/// is the question itself, and the pane's own title band names the sheep too
+/// but is dimmed behind the box.
 fn close_dialog_heading_row(dialog: &CloseDialog, body: u16) -> String {
     let left = close_dialog_heading(dialog);
     let right = close_dialog_sheep_clause(dialog);
@@ -156,15 +154,10 @@ const RELOAD_LABEL: &str = "L   reload           ";
 /// The reload row, wrapped rather than truncated.
 ///
 /// [`fit`] truncates with an ellipsis, which is right for a table cell but
-/// wrong here: the sentence's own tail is the `SO_REUSEPORT` caveat
-/// (`close_dialog_reload_sentence`'s own doc), the correction the design
-/// added after refusing an earlier, uncaveated "No downtime, slower". A
-/// truncated row ships exactly the claim that correction exists to
-/// prevent. `docs/lookout/design-files/README.md`'s own mock wraps this
-/// row onto a continuation line indented under the label instead, for
-/// both the overlap and the serial sentence, so this does too, at every
-/// width: the box's own interior is a fixed 86 columns regardless of the
-/// terminal's, so this wraps even at a comfortable terminal width.
+/// wrong here: the sentence's own tail is the `SO_REUSEPORT` caveat, and a
+/// truncated row ships exactly the claim that correction exists to prevent.
+///
+/// The box's own interior is a fixed 86 columns, so this wraps at every width.
 fn close_dialog_reload_lines(
     dialog: &CloseDialog,
     palette: Palette,
@@ -188,24 +181,12 @@ fn close_dialog_reload_lines(
         .collect()
 }
 
-/// What a row of the dialog is, so that a terminal too short for all of
-/// them sheds the ones it can afford to lose.
+/// What a row of the dialog is, so that a terminal too short for all of them
+/// sheds the ones it can afford to lose.
 ///
 /// Ordered by what losing the row costs, cheapest last: [`shed_dialog_rows`]
 /// drops the greatest first. [`DialogRow::Key`] is the floor and is never
-/// dropped, since a key an operator cannot see is an answer they cannot
-/// give, and `esc` no longer writes on its own.
-///
-/// [`DialogRow::Naming`] goes before [`DialogRow::Continuation`], which
-/// is the call this order exists to record. Losing the naming sentence
-/// costs a whole, self-contained row whose fields are also named by the
-/// heading's count and by the pane's own pending section behind the box.
-/// Losing a continuation costs the second half of a row that is still on
-/// screen: the reload sentence's tail is the `SO_REUSEPORT` caveat, which
-/// is the condition on the only cost claim this dialog makes, and
-/// `docs/lookout/design-files/rulings.md` refused the frame's own
-/// uncaveated `No downtime, slower` over exactly that. At 90x8 this
-/// ordering keeps the sentence whole.
+/// dropped, since a key an operator cannot see is an answer they cannot give.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum DialogRow {
     /// `R`, `L`, `c` and `esc`: the four rows that name a key.
@@ -226,11 +207,8 @@ enum DialogRow {
 /// columns gets full width, and what the boxed form draws inside its own
 /// border.
 ///
-/// `now` is the caller's own clock, against which the `esc` row states
-/// what is left of [`CONFIRM_EXPIRY`] since `dialog.at()`: seconds and a
-/// ten-cell gauge, saying the same thing twice on purpose, since the
-/// design's own rule is that colour and glyph never carry anything the
-/// words do not.
+/// `now` is the caller's own clock, against which the `esc` row states what
+/// is left of [`CONFIRM_EXPIRY`] since `dialog.at()`.
 #[must_use]
 pub(in crate::lookout::view) fn close_dialog_lines(
     dialog: &CloseDialog,
@@ -253,10 +231,9 @@ fn close_dialog_rows(
 ) -> Vec<(DialogRow, Line<'static>)> {
     let body = body_width(width);
     // `band`, not `attention`: every other band on this dashboard reverses
-    // its role's colour rather than merely tinting the text, and 12a's own
-    // rule is that colour is always redundant with the words, so `NO_COLOR`
-    // has to lose decoration, never information. `attention` alone drops
-    // both under `NO_COLOR`, since it carries no modifier at all.
+    // its role's colour rather than merely tinting the text, and colour is
+    // always redundant with the words here. `attention` alone drops both
+    // under `NO_COLOR`, since it carries no modifier at all.
     let mut lines = vec![(
         DialogRow::Heading,
         Line::from(Span::styled(
@@ -338,26 +315,12 @@ fn close_dialog_rows(
 }
 
 /// Drops rows from `rows` until it is no taller than `height`, in
-/// [`DialogRow`]'s own order: the blank separators, then the two
-/// explanatory sentences, then the reload sentence's wrapped tail, then
-/// the heading.
+/// [`DialogRow`]'s own order: the blank separators, the two explanatory
+/// sentences, the reload sentence's wrapped tail, then the heading.
 ///
-/// The four [`DialogRow::Key`] rows survive every height, which is what
-/// the design means by flooring the borderless form: below six rows the
-/// field list this is drawn over cannot render either, and an operator
-/// with no key on screen has no way to answer and, since `esc` stopped
-/// writing on its own, no way to write. Shorter still than the four is a
-/// terminal `view::draw` refuses outright, but [`Buffer`] indexes with a
-/// panic rather than a clip, so the truncation at the end is the one that
-/// keeps a resize from taking the dashboard down.
-///
-/// A shed continuation ends its sentence early, so the row above it takes
-/// the ellipsis [`fit`] leaves on a cell cut for width. What the screen
-/// cannot show, it says, the same rule the bleats feed follows when it
-/// counts the lines it discarded.
-///
-/// `width` is the whole row's, [`GUTTER`](crate::lookout::view::flock::GUTTER) included, since that is what a
-/// marked row must still fit inside.
+/// The four [`DialogRow::Key`] rows survive every height: an operator with
+/// no key on screen has no way to answer. A shed continuation ends its
+/// sentence early, so the row above takes the ellipsis [`fit`] leaves.
 fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, width: u16) {
     let height = usize::from(height);
     while rows.len() > height {
@@ -384,11 +347,10 @@ fn shed_dialog_rows(rows: &mut Vec<(DialogRow, Line<'static>)>, height: u16, wid
 /// A no-op on a row that already carries one, which a row [`fit`] cut for
 /// width does: one marker says the row was cut, and two say nothing more.
 fn mark_cut(line: &mut Line<'static>, width: u16) {
-    // The loop below cannot clear at a width of zero, since popping an
-    // empty string is a no-op, and it would spin. Unreachable through the
-    // one call site, which is fed the same `area.width` `view::draw`
-    // refuses below `MIN_TERM_WIDTH`, so this says out loud what a second
-    // call site would have to keep true.
+    // The loop below cannot clear at a width of zero, since popping an empty
+    // string is a no-op, and it would spin. Unreachable through the one call
+    // site, which is fed the same `area.width` `view::draw` refuses below
+    // `MIN_TERM_WIDTH`.
     debug_assert!(width > 0, "mark_cut needs a column to put the marker in");
     let Some(span) = line.spans.last_mut() else {
         return;
@@ -408,11 +370,8 @@ fn mark_cut(line: &mut Line<'static>, width: u16) {
 /// and above, full width with no border below it, and full width with no
 /// border at any width when the box is taller than the rows there are.
 ///
-/// A box cannot shed rows the way the borderless form can, since its
-/// border pair is what makes it a box, and half a box is worse than none.
-/// So a terminal too short for the whole box gives way to the borderless
-/// form, which is the same answer the width rule already gives one column
-/// under [`overlay::floor_for`]`(BOX_WIDTH)`.
+/// A box cannot shed rows the way the borderless form can, since its border
+/// pair is what makes it a box, and half a box is worse than none.
 pub(super) fn draw_close_dialog(
     dialog: &CloseDialog,
     palette: Palette,
@@ -432,8 +391,7 @@ pub(super) fn draw_close_dialog(
 
 /// The full-width, borderless form: bottom-anchored over the field list,
 /// the same rows a terminal under [`overlay::floor_for`]`(BOX_WIDTH)` always
-/// drew before this task, so a gallery scene one column below the floor
-/// still gets the form it exists to show rather than a clipped box.
+/// drew before this task.
 ///
 /// [`shed_dialog_rows`] is what keeps this inside `area`: a narrow
 /// terminal wraps the reload sentence over more rows, so the form is
@@ -529,12 +487,8 @@ mod tests {
             );
             // 43 for the question, 2 for the gutter, 1 for the gap and 24
             // for `web is online, pid 71578`: the clause draws from 70
-            // columns up and is gone below that, never truncated.
-            //
-            // 69 and 70 are in the list above for that sentence alone. The
-            // widths either side of them ran 60 and then 86, so the edge
-            // this line names sat in a gap the loop stepped over, and the
-            // assertion encoded the rule without ever exercising it.
+            // columns up and is gone below that, never truncated. 69 and 70
+            // are in the list above for that sentence alone.
             let named = heading.contains("web is online, pid 71578");
             assert_eq!(named, width >= 70, "{width}: {heading:?}");
         }
@@ -703,20 +657,6 @@ mod tests {
         );
     }
 
-    /// Every size the dashboard claims to support, through the real
-    /// `view::draw` rather than a pane-local fixture: the fixture hands
-    /// the pane a `Rect` as tall as the terminal, and the rows the dialog
-    /// overran were the ones `draw` keeps back for the title band and the
-    /// status bar.
-    ///
-    /// [`Buffer`]'s own `Index` panics rather than clipping, so a dialog
-    /// taller than the rows it was given takes the whole dashboard down
-    /// with it. Both forms are swept: the box gives way to the borderless
-    /// form when it cannot fit, and the borderless form sheds rows.
-    ///
-    /// The four rows that name a key are what makes the answer reachable,
-    /// and `esc` no longer writes on its own, so a dialog missing one of
-    /// them leaves an operator with no way to answer and no way to write.
     #[test]
     fn the_dialog_fits_every_size_the_dashboard_supports_and_stays_answerable() {
         for width in [MIN_TERM_WIDTH, 40, 51, 89, 90, 120, 160] {
@@ -729,29 +669,14 @@ mod tests {
                     );
                 }
                 // The frame above hides a one-row overrun: the status bar
-                // is drawn after the pane and repaints the row a dialog
-                // one too tall reached into. This draws the pane alone
-                // into a buffer of exactly its own rows, where the same
-                // overrun is the panic it really is.
+                // repaints the row a too-tall dialog reached into. This
+                // draws the pane alone into a buffer of exactly its own
+                // rows, where the overrun is the panic it really is.
                 let _ = fixtures::draw_pane_with_dialog(width, height);
             }
         }
     }
 
-    /// The shedding order's own claim, which is a different one from the
-    /// marker's: when exactly one of the naming sentence and the reload
-    /// continuation can survive, the continuation is what survives.
-    ///
-    /// 90x8 is the captured case, six body rows against the seven the
-    /// dialog wants. Asserted as both halves at once, the sentence whole
-    /// AND the naming row gone, because either half alone passes with the
-    /// order flipped: a cut caveat is still marked, politely, by
-    /// [`mark_cut`].
-    ///
-    /// The tail this protects is the `SO_REUSEPORT` caveat, the condition
-    /// on the only cost claim the dialog makes, and the thing
-    /// `docs/lookout/design-files/rulings.md` refused the frame's own
-    /// `No downtime, slower` over.
     #[test]
     fn the_reload_caveat_outlives_the_naming_sentence() {
         let app = fixtures::app_with_close_dialog();
@@ -822,15 +747,12 @@ mod tests {
         }
     }
 
-    /// The reload sentence's own rows in `frame`: the `L` row and the
-    /// continuations indented under it, up to the `c` row that ends them.
-    ///
-    /// Read from inside the border when there is one, since the muted
-    /// pane behind the box keeps drawing to the right of it.
+    /// The reload sentence's rows in `frame`: the `L` row and the
+    /// continuations under it, up to the `c` row that ends them.
     ///
     /// # Panics
     ///
-    /// If no `L` row is on screen, which every size draws one of.
+    /// If no `L` row is on screen.
     #[track_caller]
     fn reload_rows(frame: &str) -> Vec<String> {
         let mut rows = Vec::new();
@@ -889,14 +811,12 @@ mod tests {
         assert_eq!(title_band.add_modifier, ratatui::style::Modifier::empty());
     }
 
-    /// The cell at `(x, y)` in `buffer`'s own rendered text where row `y`
-    /// contains `needle`, `x` being the column `needle` starts at plus
-    /// `offset`.
+    /// The cell at `(x, y)` in `buffer`'s rendered text where row `y`
+    /// contains `needle`, `x` being where `needle` starts plus `offset`.
     ///
     /// # Panics
     ///
-    /// Panics if no row contains `needle`, a fixture bug rather than a
-    /// failure the test is about.
+    /// Panics if no row contains `needle`, a fixture bug.
     #[track_caller]
     fn cell_in_row_containing(buffer: &Buffer, needle: &str, offset: u16) -> ratatui::style::Style {
         let text = render_text(buffer);

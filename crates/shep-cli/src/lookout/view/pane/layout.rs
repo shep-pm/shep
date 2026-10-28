@@ -63,16 +63,11 @@ pub(super) const PANEL_MAX: u16 = 72;
 
 /// How wide the explanation panel is, and [`None`] when it does not draw.
 ///
-/// 45% of 160 is 72, so the design target from
-/// `docs/brainstorming/specs/2026-09-08-lookout-1e-editing-pane-design.md`
-/// falls out of the formula rather than being special cased. Below it the
-/// clamp to [`PANEL_MAX`] holds the panel at the design target's own width
-/// rather than growing it to fill a wider terminal: the left column takes
-/// the remainder instead, the same way [`super::super::flock`]'s own table grows.
-/// Above [`LEFT_MIN`] short of `width` the panel cannot hold a wrapped
-/// blurb and a validation list beside a left column with room for a
-/// marker, a key and a value, and [`super::draw::pane_lines`] falls back to the single
-/// column it always drew.
+/// 45% of 160 is 72, so the design target falls out of the formula rather
+/// than being special cased, and [`PANEL_MAX`] holds it there. Below
+/// [`LEFT_MIN`] the panel cannot hold a blurb and a validation list beside
+/// a usable left column, and [`super::draw::pane_lines`] falls back to one
+/// column.
 pub(super) fn panel_width(width: u16) -> Option<u16> {
     let wanted = (u32::from(width) * 45 / 100) as u16;
     let panel = wanted.clamp(PANEL_MIN, PANEL_MAX);
@@ -90,15 +85,10 @@ pub(super) const LANDS_WITH_PANEL_MIN: u16 = 160;
 /// Whether `LANDS` draws on a terminal `width` columns wide that also draws
 /// the panel (`has_panel`).
 ///
-/// `LANDS` and the panel do different jobs: the column is what an operator
-/// scans to read every field's cost at once, the panel is a sentence about
-/// only the field under the cursor. Where both fit, both draw. Where they
-/// cannot, `LANDS` gives way first, since the panel's own impact sentence
-/// already names the focused field's cost and nothing else on screen names
-/// the column's.
-///
-/// Always `true` when the panel is absent: nothing else on screen carries
-/// cost then, so `LANDS` has no reason to hide.
+/// `LANDS` is what an operator scans to read every field's cost at once;
+/// the panel is a sentence about the focused field alone. Where they cannot
+/// both fit, `LANDS` gives way, since the panel already names that field's
+/// cost. Always `true` when the panel is absent.
 pub(super) const fn lands_fits_beside_panel(width: u16, has_panel: bool) -> bool {
     !has_panel || width >= LANDS_WITH_PANEL_MIN
 }
@@ -111,12 +101,8 @@ pub(super) const fn body_width(width: u16) -> u16 {
 /// What a change to a field in `group` costs, in an operator's words.
 ///
 /// A prediction from the field's class, not the outcome of a specific
-/// write: `watch` says `now` but can park, and `autostart` says `next
-/// start` but takes effect at muster. The status bar reports what
-/// actually happened; the row's `!` flag is the durable answer.
-///
-/// [`ApplyGroup`] is `#[non_exhaustive]`, so an untaught field falls back
-/// to `respawn`, the most conservative of the four.
+/// write: `watch` says `now` but can park. The row's `!` flag is the
+/// durable answer. An untaught [`ApplyGroup`] falls back to `respawn`.
 pub(super) const fn cost_label(group: ApplyGroup) -> &'static str {
     match group {
         ApplyGroup::Live => "now",
@@ -126,21 +112,12 @@ pub(super) const fn cost_label(group: ApplyGroup) -> &'static str {
     }
 }
 
-/// The three cell widths for a body of `width`: KEY, VALUE, COST. A zero
-/// means the column is not drawn at all.
+/// The three cell widths for a body of `width`: KEY, VALUE, COST.
 ///
-/// The three always sum, with their two-space separators, to exactly
-/// `width`, so no line can overrun the terminal it was laid out for.
-/// COST goes first when the terminal narrows: arming a field repeats its
-/// cost verbatim in the status bar, which is the same reasoning
-/// [`super::super::settings`] gives for dropping its own cost cell first.
-///
-/// `show_lands` is `false` only where the explanation panel is drawn and
-/// the terminal is too narrow to hold both beside it (see
-/// [`lands_fits_beside_panel`]): the panel still names the focused field's
-/// own cost in its impact sentence, so nothing on screen goes unsaid.
-/// `false` here behaves as if `width` had fallen under [`FULL_WIDTH`] on its
-/// own, freeing what COST would have spent onto VALUE instead.
+/// A zero means the column is not drawn at all. The three always sum, with
+/// their separators, to exactly `width`. COST goes first when the terminal
+/// narrows: arming a field repeats its cost in the status bar. `show_lands`
+/// false behaves as a narrower `width` would.
 pub(super) fn widths(width: u16, show_lands: bool) -> (u16, u16, u16) {
     if show_lands && width >= FULL_WIDTH {
         let rest = width - COST_W - 2;
@@ -157,13 +134,9 @@ pub(super) fn widths(width: u16, show_lands: bool) -> (u16, u16, u16) {
 /// Masks a secret field's rendered value: [`UNSET`] passes through, since
 /// there is nothing to hide, and anything else becomes `<set>`.
 ///
-/// The one rule every render path in this file applies to a secret before
-/// its value reaches the screen, and every one of them calls this rather
-/// than spelling the condition again: [`super::field_row::field_line`]'s stored cell and its
-/// `old -> new` cell, `list::list_line`'s elements, and both halves of
-/// [`super::chrome::pending_edit_line`]. Four inline copies of it agreed with each other
-/// until they were routed through here, which is the state a fifth call
-/// site would have had to keep up.
+/// The one rule every render path here applies before a secret's value
+/// reaches the screen: `field_line`'s stored cell and its `old -> new`
+/// cell, `list_line`'s elements, and both halves of `pending_edit_line`.
 pub(super) fn mask_secret(secret: bool, raw: String) -> String {
     if secret && raw != UNSET {
         "<set>".to_owned()
@@ -216,12 +189,9 @@ pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
 /// `text`, truncated (never padded) to at most `width` columns, marking a
 /// cut with a trailing `…` the way [`super::super::flock::fit`] does.
 ///
-/// Not [`super::super::flock::fit`]: the panel's rows are prose, not a fixed-width table cell,
-/// so a short value stays short rather than growing padded trailing spaces
-/// across the column. This is the guard the panel's own width tests check:
-/// a row built from a live value or a schema-authored sentence cannot push
-/// the panel past its own column, even though nothing in today's schemas
-/// is long enough to exercise the truncation itself.
+/// Not [`super::super::flock::fit`]: the panel's rows are prose, not a
+/// fixed-width cell, so a short value stays short rather than growing
+/// padded spaces across the column.
 pub(super) fn clipped(text: &str, width: u16) -> String {
     let width = usize::from(width);
     let columns: usize = text_columns(text);

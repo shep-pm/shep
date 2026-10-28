@@ -51,10 +51,7 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
         // Two folds of differing size (`batch` at 32MiB, `core` at 96MiB),
         // the biggest fold (`edge`, at 781MiB) carrying a grouped app beside
         // a standalone one, two sheep in no fold at all, and a dog. Every
-        // memory figure is a round number of MiB precisely so the SHARE
-        // gauge and the NOTES percentage can be checked by hand rather than
-        // trusted on sight: batch's 32 of 928 total MiB is 3%, core's 96 is
-        // 10%, edge's 781 is 84%.
+        // memory figure is a round number of MiB so the gauges read by hand.
         Scene::Folds => poll_twice(
             app,
             t0,
@@ -277,10 +274,8 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
         ),
         // The CFG column's two markers, `!N` and `*N`, plus a CPU history
         // long enough that `CpuSpark` draws a shape rather than one bar.
-        // Neither has a fixture anywhere else in the gallery: no other
-        // scene sets `pending` or `overridden`, and every other scene's
-        // flock is built by one `Msg::Snapshot`, giving each sheep exactly
-        // one CPU sample.
+        // No other scene sets `pending` or `overridden`, and every other
+        // scene's flock is built by one `Msg::Snapshot`.
         Scene::CfgDrift => {
             let mut pending_row = sheep(
                 10,
@@ -315,12 +310,9 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
                 None,
             );
             // Nine snapshots ahead of the shared one below, each two seconds
-            // apart and each moving `web`'s CPU counter by a distinct
-            // delta, so the sparkline differences into a varying shape
-            // rather than a single bar padded with blanks. The first of
-            // the nine only records a baseline (see `Self::record_samples`),
-            // so the history holds eight differenced samples plus the
-            // trailing one below, which carries the loop's final reading.
+            // apart and each moving `web`'s CPU counter by a distinct delta,
+            // so the sparkline differences into a varying shape. The first
+            // only records a baseline (see `Self::record_samples`).
             let mut cpu_ms = 0_u64;
             let mut at = t0;
             for delta_ms in [20_u64, 120, 50, 160, 70, 140, 40, 100, 130] {
@@ -333,19 +325,16 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
                     at,
                 });
             }
-            // The returned row has to carry the same reading the loop's
-            // last snapshot sent, not the pre-loop clone: this used to
-            // mutate `warming_up` only, leaving `pending_row.cpu_ms` at
-            // `None` forever.
+            // The returned row carries the reading the loop's last snapshot
+            // sent, not the pre-loop clone: a scene whose returned row
+            // disagrees with its own snapshots tests nothing.
             pending_row.cpu_ms = Some(cpu_ms);
             vec![pending_row, overridden_row, plain_row]
         }
         // The one sheep every sheep-pane scene draws, `web`, run through
         // six real polls two seconds apart, cpu_ms and memory_bytes both
-        // rising by varying deltas: task 4's counter differencing needs a
-        // poll to differ against, so a scene built from a single snapshot
-        // would draw an idle-looking chart while looking fine, the same
-        // trap `Scene::CfgDrift`'s own fixture above exists to avoid.
+        // rising by varying deltas: counter differencing needs a poll to
+        // differ against, or the chart draws idle-looking and blank.
         Scene::SheepPane
         | Scene::SheepPaneCpuOnly
         | Scene::SheepPaneSparklines
@@ -459,14 +448,6 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
             // Delivered rather than measured: the pane draws the last reading
             // `run_ui` took, and the gallery runs no event loop, so without
             // this the cell is blank in the one scene that shows it.
-            //
-            // This is why the fixture's `out_file`/`err_file` can stay on the
-            // fictional `/home/ada/.shep/logs/...` shape every other scene
-            // uses. `api` used to point at two committed 1024-byte files under
-            // a path relative to the crate's manifest directory, because
-            // `fs::metadata` ran inside the draw and had to find something
-            // real on every machine that regenerated the gallery. Nothing in
-            // the draw reads the filesystem now.
             if which == Scene::HealthyWide {
                 app.update(Msg::LogSize {
                     id: 2,
@@ -481,15 +462,9 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
 /// Hands `flock` to `app` the way a first listing would.
 pub(super) fn initialize_flock(app: &mut App, which: Scene, flock: Vec<ProcessInfo>, t0: Instant) {
     // `Empty` and the settings-dogs trio never call `App::update` while
-    // building `flock` above: `Empty`'s flock is empty and the dogs table
-    // carries no CPU column, so neither needs `poll_twice`'s two-poll
-    // shape, and this is the only snapshot either of them gets. Every other
-    // scene already delivered its own final state through `poll_twice` (or,
-    // for `CfgDrift` and the sheep-pane group, its own inline loop);
-    // resending the same rows here at `t0`, older than that already-applied
-    // poll, would difference against a zero or negative window and corrupt
-    // the very last sample `poll_twice` just recorded back to `0.0` or
-    // `None`: the bug this round exists to fix, not reintroduce.
+    // building `flock` above, so this is the only snapshot either gets.
+    // Every other scene already delivered its final state through
+    // `poll_twice`, and resending at `t0` would corrupt that last sample.
     if matches!(
         which,
         Scene::Empty | Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort
@@ -546,9 +521,7 @@ mod tests {
         // `coloured_palette` paints a real ground, so the selected row's
         // gutter is a painted space rather than a `>` glyph
         // (`view::flock::gutter`); checked on the buffer's own background
-        // rather than the rendered text, which cannot see one. Two rows
-        // carry it, not one: the selected row's gutter, and the status bar
-        // painted at the foot of the pane.
+        // rather than the rendered text, which cannot see one.
         let ground = coloured_palette()
             .ground()
             .bg
@@ -596,11 +569,8 @@ mod tests {
             .expect("the detail pane's rollup line");
         // Summed restarts, CPU and memory; uptime is the minimum (300s
         // plus the 600s this frame renders at), not the oldest member's.
-        //
         // 9.5% is the three instances' differenced `cpu_ms` readings
-        // (3.5 + 2.9 + 3.1) summed, not `ProcessInfo::cpu_percent`: see
-        // `poll_twice`'s own doc for why this scene has anything to
-        // difference at all.
+        // (3.5 + 2.9 + 3.1) summed, not `ProcessInfo::cpu_percent`.
         assert!(rollup.contains("restarts 3"), "summed restarts: {rollup:?}");
         assert!(rollup.contains("cpu 9.5%"), "summed cpu: {rollup:?}");
         assert!(rollup.contains("mem 540.0M"), "summed memory: {rollup:?}");

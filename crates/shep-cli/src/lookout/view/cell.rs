@@ -48,24 +48,11 @@ pub fn gauge(value: u64, ceiling: Option<u64>, cells: usize) -> String {
 
 /// The newest `cells` samples, one cell each, scaled against `ceiling`.
 ///
-/// Padded on the left with spaces when there are fewer samples than cells,
-/// so the line grows into the column from the right as history arrives.
-/// No samples at all is blank rather than a flat line at the floor: a flat
-/// line reads as measured and idle, and blank reads as not measured yet.
-/// A sample above `ceiling` saturates at the tallest step rather than
-/// overflowing it, the same way [`gauge_fill`] saturates a value above its
-/// own ceiling.
+/// Padded on the left when there are fewer samples than cells, and blank
+/// rather than a flat line at the floor when there are none: a flat line reads
+/// as measured and idle. A sample above `ceiling` saturates.
 ///
-/// `ceiling` is the caller's to choose, and the choice is the whole design
-/// of this cell. Scaling each row to its OWN peak makes every row fill its
-/// column, so an idle sheep and a busy one look identical, which is the
-/// discontinuity the design's opening problem statement exists to fix.
-/// Scaling every row to a fixed 100% of a core makes an ordinary flock draw
-/// ten flat lines, since real processes mostly sit near zero. What works for
-/// a table is one ceiling shared by every row and set by the data: see
-/// [`super::super::app::App::cpu_ceiling`], which takes the busiest sheep in
-/// the window and floors it so an idle flock's rounding noise is not
-/// amplified into a shape.
+/// `ceiling` is the caller's to choose: see [`super::super::app::App::cpu_ceiling`].
 #[must_use]
 pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
     if samples.is_empty() || cells == 0 {
@@ -87,25 +74,11 @@ pub fn sparkline(samples: &[f32], cells: usize, ceiling: f32) -> String {
 }
 
 /// A half-block area chart: `rows` rows of `cols` cells, oldest sample
-/// leftmost, top row first.
+/// leftmost, top row first. Left-padded like [`sparkline`].
 ///
-/// Sixteen steps in eight rows. For a sample of value `v` the column's
-/// height in half-steps is `h = round(v / ceiling * rows * 2)`; for row `r`
-/// counted from the top, `s = h - (rows - 1 - r) * 2`, and the cell is `█`
-/// when `s >= 2`, `▄` when `s == 1`, and blank otherwise.
-///
-/// Left-padded like [`sparkline`], and blank rather than a floor line with
-/// no samples, for the reasons that function's own doc gives.
-///
-/// A sample at or above `ceiling` fills its column, the same way
-/// [`gauge_fill`] saturates a value above its own ceiling: the row match
-/// below sends any height at or past the top row's floor to the same `█`
-/// arm regardless of how far past it the sample sits, so there is nothing
-/// for an explicit clamp to add on that side. A negative sample is a
-/// different case, one this function does need to get right even though no
-/// caller today produces one: the `as usize` cast on the line below sends it
-/// to a height of `0` (a saturating cast, not a wrapping one), which reads as
-/// blank rather than as a spurious full column.
+/// For a sample `v` the column's height in half-steps is
+/// `h = round(v / ceiling * rows * 2)`; for row `r` from the top,
+/// `s = h - (rows - 1 - r) * 2`: `█` when `s >= 2`, `▄` when `s == 1`.
 #[must_use]
 pub fn chart(samples: &[f32], ceiling: f32, cols: usize, rows: usize) -> Vec<String> {
     // A zero `cols` or `rows` degrades through the general path below with

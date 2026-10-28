@@ -27,13 +27,9 @@ pub const MIN_HEIGHT: u16 = 6;
 ///
 /// One for the marker, one for the gap. The table itself is rendered into
 /// `width - GUTTER` starting at `x + GUTTER`, so every threshold in
-/// `columns::TIERS` and every arithmetic in
-/// [`super::columns::name_width`] is untouched by the marker.
+/// `columns::TIERS` is untouched by the marker.
 ///
-/// The whole view pays this one, not the flock table alone: the settings
-/// screen, the config pane and the secrets table each draw [`mark`] plus a
-/// space before their first cell too. A width budget anywhere that forgets
-/// it is a budget every line overruns.
+/// The whole view pays this one, not the flock table alone.
 pub const GUTTER: u16 = 2;
 
 /// The marker for the selected row, or a blank for every other row.
@@ -51,11 +47,9 @@ pub const fn mark(selected: bool) -> &'static str {
 /// The selected row's edge: a painted space, or the ASCII marker when
 /// there is no colour to paint with.
 ///
-/// A space rather than `▌`, for the reason [`mark`] gives about `▸`:
-/// every block glyph in this pane's vocabulary is East-Asian
-/// *Ambiguous*, and a doubled cell in the gutter shifts the whole row.
-/// A space is one column on every terminal, and the background carries
-/// the whole signal.
+/// A space rather than `▌`, for the reason [`mark`] gives about `▸`: every
+/// block glyph in this pane's vocabulary is East-Asian Ambiguous, and a
+/// doubled cell in the gutter shifts the whole row.
 #[must_use]
 pub fn gutter(selected: bool, palette: Palette) -> (&'static str, Style) {
     match (selected, palette.ground()) {
@@ -69,23 +63,8 @@ pub fn gutter(selected: bool, palette: Palette) -> (&'static str, Style) {
 /// truncated with a trailing `…`.
 ///
 /// Counted in terminal columns, never bytes or `char`s: bytes over-pad a
-/// multi-byte name, and `char`s under-pad a double-width one, shoving every
-/// column after it out of line. A truncated name looking whole would be one
-/// an operator types into `shep stop`.
-///
-/// An ANSI escape counts as the literal text a `Span` draws it as, unlike
-/// [`crate::output::width::visible_width`], since nothing here writes to a
-/// real terminal that would interpret it.
-/// [`fit`] for a caller that already owns its text.
-///
-/// The common case is a cell whose text already fits its column, and there
-/// `fit` copies the whole string into a second one just to pad it. Every table
-/// cell arrives here as a fresh `String` from its own `*_cell` function, so a
-/// wide flock table was allocating twice per cell, rows times columns times
-/// thirty a second.
-///
-/// Truncation falls through to [`fit`], which builds a shorter string either
-/// way, so the rule stays in one place.
+/// multi-byte name, and `char`s under-pad a double-width one. Truncation
+/// falls through to [`fit`], which builds a shorter string either way.
 #[must_use]
 pub fn fit_owned(mut text: String, width: u16) -> String {
     let columns: usize = text_columns(&text);
@@ -140,21 +119,12 @@ pub fn fit(text: &str, width: u16) -> String {
     out
 }
 
-/// Fills the gap between `used` and `width` with a trailing span in
-/// `ground`, so a painted row's background reaches every column of the
-/// table rather than stopping where its last cell's text does.
+/// Fills the gap between `used` and `width` with a trailing span in `ground`,
+/// so a painted row's background reaches every column of the table rather
+/// than stopping where its last cell's text does.
 ///
-/// Ratatui only paints a `Span`'s background under the cells its own text
-/// occupies. `NAME` is the only column [`super::columns::name_width`] can
-/// leave short of the table's full width (it floors at
-/// [`super::columns::NAME_MIN`] on a narrow terminal), so without this the
-/// selected row's ground would end mid-row
-/// on exactly the terminals narrow enough to need the signal most. A no-op
-/// when `used >= width` or `ground` carries no colour.
-///
-/// The one padding every table row in the view goes through: the flock
-/// table's two renderers and the secrets table's two both end a selected
-/// row's paint at the same column.
+/// Ratatui paints a `Span`'s background only under the cells its text
+/// occupies, and `NAME` is the only column that can leave a row short.
 pub fn pad_ground(spans: &mut Vec<Span<'static>>, used: u16, width: u16, ground: Style) {
     let short = width.saturating_sub(used);
     if short > 0 {
@@ -165,11 +135,9 @@ pub fn pad_ground(spans: &mut Vec<Span<'static>>, used: u16, width: u16, ground:
 /// Which slice of the flock is on screen, given where the cursor is.
 ///
 /// Derived every frame from
-/// [`super::super::super::app::App::selected_index`] rather than stored
-/// beside it: a stored offset and a stored cursor can disagree,
-/// and this way they cannot. The selection is centred where the flock is long
-/// enough to allow it and pinned at both ends where it is not, so the last row
-/// of the flock is always the last row of the pane.
+/// [`super::super::super::app::App::selected_index`] rather than stored beside
+/// it: a stored offset and a stored cursor can disagree. The selection is
+/// centred where the flock allows it and pinned at both ends where it does not.
 #[must_use]
 pub fn scroll_offset(selected: usize, viewport: usize, total: usize) -> usize {
     if viewport == 0 || total <= viewport {

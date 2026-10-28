@@ -6,14 +6,11 @@ use super::palette::plain;
 use super::render::rendered;
 
 /// The active group's own field rows, as their key names: a bounded slice
-/// of the config pane's state rather than a search over the rendered
-/// frame, which is what keeps a test on this from passing off a match in
-/// the legend or another section.
+/// of the config pane's state rather than a search over the rendered frame.
 ///
 /// # Panics
 ///
-/// Panics if the pane is closed, which is a fixture bug rather than a
-/// failure the test is about.
+/// Panics if the pane is closed, which is a fixture bug.
 #[track_caller]
 pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
     let pane = app.config_pane().expect("the pane is open");
@@ -37,29 +34,19 @@ pub fn config_pane_field_rows_for_tests(app: &App) -> Vec<String> {
 
 /// The active group's own env rows: one entry per env key, then
 /// `+ add a key`. Searched below the `env` section header and nowhere else,
-/// so a test on this cannot pass off a match from the field list above it:
-/// the keys and the field names share one namespace on screen, and a sheep
-/// has fields called `user` and `env`.
-///
-/// Takes a `ConfigPane` directly rather than an `App`, since some of this
-/// pane's own tests build one without a dashboard around it.
+/// since the keys and the field names share one namespace on screen.
 ///
 /// # Panics
 ///
-/// Panics if it draws no row for a key or for `+ add a key`, which is a
-/// fixture bug rather than a failure the test is about.
+/// Panics if it draws no row for a key or for `+ add a key`.
 #[track_caller]
 pub fn config_pane_env_rows_for_tests(pane: &crate::lookout::pane::ConfigPane) -> Vec<String> {
     let lines = crate::lookout::view::pane::pane_lines(pane, plain(), 160, 0);
     let rendered_lines: Vec<String> = lines.iter().map(rendered).collect();
     // The `env` section header is the bound. Everything above it is a field
     // row or chrome, and a prefix match over the whole frame would hand back
-    // the `user` field's row for an env key named `user`.
-    //
-    // The header sits at column 2 and every row under it at column 3, which
-    // is what tells the header apart from a field called `env`. It is not
-    // matched whole because the explanation panel is merged to the right of
-    // it at this width, so the line carries the panel's own row too.
+    // the `user` field's row for an env key named `user`. The header sits at
+    // column 2 and every row under it at column 3.
     let header = rendered_lines
         .iter()
         .position(|line| {
@@ -111,12 +98,9 @@ pub fn config_pane_pending_rows_for_tests(app: &App) -> Vec<String> {
         .collect()
 }
 
-/// The one rendered line naming `key`, wherever it draws: the active
-/// group's own field row, or the pending-edits section when `key` belongs
-/// to a group not on screen. Bounded to that single row by stripping the
-/// mark, lock and flag columns and requiring what is left to start with
-/// `key`, which is what keeps this from matching a longer key or the
-/// legend.
+/// The one rendered line naming `key`: the active group's own field row, or
+/// the pending-edits section. Bounded to that row by stripping the mark,
+/// lock and flag columns. What is left must start with `key`.
 ///
 /// # Panics
 ///
@@ -151,8 +135,7 @@ pub fn config_pane_title_band_for_tests(app: &App, width: u16) -> String {
 
 /// The pane's own tab row, alone: the one line naming every group in
 /// [`shep_core::config::GROUP_ORDER`], found by its own `next / prev group`
-/// phrase rather than by a fixed index, so a chrome line gained or lost
-/// above it does not silently move which row this reads.
+/// phrase rather than by a fixed index.
 ///
 /// # Panics
 ///

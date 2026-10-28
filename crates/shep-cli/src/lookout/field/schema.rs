@@ -153,9 +153,8 @@ pub(super) fn kind_of(schema: &Value, defs: &Map<String, Value>) -> FieldKind {
         Some("string") => FieldKind::Text,
         // An array of anything else stays `Opaque`, which is what keeps an
         // array of nested objects read-only rather than half-editable. So
-        // does one whose items can be `null`: the list sub-screen rebuilds
-        // each element as a string and would turn a stored `null` into
-        // `"null"`.
+        // does one whose items can be `null`: the list sub-screen would
+        // turn a stored `null` into `"null"`.
         Some("array") if allows_null(items(schema), defs) => FieldKind::Opaque,
         Some("array") => {
             let item = resolved(items(schema), defs);

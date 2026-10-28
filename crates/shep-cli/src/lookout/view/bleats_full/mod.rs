@@ -52,19 +52,11 @@ pub fn draw(app: &App, pane: &BleatsPane, area: Rect, buffer: &mut Buffer) {
 
 /// [`draw`]'s own lines, without a [`Buffer`] round trip: what
 /// [`super::frames::render_text`] would read back off the buffer `draw`
-/// writes, built directly instead. Reads the pane through
-/// [`App::bleats_pane`] rather than taking one as a parameter, the same
-/// shape [`super::detail::detail_lines`] uses for the pane it draws.
+/// writes, built directly instead.
 ///
 /// # Panics
 ///
-/// Panics if `app`'s body is not the bleats pane. Every caller only reaches
-/// this after opening it.
-///
-/// `#[cfg(test)]`: reached from this module's tests, from `filter_row`'s
-/// tests, from `view::fixtures::draw_lines`, and from roughly a dozen tests
-/// in `app.rs` through that. It said "this module's own tests are the only caller" until
-/// the pane grew keys, and the tests that drive them live in `app.rs`.
+/// Panics if `app`'s body is not the bleats pane.
 #[cfg(test)]
 #[must_use]
 pub(crate) fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
@@ -119,12 +111,8 @@ fn lines(app: &App, pane: &BleatsPane, width: u16, rows: usize) -> Vec<Line<'sta
     }
     // Two things can leave `out` longer than `rows`. A single wrapped line
     // taller than the whole body: `window_range` always includes at least one
-    // line while there are body rows to draw into, even one whose own cost
-    // exceeds them, so the pane never renders nothing. And a body of zero
-    // rows, where the title and the filter row alone are already longer than
-    // the area. This is the actual guarantee
-    // `draw`'s own bounds check backs up for the terminal; `draw_lines`'s
-    // tests call this directly, with no such check downstream.
+    // line while there are body rows to draw into. And a body of zero rows,
+    // where the title and filter row alone are longer than the area.
     out.truncate(rows);
     out
 }
@@ -135,13 +123,10 @@ fn title_line(app: &App, pane: &BleatsPane, width: u16) -> Line<'static> {
     let text = match sheep_id(pane).and_then(|id| app.row(id)) {
         Some(row) => {
             let feed = app.feed();
-            // The window that was read, and what fell below it. `rulings.md`
-            // dropped the whole-file line count, the absolute line numbers
-            // and the density gutter, all three of which need reading the
-            // file to say anything. Bytes below the window are not that:
-            // `tail.rs` already knows them exactly because it seeked past
-            // them, and the four-line corner strip this pane replaces
-            // already surfaces the same figures.
+            // The window that was read, and what fell below it. Bytes below
+            // the window are exact because `tail.rs` already seeked past
+            // them; a whole-file line count and absolute line numbers would
+            // need reading the file to say anything.
             let window = format!(
                 "{} window, {} read",
                 human_bytes(FEED_WINDOW_BYTES),

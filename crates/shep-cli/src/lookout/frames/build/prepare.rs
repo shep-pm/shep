@@ -16,10 +16,9 @@ use crate::lookout::frames::scene::Scene;
 /// Replays the operator's own keys and selections onto `app`.
 pub(super) fn prepare_scene(app: &mut App, which: Scene) {
     // Every `Keymap*` scene uses the healthy flock fixture `super::flock`
-    // falls through to, and raises the overlay right after: `h`
-    // toggles `App::keymap_open` and nothing else, so it does not matter
-    // that this runs ahead of the selection, the host sample or (for
-    // `KeymapFrozen`) the freeze `super::link` applies.
+    // falls through to, and raises the overlay right after: `h` toggles
+    // `App::keymap_open` and nothing else, so running ahead of the
+    // selection, the host sample or the freeze does not matter.
     if which.is_keymap() {
         app.update(Msg::Key(KeyPress::Help));
     }
@@ -266,9 +265,8 @@ mod tests {
                 .lines()
                 // `Group::Moving.heading()`, not the literal "MOVING": the
                 // count below derives from `heading()`, so a rename would
-                // leave this `find` hunting a word nothing draws and the
-                // failure would read as a missing heading row rather than as
-                // a rename.
+                // leave this `find` hunting a word nothing draws rather than
+                // failing as a rename.
                 .find(|row| row.contains(Group::Moving.heading()))
                 .expect("no heading row");
             let drawn = Group::DRAWN
@@ -279,23 +277,13 @@ mod tests {
         }
     }
 
-    /// Every `Keymap*` scene actually raises the overlay.
-    ///
-    /// `scene`'s builder raises it from a `matches!` list of variants, and
-    /// the comment over that list says "every `Keymap*` scene". Nothing held
-    /// that claim. The per-scene checks in this module are a hand-written
-    /// list, `each_keymap_width_scene_draws_its_own_column_count` names five
-    /// of the eight, and a snapshot is accepted for whatever a scene
-    /// rendered, so a ninth keymap scene left out of the `matches!` list
-    /// would draw the dashboard and be pinned that way.
-    ///
-    /// Driven off the label rather than a list, so a new scene joins this
-    /// test by being named. Dropping `KeymapNarrow` from the builder's list
-    /// fails it, and so does adding a scene the list does not cover.
+    /// Driven off the scene label rather than a hand-kept list, so a new
+    /// `Keymap*` scene joins this test by being named and a variant dropped
+    /// from the builder's `matches!` list fails it.
     ///
     /// The count is the other half: it catches a keymap scene whose label
-    /// does not start with `keymap`, which this test would otherwise skip in
-    /// silence, and it is the same eight the gallery preamble promises.
+    /// does not start with `keymap`, which this test would otherwise skip
+    /// in silence.
     #[test]
     fn every_keymap_scene_raises_the_overlay() {
         let mut checked = 0;

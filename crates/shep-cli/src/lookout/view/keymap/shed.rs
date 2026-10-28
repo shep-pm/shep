@@ -39,10 +39,8 @@ pub(super) const HEIGHT_FLOOR: u16 = 13;
 /// What a form of `height` rows has to give up.
 ///
 /// The sheep is not a step of this ladder at all: it is boxed-only at every
-/// tier, [`borderless_lines`]'s own doc says why. It is not a shedding step
-/// because it frees nothing to shed either way — it sits at entry rows five
-/// through eight of the DOING column, and those rows exist because LOOKING
-/// has twelve entries.
+/// tier, and it frees nothing to shed either way. It sits at entry rows five
+/// through eight of the DOING column.
 ///
 /// ```text
 /// 19  Boxed       everything, border pair included
@@ -62,13 +60,10 @@ pub(super) enum Shed {
     Blank,
     /// Two heights, and the variant alone does not say which output they
     /// get: [`borderless_lines`] draws the folded gate-and-quit line at 14
-    /// and nothing at all at [`HEIGHT_FLOOR`], decided by a second condition
-    /// one function deeper: `if effective_height > HEIGHT_FLOOR`. Named here
-    /// because a reader holding a `Shed` value would otherwise have to find
-    /// that `if` to know what it renders.
+    /// and nothing at all at [`HEIGHT_FLOOR`], decided by
+    /// `if effective_height > HEIGHT_FLOOR` one function deeper.
     ///
-    /// "Condition", not "test": in a Rust file that word reads as
-    /// `#[test]`, a reference to a test function that does not exist.
+    /// "Condition", not "test": in a Rust file that word reads as `#[test]`.
     Gate,
     Refuse,
 }
@@ -120,13 +115,9 @@ pub(super) fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palett
     let columns = usize::from(columns_for(area.width));
     let banks: Vec<&[Group]> = Group::DRAWN.chunks(columns).collect();
     // Each bank beyond the first costs its own floor (`HEIGHT_FLOOR`) plus
-    // the blank row that separates it from the one before.
-    // `expect`, not `unwrap_or(u16::MAX)`: `banks` is `Group::DRAWN`
-    // chunked by at least one column, so it holds at most four, and the
-    // fallback was unreachable. It was also the wrong fallback, since
-    // `u16::MAX` here would have made `extra_banks_cost` below overflow
-    // rather than refuse: a silent wrong answer where a named panic says
-    // which invariant broke.
+    // the blank row that separates it from the one before. `expect`, not
+    // `unwrap_or(u16::MAX)`: `banks` is `Group::DRAWN` chunked by at least
+    // one column, so it holds at most four, and `u16::MAX` would overflow.
     let bank_count = u16::try_from(banks.len()).expect("at most COLUMN_COUNT banks of groups");
     let extra_banks_cost = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1);
     let effective_height = area.height.saturating_sub(extra_banks_cost);
@@ -134,11 +125,10 @@ pub(super) fn draw_borderless(app: &App, area: Rect, buffer: &mut Buffer, palett
 
     let lines = if shed == Shed::Refuse {
         let needed = extra_banks_cost + HEIGHT_FLOOR;
-        // `palette.refusal()`, the same bark-coloured style the secrets
-        // pane's own too-narrow refusal and the status bar use: the design
-        // reserves it for exactly this case, so an unstyled line here would
-        // read as ordinary body text while every other refusal in the app
-        // is marked.
+        // `palette.refusal()`, the same bark-coloured style the secrets pane's
+        // own too-narrow refusal and the status bar use: the design reserves
+        // it for exactly this case, so an unstyled line here would read as
+        // ordinary body text.
         vec![Line::from(Span::styled(
             format!(
                 "the keymap needs {needed} rows, this terminal has {}",
@@ -187,10 +177,7 @@ pub(super) fn borderless_lines(
     // The sheep is boxed-only, at every shed tier, not just from
     // `Shed::Decoration` down: it is the one element in the whole TUI that
     // carries no information, and the borderless form only exists because
-    // the frame itself could not be drawn. A decoration is the first thing
-    // to go once the frame is gone — the same reasoning that drops it
-    // alongside the `NO_COLOR` line once the *text* starts being trimmed,
-    // just one step earlier, at the point the box itself is trimmed.
+    // the frame itself could not be drawn.
     let show_sheep = false;
     let mut out = Vec::new();
     for (index, bank) in banks.iter().enumerate() {
@@ -252,9 +239,7 @@ mod tests {
     /// column.
     ///
     /// `Group::Closing` is checked by its caption rather than its `does`,
-    /// which is the four letters `quit` and would be satisfied by the
-    /// closing line's own `quits lookout` whatever the drawer did with the
-    /// row.
+    /// which is the four letters `quit`.
     #[test]
     fn every_derived_row_is_drawn() {
         let app = app_with_overlay();
@@ -296,9 +281,8 @@ mod tests {
 
         // `Link::Lost` outranks `Control::ReadOnly` too, not only
         // `Control::Allowed`: a mutation that checks `Control` ahead of
-        // `Link` passes the case above (`Control::Allowed` still falls
-        // through to the same link-lost text by coincidence) but fails
-        // here, where the read-only branch would otherwise win first.
+        // `Link` passes the case above by coincidence but fails here, where
+        // the read-only branch would otherwise win first.
         let frozen_read_only = render_overlay(&frozen_read_only_app_with_overlay(), 160, 48);
         assert!(
             frozen_read_only.contains("the link is down"),
@@ -314,24 +298,9 @@ mod tests {
     /// The overlay draws over a body other than the dashboard, and does it
     /// for four of the six.
     ///
-    /// Four, not six, and the title says four rather than "every" on
-    /// purpose. A universal over a set cannot be held by a test that walks
-    /// a hand-written subset of it, and `Settings` and `Edit` cannot join:
-    /// neither sets `App::body` synchronously, so a case built on them
-    /// renders the dashboard and passes while proving nothing. The other
-    /// half of the claim is structural instead, and stronger than a list:
-    /// `view::draw` calls `draw_keymap_overlay` once, after `draw_body` has
-    /// returned from whichever of the six exits it took.
-    ///
-    /// What this adds on top of that call is the rendering: that the
-    /// overlay's own geometry survives over a body which is not the flock
-    /// table. An earlier draft of this frame's brief said to hook it "at the
-    /// end of `view::draw`", which would have left it invisible over five
-    /// bodies, and this is the net for that mistake.
-    ///
-    /// Each case asserts the body it claims to be in before rendering, which
-    /// is what keeps a case that silently fell back to the dashboard from
-    /// passing.
+    /// Four, not six: `Settings` and `Edit` cannot join, since neither sets
+    /// `App::body` synchronously, so a case built on them renders the
+    /// dashboard and proves nothing. Each case asserts its own body first.
     #[test]
     fn the_overlay_renders_over_the_four_bodies_a_test_can_reach() {
         let sheep = {
@@ -399,13 +368,11 @@ mod tests {
     }
 
     /// The interior carries the design's own paper-2 ground, the same way
-    /// [`overlay::draw_boxed`](crate::lookout::view::overlay::draw_boxed) gives 1g's own box a ground when its caller
-    /// asks for one: a cell inside the box has a background, and a cell
-    /// outside it — the dimmed body behind — does not.
+    /// [`overlay::draw_boxed`](crate::lookout::view::overlay::draw_boxed) gives a box a ground when its caller asks for
+    /// one: a cell inside the box has a background, and a cell outside it
+    /// does not.
     ///
-    /// In colour: [`Palette::ground`] is a no-op under [`fixtures::plain`],
-    /// so a plain-palette render would pass whether or not the ground
-    /// call ever reached `blank_row`.
+    /// In colour: [`Palette::ground`] is a no-op under [`fixtures::plain`].
     #[test]
     fn the_interior_carries_the_paper_two_ground() {
         let app = coloured_app_with_overlay();
@@ -415,13 +382,9 @@ mod tests {
             .expect("draw");
         let buffer = terminal.backend().buffer();
         // Row 20 is an entry row; column 20 sits inside MOVING's own cell,
-        // clear of the border glyphs at columns 16 and 143 (margin
-        // (160 - 128) / 2 = 16). Column 2, same row, is the dimmed flock
-        // table behind the box.
-        // `Style::reset()` sets `bg` to `Some(Color::Reset)` rather than
-        // `None` (it is a sentinel meant to overwrite whatever a `patch`
-        // would otherwise leave standing), so "has a ground" means "some
-        // colour other than `Color::Reset`", not merely `bg.is_some()`.
+        // clear of the border glyphs at 16 and 143. Column 2, same row, is
+        // the dimmed flock table behind the box. `Style::reset()` sets `bg`
+        // to `Some(Color::Reset)`, so a ground means a colour other than that.
         let ground = app.palette().ground().bg;
         assert!(
             !matches!(ground, None | Some(ratatui::style::Color::Reset)),
@@ -443,32 +406,14 @@ mod tests {
     /// to one through four.
     ///
     /// Each boundary is asserted from both sides. The 126..129 band is the
-    /// only place the full four-column layout draws unboxed, and it is four
-    /// widths wide: the box needs two cells the columns themselves do not.
-    ///
-    /// The last two assert the clamp rather than a boundary, and no caller
-    /// can reach it. `draw_borderless` runs below the box floor, and the
-    /// widest width below that floor fits `keymap_rows::COLUMN_COUNT` columns exactly,
-    /// for any constants [`the_columns_sum_to_the_interior`] accepts:
-    ///
+    /// only place the full four-column layout draws unboxed: the box needs
+    /// two cells the columns themselves do not.
     /// ```text
     /// INTERIOR = N*C + (N-1)*G          the identity that test holds
     /// widest   = INTERIOR + 4 - 1       one under `overlay::floor_for`
     /// fits     = (widest + G)/(C + G) = N + 3/(C + G) = N   for C + G > 3
     /// ```
-    ///
-    /// So a mutation raising the clamp's threshold survived the whole
-    /// suite, and it would have survived a narrower `KEY_CELL` too, because
-    /// narrowing a cell narrows `keymap_rows::INTERIOR` and lowers the floor with it.
-    /// The arm is the second net under that identity rather than a guard
-    /// against any width a terminal can have: it fires only once the
-    /// identity is broken, which is the one thing that test exists to stop.
-    /// Kept because `columns_for`'s own doc promises the clamp, and pinned
-    /// here since nothing else can reach it.
-    ///
-    /// `u16::MAX - GUTTER` rather than `u16::MAX`: `columns_for` adds
-    /// `keymap_rows::GUTTER` before dividing, so the maximum is one `keymap_rows::GUTTER` under the
-    /// type's. A real `area.width` is nowhere near either.
+    /// The last two cases assert the clamp, which no caller can reach.
     #[test]
     fn the_column_ladder_has_a_boundary_on_each_side() {
         assert_eq!(columns_for(126), 4);
@@ -502,14 +447,16 @@ mod tests {
 
     /// The heights, from the top of the ladder to the refusal.
     ///
-    ///   19  boxed, everything
-    ///   18  borderless (a box cannot shed its border pair)
-    ///   17  borderless, everything
-    ///   16  the NO_COLOR line and the sheep go
-    ///   15  the blank separator goes
-    ///   14  the gate line folds onto the closing line
-    ///   13  the floor: the heading and twelve entry rows
-    ///   12  refuse
+    /// ```text
+    ///  19  boxed, everything
+    ///  18  borderless (a box cannot shed its border pair)
+    ///  17  borderless, everything
+    ///  16  the NO_COLOR line and the sheep go
+    ///  15  the blank separator goes
+    ///  14  the gate line folds onto the closing line
+    ///  13  the floor: the heading and twelve entry rows
+    ///  12  refuse
+    /// ```
     #[test]
     fn the_height_ladder_shows_its_boundaries() {
         assert_eq!(rows_for_height(19), Shed::Boxed);
@@ -526,10 +473,7 @@ mod tests {
     /// row is still there.
     ///
     /// 16, not 22: the box needs 19 rows and 22 holds it whole, so nothing
-    /// sheds at 22 and this test would have passed on an unshed form. The
-    /// sheep is absent here for a reason this test does not exercise: it is
-    /// boxed-only at every height, not something the `Decoration` tier
-    /// sheds (see [`borderless_lines`]'s own comment).
+    /// sheds at 22 and this test would have passed on an unshed form.
     #[test]
     fn a_short_terminal_sheds_the_decoration_and_keeps_the_keys() {
         let app = app_with_overlay();
@@ -591,41 +535,28 @@ mod tests {
 
     /// A multi-bank width crossed against the height ladder.
     ///
-    /// Every other height-ladder test runs at width 160, which is always
-    /// one bank; every bank-grouping test runs at height 48 or 100, always
-    /// above the ladder's own top. Neither exercises `extra_banks_cost` and
-    /// `effective_height` together, and those two are exactly the
-    /// arithmetic this task adds.
+    /// Every other height-ladder test runs at width 160, always one bank, and
+    /// every bank-grouping test runs above the ladder's own top, so neither
+    /// exercises `extra_banks_cost` and `effective_height` together.
     ///
-    /// Swept rather than picking two heights by hand, so the boundary is
-    /// found by the test: at every height in the sweep the overlay either
-    /// refuses cleanly (no heading drew, and it named the rows it needs) or
-    /// both banks drew whole (every heading, and every entry row `rows()`
-    /// produces). Nothing in between — a heading with no entries under it,
-    /// or entries with no heading — passes either check.
+    /// Swept rather than picking two heights by hand, so the boundary is found.
     #[test]
     fn a_multi_bank_width_crosses_the_height_ladder_cleanly() {
         let app = app_with_overlay();
         let width = 100;
         // The same formula `draw_borderless` runs, from the same constants
-        // `the_column_ladder_has_a_boundary_on_each_side` and
-        // `the_height_ladder_shows_its_boundaries` already pin: two banks
-        // at this width (columns_for(100) == 3, four groups in chunks of
-        // three), so one bank beyond the first, costing its own floor plus
-        // the separator row before it. This is what makes the boundary
-        // below found rather than picked: it comes from the constants the
-        // ladder's own tests already check, not a height chosen by hand.
+        // the ladder's own tests already pin: two banks at this width
+        // (columns_for(100) == 3, four groups in chunks of three), so one
+        // bank beyond the first, costing its own floor plus the separator.
         let bank_count =
             u16::try_from(Group::DRAWN.chunks(usize::from(columns_for(width))).count())
                 .expect("four groups never chunk into more banks than fit a u16");
         let boundary = bank_count.saturating_sub(1) * (HEIGHT_FLOOR + 1) + HEIGHT_FLOOR;
 
-        // Derived from `boundary`, not the hand-picked `20..=35` this was.
-        // The doc above says the boundary is found by the test, and a fixed
-        // range does not deliver that: change `HEIGHT_FLOOR` so the boundary
-        // leaves the range and every height lands on one side, the opposite
-        // branch never runs, and the test passes having verified no
-        // transition at all. The tallies below are the vacuity guard.
+        // Derived from `boundary`, not a fixed range: change `HEIGHT_FLOOR`
+        // so the boundary leaves a hand-picked range and every height lands on
+        // one side, the opposite branch never runs, and the test passes having
+        // verified no transition at all.
         let mut refusals = 0;
         let mut whole_draws = 0;
         for height in boundary.saturating_sub(4)..=boundary + 4 {

@@ -24,19 +24,10 @@ pub(super) fn section_header(label: &str, palette: Palette) -> Line<'static> {
 /// One field's row: the selection mark, a lock glyph, a flag, the key, the
 /// value and what changing it costs.
 ///
-/// The flag matches `shep flock`'s CFG column: `!` for a field parked
-/// until a respawn, `*` for one an operator has overridden. Pending wins
-/// when both apply, since the value on screen is not what the running
-/// child holds.
-///
-/// The lock is a glyph, not a style, since a style says nothing in
-/// `plain`. It sits between the mark and the flag rather than in the cost
-/// cell, since cost is the first column [`widths`] drops. See [`Lock`].
-///
-/// A field with a filed edit shows `old -> new` in the value cell, in
-/// butter, and keeps its own flag and lock exactly as computed: `!` and `*`
-/// are the shepherd's own words for a different fact, and an edit an
-/// operator has not sent yet earns neither.
+/// The flag matches `shep flock`'s CFG column: `!` for a field parked until
+/// a respawn, `*` for one an operator has overridden. Pending wins when both
+/// apply. The lock is a glyph, not a style, since a style says nothing in
+/// `plain`.
 pub(super) fn field_line(
     pane: &ConfigPane,
     index: usize,
@@ -69,11 +60,10 @@ pub(super) fn leaf_line(
         (false, true) => '*',
         (false, false) => ' ',
     };
-    // A secret's value is never rendered, only whether there is one. The
-    // Flockfile schema marks nothing secret today; a dog's own schema can,
-    // and this pane draws both. `display_value`, not `value`: a
-    // `MemSize`/`UpDuration` field's bare number is resolved for the row,
-    // not for whatever an editor would seed.
+    // A secret's value is never rendered, only whether there is one. A
+    // Flockfile marks nothing secret today; a dog's own schema can.
+    // `display_value`, not `value`: the row shows the resolved form, not
+    // what an editor would seed.
     let raw = pane.display_value(&field.key);
     // An editor open on this field replaces the cell with what is being
     // typed, cursor included. The same `\u{258f}` every text box in
@@ -105,10 +95,9 @@ pub(super) fn leaf_line(
     let cost_cell = (cost_w > 0).then(|| fit(pane.cost(&field.key).map_or("", cost_label), cost_w));
 
     // The selected row's own paint: a paper-2 ground the full width of the
-    // line, and the mark in column 1 in butter rather than plain text.
-    // `palette.ground()` is the same call the flock table's selected row
-    // makes; `palette.attention()` is `theme.rs`'s own butter, the same
-    // colour an edited value already borrows a few lines below.
+    // line, and the mark in column 1 in butter rather than plain text. Same
+    // ground the flock table's selected row uses, same butter an edited
+    // value uses.
     let ground = if selected {
         palette.ground()
     } else {
@@ -263,10 +252,8 @@ pub(super) const TABLE_LABEL: &str = "table";
 /// own help text, wrapped, at widths where the explanation panel cannot
 /// draw it. Empty where the panel does.
 ///
-/// Pushes the field-help lines [`top_lines`] returns onto `lines`, spending
-/// `budget` down as it goes and stopping one line short of empty: a long
-/// wrapped help string must not spend the last line the cursor's own row
-/// needs.
+/// Stops one line short of empty: a long wrapped help must not spend the
+/// last line the cursor's own row needs.
 pub(super) fn push_wrapped_blurb(
     lines: &mut Vec<Line<'static>>,
     budget: &mut usize,
@@ -301,10 +288,8 @@ pub(super) fn top_lines(pane: &ConfigPane, palette: Palette, width: u16) -> Vec<
     )
     .into_iter()
     // No indent here. Both callers prepend the pane's own two columns, and
-    // the wrap budget above already reserves them, so adding them a second
-    // time put the blurb four columns in while every other row in the pane
-    // sits at two. `panel_for_field`'s copy of this indents once because it
-    // is the thing writing the row.
+    // the wrap budget already reserves them, so a second copy would put the
+    // blurb four columns in while every other row sits at two.
     .map(|row| (row, palette.muted()))
     .collect()
 }
@@ -335,12 +320,9 @@ pub(super) fn type_label(field: &Field) -> &'static str {
 /// cell, and one sentence naming what that word costs the operator, keyed
 /// on [`ApplyGroup`] the same way [`cost_label`] is.
 ///
-/// `●` for a change the running sheep picks up on its own; `▲` for one
-/// that waits on a start the operator has to choose the timing of. Both
-/// are checked against the same East-Asian-width rule that `mark`, in
-/// `lookout/view/flock/layout.rs`, applies to its own glyph, in this
-/// module's own tests: a double-width rendering would shift every column
-/// after it.
+/// `●` for a change the running sheep picks up on its own; `▲` for one that
+/// waits on a start. A double-width glyph would shift every column after
+/// it.
 pub(super) fn impact_tag(group: ApplyGroup) -> (char, &'static str, &'static str) {
     match group {
         ApplyGroup::Live => (
@@ -413,14 +395,11 @@ mod tests {
     }
 
     /// Every field row over all nine groups, walked with `next_group`,
-    /// styled by `palette`. What a test that used to find any field at
-    /// one width in one shot now needs, since the active group is the
-    /// only one a single render draws.
+    /// styled by `palette`. The active group is the only one a single
+    /// render draws.
     ///
-    /// 89 columns, one short of [`panel_width`]'s own floor: these tests
-    /// are about a field row's own COST cell and lock glyph, which the
-    /// panel suppresses once it draws, so the width has to stay below the
-    /// ladder rather than at the 120 it used before the ladder existed.
+    /// 89 columns, one short of [`panel_width`]'s floor: the panel hides
+    /// the COST cell and lock glyph these tests are about.
     fn all_group_lines(palette: Palette) -> Vec<Line<'static>> {
         let mut pane = web_pane();
         let mut lines = Vec::new();
@@ -549,11 +528,9 @@ mod tests {
             pane.next_group();
         }
         // `parts(line).is_some()` alone is not enough at this width: the
-        // legend line spells out `= read-only, set it in the Flockfile`,
-        // and its own leading two spaces plus an `=` parse the same shape
-        // `parts` reads off a field row. Real
-        // field keys only, the same filter `rows_of` applies, keeps this
-        // test about the cost cell rather than the legend.
+        // legend's `= read-only, set it in the Flockfile` parses the same
+        // shape `parts` reads off a field row. Real field keys only, the
+        // filter `rows_of` applies.
         let keys: Vec<String> = web_pane()
             .fields()
             .fields()

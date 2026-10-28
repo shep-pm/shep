@@ -1,19 +1,13 @@
 //! The one scroll driver every screen taller than its terminal shares.
 //!
-//! [`Viewport`](crate::lookout::viewport::Viewport) scrolls in data rows,
-//! while the height a screen is drawn into counts lines. A screen with
-//! chrome (a section header, a blank separator, a caption, a column
-//! header, two hidden-count markers) cannot ask the viewport how much
-//! fits and get an answer about its own body.
-//!
-//! The fix is the same shape on every screen: treat the viewport's offset
-//! as a starting point, lay the body out from there, and walk down one
-//! row at a time until the cursor's row is among the lines that came
-//! back. The walk, its last resort, and the two markers naming the rows
-//! off each end live here.
-//!
-//! What the screens share is the invariant this module holds: the cursor
-//! is drawn at every height a screen claims it can be drawn at.
+//! [`Viewport`](crate::lookout::viewport::Viewport) scrolls in data rows.
+//! The height a screen is drawn into counts lines. A screen with chrome asks
+//! it for room and gets an answer about the wrong thing. The fix is the same
+//! shape everywhere. Treat the offset as a starting point and lay the body
+//! out from there, then walk down one row at a time until the cursor's row
+//! comes back. The walk, its last resort, and the two hidden-count markers
+//! live here. They hold what every screen claims: the cursor draws at any
+//! height.
 
 use ratatui::text::{Line, Span};
 
@@ -35,15 +29,9 @@ pub(super) struct Attempt {
 /// Lays the body out from the first offset at or below `start` whose
 /// attempt draws the cursor's row, and falls back when none does.
 ///
-/// The walk can run out. A four-line body has no room for a section's own
-/// header, blank separator and both markers above a single row, and at
-/// `view::MIN_HEIGHT` that is the whole budget. When it runs out it gives up
-/// on the layout rather than on the cursor: `fallback` draws the cursor's
-/// row without its section chrome. The cursor is therefore drawn at every
-/// height the screen claims to support, and the frame at the floor looks
-/// unlike every other frame on purpose.
-///
-/// At most one pass per row, and each pass is bounded by the budget.
+/// The walk can run out. At `view::MIN_HEIGHT` there is no room for a
+/// section's header and markers above one row. `fallback` then draws the
+/// cursor's row without its chrome. At most one pass per row.
 pub(super) fn to_cursor<B, F>(
     cursor_row: usize,
     start: usize,
@@ -91,13 +79,9 @@ fn marker(count: usize, side: Side, palette: Palette) -> Line<'static> {
 /// Draws the two hidden-count markers around a body laid out as a window of
 /// rows.
 ///
-/// `hidden_below` is counted off what the pass drew rather than off the
-/// viewport's arithmetic, and `offset` is the data row the first line came
-/// from. Both lines are already paid for: a window-building pass holds a
-/// line back for each marker before it admits a row.
-///
-/// The below marker goes on first so the above marker can be inserted at
-/// index 0 once the whole window is known.
+/// `hidden_below` is counted off what the pass drew, not the viewport's
+/// arithmetic. `offset` is the data row the first line came from. Both
+/// markers are already paid for: a window pass holds one line back for each.
 pub(super) fn window_markers(
     lines: &mut Vec<Line<'static>>,
     hidden_below: usize,

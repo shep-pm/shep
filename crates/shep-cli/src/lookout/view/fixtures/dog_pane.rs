@@ -25,11 +25,6 @@ pub fn dog_section() -> String {
 /// loop opens it from the flock: `e` on the dog's own row, then the schema its
 /// binary answered with, then the shepherd's section. The control gate is open,
 /// so the pane can write.
-///
-/// Opened from the flock rather than from the settings screen because the
-/// settings screen's own `e` now folds the dog's tree into its own row instead
-/// of replacing the screen with a pane. Same pane, same two reads, one door
-/// later.
 pub fn app_in_dog_pane() -> App {
     let bark = ProcessInfo::builder(91, "bark", ProcStatus::Online)
         .pid(Some(91_000))

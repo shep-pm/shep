@@ -10,11 +10,8 @@ use ratatui::style::{Color, Modifier};
 /// kept, no escapes.
 ///
 /// Trailing spaces stay because a frame is a fixed-size grid: trimming
-/// would make a right-aligned cell look like it moved.
-///
-/// Cells are read by their rendered symbol, not by byte length, so a
-/// multi-byte cell round-trips exactly as drawn. Indexed with
-/// `Buffer[(x, y)]`, not the deprecated `Buffer::get`.
+/// would make a right-aligned cell look like it moved. Cells are read by
+/// their rendered symbol, so a multi-byte cell round-trips as drawn.
 #[must_use]
 pub fn render_text(buffer: &Buffer) -> String {
     let area = buffer.area;
@@ -60,12 +57,9 @@ pub fn render_ansi(buffer: &Buffer) -> String {
 /// The SGR sequence for one cell's foreground, background and reverse
 /// video.
 ///
-/// Foreground, background and `REVERSED` are the only styles any scene
-/// uses (`no_scene_uses_a_modifier_the_ansi_renderer_cannot_render` still
-/// guards against a scene reaching for one this function does not draw).
-/// This is what makes the selected row's painted ground and the title and
-/// section bands' reverse video visible in `docs/lookout/frames.ansi`
-/// rather than under-representing both.
+/// These are the only styles any scene uses
+/// (`no_scene_uses_a_modifier_the_ansi_renderer_cannot_render` guards
+/// against a scene reaching for one this function does not draw).
 fn sgr(fg: Color, bg: Color, modifier: Modifier) -> String {
     let mut out = String::new();
     if modifier.contains(Modifier::REVERSED) {

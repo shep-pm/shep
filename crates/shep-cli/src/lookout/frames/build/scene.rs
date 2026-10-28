@@ -18,17 +18,8 @@ use super::{armed, flock, link, prepare};
 ///
 /// Deterministic: a forced palette, an explicit `Instant` advanced by exact
 /// `Duration`s, and a literal frozen timestamp, so the gallery never
-/// depends on this machine's clock or environment.
-///
-/// `palette` exists so the gallery can render the same scene twice: once
-/// through [`super::super::coloured_palette`] for `docs/lookout/frames.ansi` and the
-/// pinned snapshots, and once through [`super::super::no_color_palette`] for
-/// `docs/lookout/frames.txt`.
-///
-/// `age` exists for
-/// `the_frozen_frame_does_not_move_however_long_the_link_stays_gone`,
-/// which renders the frozen scene at two ages and checks for identical
-/// frames.
+/// depends on this machine's clock or environment. `palette` splits the
+/// coloured and plain renderings; `age` serves the frozen-frame test.
 #[must_use]
 pub fn scene_with(which: Scene, age: Duration, palette: Palette) -> Buffer {
     let t0 = Instant::now();
@@ -85,13 +76,10 @@ mod tests {
             "the detail pane's"
         );
         assert!(empty.contains("BLEATS no sheep is selected"), "the feed's");
-        // The summary sits after both host readings now, which puts it past
-        // the cut at this scene's 100 columns. Asserted as absent rather
-        // than dropped: this is the visible cost of grouping the machine's
-        // two numbers together, and a later reorder that brings it back
-        // should have to come through here and say so. The empty-flock
-        // behaviour it used to check is pinned at the unit level, in
-        // `host::tests::a_flock_with_no_readings_shows_a_dash_and_not_a_zero`.
+        // The summary sits after both host readings, which puts it past the
+        // cut at this scene's 100 columns. Asserted as absent rather than
+        // dropped: a later reorder that brings it back has to come through
+        // here and say so.
         assert!(
             !empty.contains("errored"),
             "the summary is past a 100-column cut once host memory precedes it"
@@ -174,9 +162,7 @@ mod tests {
     /// columns look like once the shepherd is gone.
     ///
     /// The floor is `ALL`'s own tier threshold plus the gutter, not the
-    /// design's 160: the frame is drawn twelve columns wider than it has
-    /// to be, and pinning the wider number would fail for a scene that was
-    /// still drawing everything.
+    /// design's 160, which is twelve columns wider than it has to be.
     #[test]
     fn the_frozen_scene_draws_every_column() {
         use crate::lookout::view::flock::{GUTTER, columns_for};

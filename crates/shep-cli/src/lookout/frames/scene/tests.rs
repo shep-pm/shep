@@ -4,16 +4,13 @@ use super::super::gallery::GALLERY_PREAMBLE;
 use super::super::scene;
 use super::*;
 
-/// fails if a scene stops rendering what it is named for.
-///
-/// Each caption clause in [`Scene::caption`] is pinned by one
-/// assertion here.
-/// The preamble's own scene count matches `Scene::ALL`.
+/// Each caption clause in [`Scene::caption`] is pinned by one assertion
+/// here, and the preamble's own scene count matches `Scene::ALL`.
 ///
 /// `write_the_gallery` commits the preamble into
 /// `docs/lookout/frames.txt`, so a wrong count is a document that
-/// miscounts itself for an operator. Spelled out rather than a digit,
-/// which is the form a reader sees.
+/// miscounts itself for an operator. The count is spelled out, which is
+/// the form a reader sees.
 #[test]
 fn the_gallery_preamble_counts_the_scenes_it_has() {
     const NUMBERS: [(usize, &str); 34] = [
@@ -59,9 +56,8 @@ fn the_gallery_preamble_counts_the_scenes_it_has() {
         .expect("add the next number to NUMBERS when the gallery outgrows it");
     // `fifty` is a prefix of `fifty-one` through `fifty-eight`, so a bare
     // `contains` passes when the preamble overstates inside its own
-    // decade: 50 scenes against a preamble saying "fifty-eight" satisfies
-    // `contains("fifty")`. Refusing the hyphen is what makes the match a
-    // whole number rather than a prefix of a larger one.
+    // decade: 50 scenes against "fifty-eight" satisfies `contains("fifty")`.
+    // Refusing the hyphen makes the match a whole number.
     assert!(
         !GALLERY_PREAMBLE.contains(&format!("{spelled}-")),
         "the preamble spells a larger number than {} scenes: {spelled}-…",
@@ -98,20 +94,10 @@ fn every_scene_has_a_caption_and_a_distinct_label() {
 /// The scene that follows `scene` in gallery order, or `None` after the
 /// last one. Mirrors `Scene::ALL`'s own order.
 ///
-/// Exhaustive over [`Scene`], with no wildcard arm: a variant added to
-/// the enum without an arm here fails to compile. `scene_all_lists_every_variant_the_compiler_can_see`
-/// below walks this chain and checks it against `ALL`, which a
-/// hand-counted length could not: a forgotten scene just left the count
-/// honest at the old number.
-///
-/// The `scenes!` macro that declares `Scene` keeps a variant from being
-/// left out of `ALL` outright — the two are generated from one list, so
-/// they cannot disagree on membership. What that macro cannot catch is
-/// this chain: a variant could still get an arm here that loops back on
-/// itself or points somewhere unreachable from `HealthyWide`, compiling
-/// fine while never being walked. That is exactly what this test's own
-/// walk-and-compare catches, so the two mechanisms are covering
-/// different halves of the same failure, not one covering the other.
+/// Exhaustive over [`Scene`], with no wildcard arm: a variant added to the
+/// enum without an arm here fails to compile. The chain itself is what
+/// `scene_all_lists_every_variant_the_compiler_can_see` walks, since a
+/// variant could get an arm here that loops back on itself.
 fn scene_after(scene: Scene) -> Option<Scene> {
     match scene {
         Scene::HealthyWide => Some(Scene::Errored),
@@ -198,8 +184,7 @@ fn scene_all_lists_every_variant_the_compiler_can_see() {
         // Bounded, because `scene_after` is a hand-kept chain and a
         // variant wired back at an earlier one would otherwise spin here
         // forever. Nextest has no per-test timeout, so an unbounded walk
-        // fails as a twenty-minute job timeout with no named test rather
-        // than as an assertion.
+        // fails as a job timeout with no named test.
         assert!(
             walked.len() < Scene::ALL.len(),
             "scene_after cycles: walked {} scenes without reaching the end of {}",

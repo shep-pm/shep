@@ -21,22 +21,13 @@ use super::super::feed_ink;
 use super::super::flock::fit;
 use super::layout::{COLUMN_BODY_ROWS, FEED_WIDTH, FEED_X};
 
-/// `top` (the same row [`draw_column`](super::column::draw_column) and
-/// [`draw_divider`](super::column::draw_divider) were handed)
-/// through [`COLUMN_BODY_ROWS`] rows below it, right of the divider: the
-/// header, then the window's newest surviving lines that fit, oldest at
-/// the top.
+/// From `top`, through [`COLUMN_BODY_ROWS`] rows, right of the divider:
+/// the header, then the window's newest lines that fit, oldest at the
+/// top.
 ///
 /// Reads [`SheepPane::feed_sheep`]'s tail through [`App::feed`], never
-/// [`App::selected`]: the same rule [`draw`](super::draw)'s own identity
-/// band, charts and
-/// config column already follow, now enforced one level up too, in
-/// [`App::feed_row`] itself: `app.feed()` already answers with the pinned
-/// sheep's own lines while this pane is open, not the dashboard's selection.
-///
-/// No scrolling: unlike [`super::super::bleats_full::draw`], this column has no
-/// cursor of its own to page through, so a line past what fits is only
-/// counted by the header's own `N earlier` clause, never drawn.
+/// [`App::selected`]. No scrolling: a line past what fits is only counted
+/// by the header's `N earlier`.
 pub(super) fn draw_feed(
     app: &App,
     pane: &SheepPane,
@@ -71,17 +62,12 @@ pub(super) fn draw_feed(
 }
 
 /// One feed line: the stream tag, muted the same way
-/// [`super::super::bleats::feed_lines`] draws it (stderr is most runtimes'
-/// default,
-/// not `--bark`), then the text, truncated rather than wrapped, since this
-/// column has no row budget to spend on a second line for one that
-/// overruns.
+/// [`super::super::bleats::feed_lines`] draws it, then the text, truncated
+/// rather than wrapped, since this column has no row budget for a second
+/// line.
 ///
-/// The text goes through [`feed_ink`] like the other two places the feed is
-/// drawn: a plain stdout line is meadow, a plain stderr line is bark, and a
-/// line that coloured itself keeps its own runs. `App::data_palette` is the
-/// palette for it, so a sheep pane open on a dashboard that lost its link
-/// draws that feed muted rather than live.
+/// The text goes through [`feed_ink`] like the other two feed draws.
+/// `App::data_palette` is the palette, so a lost link draws it muted.
 fn feed_line(line: &TailLine, palette: Palette, ink: feed_ink::Ink<'_>) -> Line<'static> {
     let tag = match line.stream {
         Stream::Out => "out",
@@ -178,22 +164,6 @@ mod tests {
     use super::super::layout::MIN_HEIGHT_FOR_COLUMN;
     use super::*;
 
-    /// `draw_feed` draws whatever `App::feed` holds, filtered through the
-    /// pane's own pinned `BleatsPane`, and never reaches for `App::selected`
-    /// itself: this pins that half. It does *not* pin `App::feed_row`'s own
-    /// scoping to the pane's pinned sheep rather than the reseated
-    /// selection: a fixture with no polling loop cannot re-fetch the tail
-    /// after the reseat below, so the tail this test asserts on is exactly
-    /// the one `Msg::Bleats` injected before it, whatever `feed_row` would
-    /// answer now. `the_feed_row_follows_the_sheep_panes_own_pinned_sheep_when_the_selection_moves`
-    /// in `app.rs` is what pins that half; a mutation removing `feed_row`'s
-    /// own `Body::Sheep` branch left this test green.
-    ///
-    /// The area is 160x46, at [`FEED_X`] plus [`FEED_WIDTH`] and
-    /// [`MIN_HEIGHT_FOR_COLUMN`] exactly: `draw`'s own gate skips
-    /// `draw_feed` below either floor, and a narrower or shorter area would
-    /// pass this test whether or not `draw_feed` ever ran, the same way a
-    /// too-small area let Task 8's own chart bug through once.
     #[test]
     fn the_feed_does_not_draw_the_sheep_that_replaced_the_pinned_one() {
         let mut app = fixtures::app_with(

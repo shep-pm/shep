@@ -16,32 +16,10 @@ use crate::lookout::field::{Bounds, ListItem};
 /// Why one typed element of a list field was not filed, in the operator's
 /// words.
 ///
-/// The rules are the ones the item schema published, which is a different
-/// schema from the one the dog published about the array: `minLength`,
-/// `pattern` and `enum` for a string list, the schema's floor and ceiling
-/// for an integer one, and `enum` for both. An element with no rule on it
-/// is accepted, exactly as a scalar field its schema says nothing about is:
-/// shep is not the authority on a dog's config beyond what that dog
-/// published.
-///
-/// A [`ListItem::Choice`] element is held to the names the item itself carries,
-/// through [`takes_one_of`] rather than through the `enum` arm: a closed set
-/// spelled as a `oneOf` of `const`s publishes no `enum`, so `bounds.choices`
-/// holds nothing. The pane never reaches this arm: a choice list is toggled as
-/// a checklist, and one the pane types as text reaches it as `ListItem::Text`
-/// ([`crate::lookout::pane::ConfigPane::sub_screen_item`]). The table door
-/// does, where an element is whatever the file held.
-///
-/// `secret` decides what the sentence may print, resolved here rather than
-/// per rule so a rule added later cannot echo a credential by forgetting to
-/// ask. A list the schema marks secret is rare rather than impossible: a
-/// dog's `Vec<String>` of tokens publishes `x-shep-secret` on its items.
-///
-/// Fails open on a `pattern` that does not compile, for [`super::refusal`]'s
-/// reason.
-///
-/// The empty buffer never reaches here: it is nothing to write, which is
-/// [`crate::lookout::pane::ListPane::apply_typing`]'s own case.
+/// The rules are the item schema's own, not the dog's about the array, and
+/// an element with no rule on it is accepted. A [`ListItem::Choice`] element
+/// goes through [`takes_one_of`], which the pane never reaches. `secret` is
+/// resolved once, so a rule added later cannot echo a credential.
 #[must_use]
 pub fn item_refusal(
     key: &str,

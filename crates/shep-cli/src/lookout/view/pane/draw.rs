@@ -42,19 +42,11 @@ pub(super) fn grouped_pane_lines(
 
 /// [`grouped_pane_lines`], with the cursor's own field's [`panel_lines`]
 /// drawn beside the body only: the title band, tab row, hairline and
-/// header row above it, and the trailing hairline and legend below it,
-/// are chrome, not per-field, so widening them into the panel's own
-/// column would only paint over where the panel sits.
+/// header row are chrome, not per-field.
 ///
 /// Chrome is laid out at the real `width`, not clamped to the design
-/// target: a terminal wider than 160 stretches the title band's own
-/// reverse-video band and the hairlines the rest of the way, rather than
-/// leaving blank space to the right of a pane pinned at 160. `panel_width`
-/// governs how much of that width the panel itself claims; nothing here
-/// grows the panel past [`super::layout::PANEL_MAX`].
-///
-/// Only reached when [`panel_width`] returns `Some`; a narrower terminal
-/// never calls this and keeps today's single column.
+/// target. `panel_width` governs how much of that width the panel claims,
+/// and nothing here grows it past [`super::layout::PANEL_MAX`].
 pub(super) fn grouped_pane_with_panel_lines(
     pane: &ConfigPane,
     palette: Palette,
@@ -89,12 +81,10 @@ pub(super) fn grouped_pane_lines_with_panel(
     if remaining == 0 {
         return lines;
     }
-    // Everything from here down is best-effort, and every push below is
-    // gated on `remaining > 1` rather than `> 0`: the body's own cursor
-    // outranks every one of these lines, per `cursor_only`'s own doc that
-    // the selected row is drawn at every height the pane claims to
-    // support, so a chrome line is only added when doing so still leaves
-    // at least one line for the body once the budget reaches it.
+    // Everything from here down is best-effort, and every push is gated on
+    // `remaining > 1` rather than `> 0`: the body's cursor outranks these
+    // lines, so a chrome line is added only when one line is still left
+    // for the body.
     if remaining > 1 {
         lines.push(tab_row_line(pane, palette, width));
         remaining -= 1;
@@ -115,11 +105,9 @@ pub(super) fn grouped_pane_lines_with_panel(
     if remaining == 0 {
         return lines;
     }
-    // The trailing hairline and legend are reserved ahead of the body,
-    // same rule every other footer in this module follows (see
-    // `body_from`'s own doc on markers): a line nothing counted is a line
-    // that can overrun. Never the body's last line, though, for the same
-    // reason as above.
+    // The trailing hairline and legend are reserved ahead of the body: a
+    // line nothing counted is a line that can overrun. Never the body's
+    // last line, for the same reason as above.
     let footer_lines = if remaining > 1 {
         2.min(remaining - 1)
     } else {
@@ -143,19 +131,12 @@ pub(super) fn grouped_pane_lines_with_panel(
 }
 
 /// `left`'s lines and `panel`'s lines, side by side: `left` padded out to
-/// exactly `left_width` columns with a blank span (never truncated, since
-/// every left line is already laid out to fit inside its own width), then
-/// whichever `panel` row shares that index appended after it.
+/// exactly `left_width` columns with a blank span, then whichever `panel`
+/// row shares that index appended after it.
 ///
-/// `left` and `panel` are rarely the same length: a short field list (a
-/// dog's group-free body, or a group with few fields) can run out before
-/// `NEIGHBOURS` does, and a field with nothing to say in three of its six
-/// regions can leave `panel` shorter than the field list above it. Either
-/// side short of the other draws blank rather than dropping the longer
-/// side's own rows, up to `budget`, the same vertical ceiling
-/// [`grouped_body_lines`] was already laid out against: this only ever
-/// lengthens `left`'s own count, never grows past what the caller already
-/// reserved room for.
+/// Either side short of the other draws blank rather than dropping the
+/// longer side's rows, up to `budget`, the ceiling
+/// [`grouped_body_lines`] was already laid out against.
 pub(super) fn merge_beside_panel(
     left: Vec<Line<'static>>,
     panel: Vec<Line<'static>>,
@@ -187,15 +168,11 @@ pub(super) fn merge_beside_panel(
 
 /// The trailing "shep publishes..." line a dog-target render reserves out
 /// of its own budget before the body claims what is left: `None` for a
-/// sheep, which owns its own reload rather than handing that decision to a
-/// dog's own binary, and for a dog with no budget left to spend on it. A
-/// dog's table on a sheep gets the line too, naming the dog, since the dog
-/// is what reloads.
+/// sheep, which owns its own reload, and for a dog with no budget left.
 ///
 /// Text only; the caller decides whether reserving it costs one line of
 /// `body_budget`, since [`pane_lines`]'s plain branch and
-/// `ungrouped_pane_lines_with_panel` both need that decision made before
-/// this call, not after.
+/// `ungrouped_pane_lines_with_panel` both need that decision made first.
 pub(super) fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<String> {
     let (PaneTarget::Dog { name, .. } | PaneTarget::SheepDog { dog: name, .. }) = pane.target()
     else {
@@ -221,16 +198,11 @@ pub(super) fn push_footer_line(
 }
 
 /// Every line of the pane, top to bottom, laid out for a terminal `height`
-/// rows tall.
-///
-/// `height` counts lines, and no more than that ever come back. Zero means
-/// unlimited, which is what a test with no terminal behind it gets. See
-/// [`super::super::scroll`] for why the viewport's offset is a starting point
-/// here, not an answer.
+/// rows tall. `height` counts lines, and no more than that ever come back.
+/// Zero means unlimited, which is what a test with no terminal gets.
 ///
 /// The close dialog is not drawn here: it overlays the whole field list
-/// (`draw_pane`), rather than taking the one line under the title the
-/// apply menu this pane replaced used to.
+/// (`draw_pane`). See [`super::super::scroll`] for the viewport's offset.
 #[must_use]
 pub fn pane_lines(
     pane: &ConfigPane,
@@ -261,18 +233,12 @@ pub fn pane_lines(
 }
 
 /// The body [`pane_lines`] draws for a pane with no groups, which is a
-/// dog's own shape: `panel` is [`None`] below [`panel_width`]'s floor, which
-/// lays the body out at `width` in one column, and `Some((lines,
-/// panel_width))` above it, which lays the body out at `width -
-/// panel_width` and merges `lines` beside it.
+/// dog's own shape: `panel` is [`None`] below [`panel_width`]'s floor, and
+/// `Some((lines, panel_width))` above it.
 ///
-/// One parameter rather than two near-identical functions, the same
-/// treatment [`grouped_pane_lines_with_panel`] gives the grouped pair.
-///
-/// No tab row and no legend: a dog's schema carries no group to name, and
-/// adding the panel is not a reason to invent one. The title is laid out at
-/// the real `width`, and the trailing "shep publishes..." footer is chrome,
-/// reserved out of the budget before the body claims what is left.
+/// No tab row and no legend: a dog's schema carries no group to name. The
+/// trailing "shep publishes..." footer is chrome, reserved before the body
+/// claims what is left.
 pub(super) fn ungrouped_pane_lines_with_panel(
     pane: &ConfigPane,
     palette: Palette,
@@ -292,15 +258,8 @@ pub(super) fn ungrouped_pane_lines_with_panel(
     let mut body_budget = budget - 1;
     // The one line a dog pane has that a sheep pane does not: shep does not
     // know what a dog's field costs, so every row's COST cell is empty.
-    // Reserved out of the budget before rows are laid out, for the same
-    // reason the top line is: a footer appended afterwards is a line
-    // nothing counted.
-    //
-    // Reserved before the BLURB too, not between the blurb and the rows:
-    // the blurb's floor below keeps one line back for the cursor's own
-    // row, and a footer reserved afterward would take exactly that line.
-    // The blurb is the line to lose, since it describes the row rather
-    // than being it.
+    // Reserved before the blurb, which is the line to lose: the blurb
+    // describes the row rather than being it.
     let footer = dog_footer_text(pane, body_budget);
     if footer.is_some() {
         body_budget -= 1;
@@ -308,10 +267,6 @@ pub(super) fn ungrouped_pane_lines_with_panel(
     // The selected field's own help text, on the lines under the title.
     // Subtracted from the budget rather than appended, per `body_from`'s
     // own doc on markers. See `top_lines`.
-    //
-    // `push_wrapped_blurb`'s own floor of `<= 1`, not `== 0`: a long
-    // wrapped help must not spend the last line reserved for the cursor's
-    // own row.
     push_wrapped_blurb(&mut lines, &mut body_budget, pane, palette, width);
     if !pane.rows().is_empty() && body_budget > 0 {
         let total = pane.rows().len();
@@ -493,12 +448,11 @@ mod tests {
     }
 
     /// The whole dog pane at a comfortable width. The snapshot is the
-    /// assertion: the title says `dog config`, the rows are flat with no
-    /// section headers, every COST cell is empty, and the foot says once
-    /// that the dog decides.
+    /// assertion: the title says `dog config`, the rows are flat, every
+    /// COST cell is empty, and the foot says the dog decides once.
     ///
     /// The three assertions ahead of it fail loudly rather than as a
-    /// snapshot diff: a webhook URL on screen is the leak the whole secret
+    /// snapshot diff: a webhook URL on screen is the leak the secret
     /// contract exists to prevent.
     #[test]
     fn a_dog_pane_at_a_comfortable_width() {
@@ -693,16 +647,6 @@ mod tests {
         }
     }
 
-    /// The drop order the whole ladder rests on: where both the panel and
-    /// `LANDS` fit, both draw; where they cannot, `LANDS` gives way first.
-    /// Corrected 2026-09-11, reversing this test's own original name and
-    /// claim, which asserted the two were never both present. Asserted at
-    /// every width rather than at three of them, through the real render
-    /// path ([`pane_lines`]/[`config_pane_lines_for_tests`]) rather than
-    /// [`widths`] called directly: `widths`'s own `show_lands` parameter is
-    /// wired from the caller's own [`lands_fits_beside_panel`] state, so
-    /// calling it directly with a fixed `show_lands` cannot see whether
-    /// that wiring is actually in place.
     #[test]
     fn lands_gives_way_to_the_panel_below_the_design_target_and_joins_it_above() {
         let app = fixtures::app_in_sheep_pane();

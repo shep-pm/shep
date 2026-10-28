@@ -36,10 +36,8 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
 
 /// Real caller: `super::super::mod`'s `run_ui`, once per frame.
 ///
-/// Three steps, so the overlay's own call is structural: a new `Body`
-/// variant cannot skip it, since the call sits outside the match a new
-/// arm would join. One call after whichever body drew, not a convention
-/// repeated at each exit.
+/// Three steps, so the overlay's own call is structural: a new `Body` variant
+/// cannot skip it, since the call sits outside the match a new arm would join.
 ///
 /// The refusal is the one path that gets no overlay: a terminal too
 /// narrow for a body is too narrow for a box over it.
@@ -73,13 +71,10 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
     let buffer = frame.buffer_mut();
 
     buffer.set_line(area.x, y, &title_band(app, width), width);
-    // The sheep pane owns the whole body between the title and the status
-    // bar too, the same as the four below, but row 1 is its own identity
-    // band rather than blank chrome, so it is checked here, ahead of the
-    // roomy blank row the others are paid in: a tall terminal must not
-    // push the band down to row 2 the way it pushes their body down. Its
-    // own row, `y + 1`, rather than `layout_budget::title_gap_rows`, which is exactly the
-    // gap it is skipping.
+    // The sheep pane owns the whole body between the title and the status bar
+    // too, but row 1 is its own identity band rather than blank chrome, so it
+    // is checked here, ahead of the roomy blank row the others are paid in.
+    // Its own row, `y + 1`, rather than `layout_budget::title_gap_rows`.
     if let Body::Sheep(pane) = app.body() {
         let top = y + 1;
         let body = Rect {
@@ -108,16 +103,10 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
     // panes the bottom stack chooses between.
     let frozen = matches!(app.link(), Link::Lost { .. });
 
-    // The settings screen and the config pane each own the whole body
-    // between the title and the status bar: a swap, not an overlay, so
-    // nothing below draws while one is up. One `match` on `App::body`
-    // rather than two sequential `if let`s, since the two can never both
-    // be open at once. Still true of these four bodies; two overlays draw
-    // over a body rather than swapping for it. The config pane's own close
-    // dialog came first, inside `super::pane::draw_pane` rather than here, over
-    // whichever body that pane already is. The keymap overlay came second
-    // and is general: `draw` draws it after this function returns, over
-    // whichever of the six bodies drew, so nothing here has to remember.
+    // The settings screen and the config pane each own the whole body between
+    // the title and the status bar: a swap, not an overlay, so nothing below
+    // draws while one is up. One `match` on `App::body` rather than two
+    // sequential `if let`s, since the two can never both be open at once.
     let body = Rect {
         x: area.x,
         y,
@@ -174,11 +163,8 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
     let fold_columns = super::flock::fold_columns_for(table_width);
     // The rule sits between the host strip and the table, not between the
     // headers and their own rows: it separates two regions, and a rule
-    // directly under the headers reads as underlining them instead.
-    //
-    // Full width, unlike the headers, which start after the gutter: it is
-    // chrome, and a rule that stopped two columns short of the left edge
-    // would look like a rendering bug.
+    // directly under the headers reads as underlining them instead. Full
+    // width, unlike the headers: it is chrome.
     buffer.set_line(
         area.x,
         y,
@@ -205,10 +191,9 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
     // first, and the table gets whatever is left between `y` and `floor`.
     let mut floor = bottom;
     // One pane or two, never both shapes. A frozen dashboard's detail band
-    // and feed are two more frozen readings, and neither answers the
-    // question their operator is holding; the link panel is the only thing
-    // on the screen that can. It claims the rows at the tier the feed
-    // appears at, since that is the shorter of the two the pair need.
+    // and feed are two more frozen readings, and neither answers the question
+    // their operator is holding; the link panel is the only thing on the
+    // screen that can.
     let link_at = (frozen && panes.feed).then(|| {
         floor -= super::link_panel::LINK_ROWS;
         floor
@@ -259,28 +244,19 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
                 1,
             );
             let line = if let RowKey::Section(label) = key {
-                // The `Flock`/`Dogs` header becomes a band, drawn here
-                // rather than through `super::flock::key_line`'s own
-                // `RowKey::Section` arm: that arm's `section_line` stays,
-                // muted rather than a band, but no current caller reaches
-                // it, since this task's file list does not extend to
-                // `flock.rs`.
-                //
-                // Meadow for the flock band, sky for the dogs band
-                // (docs/lookout/design-files/README.md:149). `"Dogs"` and
-                // `"no fold"` are the labels `RowKey::Section` carries, so
-                // anything else stays meadow.
+                // The `Flock`/`Dogs` header becomes a band, drawn here rather
+                // than through `super::flock::key_line`'s `RowKey::Section`
+                // arm. Meadow for the flock band, sky for the dogs band
+                // (docs/lookout/design-files/README.md:149).
                 let role = if *label == "Dogs" {
                     Role::Sky
                 } else {
                     Role::Meadow
                 };
-                // The data palette, not the chrome one: this band sits
-                // inside the table, and a meadow row in a dead-grey table
-                // reads as the one thing on it that is still alive. Frozen,
-                // meadow and sky both resolve to the muted ink and the two
-                // bands are told apart by their own words, which is what
-                // `NO_COLOR` already asks of them.
+                // The data palette, not the chrome one: this band sits inside
+                // the table, and a meadow row in a dead-grey table reads as
+                // the one thing on it that is still alive. Frozen, meadow and
+                // sky both resolve to the muted ink.
                 section_band(
                     &label.to_ascii_uppercase(),
                     role,
@@ -379,18 +355,10 @@ fn draw_keymap_overlay(app: &App, area: Rect, buffer: &mut Buffer, palette: Pale
 
 /// The title row: a full-width reverse-video band naming the mode.
 ///
-/// Meadow while [`App::link`] is live, bark once it is [`Link::Lost`] — the
-/// only two arms this pane needs; the editing and secrets bands belong to
-/// panes this plan does not build. What this is, where it points, and how
-/// big the flock is, padded to `width` before styling ([`band_line`]):
-/// ratatui paints a span's background, and applies `Modifier::REVERSED`,
-/// only under the cells its text occupies, so a band that stopped where its
-/// text stopped would leave the rest of the row unpainted.
-///
-/// The bark arm says something else entirely. A dead shepherd's row spends
-/// its whole width on what happened and when, since every other number on
-/// the screen is now history and the flock count is one of them;
-/// `super::status::banner_line` picks up the `$SHEP_HOME` this loses.
+/// Meadow while [`App::link`] is live, bark once it is [`Link::Lost`]. Padded
+/// to `width` before styling ([`band_line`]): ratatui applies
+/// `Modifier::REVERSED` only under the cells its text occupies. A dead
+/// shepherd's row spends its whole width on what happened and when.
 fn title_band(app: &App, width: u16) -> Line<'static> {
     let (left, right, role) = match app.link() {
         Link::Lost { at_local, .. } => (
@@ -580,11 +548,8 @@ mod tests {
     /// The refusal is the one screen the keymap overlay does not cover, and
     /// `draw`'s own doc says so, so something has to check it.
     ///
-    /// It reads as free, since `draw` returns before the overlay call. It is
-    /// not: that early return is the only thing holding it, and the whole
-    /// point of moving the overlay call out of the six body exits was that
-    /// a call made in one place is easy to move to another. Drawing a box
-    /// over `too small` would bury the one sentence naming the fix.
+    /// It reads as free, since `draw` returns before the overlay call: that
+    /// early return is the only thing holding it.
     #[test]
     fn the_refusal_gets_no_keymap_overlay_over_it() {
         let mut app = App::new(
@@ -868,12 +833,9 @@ mod tests {
         }
     }
 
-    /// `F` used to draw the flock's fourteen-column header over an eight-
-    /// column fold table: `view::mod`'s draw loop called
-    /// `super::super::flock::columns_for` unconditionally for both the header and the
-    /// rows under it, never branching on `App::grouping`. This pins the fix:
-    /// the STATUS label in the column header and the STATUS word in a
-    /// fold's own member row must land at the same column.
+    /// Fold view draws its header from the fold column set, the same set its
+    /// rows read: the STATUS label in the header and the STATUS word in a
+    /// member row land at the same column.
     #[test]
     fn the_fold_views_header_and_its_rows_share_one_column_set() {
         let mut app = super::super::fixtures::app_with(
@@ -892,11 +854,9 @@ mod tests {
             .find(|line| line.contains("STATUS"))
             .expect("the column header row is drawn");
         // `api`'s own member row, not `edge`'s fold header row: the header
-        // row always computes its own width from `fold_columns_for`
-        // regardless of what it is passed, so it would pass this test even
-        // with the flat table's columns wired in behind it. A member row
-        // has no such fallback, so it is the row that actually exercises
-        // the wiring this test means to pin.
+        // row always computes its own width from `fold_columns_for` regardless
+        // of what it is passed, so it would pass this test even with the flat
+        // table's columns wired in behind it.
         let member_row = lines
             .iter()
             .find(|line| line.contains("api"))
@@ -921,16 +881,9 @@ mod tests {
     /// whether it is collapsed.
     ///
     /// Design rule 3 (`docs/lookout/design-files/README.md:47`): "Strip every
-    /// glyph and colour and the frame still reads." Before the disclosure
-    /// triangle, brightness was the only thing separating a fold header from
-    /// the member row beneath it, and a collapsed fold was marked by nothing
-    /// at all. Below the `FOLD_ALL` tier there is no Share or Notes cell to
-    /// rescue either, and that tier needs 158 columns, so the common terminal
-    /// was the one that lost the hierarchy.
-    ///
-    /// Drawn at 120 columns through `super::super::fixtures::plain`, which is
-    /// `Palette::detect(None, None, None)` and carries no colour, so this
-    /// fails the way a `NO_COLOR` terminal would.
+    /// glyph and colour and the frame still reads." Below the `FOLD_ALL` tier
+    /// there is no Share or Notes cell to rescue either. Drawn at 120 columns
+    /// through `super::super::fixtures::plain`.
     #[test]
     fn a_fold_header_reads_as_one_without_any_colour() {
         let mut app = super::super::fixtures::app_with(

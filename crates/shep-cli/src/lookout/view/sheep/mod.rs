@@ -33,10 +33,8 @@ pub(crate) use self::layout::COLUMN_BODY_ROWS;
 /// read-only config column and the bleats feed either side of
 /// `DIVIDER_COL`.
 ///
-/// `area` is the whole pane body, under the title band
-/// [`view::draw`](super::draw) already painted and over the status bar it
-/// paints after this returns, not a sub-rect of either, the way every other
-/// full-screen pane's own `draw` is handed one.
+/// `area` is the whole pane body, under the title band and over the status
+/// bar, not a sub-rect of either.
 pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     if area.height == 0 {
         return;
@@ -44,10 +42,8 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     let palette = app.palette();
     // `App::sheep_pane_row`, not `App::selected_row`: the pinned sheep, not
     // the selection. `Msg::Snapshot` reseats the selection whatever screen
-    // is showing, so a pane pinned to a sheep that then leaves the flock
-    // would otherwise draw its neighbour's facts under a band still naming
-    // the first, and the charts below it would draw its neighbour's
-    // history under the same wrong name.
+    // is showing, so a pinned pane would otherwise draw a neighbour's facts
+    // under a band naming the sheep that left.
     let sheep_row = app.sheep_pane_row();
     let mut spans = match sheep_row {
         Some(row) => detail::identity_line(app, row, area.width, palette).spans,
@@ -82,9 +78,8 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
 
     // Rows `CPU_HEADER_ROW` to `AXIS_ROW`, however much of them the current
     // tier draws, on the pinned sheep only. A sheep that has left the flock
-    // has no history left either (`App::cpu_history`'s own doc says
-    // `record_samples` drops it), so there is nothing to chart once
-    // `sheep_row` is `None`.
+    // has no history either, so there is nothing to chart once `sheep_row`
+    // is `None`.
     if let Some(row) = sheep_row {
         let tier = chart_tier(area.width, area.height);
         match tier {
@@ -107,20 +102,16 @@ pub fn draw(app: &App, pane: &SheepPane, area: Rect, buffer: &mut Buffer) {
     }
     // The config and env column, starting at `top`: `COLUMN_HEADER_ROW`
     // whenever the terminal still reaches it, or right below the identity
-    // band once the charts above have stopped drawing entirely. It gives
-    // ground last: nothing about its own gate depends on width, since
-    // `write_column_row` already clips every row to `COLUMN_WIDTH`.
+    // band once the charts stop drawing. It gives ground last:
+    // `write_column_row` clips every row to `COLUMN_WIDTH`.
     let top = column_top_row(area.height);
     if area.height > top {
         draw_column(pane, top, area, buffer, palette);
     }
     // The same rows, right of the divider: the bleats feed, embedded rather
     // than a strip of its own. Gated on `area.width` reaching past
-    // `FEED_WIDTH`'s own room, not on `sheep_row`: a sheep that has left the
-    // flock still draws a feed, the same "no longer read" header
-    // `view::bleats_full`'s own title states for the full-screen pane, once
-    // `App::feed_row` next answers `None` and the tail this reads goes
-    // empty.
+    // `FEED_WIDTH`, not on `sheep_row`: a sheep that has left the flock
+    // still draws a feed until its tail goes empty.
     if area.height > top && usize::from(area.width) >= usize::from(FEED_X + FEED_WIDTH) {
         draw_divider(top, area, buffer, palette);
         draw_feed(app, pane, top, area, buffer, palette);
@@ -140,11 +131,9 @@ mod tests {
     use super::layout::{FULL_TIER_MIN_HEIGHT, MIN_HEIGHT_FOR_CHARTS, TERMINAL_OVERHEAD};
     use super::*;
 
-    /// The bug the reviewer reproduced: pane pinned to sheep 1, sheep 1
-    /// deleted, `pane.sheep()` still reads `Sheep(1)` while `app.selected()`
-    /// has moved to `Sheep(2)` (`alpha`'s alphabetical neighbour, `bravo`,
-    /// the only row left once the reseat runs). Reading `App::selected_row`
-    /// here would draw `bravo`'s facts under a band still naming `alpha`.
+    /// A pinned pane keeps its own sheep: after `Sheep(1)` is deleted the
+    /// selection reseats to `bravo`, and reading `App::selected_row` here
+    /// would draw `bravo`'s facts under a band still naming `alpha`.
     #[test]
     fn the_band_does_not_draw_the_sheep_that_replaced_the_pinned_one() {
         let mut app = fixtures::app_with(
@@ -292,15 +281,6 @@ mod tests {
         );
     }
 
-    /// Rows too: the charts hold 2 to 17, and the config and feed columns
-    /// are what the pane is for, so they give ground last.
-    ///
-    /// `render_at` builds `area` directly, so its `height` is `area.height`
-    /// (body rows), not the terminal rows `MIN_HEIGHT_FOR_CHARTS` and
-    /// `FULL_TIER_MIN_HEIGHT` are stated in: 20 body rows is 22 terminal
-    /// rows, under `FULL_TIER_MIN_HEIGHT` (26), so the memory chart is
-    /// already gone; 18 body rows is 20 terminal rows, under
-    /// `MIN_HEIGHT_FOR_CHARTS` (21), so every chart is gone.
     #[test]
     fn a_short_terminal_drops_the_charts_before_the_columns() {
         assert!(!render_at(160, 20).contains("\u{2588}\u{2588} MEM"));
@@ -340,14 +320,6 @@ mod tests {
         assert!(!rendered.contains("CPU 20s"), "got {rendered:?}");
     }
 
-    /// [`MIN_HEIGHT_FOR_CHARTS`]'s own floor: at exactly that height a
-    /// chart still draws rather than the pane falling straight to
-    /// [`ChartTier::None`].
-    ///
-    /// `render_at`'s `height` is `area.height` (body rows), while
-    /// [`MIN_HEIGHT_FOR_CHARTS`] is stated in terminal rows, so
-    /// [`TERMINAL_OVERHEAD`] comes back off here to land on the exact body
-    /// row `chart_tier` compares against.
     #[test]
     fn at_the_chart_height_floor_a_chart_still_draws() {
         let rendered = render_at(160, MIN_HEIGHT_FOR_CHARTS - TERMINAL_OVERHEAD);

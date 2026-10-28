@@ -55,10 +55,8 @@ pub(in crate::lookout::view) const SECRET_TIERS: &[(u16, &[Column])] = &[
 /// own floor tier, a terminal width rather than a table width (the
 /// thresholds count the gutter, unlike [`super::super::flock::MIN_WIDTH`]).
 ///
-/// There is nothing below it to fall back to. The floor tier's three
-/// columns are what [`SECRET_TIERS`]' own doc calls the pane, and a
-/// narrower terminal used to get them anyway, clipped mid-column by
-/// `Buffer::set_line` with nothing on screen saying so.
+/// There is nothing below it to fall back to: the floor tier's three
+/// columns are the pane.
 pub(super) const MIN_WIDTH: u16 = SECRET_TIERS[SECRET_TIERS.len() - 1].0;
 
 /// The widest tier `width` still fits, or the narrowest tier below every
@@ -124,13 +122,11 @@ mod tests {
         }
     }
 
-    /// The gap between the dashboard's own floor (33) and this pane's
-    /// (74) is where the clipping was: `columns_for` handed back the floor
-    /// tier at every width below 74, and `Buffer::set_line` cut its 72-cell
-    /// row off at the screen edge with nothing saying a column had gone.
+    /// The gap between the dashboard's own floor (33) and this pane's (74)
+    /// is where the clipping was: `columns_for` handed back the floor tier
+    /// below 74, and `Buffer::set_line` cut its 72-cell row at the edge.
     ///
-    /// Swept rather than sampled, and the refusal is asserted whole: it has
-    /// to fit the narrowest terminal it is complaining about, and a
+    /// Swept rather than sampled, and the refusal is asserted whole: a
     /// `contains` on a truncated line would not notice.
     #[test]
     fn a_terminal_narrower_than_the_floor_tier_says_so_instead_of_clipping() {
@@ -168,14 +164,12 @@ mod tests {
         assert!(!text.contains("too narrow"), "{text}");
     }
 
-    /// The tab row used to append its suffix whatever the tabs had spent
-    /// and let `Buffer::set_line` cut the overrun, so a store with more
-    /// environments than one row holds lost the count, lost every tab past
-    /// the edge, and cut the last visible name mid-word.
+    /// `Buffer::set_line` cuts an overrun in silence, so a tab row built from
+    /// more environments than one row holds can lose its count and cut a
+    /// visible name mid-word.
     ///
     /// Swept over counts and widths, and every assertion is on the whole
-    /// line: a `contains` passes on a truncated line as happily as a whole
-    /// one, which is the failure being pinned.
+    /// line: a `contains` passes on a truncated line too.
     #[test]
     fn the_tab_row_elides_its_tabs_rather_than_losing_its_own_count() {
         let palette = Palette::detect(None, None, None);

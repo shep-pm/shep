@@ -186,12 +186,10 @@ pub(super) fn marked(text: &str) -> usize {
 /// The longest word in the cursor's field help, which is what the blurb
 /// tests match on.
 ///
-/// Not the whole help string: the blurb wraps to `BLURB_WRAP`, so a
-/// help text longer than the wrap budget appears in no single row and a
-/// `contains` against all of it fails for a reason unrelated to what
-/// these tests pin. Not the first word either, since "Set" or "The"
-/// appears in other rows. The longest word is the one least likely to
-/// be split by a wrap or shared with another row.
+/// The blurb wraps to `BLURB_WRAP`, so a `contains` against the whole help
+/// text fails for a reason unrelated to what these tests pin. The longest
+/// word is the one least likely to be split by a wrap or shared with
+/// another row.
 pub(super) fn blurb_anchor(pane: &ConfigPane) -> String {
     let help = field_help_under_cursor(pane);
     help.split_whitespace()

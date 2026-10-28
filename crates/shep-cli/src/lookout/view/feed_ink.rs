@@ -5,10 +5,8 @@
 //! default is shep's, and it is spent only on a line that asked for nothing:
 //! stdout is meadow and stderr is bark, the way `shep bleats` paints them.
 //!
-//! Both choices come out of [`Palette`], so `NO_COLOR` costs them the same way
-//! it costs every other colour, and a caller that passes
-//! [`App::data_palette`](super::super::app::App::data_palette) takes them away
-//! on a frozen dashboard too.
+//! Both choices come out of [`Palette`], so `NO_COLOR` costs them the same
+//! way it costs every other colour.
 
 use ratatui::style::Style;
 use ratatui::text::Span;
@@ -63,12 +61,9 @@ impl<'a> Ink<'a> {
     /// A process-owned run's style, as this ink draws it.
     ///
     /// Live, that is exactly what the sheep asked for. Under a frozen data
-    /// palette it is the run's own modifiers over the one muted ink: the feed
-    /// stops re-reading the moment the link is lost, so a red two seconds after
-    /// the shepherd died is a reading, and a frozen screen renders no reading
-    /// as live. What the sheep *said* survives the freeze: bold, underline and
-    /// reverse video are not colour, the same way reverse video survives
-    /// `NO_COLOR` in `docs/lookout/frames.txt`.
+    /// palette it is the run's own modifiers over the one muted ink: a frozen
+    /// screen renders no reading as live. What the sheep said survives the
+    /// freeze, because bold, underline and reverse video are not colour.
     fn run_style(self, run: Style) -> Style {
         if !self.palette.is_frozen() {
             return run;

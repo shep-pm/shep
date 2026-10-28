@@ -21,12 +21,11 @@ use super::Scene;
 
 /// Parks the gallery's cursor on the sheep with id `id`.
 ///
-/// Walks by name since `SelectDown` moves one visible row and the table
-/// reads by name, not id.
+/// Walks by name: the table reads by name, not id.
 ///
 /// # Panics
 ///
-/// If `id` is not in the flock, or is hidden by a filter.
+/// If `id` is not a visible row.
 #[track_caller]
 pub(super) fn select_id(app: &mut App, id: u32) {
     select_row(app, &RowKey::Sheep(id));
@@ -54,18 +53,11 @@ pub(super) fn select_fold(app: &mut App, name: &str) {
     select_row(app, &RowKey::Fold(name.to_string()));
 }
 
-/// Walks the cursor to `key`, up or down as `key`'s position relative to the
-/// current one calls for.
-///
-/// `Folds` needs the reverse direction: pressing `F` leaves the cursor on
-/// whichever sheep the flat view had selected, which can sit past a fold's
-/// header in the new, by-fold order, so a downward-only walk could never
-/// reach it. Every other scene's target still happens to sit at or after the
-/// starting row, so this is a superset of what a forward-only walk did, not
-/// a behaviour change for them.
-///
-/// Budgeted by [`App::visible_rows`]'s length, not the flock count: a
-/// grouped app's header adds a visible row beyond its own slots.
+// `Folds` needs the reverse direction: pressing `F` can leave the cursor
+// past a fold's header in the new order. The walk is budgeted by
+// `App::visible_rows`'s length, not the flock count, since a grouped app's
+// header adds a visible row beyond its own slots.
+/// Walks the cursor to `key`, up or down as `key`'s position calls for.
 ///
 /// # Panics
 ///
@@ -86,30 +78,16 @@ fn select_row(app: &mut App, key: &RowKey) {
     panic!("the gallery cannot park its cursor on {key:?}");
 }
 
+// The first poll only records a baseline in `App::record_samples`, so a
+// fixture built from one snapshot draws no CPU cell at all. The final poll
+// lands at `anchor` itself, not after it, so every uptime below still reads
+// from `anchor`.
 /// Runs `rows` through two polls, two seconds apart, so
-/// `App::record_samples` has something to difference: a fixture built from
-/// one snapshot never gets past the first insert into `App::cpu_last`,
-/// which returns nothing to draw rather than a false zero (see
-/// `App::record_samples`'s own doc), and every CPU cell and sparkline in
-/// the gallery rendered a bare `-` for exactly that reason until this
-/// existed.
-///
-/// The second, final poll lands at `anchor` itself, not two seconds after
-/// it: every uptime and age figure below reads from `anchor`, so parking
-/// the *first*, throwaway poll two seconds *before* it is what keeps this
-/// helper a pure addition rather than a two-second wobble on every uptime
-/// in the gallery that used to land on a round minute.
+/// [`App::record_samples`] has something to difference.
 ///
 /// `deltas` names each running sheep's id and its two `cpu_ms` readings,
-/// oldest first; a row whose id is absent from `deltas` keeps whatever
-/// `cpu_ms` its caller already gave it (`None`, for every fixture below),
-/// so a stopped or errored row still reads a bare `-` on purpose.
-///
-/// Mutates `rows` in place across both polls, the same shape
-/// `Scene::SheepPane`'s own fixture uses and `Scene::CfgDrift`'s does not:
-/// `CfgDrift` polls a clone and leaves its own returned row's `cpu_ms` at
-/// `None`, which is why that scene's CPU cell still reads `-` despite its
-/// sparkline drawing a real shape.
+/// oldest first; a row absent from `deltas` keeps whatever `cpu_ms` its
+/// caller gave it, so a stopped row still reads a bare `-`.
 pub(super) fn poll_twice(
     app: &mut App,
     anchor: Instant,
@@ -139,24 +117,11 @@ pub(super) fn poll_twice(
 
 /// The bleats feed each scene is given, before `Msg::Bleats` carries it in.
 ///
-/// Most scenes: six ordinary `Stream::Out` lines, no missed lines or
-/// bytes.
-///
-/// `FeedGap`: thirty lines, `missed_lines: 500`, `missed_bytes:
-/// 4_012_000`, so the header reads both a dropped-lines and a
-/// never-read-bytes count.
-///
-/// `FeedMissing`: no lines, no counts, and a `note` mirroring
-/// [`super::tail::read`]'s wording for a log file that was never created.
-///
-/// `WithDogs`: the selected row is the adopted `log-rotate` dog, so its
-/// lines say what a log-rotate dog says rather than the default fixture's
-/// web-server lines.
-///
-/// `Bleats`: sixteen lines, ten `out` and six `err`, eight carrying a level
-/// word and eight carrying none, one of them 153 characters long. Built to
-/// be filtered and wrapped, not read raw: see [`scene_with`]'s own
-/// `Scene::Bleats` arm for the axes it stacks on top.
+/// Most scenes get six ordinary `Stream::Out` lines. `FeedGap` gets counts
+/// of dropped lines and never-read bytes, `FeedMissing` gets a `note`
+/// mirroring [`super::tail::read`]'s wording, `WithDogs` gets a log-rotate
+/// dog's own lines, and `Bleats` gets sixteen lines built to be filtered
+/// and wrapped, one of them 153 characters long.
 pub(super) fn feed_for(which: Scene) -> Tail {
     match which {
         // Mirrors `run_ui`: an empty flock has no selected row, so no
@@ -200,11 +165,9 @@ pub(super) fn feed_for(which: Scene) -> Tail {
             note: Some("this sheep has not written a log in this $SHEP_HOME".to_string()),
         },
         // Ten `out` lines and six `err`, eight carrying a real level word
-        // (three `WARN`, two `DEBUG`, two `ERROR`, one `INFO`) and eight
-        // carrying none, so the level axis has both a floor to apply and
-        // unclassifiable lines to exempt from it. One line, the `WARN
-        // retrying...` one, is 153 characters: long enough that
-        // `Scene::Bleats`'s 100-column frame wraps it onto two rows.
+        // and eight carrying none, so the level axis has both a floor to
+        // apply and unclassifiable lines to exempt from it. One line is 153
+        // characters, long enough to wrap onto two rows at 100 columns.
         Scene::Bleats => Tail {
             lines: [
                 (Stream::Out, "listening on 0.0.0.0:8080"),

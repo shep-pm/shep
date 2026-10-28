@@ -32,9 +32,8 @@ pub(super) fn filter_row_line(
         let text = format!(" {chip} ");
         // Columns, not `char`s, because `fit` below budgets columns: a match
         // chip carrying wide characters would otherwise under-reserve and
-        // the sentence would overrun the line. Saturating, because the match
-        // text is whatever an operator typed and three capped chips plus
-        // their separators can still overflow a `u16`.
+        // the sentence would overrun the line. Saturating, because three
+        // capped chips plus their separators can overflow a `u16`.
         let chip_columns = text_columns(&text);
         used = used.saturating_add(u16::try_from(chip_columns).unwrap_or(width));
         spans.push(Span::styled(text, ground));
@@ -152,11 +151,10 @@ mod tests {
             .set_stream(Some(Stream::Err));
         let text = render_all(&draw_lines(&app, 160, 40));
         assert!(text.contains("stream err"), "got {text}");
-        // The row's own composition sentence always says "level" (an
-        // unclassifiable line's level), so the level check reads the chip's
-        // `level ≥` rather than the bare word. The match chip is
-        // `match ` plus the text an operator typed, and the sentence never
-        // says "match" at all: the space keeps this check on the chip.
+        // The row's own composition sentence always says "level", so the
+        // level check reads the chip's `level ≥` rather than the bare word.
+        // The match chip is `match ` plus typed text and the sentence never
+        // says "match": the space keeps this check on the chip.
         assert!(!text.contains("level ≥"), "got {text}");
         assert!(!text.contains("match "), "got {text}");
     }
@@ -312,13 +310,10 @@ mod tests {
 
     /// A redraw compiles the match axis's pattern no times at all.
     ///
-    /// `highlighted` runs once per rendered line, so this used to be one
-    /// `Regex::new` per line per frame. Measured over this feed at 160x50,
-    /// `/\w+@\w+\.\w+/` cost 27.0 ms a redraw that way, against
-    /// `lookout::MIN_REDRAW`'s 33 ms frame budget; it is 24.8 us now. The
-    /// count is what pins it: a timing assertion would be flaky, and a test
-    /// asserting only that the highlight renders passes just as well over a
-    /// version that recompiles every line.
+    /// `highlighted` runs once per rendered line, so an uncompiled pattern
+    /// costs one `Regex::new` per line per frame against
+    /// `lookout::MIN_REDRAW`'s 33 ms budget. The count pins it: a timing
+    /// assertion is flaky.
     #[test]
     fn a_redraw_compiles_the_match_axis_no_times() {
         let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
@@ -348,13 +343,9 @@ mod tests {
         assert_eq!(compiles(), before, "a redraw compiles nothing");
 
         // Without these the count above would hold over a pane drawing no
-        // lines at all, which is how two of the first measurements of this
-        // looked cheap: a matcher that survives no line is never run. Body
+        // lines at all: a matcher that survives no line is never run. Body
         // rows are picked out by their own text rather than by skipping a
-        // header count, which would quietly review the wrong rows if the
-        // pane ever grew another header. The span count is the second half:
-        // a row whose match was highlighted is split into more spans than
-        // the stream tag plus one run of plain text.
+        // header count. The span count is the other half of the assertion.
         let body: Vec<_> = drawn_rows
             .iter()
             .filter(|line| render_all(std::slice::from_ref(*line)).contains("@example.com"))

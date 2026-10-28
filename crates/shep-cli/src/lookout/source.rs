@@ -3,12 +3,11 @@
 //!
 //! Traits rather than one concrete type, so [`super::link::run_link`] is
 //! drivable with no socket: a bus that genuinely drops frames and a shepherd
-//! that will not answer are not reachable through a real connection on
-//! demand.
+//! that will not answer are not reachable through a real connection on demand.
 //!
 //! Reading the bus needs `&mut` and issuing a `ListFlock` needs a shared
-//! reference, and `tokio::select!` cannot hold both against one value, so
-//! the two halves are separate traits.
+//! reference, which `tokio::select!` cannot hold against one value, so the
+//! two halves are separate traits.
 
 use core::fmt;
 use core::future::Future;
@@ -29,11 +28,8 @@ use crate::exit::ExitCode;
 /// `process.*` is what the flock table is made of; `daemon.*` carries
 /// `BusEvent::Dropped` and `BusEvent::DaemonShutdown`.
 ///
-/// Not `log.*`: the bleats feed reads log files from disk
-/// ([`super::tail`]). Subscribing would make lookout the bus's
-/// highest-volume subscriber, and `super::link::run_connected` answers a
-/// lag with an immediate `ListFlock`, so log traffic would turn into
-/// shepherd request load exactly when the shepherd is busiest.
+/// Not `log.*`: the bleats feed reads log files from disk ([`super::tail`]),
+/// and a lag on that bus already costs an immediate `ListFlock`.
 pub const TOPICS: &[&str] = &["process.*", "daemon.*"];
 
 /// Reading the flock. `&self`, so [`super::link::run_connected`] can hold it
@@ -579,9 +575,7 @@ mod tests {
 
     /// A log rotated away between two polls leaves exactly one of the two
     /// reads failing. Half a total would read as a smaller log rather than as
-    /// a partial answer, so the answer is no size at all. This is the rule
-    /// `view::detail::log_row` used to carry when it read the filesystem
-    /// itself.
+    /// a partial answer, so the answer is no size at all.
     #[test]
     fn a_missing_log_sizes_to_nothing_rather_than_to_one_file() {
         let dir = tempfile::Builder::new()

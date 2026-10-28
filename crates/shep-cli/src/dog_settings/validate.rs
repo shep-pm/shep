@@ -1,26 +1,13 @@
 //! The dog's own say in a write to its settings.
 //!
-//! A dog whose manifest declares [`validate`] runs checks its schema cannot
-//! state, so a write that carries one of its tables asks the dog before it
-//! writes: a `shep.validate` trigger on the dog's channel, carrying the table
-//! the write would put in place. A refusal stops the write and the dog's own
-//! sentence is what the operator reads. A timeout refuses too.
+//! A dog whose manifest declares
+//! [`validate`](shep_core::dogs::manifest::Manifest::validate) runs checks its
+//! schema cannot state, so a write carrying one of its tables asks the dog
+//! first: a `shep.validate` trigger, carrying the table the write would put
+//! in place. A refusal, a timeout or an unreadable reply all stop the write.
 //!
-//! [`validate`]: shep_core::dogs::manifest::Manifest::validate
-//!
-//! The ask is one call, [`ask_dog`], and every door that writes a dog's
-//! settings uses it: `shep set` and `shep unset` through
-//! [`crate::commands::settings_write`], `shep copy` through
-//! [`crate::commands::copy`], and every write the lookout dashboard sends
-//! through [`crate::lookout::source::ClientFlock`]. A dog that declared nothing
-//! is never asked, and a dog that is running with no channel open has nothing
-//! to ask: its settings are the ones an operator edits before `shep enable`, so
-//! the write goes ahead. What shep cannot read is never an acceptance, so an
-//! unreadable reply, an outcome this build does not know, and a cached manifest
-//! this build cannot read all stop the write. A dog that answers
-//! [`MANIFEST_FLAG`](shep_core::dogs::MANIFEST_FLAG) with nothing at all is not
-//! one of those: it has no manifest, so it declared nothing, and a dog that
-//! declared nothing is never asked.
+//! One call, [`ask_dog`], and every door that writes a dog's settings uses it.
+//! A dog that declared nothing is never asked.
 
 use serde_json::{Map, Value as Json};
 use shep_client::Client;
@@ -75,19 +62,15 @@ impl AskFailure {
 /// no dog to ask.
 ///
 /// `sheep` names the sheep whose table this is, and `None` says it is the
-/// dog's own section.
-///
-/// `Ok(())` is the dog accepting, and the three cases with nobody to ask: the
-/// dog is not adopted on this machine, so no manifest of its own is here to
-/// declare anything; the dog is not in this flock at all; and the dog is in it
-/// with no live channel to answer on.
+/// dog's own section. `Ok(())` covers the dog accepting and the three cases
+/// with nobody to ask: not adopted here, not in this flock, and in it with no
+/// live channel.
 ///
 /// # Errors
 /// [`AskFailure::Refused`] for a refusal and for a dog that answered nothing
 /// inside its own `action_timeout`. [`AskFailure::Unknown`] for an answer with
-/// no verdict in it and for a manifest that could not be read, which leaves
-/// whether the dog wants to be consulted unknown. [`AskFailure::Transport`] for
-/// an ask that never reached the shepherd.
+/// no verdict in it, and for a manifest that could not be read.
+/// [`AskFailure::Transport`] for an ask that never reached the shepherd.
 pub(crate) async fn ask_dog(
     client: &Client,
     paths: &ShepPaths,
@@ -168,12 +151,9 @@ fn refusal_for(dog: &str, outcome: &ActionOutcome) -> Option<AskFailure> {
 /// and the sheep holding that table.
 ///
 /// Read off the request rather than off a caller's own plan, so every client
-/// of the shepherd that sends one of the two dog-settings writes is asked the
-/// same question before the write goes out.
-///
-/// [`None`] for a request that is no dog's settings, and for a dog's section
-/// whose text will not read as TOML: the shepherd refuses that write for its
-/// own reason, and there is no table to ask about.
+/// that sends one of the two dog-settings writes is asked the same question.
+/// [`None`] for a request that is no dog's settings, or a dog's section whose
+/// text will not read as TOML.
 pub(crate) fn dog_write(request: &Request) -> Option<DogWrite<'_>> {
     match request {
         Request::SetSheepDogSettings {
@@ -229,20 +209,12 @@ enum Declaration {
 }
 
 /// Whether `dog` declared `validate`: from its cached manifest when this exact
-/// adopted binary has been read before, and from the binary otherwise.
-///
-/// A built-in dog has no manifest and is never asked.
+/// adopted binary has been read before, and from the binary otherwise. A
+/// built-in dog has no manifest and is never asked.
 ///
 /// A dog that gave no manifest is [`Declaration::Silent`], in every way a dog
-/// gives none: it printed nothing, printed something that is not a manifest,
-/// rejected the flag with a non-zero exit, or was still running when the probe
-/// budget ran out. That is every dog adopted before `--shep-manifest` and every
-/// dog that ignores an unknown flag, and none of them ever declared `validate`:
-/// the declaration is only ever what a manifest said, and a dog that never
-/// printed one never said it. Only a record of a manifest this read could not
-/// reach is [`Declaration::Unknown`], which is a corrupt cache file for this
-/// exact binary that the binary could not restate, a `shep.toml` that will not
-/// parse, and an adopted path that will not run at all.
+/// gives none, and none of them ever declared `validate`. Only a manifest this
+/// read could not reach is [`Declaration::Unknown`].
 fn declares_validate(dog: &str, paths: &ShepPaths) -> Declaration {
     let doc = match ShepToml::read_only(&paths.daemon_config) {
         Ok(doc) => doc,

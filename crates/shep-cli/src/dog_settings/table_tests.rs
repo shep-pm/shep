@@ -535,9 +535,9 @@ fn a_json_number_is_taken_and_a_number_out_of_bounds_is_refused_by_its_bound() {
     assert_eq!(refused.text, "rate is \"0\"; rate must be above 0");
 }
 
-/// The same rule one level down, where the reviewer's third finding sat: an
-/// element is converted to text for the item schema's rules, and a number or a
-/// boolean handed to a string list's `pattern` reads as "8" and "true".
+/// The same rule one level down: an element is converted to text for the item
+/// schema's rules, so a number or a boolean in a string list reads as "8" and
+/// "true".
 #[test]
 fn a_number_element_is_refused_for_a_string_list() {
     let refused = table_refusal(&schema(), &table(json!({ "tags": ["ask", 8] })))

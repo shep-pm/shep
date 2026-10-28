@@ -25,12 +25,10 @@ pub(crate) fn home_with(dir: &Path, manifest: Option<&str>) -> ShepPaths {
     std::fs::create_dir_all(&paths.home).unwrap();
     let binary = dir.join("shep-kelpie");
     std::fs::write(&binary, b"#!/bin/sh\nexit 0\n").unwrap();
-    // `None` is a dog this machine never adopted, which is the built-in case:
-    // no `adopted_dogs` entry, and no manifest of its own to declare
-    // `validate` in. An adopted one is recorded by the same writer
-    // `shep adopt` uses, so the path is quoted the way TOML quotes a path. A
-    // windows runner spells every temp path with backslashes, and a raw
-    // backslash in a TOML basic string is an escape sequence, not a separator.
+    // `None` is a dog this machine never adopted, which is the built-in
+    // case. An adopted one is recorded by the writer `shep adopt` uses, so
+    // the path is quoted the way TOML quotes a path. A windows runner
+    // spells temp paths with backslashes, and TOML reads one as an escape.
     let Some(manifest) = manifest else {
         return paths;
     };

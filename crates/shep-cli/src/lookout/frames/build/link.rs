@@ -39,8 +39,7 @@ pub(super) fn apply_live_updates(app: &mut App, which: Scene) {
     // Opens the pane on `api` (`super::prepare` selected it) and stacks all
     // three filter axes: `o` once for `out`, `m` four times for `None ->
     // Trace -> Debug -> Info -> Warn`, then a regex typed into the match
-    // box. `w` last, since it toggles independently of the filters and
-    // this is the one fixture line worth wrapping.
+    // box. `w` last, since it toggles independently of the filters.
     if which == Scene::Bleats {
         app.update(Msg::Key(KeyPress::Bleats));
         app.update(Msg::Key(KeyPress::StreamCycle));
@@ -316,15 +315,11 @@ mod tests {
 
     /// Rendered twice at two different ages and compared to each other,
     /// not to the healthy scene, since a live-versus-frozen diff would
-    /// pass either way. The live pair at the bottom catches a renderer
-    /// that drops the uptime column entirely.
+    /// pass either way.
     ///
-    /// Split at the link panel's own chip rather than at a row index. Every
-    /// value above it came from the shepherd and stopped when the shepherd
-    /// did; the panel below it describes the link, and how long ago the
-    /// link died is a fact about now. One half must not move and the other
-    /// must, so the test asserts both rather than narrowing to the half
-    /// that is easier to pin.
+    /// Split at the link panel's own chip rather than at a row index: what
+    /// came from the shepherd stopped when it did, and how long ago the
+    /// link died is a fact about now.
     #[test]
     fn a_frozen_frame_moves_only_in_the_link_panel() {
         let ten_minutes = render_text(&scene_with(
@@ -356,8 +351,7 @@ mod tests {
         // Seven seconds short of each age, and deliberately: `scene_with`
         // ticks the clock forward by that much before it freezes anything,
         // so the freeze happens at `t0 + 7s` and the panel counts from
-        // there. `9m 53s`, not `593s` — the same two-unit shape every other
-        // duration on the screen uses.
+        // there. `9m 53s`, not `593s`, like every other duration here.
         assert!(
             ten_minutes.contains("2026-08-14 14:32:07, 9m 53s ago"),
             "and it counts in the same words every other duration uses"

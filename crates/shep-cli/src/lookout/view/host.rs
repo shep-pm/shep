@@ -1,15 +1,13 @@
 //! The host-usage strip: one line, several self-labelled segments.
 //!
-//! Half is read from this machine ([`super::super::source::HostSample`])
-//! and half is summed from [`super::super::app::App::all_rows`], the whole
-//! flock, never the name-filtered set [`super::super::app::App::rows_len`]
-//! counts: a name filter must not narrow what this strip claims. Every segment names its
+//! Half is read from this machine ([`super::super::source::HostSample`]) and
+//! half is summed from [`super::super::app::App::all_rows`], the whole flock,
+//! never the name-filtered set [`super::super::app::App::rows_len`] counts: a
+//! name filter must not narrow what this strip claims. Every segment names its
 //! half, so a truncated strip never leaves a bare `mem 12.4G` beside a bare
 //! `mem 706.0M`.
 //!
-//! Segments join in the drop order (`up` last, load average first) and are
-//! truncated from the right, so truncation is the drop order with no second
-//! mechanism.
+//! Segments join in the drop order and are truncated from the right.
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -40,8 +38,7 @@ struct Run {
 // Which colour a run wears. Most of the line is words and numbers with no
 // status behind them, so it stays muted. The load and memory gauges are the
 // exception: two bars on one line are unreadable without something to tell
-// them apart by, which is meaning rather than the plain decoration the rest
-// of the line has none of.
+// them apart by.
 #[derive(Clone, Copy)]
 enum Ink {
     Muted,
@@ -188,8 +185,7 @@ fn runs(app: &App) -> Vec<Run> {
             // The two host readings sit together, then the flock's own
             // numbers: the line reads left to right as machine, then flock,
             // rather than interleaving them. The cost is that the summary
-            // is no longer the segment most likely to survive a narrow
-            // terminal; the test named for it pins where it now falls off.
+            // sits at the tail, where a narrow terminal cuts first.
             out.push(sep());
             out.push(Run {
                 text: summary(app),
@@ -225,14 +221,8 @@ fn runs(app: &App) -> Vec<Run> {
 
     // Summed from the whole flock, `all_rows`, not the filtered `rows`, so
     // `-` here always means no reading, never "the filter matched nothing".
-    //
-    // `App::cpu_now`, the same per-sheep source `App::flock_cpu_history`
-    // sums into its own newest sample, not `cpu_percent`: that keeps this
-    // figure and the sparkline beside it answering the same question. Not
-    // read from `flock_cpu_history` directly, though: that buffer sums a
-    // zero for a sheep with no reading (so its window does not slide), and
-    // reading its sum back as `0.0%` when literally nothing in the flock
-    // has a reading yet would claim a measurement nobody made.
+    // `App::cpu_now`, the same per-sheep source the sparkline sums, so this
+    // figure and the shape beside it answer the same question.
     let rows = app.all_rows();
     let cpu: Option<f32> = rows
         .iter()
@@ -551,13 +541,9 @@ mod tests {
     /// The strip reads machine, then flock: load and host memory together,
     /// then `N errored · N parked` and the flock's own numbers.
     ///
-    /// The summary used to sit second, ahead of host memory, so that it was
-    /// the segment most likely to survive a cut. Grouping the two host
-    /// readings costs it that, and how much it costs is not a property of
-    /// this code: the strip's length depends on the machine's own numbers,
-    /// so a host with fourteen cores and a 48G total pushes the summary
-    /// right by a dozen columns against one with ten and 32G. Only the order
-    /// is invariant, so only the order is asserted here.
+    /// Only the order is asserted: the strip's length depends on the
+    /// machine's own numbers, so how far right the summary sits is not a
+    /// property of this code.
     #[test]
     fn host_memory_comes_before_the_flock_summary() {
         let app = with_host(sample(), flock_of(4, 1));

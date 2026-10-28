@@ -23,13 +23,11 @@ pub fn render_all(lines: &[Line<'static>]) -> String {
 
 /// The one line in `lines` starting with `prefix`, after trimming leading
 /// whitespace: what a close dialog's own option-row tests read, so a test
-/// for the reload row does not pass off the first row that merely
-/// contains the letter somewhere in its sentence.
+/// for the reload row does not pass off a row that merely contains it.
 ///
 /// # Panics
 ///
-/// Panics if no line starts with `prefix`, which is a fixture bug rather
-/// than a failure the test is about.
+/// Panics if no line starts with `prefix`, which is a fixture bug.
 #[track_caller]
 pub fn row_starting_with(lines: &[Line<'static>], prefix: &str) -> String {
     lines
