@@ -182,13 +182,11 @@ fn sheep_lines(app: &App, width: u16, palette: Palette) -> Vec<Line<'static>> {
 
 /// One sheep's identity line: the `SHEEP N` chip, its name, status and the
 /// rest of its row. Split out of [`sheep_lines`] so [`super::sheep`]'s own
-/// identity band can draw it for the sheep pane's pinned sheep, which is not
-/// always [`App::selected_row`]: a pinned sheep that has left the flock
-/// moves the selection elsewhere, and drawing that other sheep's line under
-/// a band still naming the first would be one sheep's facts presented as
-/// another's. Every figure this line reads (`App::uptime_ms`, `App::cpu_now`)
-/// takes `row`'s own id, so a caller passing the pinned sheep's row gets
-/// figures for that sheep, not the selection.
+/// identity band can draw it for the sheep pane's pinned sheep.
+///
+/// Every figure this line reads (`App::uptime_ms`, `App::cpu_now`) takes
+/// `row`'s own id, so a pinned sheep that has left the flock is not drawn
+/// with the selection's figures.
 #[must_use]
 pub(crate) fn identity_line(app: &App, row: &Row, width: u16, palette: Palette) -> Line<'static> {
     let info = &row.info;
@@ -204,9 +202,8 @@ pub(crate) fn identity_line(app: &App, row: &Row, width: u16, palette: Palette) 
     let status = row.reported().word();
     // Reuses `cfg_cell`, the same function `Column::Cfg` calls, rather than a
     // second renderer for the same rule. Only the pending half: an override
-    // with nothing parked is already the flock table's `*N`, and this cell
-    // names what a `shep reload` would change, not what already differs.
-    // Nothing pending shows nothing at all, not a `cfg !0 pending`.
+    // with nothing parked is already the flock table's `*N`, and nothing
+    // pending shows nothing at all.
     let cfg = crate::output::cfg_cell(info.pending.as_deref(), None);
     let cfg_text = if cfg.starts_with('!') {
         format!("   cfg {cfg} pending")
@@ -241,9 +238,8 @@ pub(crate) fn identity_line(app: &App, row: &Row, width: u16, palette: Palette) 
         },
         // Last of all: rarer still than a dog, since it fires only for a
         // sheep with edits parked awaiting a respawn. Folded into the same
-        // truncatable string as everything before it, not reserved out of
-        // the width budget, so it is the first thing a narrow terminal
-        // drops rather than the one field immune to truncation.
+        // truncatable string as everything before it, so it is the first
+        // thing a narrow terminal drops.
         cfg_text,
     );
     let used = text_columns(&chip) + text_columns(&facts) + text_columns(&status);
@@ -271,15 +267,13 @@ pub(crate) fn chip_text(label: &str) -> String {
     cell::band(label, cells)
 }
 
-/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the size
-/// on disk as of the last poll ([`App::log_size_for`]). Replaces the two
-/// one-path-per-line calls the row used to draw one above the other.
+/// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the
+/// size on disk as of the last poll ([`App::log_size_for`]).
 ///
-/// When the row does not fit, the size drops first, then each path
-/// truncates from its head: a log path's tail is the half that identifies
-/// it, and the head is a directory prefix every sheep shares. No reading yet,
-/// a reading taken for another sheep, and a log rotated away between two polls
-/// all drop the size rather than the row.
+/// When the row does not fit, the size drops first, then each path truncates
+/// from its head: a log path's tail is the half that identifies it. No
+/// reading yet, a reading for another sheep, and a rotated-away log all drop
+/// the size rather than the row.
 fn log_row(app: &App, width: u16) -> Line<'static> {
     const OUT_LABEL: &str = "out  ";
     const ERR_LABEL: &str = "err  ";
@@ -422,14 +416,10 @@ mod tests {
         assert!(rendered.contains("cfg !2 pending"), "got {rendered:?}");
     }
 
-    /// The finding this fixes: round 1 put the `cfg` cell outside `rest`,
-    /// unconditionally immune to truncation, so a narrow terminal cut fields
-    /// true of every row to make room for one true of almost none. `rest`'s
-    /// own comment says the least universal field goes last so it is the
-    /// first thing truncated; `cfg` fires only for a sheep with edits
-    /// parked, at least as rare as `dog`, so it belongs after `dog`, and its
-    /// length must go through `fit` with everything else rather than being
-    /// reserved out of the budget.
+    /// Round 1 put the `cfg` cell outside `rest`, immune to truncation, so a
+    /// narrow terminal cut fields true of every row to make room for one true
+    /// of almost none. `cfg` fires only for a sheep with edits parked, at
+    /// least as rare as `dog`, so it goes after it and through `fit`.
     #[test]
     fn a_narrow_width_truncates_the_cfg_cell_before_the_universal_fields() {
         let app = with_selection(
@@ -627,14 +617,10 @@ mod tests {
     /// The three widths `log_row`'s own tiers need, derived from the
     /// fixture's actual paths rather than a hardcoded literal.
     ///
-    /// A hardcoded 160/70/60 (this brief's own first draft) assumes the
-    /// fixture's tempdir path is short. `app_fixture`'s tempdir is whatever
-    /// the host resolves, unbounded, so a fixed literal is a bet on the
-    /// environment rather than a fact about `log_row`. `wide` comfortably
-    /// fits both paths plus the size; `medium` fits both paths but not the
-    /// size text; `narrow` is a small constant, independent of the fixture's
-    /// path length, that is always well under the full row's width and still
-    /// leaves each path enough budget to keep its identifying tail.
+    /// `app_fixture`'s tempdir is whatever the host resolves, so a fixed
+    /// literal is a bet on the environment. `wide` fits both paths plus the
+    /// size, `medium` fits both paths but not the size, `narrow` is a small
+    /// constant well under the full row's width.
     fn log_row_thresholds(app: &App) -> (u16, u16, u16) {
         let info = &app.selected_row().expect("a selected sheep").info;
         let out = info.out_file.as_deref().unwrap_or("not reported");
@@ -774,14 +760,8 @@ mod tests {
     /// A long fold name cannot push the status word off a narrow pane.
     ///
     /// `MIN_TERM_WIDTH` is 33 and the head is built before anything is fit,
-    /// so a fold named at length would otherwise spend the whole row and the
-    /// status word would never be drawn. The sibling `Group` branch had the
-    /// same shape and the same bug.
-    /// A mixed status is fit too, not just the name.
-    ///
-    /// Four differing statuses read `1 errored, 1 online, 1 starting, 1
-    /// stopped`, wider than `MIN_TERM_WIDTH` on its own. Budgeting the head
-    /// against it leaves zero and the status still overflows.
+    /// so a fold named at length would spend the whole row. A mixed status is
+    /// fit too: four differing statuses read wider than 33 on their own.
     #[test]
     fn a_mixed_status_does_not_overflow_a_narrow_pane() {
         for selected in ["fold", "group"] {

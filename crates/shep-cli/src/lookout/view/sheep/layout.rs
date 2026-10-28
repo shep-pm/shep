@@ -2,13 +2,11 @@
 //!
 //! One file because it is one ladder. The charts hold rows 1 to 17, the
 //! hairline 18, the config column 19 to 44, and
-//! [`MIN_HEIGHT_FOR_CHARTS`] is derived from [`COLUMN_HEADER_ROW`] rather
-//! than restated as a bare number precisely so the two halves cannot
-//! quietly come to claim the same row. Splitting the ladder across the
-//! modules that read it would lose that.
+//! [`MIN_HEIGHT_FOR_CHARTS`] is derived from [`COLUMN_HEADER_ROW`] so the
+//! two halves cannot quietly claim the same row.
 //!
 //! Everything here is `pub(super)`, which reaches every module under
-//! `sheep`. The one exception is [`COLUMN_BODY_ROWS`], which
+//! `sheep`. The exception is [`COLUMN_BODY_ROWS`], which
 //! `lookout::pane_sheep` reads by path to size its own viewport.
 
 /// Left gutter width, in cells, for both charts: room for a label like
@@ -42,27 +40,17 @@ pub(super) const AXIS_ROW: u16 = 16;
 /// and the column headers.
 pub(super) const HAIRLINE_ROW: u16 = AXIS_ROW + 1;
 /// Terminal rows [`view::draw`](super::super::draw) spends outside this pane's
-/// body: the title band above it and the status bar below it
-/// (`view/mod.rs`). An operator counts terminal rows, and every doc that
-/// repeats decision 8's row ladder states its thresholds that way, but
-/// `area.height` here is always this many short of that count.
-/// [`chart_tier`](super::charts::chart_tier)
-/// adds it back before comparing against [`MIN_HEIGHT_FOR_CHARTS`] and
-/// [`FULL_TIER_MIN_HEIGHT`], both stated in terminal rows below, rather than
-/// leaving those two constants quietly meaning body rows.
+/// body: the title band above it and the status bar below it. An operator
+/// counts terminal rows, but `area.height` is always this many short.
+/// [`chart_tier`](super::charts::chart_tier) adds it back before comparing
+/// against [`MIN_HEIGHT_FOR_CHARTS`] and [`FULL_TIER_MIN_HEIGHT`].
 pub(super) const TERMINAL_OVERHEAD: u16 = 2;
 
 /// The shortest terminal height any chart tier draws into at all: 21 rows
-/// (`18 + 1 + 2`), one past [`COLUMN_HEADER_ROW`] plus [`TERMINAL_OVERHEAD`],
-/// rather than decision 8's own "under 20 rows" floor exactly. The extra row
-/// is deliberate: it keeps this constant derived from [`COLUMN_HEADER_ROW`]
-/// instead of restated as a bare 20, and that coupling is what prevents the
-/// config column and the chart tier from claiming the same row. Below it the
-/// pane still opens; the charts just stay blank and
-/// [`column_top_row`](super::column::column_top_row) moves
-/// the config and feed columns up to reclaim the rows the charts would have
-/// used, rather than the all-or-nothing gate this constant named before
-/// this task.
+/// (`18 + 1 + 2`), one past [`COLUMN_HEADER_ROW`] plus
+/// [`TERMINAL_OVERHEAD`]. Deriving it from [`COLUMN_HEADER_ROW`] is what
+/// keeps the config column and the chart tier from claiming the same row.
+/// Below it the pane still opens, with the columns moved up.
 pub(super) const MIN_HEIGHT_FOR_CHARTS: u16 = COLUMN_HEADER_ROW + 1 + TERMINAL_OVERHEAD;
 
 /// The terminal height past which the full two-chart body has room for the

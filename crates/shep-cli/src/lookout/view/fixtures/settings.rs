@@ -139,14 +139,11 @@ pub fn app_in_settings_at() -> (App, Instant) {
     (app, t0)
 }
 
-/// The settings screen with `[style] level` SHADOWED: the document says
+/// The settings screen with `[style] level` shadowed: the document says
 /// `full`, `source` is the layer that outranked it, and the level in force
-/// is `bare`. The cursor sits on the style row, moved there by real
-/// keypresses the same way [`app_in_settings_on`] moves it.
+/// is `bare`. The cursor sits on the style row.
 ///
-/// The one state where a key's value in force and its value on disk
-/// disagree. Every other key's layers belong to the shepherd's process,
-/// where lookout can see neither.
+/// The one state where a key's value in force and its value on disk disagree.
 pub fn app_in_settings_with_shadowed_style(source: StyleSource) -> App {
     let mut app = app_in_settings_on("style.level");
     let mut snapshot = settings_snapshot();
@@ -192,12 +189,9 @@ pub fn app_in_settings_with_a_dog_open() -> App {
     app
 }
 
-/// `e` on the row of the dog named `name`, then the two reads that opening it
-/// asks for, answered the way the event loop answers them: the schema the dog's
-/// binary publishes, and the section the shepherd holds.
-///
-/// A built-in dog only, because the schema comes from this binary rather than
-/// from probing a path.
+/// `e` on the row of the dog named `name`, then the two reads that opening
+/// it asks for, answered the way the event loop answers them. A built-in dog
+/// only, because the schema comes from this binary rather than a probe.
 ///
 /// # Panics
 ///

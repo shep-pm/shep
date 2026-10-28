@@ -71,12 +71,10 @@ pub(super) fn mem_header_text(max_memory: Option<u64>, window_peak: u64) -> Stri
 
 /// The memory chart's `MEM_ROWS` rows, and which one (if any) is the row
 /// nearest a real `max_memory` ceiling: that row is
-/// [`draw_charts`](super::draw_charts)'s cue
-/// to paint it in `--butter` instead of the chart's own colour.
+/// [`draw_charts`](super::draw_charts)'s cue to paint it in `--butter`.
 ///
-/// Scales to `max(max_memory, window peak)` rather than `max_memory`
-/// alone, so a sheep already over its limit still draws the spike rather
-/// than clipping it off the top.
+/// Scales to `max(max_memory, window peak)`, so a sheep already over its
+/// limit still draws the spike rather than clipping it off the top.
 pub(super) fn mem_chart_rows(
     history: &[u64],
     max_memory: Option<u64>,
@@ -86,10 +84,9 @@ pub(super) fn mem_chart_rows(
     let window_peak = window_slice.iter().copied().max().unwrap_or(0);
     let peak_for_scale = max_memory.map_or(window_peak, |limit| limit.max(window_peak));
     // `scale_top`'s own ladder is decimal, but `human_bytes` renders the
-    // binary MiB `crate::output::human_bytes` always has: scaling in MiB
-    // rather than raw bytes is what keeps a labelled row's own value round
-    // in the unit it is shown in (`64.0M`, never `76.3M` for a 64M
-    // ceiling).
+    // binary MiB `crate::output::human_bytes` always has. Scaling in MiB
+    // keeps a labelled row's value round in the unit it is shown in:
+    // `64.0M`, never `76.3M` for a 64M ceiling.
     const MIB: f64 = (1u64 << 20) as f64;
     let ceiling_mib = scale_top(peak_for_scale as f64 / MIB, 0.0);
     let ceiling = ceiling_mib * MIB;
@@ -105,10 +102,9 @@ pub(super) fn mem_chart_rows(
         }
         let band = ceiling / MEM_ROWS as f64;
         // The row nearest the limit, not the row at or below it: a ceiling
-        // that lands between two rows still has to pick one, and rounding
-        // down always draws the line above the real limit, which is the
-        // unsafe direction (a sheep already over its limit would still
-        // draw under the line).
+        // between two rows still has to pick one. Rounding down draws the
+        // line above the real limit, which is the unsafe direction for a
+        // sheep already over it.
         ((ceiling - limit as f64) / band)
             .round()
             .clamp(0.0, (MEM_ROWS - 1) as f64) as usize

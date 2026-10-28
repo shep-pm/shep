@@ -46,13 +46,11 @@ fn content_bottom(area: Rect) -> u16 {
 
 /// Draws the `+ new key` affordance at the current `y` and advances it,
 /// stopping short of [`content_bottom`] the same way every row above it
-/// does. `table_width` and `bottom` are `draw`'s own locals, not this
-/// function's arguments, since both are cheap to recompute from `area` and
-/// doing so keeps this under clippy's argument-count lint.
+/// does. `table_width` and `bottom` are `draw`'s own locals, to stay under
+/// clippy's argument-count lint.
 ///
-/// The one place `draw` places it: right after the last visible operator
-/// row and before the first namespace group's header, closing the operator
-/// group even when that group has no members of its own to close.
+/// The one place `draw` places it: after the last visible operator row and
+/// before the first namespace header, closing the operator group.
 fn draw_new_key_row(
     pane: &SecretsPane,
     columns: &[Column],
@@ -113,16 +111,9 @@ fn draw_too_narrow(width: u16, palette: Palette, area: Rect, buffer: &mut Buffer
 /// Draws the secrets pane into `area`, straight into `buffer`.
 ///
 /// Seven rows of chrome before the first group header: this pane's own
-/// band (design rule 1), the store's terms, the two gates, the roll's own
-/// status, the tab row, the heading row, a hairline, then one group header
-/// per source change in [`SecretsPane::model`](crate::lookout::app::SecretsPane::model)'s rows, which are already
-/// contiguous by source (`SecretsModel::rows`'s own doc comment: operator
-/// rows first, then each namespace's), with the `+ new key` affordance
-/// closing the operator group before the first namespace header prints.
-///
-/// The last [`PANEL_ROWS`] rows, when `area` is tall enough to spare them,
-/// belong to [`draw_panels`] instead: FOCUSED and WHO READS IT, below their
-/// own hairline.
+/// band, the store's terms, the two gates, the roll's status, the tab row,
+/// the heading row and a hairline. The last [`PANEL_ROWS`] rows belong to
+/// [`draw_panels`] when `area` can spare them.
 pub fn draw(app: &App, pane: &SecretsPane, area: Rect, buffer: &mut Buffer) {
     if area.width == 0 || area.height == 0 {
         return;
@@ -394,10 +385,8 @@ mod tests {
                 );
                 // The panels describe the selected row, so a screen
                 // carrying them and no row is six rows spent saying
-                // nothing. This is the half of the boundary that is not a
-                // judgement call: where exactly the panels start earning
-                // their rows is `PANELS_MIN_ROWS`' own doc to argue, but
-                // over an empty table they never do.
+                // nothing. Where they start earning their rows is
+                // `PANELS_MIN_ROWS`'s doc to argue; an empty table never pays.
                 assert!(
                     text.contains(FIRST_DATA_ROW),
                     "{height} rows drew the panels over an empty table: {text}"

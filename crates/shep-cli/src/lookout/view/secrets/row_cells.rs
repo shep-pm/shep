@@ -27,14 +27,9 @@ pub(super) fn typed_cell(buffer: &TextBox, width: u16) -> String {
 /// What one row shows in `VALUE`.
 ///
 /// A run proportional to the value's length rather than equal to it: the
-/// column is 30 cells against `MAX_VALUE_BYTES`'s 4096, so an equal run
-/// cannot be drawn. It stops one cell short of `width` so it never touches
-/// `IN FORCE`'s own text.
-///
-/// `typing` wins over a reveal: the operator is looking at what they are
-/// about to send, not at what the store already holds. The block run and a
-/// reveal both name a length or a plaintext already on screen; typed text is
-/// the same kind of thing, one keystroke ahead of the store.
+/// column is 30 cells against `MAX_VALUE_BYTES`'s 4096. It stops one cell
+/// short of `width` so it never touches `IN FORCE`'s text. `typing` wins
+/// over a reveal: the operator is looking at what they are about to send.
 pub(super) fn value_cell(
     row: &SecretRow,
     revealed: Option<&Reveal>,

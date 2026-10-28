@@ -43,10 +43,9 @@ pub(super) enum ChartTier {
 
 pub(super) fn chart_tier(width: u16, height: u16) -> ChartTier {
     // `height` is `area.height`, the pane body's own row count.
-    // [`MIN_HEIGHT_FOR_CHARTS`] and [`FULL_TIER_MIN_HEIGHT`] are both
-    // stated in terminal rows, the count an operator actually reads off
-    // their own terminal, so [`TERMINAL_OVERHEAD`] is added back before
-    // either comparison.
+    // [`MIN_HEIGHT_FOR_CHARTS`] and [`FULL_TIER_MIN_HEIGHT`] are stated in
+    // terminal rows, the count an operator reads off their terminal, so
+    // [`TERMINAL_OVERHEAD`] is added back before either comparison.
     let terminal_height = height + TERMINAL_OVERHEAD;
     if terminal_height < MIN_HEIGHT_FOR_CHARTS {
         return ChartTier::None;
@@ -238,13 +237,11 @@ pub(super) fn draw_sparkline_row(
 }
 
 /// Writes one styled line into `buffer`, `row` cells below `area`'s own
-/// top. Callers only reach here once [`draw`](super::draw) has already
-/// checked `area`
-/// is tall enough for `row`.
+/// top. Callers only reach here once [`draw`](super::draw) has checked
+/// `area` is tall enough for `row`.
 ///
 /// `set_stringn`, not a `Line` of one `Span`: the `Span` needs an owned
-/// `String` and this runs ten to fifteen times a frame, where the borrowed
-/// `&str` is all the buffer ever needed.
+/// `String`, and this runs ten to fifteen times a frame.
 fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style) {
     buffer.set_stringn(area.x, area.y + row, text, usize::from(area.width), style);
 }
@@ -259,9 +256,7 @@ fn write_row(buffer: &mut Buffer, area: Rect, row: u16, text: &str, style: Style
 ///
 /// Capped at [`HISTORY`]: past 160 columns the arithmetic above would ask
 /// for more samples than the buffer ever holds, and an uncapped body keeps
-/// [`cpu_header_text`] reading `collecting` forever even once the buffer is
-/// full. Which charts draw at which width past that point is task 11's own
-/// tier; this is only the ceiling the header's own claim has to respect.
+/// [`cpu_header_text`] reading `collecting` forever once the buffer is full.
 pub(super) fn chart_body_cells(width: u16) -> usize {
     usize::from(width)
         .saturating_sub(GUTTER + MARGIN)
@@ -283,14 +278,6 @@ mod tests {
     use super::super::layout::{CPU_ROWS, MEM_ROWS};
     use super::*;
 
-    /// The chart-drawing twin of the test above: pane pinned to alpha,
-    /// alpha leaves the flock, bravo (with its own, distinct `max_memory`)
-    /// takes the reseated selection. `draw`'s own gate reads
-    /// `App::sheep_pane_row`, which is `None` once alpha is gone, so
-    /// nothing charts at all; reading `App::selected_row` instead would
-    /// draw bravo's ceiling under a pane still naming alpha. The area here
-    /// is tall and wide enough to reach `draw_charts`, unlike the test
-    /// above's 80x3.
     #[test]
     fn the_charts_do_not_draw_the_sheep_that_replaced_the_pinned_one() {
         let mut app = fixtures::app_with(

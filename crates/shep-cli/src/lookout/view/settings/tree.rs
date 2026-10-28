@@ -102,12 +102,10 @@ fn row_columns_for(width: u16) -> &'static [RowColumn] {
 /// What VALUE and the apply cost get out of `width`, once NAME, SOURCE and
 /// the separators are paid for.
 ///
-/// VALUE takes the remainder up to [`ROW_VALUE_W`] and never below
-/// [`ROW_VALUE_MIN`]; the cost takes what is left after that, so a wide
-/// terminal spends its extra columns on the sentence rather than on padding
-/// a value that has already been shown whole. The cost's number is zero
-/// when [`RowColumn::Cost`] is not in `columns`, and nothing reads it
-/// then.
+/// VALUE takes the remainder up to [`ROW_VALUE_W`], never below
+/// [`ROW_VALUE_MIN`]. The cost takes what is left, so a wide terminal spends
+/// its extra columns on the sentence. The cost is zero when
+/// [`RowColumn::Cost`] is not in `columns`.
 fn row_widths(width: u16, columns: &[RowColumn]) -> (u16, u16) {
     let fixed = ROW_NAME_W
         + if columns.contains(&RowColumn::Source) {

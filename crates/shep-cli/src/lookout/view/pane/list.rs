@@ -14,13 +14,9 @@ use super::layout::{POSITION_W, body_width, mask_secret};
 
 /// The list sub-screen: one array field's elements, and a row to add one on.
 ///
-/// Values are drawn, unlike an env row: an array arrives with the
-/// config, so hiding it would leave the screen unable to say which element
-/// the cursor is on.
-///
-/// Laid out through [`scroll::to_cursor`], the same walk the field
-/// list uses, so the cursor is drawn at every height this pane claims to
-/// support.
+/// Values are drawn, unlike an env row: an array arrives with the config.
+/// Laid out through [`scroll::to_cursor`], the same walk the field list
+/// uses.
 pub(super) fn list_lines(
     pane: &ConfigPane,
     list: &ListPane,
@@ -57,11 +53,9 @@ pub(super) fn list_lines(
 /// One row of the list sub-screen: the selection mark, the element's
 /// position, and the element.
 ///
-/// The position is drawn because `K` and `J` move an element by one, so a
-/// row that did not say where it was would leave an operator counting.
-/// `secret` masks an unset element the same way [`super::field_row::field_line`] masks a
-/// `x-shep-secret` field; nothing in today's schemas sets it on an array,
-/// but a future one could.
+/// The position is drawn because `K` and `J` move an element by one.
+/// `secret` masks an unset element the way
+/// [`super::field_row::field_line`] masks a `x-shep-secret` field.
 pub(super) fn list_line(
     list: &ListPane,
     index: usize,

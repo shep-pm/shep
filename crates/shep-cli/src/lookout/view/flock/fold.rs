@@ -19,19 +19,11 @@ use crate::output::{human_bytes, human_duration};
 
 /// One row of the fold view, dispatching on `key` the way
 /// [`super::row::key_line`] does for the flat table: a [`RowKey::Fold`]
-/// renders the header, a [`RowKey::Group`] or [`RowKey::Sheep`] renders a
-/// member, and a [`RowKey::Section`] renders the same band
-/// [`super::row::key_line`] draws.
+/// renders the header, a [`RowKey::Group`] or [`RowKey::Sheep`] a member, and
+/// a [`RowKey::Section`] the same band.
 ///
-/// A fold's own members are never nested a second level deep (two levels of
-/// grouping, never three): a [`RowKey::Sheep`] only ever reaches this table
-/// standalone, since a grouped app collapses to its [`RowKey::Group`] header
-/// with its instances held back, the same rule [`App::grouping`]'s
-/// `ByFold` value enforces when it gathers the rows in the first place.
-///
-/// `view::mod`'s draw loop calls this in place of
-/// [`super::row::key_line`] whenever [`App::grouping`] reads
-/// `Grouping::ByFold`.
+/// A fold's members are never nested a second level deep: a grouped app
+/// collapses to its [`RowKey::Group`] header, as [`App::grouping`] enforces.
 #[must_use]
 pub fn fold_key_line(
     app: &App,
@@ -124,10 +116,8 @@ fn fold_header_cell(
     match column {
         // The disclosure triangle carries two facts nothing else in the row
         // does: that this is a fold header rather than a member or an app
-        // group, and whether `z` has collapsed it. Both were colour-only
-        // before, and below the `FOLD_ALL` tier there is no Share or Notes
-        // cell to rescue them, so a 16-colour terminal or `NO_COLOR` lost the
-        // hierarchy entirely. Design rule 3, `README.md:47`.
+        // group, and whether `z` has collapsed it. Below the `FOLD_ALL` tier
+        // there is no Share or Notes cell to rescue them.
         FoldColumn::Name => {
             let marker = if app.is_fold_collapsed(name) {
                 '\u{25b8}'
@@ -190,9 +180,7 @@ fn fold_share_percent(memory: Option<u64>, total_memory: Option<u64>) -> Option<
 
 /// An app's group header row, laid out in [`FoldColumn`]'s widths rather
 /// than [`super::columns::Column`]'s: the same rollup `row::group_line`
-/// draws for the flat table, reused rather than recomputed, since
-/// [`App::group_totals`] does
-/// not care which table is about to draw it.
+/// draws for the flat table, reused rather than recomputed.
 ///
 /// `Share` and `Notes` are blank: the share bar is a fact about a fold, and
 /// a group nested inside one has no share of its own to state.

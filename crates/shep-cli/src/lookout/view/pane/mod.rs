@@ -3,18 +3,10 @@
 //! field, and a cost column saying what changing that field would cost.
 //!
 //! The layout is [`super::settings`]'s: both screens own the whole body
-//! between the title and the status bar, both have more rows than a
-//! terminal has lines, and both pay for chrome the viewport cannot see.
-//! The scroll walk is shared ([`super::scroll::to_cursor`]); the layout
-//! below is this pane's own, since a field list under nine headers and a
-//! settings screen with one row per dog share almost no lines.
-//!
-//! A sheep pane is 40 rows plus a title, nine headers and eight blank
-//! separators: eighteen lines of chrome before a marker is paid for.
-//!
-//! `layout` holds the width budget, `field_row` one row, and `chrome`,
-//! `env`, `list`, `dogs` and `panel` the regions around them. `body` decides
-//! which rows fit, `draw` assembles the pane, `close` is the dialog over it.
+//! between the title and the status bar, and both pay for chrome the
+//! viewport cannot see. [`to_cursor`](super::scroll::to_cursor) is shared;
+//! the layout below is this pane's own. A sheep pane spends eighteen lines
+//! of chrome before a marker is paid for.
 
 mod body;
 mod chrome;

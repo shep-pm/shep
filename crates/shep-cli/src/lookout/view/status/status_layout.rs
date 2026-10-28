@@ -12,13 +12,10 @@ use ratatui::text::{Line, Span};
 
 /// The banner, when there is one. `None` while the link is live.
 ///
-///
 /// What happened and when the values stopped being current, so an operator
-/// reading `online` knows how much to trust it. The frozen row says neither:
-/// once the link is lost, `view::title_band` carries the death sentence in
-/// bark across the whole row above, and this row picks up the `$SHEP_HOME`
-/// the title band no longer has space for, plus the two things an operator
-/// staring at a dead dashboard actually needs told.
+/// reading `online` knows how much to trust it. Once the link is lost,
+/// `view::title_band` carries the death sentence above, and this row picks
+/// up the `$SHEP_HOME` the title band has no room for.
 #[must_use]
 pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
     let palette = app.palette();
@@ -28,12 +25,10 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
             retrying_sentence(*attempt),
             palette.attention(),
         ))),
-        // Through `fit`, unlike the retrying sentence above, which is
-        // short enough that no terminal cuts it. Three clauses and a
-        // `$SHEP_HOME` do not fit 90 columns, and `Buffer::set_line` cuts
-        // what does not fit in silence: a sentence ending mid-word beside
-        // five other lines that all mark their own truncation reads as a
-        // rendering fault rather than as a narrow terminal.
+        // Through `fit`, unlike the retrying sentence above, which is short
+        // enough that no terminal cuts it. `Buffer::set_line` cuts in
+        // silence: a mid-word cut beside lines that mark their own
+        // truncation reads as a rendering fault.
         Link::Lost { .. } => Some(Line::from(Span::styled(
             fit(
                 &format!(
@@ -47,30 +42,19 @@ pub fn banner_line(app: &App, width: u16) -> Option<Line<'static>> {
     }
 }
 
-/// The bottom line: eight slots, highest priority first: the settings
-/// screen's armed or in-flight edit, a dashboard confirm, the settings
-/// screen's free-text editor, the filter box, a notice, an in-flight
-/// action, the applied filter line, then the key hint. Control state
-/// always renders on the right.
+/// The bottom line: eight slots, highest priority first.
 ///
-/// The config pane has no prompt slot of its own: nothing it edits is
-/// armed and nothing is in flight, so there is no question waiting for an
-/// answer. Its free-text editor still takes the editor slot.
-///
-/// The editor slot outranks the filter box: `Settings::typing` is `Some`
-/// only while the settings screen owns `InputMode::Text`, while
-/// `App::filter` stays untouched. A fixed row the layout never cuts; the
-/// body echoes the same line beneath the table when there is room, both
-/// reading `Settings::pending`/`Settings::typing` directly.
+/// The settings screen's armed or in-flight edit, a dashboard confirm, its
+/// free-text editor, the filter box. A notice, an in-flight action, the
+/// applied filter line, then the key hint. Control state always renders on
+/// the right, and the row is never cut.
 #[must_use]
 pub fn status_line(app: &App, width: u16) -> Line<'static> {
     let palette = app.palette();
-    // Always rendered, in both states. An operator who does not know whether
-    // their dashboard can act is one keystroke from finding out the wrong
-    // way. The bleats pane borrows this slot while it is following the
-    // tail: control state means nothing on a screen with no action keys of
-    // its own, and whether the view is pinned to the newest line is the
-    // fact this screen's own operator needs a keystroke away from.
+    // Always rendered, in both states. An operator who cannot tell whether
+    // the dashboard can act finds out the wrong way. The bleats pane borrows
+    // this slot while following the tail: it has no action keys of its own,
+    // and pinning is what its reader needs.
     let right = if matches!(app.link(), Link::Lost { .. }) {
         // Ahead of both: whether this dashboard is reading a live shepherd
         // outranks whether a pane is pinned to the newest line, and it
@@ -113,11 +97,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         .sheep_pane()
         .and_then(|pane| pane.feed().match_editing())
     {
-        // The same box, embedded: the sheep pane's own feed shares
-        // `InputMode::Text` with the dashboard's name filter too, and a
-        // fall-through here would label the dashboard's untouched query as
-        // this feed's match, the same mislabel the branch above already
-        // guards against for the full-screen pane.
+        // The same box, embedded: the sheep pane's feed shares
+        // `InputMode::Text` with the dashboard's name filter. A fall-through
+        // here would label the dashboard's untouched query as this feed's
+        // match.
         (
             buffer.line("match  ", "   enter applies   esc cancels", left_width),
             palette.attention(),
@@ -200,44 +183,31 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // hide it. A keypress cannot wipe this line; the reducer clears
         // the notice, not this ordering.
         let text = in_flight_text(&action);
-        // `attention`, the same butter the non-grave notice uses. Not a
-        // modal, not a box, not a `ratatui::widgets::Clear`: there is no
-        // overlay anywhere in this module, and one rule under the header
-        // beats a full border for a pane somebody reads at 3am. The close
-        // dialog is lookout's one overlay, and it is `pane`'s box over
-        // `pane`'s own field list, not this bar over anything.
+        // `attention`, the same butter the non-grave notice uses. No modal,
+        // no box, no `ratatui::widgets::Clear`. One rule under the header
+        // beats a full border for a pane read at 3am. This module draws no
+        // overlay.
         (text, palette.attention())
     } else if app.close_dialog().is_some() {
         // Ahead of the config pane's own hint below: the dialog owns the
-        // keyboard while it is up, the same way an armed action outranks
-        // the dashboard's hint above, and a bar naming `space cycle` under
-        // a screen that answers to `R`/`L`/`c`/`esc` instead would be the
-        // asterisk this file's standing rule forbids.
-        //
-        // Muted, not butter: this is not a key hint naming what to press,
-        // only a statement that the dialog itself is where every key goes;
-        // its own rows say what each one does.
+        // keyboard while it is up. A bar naming `space cycle` under that
+        // screen would be the asterisk this file's standing rule forbids.
+        // Muted: the dialog's own rows name what each key does.
         (CLOSE_DIALOG_HINT.to_string(), palette.muted())
     } else if let Some(pane) = app.config_pane() {
-        // The pane owns the keyboard, so neither the filter line nor
-        // either dashboard hint is true while it is up. Its own form: a
-        // hint naming `x stop` beside a pane where `x` does nothing is
-        // the asterisk this file's standing rule forbids.
-        //
-        // Butter, not muted: this is a key hint, same as the dashboard's own
-        // below, and the redesign paints the keys butter over the bar's
-        // ground.
+        // The pane owns the keyboard, so neither dashboard hint is true
+        // while it is up. Naming `x stop` where `x` does nothing is the
+        // asterisk this rule forbids. Butter: this is a key hint, same as
+        // the dashboard's own below.
         (
             pane_hint(app.control(), pane_screen(pane)).to_string(),
             palette.attention(),
         )
     } else if app.bleats_pane().is_some() {
-        // Checked below the match box's own branch above, which owns this
-        // slot instead while it is open. The design's own status-bar line
-        // (docs/lookout/design-files/README.md:274) names every key here
-        // but the minimum-level axis's own `m`: that line lists no key for
-        // it at all, so it is appended rather than inserted, the same rule
-        // `key_hint::hint_for`'s own doc gives for its dashboard forms.
+        // Checked below the match box's branch, which owns this slot while
+        // open. The design's status-bar line
+        // (docs/lookout/design-files/README.md:274) names no key for `m`, so
+        // it is appended rather than inserted.
         (BLEATS_HINT.to_string(), palette.attention())
     } else if matches!(app.body(), Body::Secrets(_)) {
         // The pane owns the keyboard here too, same reasoning as the config
@@ -262,11 +232,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             palette.muted(),
         )
     } else if matches!(app.link(), Link::Lost { .. }) {
-        // Only this branch, not the pane hints above: a pane opened before
-        // the freeze keeps naming its own keys, and this line is the flock
-        // table's. Every action key `key_hint::hint_for` would name is refused once
-        // the link is gone, so naming them would teach the operator three
-        // keys that do nothing.
+        // Only this branch, not the pane hints above. A pane opened before
+        // the freeze keeps naming its own keys. This line is the flock
+        // table's. Every action key `key_hint::hint_for` would name is
+        // refused once the link is gone.
         (FROZEN_HINT.to_string(), palette.attention())
     } else {
         // Butter: the keys, same rule as the pane's own hint above.
@@ -275,12 +244,9 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
             palette.attention(),
         )
     };
-    // `patch`, not a fresh `Style`: `ground` sets only the background, so
-    // patching it onto each span's own foreground paints the bar's ground
-    // ([`Palette::ground`]) without disturbing what the span already means.
-    // `fit` already pads `left` to `left_width`, so the background reaches
-    // every column the label does not, the same reasoning `flock::pad_ground`
-    // uses for the selected row.
+    // `patch`, not a fresh `Style`. `ground` sets only the background, so
+    // patching it keeps each span's own foreground. `fit` pads `left` to
+    // `left_width`, so the ground reaches every column the label does not.
     let ground = palette.ground();
     Line::from(vec![
         Span::styled(fit(&left, left_width), left_style.patch(ground)),

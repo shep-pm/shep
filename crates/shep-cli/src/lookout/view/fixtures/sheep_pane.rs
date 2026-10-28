@@ -83,8 +83,7 @@ fn open_config_pane(app: &mut App, view: SheepConfigView) {
 ///
 /// # Panics
 ///
-/// Panics if the pane is closed or has no env key by that name, which is a
-/// fixture bug rather than a failure the test is about.
+/// Panics if the pane is closed or has no env key by that name.
 #[track_caller]
 pub fn select_env_key(app: &mut App, key: &str) {
     let pane = app.config_pane().expect("the pane is open");
@@ -236,13 +235,11 @@ pub fn file_edit(app: &mut App, key: &str, value: &str) {
 
 /// Walks an open config pane's cursor onto `key`, the way an operator
 /// walks it: `tab`/a digit onto `key`'s own group first, when it carries
-/// one, then down the filtered list onto the row itself. No fixture
-/// reaches into the pane to place it.
+/// one, then down the filtered list onto the row itself.
 ///
 /// # Panics
 ///
-/// Panics if the pane is closed or has no field by that name, which is a
-/// fixture bug rather than a failure the test is about.
+/// Panics if the pane is closed or has no field by that name.
 #[track_caller]
 pub fn select_field(app: &mut App, key: &str) {
     let pane = app.config_pane().expect("the pane is open");
@@ -328,16 +325,9 @@ fn walk_to_row(app: &mut App, index: usize) {
 /// by real key presses: `cwd` typed, and `max_memory` typed.
 ///
 /// Two, and not one, because a batch of one cannot tell a loop from a
-/// `take(1)`. Two different fields rather than two shapes of edit, since
-/// the set is keyed by field and a second edit to one key replaces it.
-/// The two also carry different groups on purpose (`cwd` is `process`,
-/// `max_memory` is `restart`), which is what the pending-edits section's
-/// own tests need: a group's own field list only ever shows one group at
-/// a time, so a test that an edit from elsewhere still turns up has to
-/// file one there.
-///
-/// Nothing parked, so `Escape` writes and leaves rather than stopping to
-/// offer the apply menu.
+/// `take(1)`. Two different fields, since the set is keyed by field. The two
+/// also carry different groups on purpose (`cwd` is `process`, `max_memory`
+/// is `restart`), which the pending-edits section's tests need.
 pub fn app_in_sheep_pane_with_two_edits() -> App {
     let mut app = app_in_sheep_pane_with_nothing_parked();
     for (key, typed) in [("cwd", "/srv/web"), ("max_memory", "40")] {

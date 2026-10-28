@@ -4,21 +4,10 @@ use super::super::super::textbox::TextBox;
 
 /// The key hint once the link is [`Link::Lost`](crate::lookout::app::Link::Lost).
 ///
-/// `q` leaves, movement still walks a cursor over values that are already
-/// history, and `h` opens the keymap overlay, which is read only and wanted
-/// most on the screen where nothing else works. `r` is refused
-/// (`App::on_key` tests [`Link::Lost`](crate::lookout::app::Link::Lost)), even though 1l's own design copy
-/// says it redials: `super::super::super::link::run_link` has already returned by
-/// the time a freeze lands, so no task survives to answer one.
-///
-/// The hint does not claim every other key is refused, because that is not
-/// true: `esc`, `j`, `g`/`G`, `h`, `/`, `Enter`, `e`, `s` and `S` all still
-/// act. Only `Refresh` and the three action verbs test the link.
-///
-/// What the hint states instead is the consequence: the shepherd is
-/// unreachable, so nothing pressed here changes anything out there.
-/// Movement, the keymap and the filter stay local, and every key that would
-/// reach the shepherd fails to.
+/// `q` leaves, and movement still walks a cursor over values that are
+/// history. `h` opens the keymap overlay. `r` is refused: `run_link` has
+/// returned by the time a freeze lands, so no task survives to answer one.
+/// The hint states the consequence rather than a list of refused keys.
 pub(super) const FROZEN_HINT: &str = "q quit   h keymap   j/k g/G move   \
      nothing you press can reach the shepherd";
 
@@ -89,12 +78,9 @@ pub(super) const CLOSE_DIALOG_HINT: &str =
 /// The secrets pane's own key hint.
 ///
 /// `\u{21b5} set a value` and `D delete` name keys gated on
-/// [`Control::Allowed`], mirroring [`hint_for`]'s own split: a hint naming
-/// a key that always refuses teaches the operator the key is broken. `D`
-/// sits beside `\u{21b5}` because both write; `y` sits outside that split
-/// because copying an already-revealed value writes nothing. `v` and `y`
-/// name no gate of their own, which the pane's own gates row two lines
-/// above the table already states.
+/// [`Control::Allowed`], as in [`hint_for`]. A hint naming a key that
+/// always refuses teaches the operator the key is broken. `y` sits outside
+/// that split: copying a revealed value writes nothing.
 pub(super) fn secrets_hint(control: Control) -> String {
     match control {
         Control::ReadOnly => {
@@ -112,27 +98,11 @@ pub(super) fn secrets_hint(control: Control) -> String {
 
 /// The config pane's own key hint.
 ///
-/// Five forms: `space cycle`/`e edit`/`d back to default` show only under
-/// [`Control::Allowed`] (`Enter` also opens the pane, sharing `e`'s slot).
-/// Each sub-screen gets its own, since `esc` backs out rather than closing
-/// there, and the list also names `d`/`K`/`J`, worded `d remove` there since
-/// it drops an element rather than restoring a default. `* yours`/`! parked`
-/// repeat the field list's glyphs
-/// (`view::pane::field_row::field_line`); the flock table's `CFG` column
-/// carries the
-/// same two with no legend of its own.
-///
-/// `Control::Allowed` at [`PaneScreen::Fields`] said `esc write & close`,
-/// not `esc close`, until frame 1g landed: `esc` used to send every filed
-/// edit before it closed the pane, with no question asked first. The close
-/// dialog is that question now, so `esc` alone only asks or, with nothing
-/// to ask about, closes; either way it does not write on its own anymore,
-/// and the hint reverted to what the design doc always said.
-///
-/// Said unconditionally, whether or not anything is filed, rather than
-/// keyed on the edit count: `esc` behaves the same way over zero edits as
-/// over three, so the sentence is true either way and this stays a
-/// `const fn`.
+/// `space cycle`, `e edit` and `d back to default` show only under
+/// [`Control::Allowed`]. Each sub-screen gets its own form, since `esc`
+/// backs out there rather than closing. The list words `d` as `d remove`:
+/// it drops an element. `esc` asks before it writes, so the sentence is
+/// true with or without filed edits.
 pub(super) const fn pane_hint(control: Control, screen: PaneScreen) -> &'static str {
     match (control, screen) {
         (Control::ReadOnly, PaneScreen::Fields) => {
@@ -159,11 +129,9 @@ pub(super) const fn pane_hint(control: Control, screen: PaneScreen) -> &'static 
 /// The sheep pane's own key hint.
 ///
 /// `x stop`, `R restart` and `L reload` are appended only under
-/// [`Control::Allowed`], the same rule [`hint_for`]'s own doc gives for the
-/// dashboard's write keys: a hint naming a key that is inert where the
-/// operator is reading it teaches them the key is broken. `b full log` and
-/// `/ filter` are named for every control level, the same as `esc`/`e`/`J`/`K`:
-/// both now route to the embedded feed Task 10 wired in.
+/// [`Control::Allowed`]. This is the rule [`hint_for`] gives for the
+/// dashboard's write keys. A hint naming an inert key teaches the operator
+/// that the key is broken.
 pub(super) const fn sheep_pane_hint(control: Control) -> &'static str {
     match control {
         Control::ReadOnly => "esc flock   e edit   J/K next sheep   b full log   / filter",
@@ -202,14 +170,8 @@ pub(super) fn pane_screen(pane: &ConfigPane) -> PaneScreen {
 /// Three forms: the settings screen's own, the dashboard's two, and the
 /// config pane's own [`pane_hint`] above. `settings_open` wins outright,
 /// since the dashboard's keys mean nothing while the screen owns the
-/// keyboard. A hint needing a footnote is not a hint: `Control::Allowed`'s
-/// dashboard form is handed out only where those keys really do arm a
-/// confirm.
-///
-/// `s settings`, `e edit` and the `* yours   ! parked` legend are all
-/// appended, never inserted: read-only's first 40 characters must stay
-/// byte-identical for the truncation and gallery tests. Settings forms
-/// follow suit: read-only is a prefix of control.
+/// keyboard. Clauses are appended, never inserted: read-only's first 40
+/// characters are pinned by the truncation and gallery tests.
 pub(super) fn hint_for(control: Control, settings_open: bool, grouping: Grouping) -> String {
     if settings_open {
         // `esc/s close` names both keys that close the screen: on this
@@ -222,13 +184,9 @@ pub(super) fn hint_for(control: Control, settings_open: bool, grouping: Grouping
         }
         .to_string();
     }
-    // The fold keys, spliced before the appended tail rather than into the
-    // movement keys: the doc above pins read-only's first 40 characters, and
-    // the truncation and gallery tests read them.
-    //
-    // `z` appears only in fold view, because that is the only place it does
-    // anything. A hint naming a key that is inert where the operator is
-    // reading it teaches them the key is broken.
+    // The fold keys splice before the appended tail, not into the movement
+    // keys: the doc above pins read-only's first 40 characters. `z` appears
+    // only in fold view, the only place it does anything.
     let folds = match grouping {
         Grouping::Flat => "F folds   ",
         Grouping::ByFold => "F flat   z collapse   ",
@@ -260,23 +218,6 @@ mod tests {
 
     use crate::lookout::app::{KeyPress, Msg};
 
-    /// The hint's clause separators are three spaces, every one of them.
-    ///
-    /// `FROZEN_HINT` is written with a `\` line continuation: Rust strips
-    /// the next line's leading whitespace after that continuation, so the
-    /// source's own indent never becomes extra spaces in the string, and
-    /// the gallery's own rendered frame confirms three.
-    ///
-    /// The sibling tests around this constant call `contains` on each
-    /// clause separately, so none of them can see the spacing between
-    /// clauses; this is the one that does. A future continuation, or a
-    /// hand-typed run of spaces, would otherwise go unnoticed in text an
-    /// operator reads at 3am.
-    ///
-    /// Two assertions with different guarantees: "no run of four or more"
-    /// covers a clause added later automatically, but the exact-three
-    /// count does not. A fourth clause fails it deliberately, and the
-    /// count needs a manual bump when that happens on purpose.
     #[test]
     fn the_frozen_hint_clauses_are_separated_by_exactly_three_spaces() {
         assert!(
@@ -290,13 +231,6 @@ mod tests {
         );
     }
 
-    /// Three claims in two macros, and the second macro is the load-bearing
-    /// one. `h keymap` alone would pass on a rewrite that appended the new
-    /// key and dropped the two it landed between, which is how a hint loses
-    /// the keys it always had. The rest of the sentence, the clause about
-    /// every key it does not list, is its own test below: naming `h` and
-    /// keeping that clause true have to happen together, and each half needs
-    /// a test that fails without the other.
     #[test]
     fn the_frozen_hint_names_the_keymap_it_no_longer_refuses() {
         assert!(FROZEN_HINT.contains("h keymap"), "{FROZEN_HINT}");
@@ -306,14 +240,6 @@ mod tests {
         );
     }
 
-    /// The hint must not claim every other key is refused, because seven of
-    /// them are not.
-    ///
-    /// Enumerated against a frozen app rather than reasoned about: `esc`,
-    /// `g`/`G`, `/`, `Enter`, `e`, `s` and `S` all still act, and `/` opens
-    /// the filter box outright. Only `Refresh` and the three action verbs
-    /// test [`Link::Lost`](crate::lookout::app::Link::Lost). The hint states the consequence instead, which
-    /// stays true however many local keys keep working.
     #[test]
     fn the_frozen_hint_claims_no_blanket_refusal() {
         assert!(

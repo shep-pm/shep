@@ -21,18 +21,9 @@ use crate::output::{cfg_cell, exit_cell, human_bytes, human_duration};
 /// One line for a row the table draws: a real sheep, the header above an
 /// app's grouped instances, or a [`RowKey::Section`] header.
 ///
-/// `key`'s `Sheep` ids always name a row still in the flock in practice, so
-/// the blank fallback below is never drawn; it exists rather than an
-/// `expect`, on the same "no honest value" rule this table applies to a
-/// missing pid.
-///
 /// A `Sheep` row under a group header draws as a slot rather than a
-/// standalone sheep ([`FrameFacts::is_grouped`]), so a header reading
-/// `web ×3` is not followed by three rows each repeating `web`.
-///
-/// `selected` paints the row's own ground ([`Palette::ground`]) rather than
-/// relying on the gutter marker alone; a section header ignores it, since
-/// the cursor never lands on one.
+/// standalone sheep ([`FrameFacts::is_grouped`]), so a header reading `web ×3`
+/// is not followed by three rows each repeating `web`.
 #[must_use]
 pub fn key_line(
     app: &App,
@@ -70,9 +61,7 @@ pub(super) fn section_line(label: &str, width: u16, style: Style) -> Line<'stati
 /// `output::rows::FlockRows`'s own group row so the two surfaces never
 /// disagree about what an app's instances add up to.
 ///
-/// The selected row's own ground ([`Palette::ground`]) paints these cells
-/// too, on top of STATUS/`CpuSpark`/`MemCeil`; the gutter marker
-/// ([`super::layout::gutter`]) is no longer the only tell.
+/// The selected row's own ground ([`Palette::ground`]) paints these cells too.
 fn group_line(
     app: &App,
     name: &str,
@@ -135,12 +124,10 @@ fn group_line(
 
 /// One cell of an app's group header row.
 ///
-/// ID, PID, EXIT and CFG are blank, not `-`: there is no single value for a
-/// group row to have "no honest value" about, since a load can park a
-/// different set of fields on each slot. `CpuSpark` and `MemCeil` join them
-/// for the same reason: a group has no single history and no single
-/// ceiling. FOLD and SMIT read the first member's, since both are per-app
-/// facts every instance shares.
+/// ID, PID, EXIT, CFG, `CpuSpark` and `MemCeil` are blank, not `-`: a group
+/// has no single value, history or ceiling to be honest about. FOLD and SMIT
+/// read the first member's, since both are per-app facts every instance
+/// shares.
 fn group_cell(
     name: &str,
     column: Column,
@@ -181,12 +168,8 @@ fn group_cell(
 ///
 /// `selected` paints the row's own ground ([`Palette::ground`]) over every
 /// cell, padded to `width` by [`pad_ground`] so the paint reaches the last
-/// column rather than stopping where the text does; the gutter marker
-/// ([`super::layout::gutter`]) is no longer the only tell.
-///
-/// `facts` supplies the two things this row cannot answer for itself: whether
-/// a group header sits above it, which is the only thing that changes NAME,
-/// FOLD and SMIT (see [`cell()`]), and the CPU sparkline's flock-wide ceiling.
+/// column. `facts` supplies what this row cannot answer for itself: whether a
+/// group header sits above it, and the sparkline's flock-wide ceiling.
 #[must_use]
 pub fn row_line(
     app: &App,
@@ -246,10 +229,7 @@ pub fn row_line(
 /// padded table is indistinguishable from a rendering bug, and `0.0%` would
 /// claim a measurement the shepherd never made.
 ///
-/// `grouped` changes three cells, matching `output::rows::slot_row`. NAME
-/// becomes `↳ :2`, teaching the `web:2` selector by sitting under the name
-/// the header already printed; FOLD and SMIT go blank rather than `-`,
-/// since the group row above carries both.
+/// `grouped` changes three cells, matching `output::rows::slot_row`.
 fn cell(app: &App, row: &Row, column: Column, grouped: bool, cpu_ceiling: f32) -> String {
     let info = &row.info;
     match column {
@@ -343,11 +323,9 @@ fn mem_ceil_measuring(status: Option<ProcStatus>, ratio: Option<f64>) -> bool {
 /// STATUS rule they already shared does not get a second, drifting copy now
 /// that `CpuSpark` and `MemCeil` need one too.
 ///
-/// `status_style` is resolved by the caller, since a sheep and a group
-/// header read status through different paths. `status` and `mem_ceil_ratio`
-/// are `None` for a group row: it has no single status or ceiling to be
-/// near. This is the style [`push_row_cell`] gives `MemCeil`'s *filled* run;
-/// see [`mem_ceil_tail_style`] for its unfilled tail.
+/// `status_style` is resolved by the caller, since a sheep and a group header
+/// read status through different paths. `status` and `mem_ceil_ratio` are
+/// `None` for a group row: it has no single status or ceiling to be near.
 fn cell_style(
     palette: Palette,
     column: Column,

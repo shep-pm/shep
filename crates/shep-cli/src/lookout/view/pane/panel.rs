@@ -37,18 +37,12 @@ pub(super) fn bounded_row(
 }
 
 /// The right-hand explanation panel: everything about `field` alone, drawn
-/// at `width` columns, clamped to [`PANEL_MAX`] as a defensive floor under
-/// a caller that has not already run `width` through [`super::layout::panel_width`]'s own
-/// ladder.
+/// at `width` columns, clamped to [`PANEL_MAX`] under a caller that has not
+/// run `width` through [`super::layout::panel_width`].
 ///
-/// Six regions, top to bottom, each omitted entirely when its own source is
-/// empty rather than drawn with nothing under its heading: the `FOCUSED`
-/// chip and the blurb are unconditional (a field always has a key, a kind
-/// and a help string), `now`/`default`/`example` show a placeholder rather
-/// than disappearing since `now` is never empty, the impact tag is omitted
-/// for a dog (whose own binary decides what a change costs, not this
-/// pane), and `VALIDATION`/`NEIGHBOURS` are each omitted on their own when
-/// [`crate::dog_settings::bullets`] or [`Field::neighbours`] has nothing to say.
+/// Six regions, top to bottom, each omitted when its own source is empty.
+/// `now`/`default`/`example` show a placeholder instead. The impact tag is
+/// omitted for a dog, whose own binary decides what a change costs.
 pub(in crate::lookout::view) fn panel_for_field(
     field: &Field,
     pane: &ConfigPane,
@@ -65,11 +59,10 @@ pub(in crate::lookout::view) fn panel_for_field(
         Span::styled(format!("  {}", type_label(field)), palette.muted()),
     ]));
 
-    // 2: the blurb, wrapped. The leading two-space indent below is part of
-    // the row's own width, so the wrap budget is `width` minus those two
-    // columns, not `width` itself: at the design target's fixed 72 columns
-    // `BLURB_WRAP` (66) left enough headroom that this never showed, but
-    // the ladder's own floor of 50 does not.
+    // 2: the blurb, wrapped. The leading two-space indent is part of the
+    // row's own width, so the wrap budget is `width` minus those two
+    // columns. At the design target's 72 columns `BLURB_WRAP` left
+    // headroom; at the ladder's floor of 50 it does not.
     for row in wrap(
         &field.help,
         usize::from(BLURB_WRAP.min(width.saturating_sub(2))),
@@ -84,14 +77,9 @@ pub(in crate::lookout::view) fn panel_for_field(
     }
 
     // 3: now, default, example. `now` is never empty; the other two show a
-    // placeholder rather than dropping their own row, so the panel always
-    // names all three questions even when the schema answers only one.
-    // `now` is masked the same way `field_line` masks its own value cell:
-    // it is `pane.display_value`, the live config, and a dog's schema can
-    // mark that secret. `default` and `example` are never masked: both come
-    // from the schema itself (`init.default`/`init.example`), authored by
-    // whoever wrote the schema, not by an operator, so neither can carry a
-    // value this pane owes any secrecy to.
+    // placeholder, so the panel always names all three questions. `now` is
+    // masked like `field_line`'s value cell: it is the live config.
+    // `default` and `example` come from the schema, so never masked.
     lines.push(Line::default());
     let now = mask_secret(field.secret, pane.display_value(&field.key));
     let default = field.default.clone().unwrap_or_else(|| "(none)".to_owned());
@@ -180,10 +168,8 @@ pub(in crate::lookout::view) fn panel_for_field(
 /// or nothing when the cursor is not on a field at all (the env rows and
 /// the pending-edits section carry no [`Field`] of their own).
 ///
-/// The panel follows the cursor: it describes the row [`ConfigPane::cursor`]
-/// names, never the row this call happened to be drawn from, so a caller
-/// that redraws on every cursor move sees new content on the same
-/// keypress that moved it.
+/// The panel follows [`ConfigPane::cursor`], not the row this call was
+/// drawn from.
 #[must_use]
 pub(in crate::lookout::view) fn panel_lines(
     pane: &ConfigPane,
@@ -441,14 +427,6 @@ mod tests {
         assert!(panel.iter().filter(|row| !row.trim().is_empty()).count() > 3);
     }
 
-    /// Nothing on the live screen drew the panel, because nothing called
-    /// it outside a test fixture. This pins the wiring itself, through the
-    /// same [`pane_lines`] the real draw path calls, not through a
-    /// fixture built to reach [`panel_lines`] directly.
-    ///
-    /// The panel draws across a range, from the design target down to
-    /// [`super::layout::panel_width`]'s own floor at 90 columns, not only at the design
-    /// target. What this pins is the floor: nothing below it.
     #[test]
     fn the_panel_draws_beside_the_field_list_at_the_design_target() {
         let app = fixtures::app_in_sheep_pane();

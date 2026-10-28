@@ -41,12 +41,10 @@ pub fn with_feed_and_palette(tail: Tail, palette: Palette) -> App {
 
 /// The full-screen bleats pane, open on `web`, with all three filter axes
 /// set (stream `err`, level `warn`, match `pool`) over a feed mixing one
-/// line that survives every axis with three that each fail exactly one, for
-/// the filter row's own tests.
+/// line that survives every axis with three that each fail exactly one.
 ///
 /// Filters are stacked through [`App::bleats_pane_mut_for_tests`] rather
-/// than through `o`, `m` and `/`, so a test naming the axes it wants does not
-/// have to walk each cycle to reach them.
+/// than through `o`, `m` and `/`.
 pub fn bleats_pane_with_filters() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
     app.update(Msg::Bleats {
@@ -130,11 +128,9 @@ pub fn bleats_pane_with_mixed_line_lengths() -> App {
 /// A feed whose long line is double-width characters, so its wrapped height
 /// depends on display columns rather than `char` count.
 ///
-/// Every other wrap fixture here is single-width ASCII, where `char_columns`
-/// and a naive per-`char` count agree. That makes them blind to the exact
-/// regression this repo has already fixed on two other branches: a
-/// full-width character occupies two columns, so 60 of them wrap to twice
-/// the rows 60 ASCII characters would.
+/// Every other wrap fixture here is single-width ASCII, where the two counts
+/// agree, so those fixtures are blind to a full-width character taking two
+/// columns.
 #[must_use]
 pub fn bleats_pane_with_a_wide_line() -> App {
     let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
@@ -184,24 +180,11 @@ pub fn draw_lines(app: &App, width: u16, rows: usize) -> Vec<Line<'static>> {
 
 /// One sheep, `catcher`, selected, with a two-line feed applied and its log
 /// paths pointing at real files in a leaked tempdir, so `fs::metadata` in
-/// [`crate::lookout::view::detail::log_row`] succeeds the way it would against a live
-/// sheep's own logs.
+/// [`crate::lookout::view::detail::log_row`] succeeds.
 ///
 /// The tempdir is whatever [`tempfile`] resolves for the host: no attempt is
-/// made here to force it short. A prior version tried, picking `/tmp` on
-/// unix and `RUNNER_TEMP` on Windows, because `log_row`'s own tests once
-/// asserted against hardcoded widths (160/70/60) that only produced the
-/// intended three-tier behaviour when the path was short. `RUNNER_TEMP` is
-/// unset outside GitHub Actions, so a real Windows box fell to the OS
-/// default there — a ~35-column prefix under the user profile — and failed
-/// the width-160 test for a reason that had nothing to do with the code
-/// under test. Those tests now derive their widths from this fixture's own
-/// rendered path lengths (see `detail::tests::log_row_thresholds`), so no
-/// path-length assumption belongs here any more.
-///
-/// The tempdir is leaked (`TempDir::keep`) rather than dropped: dropping it
-/// would delete the files before the test that calls this reads them, and
-/// the OS reclaims a leaked temp directory on its own schedule regardless.
+/// made to force it short, so no test may assume a path length. It is leaked
+/// (`TempDir::keep`) so the files outlive the call that reads them.
 pub fn app_fixture() -> App {
     let dir = tempfile::Builder::new()
         .prefix("shep-fx-")

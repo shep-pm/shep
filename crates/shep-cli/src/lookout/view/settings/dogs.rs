@@ -1,19 +1,13 @@
-//! The dogs section on the settings screen: one header row per dog, folded,
-//! with that dog's own `[daemon] keys` and its own config tree under it.
-//!
-//! This is what replaced the dogs table. The table drew one line per dog under
-//! a shared column header; a dog now folds, so its header row carries the same
-//! four facts the table's row carried (`NAME`, `IN FILE`, `SOURCE`, `RUNNING`)
-//! and everything else hangs under it. The column tiers survive because the
-//! header row still has to answer the same four questions in the same order.
+//! The dogs section on the settings screen: one header row per dog, folded.
+//! The dog's own `[daemon] keys` and config tree hang under that header.
 //!
 //! A header row joins the file's own `[daemon] enabled_dogs` entry against the
 //! live flock by name. `IN FILE` answers the file and `RUNNING` answers the
-//! flock, and neither is a claim about the other.
+//! flock. Neither is a claim about the other. The column tiers survive because
+//! the header row answers the same four questions in the same order.
 //!
 //! A dog whose config could not be read says so on its own row, naming
-//! `dogs.toml` as the place to edit instead, which is what a dog pane does with
-//! the same failure.
+//! `dogs.toml`.
 
 use ratatui::text::{Line, Span};
 
@@ -143,11 +137,10 @@ fn running_of(app: &App, name: &str) -> Option<String> {
 /// One dog's header row: the fold glyph and its name, whether the file has it
 /// enabled, where its binary comes from, and whether it is up.
 ///
-/// A refusal lands after the last column, in whatever width is left, because
-/// the four columns are the four facts the row always reports and the refusal
-/// is a fifth thing that only some rows have. It is fitted rather than wrapped:
-/// a narrow terminal cuts the sentence, and the operator can open the row's
-/// own `e` again to hear the whole of it in the status bar.
+/// A refusal is a fifth thing, so it lands after the last column, in
+/// whatever width is left. It is fitted rather than wrapped: a narrow
+/// terminal cuts the sentence. `e` on the row says the whole of it in the
+/// status bar.
 pub(super) fn dog_header_line(
     app: &App,
     settings: &Settings,

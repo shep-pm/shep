@@ -7,10 +7,7 @@
 //!
 //! Column widths are fixed rather than measured from content: a live table
 //! whose columns resize as a pid gains a digit is a table that shivers.
-//!
-//! `columns` holds the two schemas, `layout` the measuring, `facts` the
-//! values a whole frame shares, and `row` and `fold` the two renderers over
-//! both.
+
 
 pub(super) mod columns;
 mod facts;

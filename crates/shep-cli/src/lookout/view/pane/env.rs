@@ -18,10 +18,8 @@ use super::layout::{body_width, widths};
 /// fields: every filed edit regardless of which group it belongs to, then
 /// the sheep's own env key names and a hint to add one.
 ///
-/// Appended rather than scrolled: both are short by construction, an
-/// operator files a handful of edits and a Flockfile carries a handful of
-/// env keys, so neither earns the `... N below` machinery the field list's
-/// 41 rows need.
+/// Appended rather than scrolled: both are short by construction, so
+/// neither earns the `... N below` machinery the field list needs.
 pub(super) fn pending_and_env_lines(
     pane: &ConfigPane,
     palette: Palette,
@@ -34,11 +32,8 @@ pub(super) fn pending_and_env_lines(
         return lines;
     }
     // The cursor's own row has to draw somewhere in this budget, the same
-    // rule `body_from`/`cursor_only` hold for a field. Below the floor a
-    // full section (headers, blanks, every key) would cut it along with
-    // everything else, so at the floor this draws that one row alone and
-    // nothing else, rather than truncating from the bottom and losing
-    // whichever row the truncation happens to reach last.
+    // rule `body_from`/`cursor_only` hold for a field. At the floor this
+    // draws that one row alone rather than truncating from the bottom.
     let pending_len = if pane.edits().is_empty() {
         0
     } else {
@@ -166,16 +161,10 @@ pub(super) fn env_row_line(
         Style::default()
     };
     let mark_span = Span::styled(mark(selected), mark_style);
-    // A single blank standing in for `field_line`'s lock glyph: an env row
-    // has none, but `GUTTER` already spent that column out of
-    // `body_width`, so this row has to spend it too rather than draw one
-    // column short.
-    //
-    // Inside the key cell itself, `field_line` reserves a first character
-    // for its flag (`!`/`*`/` `) before the key text; an env row has no
-    // flag, but the reservation is the same cell `fit` pads to `key_w`, so
-    // this row has to spend that character too, or its key text starts one
-    // column left of every field's.
+    // A single blank standing in for `field_line`'s lock glyph: `GUTTER`
+    // already spent that column out of `body_width`. The same holds for
+    // `field_line`'s flag reservation inside the key cell, or this row's
+    // key text starts one column left of every field's.
     let mut text = String::from(" ");
     text.push_str(&fit(&format!(" {name}"), key_w));
     if value_w > 0 {
@@ -242,9 +231,8 @@ mod tests {
     /// is last.
     ///
     /// Asserts on the env rows alone via
-    /// [`fixtures::config_pane_env_rows_for_tests`], not on the whole
-    /// rendered frame: a search over the joined frame can match any row,
-    /// field or env, once folding put both in the same screen.
+    /// [`fixtures::config_pane_env_rows_for_tests`]: a frame-wide search
+    /// can match a field row once folding put both on one screen.
     #[test]
     fn the_env_rows_draw_at_a_comfortable_width() {
         let pane = web_pane();
@@ -278,15 +266,6 @@ mod tests {
         assert!(!text.join("\n").contains("hunter2"), "{text:?}");
     }
 
-    /// The shepherd sends keys with no values at all, so a rendered value
-    /// could only have been invented. Replaces
-    /// `the_env_sub_screen_never_renders_a_value`, which pinned the same
-    /// fact on the sub-screen the env rows folded into.
-    ///
-    /// Asserts on the env rows alone via
-    /// [`fixtures::config_pane_env_rows_for_tests`], not on the whole
-    /// rendered frame: see [`the_env_rows_draw_at_a_comfortable_width`]'s
-    /// own doc comment for why a frame-wide search is the wrong tool here.
     #[test]
     fn every_env_value_renders_as_set_and_never_as_itself() {
         let pane = ConfigPane::sheep({

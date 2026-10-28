@@ -111,14 +111,10 @@ pub fn close_dialog_reloading(kind: ReloadKind, instances: u32) -> CloseDialog {
 
 /// A close dialog raised over a pane with `cwd` really filed (it needs a
 /// respawn), and, when `with_live` is set, `max_restarts` filed alongside
-/// it (`ApplyGroup::Live`, so the running sheep already takes it): what
-/// the "everything else you changed is already live" sentence's own tests
-/// read.
+/// it: what the "already live" sentence's own tests read.
 ///
-/// Driven through [`file_edit`] rather than handed synthetic names, unlike
-/// [`close_dialog_with`]: `CloseDialog::live` is not a parameter, it is
-/// read off the pane's own filed set, so the set has to be real for it to
-/// answer anything.
+/// Driven through [`file_edit`] rather than handed synthetic names:
+/// `CloseDialog::live` is read off the pane's own filed set.
 pub fn close_dialog_with_live_edit(with_live: bool) -> CloseDialog {
     let mut app = app_in_sheep_pane_with_nothing_parked();
     file_edit(&mut app, "cwd", "/srv/app");

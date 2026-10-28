@@ -27,11 +27,8 @@ use super::layout::{
 /// Where the config/env column and the feed start, in rows relative to
 /// `area`: [`COLUMN_HEADER_ROW`] whenever `height` still reaches it, or
 /// right below the identity band once it drops under
-/// [`MIN_HEIGHT_FOR_CHARTS`](super::layout::MIN_HEIGHT_FOR_CHARTS) and the
-/// charts stop drawing at all. The config
-/// and feed columns are what the pane is for, so they give ground last,
-/// reclaiming the rows the charts would have used rather than staying
-/// pinned to a row a short terminal can never reach.
+/// [`MIN_HEIGHT_FOR_CHARTS`](super::layout::MIN_HEIGHT_FOR_CHARTS). These
+/// columns are what the pane is for, so they give ground last.
 pub(super) fn column_top_row(height: u16) -> u16 {
     if height > COLUMN_HEADER_ROW {
         COLUMN_HEADER_ROW
@@ -122,16 +119,11 @@ pub(crate) fn column_len(config: Option<&SheepConfigView>) -> usize {
 
 /// One field's row: the name, `!`-flagged and butter when
 /// [`SheepConfigView::pending`] names it, `*`-flagged when
-/// [`SheepConfigView::overridden`] names it instead (pending wins when both
-/// apply, `view::pane::field_row::field_line`'s own rule, since the value on
-/// screen
-/// is not what the running child holds), the value, `(unset)`/`(default)`
-/// muted like the name, anything else in the column's own body colour, and
-/// `awaits respawn` right-aligned when pending.
+/// [`SheepConfigView::overridden`] names it instead (pending wins), the
+/// value, `(unset)`/`(default)` muted like the name, and `awaits respawn`
+/// right-aligned when pending.
 ///
-/// Read-only: no lock glyph, no cost cell. Those belong to the editing
-/// pane this column never opens; a value here is what `shep edit` already
-/// shows, laid out for a screen with no cursor to carry.
+/// Read-only: no lock glyph, no cost cell. Those belong to the editing pane.
 fn field_row_line(
     fields: &FieldSet,
     field: &Field,
@@ -178,14 +170,9 @@ fn field_row_line(
 }
 
 /// `field`'s current value, the way this column shows it: `<set>` for a
-/// [`Field::secret`] one (never the value, the same guard
-/// [`ConfigPane::field_line`](crate::lookout::pane::ConfigPane) draws its own
-/// row through), [`pane::UNSET`] for a JSON `null` or a key the config never
-/// carried, [`pane::DEFAULT`] when what is there is exactly the schema's own
-/// default, else [`pane::resolved_display`]'s answer: a bare
-/// `MemSize`/`UpDuration` number annotated with its unit, the same as
-/// [`ConfigPane::display_value`](crate::lookout::pane::ConfigPane::display_value)
-/// draws for the same field.
+/// [`Field::secret`] one, [`pane::UNSET`] for a JSON `null` or a key the
+/// config never carried, [`pane::DEFAULT`] when what is there is exactly
+/// the schema's own default, else [`pane::resolved_display`]'s answer.
 fn field_value_text(fields: &FieldSet, field: &Field, values: &Map<String, Value>) -> String {
     // Names only: a table's secrets are marked by a schema this column
     // never holds. No tables is still `(default)`, below.
@@ -253,14 +240,8 @@ fn column_header_line(pane: &SheepPane, palette: Palette) -> Line<'static> {
 /// [`column_body`] as [`SheepPane::view`]'s own offset scrolls into.
 ///
 /// `top` is [`column_top_row`]'s answer, not always [`COLUMN_HEADER_ROW`]:
-/// a short terminal moves the whole column up rather than truncating it
-/// from a fixed row that terminal can never reach.
-///
-/// Reads [`SheepPane::config`], never
-/// [`App::selected`](crate::lookout::app::App::selected): the same rule
-/// [`draw`](super::draw)'s own identity band and
-/// [`draw_charts`](super::charts::draw_charts) already follow, for
-/// the reason both of their own doc comments give.
+/// a short terminal moves the whole column up. Reads [`SheepPane::config`],
+/// never [`App::selected`](crate::lookout::app::App::selected).
 pub(super) fn draw_column(
     pane: &SheepPane,
     top: u16,
@@ -415,13 +396,12 @@ mod tests {
     }
 
     /// The group labels [`crate::lookout::pane::ConfigPane`]'s own field set
-    /// carries for `web_view`'s config, in schema order, deduplicated
-    /// consecutively the same way [`column_body`]'s own walk dedupes. The
-    /// source of truth [`the_groups_are_the_schemas_nine_in_its_own_order`]
-    /// checks the column against, instead of a copy of the order typed by
-    /// hand: `column_body` layers its own `env`-skipping logic on top of the
-    /// same [`pane::sheep_fields`] this reads, so a real cross-check is what
-    /// would catch that column-specific divergence and a literal cannot.
+    /// carries for `web_view`'s config, in schema order, deduplicated the
+    /// same way [`column_body`]'s own walk dedupes.
+    ///
+    /// The source of truth
+    /// [`the_groups_are_the_schemas_nine_in_its_own_order`] checks against,
+    /// rather than a copy of the order typed by hand.
     fn config_pane_group_labels(view: &SheepConfigView) -> Vec<String> {
         let pane = crate::lookout::pane::ConfigPane::sheep(view.clone());
         let mut labels = Vec::new();
@@ -455,12 +435,11 @@ mod tests {
 
     /// An overridden field carries the editing pane's own `*` glyph
     /// (`view/pane.rs`'s `field_line`), not `!`: pending and overridden are
-    /// different facts, and `field_row_line` had no branch for this one at
-    /// all before this task, so `SheepConfigView::overridden` was read by
-    /// nothing in this column. `restart_delay` is neither pending nor
-    /// overridden in this fixture, so its row must stay unmarked: a
-    /// regression that marked every row once the list was non-empty would
-    /// still pass the `max_memory` assertion alone.
+    /// different facts.
+    ///
+    /// `restart_delay` is neither in this fixture, so its row must stay
+    /// unmarked: a regression that marked every row would still pass the
+    /// `max_memory` assertion alone.
     #[test]
     fn an_overridden_field_is_marked_with_the_editing_panes_own_glyph() {
         let row = field_row_of(&web_view_overridden(), "max_memory");
@@ -478,14 +457,11 @@ mod tests {
     }
 
     /// The wire clears env before the struct is built, so no pane can show a
-    /// value. This test exists so a later change that starts carrying them
-    /// fails here rather than shipping, so it reads the two values
-    /// `web_view`'s fixture really holds: `db.internal` for `DB_HOST`,
-    /// `{{secret:API}}` for `API_KEY`.
+    /// value. This test reads the two values `web_view`'s fixture really
+    /// holds: `db.internal` for `DB_HOST`, `{{secret:API}}` for `API_KEY`.
     ///
-    /// The two key rows after them are the positive control: without them, a
-    /// column that drew no env rows at all would pass the value assertions as
-    /// easily as a correct one.
+    /// The two key rows after them are the positive control: a column that
+    /// drew no env rows at all would pass the value assertions too.
     #[test]
     fn no_env_value_reaches_the_column() {
         let rows = env_rows_of(&web_view());

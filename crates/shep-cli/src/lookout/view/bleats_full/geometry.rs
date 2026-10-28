@@ -18,13 +18,11 @@ use crate::vocabulary::Role;
 pub(super) const TAG_PREFIX_WIDTH: u16 = 5;
 
 /// How many rows rendering `text` at `text_width` columns costs. `1`
-/// outright when `wrap` is off or there is no column count yet: one line,
-/// one row, the pane's whole behavior before this task. Wrapped, walks
-/// `text`'s own characters with [`char_columns`], not [`str::chars`]'s
-/// count: a double-width character that would overflow the current row
-/// starts a new one instead of being charged half a column, the same
-/// walk [`wrap_spans`] draws by, so the two can never disagree on how many
-/// rows one line takes.
+/// outright when `wrap` is off or there is no column count yet.
+///
+/// Wrapped, walks `text`'s own characters with [`char_columns`], not
+/// [`str::chars`]'s count: a double-width character that would overflow the
+/// current row starts a new one, the same walk [`wrap_spans`] draws by.
 pub(super) fn row_height(text: &str, text_width: u16, wrap: bool) -> usize {
     if !wrap || text_width == 0 {
         return 1;
@@ -48,22 +46,8 @@ pub(super) fn row_height(text: &str, text_width: u16, wrap: bool) -> usize {
 /// `scroll_offset` counts back from the tail, `row_height` naming each
 /// index's own row cost.
 ///
-/// Generalizes the single formula this pane always used before wrap
-/// existed (`skip = len - body_rows - offset`, `take = body_rows`) to a
-/// line that may cost more than one row: walks backward from the tail
-/// accumulating each line's cost until the budget is spent, which is
-/// exactly that formula's arithmetic once every line costs one row (wrap
-/// off). `scroll_offset` then shifts the far edge of that walk toward the
-/// tail by `scroll_offset` *lines*, not rows — an offset counts filtered
-/// lines regardless of how tall any of them draws — saturating at the
-/// oldest survivor exactly the way the original subtraction did, so a
-/// stale offset a shrunk feed or a narrowing filter has outgrown still
-/// clamps rather than panicking or reading past the end. Both walks always
-/// include at least one line once `len > 0` and `body_rows > 0`, even one
-/// whose own cost alone exceeds `body_rows`: a body of one very long wrapped
-/// line is still one line to show, not zero. A `body_rows` of zero takes the
-/// `len == 0 || body_rows == 0` guard at the top of the body and answers
-/// `0..0`: there is no row left to draw into.
+/// Walks backward from the tail spending each line's row cost, and shifts the
+/// far edge by `scroll_offset` lines, not rows. Both walks keep one line.
 pub(super) fn window_range(
     len: usize,
     scroll_offset: usize,
@@ -93,10 +77,8 @@ pub(super) fn window_range(
 /// is non-zero.
 ///
 /// Shared by [`window_range`], [`max_scroll_offset`] and [`page_lines_back`]
-/// because the ceiling is defined as the window's own start index, and a
-/// backward page is the distance back to it. Two copies of this walk would
-/// have to be kept in step by hand, and the day they drifted the pane would
-/// let an operator scroll somewhere it never draws.
+/// because the ceiling is the window's own start index, and a backward page
+/// is the distance back to it.
 fn tail_window_start(len: usize, body_rows: usize, cost: impl Fn(usize) -> usize) -> usize {
     let mut base = len;
     let mut used = 0usize;
@@ -115,10 +97,8 @@ fn tail_window_start(len: usize, body_rows: usize, cost: impl Fn(usize) -> usize
 ///
 /// [`window_range`] floors its skip at zero, so an offset past the oldest
 /// surviving line renders the same frame as the one before it. Without a
-/// ceiling the stored offset keeps climbing: 40 `k` presses over a 20-line
-/// feed leave it at 39 where 15 is the most that does anything, and the
-/// operator then presses `j` 25 times before the window moves. `G` and `f`
-/// escape that, but `j` is the reflex and it would do nothing.
+/// ceiling the stored offset keeps climbing, and `j` does nothing until it
+/// unwinds.
 #[must_use]
 pub(crate) fn max_scroll_offset(app: &App, pane: &BleatsPane) -> usize {
     let survivors = pane.visible(&app.feed().lines, &app.feed_classifier());
@@ -137,10 +117,7 @@ pub(crate) fn max_scroll_offset(app: &App, pane: &BleatsPane) -> usize {
 /// [`tail_window_start`] stops spending `body_rows`, never below one.
 ///
 /// Pure, and separated from [`page_amount_up`] so the invariant that matters
-/// can be tested directly over cost profiles rather than hunted for through a
-/// fixture. A feed of uniform heights cannot expose a direction-mismatched
-/// page size at all, because a backward count and a window's own length agree
-/// there, which is how the `ctrl-d` gap survived its first fix.
+/// can be tested over cost profiles rather than hunted for through a fixture.
 fn page_lines_back(start: usize, body_rows: usize, cost: impl Fn(usize) -> usize) -> usize {
     (start - tail_window_start(start, body_rows, &cost)).max(1)
 }
@@ -155,26 +132,12 @@ fn page_lines_forward(shown: &std::ops::Range<usize>) -> usize {
     shown.len().max(1)
 }
 
-/// How many lines one `ctrl-u` moves [`BleatsPane::scroll_offset`] by:
-/// what fits walking backward from the line the pane is currently showing
-/// first.
+/// How many lines one `ctrl-u` moves [`BleatsPane::scroll_offset`] by: what
+/// fits walking backward from the line the pane is currently showing first.
 ///
-/// Unwrapped that is `body_rows`, the arithmetic this pane always used.
-///
-/// **The two page keys need different arithmetic and it is not obvious.** A
-/// page has to land the next window's last line on this one's first, so
-/// going backward the step is sized by what fits *ending* where the view
-/// starts. Sizing it from the feed's tail instead is wrong the moment
-/// wrapped-line density differs anywhere else, and sizing it by the current
-/// window's own length is wrong whenever the older stretch packs fewer lines
-/// into the same rows. Both skip lines rather than overshooting them, so
-/// [`window_range`]'s clamp does not save it.
-///
-/// [`page_amount_down`] is the mirror, and reusing this one for both
-/// directions leaves gaps: measured over 279,274 simulated steps, 48,476 of
-/// them dropped a line. `wrapped_pages_leave_no_line_unseen` and
-/// `wrapped_pages_down_leave_no_line_unseen` walk one direction each,
-/// because paging back is symmetric and hides the gap either way.
+/// The two page keys need different arithmetic: a page has to land the next
+/// window's last line on this one's first, so the backward step is sized by
+/// what fits ending where the view starts. [`page_amount_down`] is the mirror.
 #[must_use]
 pub(crate) fn page_amount_up(app: &App, pane: &BleatsPane) -> usize {
     let body_rows = pane.body_rows();
@@ -299,11 +262,8 @@ mod tests {
     /// with it or the page arithmetic drifts from what is drawn.
     ///
     /// `row_height` feeds every page and window calculation while
-    /// `wrap_spans` produces the rows themselves, and `row_height`'s own doc
-    /// says the two "can never disagree on how many rows one line takes".
-    /// Only `wrap_spans` was held there: mutating `char_columns` to `1`
-    /// inside `row_height` passed the whole suite, because every test that
-    /// counted rows counted rendered ones.
+    /// `wrap_spans` produces the rows themselves. Mutating `char_columns` to
+    /// `1` inside `row_height` passed the whole suite before this test.
     #[test]
     fn row_height_and_the_rendered_rows_agree_on_a_wide_line() {
         // Ten double-width characters are 20 columns. At a text width of 8
@@ -320,21 +280,13 @@ mod tests {
         assert_eq!(row_height(&wide, 8, false), 1);
     }
 
-    /// Neither page direction ever steps over a line, across every cost
-    /// profile a wrapped feed can produce.
-    ///
-    /// Over the arithmetic rather than through a fixture, because a fixture
-    /// is the wrong instrument here. A feed of uniform row heights cannot
-    /// show this bug at all: a backward count and a window's own length are
-    /// the same number when every line is the same height, so the two
-    /// directions agree and a shared page size looks correct. Three separate
-    /// fixtures failed to reproduce a defect that a stress test finds in
-    /// roughly one step in six.
+    /// Over the arithmetic rather than through a fixture: a feed of uniform
+    /// row heights cannot show this at all, because a backward count and a
+    /// window's own length are the same number there.
     ///
     /// The invariant: after a page, the next window must start no later than
-    /// one past where the last one ended, going forward, and end no earlier
-    /// than one before where it began, going back. Anything else is a line
-    /// no screen drew.
+    /// one past where the last one ended, and end no earlier than one before
+    /// where it began. Anything else is a line no screen drew.
     #[test]
     fn neither_page_direction_steps_over_a_line() {
         // A cheap deterministic spread of heights: no rng, and the profile

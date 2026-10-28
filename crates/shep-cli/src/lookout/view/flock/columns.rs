@@ -17,16 +17,10 @@ pub const NAME_MIN: u16 = 8;
 
 /// The ceiling on the NAME column.
 ///
-/// NAME takes the remainder, which is right up to a point and absurd past
-/// it: on a 224-column terminal the remainder is 84 cells for names that
-/// are rarely longer than twenty, so the table becomes a field of
-/// whitespace with the numbers pushed to the far right, where they are
-/// harder to read against each other than they were before. Past this
-/// width the table simply ends and the rest of the row stays empty, which
-/// is what the design's own frames did with their right margin.
-///
-/// 32 rather than the frames' 24: it clears the longest name in this
-/// repository's own example Flockfile, `http-server-gated-by-sentinel`.
+/// NAME takes the remainder, which is absurd past a point: on a 224-column
+/// terminal that is 84 cells for names rarely longer than twenty. Past this
+/// width the table simply ends. 32 clears the longest name in the example
+/// Flockfile.
 pub const NAME_MAX: u16 = 32;
 
 /// One column of the flock table.
@@ -101,15 +95,10 @@ impl Column {
     /// The header text on a frozen dashboard.
     ///
     /// [`Self::header`] for every column but [`Self::Uptime`], whose cells
-    /// hold a duration that stopped advancing the moment the link did.
-    /// `UPTIME` over a stalled number is the one cell on the frozen frame
-    /// that reads as live, and the whole point of that screen is that none
-    /// of them may.
+    /// hold a duration that stopped advancing with the link.
     ///
-    /// `FROZEN`, not the design's own `FROZEN AT`: [`Self::width`] gives
-    /// this column 8 cells, `FROZEN AT` is 9, and widening it moves every
-    /// threshold in [`TIERS`]. The band two rows above already carries the
-    /// timestamp the `AT` would point at.
+    /// `FROZEN`, not the design's `FROZEN AT`: this column is 8 cells wide,
+    /// and 9 would move every threshold in [`TIERS`].
     #[must_use]
     pub const fn frozen_header(self) -> &'static str {
         match self {
@@ -305,17 +294,9 @@ pub(in crate::lookout::view) fn cfg_tier_width() -> u16 {
 /// still gets that column set.
 ///
 /// The drop order is least-diagnostic first: FOLD is grouping metadata,
-/// RESTARTS and PID answer follow-up questions, CPU and MEM explain why a
-/// running sheep is behaving badly, and EXIT renders `-` for every running
-/// sheep, the common case. `ID NAME STATUS` is the floor.
-///
-/// CFG has its own drop tier, one tier before SMIT's, keeping `NO_CFG`'s
-/// threshold at 116 so a 120-column terminal, the gallery's fixture width,
-/// still shows SMIT.
-///
-/// `MemCeil` and `CpuSpark` drop first of all, ahead of `Cfg`: both restate
-/// a number another column already carries, so a terminal too narrow for
-/// them still shows the value, just not its shape over time.
+/// RESTARTS and PID answer follow-up questions, and `ID NAME STATUS` is the
+/// floor. `MemCeil` and `CpuSpark` drop first of all, ahead of `Cfg`, since
+/// both restate a number another column already carries.
 const TIERS: &[(u16, &[Column])] = &[
     (146, ALL),
     (134, NO_CEIL),
@@ -511,13 +492,10 @@ pub(super) fn fold_name_width(width: u16, columns: &[FoldColumn]) -> u16 {
 /// The fold view's name floor, two columns wider than [`NAME_MIN`].
 ///
 /// A fold header's name cell carries a disclosure triangle and a space that
-/// flat view's does not, so the same floor would spend the whole difference
-/// on the marker and truncate the `\u{d7}N` count instead: `\u{25b8} batch\u{2026}`
-/// rather than `\u{25b8} batch \u{d7}2`. The count is the rollup, so losing it to
-/// keep the marker trades one design element for another.
+/// flat view's does not, so the same floor would truncate the `\u{d7}N` count
+/// instead: the count is the rollup, so it wins over the marker.
 ///
-/// [`FOLD_TIERS`]' thresholds carry the same two columns, which is why they
-/// sit two above the widths the column widths alone would need.
+/// [`FOLD_TIERS`]' thresholds carry the same two columns.
 const FOLD_NAME_MIN: u16 = NAME_MIN + 2;
 
 /// The header line: every column name, muted.

@@ -55,21 +55,11 @@ pub(super) fn has_groups(pane: &ConfigPane) -> bool {
 }
 
 /// The pane's own reverse-video summary band: which target's config this
-/// is, and how many edits are filed and unsent.
+/// is, and how many edits are filed and unsent. The grouped layout's only
+/// line naming the target.
 ///
-/// The grouped layout's only line naming the target: [`title_line`], which
-/// once duplicated it directly underneath, is now the ungrouped layout's
-/// title instead, and the design's own row allocation gives the target's
-/// name exactly one row.
-///
-/// Never the shepherd's own word for a field that is written and parked:
-/// `pending` is what `shep flock`'s CFG column and this same pane's `!`
-/// flag already mean, and a second meaning for the same word on the
-/// screen an operator moves to next is exactly the confusion this counts
-/// around instead.
-///
-/// Nothing rather than a zero, the same rule `view::detail`'s `cfg` cell
-/// follows: an untouched pane names no count at all, not `0 edits`.
+/// `pending` is what `shep flock`'s CFG column and this pane's `!` flag
+/// already mean. Nothing rather than a zero: an untouched pane names none.
 pub(super) fn title_band_line(pane: &ConfigPane, palette: Palette, width: u16) -> Line<'static> {
     let mut text = heading(pane);
     let count = pane.edits().len();
@@ -146,21 +136,13 @@ pub(super) fn column_header_line(palette: Palette, width: u16, show_lands: bool)
     Line::from(Span::styled(text, palette.muted()))
 }
 
-/// The pane's own marker legend, drawn once at the foot rather than
-/// repeated per group: the status bar's own hint already names every key
-/// this pane answers to (`view::status::pane_hint`), so this line explains
-/// the glyphs instead, adapted from the design's own legend
-/// (`docs/lookout/design-files/README.md`, the 1e frame's row 45) to the
-/// glyphs the pane actually draws (see [`super::field_row::field_line`]).
+/// The pane's own marker legend, drawn once at the foot rather than repeated
+/// per group: the status bar's own hint already names every key this pane
+/// answers to (`view::status::pane_hint`), so this line explains the glyphs.
 ///
-/// Names no key: `status.rs`'s `esc close` is the one place that wording
-/// lives, and a second copy here would only need to be kept in sync with
-/// it.
-///
-/// `* yours` rather than `* overridden`, because the status bar has said
-/// `* yours` on every screen that draws the glyph since before this pane
-/// existed. One glyph with two words for it was visible on one screen at
-/// once.
+/// Names no key, so there is one place that wording lives. `* yours` rather
+/// than `* overridden`, because the status bar has said `* yours` since
+/// before this pane existed.
 pub(super) fn legend_line(palette: Palette, width: u16) -> Line<'static> {
     Line::from(Span::styled(
         format!(
@@ -175,17 +157,13 @@ pub(super) fn legend_line(palette: Palette, width: u16) -> Line<'static> {
     ))
 }
 
-/// One entry of the pending-edits section: the field or env key it is
-/// filed under, and what it will send.
+/// One entry of the pending-edits section: the field or env key it is filed
+/// under, and what it will send.
 ///
-/// A field edit shows `old -> new`, the same cell [`super::field_row::field_line`] draws for
-/// one still visible in the active group, and masks a secret field's
-/// values the same way that cell does: nothing today reaches either path,
-/// since the Flockfile schema marks no field secret and a dog never
-/// carries a group, but a dog's own schema can mark one and this section
-/// draws every group's edits regardless of which is active. An env edit
-/// shows only that it is set or removed, since the pane never holds an
-/// env value to show either side of.
+/// A field edit shows `old -> new`, and masks a secret field's values the
+/// same way [`super::field_row::field_line`] does: this section draws every
+/// group's edits regardless of which is active. An env edit shows only that
+/// it is set or removed.
 pub(super) fn pending_edit_line(
     pane: &ConfigPane,
     edit: &PaneEdit,
@@ -274,15 +252,11 @@ mod tests {
     }
 
     /// Nine groups, in `GROUP_ORDER`, and every one of them reachable.
-    /// This is the test that would have caught a filter axis nothing
-    /// could set.
     ///
     /// Bounded to the tab row alone
     /// ([`fixtures::config_pane_tab_row_for_tests`]), not a search over the
-    /// whole rendered frame: every group's name is drawn on every render
-    /// regardless of which is active, so a frame-wide `contains` would pass
-    /// whatever `next_group` did or did not do. [`tab_draws_the_active_group_as_its_own_chip`]
-    /// covers the half this test cannot: which one is drawn as the chip.
+    /// whole frame: every group's name is drawn on every render, so a
+    /// frame-wide `contains` would pass whatever `next_group` did.
     #[test]
     fn tab_walks_every_group_and_each_one_shows_its_own_fields() {
         let mut app = fixtures::app_in_sheep_pane();

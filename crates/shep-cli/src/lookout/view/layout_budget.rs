@@ -14,11 +14,9 @@ const CHROME_ROWS: u16 = 4;
 /// The shortest terminal that gets the design's two blank chrome rows, one
 /// under the title band and one under the rule.
 ///
-/// Not a taste threshold. `the_flock_table_keeps_the_middle_of_the_screen`
-/// pins the table at five data rows on a 24-row terminal, and at that height
-/// there is exactly no slack: spending two rows on air there takes the table
-/// to three, which is the pane stopping being the point of the screen. Six
-/// rows above that floor is where the air costs nothing that matters.
+/// Not a taste threshold: at the height where the table keeps five data rows
+/// there is exactly no slack, and six rows above that floor is where the air
+/// costs nothing that matters.
 pub(super) const ROOMY_HEIGHT: u16 = 30;
 
 /// The host strip is one line.
@@ -89,12 +87,8 @@ pub fn panes_for(height: u16) -> Panes {
 /// at all, so a caller that asks before checking size gets a viewport that
 /// never scrolls rather than an underflowed height.
 ///
-/// `run_ui` calls this before each draw, so [`App::note_body_rows`](crate::lookout::app::App::note_body_rows) always
-/// reflects the terminal about to be drawn to. `paint_frame::draw` builds the same four
-/// full-screen panes' own `Rect`s off [`title_gap_rows`], so a body that did
-/// not know about the rows spent there would get a `Rect` taller than the
-/// space actually left before the status bar, and its last row would be
-/// drawn only to be overwritten.
+/// `run_ui` calls this before each draw. `paint_frame::draw` builds the same
+/// panes' `Rect`s off [`title_gap_rows`].
 #[must_use]
 pub fn body_rows(area: Rect) -> u16 {
     if area.width < super::MIN_TERM_WIDTH || area.height < MIN_HEIGHT {
@@ -453,10 +447,8 @@ mod tests {
                     );
                     // The row above the status bar belongs to the bottom-most
                     // pane that is up, so it is never blank: a blank one means
-                    // the upward layout left a hole. One condition for both
-                    // link states: `PANE_TIERS` never gives a terminal the
-                    // detail band without the feed, and the link panel draws
-                    // at the feed's own tier.
+                    // the upward layout left a hole. `PANE_TIERS` never gives a
+                    // terminal the detail band without the feed.
                     if panes.feed || panes.detail {
                         let above = lines[lines.len() - 2];
                         assert!(

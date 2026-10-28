@@ -6,19 +6,9 @@ use super::super::super::app::App;
 
 /// The three values every row in a frame reads the same answer for.
 ///
-/// Each one is a fact about the whole flock rather than about a row, and each
-/// was once derived inside the per-row draw path, so a frame paid its
-/// whole-flock scan once per visible row instead of once. `paint_frame` builds
-/// this before the row loop and hands it to [`super::key_line`] and
-/// [`super::fold_key_line`].
-///
-/// Built per frame rather than cached on [`App`]: the flock moves under a
-/// snapshot, a sample pass and a filter edit, and a cache that misses one of
-/// those draws a stale table. Three passes over the flock per frame is already
-/// the whole of the win.
-///
-/// Derived `Debug` rather than a redacted one (IR-41): three numbers and a set
-/// of app names, none of which carries an env value or a secret.
+/// Each is a fact about the whole flock rather than about a row. Built per
+/// frame rather than cached on [`App`]: a cache that misses a snapshot, a
+/// sample pass or a filter edit draws a stale table.
 #[derive(Debug)]
 pub struct FrameFacts<'a> {
     /// The ceiling every CPU sparkline scales against, so the column stays

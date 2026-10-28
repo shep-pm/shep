@@ -29,13 +29,10 @@ pub(super) fn grouped_body_lines(
     if pane.shows_dogs() {
         return dogs_body_lines(pane, palette, width, budget, show_lands);
     }
-    // The cursor's own row has to draw somewhere in this budget, per the
-    // rule every screen in this file holds. When it is on an env row or
-    // `+ add a key`, the field body has nothing to align to and its own
-    // windowing would spend the whole budget on fields none of which is
-    // selected, leaving nothing for the row that actually is. So
-    // `pending_and_env_lines` goes first then, and the field body takes
-    // whatever it leaves, rather than the other way around.
+    // The cursor's own row has to draw somewhere in this budget, per the rule
+    // every screen in this file holds. When it is on an env row or
+    // `+ add a key`, the field body's own windowing would spend the whole
+    // budget on fields none of which is selected.
     if matches!(pane.cursor(), Some(PaneRow::Env(_) | PaneRow::AddEnv)) {
         let tail = pending_and_env_lines(pane, palette, width, budget, show_lands);
         let remaining = budget.saturating_sub(tail.len());
@@ -109,12 +106,8 @@ pub(super) fn body_from(
     let mut current_group: Option<&str> = None;
     // A group's header, and the blank line ahead of it for every group after
     // the first, held here rather than pushed straight away: it is pushed
-    // alongside the first row of its group that survives the offset skip,
-    // so a window opening in the middle of `control` still says `control`.
-    // Never populated when `show_group_headers` is false: the grouped
-    // layout's own tab row already names the one group `rows` ever holds,
-    // so a second header line here would only cost the tight-height cursor
-    // guarantee a line it has no header content to spend.
+    // alongside the first row of its group that survives the offset skip, so
+    // a window opening in the middle of `control` still says `control`.
     let mut pending_header: Vec<Line<'static>> = Vec::new();
     let mut drawn = 0usize;
 
@@ -267,14 +260,9 @@ pub(super) fn row_line(
 /// group costs.
 ///
 /// The last resort, reached only when every offset down to the cursor's own
-/// left it undrawn. A group's first row costs a blank line and a header
-/// above it before it may be drawn at all, and the two markers on top of
-/// that: four lines for one row, where `view::MIN_HEIGHT` leaves this pane
-/// three after its title. A pane that declares a minimum height should draw
-/// something at it, and the selected row is the something.
-///
-/// Markers are added around it while they fit, the cursor's row first: it is
-/// the one line this function exists to guarantee.
+/// left it undrawn. A group's first row costs a blank line, a header and two
+/// markers before it may be drawn at all: four lines for one row, where
+/// `view::MIN_HEIGHT` leaves this pane three after its title.
 pub(super) fn cursor_only(
     pane: &ConfigPane,
     palette: Palette,
@@ -365,14 +353,10 @@ mod tests {
         }
     }
 
-    /// A roomy terminal (`view::ROOMY_HEIGHT` and up) spends a blank row
-    /// under the title. `body_rows` has to know about that row, or the
-    /// `Rect` it hands the pane reaches one row past the status bar and the
-    /// last row the pane draws, here the cursor's own row after jumping to
-    /// the last field, gets overwritten rather than shown. Caught the
-    /// scrolled offset itself agreeing on a stale, too-tall budget: `marked`
-    /// went to 0 at exactly `ROOMY_HEIGHT` and the row above it, with a
-    /// `body_rows` that did not subtract the blank row.
+    /// A roomy terminal (`view::ROOMY_HEIGHT` and up) spends a blank row under
+    /// the title. `body_rows` has to know about that row, or the `Rect` it
+    /// hands the pane reaches one row past the status bar and the last row the
+    /// pane draws gets overwritten rather than shown.
     #[test]
     fn the_cursor_survives_a_jump_to_the_last_field_at_a_roomy_height() {
         // 30 is `view::ROOMY_HEIGHT`, private to that module.
@@ -387,21 +371,9 @@ mod tests {
     /// The marker that says rows were cut would itself become the row
     /// that gets cut.
     ///
-    /// Both widths, because they take different code. 120 has a panel, so
-    /// every height walks `grouped_pane_lines_with_panel` with `top_lines`
-    /// returning empty and never reaches the blurb loop's own arithmetic.
-    /// 89 is one column under `panel_width`'s floor, so the blurb draws and
-    /// the sweep crosses `remaining` entering that loop at 0, 1 and 2
-    /// without having to name which height produces which value.
-    ///
-    /// One test over a width list, not two copies of it: they were twelve
-    /// identical lines apart from the literal, and the assertion message
-    /// names the width so a failure still says which case broke.
-    ///
-    /// What this does NOT see is a row too FEW, since the bound is an upper
-    /// one and losing the cursor's row only shortens the output.
-    /// `the_blurb_never_spends_the_row_the_cursor_needs` is that half, and
-    /// it exists because a real defect hid in this gap.
+    /// Both widths, because they take different code: 120 has a panel and
+    /// never reaches the blurb loop's arithmetic, and 89 is one column under
+    /// `panel_width`'s floor so the blurb draws.
     #[test]
     fn the_body_never_outgrows_the_height_it_was_given() {
         let mut pane = web_pane();
@@ -421,21 +393,13 @@ mod tests {
         }
     }
 
-    /// `push_wrapped_blurb` breaks on a budget of `<= 1` rather than
-    /// `== 0`, so a long wrapped help must not spend the last line the
-    /// cursor's own row needs. Nothing pinned it before the helper existed:
-    /// the height sweep above passes with the floor at either value,
-    /// because losing the field row only makes the output shorter and that
-    /// assertion is an upper bound.
+    /// `push_wrapped_blurb` breaks on a budget of `<= 1` rather than `== 0`,
+    /// so a long wrapped help must not spend the last line the cursor's own
+    /// row needs. The height sweep above passes with the floor at either
+    /// value, because losing the field row only makes the output shorter.
     ///
-    /// So this asserts the pair instead: wherever the blurb reached the
-    /// screen, the cursor's own row did too. Both pane shapes, grouped and
-    /// ungrouped, even though one function now serves both, because this is
-    /// the end-to-end check through the real `pane_lines` entry point
-    /// rather than a check of the helper alone.
-    ///
-    /// The final count is the vacuity guard: a blurb that never drew would
-    /// skip every height and pass.
+    /// So this asserts the pair: wherever the blurb reached the screen, the
+    /// cursor's own row did too.
     #[test]
     fn the_blurb_never_spends_the_row_the_cursor_needs() {
         for (which, mut pane, key) in [
@@ -487,15 +451,12 @@ mod tests {
         );
     }
 
-    /// At a width with no explanation panel, the field under the cursor
-    /// still has its help text on screen, with no key pressed.
+    /// At a width with no explanation panel, the field under the cursor still
+    /// has its help text on screen, with no key pressed.
     ///
-    /// 89 columns is the widest terminal `panel_width` refuses: the panel
-    /// clamps to `PANEL_MIN` 50 and 89 - 50 is 39, one short of `LEFT_MIN`.
-    ///
-    /// `contains` cannot see indentation drift, so this compares against
-    /// the header row's own margin instead of a literal 2, since every
-    /// row in the pane shares one.
+    /// 89 columns is the widest terminal `panel_width` refuses. `contains`
+    /// cannot see indentation drift, so this compares against the header
+    /// row's own margin instead of a literal.
     #[test]
     fn the_blurb_shares_the_panes_own_indent() {
         let pane = web_pane();
@@ -540,15 +501,10 @@ mod tests {
         let first = blurb_anchor(&pane);
         pane.move_by(1);
         let second = blurb_anchor(&pane);
-        // On the anchors, not the help strings: two fields can have
-        // different help and share a longest word, and then the absence
-        // assertion below cannot fail. Guarding the help alone would look
-        // like it covered this.
-        //
-        // Substring, not just inequality: "memory" != "max_memory" passes
-        // `assert_ne!` while `second`'s own row still contains `first`,
-        // which would fail the absence assertion below on a fixture
-        // mismatch rather than a real regression.
+        // On the anchors, not the help strings: two fields can have different
+        // help and share a longest word, and then the absence assertion below
+        // cannot fail. Substring, not just inequality: "memory" !=
+        // "max_memory" passes `assert_ne!` while one row holds the other.
         assert!(
             !first.contains(&second) && !second.contains(&first),
             "the fixture needs two fields whose longest help words are not substrings of each other: {first:?} / {second:?}"
@@ -568,14 +524,9 @@ mod tests {
         );
     }
 
-    /// The hard constraint this item's brief calls out: the blurb rows
-    /// under the title are counted against the same budget every other
-    /// line in the pane is, at every width and height the pane claims to
-    /// draw at.
-    ///
-    /// "A line drawn into the fixed slot" until 072b6ff8: the slot held one
-    /// line while `h` toggled it, and holds as many as the help text wraps
-    /// to now that it is unconditional.
+    /// The blurb rows under the title are counted against the same budget
+    /// every other line in the pane is, at every width and height the pane
+    /// claims to draw at.
     #[test]
     fn help_text_still_respects_the_width_and_height_budgets() {
         let mut pane = web_pane();
