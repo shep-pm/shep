@@ -14,6 +14,12 @@ use super::{
     FlockRows, LabelledLambRows, LambRows, SCHEMA_VERSION, rows, table_of, write_json_line,
 };
 
+/// How much of a revision the prose line shows.
+///
+/// Seven is git's own shortest abbreviation, and the whole hash is 40 or 64
+/// characters, which no line beside a table has room for.
+const REVISION_PREFIX: usize = 7;
+
 /// The `--format json` shape [`emit_described`] writes:
 /// [`super::OutputEnvelope`]'s own three fields, plus `secrets` riding
 /// beside `data` rather than inside it.
@@ -35,9 +41,9 @@ struct DescribedEnvelope<'a> {
 /// tree beneath it when the walk found any.
 ///
 /// A silent row gets a paragraph from [`crate::vocabulary::silence_note`].
-/// "Depends on", "Pending" and "Overridden" follow, once per name. Never
-/// shorten the caption to "process tree": the walk follows parent-pid
-/// links while the stop ladder acts on the process group.
+/// "Revision", "Depends on", "Pending" and "Overridden" follow, once per
+/// name. Never shorten the caption to "process tree": the walk follows
+/// parent-pid links while the stop ladder acts on the process group.
 ///
 /// `secrets` is `describe`'s own local read of this machine's secret
 /// stores, keyed by sheep name.
@@ -106,6 +112,17 @@ pub fn emit_described(
                 if !said.insert(sheep.name.as_str()) {
                     continue;
                 }
+                // First of the per-name lines: it says which code the row
+                // above it is a record of, which the row itself cannot.
+                if let Some(vcs) = sheep.vcs.as_ref().filter(|vcs| !vcs.revision.is_empty()) {
+                    writeln!(
+                        out,
+                        "\nRevision for {}: {} ({})",
+                        sheep.name,
+                        vcs.revision.get(..REVISION_PREFIX).unwrap_or(&vcs.revision),
+                        vcs.branch.as_deref().unwrap_or("detached"),
+                    )?;
+                }
                 if !sheep.depends_on.is_empty() {
                     writeln!(out, "\nDepends on for {}:", sheep.name)?;
                     for name in &sheep.depends_on {
@@ -156,7 +173,7 @@ pub fn emit_described(
 
 #[cfg(test)]
 mod tests {
-    use shep_core::protocol::{DogSource, Lamb};
+    use shep_core::protocol::{DogSource, Lamb, Vcs};
     use shep_core::status::ProcStatus;
 
     use crate::output::rows::tests::dog_info;
@@ -504,6 +521,124 @@ mod tests {
             1,
             "{rendered}"
         );
+    }
+
+    #[test]
+    fn describe_prints_the_revision_and_branch_beneath_the_table() {
+        // fails if the revision never reaches the operator, which leaves
+        // "which build is this sheep actually running" unanswerable
+        let info = ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .vcs(Some(
+                Vcs::new("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0").with_branch("main"),
+            ))
+            .build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Table,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+            &[],
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        assert!(
+            rendered.contains("Revision for web: a1b2c3d (main)"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("a1b2c3d4e5f6"),
+            "the line is a prefix, not the whole hash: {rendered}"
+        );
+        let table = rendered.find("NAME").expect("the sheep table");
+        let revision = rendered
+            .find("Revision for web")
+            .expect("the revision line");
+        assert!(
+            revision > table,
+            "the line sits under the table: {rendered}"
+        );
+    }
+
+    #[test]
+    fn describe_prints_detached_for_a_head_with_no_branch() {
+        let info = ProcessInfo::builder(2, "web", ProcStatus::Online)
+            .vcs(Some(Vcs::new("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c")))
+            .build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Table,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+            &[],
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        assert!(
+            rendered.contains("Revision for web: 9f8e7d6 (detached)"),
+            "{rendered}"
+        );
+    }
+
+    /// No revision line for a shepherd built without the `vcs` feature, which
+    /// never sets the key, or for a sheep whose `cwd` is no checkout the
+    /// shepherd can read.
+    #[test]
+    fn describe_prints_no_revision_line_when_vcs_is_absent() {
+        // `None` is what such a build answers. An empty revision is what a
+        // row with no hash to name would carry.
+        for vcs in [None, Some(Vcs::new(""))] {
+            let info = ProcessInfo::builder(3, "web", ProcStatus::Online)
+                .vcs(vcs.clone())
+                .build();
+            let mut out = Vec::new();
+            emit_described(
+                &mut out,
+                Format::Table,
+                "describe",
+                vec![info],
+                Presentation::BARE,
+                &[],
+            )
+            .unwrap();
+            let rendered = String::from_utf8(out).unwrap();
+
+            assert!(
+                !rendered.to_lowercase().contains("revision"),
+                "{vcs:?}: {rendered}"
+            );
+        }
+    }
+
+    /// The table line is a prefix because no line beside a table has room for
+    /// 40 or 64 characters. `--format json` carries the whole hash unchanged,
+    /// which is the surface a script compares.
+    #[test]
+    fn describe_json_carries_the_whole_revision() {
+        let revision = "b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9";
+        let info = ProcessInfo::builder(4, "web", ProcStatus::Online)
+            .vcs(Some(Vcs::new(revision).with_branch("release/3")))
+            .build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Json,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+            &[],
+        )
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let rows = value["data"].as_array().unwrap();
+
+        assert_eq!(rows[0]["vcs"]["revision"], revision);
+        assert_eq!(rows[0]["vcs"]["branch"], "release/3");
     }
 
     /// The same rule `the_json_surface_stays_one_array_with_lambs_on_each_row`

@@ -193,7 +193,12 @@ export const BUDGETS: Record<string, number> = {
   // alone, and that `--format json` stays raw. Required content for #846.
   // Raised from 3190 on 2026-10-21 for the one sentence saying `--host`
   // follows the host's flock. Required content for #949.
-  output: 3200,
+  // Raised from 3200 for the section listing what `shep describe` prints
+  // under its table, where the revision line belongs: prose under a table is
+  // not guessable from the table, and the line's absence on a build without
+  // the `vcs` feature is a shape a reader has to be told about. Required
+  // content for #345.
+  output: 3320,
   // Raised from 2980 on 2026-10-13 for the `log_match` rule: a new `on`
   // value, its `stream` key, and the loss and secrets caveats are
   // operator-facing surface, not prose to trim back out.

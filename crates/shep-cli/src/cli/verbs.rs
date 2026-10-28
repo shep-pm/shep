@@ -274,6 +274,9 @@ pub enum Commands {
     /// and survives.
     ///
     /// Lamb names are executable names, never command lines.
+    ///
+    /// With the `vcs` feature, the revision the sheep's `cwd` is checked out
+    /// on now is shown under the table, not necessarily the one it started from.
     Describe(SelectorArgs),
     /// Send a named action to matched sheep and report what each app
     /// answers.
