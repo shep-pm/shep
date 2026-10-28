@@ -220,10 +220,10 @@ impl App {
             self.notice = Some(Notice::grave("no sheep is selected".to_string()));
             return Effect::None;
         };
-        // `self.held` as well as `self.action`: a verb the close dialog is
-        // holding until its writes land has not gone out yet, so
-        // `self.action` is still empty, and arming a second one here would
-        // have `send_held_action` overwrite it on the releasing reply.
+        // `self.held` as well as `self.action`: a verb the close dialog
+        // holds until its writes land has not gone out yet. `self.action`
+        // is still empty, and arming a second here would let
+        // `send_held_action` overwrite it on the releasing reply.
         if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice::grave("one action is already in flight".to_string()));
             return Effect::None;

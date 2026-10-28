@@ -1,7 +1,7 @@
 use super::super::*;
 
 impl App {
-    /// The operator's `Enter` on the config pane, in this order: an armed
+    /// The operator's `Enter` on the config pane, in this order. An armed
     /// `D` on an env row, a table or choice list under the cursor, `+ new`
     /// under an array or map of tables, a name in a choice list, an env row
     /// or `+ add a key`, an array field, then a typed field.

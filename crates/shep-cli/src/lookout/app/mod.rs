@@ -100,11 +100,10 @@ pub use settings::*;
 
 /// What occupies the body between the title band and the status bar.
 ///
-/// A variant per pane rather than a shared "which pane is open" enum plus
-/// separate state for each: the flock table needs no state of its own, and
-/// the other two carry their screen's whole state directly, so there is
-/// nowhere for a stale value to survive a switch. One field, one variant at
-/// a time: nothing is left underneath to resurface.
+/// A variant per pane, rather than a shared "which pane is open" enum plus
+/// state beside it. The flock table needs no state of its own. The others
+/// carry their screen's state directly, so nothing stale survives a switch.
+/// One field, one variant at a time: nothing is left to resurface.
 #[derive(Debug)]
 pub(crate) enum Body {
     /// The dashboard: flock table, host strip, sheep detail, bleats feed.

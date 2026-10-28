@@ -51,8 +51,8 @@ impl Focus {
 /// The half of the ask that outlives the first flock answer, keyed to the
 /// sheep it was asked for.
 ///
-/// The key is the point. A keystroke can ask for another sheep's config while
-/// this one's read is still in flight, and a tab and a dog left over from that
+/// The key is the point. A keystroke can ask for another sheep's config
+/// while this one's read is in flight. A tab and a dog left over from that
 /// ask would open the next sheep's pane on a tab its operator never named.
 #[derive(Debug, Clone)]
 pub(crate) struct FocusAsk {

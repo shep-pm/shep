@@ -3,11 +3,10 @@ use super::dialog_model::CloseDialog;
 
 /// A verb the close dialog chose, waiting on the writes it must follow.
 ///
-/// `tickets` names the writes still outstanding, by the same [`u64`]
-/// [`Sent::ticket`] mints them with, rather than merely counting them: two
-/// close-dialog answers can each have a batch in flight at once, and a bare
-/// count cannot tell a reply from the other session apart from one of this
-/// session's own. `landed` is whether any ticket in this set was accepted.
+/// `tickets` names each outstanding write by the `u64` [`Sent::ticket`]
+/// mints it with, rather than counting them. Two answers can have a batch
+/// in flight at once, and a count cannot tell their replies apart.
+/// `landed` is whether any ticket in this set was accepted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::lookout::app) struct HeldAction {
     verb: ActionVerb,

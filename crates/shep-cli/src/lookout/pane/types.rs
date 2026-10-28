@@ -61,9 +61,9 @@ impl PaneTarget {
 
 /// Why a row cannot be edited in place.
 ///
-/// Two different facts, and an operator has to be able to tell them apart: one
-/// says the field is beyond editing anywhere, and one says only that this
-/// screen has no widget for its shape and a Flockfile still can.
+/// Two different facts, and an operator has to tell them apart. One says
+/// the field is beyond editing anywhere. One says only that this screen has
+/// no widget for its shape, and a Flockfile still can.
 ///
 /// `Debug` is derived (IR-41): a bare variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

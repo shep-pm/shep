@@ -70,9 +70,9 @@ impl App {
                     return self.fold_dog_row();
                 }
                 // An armed candidate eats this too, on the same terms as
-                // `Refresh` and `Edit` above: a prompt left standing behind
-                // the overlay is a value the operator cannot see to confirm or
-                // cancel, so `h` cancels it rather than also opening it.
+                // `Refresh` and `Edit` above. A prompt standing behind the
+                // overlay is a value the operator cannot see to confirm or
+                // cancel. `h` cancels it rather than also opening it.
                 KeyPress::Help => {
                     if self.disarm_settings_candidate() {
                         return Effect::None;

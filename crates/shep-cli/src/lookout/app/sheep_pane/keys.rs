@@ -27,12 +27,12 @@ impl App {
     }
 
     /// The sheep pane's own keymap, in force while [`Self::sheep_pane`] is
-    /// `Some`. `esc` closes it; `e` opens the config editor over it;
-    /// `J`/`K` step to the next or previous sheep; `x`/`R`/`L` arm a confirm
-    /// against the pane's pinned sheep, `↵` confirms it and any other key
-    /// cancels, through the same [`Self::on_armed_key`] prelude `on_key` runs.
-    /// `j`/`k` and `g`/`G` scroll the config column through its own `Viewport`.
-    /// Every other key is inert.
+    /// `Some`. `esc` closes it. `e` opens the config editor over it.
+    /// `J`/`K` step to the next or previous sheep. `x`/`R`/`L` arm a confirm
+    /// against the pane's pinned sheep, and `↵` confirms it while any other
+    /// key cancels, through the same [`Self::on_armed_key`] prelude `on_key`
+    /// runs. `j`/`k` and `g`/`G` scroll the config column through its own
+    /// `Viewport`. Every other key is inert.
     pub(in crate::lookout::app) fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
         if let Some(effect) = self.on_armed_key(key) {
             return effect;

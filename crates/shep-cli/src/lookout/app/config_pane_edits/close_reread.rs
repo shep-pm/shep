@@ -367,10 +367,10 @@ mod tests {
         assert_eq!(written, json!({ "concurrency": 4, "token": TOKEN }));
     }
 
-    /// `r` sends a plain read that is still out when `Escape` follows, and
-    /// `Escape` must not send a second one: two outstanding reads for the
-    /// same target would answer to the same `Sent::SheepConfig`, and nothing
-    /// in the reply says which request it settles.
+    /// `r` sends a plain read that is still out when `Escape` follows.
+    /// `Escape` must not send a second one. Two reads out for one target
+    /// share one `Sent::SheepConfig`, and the reply cannot name the request
+    /// it settles.
     #[test]
     fn an_escape_after_a_refresh_still_out_does_not_race_it_with_a_second_read() {
         let mut app = app_in_jobs_table();

@@ -2,12 +2,12 @@
 //! tables, which is what removing an entry or adding one files.
 //!
 //! The change is applied to the tables the section already holds, never by
-//! rendering the new value: the tables that stay keep the comments and key
-//! order the operator wrote. A table the section lacks is added after the
-//! last one it has, or creates the array or map when it has none. A table
-//! can only be added at the end of an array, so a value whose new tables are
-//! not its last ones is not written as given: they land at the end, and the
-//! write is refused when the section then reads differently from the value.
+//! rendering the new value. The tables that stay keep the operator's own
+//! comments and key order. A table the section lacks joins after the last
+//! one it has. An empty section gains the array or map.
+//!
+//! A table can only join an array at its end. A value whose new tables are
+//! not its last is refused if the section then reads differently.
 
 use serde_json::{Map, Value};
 

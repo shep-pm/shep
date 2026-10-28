@@ -239,10 +239,10 @@ impl App {
     /// Drops the open pane and everything a reply for it would re-open.
     ///
     /// Both targets are cleared, always, and not only the one the pane
-    /// holds: a read for the other kind can be in flight when this runs, and
-    /// a stale one left set is the re-open behind the operator's back
-    /// `config_target` exists to prevent. This always lands on
-    /// [`Body::FlockTable`]: there is only ever one screen to close to.
+    /// holds. A read for the other kind can be in flight when this runs.
+    /// A stale one left set is the re-open `config_target` exists to
+    /// prevent. This always lands on [`Body::FlockTable`]: there is only
+    /// ever one screen to close to.
     pub(super) fn close_pane(&mut self) {
         self.body = Body::FlockTable;
         self.close_dialog = None;

@@ -237,10 +237,10 @@ impl SecretsPane {
             self.selected = slots[next].unwrap_or(self.model.rows.len());
             return;
         }
-        // The selection itself just went hidden (`z` folded its own group
-        // away, or a reload's clamp landed on a row a standing fold hides):
-        // land on the nearest visible neighbour in the direction requested,
-        // rather than guessing a position inside a list it is not part of.
+        // The selection itself just went hidden: `z` folded its own group
+        // away, or a clamp landed on a row a standing fold hides. Land on
+        // the nearest visible neighbour in the direction requested, rather
+        // than guessing a position inside a list it is not part of.
         let visible = self.visible_row_indices();
         if visible.is_empty() {
             return;

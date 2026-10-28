@@ -25,9 +25,9 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         return match key.code {
             KeyCode::Char('c') => Some(KeyPress::Quit),
             // Guarded on `mode` here, unlike every other binding in this
-            // branch: this CONTROL match runs ahead of the `InputMode::Text`
-            // check below, so an unguarded `ctrl-d`/`ctrl-u` would page the
-            // pane while an operator is typing a match into the bleats box.
+            // branch. This CONTROL match runs ahead of the `InputMode::Text`
+            // check below. An unguarded `ctrl-d`/`ctrl-u` would page the pane
+            // while an operator types a match into the bleats box.
             KeyCode::Char('d') if mode == InputMode::Normal => Some(KeyPress::PageDown),
             KeyCode::Char('u') if mode == InputMode::Normal => Some(KeyPress::PageUp),
             // The same guard from the other side: these have no meaning in

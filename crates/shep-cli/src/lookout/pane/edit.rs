@@ -167,10 +167,10 @@ impl ConfigPane {
     /// Files one config field, or drops whatever was filed for it when the
     /// new value is the one the target already holds.
     ///
-    /// The comparison is what stops a round trip counting: two `space` presses
-    /// on a bool leave the row as the shepherd has it, and an entry for it
-    /// would still be counted by the title band and still be written. The one
-    /// door every config edit files through keeps [`ApplyGroup::Structural`] out.
+    /// The comparison is what stops a round trip counting. Two `space`
+    /// presses on a bool leave the row as the shepherd has it. An entry for
+    /// it would still be counted by the title band and written. The one door
+    /// every config edit files through keeps [`ApplyGroup::Structural`] out.
     pub(super) fn file_field(&mut self, key: String, value: Value) {
         if let Some(place) = self.place(&key) {
             self.file_arm(place, value);

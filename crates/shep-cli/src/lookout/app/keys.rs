@@ -224,10 +224,10 @@ impl App {
             // Opens on the selected sheep, or does nothing without one, the
             // same shape `KeyPress::Edit` follows above.
             KeyPress::Bleats => self.ask_for_bleats(),
-            // All four scroll or cycle a bleats-pane axis, and the
-            // dashboard has neither a filter axis nor a feed to scroll;
-            // named here rather than left to fall through the arm above,
-            // as `KeyPress::Bleats` would be on a screen with no feed.
+            // All four scroll or cycle a bleats-pane axis. The dashboard
+            // has neither a filter axis nor a feed to scroll. Named here
+            // rather than left to fall through the arm above, as
+            // `KeyPress::Bleats` would on a screen with no feed.
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -242,10 +242,10 @@ impl App {
     /// Puts the keyboard back to [`InputMode::Normal`] when no pane editor
     /// owns it any more.
     ///
-    /// [`InputMode::Text`] is remembered on `App` while the buffer it belongs
-    /// to lives on the pane, so anything that drops or replaces the pane can
-    /// leave the two disagreeing, and a lookout in `Text` mode with nothing
-    /// to type into eats every keystroke until `Esc`.
+    /// [`InputMode::Text`] is remembered on `App`, but the buffer it belongs
+    /// to lives on the pane. Dropping or replacing the pane can leave the
+    /// two disagreeing. A lookout in `Text` with nothing to type into then
+    /// eats every keystroke until `Esc`.
     pub(super) fn release_text_mode_if_unowned(&mut self) {
         if self.mode != InputMode::Text {
             return;

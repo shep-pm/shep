@@ -425,10 +425,10 @@ impl ConfigPane {
     /// `key`'s array as the operator has it: whatever is filed for the
     /// field, or the shepherd's own array when nothing is.
     ///
-    /// The filed entry is the source of truth, not the stored value:
-    /// nothing writes until the pane closes, so seeding from the stored
-    /// value would drop the operator's work and recompute the next
-    /// keystroke from an array they have already changed.
+    /// The filed entry is the source of truth, not the stored value.
+    /// Nothing writes until the pane closes, so seeding from the stored
+    /// value would drop the operator's own work, and the next keystroke
+    /// would rebuild from an array they have already changed.
     pub(super) fn filed_elements_of(&self, key: &str) -> Vec<String> {
         let filed = match self.edits.get(&EditKey::Field(key.to_owned())) {
             Some(entry) => match entry.edit() {
