@@ -1,17 +1,13 @@
 //! The queue between the app's threads and the one thread that writes.
 //!
-//! Two push policies. A dropped metric costs nothing: the shepherd only
-//! logs it at debug level. A dropped `Ready` hangs `wait_ready`, and a
-//! dropped reply costs an operator the whole `action_timeout`. So metrics
-//! are lossy and never block; everything else waits for room.
-//!
-//! One queue holds both. A full queue gives up a metric, never a
-//! `Ready` or an `ActionReply`.
+//! Two push policies. A dropped metric costs nothing: the shepherd logs it
+//! at debug level. A dropped `Ready` hangs `wait_ready`, and a dropped
+//! reply costs an operator the whole `action_timeout`. Metrics are lossy
+//! and never block; everything else waits for room.
 //!
 //! An app that wants to exit without losing what it queued waits on
-//! `drain`. A message the writer has taken is not yet a message the
-//! shepherd has, so the count that matters spans both the queue and the
-//! batch being written.
+//! `drain`. A message the writer has taken is not yet one the shepherd
+//! has. The count that matters spans the queue and the batch being written.
 
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, PoisonError};
@@ -171,17 +167,13 @@ impl Outbox {
         Ok(())
     }
 
-    /// Moves up to [`MAX_BATCH`] queued messages into `batch`, oldest
-    /// first, waiting for something to queue. `false` once closed and
-    /// empty, with `batch` left empty.
+    /// Moves up to [`MAX_BATCH`] queued messages into `batch`, oldest first,
+    /// waiting for something to queue. `false` once closed and empty, with
+    /// `batch` left empty.
     ///
-    /// One lock round trip for a burst. `batch` is cleared first, so the
-    /// writer keeps one `Vec` and its allocation across rounds.
-    ///
-    /// Taken messages count as in flight until [`Outbox::wrote`], so a
-    /// `drain` in progress keeps waiting for them. The cap keeps the rest
-    /// of a long burst in the queue, where `push_lossy` can still evict
-    /// a metric from it.
+    /// Taken messages count as in flight until [`Outbox::wrote`]. A `drain`
+    /// in progress keeps waiting for them. One lock round trip takes a whole
+    /// burst. The cap leaves the rest queued where `push_lossy` can evict.
     pub(crate) fn take_batch(&self, batch: &mut Vec<ChildMessage>) -> bool {
         batch.clear();
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
@@ -238,18 +230,11 @@ impl Outbox {
 
     /// Records that the writer has returned, and closes. Idempotent.
     ///
-    /// [`Outbox::close`] on its own does not mean a queued message is
-    /// lost: the writer drains what is already there before it stops.
-    /// This is the point after which nothing left will ever be written.
+    /// [`Outbox::close`] alone does not mean a queued message is lost: the
+    /// writer drains what is already there. This is the point after which
+    /// nothing left will ever be written.
     ///
-    /// Both flags move under one lock, and that is load-bearing rather
-    /// than tidy. Setting `stopped` and then calling `close` for the
-    /// other leaves a window where `stopped` holds and `closed` does
-    /// not. `push_blocking` reads only `closed`, so a push landing in
-    /// that window is told `Ok` for a message nothing will ever write,
-    /// and `ready()` calls straight into it. `writer_loop` ends here,
-    /// so the window would open on exactly the path that means the
-    /// shepherd has gone.
+    /// Both flags move under one lock, so no push is told `Ok` after this.
     pub(crate) fn stop(&self) {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner.stopped = true;
@@ -340,13 +325,8 @@ mod tests {
     /// call.
     ///
     /// The `timeout` handed to `drain` is that function's input, not this
-    /// test's forcing mechanism (IR-46). A drain called straight from the
-    /// test body and given its own bound to hold parks the whole binary
-    /// when it regresses, which reports as a harness timeout naming
-    /// nothing. Measured: with `drain` stubbed to never return, five of
-    /// the six tests below hung and only the one already spawning a
-    /// thread failed. `DEADLINE` is this side's bound, so a regression
-    /// fails here by name.
+    /// test's forcing mechanism. `DEADLINE` is this side's bound. A `drain`
+    /// that never returns then fails by name instead of hanging the binary.
     #[track_caller]
     fn drain_bounded(outbox: &Arc<Outbox>, timeout: Duration) -> Drain {
         let (tx, rx) = mpsc::channel();
@@ -662,14 +642,9 @@ mod tests {
         assert_eq!(outbox.take(), vec![]);
     }
 
-    /// Pins that `stop` closes as well as stops, which is what keeps a
-    /// push from being told `Ok` after the writer has gone.
-    ///
-    /// It does not prove the two flags move together, and no test from
-    /// outside this type can: the window is only observable from a
-    /// thread holding the lock between them. `stop`'s own doc carries
-    /// that reason. What this catches is the flag being dropped
-    /// outright, which is the regression a later edit would make.
+    // `stop` closing as well as stopping is what keeps a push from being
+    // told `Ok` after the writer has gone. The two flags moving under one
+    // lock is not testable from outside this type; `stop`'s doc says why.
     #[test]
     fn a_must_deliver_push_is_refused_once_the_writer_has_stopped() {
         let outbox = Outbox::new(4);
@@ -682,15 +657,10 @@ mod tests {
         assert!(outbox.is_closed(), "stop left the outbox open to pushes");
     }
 
-    /// The whole point of the in-flight count, and the one thing an
-    /// empty-queue check gets wrong. The test is the writer here: it
-    /// takes the message and never writes it, which is the window a
-    /// process exiting from `on_shutdown` falls into.
-    ///
-    /// Forcing mechanism in both directions. The `recv_timeout` that
-    /// must expire proves the drain is still waiting; the one bounded by
-    /// `DEADLINE` proves `wrote` releases it. Drop the `in_flight`
-    /// bookkeeping and the first assertion fails in 200ms.
+    // The test is the writer here: it takes the message and never writes
+    // it. That is the window a process exiting from `on_shutdown` falls
+    // into. The `recv_timeout` that must expire proves the drain is still
+    // waiting. The one bounded by `DEADLINE` proves `wrote` releases it.
     #[test]
     fn a_drain_waits_for_a_message_the_writer_took_but_has_not_written() {
         let outbox = Arc::new(Outbox::new(4));

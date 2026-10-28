@@ -15,15 +15,12 @@ pub enum Verdict {
     Refused(String),
 }
 
-/// A caller's gate over a handover, asked once the target is resolved and
-/// before anything is written, cleared or exec'd.
+/// A caller's gate over a handover, asked once the target is resolved.
 ///
-/// It refuses whole: one refusal sends the caller down its stop-and-start
-/// path. The gate does not need to check that the target reads the state's
-/// format: [`Handover::exec`](crate::Handover::exec) asks the target itself
-/// once the gate has said yes.
-///
-/// Any `Fn(&Path) -> Verdict` is a gate.
+/// It comes before anything is written, cleared or exec'd. Any
+/// `Fn(&Path) -> Verdict` is a gate. One refusal sends the caller down its
+/// stop-and-start path. The gate need not check that the target reads the
+/// state's format: [`Handover::exec`](crate::Handover::exec) asks the target.
 pub trait Fitness {
     /// Whether this process can be replaced by `target` right now.
     fn check(&self, target: &Path) -> Verdict;

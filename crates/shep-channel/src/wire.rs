@@ -7,8 +7,7 @@
 //! a new variant has to be announced out of band. An exhaustive match
 //! forces every call site to react to it.
 //!
-//! Pins the wire shapes only. See `docs/shepherd-channel.md` for reply and
-//! correlation semantics.
+//! Pins the wire shapes only. `docs/shepherd-channel.md` has the semantics.
 
 use std::collections::BTreeMap;
 

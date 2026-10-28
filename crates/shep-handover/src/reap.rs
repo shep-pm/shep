@@ -19,23 +19,17 @@ pub struct ChildExit {
 
 /// Wait for one child of this process to end, and report how.
 ///
-/// Targeted by pid and never `waitpid(-1)`, which would race a runtime's own
-/// reaper for a status it needed. Arms its `SIGCHLD` stream before its first
-/// look, so an exit between the two is not missed. A dropped wait loses no
-/// status: one is taken from the kernel only when it is returned. A status can
-/// be taken once, so call this once per pid.
-///
-/// Needs a Tokio runtime with the signal driver, which `#[tokio::main]` has.
+/// Targeted by pid, never `waitpid(-1)`, which would race a runtime's own
+/// reaper. It arms its `SIGCHLD` stream before its first look, so an exit in
+/// between is not missed. A status can be taken once, so call this once per
+/// pid. Needs a Tokio runtime with the signal driver.
 ///
 /// # Errors
 ///
-/// - [`io::ErrorKind::InvalidInput`] if `pid` is zero, which `waitpid` reads
-///   as a group-wide wait, or does not fit in an `i32`.
-/// - [`io::ErrorKind::NotFound`] if the kernel has no such child, so its exit
-///   is gone: it was never this process's child, or something else took its
-///   status.
+/// - [`io::ErrorKind::InvalidInput`] if `pid` is zero or does not fit an `i32`.
+/// - [`io::ErrorKind::NotFound`] if the kernel has no such child.
 /// - [`io::ErrorKind::Unsupported`] on a platform with no `execve`.
-/// - Any other `waitpid` errno, or a failure to arm `SIGCHLD`, as-is.
+/// - Any other `waitpid` errno, or a failed `SIGCHLD` arm, as-is.
 pub async fn wait_for_child(pid: u32) -> io::Result<ChildExit> {
     #[cfg(unix)]
     {

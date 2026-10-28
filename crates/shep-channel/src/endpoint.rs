@@ -29,13 +29,9 @@ const FIRST_INHERITABLE_FD: i32 = 3;
 ///
 /// # Debug
 ///
-/// Derived, so it prints the Windows pipe path with its random
-/// suffix. That is deliberate and has a test.
-///
-/// The suffix is not a secret. The pipe namespace lists to any
-/// local user, so a log already reveals it. [`crate::Channel`] and
-/// the reader half print handles instead, matching `std::fs::File`'s
-/// own undecorated Debug on Windows.
+/// Derived, so the Windows pipe path prints with its random suffix. The
+/// suffix is not a secret: the pipe namespace lists to any local user.
+/// [`crate::Channel`] and the reader half print handles instead.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Endpoint {
@@ -66,14 +62,10 @@ pub fn discover() -> Result<Endpoint, ChannelError> {
 
 /// Reads one `SHEP_CHANNEL_FD` value and says whether it can be the channel.
 ///
-/// Split out of [`discover`] so the refusals below need no environment variable.
-/// Setting one is `unsafe` in edition 2024, which this crate forbids
-/// outside its one descriptor site.
-/// It would also race any other test sharing the process.
-///
-/// A negative number is not an owned descriptor at all. Taking 1 would
-/// be worse than a merely wrong number.
-/// This crate would own the app's stdout, write JSON into it, and close it on drop.
+/// Split out of [`discover`] so the refusals below need no environment
+/// variable: setting one is `unsafe` in edition 2024, and would race any
+/// other test sharing the process. A negative number is not an owned
+/// descriptor at all. Taking one would hand this crate the app's stdout.
 fn descriptor_from(text: &str) -> Result<Endpoint, ChannelError> {
     descriptor_in(FD_VAR, text)
 }
@@ -118,10 +110,8 @@ pub(crate) type ReadHalf = PipeReader;
 ///
 /// The price of not parking inside `ReadFile`. An empty peek doubles the
 /// next sleep, up to [`PIPE_POLL_CAP`]: 20, 40, 80, 100, 100 ms. The first
-/// message after a quiet spell therefore waits up to 100 ms, which
-/// `action_timeout` and `kill_timeout`, both in seconds, absorb. A lower
-/// floor wastes cycles for nothing; a higher ceiling shows up in how fast
-/// an app answers `shep trigger`.
+/// message after a quiet spell waits up to 100 ms. `action_timeout` and
+/// `kill_timeout`, both in seconds, absorb that.
 #[cfg(any(windows, test))]
 const PIPE_POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(20);
 
@@ -163,12 +153,10 @@ impl PollBackoff {
 
 /// Reads the channel's named pipe without parking inside `ReadFile`.
 ///
-/// The shepherd hands a Windows app one pipe instance. The writer gets a
-/// duplicate handle onto the same object. Windows serialises every
-/// operation on it, so a blocking read holds it against the writer.
-/// Peeking avoids that park. The halves are still not independent: a
-/// peek can wait behind an in-progress `WriteFile`.
-/// `FILE_FLAG_OVERLAPPED` on both handles is what would separate them.
+/// The shepherd hands a Windows app one pipe instance and the writer a
+/// duplicate handle onto it. Windows serialises every operation on that
+/// object, so a blocking read holds it against the writer. Peeking avoids
+/// that park, but a peek can still wait behind an in-progress `WriteFile`.
 #[cfg(windows)]
 #[derive(Debug)]
 pub(crate) struct PipeReader {
@@ -345,27 +333,18 @@ fn refuse_unless_socket_in(var: &str, fd: i32) -> Result<(), ChannelError> {
 }
 
 /// Takes the connected socket the shepherd handed this process, named by the
-/// environment variable `var`.
+/// environment variable `var`. `Ok(None)` when `var` is unset.
 ///
 /// For `shep-client`, which forbids unsafe code and so cannot adopt a
-/// descriptor itself. `var` is `shep_core::dogs::DOG_LINK_FD_VAR`, passed in
-/// because `shep-core` depends on this crate and not the other way round.
-/// The number comes from the environment and never from the caller, the
-/// channel's own rule: a descriptor a caller could name is one a safe caller
-/// could alias.
-///
-/// `Ok(None)` when `var` is unset: not a supervised process, the ordinary
-/// case. The claim is the channel's too: a descriptor the channel or an
-/// earlier call took is `AlreadyTaken`, even once its owner has dropped it,
-/// and a refusal takes nothing.
+/// descriptor itself. `var` is `shep_core::dogs::DOG_LINK_FD_VAR`, named
+/// here rather than reached from `shep-core`, which depends on this crate.
+/// The number comes from the environment and never from the caller. A
+/// descriptor a caller could name is one a safe caller could alias.
 ///
 /// # Errors
 ///
-/// - [`ChannelError::Unusable`]: `var` holds something that is not a
-///   descriptor, a number below 3, or a descriptor that is not an open
-///   socket.
-/// - [`ChannelError::AlreadyTaken`]: this process already took the
-///   descriptor `var` names, as the channel or as a connection.
+/// - [`ChannelError::Unusable`]: `var` names no open socket, or a number below 3.
+/// - [`ChannelError::AlreadyTaken`]: this process already took it.
 #[cfg(unix)]
 pub fn take_inherited_socket(
     var: &str,
@@ -405,10 +384,9 @@ pub(crate) fn connect(endpoint: &Endpoint) -> Result<(ReadHalf, Transport), Chan
             claim_descriptor(FD_VAR, *fd)?;
             use std::os::fd::FromRawFd as _;
             // SAFETY: soundness rests on the shepherd naming a descriptor it
-            // handed this process. The probe in `claim_descriptor` rules out
+            // handed this process. `claim_descriptor`'s probe rules out
             // everything but another socket this process owns. `CLAIMED`
-            // makes this arm reachable once per descriptor, and shared with
-            // `take_inherited_socket`, so no other owner exists either.
+            // makes this arm reachable once per descriptor.
             #[allow(unsafe_code)]
             unsafe {
                 Transport::from_raw_fd(*fd)

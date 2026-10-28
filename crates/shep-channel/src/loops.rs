@@ -45,23 +45,17 @@ pub(crate) fn writer_loop<W: Write>(writer: &mut W, outbox: &Outbox) {
     outbox.stop();
 }
 
+// Running handlers are joined before a shutdown is looked up, so no reply
+// is lost with the reader. `warn` is injected so a test can assert what
+// was said and how often. That pins the once-per-loop malformed-frame
+// latch.
 /// Drives the reader side: reads one message, resolves it against
-/// `dispatch`, and runs the result. The registry's lock is dropped before
-/// that run, per `dispatch`'s own module doc.
+/// `dispatch`, and runs the result. The registry's lock is dropped first.
 ///
 /// An action's handler runs on a thread of its own, so a slow one does not
-/// hold up the messages behind it. Every reply carries the id of the action
-/// it answers, so the order they reach `outbox` in does not matter. A
-/// shutdown is handled on the reader, and so is an action once
-/// [`MAX_CONCURRENT_HANDLERS`] are already running or a spawn fails.
-///
-/// Handlers still running are joined before a shutdown is looked up, and
-/// again before `outbox` closes at the end of the stream, so no reply is
-/// lost with the reader, and a shutdown is resolved against the registry
-/// as the actions before it left it.
-///
-/// `warn` is injected so a test can assert what was said and how
-/// often. This pins the once-per-loop malformed-frame latch.
+/// hold up the messages behind it. A shutdown is handled on the reader. So
+/// is an action when [`MAX_CONCURRENT_HANDLERS`] are running or a spawn
+/// fails.
 pub(crate) fn reader_loop<R: BufRead>(
     reader: &mut R,
     outbox: &Arc<Outbox>,
@@ -76,12 +70,10 @@ pub(crate) fn reader_loop<R: BufRead>(
             Ok(Some(message)) => {
                 handlers.retain(|handler| !handler.is_finished());
                 if matches!(message, ShepherdMessage::Shutdown) {
-                    // An `on_shutdown` handler that flushes and exits must
-                    // not race a reply still being computed for an action
-                    // the shepherd sent before it. Looking the shutdown up
-                    // only afterwards also keeps the serial loop's order
-                    // for an action that registers `on_shutdown` itself:
-                    // the handler it registered is the one that runs.
+                    // An `on_shutdown` handler that flushes and exits must not
+                    // race a reply still being computed. Looking the shutdown
+                    // up afterwards also keeps the loop's order for an action
+                    // that registers `on_shutdown` itself.
                     join_handlers(&mut handlers, warn);
                 }
                 let resolved = dispatch

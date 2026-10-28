@@ -20,27 +20,15 @@
 //! // Before the app exits, so a queued reply is not lost with it.
 //! shepherd.flush(std::time::Duration::from_secs(2)).unwrap();
 //! ```
-//!
-//! - An action's handler runs on a thread of its own, so a slow one does
-//!   not delay the messages behind it. Up to 32 run at once, and past that
-//!   the reader answers actions itself. Every reply carries the id of the
-//!   action it answers, so a reply lands on the right trigger whatever
-//!   order the handlers finish in. `action_timeout` (default 3s) is still
-//!   the budget one handler gets.
-//! - `metric` and `note` drop under backpressure. `ready` and a reply block
-//!   for room instead, since losing either is worse.
-//! - Sending queues; a writer thread does the writing. An app that ends
-//!   itself, typically from `on_shutdown`, calls `flush` first or loses
-//!   whatever had not been written yet.
-//! - An unhandled shutdown warns on stderr. This crate never stops a
-//!   process on its own.
+//! - An action's handler runs on its own thread, never delaying the reader.
+//! - `metric` and `note` drop under backpressure; `ready` and a reply block.
+//! - Sending queues, and a writer thread writes. Call `flush` before exiting.
+//! - An unhandled shutdown warns on stderr. This crate never stops a process.
 
 #![doc(test(attr(deny(warnings))))]
 // Not `forbid`: `endpoint` needs unsafe to reach the channel. Three blocks
-// on unix probe an inherited descriptor and then take it: the channel's
-// own, and a dog's connection to its shepherd, which `shep-client` cannot
-// adopt itself. One on Windows peeks a pipe's buffer. Each carries its own
-// `// SAFETY:` comment.
+// on unix probe an inherited descriptor before taking it. One on Windows
+// peeks a pipe's buffer. Each carries its own `// SAFETY:` comment.
 #![deny(unsafe_code)]
 
 #[cfg(feature = "client")]

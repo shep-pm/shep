@@ -28,32 +28,18 @@ impl<S> fmt::Debug for Arrival<S> {
 }
 
 /// Find out whether this image is a successor, and adopt what its
-/// predecessor left.
+/// predecessor left. `Ok(None)` is an image started any other way.
 ///
-/// `Ok(None)` is an image started any other way. Call this first thing in
-/// `main`, before opening a descriptor of its own, and before any thread that
-/// might: a carried descriptor is named by its number, and the check that a
-/// number was inherited is that nothing here has opened it. The blob is read
-/// and removed, and the carried descriptors are made close-on-exec again so
-/// this image's own children do not inherit them.
-///
-/// A predecessor checks, before it execs, that its target reads the state's
-/// format, by starting the target as a probe. When this image is that probe,
-/// `boot` answers for `S` and exits the process without returning. So it has to
-/// run before `main` does anything it would not want done twice.
-///
-/// The children the predecessor started are this process's children still;
-/// [`wait_for_child`](crate::wait_for_child) reaps them by pid.
+/// Call this first thing in `main`, before opening a descriptor of its own.
+/// A carried descriptor is named by its number. A number counts as inherited
+/// only when nothing here has opened it. The blob is read, removed, and
+/// carried descriptors become close-on-exec again. A predecessor probes its
+/// target first, so this image may be that probe. `boot` then answers for `S`
+/// and exits without returning.
 ///
 /// # Errors
 ///
-/// The predecessor is gone, so an error here has nothing to hand back to; see
-/// [`BootError`] for each way. A build that cannot read the state's format
-/// gets [`BootError::Format`] naming both numbers, with the blob removed and
-/// every descriptor closed. That is only reachable when the predecessor did not
-/// probe, since a probed handover to a build that cannot read the format never
-/// happens. On a platform with no `execve` it is
-/// [`BootError::Unsupported`], always.
+/// The predecessor is gone; see [`BootError`] for each way.
 pub fn boot<S: State>() -> Result<Option<Arrival<S>>, BootError> {
     #[cfg(unix)]
     {
