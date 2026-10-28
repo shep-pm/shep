@@ -1,4 +1,4 @@
-# Comment blocks over IR-47's line limits, measured at a2342fd83.
+# Comment blocks over IR-47's line limits, measured at 427e9215e.
 # Limits: `///` 6 body lines after the summary (12 when the block has an
 # `# Errors` section), `//!` 10 lines, `//` 4 in a row. Fenced code and an
 # `# Example` section never count; a line that is only its marker does.
@@ -49,15 +49,11 @@
 
 8 crates/shep-channel/tests/wire_export.rs // ChildMessage is one line the app writes to the shepherd.
 
-
-
-
 9 crates/shep-cli/src/cli/dogs.rs /// Grant a dog one permission it declared.
-17 crates/shep-cli/src/cli/dogs.rs /// Arguments to `shep enable`.
+10 crates/shep-cli/src/cli/dogs.rs /// Arguments to `shep enable`.
 
 12 crates/shep-cli/src/cli/flock.rs /// Keep the listing current: redraw it in place until Ctrl+C
 10 crates/shep-cli/src/cli/flock.rs /// Close the dashboard's action gate. Actions are permitted by default.
-
 
 14 crates/shep-cli/src/cli/hosts.rs /// Add a machine to the list
 
@@ -74,7 +70,6 @@
 8 crates/shep-cli/src/cli/sheep.rs /// Interpreter to run the script with, overriding both shep.toml's
 9 crates/shep-cli/src/cli/sheep.rs /// Widen a Flockfile load past its additive default: append nothing,
 10 crates/shep-cli/src/cli/sheep.rs /// One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
-
 
 14 crates/shep-cli/src/cli/verbs.rs /// Register a sheep without starting it.
 21 crates/shep-cli/src/cli/verbs.rs /// Serve a directory over plain HTTP, as a managed sheep.
@@ -101,7 +96,6 @@
 20 crates/shep-cli/src/cli/verbs.rs /// Boot a shepherd in this process, run one Flockfile's flock in the
 12 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in an isolated, throwaway foreground
 23 crates/shep-cli/src/cli/verbs.rs /// Install an init unit so the shepherd starts at boot.
-
 
 21 crates/shep-cli/src/commands/admin.rs /// How long `kill` waits for the control address to stop answering after the
 7 crates/shep-cli/src/commands/admin.rs /// Stops a shepherd without the socket, for when the socket is the problem.
@@ -233,7 +227,7 @@
 7 crates/shep-cli/src/commands/lifecycle/operational.rs /// One line for the apps `verb` could not reach, or `None` when it reached
 
 21 crates/shep-cli/src/commands/lifecycle/remove.rs //! `shep delete`: the one way to remove a sheep or a dog, and it sticks.
-21 crates/shep-cli/src/commands/lifecycle/remove.rs /// `shep delete <selectors...>`
+27 crates/shep-cli/src/commands/lifecycle/remove.rs /// `shep delete <selectors...>`
 
 10 crates/shep-cli/src/commands/lifecycle/respawn.rs /// Brings every sheep in `matched` up, and reports the ones that were already
 
@@ -296,7 +290,9 @@
 11 crates/shep-cli/src/commands/serve.rs //! `shep serve`: registers a static file server as a managed sheep, or,
 8 crates/shep-cli/src/commands/serve.rs /// The sheep's own command line, rebuilt from the flags rather than from
 
-8 crates/shep-cli/src/commands/settings.rs /// The six scalars as a [`crate::lookout::field::FieldSet`], in the order
+13 crates/shep-cli/src/commands/settings/mod.rs //! The settings screen's own reader and writer: the one place `shep.toml`'s
+7 crates/shep-cli/src/commands/settings/mod.rs /// The permissions the settings screen offers as a checklist under this
+13 crates/shep-cli/src/commands/settings/mod.rs /// The checklist the settings screen offers under `name`'s `grants` row.
 
 19 crates/shep-cli/src/commands/settings_read.rs //! `shep get <name>[.<path>]`: one read for any settings in the flock.
 11 crates/shep-cli/src/commands/settings_read.rs /// One dog's own section, or the fragment of it the address named.
@@ -348,7 +344,7 @@
 7 crates/shep-cli/src/commands/startup/testing.rs /// The unit path a `target_resolution::StartupPlan` built for a test points at, so `step_execution::install`
 
 11 crates/shep-cli/src/commands/startup/unit.rs //! Rendering the five init-system units shep can start at boot: a systemd
-18 crates/shep-cli/src/commands/startup/unit.rs /// Renders the systemd unit, `Type=notify`.
+14 crates/shep-cli/src/commands/startup/unit.rs /// Renders the systemd unit, `Type=notify`.
 11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the openrc init script.
 11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the FreeBSD `rc.d` script, `/usr/local/etc/rc.d/shep_<user>`.
 11 crates/shep-cli/src/commands/startup/unit.rs /// Renders the OpenBSD `rc.d` script, `/etc/rc.d/shep_<user>`.
@@ -360,8 +356,6 @@
 9 crates/shep-cli/src/commands/startup/unit_layout.rs /// The init system this host is actually running, or `None` when it is one
 
 11 crates/shep-cli/src/commands/whisper.rs //! `whisper`: write one line to matched sheep's stdin.
-
-
 
 11 crates/shep-cli/src/dog/bark/clock.rs //! The bark dog's wall clock: the one reader of `SystemTime`, and what a
 
@@ -458,26 +452,6 @@
 7 crates/shep-cli/src/dog/mod.rs /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
 12 crates/shep-cli/src/dog/mod.rs /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 8 crates/shep-cli/src/lookout/app/action.rs /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
 7 crates/shep-cli/src/lookout/app/action.rs /// Arms a confirm, or refuses and says why.
 7 crates/shep-cli/src/lookout/app/action.rs // `self.held` as well as `self.action`, the same pair
@@ -511,20 +485,19 @@
 13 crates/shep-cli/src/lookout/app/config_pane.rs /// One `Request::SheepConfig` reply. Opens the pane, or refreshes an
 6 crates/shep-cli/src/lookout/app/config_pane.rs // `None` only if something outside this file set
 5 crates/shep-cli/src/lookout/app/config_pane.rs // Prefixed, like every other reply handler in this file: the
-14 crates/shep-cli/src/lookout/app/config_pane.rs /// The config pane's own keymap, in force for as long as
-7 crates/shep-cli/src/lookout/app/config_pane.rs // Unreachable: the guard above already returned. Kept rather
-13 crates/shep-cli/src/lookout/app/config_pane.rs // Backs out one level at a time: the close dialog's own
+9 crates/shep-cli/src/lookout/app/config_pane.rs /// Opens the config pane on `view`, or refreshes one already open in
+13 crates/shep-cli/src/lookout/app/config_pane.rs /// Sends `Request::SheepConfig` for `name`, recording which screen it is
 9 crates/shep-cli/src/lookout/app/config_pane.rs /// `r` from inside a pane: ask for the same target again, by whichever
 15 crates/shep-cli/src/lookout/app/config_pane.rs /// Drops the open pane and everything a reply for it would re-open.
 8 crates/shep-cli/src/lookout/app/config_pane.rs /// The refusal a locked row gets, in that row's own words.
 7 crates/shep-cli/src/lookout/app/config_pane.rs /// The sibling above pins the order where the settings read wins. This
 
-9 crates/shep-cli/src/lookout/app/config_pane_edits/close_reread.rs /// `Escape` on a dog or per-sheep table pane holding edits: reads the
+9 crates/shep-cli/src/lookout/app/config_pane_edits/close_reread.rs /// `Escape` on a dog pane, or a sheep pane whose dogs hold tables with
 7 crates/shep-cli/src/lookout/app/config_pane_edits/close_reread.rs /// `r` sends a plain read that is still out when `Escape` follows.
 
-22 crates/shep-cli/src/lookout/app/config_pane_edits/confirm_field.rs /// The operator's `Enter` on the config pane. Seven meanings, picked in
+21 crates/shep-cli/src/lookout/app/config_pane_edits/confirm_field.rs /// The operator's `Enter` on the config pane. Seven meanings, picked in
 
-14 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs /// Everything the open pane has filed, as the requests that carry it,
+17 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs /// Everything the open pane has filed, as the requests that carry it,
 7 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs // The gate is the one `shep set` uses, asked about
 6 crates/shep-cli/src/lookout/app/config_pane_edits/dispatch_writes.rs // No client-side validation, deliberately: the
 
@@ -536,13 +509,23 @@
 
 11 crates/shep-cli/src/lookout/app/config_pane_edits/table_gate.rs //! What the write gate does not do: refuse a value the close changed nothing
 
+14 crates/shep-cli/src/lookout/app/config_pane_keys.rs /// The config pane's own keymap, in force for as long as
+7 crates/shep-cli/src/lookout/app/config_pane_keys.rs // Unreachable: the guard above already returned. Kept rather
+13 crates/shep-cli/src/lookout/app/config_pane_keys.rs // Backs out one level at a time: the close dialog's own
+14 crates/shep-cli/src/lookout/app/config_pane_keys.rs // `D` arms the removal of the env key under the cursor, `Enter`
+5 crates/shep-cli/src/lookout/app/config_pane_keys.rs // `tab` and `shift-tab` walk the groups; a digit jumps straight
+
 10 crates/shep-cli/src/lookout/app/dog_pane.rs /// One `Request::DogConfig` reply: the dog's section, which is the
+9 crates/shep-cli/src/lookout/app/dog_pane.rs /// The settings screen's own half of a `Request::DogConfig` reply: the
 7 crates/shep-cli/src/lookout/app/dog_pane.rs /// Replaces the open pane with one over `toml`, and returns how many of
 10 crates/shep-cli/src/lookout/app/dog_pane.rs /// One `Request::SetDogConfig` reply.
 
 11 crates/shep-cli/src/lookout/app/feed_keys.rs /// The feed keys both screens claim, run ahead of each pane's own keymap.
 9 crates/shep-cli/src/lookout/app/feed_keys.rs /// The armed-confirm prelude, run ahead of the dashboard's keymap and
 8 crates/shep-cli/src/lookout/app/feed_keys.rs /// The match box, in force while a feed owns [`InputMode::Text`].
+
+8 crates/shep-cli/src/lookout/app/focus.rs /// The half of the ask that outlives the first flock answer, keyed to the
+14 crates/shep-cli/src/lookout/app/focus.rs /// The first flock answer's chance to open the screen the command line
 
 6 crates/shep-cli/src/lookout/app/keys.rs // An armed confirm (including one already in flight) owns
 6 crates/shep-cli/src/lookout/app/keys.rs // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
@@ -553,36 +536,43 @@
 7 crates/shep-cli/src/lookout/app/keys.rs // Six now, and the split is still total: the config pane, the
 20 crates/shep-cli/src/lookout/app/keys.rs /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
 
-29 crates/shep-cli/src/lookout/app/mod.rs //! The lookout's state and its reducer: `Msg` in, `Effect` out.
+33 crates/shep-cli/src/lookout/app/mod.rs //! The lookout's state and its reducer: `Msg` in, `Effect` out.
 15 crates/shep-cli/src/lookout/app/mod.rs /// What occupies the body between the title band and the status bar.
 9 crates/shep-cli/src/lookout/app/mod.rs /// Whether a [`Sent::SheepConfig`] or [`Sent::DogSection`] read for the
 7 crates/shep-cli/src/lookout/app/mod.rs /// Each sheep's last [`HISTORY`] CPU-percent samples, oldest first,
+7 crates/shep-cli/src/lookout/app/mod.rs /// The tab and the dog [`Self::focus`] asked for, held for the config pane
 
 9 crates/shep-cli/src/lookout/app/msg.rs /// `h` or `?`: opens the keymap overlay, from any body. Pressing either
 8 crates/shep-cli/src/lookout/app/msg.rs /// An [`Effect::LoadDogPane`]'s schema probe has answered.
 11 crates/shep-cli/src/lookout/app/msg.rs /// An [`Effect::LoadSecrets`] has answered.
 11 crates/shep-cli/src/lookout/app/msg.rs /// Send several requests, in the order given. Raised when a config
 12 crates/shep-cli/src/lookout/app/msg.rs /// Probe one dog for its config schema; the answer lands as
+9 crates/shep-cli/src/lookout/app/msg.rs /// Apply one of a dog's other `[daemon] keys; the result lands as
 9 crates/shep-cli/src/lookout/app/msg.rs /// Read the one value behind `row`; the answer lands as
 8 crates/shep-cli/src/lookout/app/msg.rs /// Apply one change to `secrets.json`; the result lands as
+10 crates/shep-cli/src/lookout/app/msg.rs /// Apply several changes to `secrets.json` in one task; the result lands
 8 crates/shep-cli/src/lookout/app/msg.rs /// Sends the carried value to the terminal's clipboard over OSC 52, by
 
-7 crates/shep-cli/src/lookout/app/pane_dogs.rs /// One [`Msg::SheepDogs`]: opens the sub-screen over the pane that
+8 crates/shep-cli/src/lookout/app/pane_dogs.rs /// The `dogs` tab's own keys, ahead of the pane's: an armed removal, a
 
 8 crates/shep-cli/src/lookout/app/pane_list.rs /// One `Request::SetSheepEnv` reply.
 11 crates/shep-cli/src/lookout/app/pane_list.rs /// The list sub-screen's own keymap, in force for as long as the pane
 7 crates/shep-cli/src/lookout/app/pane_list.rs // Drops the newest edit, the same key the field list answers
 7 crates/shep-cli/src/lookout/app/pane_list.rs /// The list sub-screen's own text keymap.
+12 crates/shep-cli/src/lookout/app/pane_list.rs /// The env editor's own text keymap, in force for as long as
 7 crates/shep-cli/src/lookout/app/pane_list.rs /// A refused element keeps `InputMode::Text` on, files nothing, and puts
 
 10 crates/shep-cli/src/lookout/app/read.rs // Every row `view::bleats_full::lines` spends before the first
 9 crates/shep-cli/src/lookout/app/read.rs /// Tells the bleats pane how many columns its own area draws into, so a
 
+8 crates/shep-cli/src/lookout/app/rows.rs /// One dog's newly recorded grants, after `[daemon] dog_grants` landed:
 13 crates/shep-cli/src/lookout/app/rows.rs /// One field of one sheep's config, off the config pane's own `Enter`.
 7 crates/shep-cli/src/lookout/app/rows.rs /// One dog's `[<name>]` section, for the dog config pane. Raised once
 13 crates/shep-cli/src/lookout/app/rows.rs /// One dog's whole section, off the dog pane's own `Enter`.
 9 crates/shep-cli/src/lookout/app/rows.rs /// One dog's whole table on one sheep, or its removal with [`None`]:
 7 crates/shep-cli/src/lookout/app/rows.rs /// The ticket a pane write minted itself with, or [`None`] for a
+8 crates/shep-cli/src/lookout/app/rows.rs /// What one of a dog's other `[daemon] keys left in `shep.toml`.
+8 crates/shep-cli/src/lookout/app/rows.rs /// `[daemon] dog_grants` changed, carrying the source the record now
 10 crates/shep-cli/src/lookout/app/rows.rs /// A dog's schema, and the binary it was probed from.
 
 10 crates/shep-cli/src/lookout/app/samples.rs /// The lowest ceiling [`App::cpu_ceiling`] will report, in percent of one
@@ -611,9 +601,10 @@
 11 crates/shep-cli/src/lookout/app/secrets_write/reveal_secret.rs /// `v`'s answer: a read of the selected row's stored value, or a refusal
 13 crates/shep-cli/src/lookout/app/secrets_write/reveal_secret.rs /// `y`'s answer: the already-revealed value, on its way to
 
-8 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `Enter` on the secrets pane while nothing is armed: opens the
+11 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `Enter` on the secrets pane while nothing is armed: opens the `+ new
 6 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs // `environments` empty is the placeholder model `KeyPress::Secrets`
-8 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `TextApply` on the secrets pane's own input.
+12 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs /// `TextApply` on the secrets pane's own editor.
+5 crates/shep-cli/src/lookout/app/secrets_write/write_secret.rs // A rename's removal half is a delete of the key the editor was
 
 11 crates/shep-cli/src/lookout/app/selection/cursor.rs /// Selects the row at `index`, clamped to the flock, and reports whether
 
@@ -623,20 +614,33 @@
 13 crates/shep-cli/src/lookout/app/selection/row_sequence.rs /// The rows the table draws, in `(name, instance, id)` order: the whole
 13 crates/shep-cli/src/lookout/app/selection/row_sequence.rs /// The `ByFold` half of [`Self::visible_rows`]: `sheep` gathered under
 
+8 crates/shep-cli/src/lookout/app/settings.rs /// One of a dog's `[daemon] keys` the settings screen changes on its own row.
+8 crates/shep-cli/src/lookout/app/settings.rs /// One dog the operator opened on the settings screen.
 8 crates/shep-cli/src/lookout/app/settings.rs /// The edit this screen is showing, or `None`. One field rather than
-7 crates/shep-cli/src/lookout/app/settings.rs /// Whether `ticket` names the write this screen is still waiting on,
-7 crates/shep-cli/src/lookout/app/settings.rs /// The next candidate for `field`, or `None` for the two free-text fields.
+
+7 crates/shep-cli/src/lookout/app/settings/dogs.rs /// Puts the row of the dog named `name` back to waiting on its section,
+15 crates/shep-cli/src/lookout/app/settings/dogs.rs /// The dog `name`'s whole section with `row` of its own tree set to `text`,
+
+6 crates/shep-cli/src/lookout/app/settings/edit.rs // The seed is what [`ConfigPane::begin_typing`] would open with, key
+
+7 crates/shep-cli/src/lookout/app/settings/pending.rs /// Whether `ticket` names the write this screen is still waiting on,
+7 crates/shep-cli/src/lookout/app/settings/pending.rs /// The next candidate for `field`, or `None` for a key that is not a
 
 9 crates/shep-cli/src/lookout/app/settings_dogs.rs /// One dog toggle's answer: the `Pending::Sent` line this ticket raised
-9 crates/shep-cli/src/lookout/app/settings_dogs.rs /// `e` on the settings screen: probe the dog under the cursor for its
+13 crates/shep-cli/src/lookout/app/settings_dogs.rs /// `e` on a dog's row: open it, or close it.
 
 11 crates/shep-cli/src/lookout/app/settings_keys/armed_state.rs /// Cancels an armed settings candidate, answering whether it did.
 
+6 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs // The open, not just the probe: a dog's tree is built from the
 5 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs // An armed candidate eats this too, on the same terms as
+8 crates/shep-cli/src/lookout/app/settings_keys/key_dispatch.rs /// Every key sequence that ends in a write, not one key: a gate guarding
 
-7 crates/shep-cli/src/lookout/app/settings_keys/value_cycling.rs /// `space` on one of the six scalar rows. Re-arms when a candidate is
+7 crates/shep-cli/src/lookout/app/settings_keys/text_editor_input.rs /// The settings editor's own text keymap, in force while a
+5 crates/shep-cli/src/lookout/app/settings_keys/text_editor_input.rs // A dog's own field leaves as its whole section, which
 
-7 crates/shep-cli/src/lookout/app/settings_keys/write_handling.rs /// The operator's `Enter` on the settings screen. On a free-text row with
+7 crates/shep-cli/src/lookout/app/settings_keys/value_cycling.rs /// `space` on a key row. Re-arms when a candidate is already armed, so a
+
+8 crates/shep-cli/src/lookout/app/settings_keys/write_handling.rs /// The operator's `Enter` on the settings screen. On a section it folds;
 18 crates/shep-cli/src/lookout/app/settings_keys/write_handling.rs /// A refused write reopens the text editor, and the overlay must not
 
 8 crates/shep-cli/src/lookout/app/sheep_pane/actions.rs /// `e`'s own handler from inside the sheep pane: targets the pane's own
@@ -656,9 +660,11 @@
 11 crates/shep-cli/src/lookout/app/update/link.rs // Neither full-screen feed has a timer of its own; each
 
 10 crates/shep-cli/src/lookout/app/update/panes.rs // A config pane opened while this read was in flight, so
+10 crates/shep-cli/src/lookout/app/update/panes.rs // Reset to the top only while `opening`.
 13 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::SettingWritten`'s arm.
 16 crates/shep-cli/src/lookout/app/update/panes.rs // The overlay closes rather than the editor
 9 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::DogWritten`'s arm.
+11 crates/shep-cli/src/lookout/app/update/panes.rs /// `Msg::DogTuneWritten`'s arm.
 8 crates/shep-cli/src/lookout/app/update/panes.rs // A selection on the trailing `+ new key`
 5 crates/shep-cli/src/lookout/app/update/panes.rs // The row count clamp above says nothing about
 
@@ -674,87 +680,11 @@
 8 crates/shep-cli/src/lookout/entry.rs /// The end-to-end half of
 15 crates/shep-cli/src/lookout/entry.rs /// Drives the `Effect::LoadSecrets` arm itself, the only test that does
 
-11 crates/shep-cli/src/lookout/field/bounds.rs //! What a schema says a value must satisfy, beyond its type.
-16 crates/shep-cli/src/lookout/field/bounds.rs /// The bounds a property's schema publishes beyond its type, for the
-7 crates/shep-cli/src/lookout/field/bounds.rs /// `minimum`, as the schema wrote it, for a [`super::FieldKind::Number`]
-7 crates/shep-cli/src/lookout/field/bounds.rs /// Whether the schema's own range admits no value at all, read from the four
-22 crates/shep-cli/src/lookout/field/bounds.rs /// The [`Bounds`] the resolved schema publishes.
-8 crates/shep-cli/src/lookout/field/bounds.rs /// [`bounds_of`]'s walk. `open` holds the schemas on the current path, by
-8 crates/shep-cli/src/lookout/field/bounds.rs // A bound past an `i64`'s reach is impossible in one direction and
-13 crates/shep-cli/src/lookout/field/bounds.rs /// `keyword` as the integer end it names.
-7 crates/shep-cli/src/lookout/field/bounds.rs /// `value` as the `i64` bound it names, or [`None`] when it sits outside
-8 crates/shep-cli/src/lookout/field/bounds.rs /// Every hop [`resolved`] follows, because a reader that followed one
-8 crates/shep-cli/src/lookout/field/bounds.rs /// The numeric half, and the reason it is here rather than only in the
-8 crates/shep-cli/src/lookout/field/bounds.rs /// The same loop, spelled through a `$defs` entry that is only an alias
-7 crates/shep-cli/src/lookout/field/bounds.rs /// The bounds the real Flockfile schema publishes, so a change to it
-
-16 crates/shep-cli/src/lookout/field/flatten.rs //! Flattens a per-sheep schema into dotted rows.
-14 crates/shep-cli/src/lookout/field/flatten.rs /// Flattens `schema`, the `x-shep-sheep` value with the root's own `$defs`
-
-7 crates/shep-cli/src/lookout/field/mod.rs /// Which of shep-core's own string grammars a [`FieldKind::Text`] field
-13 crates/shep-cli/src/lookout/field/mod.rs /// One field of a form.
-8 crates/shep-cli/src/lookout/field/mod.rs /// The schema's own `default`, in the shape a write carries. `None` for
-7 crates/shep-cli/src/lookout/field/mod.rs /// Reads a schema's `properties`, resolving one level of `$ref` into
-
-5 crates/shep-cli/src/lookout/field/schema.rs // An array of anything else stays `Opaque`, which is what keeps an
-
-5 crates/shep-cli/src/lookout/frames/build/armed.rs // Every row's `readers` comes off the muster roll, and
-5 crates/shep-cli/src/lookout/frames/build/armed.rs // The same `e` on `api` (id 2) that opens every edit-pane
-5 crates/shep-cli/src/lookout/frames/build/armed.rs // "The same screen at 14 rows, which is fewer than it has to draw.
-
-7 crates/shep-cli/src/lookout/frames/build/flock.rs // Two folds of differing size (`batch` at 32MiB, `core` at 96MiB),
-6 crates/shep-cli/src/lookout/frames/build/flock.rs // The CFG column's two markers, `!N` and `*N`, plus a CPU history
-7 crates/shep-cli/src/lookout/frames/build/flock.rs // Nine snapshots ahead of the shared one below, each two seconds
-6 crates/shep-cli/src/lookout/frames/build/flock.rs // The one sheep every sheep-pane scene draws, `web`, run through
-12 crates/shep-cli/src/lookout/frames/build/flock.rs // `log_row`'s on-disk size, for `HealthyWide`'s selected sheep.
-10 crates/shep-cli/src/lookout/frames/build/flock.rs // `Empty` and the settings-dogs trio never call `App::update` while
-6 crates/shep-cli/src/lookout/frames/build/flock.rs // `coloured_palette` paints a real ground, so the selected row's
-7 crates/shep-cli/src/lookout/frames/build/flock.rs // Summed restarts, CPU and memory; uptime is the minimum (300s
-
-5 crates/shep-cli/src/lookout/frames/build/link.rs // Opens the pane on `api` (`super::prepare` selected it) and stacks all
-10 crates/shep-cli/src/lookout/frames/build/link.rs /// Rendered twice at two different ages and compared to each other,
-5 crates/shep-cli/src/lookout/frames/build/link.rs // Seven seconds short of each age, and deliberately: `scene_with`
-
-25 crates/shep-cli/src/lookout/frames/build/mod.rs //! Builds one gallery scene's rendered buffer, a step per module.
-
-5 crates/shep-cli/src/lookout/frames/build/prepare.rs // Every `Keymap*` scene uses the healthy flock fixture `super::flock`
-5 crates/shep-cli/src/lookout/frames/build/prepare.rs // `Group::Moving.heading()`, not the literal "MOVING": the
-16 crates/shep-cli/src/lookout/frames/build/prepare.rs /// Every `Keymap*` scene actually raises the overlay.
-
-7 crates/shep-cli/src/lookout/frames/build/probe.rs /// The table row for `name`, or `None` if the table does not draw one.
-7 crates/shep-cli/src/lookout/frames/build/probe.rs /// How many rows of `buffer`, EXCLUDING the status bar, are painted as
-
-14 crates/shep-cli/src/lookout/frames/build/scene.rs /// One scene, `age` after its opening snapshot, drawn through `palette`.
-7 crates/shep-cli/src/lookout/frames/build/scene.rs // The summary sits after both host readings now, which puts it past
-7 crates/shep-cli/src/lookout/frames/build/scene.rs /// A pinned width whose own arithmetic no longer holds drops a column
-
-7 crates/shep-cli/src/lookout/frames/fixtures.rs /// Parks the gallery's cursor on the sheep with id `id`.
-15 crates/shep-cli/src/lookout/frames/fixtures.rs /// Walks the cursor to `key`, up or down as `key`'s position relative to the
-23 crates/shep-cli/src/lookout/frames/fixtures.rs /// Runs `rows` through two polls, two seconds apart, so
-19 crates/shep-cli/src/lookout/frames/fixtures.rs /// The bleats feed each scene is given, before `Msg::Bleats` carries it in.
-6 crates/shep-cli/src/lookout/frames/fixtures.rs // Ten `out` lines and six `err`, eight carrying a real level word
-
-14 crates/shep-cli/src/lookout/frames/gallery.rs /// The committed gallery matches what the generator would write today.
-15 crates/shep-cli/src/lookout/frames/gallery.rs /// Writes `docs/lookout/frames.txt` and `docs/lookout/frames.ansi`.
-
-17 crates/shep-cli/src/lookout/frames/mod.rs /// Frame pins, not wire fixtures: re-accepting these after a layout
-
-8 crates/shep-cli/src/lookout/frames/render.rs /// One rendered buffer as plain text: one line per row, trailing spaces
-8 crates/shep-cli/src/lookout/frames/render.rs /// The SGR sequence for one cell's foreground, background and reverse
-
-19 crates/shep-cli/src/lookout/frames/scene.rs // The design target, and comfortably past the floor this
-14 crates/shep-cli/src/lookout/frames/scene.rs // 100: `bleats_full`'s own text width is `width - TAG_PREFIX_WIDTH`
-5 crates/shep-cli/src/lookout/frames/scene.rs // 16 rows: under the box's own 19, so the sheep (boxed-only) is
-
-9 crates/shep-cli/src/lookout/frames/scene/tests.rs /// fails if a scene stops rendering what it is named for.
-5 crates/shep-cli/src/lookout/frames/scene/tests.rs // `fifty` is a prefix of `fifty-one` through `fifty-eight`, so a bare
-16 crates/shep-cli/src/lookout/frames/scene/tests.rs /// The scene that follows `scene` in gallery order, or `None` after the
-5 crates/shep-cli/src/lookout/frames/scene/tests.rs // Bounded, because `scene_after` is a hand-kept chain and a
-
 9 crates/shep-cli/src/lookout/input.rs /// The [`KeyPress`] this event means under `mode`, or `None` for a key
 6 crates/shep-cli/src/lookout/input.rs // Guarded on `mode` here, unlike every other binding in this
 7 crates/shep-cli/src/lookout/input.rs // SHIFT stays: crossterm delivers a capital as `Char('W')` with
 6 crates/shep-cli/src/lookout/input.rs // Two keys, one meaning, which is what the design asked for. `h`
+7 crates/shep-cli/src/lookout/input.rs /// `Tab` and `Shift+Tab` belong to the config pane's group cycling, so
 
 5 crates/shep-cli/src/lookout/keymap.rs // Both modes, not `.or_else`: a code with a mapping in each
 8 crates/shep-cli/src/lookout/keymap.rs /// Every `KeyPress` `map_key` can produce is produced by some `PROBE`
@@ -762,6 +692,8 @@
 13 crates/shep-cli/src/lookout/keymap.rs /// Every key the overlay prints in a caption is a key `map_key` binds.
 21 crates/shep-cli/src/lookout/keymap.rs /// `DRAWN`'s headings, which several `contains` assertions across two
 8 crates/shep-cli/src/lookout/keymap.rs /// Every caption fits the cell it draws into, so nothing is cut on
+
+15 crates/shep-cli/src/lookout/keyvalue.rs //! The one key/value editor the env rows and the secrets pane share.
 
 14 crates/shep-cli/src/lookout/level.rs /// The level a line announces, or `None` when it announces none.
 
@@ -789,6 +721,7 @@
 32 crates/shep-cli/src/lookout/pane/edit.rs /// `d` on the field list: restores the field under the cursor to its
 17 crates/shep-cli/src/lookout/pane/edit.rs /// The value that restores `field` to its default, matching whichever
 9 crates/shep-cli/src/lookout/pane/edit.rs /// Whether `key`'s row is already showing its stored default, with
+8 crates/shep-cli/src/lookout/pane/edit.rs /// Opens an editor on the cursor's row and fills it with `text`.
 37 crates/shep-cli/src/lookout/pane/edit.rs /// Files the buffer as an edit, typed to the field's kind, or hands
 6 crates/shep-cli/src/lookout/pane/edit.rs // Already parsed once by `validation::refusal`, which refused
 6 crates/shep-cli/src/lookout/pane/edit.rs // The same second parse for a decimal. `validation::refusal` already
@@ -803,8 +736,7 @@
 7 crates/shep-cli/src/lookout/pane/entry_remove.rs /// Files `whole` as the new value of the entries field `key`, and
 8 crates/shep-cli/src/lookout/pane/entry_remove.rs /// [`Self::adopt_edits`] from `previous`, less every edit filed under an
 
-10 crates/shep-cli/src/lookout/pane/env.rs /// The pane's open env editor: which key, and what has been typed.
-7 crates/shep-cli/src/lookout/pane/env.rs /// Closes the editor, reads what it holds, and files it.
+8 crates/shep-cli/src/lookout/pane/env.rs /// Files an env write from the editor, which it closes over.
 
 5 crates/shep-cli/src/lookout/pane/fields.rs // A Structural field is identity or flock shape, not a runtime knob:
 21 crates/shep-cli/src/lookout/pane/fields.rs /// `raw` resolved through `key`'s own grammar in `fields`, when `key` is one
@@ -825,7 +757,7 @@
 7 crates/shep-cli/src/lookout/pane/section_write.rs /// Removes the leaf `path` names, and nothing above it.
 
 11 crates/shep-cli/src/lookout/pane/types.rs /// Which thing the pane is editing.
-9 crates/shep-cli/src/lookout/pane/types.rs /// Why a row cannot be edited in place.
+8 crates/shep-cli/src/lookout/pane/types.rs /// Why a row cannot be edited in place.
 8 crates/shep-cli/src/lookout/pane/types.rs /// One row of the pane.
 8 crates/shep-cli/src/lookout/pane/types.rs /// One step from a dog section's root to a field inside an entry of an array
 18 crates/shep-cli/src/lookout/pane/types.rs /// One config field's new value, on its way out of the pane.
@@ -836,7 +768,7 @@
 11 crates/shep-cli/src/lookout/pane/union.rs //! A tagged union on a dog's table on a sheep: the rows it opens to and the
 8 crates/shep-cli/src/lookout/pane/union.rs /// The sentence that says why the filed edits cannot be written: a
 
-15 crates/shep-cli/src/lookout/pane/walk.rs /// One row per field of the active group, in display order, then this
+18 crates/shep-cli/src/lookout/pane/walk.rs /// One row per field of the active group, in display order, then, on a
 
 8 crates/shep-cli/src/lookout/pane_bleats.rs /// The full-screen bleats pane's own state.
 7 crates/shep-cli/src/lookout/pane_bleats.rs /// How many surviving lines back from the newest one the view is
@@ -858,20 +790,6 @@
 
 11 crates/shep-cli/src/lookout/secrets.rs /// The one value behind `row`, read back off disk for a reveal.
 
-11 crates/shep-cli/src/lookout/source.rs //! What the link task reads the shepherd through, and the real implementation
-9 crates/shep-cli/src/lookout/source.rs /// The topics lookout subscribes to.
-
-14 crates/shep-cli/src/lookout/tail.rs //! The bounded log reader behind the bleats feed, and the gap it admits to.
-8 crates/shep-cli/src/lookout/tail.rs /// Bytes appended since the previous read that fell below the window and
-7 crates/shep-cli/src/lookout/tail.rs /// One refresh: both files, tagged, with the gap admitted to.
-
-12 crates/shep-cli/src/lookout/tail/runs.rs //! The colour a read log line asked for, as runs over its plain text.
-5 crates/shep-cli/src/lookout/tail/runs.rs // The final `m` is what makes the sequence styling rather than a
-8 crates/shep-cli/src/lookout/tail/runs.rs /// One field of an SGR parameter list: its value, and the separator that
-9 crates/shep-cli/src/lookout/tail/runs.rs /// Fold one SGR parameter list into `sgr`.
-5 crates/shep-cli/src/lookout/tail/runs.rs // A field ended by `:` carries sub-parameters, and they belong to it:
-5 crates/shep-cli/src/lookout/tail/runs.rs // The ITU spelling may lead with a colorspace field, empty for the
-
 12 crates/shep-cli/src/lookout/term.rs //! Raw mode, the alternate screen, and getting out of both no matter how the
 8 crates/shep-cli/src/lookout/term.rs /// Installs the panic hook, then panics on purpose.
 
@@ -891,314 +809,12 @@
 6 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task, unlike the arm above: `try_send` would drop
 9 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task for the same reason `Effect::WriteSetting` is:
 7 crates/shep-cli/src/lookout/ui_event_loop.rs // Off this task for `Effect::LoadSettings`'s reason: a read that
+7 crates/shep-cli/src/lookout/ui_event_loop.rs // One of a dog's other `[daemon] keys, off the settings screen.
 5 crates/shep-cli/src/lookout/ui_event_loop.rs // The `bool` is `unset`'s own answer: `false` means there was
+8 crates/shep-cli/src/lookout/ui_event_loop.rs // A rename: both halves in one task, so one `Enter` gets one answer
 11 crates/shep-cli/src/lookout/ui_event_loop.rs /// The property, not the mechanism: with a write in flight and unable to
 7 crates/shep-cli/src/lookout/ui_event_loop.rs // The other half of the same property: the write was not cancelled by
 9 crates/shep-cli/src/lookout/ui_event_loop.rs /// Drives `Effect::LoadSecrets` end to end, the only test that does: every
-
-5 crates/shep-cli/src/lookout/view/bleats_full/filter_row.rs // Columns, not `char`s, because `fit` below budgets columns: a match
-5 crates/shep-cli/src/lookout/view/bleats_full/filter_row.rs // The row's own composition sentence always says "level" (an
-8 crates/shep-cli/src/lookout/view/bleats_full/filter_row.rs /// A redraw compiles the match axis's pattern no times at all.
-8 crates/shep-cli/src/lookout/view/bleats_full/filter_row.rs // Without these the count above would hold over a pane drawing no
-
-7 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// How many rows rendering `text` at `text_width` columns costs. `1`
-20 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// The half-open range of `survivors`' indices [`super::lines`] draws, oldest
-8 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// Where the tail window starts: walks back from `len` spending each line's
-7 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// The largest scroll offset that still changes what the pane draws.
-7 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// Lines one backward page covers: the distance from `start` back to where
-19 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// How many lines one `ctrl-u` moves [`BleatsPane::scroll_offset`] by:
-8 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// `row_height` counts display columns, and `wrap_spans` has to agree
-14 crates/shep-cli/src/lookout/view/bleats_full/geometry.rs /// Neither page direction ever steps over a line, across every cost
-
-14 crates/shep-cli/src/lookout/view/bleats_full/mod.rs /// [`draw`]'s own lines, without a [`Buffer`] round trip: what
-8 crates/shep-cli/src/lookout/view/bleats_full/mod.rs // Two things can leave `out` longer than `rows`. A single wrapped line
-7 crates/shep-cli/src/lookout/view/bleats_full/mod.rs // The window that was read, and what fell below it. `rulings.md`
-
-19 crates/shep-cli/src/lookout/view/cell.rs /// The newest `cells` samples, one cell each, scaled against `ceiling`.
-19 crates/shep-cli/src/lookout/view/cell.rs /// A half-block area chart: `rows` rows of `cols` cells, oldest sample
-
-8 crates/shep-cli/src/lookout/view/detail.rs /// One sheep's identity line: the `SHEEP N` chip, its name, status and the
-5 crates/shep-cli/src/lookout/view/detail.rs // Reuses `cfg_cell`, the same function `Column::Cfg` calls, rather than a
-5 crates/shep-cli/src/lookout/view/detail.rs // Last of all: rarer still than a dog, since it fires only for a
-8 crates/shep-cli/src/lookout/view/detail.rs /// The merged log-path row: `out` and `err`, a `\u{2502}` divider, and the size
-7 crates/shep-cli/src/lookout/view/detail.rs /// The finding this fixes: round 1 put the `cfg` cell outside `rest`,
-10 crates/shep-cli/src/lookout/view/detail.rs /// The three widths `log_row`'s own tiers need, derived from the
-10 crates/shep-cli/src/lookout/view/detail.rs /// A long fold name cannot push the status word off a narrow pane.
-
-11 crates/shep-cli/src/lookout/view/feed_ink.rs //! The ink one feed line's text wears, in the two places the feed is drawn.
-8 crates/shep-cli/src/lookout/view/feed_ink.rs /// A process-owned run's style, as this ink draws it.
-
-7 crates/shep-cli/src/lookout/view/fixtures/bleats.rs /// The full-screen bleats pane, open on `web`, with all three filter axes
-7 crates/shep-cli/src/lookout/view/fixtures/bleats.rs /// A feed whose long line is double-width characters, so its wrapped height
-19 crates/shep-cli/src/lookout/view/fixtures/bleats.rs /// One sheep, `catcher`, selected, with a two-line feed applied and its log
-
-9 crates/shep-cli/src/lookout/view/fixtures/close_dialog.rs /// A close dialog raised over a pane with `cwd` really filed (it needs a
-
-8 crates/shep-cli/src/lookout/view/fixtures/config_rows.rs /// The active group's own field rows, as their key names: a bounded slice
-12 crates/shep-cli/src/lookout/view/fixtures/config_rows.rs /// The active group's own env rows: one entry per env key, then
-8 crates/shep-cli/src/lookout/view/fixtures/config_rows.rs // The `env` section header is the bound. Everything above it is a field
-9 crates/shep-cli/src/lookout/view/fixtures/config_rows.rs /// The one rendered line naming `key`, wherever it draws: the active
-7 crates/shep-cli/src/lookout/view/fixtures/config_rows.rs /// The pane's own tab row, alone: the one line naming every group in
-
-8 crates/shep-cli/src/lookout/view/fixtures/render.rs /// The one line in `lines` starting with `prefix`, after trimming leading
-
-7 crates/shep-cli/src/lookout/view/fixtures/settings.rs /// The settings screen with `[style] level` SHADOWED: the document says
-
-7 crates/shep-cli/src/lookout/view/fixtures/sheep_pane.rs /// Walks an open config pane's cursor onto the env row named `key`, the
-8 crates/shep-cli/src/lookout/view/fixtures/sheep_pane.rs /// Walks an open config pane's cursor onto `key`, the way an operator
-13 crates/shep-cli/src/lookout/view/fixtures/sheep_pane.rs /// [`app_in_sheep_pane_with_nothing_parked`] with two edits filed, driven
-
-11 crates/shep-cli/src/lookout/view/flock/columns.rs /// The ceiling on the NAME column.
-11 crates/shep-cli/src/lookout/view/flock/columns.rs /// The header text on a frozen dashboard.
-14 crates/shep-cli/src/lookout/view/flock/columns.rs /// Width thresholds, widest first. Each entry is the narrowest terminal that
-9 crates/shep-cli/src/lookout/view/flock/columns.rs /// The fold view's name floor, two columns wider than [`NAME_MIN`].
-
-14 crates/shep-cli/src/lookout/view/flock/facts.rs /// The three values every row in a frame reads the same answer for.
-
-14 crates/shep-cli/src/lookout/view/flock/fold.rs /// One row of the fold view, dispatching on `key` the way
-6 crates/shep-cli/src/lookout/view/flock/fold.rs // The disclosure triangle carries two facts nothing else in the row
-7 crates/shep-cli/src/lookout/view/flock/fold.rs /// An app's group header row, laid out in [`FoldColumn`]'s widths rather
-
-10 crates/shep-cli/src/lookout/view/flock/layout.rs /// The columns the selection marker takes, to the left of the table.
-7 crates/shep-cli/src/lookout/view/flock/layout.rs /// The selected row's edge: a painted space, or the ASCII marker when
-20 crates/shep-cli/src/lookout/view/flock/layout.rs /// `text` in exactly `width` display columns: padded on the right, or
-14 crates/shep-cli/src/lookout/view/flock/layout.rs /// Fills the gap between `used` and `width` with a trailing span in
-7 crates/shep-cli/src/lookout/view/flock/layout.rs /// Which slice of the flock is on screen, given where the cursor is.
-
-13 crates/shep-cli/src/lookout/view/flock/mod.rs //! The flock table: which columns fit, and what each row's cells say.
-
-14 crates/shep-cli/src/lookout/view/flock/row.rs /// One line for a row the table draws: a real sheep, the header above an
-7 crates/shep-cli/src/lookout/view/flock/row.rs /// An app's group header row: [`App::group_totals`]'s own rollup, in the
-7 crates/shep-cli/src/lookout/view/flock/row.rs /// One cell of an app's group header row.
-10 crates/shep-cli/src/lookout/view/flock/row.rs /// One sheep's line. STATUS, `CpuSpark` and `MemCeil` are the cells that
-9 crates/shep-cli/src/lookout/view/flock/row.rs /// One cell's text.
-8 crates/shep-cli/src/lookout/view/flock/row.rs /// The per-column style [`row_line`] and [`group_line`] both apply, so the
-
-12 crates/shep-cli/src/lookout/view/host.rs //! The host-usage strip: one line, several self-labelled segments.
-5 crates/shep-cli/src/lookout/view/host.rs // Which colour a run wears. Most of the line is words and numbers with no
-5 crates/shep-cli/src/lookout/view/host.rs // The two host readings sit together, then the flock's own
-10 crates/shep-cli/src/lookout/view/host.rs // Summed from the whole flock, `all_rows`, not the filtered `rows`, so
-9 crates/shep-cli/src/lookout/view/host.rs /// The strip reads machine, then flock: load and host memory together,
-
-7 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// The one decoration in the whole TUI that carries no information, drawn
-19 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// [`GUTTER`] spaces, the separator between two adjacent cells whether the
-7 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// `groups`' headings, each left-aligned in its own [`COLUMN`]-wide cell, in
-5 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // `* 2` and not `* 2 - 1`: the exact count is one gutter short of this,
-13 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // Unstyled: the design's own colour table gives ordinary cell
-12 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// What the three destructive keys cost, and whether they can act at all.
-13 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// The quit line's unfit text: `h or ? closes this · <keys> quits lookout`,
-7 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs /// The keys that leave the overlay or lookout itself.
-5 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // Literals. The form this avoids is
-7 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // Exactly the interior, not merely under it: the lone
-6 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // `Group::DRAWN`'s literal order, pinned: the layout loop below
-5 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // +1 for the box's own left border cell, and the box starts at
-5 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // A pair, not a lower bound. `>= 113` alone cannot see a sheep
-13 crates/shep-cli/src/lookout/view/keymap/keymap_rows.rs // Its ROW as well as its column. `SHEEP_FIRST_ROW` is a named
-
-7 crates/shep-cli/src/lookout/view/keymap/shed.rs /// What a form of `height` rows has to give up.
-8 crates/shep-cli/src/lookout/view/keymap/shed.rs /// Two heights, and the variant alone does not say which output they
-8 crates/shep-cli/src/lookout/view/keymap/shed.rs // Each bank beyond the first costs its own floor (`HEIGHT_FLOOR`) plus
-5 crates/shep-cli/src/lookout/view/keymap/shed.rs // `palette.refusal()`, the same bark-coloured style the secrets
-7 crates/shep-cli/src/lookout/view/keymap/shed.rs // The sheep is boxed-only, at every shed tier, not just from
-7 crates/shep-cli/src/lookout/view/keymap/shed.rs /// Every row `keymap::rows` produces reaches the screen. The point of
-5 crates/shep-cli/src/lookout/view/keymap/shed.rs // `Link::Lost` outranks `Control::ReadOnly` too, not only
-20 crates/shep-cli/src/lookout/view/keymap/shed.rs /// The overlay draws over a body other than the dashboard, and does it
-7 crates/shep-cli/src/lookout/view/keymap/shed.rs /// The interior carries the design's own paper-2 ground, the same way
-8 crates/shep-cli/src/lookout/view/keymap/shed.rs // Row 20 is an entry row; column 20 sits inside MOVING's own cell,
-24 crates/shep-cli/src/lookout/view/keymap/shed.rs /// `n` columns take `32n - 2` cells, so `n = (width + 2) / 32`, clamped
-9 crates/shep-cli/src/lookout/view/keymap/shed.rs /// The heights, from the top of the ladder to the refusal.
-7 crates/shep-cli/src/lookout/view/keymap/shed.rs /// At 16 rows the sheep and the colour sentence are gone and every key
-13 crates/shep-cli/src/lookout/view/keymap/shed.rs /// A multi-bank width crossed against the height ladder.
-8 crates/shep-cli/src/lookout/view/keymap/shed.rs // The same formula `draw_borderless` runs, from the same constants
-6 crates/shep-cli/src/lookout/view/keymap/shed.rs // Derived from `boundary`, not the hand-picked `20..=35` this was.
-
-7 crates/shep-cli/src/lookout/view/layout_budget.rs /// The shortest terminal that gets the design's two blank chrome rows, one
-10 crates/shep-cli/src/lookout/view/layout_budget.rs /// How tall the settings screen's body is for a terminal of `area`, between
-6 crates/shep-cli/src/lookout/view/layout_budget.rs // The row above the status bar belongs to the bottom-most
-
-6 crates/shep-cli/src/lookout/view/link_panel.rs // Its own row, not the ladder's tail. The design drew a
-6 crates/shep-cli/src/lookout/view/link_panel.rs // Not the design's `r dials again now`. `r` is refused once the
-
-7 crates/shep-cli/src/lookout/view/overlay.rs /// The border's four corners, checked against `unicodedata.east_asian_width`
-9 crates/shep-cli/src/lookout/view/overlay.rs /// The top, bottom and right edges. All three are East-Asian Ambiguous,
-7 crates/shep-cli/src/lookout/view/overlay.rs /// The narrowest terminal that draws a box with an `interior`-cell inside.
-11 crates/shep-cli/src/lookout/view/overlay.rs /// The boxed form: `interior` cells wide, centred in `area`, its rows
-8 crates/shep-cli/src/lookout/view/overlay.rs // `saturating_add`, not `+`, on `interior` specifically: it is a const
-5 crates/shep-cli/src/lookout/view/overlay.rs // `expect`, not `unwrap_or(0)`: the fallback wrote line 65536 over
-17 crates/shep-cli/src/lookout/view/overlay.rs /// `blank`'s worth of plain space at `(x, y)`, in `style`: the dialog itself
-12 crates/shep-cli/src/lookout/view/overlay.rs /// Dims everything already drawn in `area`, so an overlay reads as a
-11 crates/shep-cli/src/lookout/view/overlay.rs /// The two rows a border costs, and the saturation this function's own
-7 crates/shep-cli/src/lookout/view/overlay.rs /// The three the check found. `▐` is Neutral and the four corners are
-
-8 crates/shep-cli/src/lookout/view/paint_frame.rs /// Real caller: `super::super::mod`'s `run_ui`, once per frame.
-7 crates/shep-cli/src/lookout/view/paint_frame.rs // The sheep pane owns the whole body between the title and the status
-10 crates/shep-cli/src/lookout/view/paint_frame.rs // The settings screen and the config pane each own the whole body
-7 crates/shep-cli/src/lookout/view/paint_frame.rs // The rule sits between the host strip and the table, not between the
-5 crates/shep-cli/src/lookout/view/paint_frame.rs // One pane or two, never both shapes. A frozen dashboard's detail band
-11 crates/shep-cli/src/lookout/view/paint_frame.rs // The `Flock`/`Dogs` header becomes a band, drawn here
-6 crates/shep-cli/src/lookout/view/paint_frame.rs // The data palette, not the chrome one: this band sits
-13 crates/shep-cli/src/lookout/view/paint_frame.rs /// The title row: a full-width reverse-video band naming the mode.
-7 crates/shep-cli/src/lookout/view/paint_frame.rs /// The refusal is the one screen the keymap overlay does not cover, and
-6 crates/shep-cli/src/lookout/view/paint_frame.rs // `api`'s own member row, not `edge`'s fold header row: the header
-13 crates/shep-cli/src/lookout/view/paint_frame.rs /// A fold header reads as one with every colour stripped, and says
-
-7 crates/shep-cli/src/lookout/view/pane/body.rs // The cursor's own row has to draw somewhere in this budget, per the
-8 crates/shep-cli/src/lookout/view/pane/body.rs // A group's header, and the blank line ahead of it for every group after
-11 crates/shep-cli/src/lookout/view/pane/body.rs /// The cursor's own row, alone, for a body too short to hold the chrome its
-7 crates/shep-cli/src/lookout/view/pane/body.rs /// A roomy terminal (`view::ROOMY_HEIGHT` and up) spends a blank row
-17 crates/shep-cli/src/lookout/view/pane/body.rs /// The marker that says rows were cut would itself become the row
-14 crates/shep-cli/src/lookout/view/pane/body.rs /// `push_wrapped_blurb` breaks on a budget of `<= 1` rather than
-8 crates/shep-cli/src/lookout/view/pane/body.rs /// At a width with no explanation panel, the field under the cursor
-9 crates/shep-cli/src/lookout/view/pane/body.rs // On the anchors, not the help strings: two fields can have
-7 crates/shep-cli/src/lookout/view/pane/body.rs /// The hard constraint this item's brief calls out: the blurb rows
-
-15 crates/shep-cli/src/lookout/view/pane/chrome.rs /// The pane's own reverse-video summary band: which target's config this
-14 crates/shep-cli/src/lookout/view/pane/chrome.rs /// The pane's own marker legend, drawn once at the foot rather than
-10 crates/shep-cli/src/lookout/view/pane/chrome.rs /// One entry of the pending-edits section: the field or env key it is
-9 crates/shep-cli/src/lookout/view/pane/chrome.rs /// Nine groups, in `GROUP_ORDER`, and every one of them reachable.
-
-7 crates/shep-cli/src/lookout/view/pane/close.rs /// The heading row: the question on the left, the sheep it is about on
-11 crates/shep-cli/src/lookout/view/pane/close.rs /// The reload row, wrapped rather than truncated.
-17 crates/shep-cli/src/lookout/view/pane/close.rs /// What a row of the dialog is, so that a terminal too short for all of
-8 crates/shep-cli/src/lookout/view/pane/close.rs /// The dialog's rows: what a terminal under [`overlay::floor_for`]`(BOX_WIDTH)`
-5 crates/shep-cli/src/lookout/view/pane/close.rs // `band`, not `attention`: every other band on this dashboard reverses
-20 crates/shep-cli/src/lookout/view/pane/close.rs /// Drops rows from `rows` until it is no taller than `height`, in
-5 crates/shep-cli/src/lookout/view/pane/close.rs // The loop below cannot clear at a width of zero, since popping an
-8 crates/shep-cli/src/lookout/view/pane/close.rs /// The dialog on top of the muted pane: boxed at [`overlay::floor_for`]`(BOX_WIDTH)`
-7 crates/shep-cli/src/lookout/view/pane/close.rs /// The full-width, borderless form: bottom-anchored over the field list,
-8 crates/shep-cli/src/lookout/view/pane/close.rs // 43 for the question, 2 for the gutter, 1 for the gap and 24
-13 crates/shep-cli/src/lookout/view/pane/close.rs /// Every size the dashboard claims to support, through the real
-5 crates/shep-cli/src/lookout/view/pane/close.rs // The frame above hides a one-row overrun: the status bar
-13 crates/shep-cli/src/lookout/view/pane/close.rs /// The shedding order's own claim, which is a different one from the
-8 crates/shep-cli/src/lookout/view/pane/close.rs /// The reload sentence's own rows in `frame`: the `L` row and the
-7 crates/shep-cli/src/lookout/view/pane/close.rs /// The cell at `(x, y)` in `buffer`'s own rendered text where row `y`
-
-14 crates/shep-cli/src/lookout/view/pane/draw.rs /// [`grouped_pane_lines`], with the cursor's own field's [`panel_lines`]
-6 crates/shep-cli/src/lookout/view/pane/draw.rs // Everything from here down is best-effort, and every push below is
-5 crates/shep-cli/src/lookout/view/pane/draw.rs // The trailing hairline and legend are reserved ahead of the body,
-13 crates/shep-cli/src/lookout/view/pane/draw.rs /// `left`'s lines and `panel`'s lines, side by side: `left` padded out to
-10 crates/shep-cli/src/lookout/view/pane/draw.rs /// The trailing "shep publishes..." line a dog-target render reserves out
-10 crates/shep-cli/src/lookout/view/pane/draw.rs /// Every line of the pane, top to bottom, laid out for a terminal `height`
-12 crates/shep-cli/src/lookout/view/pane/draw.rs /// The body [`pane_lines`] draws for a pane with no groups, which is a
-11 crates/shep-cli/src/lookout/view/pane/draw.rs // The one line a dog pane has that a sheep pane does not: shep does not
-7 crates/shep-cli/src/lookout/view/pane/draw.rs // The selected field's own help text, on the lines under the title.
-7 crates/shep-cli/src/lookout/view/pane/draw.rs /// The whole dog pane at a comfortable width. The snapshot is the
-9 crates/shep-cli/src/lookout/view/pane/draw.rs /// The drop order the whole ladder rests on: where both the panel and
-
-7 crates/shep-cli/src/lookout/view/pane/env.rs /// The pending-edits and env sections that follow the active group's own
-6 crates/shep-cli/src/lookout/view/pane/env.rs // The cursor's own row has to draw somewhere in this budget, the same
-10 crates/shep-cli/src/lookout/view/pane/env.rs // A single blank standing in for `field_line`'s lock glyph: an env row
-7 crates/shep-cli/src/lookout/view/pane/env.rs /// The folded env rows at a comfortable width: both of the fixture's
-8 crates/shep-cli/src/lookout/view/pane/env.rs /// The shepherd sends keys with no values at all, so a rendered value
-
-15 crates/shep-cli/src/lookout/view/pane/field_row.rs /// One field's row: the selection mark, a lock glyph, a flag, the key, the
-5 crates/shep-cli/src/lookout/view/pane/field_row.rs // A secret's value is never rendered, only whether there is one. The
-5 crates/shep-cli/src/lookout/view/pane/field_row.rs // The selected row's own paint: a paper-2 ground the full width of the
-7 crates/shep-cli/src/lookout/view/pane/field_row.rs /// The rows the field list reserves under its title: the selected field's
-5 crates/shep-cli/src/lookout/view/pane/field_row.rs // No indent here. Both callers prepend the pane's own two columns, and
-9 crates/shep-cli/src/lookout/view/pane/field_row.rs /// The glyph, the word [`cost_label`] already prints in the LANDS/COST
-8 crates/shep-cli/src/lookout/view/pane/field_row.rs /// Every field row over all nine groups, walked with `next_group`,
-6 crates/shep-cli/src/lookout/view/pane/field_row.rs // `parts(line).is_some()` alone is not enough at this width: the
-
-8 crates/shep-cli/src/lookout/view/pane/fixtures.rs /// The longest word in the cursor's field help, which is what the blurb
-
-11 crates/shep-cli/src/lookout/view/pane/layout.rs /// How wide the explanation panel is, and [`None`] when it does not draw.
-11 crates/shep-cli/src/lookout/view/pane/layout.rs /// Whether `LANDS` draws on a terminal `width` columns wide that also draws
-8 crates/shep-cli/src/lookout/view/pane/layout.rs /// What a change to a field in `group` costs, in an operator's words.
-14 crates/shep-cli/src/lookout/view/pane/layout.rs /// The three cell widths for a body of `width`: KEY, VALUE, COST. A zero
-9 crates/shep-cli/src/lookout/view/pane/layout.rs /// Masks a secret field's rendered value: [`UNSET`] passes through, since
-8 crates/shep-cli/src/lookout/view/pane/layout.rs /// `text`, truncated (never padded) to at most `width` columns, marking a
-
-8 crates/shep-cli/src/lookout/view/pane/list.rs /// The list sub-screen: one array field's elements, and a row to add one on.
-7 crates/shep-cli/src/lookout/view/pane/list.rs /// One row of the list sub-screen: the selection mark, the element's
-
-17 crates/shep-cli/src/lookout/view/pane/mod.rs //! Drawing a [`ConfigPane`](super::super::pane::ConfigPane): a title naming
-
-12 crates/shep-cli/src/lookout/view/pane/panel.rs /// The right-hand explanation panel: everything about `field` alone, drawn
-5 crates/shep-cli/src/lookout/view/pane/panel.rs // 2: the blurb, wrapped. The leading two-space indent below is part of
-9 crates/shep-cli/src/lookout/view/pane/panel.rs // 3: now, default, example. `now` is never empty; the other two show a
-7 crates/shep-cli/src/lookout/view/pane/panel.rs /// The explanation panel for whichever field the pane's own cursor is on,
-7 crates/shep-cli/src/lookout/view/pane/panel.rs /// Nothing on the live screen drew the panel, because nothing called
-
-15 crates/shep-cli/src/lookout/view/scroll.rs //! The one scroll driver every screen taller than its terminal shares.
-11 crates/shep-cli/src/lookout/view/scroll.rs /// Lays the body out from the first offset at or below `start` whose
-
-7 crates/shep-cli/src/lookout/view/secrets/column_tiers.rs /// The narrowest terminal this pane draws a table into: [`SECRET_TIERS`]'
-7 crates/shep-cli/src/lookout/view/secrets/column_tiers.rs /// The gap between the dashboard's own floor (33) and this pane's
-7 crates/shep-cli/src/lookout/view/secrets/column_tiers.rs /// The tab row used to append its suffix whatever the tabs had spent
-
-8 crates/shep-cli/src/lookout/view/secrets/draw_layout.rs /// Draws the `+ new key` affordance at the current `y` and advances it,
-12 crates/shep-cli/src/lookout/view/secrets/draw_layout.rs /// Draws the secrets pane into `area`, straight into `buffer`.
-6 crates/shep-cli/src/lookout/view/secrets/draw_layout.rs // The panels describe the selected row, so a screen
-
-7 crates/shep-cli/src/lookout/view/secrets/pane_chrome.rs /// The tab row: every environment [`super::super::super::secrets::SecretsModel`]
-
-10 crates/shep-cli/src/lookout/view/secrets/row_cells.rs /// What one row shows in `VALUE`.
-
-7 crates/shep-cli/src/lookout/view/secrets/testing.rs /// The first data row `draw_layout::draw` places, fixed regardless of which source
-
-15 crates/shep-cli/src/lookout/view/settings/mod.rs //! The settings screen: `[daemon]`, `[whistle]`, `[style]`, then `[dogs]`,
-6 crates/shep-cli/src/lookout/view/settings/mod.rs // `pub(super)`, not private to `settings`: the two re-exported functions
-19 crates/shep-cli/src/lookout/view/settings/mod.rs /// Every line of the screen's body, top to bottom: `[daemon]`'s four rows,
-11 crates/shep-cli/src/lookout/view/settings/mod.rs /// The cursor's own row, alone, for a body too short to hold the chrome
-7 crates/shep-cli/src/lookout/view/settings/mod.rs /// Lays the body out from data row `offset`, spending at most `budget`
-
-7 crates/shep-cli/src/lookout/view/settings/scalars.rs /// What applying this field costs. `log_level`, `log_json` and
-8 crates/shep-cli/src/lookout/view/settings/scalars.rs /// What VALUE and the apply cost get out of `width`, once NAME, SOURCE and
-
-5 crates/shep-cli/src/lookout/view/sheep/charts/mod.rs // `height` is `area.height`, the pane body's own row count.
-7 crates/shep-cli/src/lookout/view/sheep/charts/mod.rs /// Writes one styled line into `buffer`, `row` cells below `area`'s own
-8 crates/shep-cli/src/lookout/view/sheep/charts/mod.rs /// The chart body's width in cells: `area`'s own `width` less [`GUTTER`]
-7 crates/shep-cli/src/lookout/view/sheep/charts/mod.rs /// The chart-drawing twin of the test above: pane pinned to alpha,
-
-7 crates/shep-cli/src/lookout/view/sheep/charts/rows.rs /// The memory chart's `MEM_ROWS` rows, and which one (if any) is the row
-5 crates/shep-cli/src/lookout/view/sheep/charts/rows.rs // `scale_top`'s own ladder is decimal, but `human_bytes` renders the
-5 crates/shep-cli/src/lookout/view/sheep/charts/rows.rs // The row nearest the limit, not the row at or below it: a ceiling
-
-7 crates/shep-cli/src/lookout/view/sheep/column.rs /// Where the config/env column and the feed start, in rows relative to
-11 crates/shep-cli/src/lookout/view/sheep/column.rs /// One field's row: the name, `!`-flagged and butter when
-8 crates/shep-cli/src/lookout/view/sheep/column.rs /// `field`'s current value, the way this column shows it: `<set>` for a
-11 crates/shep-cli/src/lookout/view/sheep/column.rs /// `top` to [`COLUMN_BODY_ROWS`] rows below it: the header, then as much of
-7 crates/shep-cli/src/lookout/view/sheep/column.rs /// The group labels [`crate::lookout::pane::ConfigPane`]'s own field set
-7 crates/shep-cli/src/lookout/view/sheep/column.rs /// An overridden field carries the editing pane's own `*` glyph
-8 crates/shep-cli/src/lookout/view/sheep/column.rs /// The wire clears env before the struct is built, so no pane can show a
-
-15 crates/shep-cli/src/lookout/view/sheep/feed.rs /// `top` (the same row [`draw_column`](super::column::draw_column) and
-11 crates/shep-cli/src/lookout/view/sheep/feed.rs /// One feed line: the stream tag, muted the same way
-15 crates/shep-cli/src/lookout/view/sheep/feed.rs /// `draw_feed` draws whatever `App::feed` holds, filtered through the
-
-12 crates/shep-cli/src/lookout/view/sheep/layout.rs //! Decision 8's row ladder, and the widths either side of the divider.
-8 crates/shep-cli/src/lookout/view/sheep/layout.rs /// Terminal rows [`view::draw`](super::super::draw) spends outside this pane's
-10 crates/shep-cli/src/lookout/view/sheep/layout.rs /// The shortest terminal height any chart tier draws into at all: 21 rows
-
-8 crates/shep-cli/src/lookout/view/sheep/mod.rs /// Draws the pane into `area`: the identity band on its first row, the two
-6 crates/shep-cli/src/lookout/view/sheep/mod.rs // `App::sheep_pane_row`, not `App::selected_row`: the pinned sheep, not
-5 crates/shep-cli/src/lookout/view/sheep/mod.rs // Rows `CPU_HEADER_ROW` to `AXIS_ROW`, however much of them the current
-5 crates/shep-cli/src/lookout/view/sheep/mod.rs // The config and env column, starting at `top`: `COLUMN_HEADER_ROW`
-7 crates/shep-cli/src/lookout/view/sheep/mod.rs // The same rows, right of the divider: the bleats feed, embedded rather
-8 crates/shep-cli/src/lookout/view/sheep/mod.rs /// Rows too: the charts hold 2 to 17, and the config and feed columns
-7 crates/shep-cli/src/lookout/view/sheep/mod.rs /// [`MIN_HEIGHT_FOR_CHARTS`]'s own floor: at exactly that height a
-
-16 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The key hint once the link is [`Link::Lost`](crate::lookout::app::Link::Lost).
-8 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The secrets pane's own key hint.
-22 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The config pane's own key hint.
-7 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The sheep pane's own key hint.
-12 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The key hint.
-7 crates/shep-cli/src/lookout/view/status/key_hint.rs // The fold keys, spliced before the appended tail rather than into the
-16 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The hint's clause separators are three spaces, every one of them.
-7 crates/shep-cli/src/lookout/view/status/key_hint.rs /// The hint must not claim every other key is refused, because seven of
-
-8 crates/shep-cli/src/lookout/view/status/status_layout.rs /// The banner, when there is one. `None` while the link is live.
-6 crates/shep-cli/src/lookout/view/status/status_layout.rs // Through `fit`, unlike the retrying sentence above, which is
-14 crates/shep-cli/src/lookout/view/status/status_layout.rs /// The bottom line: eight slots, highest priority first: the settings
-6 crates/shep-cli/src/lookout/view/status/status_layout.rs // Always rendered, in both states. An operator who does not know whether
-5 crates/shep-cli/src/lookout/view/status/status_layout.rs // The same box, embedded: the sheep pane's own feed shares
-6 crates/shep-cli/src/lookout/view/status/status_layout.rs // `attention`, the same butter the non-grave notice uses. Not a
-9 crates/shep-cli/src/lookout/view/status/status_layout.rs // Ahead of the config pane's own hint below: the dialog owns the
-8 crates/shep-cli/src/lookout/view/status/status_layout.rs // The pane owns the keyboard, so neither the filter line nor
-6 crates/shep-cli/src/lookout/view/status/status_layout.rs // Checked below the match box's own branch above, which owns this
-5 crates/shep-cli/src/lookout/view/status/status_layout.rs // Only this branch, not the pane hints above: a pane opened before
-6 crates/shep-cli/src/lookout/view/status/status_layout.rs // `patch`, not a fresh `Style`: `ground` sets only the background, so
 
 13 crates/shep-cli/src/lookout/viewport.rs //! A cursor that knows what is on screen.
 
@@ -1266,29 +882,11 @@
 9 crates/shep-cli/src/output/width.rs /// Columns `s` occupies once ANSI escapes are discounted.
 8 crates/shep-cli/src/output/width.rs /// A cell, with every control character escaped or stripped so it cannot
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 12 crates/shep-cli/src/whistle/facts.rs /// Every list-shaped tool's payload: rows under a named field.
-9 crates/shep-cli/src/whistle/facts.rs /// Whether the shepherd has GIVEN UP on this dog — restarted it once
 8 crates/shep-cli/src/whistle/facts.rs /// The host this flock came from, spelled as the caller asked for it;
-
-
+9 crates/shep-cli/src/whistle/facts.rs /// Whether the shepherd has GIVEN UP on this dog — restarted it once
 
 7 crates/shep-cli/src/whistle/read.rs /// The argument every sheep-scoped tool takes.
-
 
 7 crates/shep-cli/tests/cli_e2e/assertions.rs /// Asserts `info`, one `data[]` element of an envelope, carries the dynamic
 10 crates/shep-cli/tests/cli_e2e/assertions.rs /// Nulls every value under `host`, having first checked the two that are
@@ -1482,6 +1080,8 @@
 10 crates/shep-core/src/config/daemon/overrides.rs /// The CLI-flag layer of `file < env < flags` (spec §5).
 9 crates/shep-core/src/config/daemon/overrides.rs /// The boolean grammar of `shep.toml` and the `SHEP_*` environment: `1`,
 
+8 crates/shep-core/src/config/daemon/schema.rs /// Returns the JSON Schema of `shep.toml`.
+
 7 crates/shep-core/src/config/daemon/sections.rs /// Where an adopted dog's binary lives, keyed by dog name
 14 crates/shep-core/src/config/daemon/sections.rs /// Dogs that run before every sheep, rather than after the flock.
 11 crates/shep-core/src/config/daemon/sections.rs /// How much of the daemon's own diagnostics reaches its log.
@@ -1604,7 +1204,7 @@
 
 16 crates/shep-core/src/protocol/frame.rs // Growth is anticipated (progress, flow control), and it is additive for this
 
-37 crates/shep-core/src/protocol/mod.rs //! The client<->daemon wire protocol (version 12).
+38 crates/shep-core/src/protocol/mod.rs //! The client<->daemon wire protocol (version 12).
 12 crates/shep-core/src/protocol/mod.rs /// Wire protocol version.
 12 crates/shep-core/src/protocol/mod.rs /// Fails whenever `PROTOCOL_VERSION` moves, which makes a bump a
 
@@ -1672,6 +1272,7 @@
 17 crates/shep-core/src/protocol/request/verbs.rs /// A provider dog's values for one namespace and one environment.
 8 crates/shep-core/src/protocol/request/verbs.rs /// Set how many instances one app runs (see `shep stock`).
 7 crates/shep-core/src/protocol/request/verbs.rs /// Attach a short marker to `sheep` for `shep flock` to paint, or clear
+7 crates/shep-core/src/protocol/request/verbs.rs /// Zero the restart count of every matched sheep and hand back its
 12 crates/shep-core/src/protocol/request/verbs.rs /// Read the end of one sheep's out or err log, so a client on another
 7 crates/shep-core/src/protocol/request/verbs.rs /// Ask for one dog's `[dog.<name>]` section, as the dog itself parses it
 11 crates/shep-core/src/protocol/request/verbs.rs /// Ask for one dog's section with every `{{secret:...}}` reference
@@ -1701,8 +1302,8 @@
 
 9 crates/shep-core/src/secrets/store.rs /// The grammar shared by keys, namespaces and environment names.
 17 crates/shep-core/src/secrets/store.rs /// Every key in the store with its per-environment values, in key order.
-13 crates/shep-core/src/secrets/store.rs /// Stores `value` under `key` for `environment`, replacing any previous
-22 crates/shep-core/src/secrets/store.rs /// Stores every `(key, value)` pair for `environment` in one locked
+15 crates/shep-core/src/secrets/store.rs /// Stores `value` under `key` for `environment`, replacing any previous
+21 crates/shep-core/src/secrets/store.rs /// Stores every `(key, value)` pair for `environment` in one locked
 
 8 crates/shep-core/src/selector.rs /// Whether `input` carries a glob metacharacter, and so was meant as a
 13 crates/shep-core/src/selector.rs /// Compiles a glob into a regex.
@@ -1779,10 +1380,11 @@
 14 crates/shep-daemon/src/boot/tests/mod.rs /// Boots a daemon to a finished listing, and hands back the flock with every
 
 7 crates/shep-daemon/src/boot/tests/readiness.rs /// The ordering `Type=notify` was chosen for: a unit that goes green at
+10 crates/shep-daemon/src/boot/tests/readiness.rs /// The deadline systemd holds a `Type=notify` unit to is one number, and a
 
 11 crates/shep-daemon/src/boot_order.rs /// The plan for a flock given as names and the names each one waits for.
 13 crates/shep-daemon/src/boot_order.rs /// Graph nodes for a flock plus its dogs.
-33 crates/shep-daemon/src/boot_order.rs /// Starts `apps` stage by stage, holding each stage until every member a
+40 crates/shep-daemon/src/boot_order.rs /// Starts `apps` stage by stage, holding each stage until every member a
 6 crates/shep-daemon/src/boot_order.rs // Every name anything in the flock waits on, read once. That is usually
 5 crates/shep-daemon/src/boot_order.rs // Walked over `apps` rather than over `stage`, so a stage keeps the
 9 crates/shep-daemon/src/boot_order.rs // The gate rides on this one `Command::Start` and so is a property of
@@ -1964,7 +1566,7 @@
 7 crates/shep-daemon/src/limits/stats.rs /// Which sheep are worth sampling, and what their CPU counters read at the
 11 crates/shep-daemon/src/limits/stats.rs /// Every process `index` reports as a descendant of `root_pid`, in pid
 
-12 crates/shep-daemon/src/notify.rs //! Readiness reporting to an init system that supervises this process
+15 crates/shep-daemon/src/notify.rs //! Readiness reporting to an init system that supervises this process
 8 crates/shep-daemon/src/notify.rs /// The variable an init system sets on a service that reports its own
 8 crates/shep-daemon/src/notify.rs /// Errors reporting readiness.
 
@@ -2117,7 +1719,7 @@
 7 crates/shep-daemon/src/snapshot/mod.rs /// Drops every recorded app, so the next [`Self::roll`] describes an
 8 crates/shep-daemon/src/snapshot/mod.rs /// Error type returned from `write_atomic` and [`read`]
 10 crates/shep-daemon/src/snapshot/mod.rs /// Splits a loaded [`FlockSnapshot`] into members, the subset to start, and
-18 crates/shep-daemon/src/snapshot/mod.rs /// Reads the muster roll and starts every app it restores, returning the
+21 crates/shep-daemon/src/snapshot/mod.rs /// Reads the muster roll and starts every app it restores, returning the
 6 crates/shep-daemon/src/snapshot/mod.rs // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
 11 crates/shep-daemon/src/snapshot/mod.rs /// Warns for every saved sheep whose name a running dog has taken.
 10 crates/shep-daemon/src/snapshot/mod.rs /// Reports every way the roll's dependency graph is not what it says it is.
@@ -2314,10 +1916,8 @@
 11 crates/shep-daemon/src/sys.rs //! Adopting an inherited descriptor: this crate's only `unsafe` on unix
 7 crates/shep-daemon/src/sys.rs // fd 4096 is a number this process never owns: fd-table limits sit
 
-14 crates/shep-daemon/src/sys_windows.rs //! The Windows counterpart to `sys`: a job object per sheep
 10 crates/shep-daemon/src/sys_windows.rs /// Marks this process's own stdio handles non-inheritable.
 5 crates/shep-daemon/src/sys_windows.rs // SAFETY: `handle` is a live handle owned by this process, checked
-12 crates/shep-daemon/src/sys_windows.rs // Zeroed, then left zeroed: every limit flag stays off. Setting the
 15 crates/shep-daemon/src/sys_windows.rs /// A security descriptor that admits the shepherd's own user and nobody else
 5 crates/shep-daemon/src/sys_windows.rs // SAFETY: `sddl` is a NUL-terminated UTF-16 string that outlives the
 
@@ -2466,6 +2066,15 @@
 11 crates/shep-macros/src/lib.rs //! The `dog_config` attribute, and nothing else.
 59 crates/shep-macros/src/lib.rs /// Marks which of a dog's config fields are credentials, so shep can redact
 6 crates/shep-macros/src/lib.rs // The type is emitted even on the error path, stripped of the
+
+12 crates/shep-tree/src/job.rs //! A Windows job object: the substitute for a unix process group.
+12 crates/shep-tree/src/job.rs // Zeroed, then left zeroed: every limit flag stays off. Setting the
+16 crates/shep-tree/src/job.rs /// Assigns an already-spawned process to this job.
+
+19 crates/shep-tree/src/lib.rs //! Signal a process group, own a Windows job and stop a child and everything
+
+15 crates/shep-tree/src/stop.rs /// Spawns `command` as the leader of a new tree.
+27 crates/shep-tree/src/stop.rs /// Stops `child` and everything in its tree, and returns how `child` exited.
 
 17 examples/src/bin/busy.rs //! Burns CPU on a repeating curve, so a dashboard's CPU column has a shape to
 
