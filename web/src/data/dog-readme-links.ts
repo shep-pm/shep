@@ -15,9 +15,17 @@
  *   dog keeps a link off this site by making it absolute;
  * - a relative `.md` link becomes a page under this dog's page, at any depth,
  *   and keeps its `#fragment`;
- * - a relative image is fetched at the tag from `raw.githubusercontent.com`;
- * - any other relative file points at the repo at that tag, on the page
- *   GitHub renders for it.
+ * - a relative file in `src`, `srcset` or `poster` is fetched at the tag from
+ *   `raw.githubusercontent.com`, because those attributes name bytes a browser
+ *   loads, and the page GitHub renders for a file is HTML, not those bytes;
+ * - a relative file in `href` points at the repo at that tag, on the page
+ *   GitHub renders for it, because an `href` is a place a reader goes.
+ *
+ * So raw versus blob is decided by the attribute, not by the file extension.
+ * An extension list cannot get this right: `docs/logo.png` in an `<img src>`
+ * needs the bytes and `docs/logo.png` in an `<a href>` needs the page GitHub
+ * renders, and one list of "image extensions" would answer the same file two
+ * ways depending on where it was written.
  *
  * Why a tag walker rather than a regex over the document: the rule is about
  * attributes of tags, and a regex over the whole document cannot tell an
@@ -33,8 +41,19 @@
  * not build a tree, and nothing here needs one.
  */
 
-/** The only two attributes this file rewrites. */
-const LINK_ATTRIBUTES = new Set(["href", "src"]);
+/**
+ * The attributes this file rewrites, and nothing else.
+ *
+ * `srcset` is in the list because GitHub's light/dark logo pattern puts the
+ * dark image there and the light one in `src`: rewriting only `src` leaves the
+ * `<source srcset="docs/logo-dark.png">` relative, which resolves against the
+ * site path and 404s for every reader whose media query selects it. `poster`
+ * is the same defect on a `<video>`.
+ */
+const LINK_ATTRIBUTES = new Set(["href", "src", "srcset", "poster"]);
+
+/** Of those, the ones that name bytes a browser loads rather than a page a reader goes to. */
+const FETCH_ATTRIBUTES = new Set(["src", "srcset", "poster"]);
 
 /**
  * Elements whose CONTENTS are never rewritten.
@@ -49,24 +68,6 @@ const NO_REWRITE_INSIDE = new Set(["pre", "code", "script", "style"]);
 
 /** `https:`, `mailto:`, `tel:`, `data:` — anything with a scheme is already absolute. */
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
-
-/**
- * Extensions treated as an image, and so fetched rather than linked to a
- * GitHub page. Anything outside this set is a file, and gets the blob URL.
- */
-const IMAGE_EXTENSIONS = new Set([
-  "avif",
-  "bmp",
-  "gif",
-  "ico",
-  "jpeg",
-  "jpg",
-  "png",
-  "svg",
-  "tif",
-  "tiff",
-  "webp",
-]);
 
 /** Where a file lives at a tag, for a browser: the page GitHub renders for it. */
 function blobFileUrl(owner: string, repo: string, tag: string, path: string): string {
@@ -102,10 +103,42 @@ export function dogDocRoute(adoptAs: string, path: string): string {
   return `${base}/${path.slice(0, path.length - 3)}`;
 }
 
-function isImagePath(path: string): boolean {
-  const dot = path.lastIndexOf(".");
-  if (dot === -1) return false;
-  return IMAGE_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+/**
+ * The character references an attribute value can hold, which is what a
+ * Markdown renderer writes for the five characters HTML reserves.
+ */
+const NAMED_ENTITIES = new Map([
+  ["amp", "&"],
+  ["apos", "'"],
+  ["gt", ">"],
+  ["lt", "<"],
+  ["quot", '"'],
+]);
+
+/**
+ * Decode the character references in an attribute value, so `docs/q&amp;a.md`
+ * is read as the file `docs/q&a.md`.
+ *
+ * A renderer escapes `&` in an href, and a path read as written asks
+ * raw.githubusercontent.com for a file called `q&amp;a.md`, which is not in
+ * the repository: a 404 that, in strict mode, stops a deploy over a filename.
+ * An unknown reference is left as written, because guessing what `&foo;` meant
+ * is how a wrong path gets made.
+ */
+function decodeCharacterReferences(value: string): string {
+  if (!value.includes("&")) return value;
+  return value.replace(
+    /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+    (whole: string, body: string) => {
+      if (body.startsWith("#")) {
+        const hex = body[1] === "x" || body[1] === "X";
+        const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+        if (Number.isNaN(code) || code < 0 || code > 0x10ffff) return whole;
+        return String.fromCodePoint(code);
+      }
+      return NAMED_ENTITIES.get(body.toLowerCase()) ?? whole;
+    },
+  );
 }
 
 /**
@@ -150,7 +183,7 @@ interface RelativeLink {
  * way.
  */
 function relativeLink(value: string): RelativeLink | undefined {
-  const raw = value.trim();
+  const raw = decodeCharacterReferences(value.trim());
   if (raw === "") return undefined;
   if (raw.startsWith("#") || raw.startsWith("/")) return undefined;
   if (SCHEME.test(raw)) return undefined;
@@ -171,20 +204,59 @@ export interface DogPageAddress {
   fromPath: string;
 }
 
-function rewriteTarget(value: string, page: DogPageAddress): string | undefined {
+/**
+ * One relative link, resolved to a URL on this site or at the tag.
+ *
+ * @param fetched true when the attribute names bytes a browser loads, which is
+ * the file itself, and false when it names a page a reader goes to, which is
+ * the page GitHub renders for the file.
+ */
+function rewriteTarget(
+  value: string,
+  page: DogPageAddress,
+  fetched: boolean,
+): string | undefined {
   const link = relativeLink(value);
   if (link === undefined) return undefined;
   const path = resolveRepoPath(link.target, page.fromPath);
-  if (path === "") return dogDocRoute(page.adoptAs, "") + link.fragment;
-  if (hasMdExtension(path)) return dogDocRoute(page.adoptAs, path) + link.fragment;
-  const at = rawFileUrl(page.owner, page.repo, page.tag, path);
-  if (isImagePath(path)) return at + link.fragment;
+  if (path === "" || hasMdExtension(path)) {
+    return dogDocRoute(page.adoptAs, path) + link.fragment;
+  }
+  if (fetched) return rawFileUrl(page.owner, page.repo, page.tag, path) + link.fragment;
   return blobFileUrl(page.owner, page.repo, page.tag, path) + link.fragment;
 }
 
-/** One `href` or `src` the walker reports, and what the visitor returns for it. */
+/**
+ * One `srcset`, which is a comma-separated list of candidates, each a URL plus
+ * an optional `2x` or `300w` descriptor. Every candidate is rewritten on its
+ * own, so an absolute one in the same list stays as written, and the
+ * descriptors and the spacing around them are copied out as they were.
+ */
+function rewriteSrcset(value: string, page: DogPageAddress): string | undefined {
+  const candidates = value.split(",");
+  const rewritten: string[] = [];
+  let changed = false;
+  for (const candidate of candidates) {
+    const lead = candidate.slice(0, candidate.length - candidate.trimStart().length);
+    const trimmed = candidate.trim();
+    const trail = candidate.slice(candidate.trimEnd().length);
+    const space = trimmed.search(/\s/);
+    const url = space === -1 ? trimmed : trimmed.slice(0, space);
+    const descriptor = space === -1 ? "" : trimmed.slice(space);
+    const replacement = rewriteTarget(url, page, true);
+    if (replacement === undefined) {
+      rewritten.push(candidate);
+      continue;
+    }
+    changed = true;
+    rewritten.push(`${lead}${replacement}${descriptor}${trail}`);
+  }
+  return changed ? rewritten.join(",") : undefined;
+}
+
+/** One `href`, `src`, `srcset` or `poster` the walker reports, and what the visitor returns for it. */
 interface LinkAttribute {
-  /** Which of the two it was. */
+  /** Which of the four it was. */
   attribute: string;
   value: string;
 }
@@ -192,15 +264,19 @@ interface LinkAttribute {
 /**
  * Rewrite every relative link in rendered HTML.
  *
- * Text is never touched, only the `href` and `src` of tags, and never inside
- * `pre`, `code`, `script` or `style`. Everything else in the document is
- * copied out byte for byte, including comments and attributes this file does
- * not rewrite.
+ * Text is never touched, only the `href`, `src`, `srcset` and `poster` of
+ * tags, and never inside `pre`, `code`, `script` or `style`. Everything else
+ * in the document is copied out byte for byte, including comments and
+ * attributes this file does not rewrite.
  *
  * @throws {Error} when a relative link climbs above the repository root.
  */
 export function rewriteLinks(html: string, page: DogPageAddress): string {
-  return walkLinkAttributes(html, ({ value }) => rewriteTarget(value, page));
+  return walkLinkAttributes(html, ({ attribute, value }) =>
+    attribute === "srcset"
+      ? rewriteSrcset(value, page)
+      : rewriteTarget(value, page, FETCH_ATTRIBUTES.has(attribute)),
+  );
 }
 
 /**
@@ -384,10 +460,17 @@ function scanTag(html: string, start: number): Tag {
   return { name, closing, selfClosing, start, end, attributes };
 }
 
-/** A replacement value, re-quoted the way the value it replaces was quoted. */
+/**
+ * A replacement value, re-quoted the way the value it replaces was quoted.
+ *
+ * `&` goes first, because every other escape writes one: a path that decoded
+ * from `q&amp;a.md` to `q&a.md` has to come back out as `&amp;` or the route
+ * this file wrote is one the browser will read as an entity.
+ */
 function quotedAttributeValue(value: string, quote: string): string {
-  if (quote === "'") return `'${value.replace(/'/g, "&#39;")}'`;
-  return `"${value.replace(/"/g, "&quot;")}"`;
+  const escaped = value.replace(/&/g, "&amp;");
+  if (quote === "'") return `'${escaped.replace(/'/g, "&#39;")}'`;
+  return `"${escaped.replace(/"/g, "&quot;")}"`;
 }
 
 function spliceEdits(html: string, tag: Tag, edits: Array<[Attribute, string]>): string {
@@ -404,10 +487,10 @@ function spliceEdits(html: string, tag: Tag, edits: Array<[Attribute, string]>):
 }
 
 /**
- * Walk the document tag by tag, ask `visit` about every `href` and `src`
- * outside a `pre`, `code`, `script` or `style`, and splice in whatever it
- * returns. A `visit` that returns `undefined`, or the value unchanged, edits
- * nothing.
+ * Walk the document tag by tag, ask `visit` about every attribute in
+ * `LINK_ATTRIBUTES` outside a `pre`, `code`, `script` or `style`, and splice in
+ * whatever it returns. A `visit` that returns `undefined`, or the value
+ * unchanged, edits nothing.
  */
 function walkLinkAttributes(
   html: string,

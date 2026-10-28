@@ -455,6 +455,79 @@ test("any other relative file points at the repo at that tag", () => {
   );
 });
 
+test("a src names bytes, so it gets the file at the tag whatever its extension", () => {
+  assert.equal(
+    rewritten('<video src="docs/demo.mp4" controls></video>'),
+    `<video src="${rawUrl("docs/demo.mp4")}" controls></video>`,
+  );
+  assert.equal(rewritten('<source src="clip.webm">'), `<source src="${rawUrl("clip.webm")}">`);
+  assert.equal(
+    rewritten('<video poster="docs/preview.png"></video>'),
+    `<video poster="${rawUrl("docs/preview.png")}"></video>`,
+  );
+});
+
+test("an href names a page, so a file gets the page GitHub renders for it", () => {
+  assert.equal(
+    rewritten('<a href="docs/demo.mp4">watch</a>'),
+    `<a href="https://github.com/${OWNER}/${REPO}/blob/${TAG}/docs/demo.mp4">watch</a>`,
+  );
+  assert.equal(
+    rewritten('<a href="docs/logo.png">logo</a>'),
+    `<a href="https://github.com/${OWNER}/${REPO}/blob/${TAG}/docs/logo.png">logo</a>`,
+  );
+});
+
+test("a srcset is rewritten candidate by candidate, descriptors and spacing kept", () => {
+  assert.equal(
+    rewritten(
+      '<picture><source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png 1x, docs/logo-dark@2x.png 2x">' +
+        '<img src="docs/logo.png" alt="logo"></picture>',
+    ),
+    `<picture><source media="(prefers-color-scheme: dark)" srcset="${rawUrl("docs/logo-dark.png")} 1x, ` +
+      `${rawUrl("docs/logo-dark@2x.png")} 2x"><img src="${rawUrl("docs/logo.png")}" alt="logo"></picture>`,
+  );
+});
+
+test("an absolute candidate in a srcset stays as written beside a relative one", () => {
+  assert.equal(
+    rewritten('<img srcset="https://cdn.example.com/a.png 2x, docs/b.png 1x" src="docs/b.png">'),
+    `<img srcset="https://cdn.example.com/a.png 2x, ${rawUrl("docs/b.png")} 1x" src="${rawUrl("docs/b.png")}">`,
+  );
+});
+
+test("a width descriptor in a srcset is kept with the URL it describes", () => {
+  assert.equal(
+    rewritten('<img srcset="docs/a-480.png 480w, docs/a-960.png 960w" sizes="(max-width: 600px) 480px, 960px">'),
+    `<img srcset="${rawUrl("docs/a-480.png")} 480w, ${rawUrl("docs/a-960.png")} 960w" sizes="(max-width: 600px) 480px, 960px">`,
+  );
+});
+
+/* --- rewriteLinks: character references --------------------------------- */
+
+test("a character reference in an href is decoded before the path is used", () => {
+  const html = '<a href="docs/q&amp;a.md">q</a> <a href="docs/&#38;b.md">b</a>';
+  assert.deepEqual(findRelativeMdLinks(html, "README.md"), ["docs/q&a.md", "docs/&b.md"]);
+  assert.equal(
+    rewritten(html),
+    '<a href="/docs/dogs/rex/docs/q&amp;a">q</a> <a href="/docs/dogs/rex/docs/&amp;b">b</a>',
+  );
+  // An unknown reference is left as written rather than guessed at.
+  assert.deepEqual(findRelativeMdLinks('<a href="docs/&foo;.md">x</a>', "README.md"), ["docs/&foo;.md"]);
+});
+
+test("a linked page named with a character reference is fetched by its real name", async () => {
+  const { fetchFn, calls } = stubFetch({
+    [API_URL]: releaseJson(TAG),
+    [rawUrl(README_PATH)]: body('<a href="docs/q&amp;a.md">q</a>'),
+    [rawUrl("docs/q&a.md")]: body("no links here"),
+  });
+  const result = await fetchDogPages(firstParty, render, fetchFn, true);
+  assert.ok(result !== undefined);
+  assert.deepEqual([...result.pages.keys()], [README_PATH, "docs/q&a.md"]);
+  assert.equal(hits(calls, rawUrl("docs/q&a.md")), 1);
+});
+
 test("an unquoted or single-quoted href is rewritten and re-quoted", () => {
   assert.equal(rewritten("<a href=docs/a.md>a</a>"), '<a href="/docs/dogs/rex/docs/a">a</a>');
   assert.equal(rewritten("<a href='docs/a.md'>a</a>"), "<a href='/docs/dogs/rex/docs/a'>a</a>");
