@@ -38,9 +38,7 @@ fn start_epoch_secs(pid: u32) -> Option<u64> {
 ///
 /// Saturating: an NTP step, a resumed VM snapshot or a hand-set date moves
 /// the wall clock backwards under a running process, and no pair of readings
-/// can recover the true age once one of them lied. Zero is what an operator
-/// already sees from a fresh spawn; a wrapping subtraction would print an age
-/// of hundreds of billions of years.
+/// can recover the true age once one of them lied.
 fn age_from_epoch(started_secs: u64, now_secs: u64) -> Duration {
     Duration::from_secs(now_secs.saturating_sub(started_secs))
 }

@@ -2,16 +2,12 @@
 //! `shep flock` carries.
 //!
 //! [`super::LimitEnforcer`] samples only sheep with `max_memory` set;
-//! [`StatsState`] watches every sheep with a pid, off the same
-//! [`TreeIndex`] per polling tick.
-//!
-//! Memory is a level and reads current on demand. CPU is a counter: a percentage needs the
-//! last periodic baseline, subtracted without writing one, so its window is usually one
-//! `MEMORY_POLL_INTERVAL` old, longer if a full breaches channel paused the poll loop. Both
-//! sum the whole tree; see [`limits`](super) for the kill-unit divergence.
-//!
-//! It also holds the labels sheep give their lambs (`limits::labels`), joined onto
-//! `describe`'s lamb walk and pruned on the same tick.
+//! [`StatsState`] watches every sheep with a pid, off the same [`TreeIndex`]
+//! per polling tick. Memory is a level and reads current on demand. CPU is
+//! a counter: a percentage needs the last periodic baseline, so its window
+//! is usually one `MEMORY_POLL_INTERVAL` old. Both sum the whole tree; see
+//! [`limits`](super) for the kill-unit divergence. It also holds the labels
+//! sheep give their lambs (`limits::labels`).
 
 use core::fmt;
 use std::collections::{HashMap, HashSet};
@@ -32,11 +28,10 @@ pub(crate) struct SheepStats {
     /// Tree CPU over the window since the last periodic baseline, as a
     /// percentage of one core.
     ///
-    /// `None` when this pid has no baseline yet. A sheep spawned since the
+    /// `None` when this pid has no baseline yet: a sheep spawned since the
     /// last tick has no honest figure, and one invented from a 50 ms window
-    /// is worse than an empty cell.
-    ///
-    /// A value over 100 is a tree using more than one core, not a bug.
+    /// is worse than an empty cell. A value over 100 is a tree using more
+    /// than one core, not a bug.
     pub cpu_percent: Option<f32>,
     /// Tree resident set size, current as of the reading that produced this.
     pub memory_bytes: u64,
@@ -54,11 +49,10 @@ struct Baseline {
 /// Which sheep are worth sampling, and what their CPU counters read at the
 /// last periodic tick.
 ///
-/// [`Self::record_baseline`] is the ONLY writer of the baseline map. That is
-/// the invariant the whole type rests on: [`Self::sample_now`] serves a
-/// listing and must leave the baseline alone, or a second listing a
-/// millisecond after the first would divide a near-zero CPU delta by a
-/// near-zero window and report anything from 0% to thousands.
+/// [`Self::record_baseline`] is the ONLY writer of the baseline map.
+/// [`Self::sample_now`] serves a listing and must leave the baseline alone,
+/// or a second listing a millisecond after the first would divide a
+/// near-zero CPU delta by a near-zero window and report anything from 0% to thousands.
 pub(crate) struct StatsState {
     sampler: Arc<dyn MemorySampler>,
     // `std::sync::Mutex`: every critical section is a map operation, none
@@ -334,15 +328,10 @@ impl StatsState {
     /// Every process `index` reports as a descendant of `root_pid`, in pid
     /// order, excluding `root_pid` itself.
     ///
-    /// Cycle-safe like [`TreeIndex::total_over`]: the kernel does not
-    /// produce a cycle in the parent links, but a fixture can and a torn
-    /// `/proc` read might.
-    ///
-    /// Not exactly the set of processes a stop kills. A stop signals the
-    /// process group, then sweeps this tree as walked at the stop and at the
-    /// last tick. So it also kills a group member that double-forked out of
-    /// the tree, unlisted here. Anything rendering this list owes the operator
-    /// that caveat.
+    /// Cycle-safe like [`TreeIndex::total_over`]: the kernel does not produce
+    /// a cycle in the parent links, but a fixture can and a torn `/proc`
+    /// read might. Not exactly the set a stop kills, which also reaches a
+    /// group member that double-forked out of the tree.
     pub(crate) fn lambs_of(&self, index: &LambIndex, root_pid: u32) -> Vec<Lamb> {
         // `visited` seeded with the root, which does two things at once: it
         // keeps the sheep out of its own lamb list, and it terminates a

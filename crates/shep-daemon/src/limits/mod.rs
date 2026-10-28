@@ -1,16 +1,13 @@
 //! Process-tree memory limits (spec §4).
 //!
 //! A sheep's [`max_memory`](shep_core::config::AppConfig::max_memory) is
-//! enforced against the process tree, its own pid plus every lamb it spawned,
-//! not its resident set alone. [`sample::MemorySampler`] reads the process
-//! table, [`sample::tree_rss`] sums one tree, and [`LimitEnforcer`] watches
-//! those sums; `stats::StatsState` rides the same tick for `shep flock` and
-//! to prune lamb labels and record each tree for the lamb sweep. The
-//! ppid-based sum only approximates what a stop ends: the stop signals the
-//! process group, then sweeps the tree. A forked orphan that left the tree
-//! is still killed with its group, though never summed. A breach is noticed
-//! at the next `MEMORY_POLL_INTERVAL`, and its restart does not count
-//! against `max_restarts`.
+//! enforced against the process tree, its own pid plus every lamb it
+//! spawned, not its resident set alone. [`sample::MemorySampler`] reads the
+//! process table, [`sample::tree_rss`] sums one tree, and [`LimitEnforcer`]
+//! watches those sums. The ppid-based sum only approximates what a stop
+//! ends: the stop signals the process group, then sweeps the tree. A breach
+//! is noticed at the next `MEMORY_POLL_INTERVAL`, and its restart does not
+//! count against `max_restarts`.
 
 use core::time::Duration;
 use std::collections::HashMap;
@@ -57,8 +54,7 @@ pub(crate) struct LimitBreach {
 /// planned for v1.1 writes `memory.max` and reads `memory.events`, and must
 /// replace the polling one without the engine noticing.
 ///
-/// Public because `tests/external_impls.rs` implements it from outside this
-/// crate.
+/// Public because `tests/external_impls.rs` implements it from outside this crate.
 pub trait LimitEnforcer: Send + Sync + 'static {
     /// Begins enforcing `limit` against the process tree rooted at `root_pid`.
     ///
@@ -66,9 +62,7 @@ pub trait LimitEnforcer: Send + Sync + 'static {
     /// gives the same id a new pid.
     ///
     /// A breach disarms the id it reports, so the next sampling pass cannot
-    /// re-report the same over-limit tree while the restart it caused is
-    /// still in flight. Re-arming, once the sheep is back online, is the
-    /// caller's job. Every implementation must honour this.
+    /// re-report the same over-limit tree while its restart is in flight.
     fn arm(&self, id: u32, root_pid: u32, limit: MemSize);
     /// Stops enforcing against `id`. A no-op if it was never armed.
     fn disarm(&self, id: u32);
@@ -97,8 +91,7 @@ impl PollingEnforcer {
     /// within a Tokio runtime context: it spawns the polling task at once.
     ///
     /// `stats` rides the same tick: this loop is the only scheduled walk of
-    /// the process table, and a second loop would double a 5.77 ms walk to
-    /// buy nothing.
+    /// the process table.
     #[must_use]
     pub(crate) fn start(
         sampler: Arc<dyn MemorySampler>,

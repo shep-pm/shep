@@ -45,23 +45,15 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// `blob`'s flock.
 ///
 /// The target is asked first whether it reads the blob's format, so a build
-/// that cannot is refused here, with this image still running, rather than
-/// after it is gone.
-///
-/// Each descriptor `blob` names is carried under its own number as a decimal
-/// string. The exec keeps the numbers, so the blob's own are the ones the
-/// successor adopts by.
-///
-/// The gates on the flock (the fitness rules and the rehearsal of the
-/// successor's adoption) are the caller's and have already run.
-///
+/// that cannot is refused here, with this image still running. Each
+/// descriptor `blob` names is carried under its own number as a decimal
+/// string, so the blob's own are the ones the successor adopts by. The
+/// gates on the flock are the caller's and have already run.
 /// # Errors
 ///
-/// Returns only if the handover did not happen. A descriptor the blob names is
-/// not open, no binary is safe to exec, the target does not read the blob's
-/// format or could not be asked, the blob could not be written, or the exec
-/// failed. Each leaves this process still itself, with no blob on disk and
-/// every descriptor close-on-exec as before.
+/// Returns only if the handover did not happen: a named descriptor is not
+/// open, no binary is safe to exec, the target refuses the blob's format,
+/// the blob could not be written, or the exec failed.
 pub fn hand_over(blob: &Handover, paths: &ShepPaths) -> Result<Infallible, HandOverError> {
     hand_over_tuned(blob, paths, |handover| {
         handover.probe_timeout(PROBE_TIMEOUT)

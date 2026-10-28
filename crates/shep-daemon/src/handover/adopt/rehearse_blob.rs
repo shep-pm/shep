@@ -279,9 +279,7 @@ mod tests {
     /// duplicate.
     ///
     /// The connection is queued before the rehearsal, since `O_NONBLOCK`
-    /// reaches the original through the duplicate and this fixture's listener
-    /// is a plain `std` one that really does change. Queueing first leaves
-    /// the accept below something waiting either way.
+    /// reaches the original through the duplicate.
     #[tokio::test]
     async fn a_rehearsal_leaves_every_descriptor_it_checked_working() {
         use std::io::{Read as _, Write as _};

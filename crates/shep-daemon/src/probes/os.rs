@@ -156,9 +156,7 @@ impl OsProber {
 /// `sh -c 'thing & …'` leaves a fork a leader-only kill never reaches; a
 /// descendant that calls `setsid` escapes the group and survives anyway.
 ///
-/// Signalling `-pid` after the leader is reaped cannot reach a stranger:
-/// POSIX holds a group id out of the pool until its last member leaves.
-/// Failure is logged, because the probe's verdict is the same either way.
+/// Signalling `-pid` after the leader is reaped cannot reach a stranger.
 #[cfg(unix)]
 fn kill_probe_group(pid: Option<u32>) {
     // `None` only if the caller read the pid from an already-reaped `Child`,
@@ -231,11 +229,9 @@ async fn http_roundtrip(host: &str, port: u16, path: &str) -> Result<(), ProbeFa
 ///
 /// `ProbeTarget` strips brackets off an IPv6 literal like `[::1]` at parse
 /// time so `TcpStream::connect` can take `(host, port)`; the header needs
-/// them back, since `Host: ::1` reads as colon-separated fields rather
-/// than one address.
+/// them back, since `Host: ::1` reads as colon-separated fields.
 ///
-/// The port is included unless it is the scheme default: a name-based
-/// virtual host serving several ports routes on this header alone.
+/// The port is included unless it is the scheme default.
 fn host_header(host: &str, port: u16) -> String {
     let host = if host.contains(':') {
         format!("[{host}]")
@@ -269,14 +265,10 @@ async fn read_status_line(stream: TcpStream) -> Result<String, ProbeFailure> {
 /// Parses the numeric status out of an HTTP status line (`HTTP/1.1 200 OK`
 /// -> `200`) and maps it to a pass or a [`ProbeFailure::Rejected`].
 ///
-/// Requires the `HTTP/` prefix: checking only "the second token" would
-/// read `BANANA 204 whatever` from a non-HTTP service as healthy. Never
-/// panics on a malformed line: `.nth(1)` and `.parse().ok()` both return
-/// `None` rather than panicking.
-///
-/// A line with no parseable status is `Rejected`, not `Transport`: the
-/// connection succeeded and bytes came back, so a verdict was possible,
-/// just negative.
+/// Requires the `HTTP/` prefix: checking only "the second token" would read
+/// `BANANA 204 whatever` from a non-HTTP service as healthy. Never panics on
+/// a malformed line. A line with no parseable status is `Rejected`, not
+/// `Transport`: the connection succeeded and bytes came back.
 fn evaluate_status_line(line: &str) -> Result<(), ProbeFailure> {
     let trimmed = line.trim_end_matches(['\r', '\n']);
     let Some(after_version) = trimmed.strip_prefix("HTTP/") else {
@@ -664,10 +656,8 @@ mod tests {
     /// transition all the way to `ESRCH` proves the process is really gone
     /// rather than exited-but-unreaped.
     ///
-    /// Copied from `tests/real_runner/main.rs`'s own `assert_reaped` for the same
-    /// reason that one is a copy of `daemon_e2e.rs`'s: an integration binary
-    /// is a separate crate and cannot share a `#[cfg(test)]` helper with this
-    /// module.
+    /// Copied from `tests/real_runner/main.rs`'s own `assert_reaped`: an
+    /// integration binary is a separate crate and cannot share a helper.
     #[cfg(unix)]
     async fn assert_reaped(pid: i32, what: &str) {
         let reaped = tokio::time::timeout(REAP_DEADLINE, async {

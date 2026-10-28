@@ -1,30 +1,13 @@
 //! Populated blobs an older release wrote, and the state that must come back.
 //!
 //! The fixtures in [`super::old_blobs`] hold every optional field as the word
-//! its writer had for "nothing is happening": `manual` null, `reload` the
-//! `none` variant, `reloads` empty, a carried config with every field at its
-//! default. Those catch a key going missing. They cannot catch a key being
-//! renamed: an absent key and a `None` read the same, and `AppConfig` carries
-//! `#[serde(default)]`, so a renamed config field hands the successor that
-//! field's own default and every assertion still holds.
+//! its writer had for "nothing is happening", so they catch a key going
+//! missing but not a key being renamed: an absent key and a `None` read the
+//! same, and `AppConfig` carries `#[serde(default)]`.
 //!
 //! Each file here is the same release's bytes with every optional field that
-//! release could carry filled in, dumped through that release's own code: its
-//! serialiser, its `Handover`, its `AppConfig`, its `CarriedReload`. The
-//! release's own deserialiser had to accept the filled-in blob before its own
-//! serialiser wrote it, so these are blobs that release could really have put
-//! on disk. `crates/shep-daemon/fixtures/handover/README.md` names the dump.
-//!
-//! Each blob carries three sheep, one per story a carried marker is for: an
-//! ordinary `Online` sheep with a parked config and a delete asked for, a
-//! `Stopping` drainee mid-swap with the reload job beside it, and a
-//! `waiting-restart` sheep owed a respawn with its deadline. A rename of any
-//! of these fields leaves the fixture's key unknown to this image, the value
-//! lands as the field's own default, and the assertion for it fails.
-//!
-//! Each one also goes through [`assert_the_shape`], which pins the key set at
-//! every level of the blob. Filling values in added no key and dropped none, so
-//! a populated fixture holds exactly what its plain sibling holds.
+//! release could carry filled in, dumped through that release's own code, so
+//! these are blobs that release could really have put on disk.
 
 use shep_core::protocol::DogSource;
 use shep_core::status::ProcStatus;

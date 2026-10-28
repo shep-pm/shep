@@ -1,14 +1,13 @@
 //! The key set each committed handover fixture must hold.
 //!
-//! `crates/shep-daemon/fixtures/handover/README.md` states the policy: a shape
-//! is the set of keys a serialised blob holds, at the blob, at `sheep[]`, at
-//! `sheep[].fds` and at `sheep[].app`. This file is that policy as data, one
-//! [`Shape`] per release, and [`assert_the_shape`] checks a fixture against it.
+//! `crates/shep-daemon/fixtures/handover/README.md` states the policy: a
+//! shape is the set of keys a serialised blob holds, at the blob, at
+//! `sheep[]`, at `sheep[].fds` and at `sheep[].app`. This file is that
+//! policy as data, one [`Shape`] per release, and [`assert_the_shape`] checks
+//! a fixture against it.
 //!
-//! A key set alone catches a key going missing and nothing else: an absent key
-//! and a `null` read the same, and `AppConfig` carries `#[serde(default)]`, so
-//! a renamed field hands the successor that field's own default. The value
-//! half is in [`old_blob_state`](super::old_blob_state).
+//! A key set alone catches a key going missing and nothing else: an absent
+//! key and a `null` read the same. The value half is in [`old_blob_state`](super::old_blob_state).
 
 use std::path::PathBuf;
 
@@ -406,19 +405,10 @@ const SHAPES: [(&str, Shape); 12] = [
 ];
 
 /// Assert a committed fixture holds exactly the key set the release it is
-/// named for wrote, at the blob, at every sheep it carries, at that sheep's
-/// descriptors and at its config. This is the issue's "each fails if its file's
-/// bytes change shape": trimming a key, adding one, or swapping in another
-/// release's bytes fails here rather than loading quietly at a
-/// `#[serde(default)]`.
-///
-/// `stem` is a fixture's file name without its extension, so a populated
-/// fixture carries its tag plus `-populated`; the shape it must hold is the one
-/// named by the tag in front of that suffix. `sheep_count` is how many sheep
-/// that fixture carries: one for a plain fixture, three for a populated one.
-///
+/// named for wrote, at the blob, at every sheep, at each sheep's descriptors
+/// and at its config. `stem` is the fixture's file name without extension,
+/// and `sheep_count` how many sheep that fixture carries.
 /// # Panics
-///
 /// Panics if `stem` names no fixture in [`SHAPES`], if the file is unreadable
 /// or not JSON, or if its `sheep` is not an array.
 #[track_caller]

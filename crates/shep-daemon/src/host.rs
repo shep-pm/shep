@@ -2,32 +2,12 @@
 //! to.
 //!
 //! Three of the four numbers a host line shows are rates, so none of them
-//! exists in a single moment: CPU, disk traffic and network traffic are all
+//! exists in a single moment: CPU, disk traffic and network traffic are
 //! differences between two readings of a counter the kernel only ever
-//! increments. The kernel stores an odometer, and nothing anywhere reports a
-//! speed.
-//!
-//! So something that is already running has to keep the earlier reading.
-//! [`HostState`] is that something, and it is the reason a one-shot
-//! `shep flock` can show the same numbers `shep flock --follow` does. The
-//! shape is [`limits::stats`](crate::limits::stats)': one writer on a
-//! periodic tick, and a reader that serves a listing by taking what is
-//! already there.
-//!
-//! The invariant here is stronger than that module's, and structurally so
-//! rather than by rule: the [`HostSource`] lives inside the sampling task,
-//! so a request cannot reach it. Sampling twice in quick succession would
-//! divide a near-zero delta by a near-zero window and report anything from
-//! nothing to thousands.
-//!
-//! Cost is what decides the tick. Nothing here refreshes anything that is
-//! not served: no process table, which is what makes
-//! [`limits::sample`](crate::limits::sample)'s walk expensive, no swap, no
-//! disk capacity, no component temperatures. Measured on macOS in a release
-//! build at 715 us a tick over three rounds of 100, of which the block
-//! devices are 450 us and the interfaces 240 us; CPU and memory together
-//! are under a microsecond. Split by source on purpose, so the next person
-//! to want this cheaper knows which half to cut.
+//! increments. [`HostState`] keeps the earlier reading, which is why a
+//! one-shot `shep flock` can show the same numbers `shep flock --follow`
+//! does. The [`HostSource`] lives inside the sampling task, so a request
+//! cannot reach it and sample twice in quick succession.
 
 use core::time::Duration;
 use std::collections::BTreeSet;
@@ -46,12 +26,9 @@ use shep_core::protocol::HostUsage;
 ///
 /// One second, which is the interval three other things in this workspace
 /// already run on: `shep flock --follow`'s default redraw, its floor, and
-/// `shep lookout`'s own host sampler. A followed listing therefore keeps
-/// moving at the cadence it moved at when it sampled for itself.
+/// `shep lookout`'s own host sampler.
 ///
-/// Comfortably above `sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`, the 200 ms
-/// floor [`is_measurable`] holds every rate to, and cheap enough at 715 us a
-/// tick that an idle shepherd spends 0.07% of one core on it.
+/// Comfortably above `sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`, the 200 ms floor [`is_measurable`] holds every rate to.
 pub(crate) const HOST_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Where one host reading comes from.
@@ -101,11 +78,8 @@ impl HostState {
     ///
     /// Two reasons for `None` and they are not the same: a platform
     /// `sysinfo` cannot read at all, and a daemon whose sampling task has
-    /// not reached its first line yet. The second lasts microseconds and is
-    /// over before the control socket accepts anything, so the answer a
-    /// client can actually observe is the first.
-    ///
-    /// Never samples. That is the whole point of the type.
+    /// not reached its first line yet. The second is over before the control
+    /// socket accepts anything.
     #[must_use]
     pub(crate) fn latest(&self) -> Option<HostUsage> {
         *self.latest.lock().unwrap_or_else(PoisonError::into_inner)
@@ -133,10 +107,9 @@ impl HostState {
             let writes_to = Arc::clone(&latest);
             tokio::spawn(async move {
                 // The seeding read, before the first tick rather than after
-                // it: its window is zero so every rate comes back absent,
-                // but memory is not a rate and this is what puts a real
-                // figure in front of a listing that arrives in the first
-                // second of a shepherd's life.
+                // it: its window is zero so every rate comes back absent, but
+                // memory is not a rate and this is what puts a real figure in
+                // front of a listing that arrives in the first second.
                 *writes_to.lock().unwrap_or_else(PoisonError::into_inner) = Some(source.sample());
 
                 let mut ticker = tokio::time::interval(interval);
@@ -185,14 +158,8 @@ struct DiskIo {
 /// The entries are mount points, and several of them can sit on one device.
 /// macOS is where this bites: `sysinfo` walks each APFS volume up to the
 /// `IOBlockStorageDriver` behind it, so `/` and `/System/Volumes/Data`
-/// report the same counters and a plain sum doubles every number. Measured
-/// 12 times out of 12 under a 4 GB write, both volumes byte-identical every
-/// round.
-///
-/// Lifetime counters are the identity because `sysinfo` exposes no device
-/// name to group by. Two genuinely separate devices agreeing on both 64-bit
-/// counters would collapse into one, which is only reachable at boot with
-/// both at zero, where they contribute nothing either way.
+/// report the same counters and a plain sum doubles every number. Lifetime
+/// counters are the identity because `sysinfo` exposes no device name.
 fn distinct_disk_io(entries: impl IntoIterator<Item = DiskIo>) -> (u64, u64) {
     let mut seen = BTreeSet::new();
     let mut read = 0u64;
@@ -210,10 +177,8 @@ fn distinct_disk_io(entries: impl IntoIterator<Item = DiskIo>) -> (u64, u64) {
 ///
 /// A host line counts what left the machine. On a box where a sheep answers
 /// a local proxy, loopback carries every request twice and swamps the
-/// interface an operator is actually watching. Judged by address rather than
-/// by name, since `lo` and `lo0` are two spellings of a set with no promised
-/// end. An interface with no addresses at all is not loopback; it also moves
-/// no bytes.
+/// interface an operator is watching. Judged by address rather than by name,
+/// since `lo` and `lo0` are two spellings of a set with no promised end.
 fn is_loopback(interface: &NetworkData) -> bool {
     addresses_are_loopback(interface.ip_networks())
 }
@@ -254,10 +219,7 @@ fn per_second(bytes: u64, window: Duration) -> u64 {
 /// target `sysinfo` cannot read, which is a real state a caller has to serve
 /// rather than an error.
 ///
-/// `tokio::time::Instant`, not `std::time::Instant`, for
-/// [`limits::stats`](crate::limits::stats)' reason: a paused clock is what
-/// lets a test advance a window and get a rate out, where a wall clock would
-/// make every test assert on however long a CI runner took.
+/// `tokio::time::Instant`, not `std::time::Instant`, for [`limits::stats`](crate::limits::stats)' reason.
 #[derive(Debug)]
 struct HostWatch {
     system: System,
@@ -317,14 +279,9 @@ impl HostSource for HostWatch {
 
         self.system.refresh_specifics(Self::refresh());
         // `true` on both: drop whatever this enumeration no longer lists.
-        // The flag is `remove_not_listed`, and with `false` a device or an
-        // interface that goes away keeps its entry, frozen at the last
-        // window's delta, which the sums below then re-add on every later
-        // sample for the life of the daemon. A disk keeps its lifetime pair
-        // too, so it also stays a distinct `distinct_disk_io` key. Nothing
-        // is lost by dropping them: a device seen for the first time starts
-        // at `read_bytes == old_read_bytes`, so its first reported delta is
-        // zero rather than its whole lifetime counter (sysinfo 0.38.4).
+        // With `false` a device or an interface that goes away keeps its
+        // entry, frozen at the last window's delta, which the sums below then
+        // re-add for the life of the daemon.
         self.disks.refresh_specifics(true, Self::disk_refresh());
         self.networks.refresh(true);
 
@@ -425,10 +382,8 @@ mod tests {
     /// short to divide by, or if the floor drifts off `sysinfo`'s own.
     ///
     /// A pure function rather than a real reading, deliberately: asserting
-    /// that [`HostWatch::install`] and the reading after it fall inside
-    /// 200 ms would be asserting that a CI runner never deschedules a
-    /// thread, and the rule under test has nothing to do with how fast the
-    /// machine is.
+    /// that [`HostWatch::install`] and the reading after it fall inside 200 ms
+    /// would be asserting that a CI runner never deschedules a thread.
     #[test]
     fn a_window_under_sysinfos_own_floor_carries_no_rate() {
         assert!(!is_measurable(Duration::ZERO));

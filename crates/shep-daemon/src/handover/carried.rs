@@ -54,8 +54,7 @@ fn known_dog<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<DogSou
 /// respawn this exact instance without asking the muster roll. Every other
 /// field is what this instance is currently doing.
 ///
-/// An absent `Option` key loads as `None`, so a blob an older image wrote
-/// still loads and [`VERSION`](super::VERSION) stays unmoved.
+/// An absent `Option` key loads as `None`, so a blob an older image wrote still loads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CarriedSheep {
     /// The supervisor's entry id, which callers already hold and selectors
@@ -93,11 +92,8 @@ pub struct CarriedSheep {
     /// ([`CarriedFds::dog_link`]) and for one whose dog had not yet sent its
     /// `Hello`.
     ///
-    /// `Some` is the topic patterns it had subscribed to, empty for none: the
-    /// dog has shaken hands, so its next frame is a request. The subscription
-    /// itself lives in the predecessor's memory and dies at the exec, while
-    /// the connection it rode on does not, so the dog would never hear that it
-    /// had stopped. An absent key reads as a connection still to be greeted.
+    /// `Some` is the topic patterns it had subscribed to, empty for none. The
+    /// subscription lives in the predecessor's memory and dies at the exec.
     pub(super) dog_topics: Option<Vec<String>>,
     /// Whether an operator's `delete` targeted this instance before the
     /// exec. An absent key means "no".
@@ -127,9 +123,7 @@ pub struct CarriedSheep {
     /// Wall-clock and not monotonic: a [`tokio::time::Instant`] has no epoch
     /// across the `execve`, while an absolute moment lets the successor re-arm
     /// for what is left. A clock that moves under it is clamped by
-    /// [`adopted_restart_delay`](crate::backoff::adopted_restart_delay). An
-    /// absent key re-arms the whole delay, and only a `WaitingRestart` row
-    /// carries one.
+    /// [`adopted_restart_delay`](crate::backoff::adopted_restart_delay).
     pub(super) restart_due: Option<SystemTime>,
     /// Where this instance's binary came from, for an instance that is a
     /// dog, or `None` for an ordinary sheep.
@@ -137,8 +131,7 @@ pub struct CarriedSheep {
     /// An absent key means "not a dog". The whole [`DogSource`] and not a
     /// boolean, because `shep dogs` reports where each dog's binary came from.
     ///
-    /// Losing the marker is invisible to a pid check: `Actor::matching_ids`,
-    /// `dogs::spawn_dog_watch` and `rpc::dog_staleness` all read it.
+    /// Losing the marker is invisible to a pid check.
     #[serde(default, deserialize_with = "known_dog")]
     pub(super) dog: Option<DogSource>,
     /// The config a load parked for this instance's next spawn, or `None`
@@ -152,10 +145,9 @@ pub struct CarriedSheep {
     /// [`Self::credentials`].
     ///
     /// `None` reads as `false`, and covers both an absent key and a sheep with
-    /// nothing parked.
-    ///
-    /// Carried with [`Self::pending`] and never without it: the load that
-    /// parks the config decides this, and a later diff cannot recompute it.
+    /// nothing parked. Carried with [`Self::pending`] and never without it: the
+    /// load that parks the config decides this, and a later diff cannot
+    /// recompute it.
     pub(super) pending_reidentifies: Option<bool>,
     /// Whether an operator disabled this instance's app. An absent key reads
     /// as "no".
@@ -396,10 +388,8 @@ impl CarriedSheep {
 /// Owns a duplicate of the descriptor the server task is reading, so the
 /// number [`Handover::carry_dog_links`](super::Handover::carry_dog_links)
 /// writes into the blob cannot name a different file if that task ends first.
-/// Both are one open file description, so the dup is the same connection.
 ///
-/// `Debug` is derived: a name, a pid, a descriptor number and topic patterns
-/// are all in `shep flock` already, and no env value reaches this type.
+/// `Debug` is derived: no env value reaches this type.
 #[derive(Debug)]
 pub struct DogConnection {
     /// The dog's name, as its sheep is named.
@@ -420,8 +410,7 @@ pub struct DogConnection {
 ///
 /// `None` on the four output fields means the instance is registered and not
 /// running; losing a sheep's stdout read end blocks the child on `write()`
-/// once the 64KiB pipe buffer fills. [`Self::stdin`], [`Self::channel`] and
-/// [`Self::dog_link`] are present only for a running sheep that has one.
+/// once the 64KiB pipe buffer fills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CarriedFds {
     /// The read end of the sheep's stdout pipe.
@@ -445,8 +434,7 @@ pub struct CarriedFds {
     /// description.
     ///
     /// `None` for a sheep whose app set none of `channel`, `wait_ready` or
-    /// `shutdown_with_message`, for a sheep that is not running, and for one
-    /// whose child has closed its fd 3. An absent field loads as `None`.
+    /// `shutdown_with_message`, and for one that is not running.
     pub channel: Option<RawFd>,
     /// The daemon's end of the dog's own connection, whose other end is the
     /// child's fd 4.

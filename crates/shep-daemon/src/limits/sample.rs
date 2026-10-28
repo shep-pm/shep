@@ -7,9 +7,7 @@
 //! feed; see [`limits`](crate::limits) for why the sum spans the whole
 //! process tree.
 //!
-//! Every item here is public so the bench crate and
-//! `tests/external_impls.rs` can use [`ProcessRss`], [`tree_rss`],
-//! [`SysinfoSampler`] and [`MemorySampler`] from outside this crate.
+//! Every item here is public so the bench crate and `tests/external_impls.rs` can use it.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
@@ -63,12 +61,8 @@ pub trait MemorySampler: Send + Sync + 'static {
     /// Walks the table separately from [`Self::sample`] rather than sharing
     /// it: see [`SysinfoSampler`]'s own `identify` for why a shared table
     /// would give stale names forever.
-    ///
     /// # Default implementation
-    ///
-    /// Empty: added to a `pub` trait without breaking an out-of-tree
-    /// implementor. Callers must read an empty answer as "unknown", never
-    /// as "no lambs".
+    /// Empty, so a `pub` trait gains it without breaking an out-of-tree implementor.
     fn identify(&self) -> Vec<ProcessIdentity> {
         Vec::new()
     }
@@ -107,15 +101,10 @@ impl Default for SysinfoSampler {
 /// The refresh kind [`SysinfoSampler::sample`] asks sysinfo for, named so
 /// a test can assert on the flags directly.
 ///
-/// `.with_cpu()`: without it, sysinfo leaves `accumulated_cpu_time` at 0 on
-/// every platform, so every derived percentage reads a plausible, wrong
-/// `0.0`. It is a counter, correct on the first read, so sysinfo's
-/// rate-only wait-then-refresh-twice advice does not apply here.
-///
-/// `.without_tasks()`: `ProcessRefreshKind::nothing()` defaults `tasks` to
-/// on, and on Linux that lists each thread as a row [`tree_rss`] cannot
-/// tell from a real child, multiplying memory by thread count and
-/// doubling CPU.
+/// `.with_cpu()`: without it sysinfo leaves `accumulated_cpu_time` at 0, so
+/// every derived percentage reads a plausible, wrong `0.0`.
+/// `.without_tasks()`: `nothing()` defaults `tasks` to on, and on Linux that
+/// lists each thread as a row [`tree_rss`] cannot tell from a real child.
 fn sample_refresh_kind() -> ProcessRefreshKind {
     ProcessRefreshKind::nothing()
         .with_memory()
@@ -129,8 +118,7 @@ fn sample_refresh_kind() -> ProcessRefreshKind {
 /// and `parent()`, so `shep describe` does not pay the poll's syscalls for
 /// figures it does not read.
 ///
-/// `.without_tasks()`, for the reason [`sample_refresh_kind`] gives: without
-/// it `stats`' lamb index would list every thread of a sheep as a lamb.
+/// `.without_tasks()`, for the reason [`sample_refresh_kind`] gives.
 fn identify_refresh_kind() -> ProcessRefreshKind {
     ProcessRefreshKind::nothing().without_tasks()
 }
@@ -638,10 +626,9 @@ mod tests {
         /// reporting whatever it last saw.
         ///
         /// 10s = 10,000ms, against 5.7ms to 12.0ms for one `identify` walk
-        /// over 787 processes, ten samples on an idle arm64 macOS host, so
-        /// roughly a thousand walks' worth. Margin against a stalled runner
-        /// rather than an estimate of the work: a real regression pays it
-        /// twice and still finishes inside the harness timeout.
+        /// over 787 processes on an idle arm64 macOS host, so roughly a
+        /// thousand walks' worth. Margin against a stalled runner rather
+        /// than an estimate of the work.
         #[cfg(unix)]
         const GIVE_UP_AFTER: Duration = Duration::from_secs(10);
 
@@ -672,7 +659,6 @@ mod tests {
         /// Returns the last name seen once [`GIVE_UP_AFTER`] elapses, so a
         /// caller whose `accept` never fired asserts against a real
         /// observation rather than against having run out of patience.
-        ///
         /// `cfg(unix)` alongside its only callers, below.
         #[cfg(unix)]
         fn name_when(
@@ -700,12 +686,9 @@ mod tests {
             let mut child = Command::new("/bin/sh")
                 .arg("-c")
                 // `read` rather than a `sleep` long enough to win the race:
-                // the child blocks here until this end of the pipe closes,
-                // so the walk below cannot arrive after the `exec` however
-                // slow the machine is. A head start measured on an idle
-                // machine is no head start on a loaded runner. The `read`
-                // ends on EOF as readily as on a line, so dropping the
-                // handle is the whole handshake.
+                // the child blocks here until this end of the pipe closes, so
+                // the walk below cannot arrive after the `exec` however slow
+                // the machine is. The `read` ends on EOF as readily as on a line.
                 .arg("read _; exec sleep 30")
                 .stdin(Stdio::piped())
                 .spawn()
@@ -716,12 +699,7 @@ mod tests {
             // Any name but `sleep`, rather than the shell's own name: this
             // case pins that the second walk is fresh, and which shell the
             // first walk caught is not its business. macOS `/bin/sh` is a
-            // shim that execs `/bin/bash`, so pinning `sh` pinned a window
-            // under a millisecond wide. Measured 2026-09-18, 200 walks
-            // against a child held at the `read` below: `bash` 199, `sh` 1,
-            // and the lone `sh` was the first walk. That is the race that
-            // failed `slow (macos-latest)` on shep-pm/shep#309, reported as
-            // `left: Some("bash")`.
+            // shim that execs `/bin/bash`, so pinning `sh` pinned a sub-millisecond window.
             let forked_as = name_when(&sampler, pid, |name| name.is_some());
             // Releases the child into its `exec`. Before the assertions, so
             // a failing one cannot leave a shell blocked on `read` forever.

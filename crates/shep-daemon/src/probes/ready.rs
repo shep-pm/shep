@@ -2,20 +2,12 @@
 //! `online` (spec §7).
 //!
 //! A sheep whose app configures `wait_ready` or `readiness_probe` holds at
-//! `starting` until [`await_ready`] resolves. `ReadinessSource::Heuristic` is
-//! reachable from reload's `AwaitReady` state, and from an ordinary `start`
-//! too when the app's name is in a boot stage's gate set even though it
-//! configures no signal of its own: the wait then costs `listen_timeout`
-//! rather than nothing.
+//! `starting` until [`await_ready`] resolves. `ReadinessSource::Heuristic`
+//! is reachable from reload's `AwaitReady` state, and from an ordinary
+//! `start` when the app's name is in a boot stage's gate set even though it
+//! configures no signal of its own.
 //!
-//! A probe wait sleeps at most a quarter of its deadline between looks, cut
-//! from `interval` where that is wider: the first probe lands at t=0, before
-//! a fresh process has bound anything, and each sleep runs from the end of
-//! the probe before it, so a slow probe shifts the looks after it.
-//!
-//! ## Reference
-//!
-//! - [`ReadinessSource`], [`Readiness`], [`await_ready`]
+//! A probe wait sleeps at most a quarter of its deadline between looks.
 
 use core::future::Future;
 use core::time::Duration;
@@ -66,11 +58,8 @@ impl ReadinessSource {
     /// Every supervisor site reads the source off a `ResolvedApp`, which
     /// `normalize` built by running [`ProbeTarget::parse`] over its
     /// `readiness_probe`.
-    ///
     /// # Panics
-    ///
-    /// Never for a `ResolvedApp`. A panic means an app reached the
-    /// supervisor without going through `normalize`.
+    /// Never for a `ResolvedApp`. A panic means an app reached the supervisor without `normalize`.
     #[track_caller]
     pub(crate) fn of_normalized(config: &AppConfig) -> Self {
         Self::of(config).expect("ResolvedApp already passed ProbeTarget::parse in normalize")
@@ -122,9 +111,8 @@ pub async fn await_ready(
         ReadinessSource::Channel => {
             // A dropped sender must not resolve this wait early, since
             // deciding here would race the exit path. A closed channel
-            // switches to a future that never resolves, leaving the
-            // deadline in `within_deadline` as the only thing that ends
-            // the wait.
+            // switches to a future that never resolves, leaving the deadline
+            // in `within_deadline` as the only thing that ends the wait.
             let wait_for_signal = async {
                 if channel.await.is_err() {
                     core::future::pending::<()>().await;

@@ -3,79 +3,15 @@
 //!
 //! Every command that reaches the flock goes through one
 //! [`SupervisorHandle`](supervisor::SupervisorHandle). Pure decision logic
-//! (brain, backoff, entry assembly) is IO-free, so it tests deterministically
-//! under a paused tokio clock. `RpcServer` exposes the engine to a CLI client
-//! over `$SHEP_HOME/run/shep.sock`, and [`boot`] assembles both into one
-//! running daemon. The CLI re-executes itself with a hidden `daemon`
-//! subcommand to daemonize.
+//! (brain, backoff, entry assembly) is IO-free, so it tests under a paused
+//! tokio clock. [`boot`] assembles the engine and the `RpcServer` into one
+//! daemon. Three tiers, top down: the engine and its actor, the control
+//! plane a CLI client talks to, and the platform glue under both.
 //!
-//! ## Module taxonomy
-//!
-//! A linked name below is public; a name in plain backticks is crate-private
-//! and has no rendered page to link to. The split is the crate's API
-//! boundary: the two commented blocks of module declarations say which
-//! consumer holds each public one open.
-//!
-//! ##### Engine
-//!
-//! Process-lifecycle decision logic and the actor that runs it.
-//!
-//! - `brain`: restart decision tree given exit outcome, uptime, and budget
-//! - `backoff`: restart delay per the spec's exponential backoff rule
-//! - [`assemble`]: process env, log paths, and spawn spec assembly
-//! - `entry`: process lifecycle state, restart budget, reload state machine
-//! - [`runner`]: [`ProcessRunner`](runner::ProcessRunner) spawn seam, two impls
-//! - `fake`: deterministic scripted runner, absent from a default-features build
-//! - `kill`: the kill ladder, portable and generic over the process handle
-//! - `sweep`: signals the lambs a sheep left running once its leader is reaped
-//! - [`supervisor`]: the actor: owns entries, spawns per-sheep tasks, routes commands
-//! - [`channel`]: shepherd channel codec (child↔daemon messages, newline-JSON)
-//! - `cron`: the `Clock` seam and the `cron_restart` worker
-//! - [`limits`]: the [`MemorySampler`](limits::sample::MemorySampler) seam over
-//!   a sheep's process tree, and the enforcer that reports a `max_memory` breach
-//! - [`probes`]: the [`Prober`](probes::Prober) seam and the liveness loop that
-//!   reports a sheep unhealthy after `failure_threshold` consecutive failures;
-//!   `os::OsProber` is the hand-rolled HTTP/TCP/exec implementation
-//! - `watch`: the `WatchSource` seam over notify's debounced events
-//! - `extras`: arms the four subsystems above while a sheep is online, and
-//!   turns a memory breach or a liveness failure into a guarded restart
-//!
-//! ##### Plane
-//!
-//! The control plane a CLI client talks to: event bus, request dispatch, the
-//! socket, the persisted muster roll, and the boot sequence wiring it all.
-//!
-//! - `bus`: the event bus: topic-glob filtering, per-subscriber forwarder tasks
-//! - [`rpc`]: verb routing onto
-//!   [`SupervisorHandle`](supervisor::SupervisorHandle), typed errors, deadlines
-//! - [`dogs`]: what a dog is spawned as ([`dog_app`](dogs::dog_app)) and the
-//!   `[<name>]` section, read from `dogs.toml`, served back to it over the
-//!   socket ([`dog_section`](dogs::dog_section))
-//! - `server`: the connection layer: peer-cred auth, handshake, subscriptions
-//! - [`snapshot`]: the muster roll: debounced atomic `flock.json` writes, restore
-//! - [`boot`]: `0700` layout dirs, pidfile, socket bind with stale-socket
-//!   recovery, the readiness pipe, signal handlers, ordered teardown (unix only)
-//!
-//! ##### Platform
-//!
-//! Platform glue underneath both tiers above.
-//!
-//! - `sys`: adopting an inherited descriptor, this crate's only unsafe surface
-//!   on unix (unix only)
-//! - `proc_table`: targeted process-table reads of a few named pids, for
-//!   start times and liveness (reads unix only), and the clock they share
-//! - [`privilege`]: `user`/`group` config to numeric uid/gid, one portable
-//!   `resolve()` over a unix impl and a non-unix stub that refuses outright
-//! - [`notify`]: `READY=1` and `EXTEND_TIMEOUT_USEC` datagrams to
-//!   `$NOTIFY_SOCKET`, sent by [`boot`] (unix only)
-//! - [`tokio_runner`]: real [`ProcessRunner`](runner::ProcessRunner) over
-//!   `tokio::process` (unix only)
-//!
-//! # Quick start
+//! # Examples
 //!
 //! Builds a supervisor engine with a scripted fake runner, registers one app,
 //! and lists the live processes. Needs `--all-features` (`test-fakes`).
-//!
 //! ```no_run
 //! # #[cfg(feature = "test-fakes")]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -124,20 +60,9 @@
 //! # }
 //! ```
 //!
-//! ## Reference
-//!
-//! [`ProcessRunner`](runner::ProcessRunner) spawns a child process and returns
-//! a [`RunningProcess`](runner::RunningProcess) handle plus a
-//! [`ProcIo`](runner::ProcIo) bundle with channels for logs and shepherd
-//! messages. [`spawn_supervisor`](supervisor::spawn_supervisor) wires these
-//! together into the core actor loop.
-//!
-//! # Quick start
-//!
 //! Boots a full daemon through [`boot`] on a temporary `$SHEP_HOME` with the
 //! same scripted fake runner, then round-trips one `Ping` over the wire codec
 //! `server` speaks. Needs `--all-features` on a unix target.
-//!
 //! ```no_run
 //! # #[cfg(all(unix, feature = "test-fakes"))]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {

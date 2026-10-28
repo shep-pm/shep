@@ -30,12 +30,9 @@ struct SpawnedProc {
     /// The sheep name this spawn carried, copied off [`SpawnSpec::name`] and
     /// read back via [`ScriptedRunner::spawn_index_of`].
     ///
-    /// Every other accessor here is indexed by spawn ORDER, which a test
-    /// that starts several apps at once cannot predict without asserting on
-    /// the very ordering it is trying to be independent of. This is how a
-    /// case that picked one app by name (see
-    /// [`ScriptedRunner::with_a_pump_that_never_reports`]) then reads that
-    /// app's counters back.
+    /// Every other accessor here is indexed by spawn ORDER, which a test that
+    /// starts several apps at once cannot predict without asserting on the
+    /// very ordering it means to be independent of.
     name: String,
     /// `false` once this spawn's log-control task has ended, read back via
     /// [`ScriptedRunner::log_ctl_live`].
@@ -58,9 +55,8 @@ struct SpawnedProc {
     /// [`ScriptedRunner::spawned_as`].
     ///
     /// The fake runs no program, so it cannot become anyone; recording what
-    /// it was asked for is the only way a supervisor-tier test can assert
-    /// the identity a spawn actually carried rather than merely that a
-    /// spawn happened.
+    /// it was asked for is the only way a supervisor-tier test can assert the
+    /// identity a spawn carried.
     credentials: Option<Credentials>,
     /// The program this spawn was asked to run, copied off
     /// [`SpawnSpec::program`], read back via [`ScriptedRunner::spawned_program`].
@@ -84,35 +80,26 @@ pub struct ScriptedRunner {
     /// Sheep names whose [`ProcessRunner::spawn`] fails, by name because
     /// that is what a caller has.
     ///
-    /// Sibling to [`Self::refuse`] and needed for the same class of reason:
-    /// scripts are consumed in spawn order, so a test cannot make one
-    /// particular app of several fail by arranging the script list. Reaching
-    /// `do_start`'s per-app failure handling needs a failure that lands on a
-    /// named app while its neighbours succeed.
-    ///
-    /// Checked before a script is popped, so a sheep named here consumes
-    /// nothing and the apps around it still get the scripts they were meant
-    /// to have.
+    /// Sibling to [`Self::refuse`] for the same reason: scripts are consumed
+    /// in spawn order, so a test cannot make one particular app of several
+    /// fail by arranging the script list. Checked before a script is popped,
+    /// so a sheep named here consumes nothing.
     fail_spawn: Mutex<Vec<String>>,
     /// Sheep names whose [`ProcessRunner::preflight`] answers
     /// [`Preflight::Impossible`], by name because that is what a caller has.
     ///
     /// Empty by default, which is this fake's whole point: it reads nothing
-    /// from a spec and so answers [`Preflight::Unknown`] for everything, the
+    /// from a spec and answers [`Preflight::Unknown`] for everything, the
     /// same as the trait's own default. The supervisor's validating pass is
-    /// otherwise unreachable from a unit test, and a test written against
-    /// the default cannot fail no matter what that pass does.
+    /// otherwise unreachable from a unit test.
     refuse: Mutex<Vec<String>>,
     /// Sheep names whose log-control task accepts a [`LogCtl::ReportFds`]
-    /// and never answers it, by name for the same reason as its two
-    /// siblings above: a case needs one named app of several to go silent
-    /// while its neighbours answer, and script order cannot say that.
+    /// and never answers it, by name for the same reason as its two siblings
+    /// above: a case needs one named app of several to go silent while its
+    /// neighbours answer, and script order cannot say that.
     ///
     /// Models a pump wedged on a filesystem that has stopped completing
-    /// writes: the request is delivered, only the acknowledgement never
-    /// comes. Only `ReportFds` goes unanswered; the task stays live and
-    /// still serves [`LogCtl::Resume`], which lets a case tell "never
-    /// parked" apart from "gone".
+    /// writes: the request is delivered, only the acknowledgement never comes.
     #[cfg(unix)]
     deaf_pump: Mutex<Vec<String>>,
     /// State + IO for every spawn, indexed by spawn order, behind ONE lock.
@@ -129,17 +116,13 @@ impl fmt::Debug for ScriptedRunner {
     }
 }
 
-/// Six real, distinct, open descriptors for a fake pump to report, and the
-/// handles that keep them open.
+/// Six real, distinct, open descriptors for a fake pump to report.
 ///
 /// `/dev/null`, since the fake never writes to them: a handover blob only
 /// needs the numbers to name something open. Six covers the widest shape a
 /// blob carries, stdin pipe and shepherd channel included.
-///
 /// # Panics
-///
-/// If `/dev/null` cannot be opened six times: the process is out of
-/// descriptors.
+/// If `/dev/null` cannot be opened six times: the process is out of descriptors.
 #[cfg(unix)]
 #[track_caller]
 fn open_reportable_fds() -> ([std::fs::File; 6], crate::handover::CarriedFds) {
@@ -260,16 +243,11 @@ impl ScriptedRunner {
     }
 
     /// The credentials the spawn at `spawn_index` was asked to apply, as
-    /// they stood on its [`SpawnSpec`].
+    /// they stood on its [`SpawnSpec`]. `None` means the spawn carried none
+    /// at all, which is the child running as the shepherd.
     ///
-    /// `None` means the spawn carried no credentials at all, which is the
-    /// child running as the shepherd. A test about a privilege drop must
-    /// assert on this rather than on the spawn's existence: a downgraded
-    /// spawn and a correct one are alike in every other way the fake can
-    /// report.
-    ///
+    /// A privilege-drop test must assert on this, not on the spawn's existence.
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -283,7 +261,6 @@ impl ScriptedRunner {
     /// registrations of one name a spawn came from.
     ///
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -324,9 +301,7 @@ impl ScriptedRunner {
     ///
     /// Separate from [`Self::signals`]'s group-wide deliveries: which of the
     /// two the supervisor called is what a `shep signal` test asks.
-    ///
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -343,12 +318,8 @@ impl ScriptedRunner {
     /// still running.
     ///
     /// It runs while something holds a [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl) sender, something
-    /// holds the [`ProcIo::logs`](crate::runner::ProcIo::logs) receiver, and the proc has not exited,
-    /// unless a lamb holds the pipe
-    /// ([`ProcScript::with_a_lamb_holding_the_pipe`]).
-    ///
+    /// holds the [`ProcIo::logs`](crate::runner::ProcIo::logs) receiver, and the proc has not exited.
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -361,12 +332,9 @@ impl ScriptedRunner {
     /// How many [`LogCtl::Reopen`] requests the proc spawned at `spawn_index`
     /// has been sent.
     ///
-    /// The fake writes no files, so this proves only that the request
-    /// reached this spawn's end of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl). Whether a reopened
-    /// handle lands on a recreated inode is `tests/real_runner/logs.rs`'s question.
-    ///
+    /// The fake writes no files, so this proves only that the request reached
+    /// this spawn's end of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl).
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -379,13 +347,9 @@ impl ScriptedRunner {
     /// How many [`LogCtl::Flush`] requests the proc spawned at `spawn_index`
     /// has been sent.
     ///
-    /// A separate counter from [`Self::reopens`], not one shared "control
-    /// requests" total, so a `flush` wired to the wrong variant still moves
-    /// the wrong counter. The fake writes no files, so this proves only
-    /// that the request reached this spawn's end of [`ProcIo::log_ctl`](crate::runner::ProcIo::log_ctl).
-    ///
+    /// A separate counter from [`Self::reopens`], so a `flush` wired to the
+    /// wrong variant still moves the wrong counter.
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -398,11 +362,9 @@ impl ScriptedRunner {
     /// How many [`LogCtl::Resume`] requests the proc spawned at
     /// `spawn_index` has been sent.
     ///
-    /// A handover that reported and then refused owes one of these to
-    /// every pump it reported to, or that sheep's log stops for good.
-    ///
+    /// A handover that reported and then refused owes one of these to every
+    /// pump it reported to, or that sheep's log stops for good.
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[cfg(unix)]
     #[must_use]
@@ -416,12 +378,9 @@ impl ScriptedRunner {
     /// Every line the daemon has written to the stdin of the proc spawned at
     /// `spawn_index`, in write order.
     ///
-    /// Proves only that the line reached [`ProcIo::to_stdin`](crate::runner::ProcIo::to_stdin) intact; a
-    /// real `\n`-terminated line landing in a real fd 0 is
-    /// `tests/real_runner/environment.rs`'s question.
-    ///
+    /// Proves only that the line reached [`ProcIo::to_stdin`](crate::runner::ProcIo::to_stdin) intact.
+    /// A real line landing in a real fd 0 is `tests/real_runner/`'s question.
     /// # Panics
-    ///
     /// If `spawn_index` is out of range.
     #[must_use]
     #[track_caller]
@@ -462,18 +421,13 @@ impl ProcessRunner for ScriptedRunner {
         Preflight::Unknown
     }
 
-    /// `program`, `args`, `env`, `cwd`, `out_file` and `err_file` are read
-    /// by nothing here: the fake runs no program and writes no files, which
+    /// `program`, `args`, `env`, `cwd`, `out_file` and `err_file` are read by
+    /// nothing here: the fake runs no program and writes no files, which
     /// keeps it deterministic and instant under the paused clock.
     ///
     /// `name` matches [`ScriptedRunner::failing_to_spawn`]; `channel` and
-    /// `stdin` gate behavior below, since `begin_action` treats them as
-    /// load-bearing; `credentials` is recorded, never applied, since the
-    /// fake drops no privilege ([`ScriptedRunner::spawned_as`]).
-    ///
-    /// Real fd-3 delivery, refusal and timeout are proven against
-    /// [`crate::tokio_runner::TokioRunner`] in `tests/daemon_e2e.rs`
-    /// instead, since nothing here is a real socketpair to a real child.
+    /// `stdin` gate behavior below; `credentials` is recorded, never applied.
+    /// Real fd-3 delivery, refusal and timeout are proven against `TokioRunner`.
     fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
         // Before the script is popped, so a sheep named to `failing_to_spawn`
         // leaves the list alone for the apps around it.
@@ -855,12 +809,10 @@ mod tests {
 
     /// Fails if the fake drops its control receiver instead of answering:
     /// the send fails, or the acknowledgement resolves `Err` because the
-    /// `oneshot` sender was dropped unanswered. Either way a caller that
-    /// awaits a reopen would hang against every scripted proc.
+    /// `oneshot` sender was dropped unanswered.
     ///
-    /// This tier proves the acknowledgement and nothing else: the fake
-    /// writes no files, so it has no handle to swap. What a reopened
-    /// handle does to a real inode is `tokio_runner`'s own tests.
+    /// This tier proves the acknowledgement and nothing else: the fake writes
+    /// no files, so it has no handle to swap.
     #[tokio::test(start_paused = true)]
     async fn a_reopen_is_acknowledged_by_the_scripted_runner() {
         // One script for one spawn: a second would answer
