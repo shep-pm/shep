@@ -1,0 +1,90 @@
+---
+/*
+ * A first-party dog's own docs, imported from its repository.
+ *
+ * `/docs/dogs/<adopt_as>` is that dog's README, and `/docs/dogs/<adopt_as>/<path>`
+ * is one of the pages the README links to. The text is not written here: it is
+ * fetched at build time from the dog's repository at the tag of its latest
+ * release, by the collection in `src/content.config.ts`, and drawn by Astro's
+ * own markdown renderer, so the README's headings keep the ids that renderer
+ * gave them and a link to `#security` in a dog's README resolves on this site.
+ *
+ * `docs/decisions.md`, "A first-party dog's docs page", is the rule this page
+ * prints. The tag is named on the page because the page follows the latest
+ * release rather than the version the index row's install command resolves, and
+ * the printed tag is the only signal a reader gets that the two differ.
+ *
+ * This file sits in a subdirectory of `src/pages/docs/` on purpose.
+ * `verify-prose-budget.ts`, `verify-docs-nav.ts` and `verify-heading-anchors.ts`
+ * each read `src/pages/docs/*.astro` flat, so an imported page is outside all
+ * three: it has no prose budget, because the words are the dog's and cutting
+ * them to a number here is not this site's call, and it is not a chapter of the
+ * docs book, so it is not in `docs-nav.ts` and the sidebar does not list it.
+ * `docs/dogs` stays the only dogs page the nav knows about.
+ */
+import { getCollection } from "astro:content";
+import type { CollectionEntry } from "astro:content";
+import DocsLayout from "../../../../layouts/DocsLayout.astro";
+import { dogDocRoute } from "../../../../data/dog-readme-links";
+import "../../../../styles/dog-readme.css";
+
+type DogPage = CollectionEntry<"dog-readme">["data"];
+
+interface Props {
+  page: DogPage;
+}
+
+export async function getStaticPaths() {
+  const entries = await getCollection("dog-readme");
+  return entries.map((entry) => ({
+    params:
+      entry.data.route === ""
+        ? { dog: entry.data.adoptAs }
+        : { dog: entry.data.adoptAs, page: entry.data.route },
+    props: { page: entry.data },
+  }));
+}
+
+const { page } = Astro.props;
+const isReadme = page.route === "";
+
+/**
+ * The README's own first `#` heading, which is the `<h1>` the renderer drew it
+ * as, and so the page's title. A README with no heading at all falls back to the
+ * package name, which is the one name the index guarantees.
+ */
+function firstHeading(html: string): string | undefined {
+  const found = /<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html);
+  if (found === null) return undefined;
+  const text = found[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  return text === "" ? undefined : text;
+}
+
+const title = firstHeading(page.html) ?? page.package;
+const crumb = isReadme
+  ? `Dogs / ${page.package}`
+  : `Dogs / ${page.package} / ${page.route}`;
+const dogHome = dogDocRoute(page.adoptAs, "README.md");
+---
+
+<DocsLayout activeSlug="community-dogs" title={title} crumb={crumb}>
+  <article class="dog-readme">
+    <p class="dog-source">
+      From the README at <code>{page.tag}</code>,{" "}
+      <a href={`${page.repo}/tree/${page.tag}`} rel="noopener noreferrer">
+        linked from the repository
+      </a>
+    </p>
+    {
+      isReadme ? undefined : (
+        <p class="dog-back">
+          <a href={dogHome}>{page.package}</a>
+          {" / "}
+          <span>{page.route}</span>
+          {" — a page the README links to, read at the same tag."}
+        </p>
+      )
+    }
+    <div class="dog-readme-body" set:html={page.html} />
+  </article>
+</DocsLayout>
