@@ -52,7 +52,7 @@ toml = { version = "0.8", default-features = false, features = ["parse", "displa
 # already pulls `toml_edit` in as its own backing implementation.
 #
 # Floor 0.22.7: `DocumentMut` is that release's rename of the older `Document`.
-toml_edit = { version = "0.22.7", default-features = false, features = ["display", "parse"] }
+toml_edit = { version = "0.25.15", default-features = false, features = ["display", "parse"] }
 serde-saphyr = { version = "1", default-features = false, features = ["deserialize"] }
 # Names which keys a document wrote that no field claimed, recursing through
 # nested structs. Backs `Flockfile::parse`'s unknown-key refusal now that
