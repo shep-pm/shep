@@ -970,6 +970,33 @@ JavaScript and Python, where the examples are what an author copies today.
 
 Tracked as https://github.com/shep-pm/shep/issues/362 for JavaScript and https://github.com/shep-pm/shep/issues/363 for Python.
 
+### A sheep asks the operator a question
+
+Not planned, 2026-10-28. A sheep would send a question over the channel, a
+dog that delivers alerts would carry it to its sinks, and the answer would
+come back to the sheep as a trigger. shep would keep open questions so
+`shep describe` and lookout could list them.
+
+shep-kelpie was the only consumer, and it moved its rulings to GitHub
+(shep-pm/shep-kelpie#405, shep-pm/shep-kelpie#418,
+shep-pm/shep-kelpie#440). What would bring it back: an app that
+needs a human answer and has no forge to ask on.
+
+The first slice is built on branch `feat/689-ask-the-operator` (draft PR
+#692): `OpenQuestion`, `question.settled` and `shep answer`. Two things a
+revival has to fix first, both found in triage:
+
+- `channel.ask` is the sheep's raw line, republished before the shepherd
+  stores it. It fires for an ask the shepherd then drops and again when a
+  question is replaced, so bark would post questions nobody can answer. A
+  shepherd-owned `question.asked`, published once the question is stored,
+  fixes that.
+- `docs/shepherd-channel.md` says every fd 3 message reaches the bus. On that
+  branch an ask with an unknown `takes` is dropped first.
+
+Was #689, with #693 (lookout) and #694 (bark). Dogs-as-plugins step 4 (#1074)
+should not rule it out.
+
 ## Closed entries live next door
 
 Two moves, not one. The bulk of what this file carried that is now FIXED,
