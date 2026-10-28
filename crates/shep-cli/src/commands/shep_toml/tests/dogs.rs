@@ -509,3 +509,48 @@ fn setting_an_env_on_a_built_in_dog_refuses_and_writes_nothing() {
         "a refused write leaves the file as it was"
     );
 }
+
+/// `otel = { path = "...", env = { ... } }` is the same entry
+/// [`DaemonConfig::load`] reads and [`ShepToml::adopted_dog_env`] reads, so a
+/// writer that refused it would leave a valid `shep.toml` uneditable through
+/// the door that edits it. It also stays inline: the shape is the operator's.
+#[test]
+fn setting_an_env_key_on_an_inline_dog_entry_keeps_it_inline() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon.adopted_dogs]\notel = { path = \"/usr/local/bin/shep-otel\", env = { RUST_LOG = \"warn\" } }\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "PADDOCK_KEY", Some("{{secret:paddock/key}}"))
+            .unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("otel = {"),
+        "the entry stays inline: {written}"
+    );
+    assert_eq!(
+        ShepToml::read_only(&path).unwrap().adopted_dog_path("otel"),
+        Some(PathBuf::from("/usr/local/bin/shep-otel")),
+        "and it keeps its path: {written}"
+    );
+    let keys: Vec<String> = ShepToml::read_only(&path)
+        .unwrap()
+        .adopted_dog_env("otel")
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(keys, vec!["PADDOCK_KEY", "RUST_LOG"], "{written}");
+    let cfg = DaemonConfig::load(Some(&written), &|_| None).unwrap();
+    assert_eq!(
+        cfg.daemon.adopted_dogs.get("otel").unwrap().env["PADDOCK_KEY"],
+        "{{secret:paddock/key}}",
+        "the reference is stored as written, as a sheep's `env` stores one"
+    );
+}

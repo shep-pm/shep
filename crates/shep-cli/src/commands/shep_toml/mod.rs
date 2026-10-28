@@ -437,9 +437,9 @@ impl ShepToml {
     /// adopted_dogs` entry, keeping its path.
     ///
     /// An entry written as a bare path string is rewritten as the table shape
-    /// first, so the dog keeps its binary and gains the `env` half. Removing
-    /// the last key leaves `env` out of the entry entirely rather than an
-    /// empty table behind it.
+    /// first, so the dog keeps its binary and gains the `env` half. One
+    /// written inline stays inline. Removing the last key leaves `env` out of
+    /// the entry entirely rather than an empty table behind it.
     ///
     /// # Errors
     /// [`ShepTomlError::NoDogEntry`] when `name` has no entry, or its entry is
@@ -467,12 +467,8 @@ impl ShepToml {
         else {
             return Err(refusal("nothing"));
         };
-        let (path_text, mut env) = match entry {
-            Item::Value(value) => match value.as_str() {
-                Some(text) => (text.to_owned(), BTreeMap::new()),
-                None => return Err(refusal(value.type_name())),
-            },
-            Item::Table(table) => (
+        let (path_text, mut env) = match entry.as_table_like() {
+            Some(table) => (
                 table
                     .get("path")
                     .and_then(Item::as_str)
@@ -490,7 +486,10 @@ impl ShepToml {
                     })
                     .unwrap_or_default(),
             ),
-            other => return Err(refusal(other.type_name())),
+            None => match entry.as_str() {
+                Some(text) => (text.to_owned(), BTreeMap::new()),
+                None => return Err(refusal(entry.type_name())),
+            },
         };
         match value {
             Some(value) => {
@@ -499,6 +498,17 @@ impl ShepToml {
             None => {
                 env.remove(key);
             }
+        }
+        // The entry's own shape is the operator's, not this writer's: an
+        // inline entry edited here stays inline.
+        if entry.is_inline_table() {
+            let mut table = InlineTable::new();
+            table.insert("path", Value::from(path_text));
+            if !env.is_empty() {
+                table.insert("env", Value::from(inline_table(&env)));
+            }
+            *entry = Item::Value(Value::InlineTable(table));
+            return Ok(());
         }
         let mut table = Table::new();
         table["path"] = Item::Value(path_text.into());
