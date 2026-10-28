@@ -41,10 +41,7 @@ fn safe_parts(fmt: Format, code: &str, message: &str) -> (String, String) {
 ///
 /// The seam every emitted message passes through, which is why the
 /// guarantee lives here rather than at each caller. JSON collapses to one
-/// line: `jq -r .error.message` unescapes a control byte straight back
-/// onto a terminal. A table keeps the line breaks shep wrote, indents every
-/// one of them, and loses its trailing whitespace, which the caller's
-/// `writeln!` would otherwise print as a blank line.
+/// line: `jq -r .error.message` unescapes a control byte onto a terminal.
 fn safe_message(fmt: Format, message: &str) -> String {
     match fmt {
         Format::Json => crate::terminal_safe::sanitise(message).0,
@@ -58,11 +55,9 @@ fn safe_message(fmt: Format, message: &str) -> String {
 /// `message` with every line after the first indented by two spaces.
 ///
 /// Only the first line of a table message starts at column 0, so a newline
-/// inside an interpolated value cannot forge a line that reads as shep's own
-/// or that a script anchoring `error[` there will match. It holds because
-/// `code` is sanitised too, printing ahead of it on that same line. The base
-/// indent is this function's, and a message adds its own only to nest a line
-/// under a label. An empty line stays empty rather than gaining whitespace.
+/// inside an interpolated value cannot forge a line that reads as shep's
+/// own, or one a script anchoring `error[` there will match. It holds
+/// because `code` is sanitised too. An empty line stays empty.
 fn indent_continuations(message: &str) -> String {
     let mut out = String::with_capacity(message.len());
     for (n, line) in message.split('\n').enumerate() {
@@ -110,11 +105,8 @@ pub fn emit_error(
 /// "notice": {"code", "message"}}`.
 ///
 /// A sibling of [`ErrorEnvelope`], not a reuse of it: a notice must not
-/// read as a failure on the wire, so it gets its own envelope key.
-///
-/// Only ever constructed by [`emit_notice`]. `#[cfg_attr(windows,
-/// allow(dead_code))]`: every caller lives in `commands/` or `lib.rs`'s
-/// `#[cfg(unix)]` arms.
+/// read as a failure on the wire, so it gets its own envelope key. Only
+/// [`emit_notice`] builds it.
 #[derive(Debug, Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct NoticeEnvelope<'a> {

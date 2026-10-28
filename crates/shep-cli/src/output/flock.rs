@@ -19,20 +19,9 @@ use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of, write_json_line}
 /// [`super::OutputEnvelope`]'s own three fields, plus `host` riding beside
 /// `data` rather than inside it.
 ///
-/// A sibling field for `described::DescribedEnvelope`'s reason: `data` stays
-/// exactly
-/// the array it always was, so an existing `data[0].name` script sees no
-/// shape change, and [`SCHEMA_VERSION`] does not move for an addition
-/// outside it.
-///
-/// `Option<Option<HostUsage>>` because there are three answers and a reader
-/// has to tell them apart. Absent: this shepherd would not answer, which
-/// today means one built before `Request::HostUsage` existed. `null`: a
-/// platform `sysinfo` cannot read. An object: a reading, whose own rate
-/// fields are `null` where no window has passed yet.
-///
-/// Only ever constructed by [`emit_flock`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for `described::DescribedEnvelope`'s reason.
+/// `Option<Option<HostUsage>>` has three answers: absent, a shepherd that
+/// would not answer; `null`, a platform `sysinfo` cannot read; an object,
+/// a reading whose rate fields are `null` before its first window.
 #[derive(Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct FlockEnvelope<'a> {
@@ -61,14 +50,9 @@ struct OriginRow<'a> {
 /// [`FlockEnvelope`]'s fields with `data` as [`OriginRow`]s, and `hosts`
 /// beside `host`.
 ///
-/// `host` is the same three-way answer [`FlockEnvelope`] documents, and
-/// `hosts` repeats it per remote host: an object is a reading, `null` a
-/// platform `sysinfo` cannot read, no entry a shepherd that would not answer
-/// the usage request (its rows are still in `data`) or a host that failed
-/// (no rows either). `hosts` is absent for a single `--host` listing,
-/// which keeps its `host` as it always had.
-///
-/// `#[cfg_attr(windows, allow(dead_code))]` for `FlockEnvelope`'s reason.
+/// `hosts` repeats [`FlockEnvelope`]'s three-way answer per remote host: no
+/// entry for a shepherd that would not answer, or for a host that failed.
+/// It is absent for a single `--host` listing.
 #[derive(Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct OriginEnvelope<'a> {
@@ -176,12 +160,9 @@ pub(crate) fn emit_origin_flock(
 ///
 /// JSON stays one array under `data`, every entry carrying its own `dog`
 /// marker, with `host` beside it: see [`FlockEnvelope`]. `host` is `None`
-/// for a caller with no host block to carry, which is every caller but
-/// `shep flock` itself.
-/// Table partitions on [`ProcessInfo::dog`], rendering sheep and dogs
-/// each through [`table_of`], with a blank line and `Dogs` caption
-/// between them only when a dog exists. [`silence_pointer`] adds one
-/// line under the dogs table when a dog is silent.
+/// for a caller with no host block to carry. Table partitions on
+/// [`ProcessInfo::dog`], with a blank line and `Dogs` caption between them
+/// only when a dog exists.
 ///
 /// # Errors
 /// The underlying write failed.
@@ -229,9 +210,7 @@ pub fn emit_flock(
 ///
 /// A pointer, not the explanation: that runs to a paragraph per dog
 /// (`vocabulary::silence_note`), too much for a table an operator leaves
-/// running in a loop. Rendered after the table, outside it, so a long
-/// list of names wraps in the terminal rather than squeezing STATUS off
-/// the side of it. Named rather than counted, since the names are what
+/// running in a loop. Named rather than counted, since the names are what
 /// the operator types into the next command.
 fn silence_pointer(dogs: &[ProcessInfo]) -> Option<String> {
     let silent: Vec<&str> = dogs

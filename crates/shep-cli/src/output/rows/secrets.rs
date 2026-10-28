@@ -52,9 +52,7 @@ impl Render for KvRows {
 ///
 /// No value field, and no row type in this module has one: `shep secret get`
 /// writes the value it resolved straight to stdout, so a stored value never
-/// reaches a struct a `{:?}` or a table render could leak it through
-/// (IR-41). A key name and an environment name are neither of them the
-/// secret.
+/// reaches a struct a `{:?}` or a table render could leak it through (IR-41).
 #[derive(Debug, Serialize)]
 pub struct SecretKeyRow {
     /// The key, exactly as stored; [`shep_core::secrets`]'s grammar has
@@ -122,18 +120,10 @@ impl Render for SecretSlotRow {
 /// `shep secret get`'s `--format json` payload: the key and the value it
 /// resolved.
 ///
-/// The one row type in this module that carries a value. `get`'s table form
-/// never builds one: it writes the bare value straight to stdout, for the
-/// `DB_PASSWORD=$(shep secret get DB_PASSWORD)` case. Its JSON form has to
-/// answer the same output-envelope contract every other command does
-/// (`web/src/pages/docs/json-output.astro`), which means a payload type,
-/// which means `Debug` needs its own redaction (IR-41): `derive(Debug)`
-/// would print the value in a panic message, a test failure, or a `dbg!`.
-///
-/// `Serialize` is this type's only path to a plaintext value, and both it
-/// and the table form above are reached only through a `secret get` that
-/// `[secrets] allow_read` has already let through. `Debug` prints
-/// `<redacted>` instead of the value.
+/// The one row type in this module that carries a value, because its JSON
+/// form must answer the output-envelope contract every other command does.
+/// `Debug` prints `<redacted>`: `derive(Debug)` would print the value in a
+/// panic message or a `dbg!` (IR-41).
 #[derive(Serialize)]
 pub struct SecretValueRow {
     /// The key, exactly as stored.
@@ -170,11 +160,9 @@ impl Render for SecretValueRow {
 /// currently resolves, and if not, whether that is a known absence or
 /// simply invisible to this command from here.
 ///
-/// Serializes `snake_case`, matching this crate's other JSON enums (a dog's
-/// `kind`, for one). [`Self::as_table_word`] is the separate, human-prose
-/// spelling `describe`'s table form prints; the two are kept apart on
-/// purpose; a JSON reader should never have to translate table wording, and
-/// a table reader should never see an underscore.
+/// Serializes `snake_case`, matching this crate's other JSON enums.
+/// [`Self::as_table_word`] is the separate human-prose spelling `describe`
+/// prints; a JSON reader never translates table wording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SecretStatus {
@@ -222,10 +210,8 @@ impl SecretStatus {
 /// value, only whether it currently resolves.
 ///
 /// Not a [`Render`] payload: `describe`'s table form prints these as prose
-/// under the flock table, the same way `Pending`/`Overridden` do, and its
-/// JSON form rides beside `data` on the envelope rather than inside it, so
-/// existing `data[].name` scripts see no shape change. `emit_described`
-/// builds both from a `&[DescribedSecret]` directly.
+/// under the flock table, and its JSON form rides beside `data` rather than
+/// inside it, so existing `data[].name` scripts see no shape change.
 #[derive(Debug, Clone, Serialize)]
 pub struct DescribedSecret {
     /// Which sheep this reference belongs to.

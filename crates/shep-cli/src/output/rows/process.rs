@@ -160,13 +160,9 @@ impl Render for FlockRows {
 /// `Response::Flushed(Vec<ProcessInfo>)`: the sheep a `shep flush` matched,
 /// rendered by the files it emptied rather than by their lifecycle.
 ///
-/// Serializes exactly as [`FlockRows`] does, over the same
-/// `Vec<ProcessInfo>`, so only the table differs. `out_file`/`err_file` are
-/// free-form config taken verbatim, so a mistyped one empties something that
-/// is not a log.
-///
-/// One row per sheep: several can share a log path, and the daemon truncates
-/// each distinct path once.
+/// Serializes exactly as [`FlockRows`] does, so only the table differs.
+/// `out_file`/`err_file` are free-form config taken verbatim. One row per
+/// sheep: several can share a log path.
 #[derive(Debug, Serialize)]
 #[serde(transparent)]
 pub struct FlushedRows(pub Vec<ProcessInfo>);
@@ -257,11 +253,10 @@ pub(crate) mod tests {
 
     #[test]
     fn flock_rows_do_not_drift() {
-        // `reload_deadline_ms` and `disabled` on top of `sample_flock`, not in it: this
-        // type renders a reload's acceptance as well as a listing, and the
-        // gate can only see a key a fixture serializes. It stays off the
-        // shared fixture because no other payload built from one can carry
-        // it, and `skip_serializing_if` means an unset field has no key.
+        // `reload_deadline_ms` and `disabled` on top of `sample_flock`, not
+        // in it: this type renders a reload's acceptance as well as a
+        // listing, and the gate only sees a key a fixture serializes.
+        // `skip_serializing_if` means an unset field has no key.
         let FlockRows(mut rows) = sample_flock();
         for row in &mut rows {
             row.reload_deadline_ms = Some(15_000);

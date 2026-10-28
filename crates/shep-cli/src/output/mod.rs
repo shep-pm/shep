@@ -2,14 +2,12 @@
 //! (`--format json`) and a padded table (`--format table`, the default).
 //!
 //! [`Render`] is the single source of truth for both: a payload type
-//! implements it once, in [`rows`], and [`emit`] renders it either way. A
-//! field added to `Serialize` and forgotten in `rows()` fails that type's
-//! anti-drift test rather than silently vanishing from the table.
+//! implements it once, in [`rows`], and [`emit`] renders it either way, so
+//! a field missing from `rows()` fails that type's anti-drift test.
 //!
 //! `bleats` does not go through this module: a follow has no end, so it
-//! emits its own newline-delimited JSON instead of an envelope.
-//!
-//! This module names no shep-client type and compiles on every target.
+//! emits its own newline-delimited JSON instead of an envelope. This
+//! module names no shep-client type and compiles on every target.
 
 mod described;
 mod diagnostics;
@@ -86,9 +84,7 @@ pub struct OutputEnvelope<'a, T> {
 /// Production wires the process's own; tests build a pair of `Vec<u8>`
 /// through `Streams::bare`, which is what makes every renderer assertion
 /// hermetic and safe under the parallel `cargo test` gate. `&mut dyn Write`
-/// has no `Debug`, so this needs a manual one: print `Streams { .. }` and
-/// nothing else (pinned by this module's own
-/// `streams_debug_is_the_redacted_placeholder` test).
+/// has no `Debug`, so this prints `Streams { .. }` and nothing else.
 pub struct Streams<'a> {
     /// Rendered command output: what `emit` writes to.
     ///
@@ -102,12 +98,8 @@ pub struct Streams<'a> {
     ///
     /// Carried here rather than as a global: presentation inputs are
     /// parameters in this crate, never a call inside the rendering
-    /// function (`commands/daemon.rs`'s `ansi_enabled` follows the same
-    /// rule for `NO_COLOR`).
-    ///
-    /// `Presentation::BARE` is the safe default: a construction that
-    /// reaches for the wrong value renders exactly what shep printed
-    /// before this feature existed.
+    /// function. `Presentation::BARE` is the safe default, so a
+    /// construction that reaches for the wrong value renders plain output.
     pub style: Presentation,
     /// How this invocation renders: a table for a person, or JSON for a
     /// script.
@@ -124,11 +116,8 @@ impl std::fmt::Debug for Streams<'_> {
 }
 
 impl Streams<'_> {
-    /// Prints `message` as an error, and hands back the code it printed.
-    ///
-    /// Returning the code lets a caller write
-    /// `return streams.fail(ExitCode::Usage, &message)` rather than naming
-    /// the code twice.
+    /// Prints `message` as an error, and hands back the code it printed,
+    /// so a caller names it once.
     ///
     /// The write's own failure is discarded: a closed stderr must not
     /// change what shep exits with.
@@ -137,14 +126,12 @@ impl Streams<'_> {
         code
     }
 
-    /// Prints `message` as a notice, on stdout.
+    /// Prints `message` as a notice, on stdout: the notice that is the
+    /// command's whole answer.
     ///
     /// Discards its write's failure for the same reason [`Self::fail`]
-    /// does. Stdout only: a minority of notices belong on stderr instead
-    /// (a warning beside a separate primary output, like `init`'s
-    /// shadowed-file notice), which call [`emit_notice`] directly with
-    /// `streams.err`. This method is for the majority shape, a notice
-    /// that is the command's whole answer.
+    /// does. A notice beside a separate primary output, like `init`'s
+    /// shadowed-file one, calls [`emit_notice`] with `streams.err` instead.
     pub fn note(&mut self, code: &str, message: &str) {
         let _ = emit_notice(&mut *self.out, self.fmt, code, message);
     }
@@ -152,31 +139,21 @@ impl Streams<'_> {
     /// Prints `message` as a notice, on stderr.
     ///
     /// The stream is the whole difference from [`Self::note`]: a decision
-    /// about the reader, not severity. `note` carries what the command
-    /// produced; this carries what somebody should know about the run
-    /// without it being the answer they asked for.
-    ///
-    /// Keeping those off stdout lets `shep dogs --available --format json
-    /// | jq` work while the operator still sees that entries were skipped.
-    /// Discards its write's failure for the same reason [`Self::fail`]
-    /// does.
+    /// about the reader, not severity. Keeping these off stdout lets
+    /// `shep dogs --available --format json | jq` work while the operator
+    /// still sees that entries were skipped.
     pub fn aside(&mut self, code: &str, message: &str) {
         let _ = emit_notice(&mut *self.err, self.fmt, code, message);
     }
 }
 
 /// The constructor the command tests build their streams from, test-only
-/// because production has no reason to want a fixed presentation: it wires
-/// the process's own streams and the level the operator resolved, in
-/// `dispatch.rs`.
+/// because production wires the process's own streams and the level the
+/// operator resolved, in `dispatch.rs`.
 ///
-/// `BARE` because these tests assert on words, not colour: a fixture that
-/// carried a real presentation would pin escape bytes into assertions meant
-/// to survive a style change.
-///
-/// Takes `&mut dyn io::Write` rather than `&mut Vec<u8>` so a test can hand
-/// it a writer that fails, or one that discards, as well as a buffer; a
-/// `Vec<u8>` coerces at the call site.
+/// `BARE` because these tests assert on words, not colour. Takes
+/// `&mut dyn io::Write` rather than `&mut Vec<u8>` so a test can hand it a
+/// writer that fails, or one that discards.
 #[cfg(test)]
 impl<'a> Streams<'a> {
     /// A `Streams` that writes to `out` and `err` exactly as given, at
@@ -195,16 +172,13 @@ impl<'a> Streams<'a> {
     }
 }
 
-/// Implemented once per command payload. The two methods are the only
-/// place a field's presence is decided; `rows::assert_no_drift` compares
-/// `headers()` against the serialized keys per payload, so a field added
-/// to one and forgotten in the other fails that test rather than passing
-/// silently.
+/// Implemented once per payload. The two methods are the only place a
+/// field's presence is decided; `rows::assert_no_drift` compares
+/// `headers()` against the serialized keys, so a field added to one and
+/// forgotten in the other fails that test.
 ///
 /// Not object-safe: [`headers`](Render::headers) has no receiver and
-/// `Serialize` cannot be a dyn-compatible supertrait, so `Box<dyn Render>`
-/// does not compile. Every call site knows its payload type statically;
-/// [`emit`] dispatches generically, never dynamically.
+/// `Serialize` is not dyn-compatible, so every call site is static.
 #[allow(dead_code)]
 pub trait Render: Serialize {
     /// Column headers for table output.
@@ -215,73 +189,47 @@ pub trait Render: Serialize {
     ///
     /// Defaults to [`Self::rows`]; an override calls [`rows::paint`],
     /// which keys each cell on the column's NAME, not its index, so
-    /// reordering columns cannot silently repoint a paint rule. The
-    /// default skips the `-` placeholder rule, which every table that
-    /// can render a `-` reaches through [`rows::Paint::Default`] instead.
-    ///
-    /// Only called from `table_of`'s boxed path; the plain path calls
-    /// [`render_table`], keeping `bare` byte-identical. `status_word` is
-    /// a plain parameter, not a `Presentation` field: it is `table_of`'s
-    /// per-attempt retry knob.
+    /// reordering columns cannot repoint a paint rule. Only called from
+    /// `table_of`'s boxed path; the plain path calls [`render_table`],
+    /// keeping `bare` byte-identical.
     fn rows_for(&self, _presentation: Presentation, _status_word: bool) -> Vec<Vec<String>> {
         self.rows()
     }
     /// Table header -> JSON key.
     ///
-    /// Defaults to the lowercased header, which is the whole mapping for
-    /// every table whose JSON key is its header spelled in lowercase. A table
-    /// whose key is renamed overrides it, and an override keeps the contract
-    /// this method used to state for every impl: it panics on a header
-    /// outside its own `headers()`. `FlockRows` maps `EXIT` -> `last_exit`
-    /// and `UPTIME` -> `uptime_ms`, `BarkRows` maps `WHEN` -> `at_ms`.
-    ///
-    /// The default never panics, and no rendering path calls it: every call
-    /// site sits in `rows`' anti-drift tests, which pass only values taken
-    /// from `Self::headers()` and compare the mapped set against the keys the
-    /// payload really serializes. A header with no key, or a key with no
-    /// header, fails there.
+    /// Defaults to the lowercased header; a table whose key is renamed
+    /// overrides it, and an override panics on a header outside its own
+    /// `headers()`. No rendering path calls it: only `rows`' anti-drift
+    /// tests do, which fail on a header with no key or a key with no header.
     fn json_key_for(header: &str) -> String {
         header.to_lowercase()
     }
     /// Serialized fields that legitimately have no column, each with a
-    /// comment giving the reason. Empty by default: an impl names the
-    /// constant only when it has entries to name, each with its reason.
+    /// comment giving the reason. Empty by default.
     ///
     /// This constant is the only thing standing between an unmapped
-    /// `Serialize` field and a silently-widened, unreviewed pass of
-    /// `assert_no_drift` (rows.rs): an entry proves the count of covered
-    /// keys matches, never why a field belongs here. Every entry an impl
-    /// adds must carry its own inline `//` comment stating that reason
-    /// (`"note", // internal only, never shown to a user`).
+    /// `Serialize` field and a silently-widened `assert_no_drift`
+    /// (rows.rs): an entry proves the counts match, never why a field
+    /// belongs here. Every entry must carry its own inline `//` comment.
     const JSON_ONLY: &'static [&'static str] = &[];
 
     /// Per-column drop priority for [`table::render_boxed`], parallel to
     /// [`Self::headers`]: index `i` here is the priority of column `i`
-    /// there. `0` never drops. The default is all zeros; leaving a real
-    /// impl at the default silently opts it out of narrowing.
-    ///
-    /// The rule every impl in [`rows`] follows: `0` for identity and
-    /// status-shaped columns, `1`-`5` reserved for [`rows::FlockRows`]'s
-    /// own five columns (UPTIME 1, PID 2, MEM 3, RESTARTS 4, CPU 5), `6`
-    /// and up for everything else, ranked per table by how droppable it
-    /// is. `priorities_line_up_with_headers_for_every_render_impl`
-    /// (rows.rs) is the anti-drift gate enforcing it.
+    /// there. `0` never drops; the all-zero default opts an impl out of
+    /// narrowing. `priorities_line_up_with_headers_for_every_render_impl`
+    /// enforces the rule every impl in [`rows`] follows.
     const PRIORITIES: &'static [u8] = &[];
 }
 
 /// Writes `value` to `out` as one JSON line: the serialized value, then a
 /// newline.
 ///
-/// The one place a `--format json` envelope reaches a writer. Every
-/// envelope in this module ([`emit`], [`emit_partial`], [`emit_flock`],
-/// [`emit_described`], [`emit_error`] and [`emit_notice`]) ends its line
-/// through here, so the newline rule is decided once: a change to it
-/// (pretty-printing, a trailing space, no newline) moves every verb's bytes
+/// The one place a `--format json` envelope reaches a writer, so the
+/// newline rule is decided once: a change to it moves every verb's bytes
 /// at once rather than some of them. `bleats` stays outside, as the module
 /// docs say: a follow has no end, so it has no envelope to end.
 ///
-/// Compact [`serde_json`] output, which is what every one of those sites
-/// has always written.
+/// Compact [`serde_json`] output.
 ///
 /// # Errors
 /// The underlying write failed.
@@ -324,15 +272,10 @@ pub fn emit<T: Render>(
 /// Renders one [`Render`] payload as [`render_table`] or
 /// [`table::render_boxed`], whichever `presentation.level` calls for.
 ///
-/// Factored out so `emit`, `emit_flock` and `emit_described` make this
-/// decision once. `presentation.width` is [`terminal_width`] already
-/// resolved at the seam, injected here rather than measured, so this
-/// stays testable at any width.
-///
-/// Renders twice when the first pass drops a column: the STATUS word
-/// drops first, so a first attempt asks [`Render::rows_for`] with the
-/// word on, and only if [`table::render_boxed_ex`] hid a column does a
-/// second attempt ask again with the word off.
+/// Factored out so `emit`, `emit_flock` and `emit_described` decide this
+/// once. `presentation.width` is [`terminal_width`] resolved at the seam,
+/// injected rather than measured. Renders twice when the first pass drops
+/// a column: the STATUS word drops first.
 pub(crate) fn table_of<T: Render>(data: &T, presentation: Presentation) -> String {
     if !presentation.level.boxes() {
         return render_table(data);
@@ -371,18 +314,13 @@ pub(crate) fn terminal_width() -> usize {
     })
 }
 
-/// The `--format json` envelope for a verb that did part of what it was
-/// asked and was refused the rest: [`OutputEnvelope`] plus a `refused` key
-/// beside `data`.
+/// The `--format json` envelope for a partly-succeeded, partly-refused
+/// verb: [`OutputEnvelope`] plus a `refused` key beside `data`.
 ///
-/// One object, because `cli.rs` publishes `--format json` as one object per
-/// invocation and a staged reload has two halves to report. A key added
-/// beside `data` is additive, so it does not move [`SCHEMA_VERSION`], whose
-/// rule is a rename, a removal or a retype of `data` itself.
-///
-/// `refused` is dropped when empty rather than rendered as `[]`: a reload
-/// that refused nothing is every reload bar the staged walk, and those keep
-/// the exact three fields every other verb prints.
+/// One object, because `cli.rs` publishes `--format json` as one object
+/// per invocation and a staged reload has two halves to report. A key
+/// beside `data` is additive, so [`SCHEMA_VERSION`] does not move, and
+/// `refused` is dropped when empty rather than rendered as `[]`.
 #[derive(Debug, Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct PartialEnvelope<'a, T> {
@@ -757,10 +695,9 @@ pub(crate) mod tests {
     /// `waiting-restart` (15 characters) is the longest status word,
     /// chosen so face-plus-word forces a column past a width face-alone
     /// fits. Exercises `Render::rows_for` and `table::render_boxed_ex`
-    /// directly, the same two calls `table_of`'s own two-pass retry makes.
+    /// directly, the two calls `table_of`'s two-pass retry makes.
     ///
-    /// Width 90, not this module's usual 80: `SMIT` and `CFG` cost the
-    /// same extra columns `output/table.rs`'s own tests record.
+    /// Width 90, not this module's usual 80: `SMIT` and `CFG` cost columns.
     #[test]
     fn the_word_drops_before_a_whole_column_does() {
         let flock = FlockRows(vec![
