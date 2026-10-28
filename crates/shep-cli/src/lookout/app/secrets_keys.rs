@@ -8,29 +8,21 @@ impl App {
     /// `Body::Secrets`.
     ///
     /// `S` and `Escape` both close it: `S` toggles, the way `s` toggles the
-    /// settings screen, and `Escape` is the uniform "leave whatever is
-    /// open" key every other pane answers to. A tab move reloads, because
-    /// `in_force`, the value and the byte length on every row belong to one
-    /// environment. `z` toggles the selected row's namespace rather than a
-    /// fold, since the flock table is not what is on screen.
+    /// settings screen, and `Escape` is the uniform "leave whatever is open"
+    /// key. A tab move reloads, because the value and the byte length on
+    /// every row belong to one environment.
     pub(super) fn on_secrets_key(&mut self, key: KeyPress) -> Effect {
         // `view::status`'s armed prompt promises "enter confirms, any other
-        // key cancels", so every other key cancels here, the way the
-        // dashboard's own armed confirm already does. Unlike the dashboard
+        // key cancels", so every other key cancels here. Unlike the dashboard
         // the key is not also swallowed: a cursor move that disarms still
-        // moves, which is what the pane has always done.
-        //
-        // `Quit` is the exception the dashboard makes too: an operator whose
-        // ctrl-c does nothing reaches for `kill -9`.
+        // moves. `Quit` is the exception the dashboard makes too.
         let was_armed =
             !matches!(key, KeyPress::Confirm | KeyPress::Quit) && self.disarm_secret_delete();
         match key {
             // Mirrors `on_bleats_key`'s own arm: every full-screen pane
             // answers `q`/`ctrl-c`, the one key a cancelling armed action
-            // does not swallow either (`on_key`'s own comment on that).
-            // The `hide` here buys nothing on screen, since nothing is drawn
-            // after this: it drops the plaintext a moment before the whole
-            // `App` goes.
+            // does not swallow either. The `hide` here buys nothing on
+            // screen: it drops the plaintext a moment before the `App` goes.
             KeyPress::Quit => {
                 self.hide_revealed();
                 Effect::Quit
@@ -75,20 +67,18 @@ impl App {
                     if !pane.collapsed.remove(&namespace) {
                         pane.collapsed.insert(namespace);
                         // Folding away the group `selected` sits in leaves
-                        // no marked row on screen, and a `v` past this
-                        // point would reveal a value nobody can see. Reuse
-                        // `move_by`'s hidden-selection fallback rather than
-                        // duplicate the boundary search here.
+                        // no marked row on screen, and a `v` past this point
+                        // would reveal a value nobody can see. Reuse
+                        // `move_by`'s hidden-selection fallback here.
                         pane.move_by(0);
                     }
                 }
                 Effect::None
             }
             // `j`/`k`/`g`/`G` move over the pane's visible rows
-            // ([`SecretsPane::move_by`] and friends), the same clamped
-            // rule every other pane's cursor follows. The value on screen
-            // belongs to the row it was revealed from, so every one of
-            // these clears it first, the way a tab move already does.
+            // ([`SecretsPane::move_by`] and friends), the same clamped rule
+            // every other pane's cursor follows. The value on screen belongs
+            // to the row it was revealed from, so these clear it first.
             KeyPress::SelectUp
             | KeyPress::SelectDown
             | KeyPress::SelectFirst
@@ -177,11 +167,8 @@ impl App {
     /// Whether the secrets pane owns the body.
     ///
     /// `config_pane`, `bleats_pane` and `sheep_pane` each answer this for
-    /// their own body by handing back the pane; the secrets pane had no
-    /// equivalent, so a test could only press `S` and trust it landed. That
-    /// is why the loop over the bodies dropped the cases it could not verify,
-    /// and this predicate is what lets the secrets case join it: the loop can
-    /// assert it arrived before it renders.
+    /// their own body by handing back the pane. This is what lets a test
+    /// assert the secrets case arrived before it renders.
     #[cfg(test)]
     pub(crate) const fn secrets_pane_is_open(&self) -> bool {
         matches!(&self.body, Body::Secrets(_))

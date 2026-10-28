@@ -19,15 +19,11 @@ impl App {
 
     /// Every name whose instances draw under a [`RowKey::Group`] header: more
     /// than one instance of the name, every one of them reporting a slot.
-    ///
     /// Read over the whole flock rather than the filtered sequence, which a
     /// name query keeps whole either way.
     ///
-    /// Every name at once, in one pass, rather than a `name -> bool` call: the
-    /// per-name form filtered the whole flock, collected and sorted for one
-    /// answer, and both callers ask for a row or a name run at a time.
-    /// [`Self::visible_rows`] reads this, and so does the draw loop through
-    /// `view::flock::FrameFacts`.
+    /// Every name at once, in one pass, rather than a `name -> bool` call:
+    /// both callers ask for a row or a name run at a time.
     #[must_use]
     pub fn grouped_names(&self) -> HashSet<&str> {
         // `(instances, every one of them reports a slot)`, the pair the rule
@@ -315,10 +311,8 @@ mod tests {
 
         // The half the confirm cannot check. `Sent::Action`'s `RowKey::Fold`
         // arm is the only thing turning a fold header into a fold selector,
-        // and nothing else asserts it: change it to `SelectorSpec::Name` and
-        // the confirm still reads "2 sheep in fold edge", Enter still sends,
-        // and the shepherd matches no app. A fold-wide stop that silently
-        // stops nothing.
+        // and nothing else asserts it: a fold-wide stop that silently stops
+        // nothing.
         let request = wire(app.update(Msg::Key(KeyPress::Confirm)));
         let Request::Stop { selector } = request else {
             panic!("expected Stop, got {request:?}");

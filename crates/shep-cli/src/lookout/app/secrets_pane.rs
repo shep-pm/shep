@@ -148,10 +148,8 @@ impl SecretsPane {
     /// currently draws it: `None` for the `+ new key` affordance, for a row
     /// a standing fold hides, and for a `selected` past the rows.
     ///
-    /// Both halves of the check every write path needs, in one call: that
-    /// `selected` names a row on screen, and that the row exists. Owned
-    /// rather than borrowed, so a caller can hold the row while it reaches
-    /// back into the pane.
+    /// Owned rather than borrowed, so a caller can hold the row while it
+    /// reaches back into the pane.
     pub(super) fn selected_visible_row(&self) -> Option<SecretRow> {
         if !self.visible_row_indices().contains(&self.selected) {
             return None;
@@ -186,12 +184,9 @@ impl SecretsPane {
     /// highest-index operator row, or `None` when the store holds none, in
     /// which case the affordance is first on screen instead.
     ///
-    /// The single source of truth for where the affordance goes.
-    /// [`Self::screen_slots`] (the cursor) and
-    /// [`view::secrets::draw`](crate::lookout::view::secrets::draw) (the
-    /// render) both derive their placement from this rather than each
-    /// running its own scan, so the two cannot disagree about which line
-    /// the affordance is on.
+    /// [`Self::screen_slots`] and [`view::secrets::draw`](crate::lookout::view::secrets::draw)
+    /// both derive their placement from this rather than each running its own
+    /// scan, so the two cannot disagree.
     pub(crate) fn new_key_anchor(&self) -> Option<usize> {
         self.model
             .rows
@@ -202,15 +197,13 @@ impl SecretsPane {
             .max()
     }
 
-    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the
-    /// order [`view::secrets::draw`](crate::lookout::view::secrets::draw)
-    /// draws them: `None` is the `+ new key`
-    /// affordance, placed right after [`Self::new_key_anchor`], or first on
-    /// screen when there is none, matching `view::secrets::draw`'s own
-    /// placement.
+    /// Every screen slot `j`/`k`/`g`/`G` can land the cursor on, in the order
+    /// [`view::secrets::draw`](crate::lookout::view::secrets::draw) draws
+    /// them: `None` is the `+ new key` affordance, placed right after
+    /// [`Self::new_key_anchor`], or first on screen when there is none.
     ///
-    /// Real rows never move relative to each other here, so a row hidden by
-    /// a fold is simply absent, the same as [`Self::visible_row_indices`].
+    /// Real rows never move relative to each other here, so a row hidden by a
+    /// fold is simply absent, as in [`Self::visible_row_indices`].
     fn screen_slots(&self) -> Vec<Option<usize>> {
         let anchor = self.new_key_anchor();
         let visible = self.visible_row_indices();
@@ -228,15 +221,11 @@ impl SecretsPane {
 
     /// Moves `selected` by `delta` positions over [`Self::screen_slots`],
     /// clamped rather than wrapping: the same rule the flock table and every
-    /// other pane's cursor follows. A no-op with nothing on screen (there is
-    /// always at least the affordance, so this is unreachable in practice).
+    /// other pane's cursor follows.
     ///
-    /// A selection `z` just folded away is not itself in [`Self::screen_slots`]:
-    /// rather than guess where inside it the old position belonged, this
-    /// lands on the nearest surviving *real* row in the direction `delta`
-    /// points, over [`Self::visible_row_indices`] alone (never the
-    /// affordance), so a reload or a fold can never strand the cursor on it
-    /// by accident.
+    /// A selection `z` just folded away is not itself in
+    /// [`Self::screen_slots`]: this lands on the nearest surviving real row in
+    /// the direction `delta` points, over [`Self::visible_row_indices`] alone.
     pub(crate) fn move_by(&mut self, delta: isize) {
         let slots = self.screen_slots();
         if slots.is_empty() {
@@ -251,11 +240,7 @@ impl SecretsPane {
         // The selection itself just went hidden (`z` folded its own group
         // away, or a reload's clamp landed on a row a standing fold hides):
         // land on the nearest visible neighbour in the direction requested,
-        // rather than guessing a position inside a list the old selection
-        // is not part of. `j`/`k` reach this arm with `delta` of 1 or -1;
-        // the `Collapse` arm and the `Msg::Secrets` clamp call with `delta`
-        // 0 to reuse the same landing logic without moving the selection
-        // themselves.
+        // rather than guessing a position inside a list it is not part of.
         let visible = self.visible_row_indices();
         if visible.is_empty() {
             return;
