@@ -30,17 +30,10 @@ impl App {
     /// The rows the table draws, in `(name, instance, id)` order: the whole
     /// flock, or whatever the filter leaves of it.
     ///
-    /// Under [`Grouping::Flat`] that is a "Flock" section and a "Dogs"
-    /// section. Under [`Grouping::ByFold`] it is one [`RowKey::Fold`] header
-    /// per fold, a "no fold" section and a "Dogs" section, built by
-    /// [`Self::push_fold_rows`].
-    ///
     /// A [`RowKey::Group`] header comes immediately before its own
     /// [`RowKey::Sheep`] entries, and a [`RowKey::Section`] header only when
-    /// its side has a row to introduce. The sort key is total on purpose: the
-    /// table repolls every two seconds, and a partial one would let two
-    /// instances swap places under the cursor. Every cursor move reads this
-    /// sequence and nothing else.
+    /// its side has a row to introduce. The sort key is total on purpose: a
+    /// partial one would let two instances swap places under the cursor.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<RowKey> {
         let needle = self.filter.as_str().to_lowercase();
@@ -81,19 +74,12 @@ impl App {
     }
 
     /// The `ByFold` half of [`Self::visible_rows`]: `sheep` gathered under
-    /// its fold, each fold's own name-order header pushed before
+    /// its fold, each fold's header pushed before
     /// [`Self::push_fold_group_rows`] lays down its members, so a
-    /// multi-instance app inside a fold keeps its own [`RowKey::Group`] row
-    /// rather than flattening to one row per instance.
+    /// multi-instance app inside a fold keeps its own [`RowKey::Group`] row.
     ///
-    /// Sheep carrying no fold land under [`RowKey::Section`]`("no fold")`
-    /// instead of a [`RowKey::Fold`]: `SelectorSpec::Fold` cannot name "no
-    /// fold" on the wire, so a header rather than an action target is the
-    /// honest answer.
-    ///
-    /// A fold in [`Self::collapsed_folds`] still gets its own
-    /// [`RowKey::Fold`] header; only [`Self::push_fold_group_rows`]'s call
-    /// is skipped, so `z` hides the members and nothing else.
+    /// Sheep carrying no fold land under [`RowKey::Section`]`("no fold")`:
+    /// `SelectorSpec::Fold` cannot name "no fold" on the wire.
     fn push_fold_rows(
         &self,
         sheep: &[RowEntry<'_>],

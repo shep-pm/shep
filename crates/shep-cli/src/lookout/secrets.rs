@@ -159,15 +159,10 @@ pub(crate) fn model(paths: &ShepPaths, procs: &[ProcessInfo], environment: &str)
 /// The one value behind `row`, read back off disk for a reveal.
 ///
 /// `None` when nothing resolves in this tab, when the store will not read,
-/// and when the slot has gone since the model was built. Read on demand
-/// rather than carried in the model: a value the pane holds for its whole
-/// life is a value in every core dump of it, and the pane's life is as long
-/// as the operator leaves it open. Its caller runs this off the UI task
-/// ([`crate::lookout::app::Effect::RevealSecret`]), so the two file reads
-/// here are never on the reducer.
-///
-/// The gate is the caller's ([`crate::lookout::app::App::reveal_gate_open`]):
-/// this function does not check it.
+/// and when the slot has gone since the model was built. Read on demand, not
+/// carried in the model. The caller runs this off the UI task
+/// ([`crate::lookout::app::Effect::RevealSecret`]) and owns the gate
+/// ([`crate::lookout::app::App::reveal_gate_open`]).
 pub(crate) fn stored_value(store: &Path, provider_cache: &Path, row: &SecretRow) -> Option<String> {
     let environment = row.in_force.as_deref()?;
     match &row.source {

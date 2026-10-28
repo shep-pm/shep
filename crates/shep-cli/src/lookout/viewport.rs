@@ -5,12 +5,9 @@
 //! bare `cursor: usize` cannot.
 //!
 //! A viewport that does not know its height (`rows == 0`) never scrolls.
-//! `frames::scene` hands it the real height before each draw.
 //!
-//! This counts rows, not lines: a screen whose chrome costs lines (a
-//! section header, a caption, a column header) cannot ask it how much is
-//! off screen and get an answer about its own body. `view::settings`
-//! counts what it drew instead.
+//! This counts rows, not lines: a screen whose chrome costs lines cannot
+//! ask it how much is off screen and get an answer about its own body.
 
 /// A cursor, an offset, and the number of rows the terminal shows.
 ///

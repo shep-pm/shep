@@ -4,22 +4,15 @@ impl App {
     /// `Enter` on the secrets pane while nothing is armed: opens the `+ new
     /// key` row's editor on its KEY field, or the selected key's editor on its
     /// VALUE field. Refuses a provider row (read-only here) and a read-only
-    /// lookout, each with its own reason, through [`Self::authorize_write`] for
-    /// the second.
+    /// lookout, each with its own reason.
     ///
-    /// The gate is checked before the editor opens, not just before the write:
-    /// a refusal that arrived only once a whole value was typed would waste
-    /// every one of those keystrokes for nothing.
-    ///
-    /// The editor is the same [`KeyValues`] a sheep's env rows open, so `Tab`,
-    /// `Shift-Tab`, `Enter` and `Esc` mean the same thing on both panes.
+    /// The gate is checked before the editor opens: a refusal that arrived
+    /// only once a whole value was typed would waste those keystrokes.
     pub(in crate::lookout::app) fn secrets_confirm(&mut self) -> Effect {
         // `environments` empty is the placeholder model `KeyPress::Secrets`
         // opens with, before the first `Msg::Secrets` lands: `selected` (0)
-        // and `model.rows.len()` (also 0) coincide there by having no rows
-        // yet either, the same trap `Msg::Secrets`'s own clamp guards against.
-        // A real load never has an empty `environments`: the model always
-        // carries `all`, even over an empty store.
+        // and `model.rows.len()` (also 0) coincide there, the same trap
+        // `Msg::Secrets`'s own clamp guards against.
         let is_new_key_row = matches!(
             &self.body,
             Body::Secrets(pane)
@@ -103,15 +96,9 @@ impl App {
     ///
     /// `Enter` on KEY checks the name and moves to VALUE, writing nothing;
     /// `Enter` on VALUE submits both. The name grammar is the store's own
-    /// ([`shep_core::secrets::is_name`], reached through [`Grammar::Secret`])
-    /// and the value cap is [`shep_core::secrets::MAX_VALUE_BYTES`], each
-    /// checked rather than copied. A refusal reopens the same editor with what
-    /// was typed still in it, so neither costs a retype.
-    ///
-    /// A KEY that no longer names the row it was opened under is a rename: it
-    /// raises one [`Effect::WriteSecrets`] carrying both halves, so one `Enter`
-    /// moves the key instead of asking the operator to delete it and add it
-    /// again.
+    /// ([`Grammar::Secret`]) and the value cap is
+    /// [`shep_core::secrets::MAX_VALUE_BYTES`], each checked rather than
+    /// copied. A KEY that no longer names its row is a rename.
     fn apply_secrets_text(&mut self) -> Effect {
         let Some(mut editor) = self.secrets_pane_mut().and_then(|pane| pane.typing.take()) else {
             return Effect::None;
@@ -180,9 +167,8 @@ impl App {
         {
             // A rename's removal half is a delete of the key the editor was
             // opened under, so it carries the delete's own refusal. Writing
-            // through it would set the new key under this tab and leave the old
-            // one in force from `all`: a copy, closing the editor as if the move
-            // had worked.
+            // through it would set the new key under this tab and leave the
+            // old one in force from `all`: a copy.
             self.reopen_secret_editor(editor);
             self.notice = Some(Notice::grave(ALL_SLOT_REFUSAL.to_string()));
             return Effect::None;

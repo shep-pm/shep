@@ -99,9 +99,7 @@ impl Settings {
     /// this screen has a tree for it at all.
     ///
     /// What a landed section write raises: the same `Request::DogConfig` a dog
-    /// pane re-reads with, and the same reason for not re-probing. A dog whose
-    /// row this screen never opened answers `false`, so a write from a dog pane
-    /// raises nothing here.
+    /// pane re-reads with, and the same reason for not re-probing.
     pub(in crate::lookout::app) fn reload_dog(&mut self, name: &str) -> bool {
         let Some(tree) = self.dog_trees.get_mut(name) else {
             return false;
@@ -163,18 +161,9 @@ impl Settings {
     /// or why there is none to send.
     ///
     /// Runs through a copy of the dog's own pane rather than a settings-screen
-    /// writer of its own, so the gate is [`crate::dog_settings::refusal`], the
-    /// value is typed to the field's kind, and the text that reaches
-    /// `Request::SetDogConfig` is the operator's section with one line changed
-    /// in it, comments and key order intact. That is the same path `e` from the
-    /// flock writes through, which is the point: two surfaces cannot leave
-    /// `dogs.toml` in two different shapes.
-    ///
-    /// `Ok(None)` for a value the section already carries, which is not a
-    /// failure but is not a write either.
-    ///
-    /// [`DogSectionToml`] rather than `String`, so the armed candidate carries
-    /// the section in the same redacted wrapper a dog pane's close sends it in.
+    /// writer of its own, so the gate is [`crate::dog_settings::refusal`] and
+    /// the text that reaches `Request::SetDogConfig` is the operator's section
+    /// with one line changed. `Ok(None)` for a value it already carries.
     pub(in crate::lookout::app) fn dog_section_edit(
         &self,
         name: &str,

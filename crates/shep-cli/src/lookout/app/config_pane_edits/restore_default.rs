@@ -2,18 +2,10 @@ use super::super::*;
 
 impl App {
     /// `d` on the config pane's field list. Files an edit that removes the
-    /// operator's value for the field under the cursor, so the stored
-    /// default shows through once sent: the same verb the list sub-screen's
-    /// `d` performs on an element, which is why both carry
-    /// [`KeyPress::Remove`]. On the row of an entry of an array or map of
-    /// tables it files the entry's removal instead, behind the same write
-    /// gate; nothing is sent until the pane closes.
-    ///
-    /// Same lock-then-control order as [`Self::cycle_field`] and
-    /// [`Self::confirm_field`]: the lock names the more specific reason and
-    /// `--allow-control` would not change it. Does nothing on an env row,
-    /// on `+ add a key`, or with no row at all: [`ConfigPane::cursor_kind`]
-    /// is `None` for exactly those, and there is no field to restore.
+    /// operator's value for the field under the cursor, so the stored default
+    /// shows through once sent. On the row of an entry of an array or map of
+    /// tables it files the entry's removal instead, and nothing is sent until
+    /// the pane closes. Same lock-then-control order as [`Self::cycle_field`].
     pub(in crate::lookout::app) fn restore_default(&mut self) -> Effect {
         if self.refuse_if_locked() {
             return Effect::None;

@@ -1,22 +1,13 @@
 //! The dog pane's write: every filed edit applied to the section's own TOML
 //! text, ready for `Request::SetDogConfig`.
 //!
-//! `toml_edit` rather than a re-render of the pane's parsed values, and that
-//! is the whole reason this module exists: the request replaces the table
-//! wholesale, so a re-render would delete every comment in it on the
-//! operator's own keystroke. `dogs.toml` is the operator's file, and shep
-//! never writes it any other way.
+//! `toml_edit` rather than a re-render of the pane's parsed values: the
+//! request replaces the table wholesale, so a re-render would delete every
+//! comment in it on the operator's own keystroke. `dogs.toml` is the
+//! operator's file, and shep never writes it any other way.
 //!
-//! A row key is dotted (`models.worker.model`) whenever the dog's schema
-//! nests a table, and the pane keeps the key-to-path map [`flattened`] built
-//! the rows from beside the section text. The path is what this writer walks,
-//! never the key: a property literally named `a.b` is one key, and the
-//! section spells it `"a.b" = ...`.
-//!
-//! A field inside an entry of an array or map of tables is addressed the
-//! same way, through a path of [`PathStep`]s that adds the entry's index in
-//! an array. The entry is found and never created: an index past the end of
-//! the array and a map key the section lacks write nothing.
+//! A row key is dotted (`models.worker.model`) when the dog's schema nests a
+//! table, and the pane keeps the key-to-path map [`flattened`] beside the text.
 
 use serde_json::Value;
 
@@ -31,34 +22,10 @@ impl ConfigPane {
     /// The section with every field edit in `edits` applied at its own path,
     /// comments and key order intact, ready for `Request::SetDogConfig`.
     ///
-    /// This is what a close actually sends: the request replaces the table,
-    /// so a batch of edits to one dog is one write, not one per entry. Each
-    /// is applied to the document the previous one produced, walked in
-    /// [`Edits::iter`]'s own key order.
-    ///
-    /// An [`EditKey::Env`] entry has no home in a dog's section, a dog
-    /// having no env store, and is skipped rather than becoming a key in it.
-    ///
-    /// A `null` value removes the leaf and nothing above it, which is how the
-    /// pane's empty buffer unsets one, and is what puts the dog back on its
-    /// own default. A `null` on a key the section does not carry changes
-    /// nothing and is not a failure: the section already says the key is
-    /// absent, and refusing such an edit would cost every other edit in the
-    /// close its write.
-    ///
-    /// A filed key that names no row of this pane is refused, and so is a
-    /// field of an entry the section does not hold: a refresh can remove the
-    /// entry an edit was filed under, and writing the edit anywhere else
-    /// would put a key in the operator's file that they never typed.
-    ///
-    /// [`SectionWrite::Nothing`] for a sheep pane, which holds no section, for
-    /// a set carrying no field edit, and for a batch whose every edit the
-    /// section already carries. [`SectionWrite::Refused`] for a section that
-    /// does not parse, and for any one entry this writer cannot land: a value
-    /// with no TOML type, or a path that lands on something other than the
-    /// shape the row edits (a scalar where the schema says a table, a table
-    /// where the row edits one key inside it). A partial section is worse than
-    /// none, since the request would replace the table with it.
+    /// This is what a close actually sends: the request replaces the table, so
+    /// a batch of edits to one dog is one write, each applied to the document
+    /// the previous one produced. A `null` removes the leaf and nothing above
+    /// it, which is how the pane's empty buffer unsets one.
     #[must_use]
     pub fn edited_section_with(&self, edits: &Edits) -> SectionWrite {
         let Some(section) = self.section_text() else {
@@ -152,10 +119,7 @@ pub(super) enum Landed {
 /// An array is a cell only when every element is a string or every element is
 /// an `i64`, the two shapes the list sub-screen files; an empty one is both.
 /// Any other array, and a map, is refused: writing one as JSON text would put
-/// a string in `dogs.toml` where the dog reads a table or a list. A number
-/// that is neither an `i64` nor a genuine float (a `u64` above `i64::MAX`) is
-/// refused for the same reason: the float it would round to reads back as
-/// something else.
+/// a string in `dogs.toml` where the dog reads a table or a list.
 pub(super) fn toml_cell(value: &Value) -> Option<toml_edit::Item> {
     match value {
         Value::Bool(flag) => Some(toml_edit::value(*flag)),
@@ -196,25 +160,9 @@ fn toml_array(elements: &[Value]) -> Option<toml_edit::Array> {
 /// carry yet.
 ///
 /// A parent that is there takes the set where it is: a `[models.worker]`
-/// header, a `models.worker.model = ...` dotted key and a
-/// `worker = { model = ... }` inline table are all [`toml_edit::TableLike`],
-/// and each renders back in the form it came in. A parent the section lacks is
-/// created implicit, so the write adds `[models.worker]` and no empty
-/// `[models]` header above it, and inside an inline table it is created as an
-/// inline table, which is the only kind that renders there.
-///
-/// The first `existing` steps are the exception: they name an entry of an
-/// array or map of tables, which the operator's section either holds or does
-/// not, and [`Landed::Refused`] is the answer when it does not.
-///
-/// [`Landed::Refused`] where the section already holds something else at a
-/// step of the path: `models = "old"` there is the operator's value, and a
-/// nested row is not licensed to trade it for a table. The same for a leaf
-/// that is already a table, which no row of this pane edits.
-///
-/// `inline` says whether `table` is an inline table, which is not something
-/// [`toml_edit::TableLike`] answers: a table created inside one has to be an
-/// inline table too, or it renders as nothing.
+/// header, a dotted key and an inline table are all [`toml_edit::TableLike`],
+/// and each renders back in the form it came in. The first `existing` steps are
+/// the exception: they name an entry the section either holds or does not.
 pub(super) fn set_at(
     table: &mut dyn toml_edit::TableLike,
     path: &[PathStep],
@@ -276,10 +224,7 @@ pub(super) fn set_at(
 ///
 /// [`Landed::Already`] when the leaf, or a table on the way to it, is not in
 /// the section: the key is already unset, which is what the edit wanted. An
-/// entry that is not there is the exception, as it is for [`set_at`]:
-/// [`Landed::Refused`], since the edit was aimed at something that is gone.
-/// [`Landed::Refused`] too when a step on the path is there and holds no keys,
-/// so the removal was aimed at something that is not a table.
+/// entry that is not there is the exception, as it is for [`set_at`].
 pub(super) fn remove_at(
     table: &mut dyn toml_edit::TableLike,
     path: &[PathStep],

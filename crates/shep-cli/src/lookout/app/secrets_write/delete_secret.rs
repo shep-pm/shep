@@ -4,12 +4,9 @@ impl App {
     /// `D`: arms the removal of the selected key's value in the current
     /// tab's environment. Refuses a provider row and a read-only lookout,
     /// mirroring [`Self::secrets_confirm`]'s own two checks, and refuses
-    /// silently on the `+ new key` affordance and on a selection folded out
-    /// of view: neither names a real, visible key to delete, the same gate
-    /// [`Self::reveal_selected`] applies before a read.
-    ///
-    /// A row taking its value from the `all` slot refuses too
-    /// ([`ALL_SLOT_REFUSAL`]), before it arms rather than after the write.
+    /// silently on the `+ new key` affordance and on a selection folded out of
+    /// view. A row taking its value from the `all` slot refuses too
+    /// ([`ALL_SLOT_REFUSAL`]), before it arms.
     pub(in crate::lookout::app) fn arm_secret_delete(&mut self) -> Effect {
         let Some(pane) = self.secrets_pane_mut() else {
             return Effect::None;

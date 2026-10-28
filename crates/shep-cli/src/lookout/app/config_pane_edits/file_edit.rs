@@ -1,30 +1,13 @@
 use super::super::*;
 
 impl App {
-    /// One `Request::SetSheepField` reply.
+    /// One `Request::SetSheepField` reply. Reaches for no pane: the write
+    /// went out on the keypress that closed it, so this lands with the
+    /// dashboard on screen. A success still re-reads the config, using
+    /// `Effect::Send` so the re-read gets `Msg::Unsent` handling for free.
     ///
-    /// Reaches for no pane: the write went out on the keypress that closed
-    /// it, so this lands with the dashboard on screen. A success still
-    /// re-reads the config, using `Effect::Send` so the re-read gets
-    /// `Msg::Unsent` handling for free, and [`Self::on_sheep_config`]
-    /// drops the answer when nobody is waiting for it.
-    ///
-    /// Every sentence names the field, refusals included. A close sends
-    /// the whole set at once, so several of these can land in a row and a
-    /// refusal that named only the sheep would not say which write failed.
-    ///
-    /// The success sentence also names the new value when
-    /// [`FieldValue::safe_summary`] says that is safe: without it, setting
-    /// `reuse_port` to `true` and setting it back to `false` print the
-    /// identical sentence, which is wrong on its own rather than merely
-    /// incomplete.
-    ///
-    /// `pending` is the shepherd's answer, not this pane's guess: it knows
-    /// about fields like `autostart` that `apply_group` cannot derive.
-    ///
-    /// `warning` rides the same sentence rather than a second notice: the
-    /// write still landed, so this is one more clause about it, on the same
-    /// terms `pending`'s own `", and waits for..."` clause already sets.
+    /// Every sentence names the field, since a close sends the whole set at
+    /// once and several of these can land in a row.
     pub(in crate::lookout::app) fn on_field_applied(
         &mut self,
         name: &str,

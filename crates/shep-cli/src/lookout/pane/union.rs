@@ -4,11 +4,10 @@
 //! A union is a leaf of the outline whose value is a table. Its rows are
 //! made from that table as the operator has it, the filed one else the
 //! stored one: a `kind` row for the tag, then the fields of the arm the tag
-//! names. They key the edit they file by a name of their own,
-//! [`tag_key`] or [`arm_key`], which [`ConfigPane::file_field`] turns back
-//! into the whole table filed under the union's key. One union, one edit, so
-//! `u` takes the whole union back and a write carries a table that matches
-//! one arm of the schema.
+//! names. They key the edit they file by a name of their own, [`tag_key`] or
+//! [`arm_key`], which [`ConfigPane::file_field`] turns back into the whole
+//! table filed under the union's key. One union, one edit, so `u` takes the
+//! whole union back.
 
 use std::collections::BTreeMap;
 
@@ -403,13 +402,11 @@ impl ConfigPane {
 
     /// The sentence that says why the filed edits cannot be written: a
     /// union among them holds an arm without an editable field the arm
-    /// requires. A field with no editor is not asked for.
-    /// [`None`] when every filed union is whole.
+    /// requires. [`None`] when every filed union is whole.
     ///
     /// The same rule [`crate::dog_settings::table`] applies to a proposed
-    /// table, with the same sentence through [`required_text`]. This one runs
-    /// on the filed edits, which is where the pane can hold an operator to a
-    /// whole arm before anything goes out.
+    /// table, with the same sentence through [`required_text`], but here
+    /// nothing has gone out yet.
     #[must_use]
     pub(in crate::lookout) fn incomplete_union(&self) -> Option<String> {
         self.incomplete_own_union()

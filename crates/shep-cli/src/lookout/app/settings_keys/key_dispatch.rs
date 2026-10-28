@@ -61,9 +61,7 @@ impl App {
                 }
                 // The open, not just the probe: a dog's tree is built from the
                 // probe's answer, and re-opening a row this screen already read
-                // costs nothing. Same reasoning as `on_key`'s `e` on the
-                // dashboard: the tree shows the dog's real schema and section
-                // or nothing. An armed candidate eats it first, like every
+                // costs nothing. An armed candidate eats it first, like every
                 // other key here.
                 KeyPress::Edit => {
                     if self.disarm_settings_candidate() {
@@ -72,10 +70,9 @@ impl App {
                     return self.fold_dog_row();
                 }
                 // An armed candidate eats this too, on the same terms as
-                // `Refresh` and `Edit` above: a prompt left standing behind the
+                // `Refresh` and `Edit` above. A prompt standing behind the
                 // overlay is a value the operator cannot see to confirm or
-                // cancel, so `h` cancels it and is consumed rather than also
-                // opening the overlay.
+                // cancel. `h` cancels it rather than also opening it.
                 KeyPress::Help => {
                     if self.disarm_settings_candidate() {
                         return Effect::None;
@@ -256,9 +253,6 @@ mod tests {
     ///
     /// The refusal is checked per keypress rather than at the end, because
     /// `on_settings_key` clears `self.notice` on every key.
-    ///
-    /// Each route names the key its cursor starts on (`None` for the last
-    /// row, a dog) and the keys pressed from there.
     fn write_routes() -> Vec<(&'static str, Option<&'static str>, Vec<KeyPress>)> {
         use KeyPress::{Confirm, Cycle, Remove, SelectLast, TextApply, TextChar};
 

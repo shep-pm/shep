@@ -43,13 +43,12 @@ impl App {
     }
 
     /// `space` on a key row. Re-arms when a candidate is already armed, so a
-    /// second `space` walks one step further along the cycle. Does nothing
-    /// on a key that is typed.
+    /// second `space` walks one step further along the cycle. Does nothing on
+    /// a key that is typed.
     ///
-    /// Replaces a [`Pending::Sent`] outright rather than refusing over it:
-    /// the write it names is local file I/O the operator need not wait on,
-    /// and its answer can no longer reach the edit armed here. See
-    /// [`Settings::pending`].
+    /// Replaces a [`Pending::Sent`] outright rather than refusing over it: the
+    /// write it names is local file I/O, and its answer can no longer reach
+    /// the edit armed here. See [`Settings::pending`].
     fn cycle_key(&mut self, index: usize) -> Effect {
         let shape = shep_toml_shape();
         let field = &shape.fields.fields()[index];

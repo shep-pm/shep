@@ -119,9 +119,7 @@ pub enum Sent {
     /// what it was started with.
     ///
     /// Not [`Self::Dog`]: that variant's `enable` says which way the toggle
-    /// went, and a grant changes no toggle. Reusing it would report a grant as
-    /// an enable, in the status bar and in the sentence the shepherd's answer
-    /// lands under.
+    /// went, and a grant changes no toggle.
     GrantDog {
         /// The dog.
         name: String,
@@ -146,18 +144,11 @@ pub enum Sent {
     },
     /// One field of one sheep's config, off the config pane's own `Enter`.
     ///
-    /// [`Self::SetEnv`]'s twin, and it is a `Request::SetSheepField`
-    /// rather than a one-key `Request::ApplyConfig` for the reason that
-    /// variant's own doc gives: an `ApplyConfig` at `ResetDepth::File`
-    /// moves the field and then spends the operator's override for it,
-    /// because that merge is a template load. This pane's value is the
-    /// operator's, so the sheep still differs from its file and the `*`
-    /// marker has to keep saying so.
-    ///
-    /// The [`WriteAuthority`] is not decoration, for exactly the reason
-    /// [`Effect::WriteSetting`]'s own doc gives: this variant cannot be
-    /// named without having passed the gate, so a fifth door added
-    /// tomorrow cannot walk around it.
+    /// [`Self::SetEnv`]'s twin, and a `Request::SetSheepField` rather than a
+    /// one-key `Request::ApplyConfig` for that variant's own reason: an
+    /// `ApplyConfig` at `ResetDepth::File` spends the operator's override. The
+    /// [`WriteAuthority`] is not decoration, for [`Effect::WriteSetting`]'s
+    /// reason.
     ApplyField {
         /// The sheep.
         name: String,
@@ -179,8 +170,7 @@ pub enum Sent {
     ///
     /// The schema is not asked for here and never travels the wire: it comes
     /// off the dog's own binary ([`Effect::LoadDogPane`]), because nothing
-    /// records one. `shep adopt` uses it for the vet and writes down only
-    /// the path.
+    /// records one.
     DogSection {
         /// Which dog was asked about.
         name: String,
@@ -190,15 +180,8 @@ pub enum Sent {
     /// The whole section rather than one key, because
     /// `Request::SetDogConfig` replaces the table: `ConfigPane::edited_section_with`
     /// applies the batch through `toml_edit`, so the operator's comments and
-    /// key order survive a write shep did not author.
-    ///
-    /// Not a `Request::ApplyConfig`, and not for [`Self::ApplyField`]'s
-    /// reason either: a dog has no override store and no Flockfile. Its
-    /// section is the operator's outright, and `dogs.toml` is the one copy
-    /// of it.
-    ///
-    /// The [`WriteAuthority`] is not decoration, for the reason
-    /// [`Effect::WriteSetting`]'s own doc gives.
+    /// key order survive. A dog has no override store and no Flockfile. The
+    /// [`WriteAuthority`] is not decoration, for [`Effect::WriteSetting`]'s reason.
     SetDogSection {
         /// The dog.
         name: String,
@@ -216,12 +199,9 @@ pub enum Sent {
     /// the per-sheep table pane's close, or the dogs sub-screen's confirmed
     /// `d`.
     ///
-    /// The whole table, because `Request::SetSheepDogSettings` replaces
-    /// it. [`DogTable`]'s own `Debug` prints a key count, so a `{:?}` of
-    /// this enum prints no value (IR-41).
-    ///
-    /// The [`WriteAuthority`] is not decoration, for the reason
-    /// [`Effect::WriteSetting`]'s own doc gives.
+    /// The whole table, because `Request::SetSheepDogSettings` replaces it.
+    /// [`DogTable`]'s own `Debug` prints a key count, so a `{:?}` of this
+    /// enum prints no value (IR-41).
     SetSheepDogTable {
         /// The sheep.
         name: String,
@@ -337,11 +317,9 @@ impl Sent {
     /// The ticket a pane write minted itself with, or [`None`] for a
     /// variant no pane ever produces.
     ///
-    /// What [`App::resolve_held_write`] matches a reply against, rather
-    /// than trusting whatever a counter says is outstanding: two writes in
-    /// flight from two different close-dialog answers are otherwise
-    /// indistinguishable to a count, and a reply belonging to neither
-    /// [`App::held`] batch must never be read as belonging to it.
+    /// What [`App::resolve_held_write`] matches a reply against, rather than
+    /// trusting whatever a counter says is outstanding: two writes in flight
+    /// from two different close-dialog answers are indistinguishable to a count.
     pub(super) fn ticket(&self) -> Option<u64> {
         match self {
             Self::ApplyField { ticket, .. }
@@ -374,9 +352,7 @@ pub struct DogEdit {
 /// read by the next boot and reaches no running anything, and a grant is read
 /// by the shepherd when it starts the dog, so it has a daemon half.
 ///
-/// `Debug` is derived, not redacted: [`DogSource`] holds a binary's path and
-/// permission names, and `shep_core::protocol`'s own `Debug` prints them the
-/// same way `shep dogs grant` prints them.
+/// `Debug` is derived, not redacted: a binary's path and permission names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DogTuneLanded {
     /// `[daemon] boot_first_dogs` changed. Nothing to tell the shepherd: the
@@ -385,12 +361,9 @@ pub enum DogTuneLanded {
     /// `[daemon] dog_grants` changed, carrying the source the record now
     /// describes and whether the dog is in `enabled_dogs`.
     ///
-    /// `enabled` is the one `record_change` read under the lock, which is why
-    /// it travels here rather than being re-read from the screen: the settings
-    /// screen can be closed, or re-read, between the write landing and this
-    /// answer, and a dog that is running does not stop being enabled because the
-    /// operator pressed `Esc`. `shep dogs grant` decides the same way, from the
-    /// `Applied` it just computed.
+    /// `enabled` is the one `record_change` read under the lock, so it does
+    /// not depend on the settings screen still being open when this answer
+    /// lands.
     Grants {
         /// What the record now describes, which is what telling the shepherd needs.
         source: DogSource,
@@ -404,12 +377,8 @@ pub enum DogTuneLanded {
 /// Held on [`App`] between the probe answering ([`Msg::DogPane`]) and the
 /// section landing ([`Sent::DogSection`]), and then for as long as the pane
 /// is open, so a refresh re-reads the section without respawning the dog.
-///
-/// `Debug` is derived rather than redacted (IR-41): a name, a binary's path
-/// and a JSON Schema. A schema describes values without carrying any, the
-/// same argument `crate::lookout::field::Field`'s own derived `Debug` makes, and a
-/// dog's defaults come from its binary describing itself rather than from
-/// this flock.
+/// `Debug` is derived rather than redacted (IR-41): a schema describes values
+/// without carrying any.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DogProbe {
     /// The dog.

@@ -63,24 +63,12 @@ impl ConfigPane {
     }
 
     /// One row per field of the active group, in display order, then, on a
-    /// sheep's `process` tab, its own env keys and the row that adds one. A field carrying no
-    /// group at all (every field on a dog pane, whose schema declares
-    /// none) is visible regardless of which group is active, which is
-    /// what keeps a dog's flat list undisturbed by a control meant for a
-    /// sheep's nine.
+    /// sheep's `process` tab, its own env keys and the row that adds one. A
+    /// field carrying no group is visible whatever group is active.
     ///
-    /// The `env` field itself is left out of the field portion for a
-    /// sheep: its own [`PaneRow::Env`] rows are what replaced the sub-screen
-    /// it used to open, and a row that still showed the field's own "N
-    /// keys" summary beside them would be the same fact said twice. A
-    /// dog's schema is somebody else's and can declare a field named
-    /// `env` of its own, which stays.
-    ///
-    /// A sheep's `dogs` tab draws no field at all: its rows are the dogs,
-    /// and the table of each one that is open. See [`Self::dog_rows`].
-    ///
-    /// A dog's pane draws its outline instead: a table's row, then what is
-    /// under it while it is open. See [`Self::open_table`].
+    /// The `env` field is left out of the field portion for a sheep: its
+    /// [`PaneRow::Env`] rows say the same thing. See [`Self::dog_rows`] for a
+    /// sheep's `dogs` tab and [`Self::open_table`] for a dog's outline.
     #[must_use]
     pub fn rows(&self) -> Vec<PaneRow> {
         if self.is_tree() {

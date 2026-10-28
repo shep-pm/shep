@@ -3,12 +3,9 @@
 //!
 //! `tokio::sync::broadcast` drops what a lagging subscriber cannot keep up
 //! with, surfaced as `BusEvent::Dropped` or `shep_client::Lagged`. Both
-//! trigger an immediate poll; a drop carries no detail, so re-listing is the
-//! only repair.
-//!
-//! A dead shepherd freezes the dashboard rather than exiting it: after
-//! [`RECONNECT_ATTEMPTS`] rungs this sends [`Msg::Frozen`] and ends, and the
-//! last known flock stays on screen.
+//! trigger an immediate poll: a drop carries no detail, so re-listing is the
+//! only repair. After [`RECONNECT_ATTEMPTS`] rungs this sends [`Msg::Frozen`]
+//! and ends, and the last known flock stays on screen.
 
 use core::fmt;
 use std::time::Duration;
@@ -72,15 +69,10 @@ pub struct Channels {
 
 /// Runs `opened` and everything that replaces it, until the ladder runs out.
 ///
-/// Sends [`Msg`]s to the UI over `msgs`, and takes a request for an
-/// out-of-band poll and a one-shot request to send, both on `channels`.
-///
-/// `opened` is handed in already connected: the first dial belongs to
-/// `super::lookout`, which makes it before entering raw mode so a shepherd
-/// that was never running refuses with `daemon_unreachable`, exit 5, and no
-/// alternate screen.
-///
-/// Ends only after sending [`Msg::Frozen`], or when the UI stops listening.
+/// Sends [`Msg`]s to the UI over `msgs`, and takes a poll request and a
+/// one-shot request to send on `channels`. `opened` is handed in already
+/// connected: the caller dials before entering raw mode. Ends only after
+/// sending [`Msg::Frozen`], or when the UI stops listening.
 pub async fn run_link<S: Shepherd>(
     mut shepherd: S,
     opened: (S::Flock, S::Events),
@@ -99,10 +91,9 @@ pub async fn run_link<S: Shepherd>(
                 Ok(pair) => pair,
                 Err(err) => {
                     // Kept for the freeze below and nothing else: the
-                    // reducer's `Retrying` state is what the banner reads,
-                    // and a per-attempt error string would change that
-                    // sentence every 250ms. The frozen link panel quotes one
-                    // error that never changes again, so it gets the words.
+                    // reducer's `Retrying` state is what the banner reads, and
+                    // a per-attempt error string would change it every 250ms.
+                    // The frozen link panel quotes one error that never changes.
                     attempt += 1;
                     if attempt > RECONNECT_ATTEMPTS {
                         let _ = msgs

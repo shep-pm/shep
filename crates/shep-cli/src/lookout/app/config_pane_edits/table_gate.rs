@@ -4,11 +4,9 @@
 //! Every edit in a pane was already held to the schema on the keystroke that
 //! filed it. The gate [`crate::dog_settings::touched_refusal`] adds is the
 //! check that the write goes through the same door the keystroke did, asked
-//! about the keys the operator chose. A value the operator wrote into
-//! `dogs.toml` or the Flockfile by hand, and which the dog's own schema turns
-//! down, is the shepherd's to take or refuse: the pane never read it, so it
-//! goes back out as it came. These two tests are that promise, one per table
-//! pane.
+//! about the keys the operator chose. A value the operator wrote by hand is
+//! the shepherd's to take or refuse: the pane never read it, so it goes back
+//! out as it came.
 
 use serde_json::{Value, json};
 use shep_core::protocol::Response;

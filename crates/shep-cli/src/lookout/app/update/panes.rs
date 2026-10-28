@@ -13,16 +13,10 @@ impl App {
     pub(super) fn on_settings(&mut self, result: Result<SettingsSnapshot, String>) -> Effect {
         let opening = self.settings().is_none();
         match result {
-            // A config pane opened while this read was in flight, so
-            // the operator asked for the pane AFTER asking for
-            // settings and this reply is the stale one. Adopting it
-            // would replace the pane with a settings screen the
-            // operator has moved on from, and leave `config_target`
-            // and `close_dialog` describing a screen that is no longer
-            // up. The `Body` enum stops the two coexisting; it does
-            // not stop this handler overwriting one with the other,
-            // which is the same race `on_sheep_config` had in the
-            // opposite direction.
+            // A config pane opened while this read was in flight, so this
+            // reply is the stale one. Adopting it would replace the pane with
+            // a settings screen the operator has moved on from, and leave
+            // `config_target` and `close_dialog` describing a screen not up.
             Ok(_) if self.config_pane().is_some() => {}
             Ok(snapshot) => {
                 // An action armed while the read was in flight: once
@@ -33,16 +27,10 @@ impl App {
                 // keystroke the settings keymap owns: `on_key` checks
                 // the mode first. The query itself is kept.
                 self.mode = InputMode::Normal;
-                // Reset to the top only while `opening`.
-                // `Settings::cursor` clamps on every read, so a
-                // preserved `Viewport` past a shorter dogs list
-                // still lands somewhere real.
-                // A dog already opened keeps its tree across the re-read, so
-                // a landed write does not make the operator re-probe a dog's
-                // binary for a screen they never left. A dog whose row was
-                // dropped from the new snapshot drops its tree with it, since
-                // [`Settings::dog_tree`] looks the tree up by the name the
-                // snapshot carries.
+                // Reset to the top only while `opening`: `Settings::cursor`
+                // clamps on every read, so a preserved `Viewport` past a
+                // shorter list still lands somewhere real. A dog already opened
+                // keeps its tree, so a landed write need not re-probe its binary.
                 let kept = self.settings().map(|settings| {
                     (
                         settings.view.clone(),
@@ -71,18 +59,10 @@ impl App {
 
     /// `Msg::SettingWritten`'s arm.
     ///
-    /// `Ok` re-reads rather than folding the write into the row, which
-    /// covers `Unset` too. `Err` reopens the editor for the two
-    /// free-text fields, so a long path need not be retyped.
-    ///
-    /// Both arms act on the screen only when this reply is the one it
-    /// is waiting on. `Settings::resolve` answers that; a reply it
-    /// refuses still reports itself and still re-reads, but leaves
-    /// whatever is on screen alone. A dog section can also have
-    /// replaced the settings screen with a config pane while the
-    /// write was in flight, which `resolve` refuses for the same
-    /// reason: `InputMode::Text` with no editor behind it sends every
-    /// later keystroke to a text handler that owns nothing.
+    /// `Ok` re-reads rather than folding the write into the row, which covers
+    /// `Unset` too. `Err` reopens the editor for the two free-text fields, so
+    /// a long path need not be retyped. Both arms act on the screen only when
+    /// this reply is the one it is waiting on: `Settings::resolve` answers that.
     pub(super) fn on_setting_written(
         &mut self,
         edit: SettingEdit,
@@ -101,22 +81,10 @@ impl App {
                     if let Some(settings) = self.settings_mut() {
                         settings.pending = Some(Pending::Typing { target, buffer });
                     }
-                    // The overlay closes rather than the editor
-                    // reopening beneath it. `on_key` checks text mode
-                    // ahead of `keymap_open`, deliberately, so an `h`
-                    // typed into a filter box stays a letter; the cost
-                    // is that text mode restored from a MESSAGE would
-                    // take the keyboard while the box is still drawn,
-                    // and every key would reach a socket path the box
-                    // hides. Reachable because `is_armed` does not
-                    // cover `Pending::Sent`, so `h` with a write in
-                    // flight opens the overlay instead of cancelling.
-                    //
-                    // Closing it is the lesser surprise: the operator
-                    // asked for a key list, and what they get instead
-                    // is their refused write, the grave notice saying
-                    // why, and their own typed text back. `h` reopens
-                    // the box.
+                    // The overlay closes rather than the editor reopening
+                    // beneath it: text mode restored from a message would take
+                    // the keyboard while the box is still drawn. Closing it is
+                    // the lesser surprise, and `h` reopens the box.
                     self.keymap_open = false;
                     self.mode = InputMode::Text;
                 }
@@ -156,14 +124,10 @@ impl App {
 
     /// `Msg::DogWritten`'s arm.
     ///
-    /// `Ok` raises the daemon half: `Cycle` arms, `Confirm` writes the
-    /// file, this arm asks the shepherd. `Err` never reaches it, since
-    /// there is nothing for the daemon half to agree with.
-    ///
-    /// `Ok` asks the shepherd whether or not the screen is still
-    /// waiting on this ticket: the file already says the dog is on or
-    /// off, so a daemon half dropped here would leave the two
-    /// disagreeing. `Err` clears only the prompt this ticket raised.
+    /// `Ok` raises the daemon half: `Cycle` arms, `Confirm` writes the file,
+    /// this arm asks the shepherd, whether or not the screen is still waiting
+    /// on this ticket, since the file already says the dog is on or off. `Err`
+    /// clears only the prompt this ticket raised.
     pub(super) fn on_dog_written(
         &mut self,
         edit: DogEdit,
@@ -189,16 +153,10 @@ impl App {
 
     /// `Msg::DogTuneWritten`'s arm.
     ///
-    /// The two keys answer differently. `boot_first_dogs` is read at boot, so
-    /// a landed write has no daemon half and the screen just re-reads the
-    /// file. A grant has one: `shep dogs grant` tells a running shepherd, and
-    /// lookout does the same, because a dog already up would otherwise keep
-    /// the grants it was started with while the screen says otherwise.
-    ///
-    /// Whether it is enabled arrives with the answer rather than being read off
-    /// the screen here: the operator can close the settings screen between the
-    /// write and this reply, and that changes what is on screen, not what the
-    /// file says about a running dog.
+    /// The two keys answer differently. `boot_first_dogs` is read at boot, so a
+    /// landed write has no daemon half. A grant has one: a dog already up would
+    /// otherwise keep the grants it was started with. Whether it is enabled
+    /// arrives with the answer, not off the screen here.
     pub(super) fn on_dog_tune_written(
         &mut self,
         tune: DogTune,
@@ -277,25 +235,20 @@ impl App {
                     // the new end onto the last surviving one
                     // instead of dangling.
                     pane.tab = pane.tab.min(model.environments.len().saturating_sub(1));
-                    // A selection on the trailing `+ new key`
-                    // sentinel stays on it under the fresh model's
-                    // own row count, rather than the ordinary clamp
-                    // below, which would otherwise land it on the
-                    // new model's last real row. Excludes the first
-                    // load, whose own empty model reads `selected`
-                    // (`0`) as that same sentinel by coincidence,
-                    // having no rows yet either.
+                    // A selection on the trailing `+ new key` sentinel stays
+                    // on it under the fresh model's own row count, rather than
+                    // the ordinary clamp below landing it on the new model's
+                    // last real row. Excludes the first load's empty model.
                     pane.selected = if !first_load && pane.selected_is_new_key_row() {
                         model.rows.len()
                     } else {
                         pane.selected.min(model.rows.len().saturating_sub(1))
                     };
                     pane.model = model;
-                    // The row count clamp above says nothing about
-                    // collapse state, and `collapsed` survives a
-                    // reload: the surviving index can still name a
-                    // row a still-folded namespace hides. Same
-                    // fallback the `Collapse` arm uses.
+                    // The row count clamp above says nothing about collapse
+                    // state, and `collapsed` survives a reload: the surviving
+                    // index can still name a row a still-folded namespace
+                    // hides. Same fallback the `Collapse` arm uses.
                     if pane
                         .model
                         .rows

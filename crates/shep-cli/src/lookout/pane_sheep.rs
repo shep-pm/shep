@@ -45,16 +45,9 @@ pub fn scale_top(peak: f64, floor: f64) -> f64 {
 /// One sheep, given the whole screen.
 ///
 /// `Debug` is derived (IR-41): [`SheepConfigView`]'s own `Debug` is already
-/// redacted, since it carries a key set; [`BleatsPane`]'s carries a row key
-/// and a filter set, neither of which is a value the pane withholds; and a
-/// [`RowKey`] is a bare integer.
-///
-/// The left column (`view::sheep::draw_column`) is the only
-/// scroller a sheep pane owns today: the two charts have no cursor, and the
-/// feed is [`BleatsPane`]'s own. `Viewport` counts lines rather than data
-/// rows here, since a group header costs a blank, a rule and a label that
-/// no field owns; [`column_len`] is the one place both this and the column
-/// itself read that count off, so they cannot drift apart.
+/// redacted, [`BleatsPane`]'s holds no withheld value, and a [`RowKey`] is a
+/// bare integer. `Viewport` counts lines, not data rows: a group header
+/// costs a blank, a rule and a label no field owns.
 #[derive(Debug)]
 pub struct SheepPane {
     sheep: RowKey,
@@ -92,12 +85,8 @@ impl SheepPane {
 
     /// `COLUMN_BODY_ROWS` never changes, so every entry point below records
     /// it itself rather than asking a caller to have called
-    /// `App::note_body_rows` first, the way the editing panes' own
-    /// `set_rows` does: the column's height is fixed by the frame, not by
-    /// the terminal.
-    ///
-    /// Named `body_len`, not `column_len`, so it reads as its own method
-    /// rather than as the free [`column_len`] it wraps calling itself.
+    /// `App::note_body_rows` first: the column's height is fixed by the
+    /// frame, not by the terminal.
     fn body_len(&self) -> usize {
         column_len(self.config())
     }

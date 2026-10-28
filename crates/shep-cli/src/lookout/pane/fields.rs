@@ -83,8 +83,7 @@ pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>)
     // A Structural field is identity or flock shape, not a runtime knob:
     // `name` cannot drift without becoming a different sheep, and
     // `instances` is routed through `handle_scale` rather than through a
-    // config write at all. Read-only here, so the pane never offers an
-    // edit the daemon would refuse.
+    // config write at all.
     let fields = FieldSet::from_fields(
         set.fields()
             .iter()
@@ -110,23 +109,8 @@ pub(crate) fn sheep_fields(config: &AppConfig) -> (FieldSet, Map<String, Value>)
 /// operator would otherwise have to already know the convention for.
 ///
 /// Shared by [`ConfigPane::display_value`] and the sheep pane's read-only
-/// column (`view::sheep::field_value_text`), the same move
-/// [`sheep_fields`] made for the field set itself: two rows reading the same
-/// value off two different screens and disagreeing on its units is exactly
-/// the divergence a shared function forecloses rather than a pair of tests
-/// happening to agree.
-///
-/// Display only: [`ConfigPane::value`] is what an editor still seeds and
-/// sends, so a suffix minted here never travels back out as part of a
-/// value.
-///
-/// A `raw` that fails to parse, including whatever is mid-edit, comes back
-/// unchanged: this has no business guessing at a string shep is about to
-/// refuse on its own.
-///
-/// Only a bare number is annotated. A value naming its own unit is the
-/// operator's spelling and survives as written, so a `60s` on disk is never
-/// redrawn as the `1m` its own `Display` would canonicalize it to.
+/// column, so two screens cannot disagree on a value's units. Display only:
+/// [`ConfigPane::value`] is what an editor seeds and sends.
 pub(crate) fn resolved_display(fields: &FieldSet, key: &str, raw: &str) -> String {
     resolved_by_kind(fields.by_key(key).and_then(|field| field.value_kind), raw)
 }

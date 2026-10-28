@@ -174,12 +174,9 @@ impl ConfigPane {
     /// Files an env write from the editor, which it closes over.
     ///
     /// An existing key with an empty VALUE removes it: there is no separate
-    /// unset key for env, and no widget for one either, so an empty value and
-    /// no value are the same keystroke here. A rename files both halves from
-    /// the one `Enter`, the new key set and the old one removed, so an operator
-    /// moves a key rather than deleting it and adding it again. The editor
-    /// refuses a rename that carried no value, so the set half is never empty
-    /// here.
+    /// unset key for env, so an empty value and no value are the same
+    /// keystroke. A rename files both halves from the one `Enter`, so an
+    /// operator moves a key rather than deleting it and adding it again.
     fn file_env_typing(&mut self, typing: &KeyValues) {
         let key = typing.key().as_str().to_owned();
         let typed = typing.value().as_str();
