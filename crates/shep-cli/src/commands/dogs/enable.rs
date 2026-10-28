@@ -320,14 +320,14 @@ mod tests {
     use std::collections::BTreeMap;
 
     use shep_client::testing::{
-        fake_client_capturing_envelopes, fake_client_replying_err, sample_ack, sample_info,
-        serve_one_request,
+        fake_client_capturing_envelopes, fake_client_replying_err, fake_daemon_answering_with_ack,
+        sample_ack, sample_info, serve_one_request,
     };
-    use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::{HelloAck, RpcErrorCode};
 
     use super::*;
     use crate::cli::Format;
-    use crate::commands::dogs::test_support::streams;
+    use crate::commands::dogs::test_support::{streams, this_builds_ack};
 
     /// A built-in dog's [`DogEntry`] with nothing set for it, which is what
     /// `shep.toml` says about one.
@@ -498,7 +498,7 @@ mod tests {
             .unwrap();
             let handle = serve_one_request(
                 &paths.socket,
-                sample_ack(),
+                this_builds_ack(),
                 Response::DogStarted(sample_info()),
             )
             .await;
@@ -530,6 +530,52 @@ mod tests {
                 "the row must render an adopted dog as adopted: {text}"
             );
         }
+    }
+
+    /// The hazard a dog's `env` brings: a shepherd of another build decodes
+    /// `Request::EnableDog` and drops the `env` key it has never heard of, then
+    /// answers as a dog it started with the operator's keys. `connect_or_absent`
+    /// now runs the guard every other write verb runs at its connect, so the
+    /// operator is told to reload the shepherd instead.
+    #[tokio::test]
+    async fn enable_refuses_a_shepherd_of_another_build_before_it_sends_anything() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShepPaths::resolve(&|_| None, dir.path());
+        std::fs::create_dir_all(&paths.run).unwrap();
+        ShepToml::edit(&paths.daemon_config, |seed| {
+            seed.adopt_dog("otel", Path::new("/usr/local/bin/shep-otel"), false)
+                .unwrap();
+            seed.set_adopted_dog_env("otel", "PADDOCK_KEY", Some("gateway-key"))
+                .unwrap();
+        })
+        .unwrap();
+        let ack = HelloAck {
+            daemon_version: "0.1.0".to_string(),
+            ..sample_ack()
+        };
+        let mut envelopes = fake_daemon_answering_with_ack(&paths.socket, ack, |_| {
+            Response::DogStarted(sample_info())
+        })
+        .await;
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = enable(&mut streams(&mut out, &mut err), &paths, "otel", true).await;
+
+        assert_eq!(code, ExitCode::VersionSkew, "{code:?}");
+        let text = String::from_utf8(err).unwrap();
+        assert!(text.contains("shep daemon reload"), "{text}");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(500), envelopes.recv())
+                .await
+                .is_err(),
+            "no EnableDog reaches a shepherd that would drop its env"
+        );
+        let written = std::fs::read_to_string(&paths.daemon_config).unwrap();
+        assert!(
+            written.contains("PADDOCK_KEY"),
+            "the config edit is not the thing being refused: {written}"
+        );
     }
 
     /// A name holding values in both `shep.toml` and `dogs.toml` makes the

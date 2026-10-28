@@ -20,6 +20,7 @@ use shep_core::protocol::{DogSource, EnvValue};
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionRow, DogActionStatus, Streams, emit, write_outcome};
+use crate::version_guard::{VersionGuard, refuse_version_skew};
 
 mod adopt;
 mod barks;
@@ -221,8 +222,9 @@ fn adopted_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> Option<
 ///
 /// `Ok(None)` is only [`ConnectError::Connect`], nothing listening: the one
 /// case the four verbs tolerate silently, since none may autostart a
-/// shepherd. Every other variant means a connection was established, so the
-/// refusal is reported rather than folded in.
+/// shepherd. Every other variant means a connection was established, so its
+/// refusal is reported rather than folded in, and so is a version skew: see
+/// [`crate::version_guard::refuse_version_skew`].
 ///
 /// # Errors
 /// The exit code and message [`Streams::fail`] already wrote, when the
@@ -232,7 +234,14 @@ pub(crate) async fn connect_or_absent(
     streams: &mut Streams<'_>,
 ) -> Result<Option<Client>, ExitCode> {
     match Client::connect(&paths.socket).await {
-        Ok(client) => Ok(Some(client)),
+        Ok(client) => {
+            // The guard every other write verb gets at its connect: a
+            // shepherd of another build decodes what this one sends and
+            // ignores the keys it does not know, so `shep enable` on a
+            // half-replaced install would start a dog without its `env`.
+            refuse_version_skew(streams, &client, VersionGuard::Enforce)?;
+            Ok(Some(client))
+        }
         Err(ConnectError::Connect { .. }) => Ok(None),
         Err(err) => {
             let code = ExitCode::from(&err);
