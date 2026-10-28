@@ -67,6 +67,27 @@ where
     }
 }
 
+/// Which end of a body a marker counts off.
+enum Side {
+    /// Rows above the first line the body drew.
+    Above,
+    /// Rows below the last one it drew.
+    Below,
+}
+
+/// One hidden-count marker line.
+///
+/// The text and the muted style live here and nowhere else: `count` rows
+/// sit off `side`, and a screen that wants a different sentence, or a
+/// different style, changes this one match.
+fn marker(count: usize, side: Side, palette: Palette) -> Line<'static> {
+    let text = match side {
+        Side::Above => format!("  ... {count} above"),
+        Side::Below => format!("  ... {count} below"),
+    };
+    Line::from(Span::styled(text, palette.muted()))
+}
+
 /// Draws the two hidden-count markers around a body laid out as a window of
 /// rows.
 ///
@@ -84,19 +105,10 @@ pub(super) fn window_markers(
     palette: Palette,
 ) {
     if hidden_below > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
+        lines.push(marker(hidden_below, Side::Below, palette));
     }
     if offset > 0 {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {offset} above"),
-                palette.muted(),
-            )),
-        );
+        lines.insert(0, marker(offset, Side::Above, palette));
     }
 }
 
@@ -115,19 +127,10 @@ pub(super) fn cursor_markers(
     palette: Palette,
 ) {
     if cursor_row > 0 && lines.len() < budget {
-        lines.insert(
-            0,
-            Line::from(Span::styled(
-                format!("  ... {cursor_row} above"),
-                palette.muted(),
-            )),
-        );
+        lines.insert(0, marker(cursor_row, Side::Above, palette));
     }
     if hidden_below > 0 && lines.len() < budget {
-        lines.push(Line::from(Span::styled(
-            format!("  ... {hidden_below} below"),
-            palette.muted(),
-        )));
+        lines.push(marker(hidden_below, Side::Below, palette));
     }
 }
 
