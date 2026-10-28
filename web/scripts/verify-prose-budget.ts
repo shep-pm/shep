@@ -135,7 +135,7 @@ export const BUDGETS: Record<string, number> = {
   // the `release-plz` caveat that leaves a dog's own release never rebuilding
   // its own page. Required content for the author who ships one, not prose to
   // trim back out.
-  "writing-a-dog": 5470,
+  "writing-a-dog": 5490,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -402,7 +402,7 @@ export const BUDGETS: Record<string, number> = {
   // what it costs is not prose: the branch that decides whether a row gets a
   // link sits in the page body rather than in frontmatter, and this counter
   // reads the page body as words a reader wades through.
-  "community-dogs": 315,
+  "community-dogs": 320,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

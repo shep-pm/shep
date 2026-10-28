@@ -27,6 +27,7 @@ import { readFile } from "node:fs/promises";
 import {
   FIRST_PARTY_REPO_PREFIX,
   README_PATH,
+  builtDogPages,
   docsPageOf,
   fetchDogPages,
   firstPartyDogs,
@@ -164,26 +165,52 @@ test("firstPartyDogs keeps every first-party row of the published index", () => 
   }
 });
 
-/* --- docsPageOf -------------------------------------------------------- */
+/* --- builtDogPages and docsPageOf -------------------------------------- */
 
-test("docsPageOf gives a row of ours the page the build writes for it", () => {
-  const dog = dogFixture("https://github.com/shep-pm/shep-log-rotate");
-  assert.equal(docsPageOf(dog), `/docs/dogs/${ADOPT_AS}`);
-  // The same route the imported page writes into its own links, so the link a
-  // reader clicks is the file the build wrote.
-  assert.equal(docsPageOf(dog), dogDocRoute(ADOPT_AS, README_PATH));
+/** A build that wrote this fixture's README page and nothing else. */
+const BUILT = new Set([ADOPT_AS]);
+
+test("builtDogPages takes a dog's own page and not the pages it links to", () => {
+  const written = builtDogPages([
+    { adoptAs: ADOPT_AS, route: "" },
+    { adoptAs: ADOPT_AS, route: "docs/setup" },
+    { adoptAs: "log-rotate", route: "" },
+  ]);
+  assert.deepEqual([...written].sort(), ["log-rotate", ADOPT_AS]);
 });
 
-test("docsPageOf gives someone else's row no page", () => {
-  assert.equal(docsPageOf(dogFixture("https://github.com/someone/x")), null);
+test("builtDogPages reads a build that wrote no dog page as nothing built", () => {
+  assert.equal(builtDogPages([]).size, 0);
+});
+
+test("docsPageOf gives a row of ours the page this build wrote", () => {
+  assert.equal(docsPageOf(firstParty, BUILT), `/docs/dogs/${ADOPT_AS}`);
+  // The same route the imported page writes into its own links, so the link a
+  // reader clicks is the file the build wrote.
+  assert.equal(docsPageOf(firstParty, BUILT), dogDocRoute(ADOPT_AS, README_PATH));
+});
+
+test("docsPageOf gives a row of ours no link when the build wrote no page", () => {
+  // `SHEP_DOGS_STRICT` is set only by `pages.yml`, so a pull request build and
+  // an offline build write no dog page at all, and a dog whose README fetch
+  // failed is skipped the same way in a strict build's absence. A Docs link
+  // into that gap is a 404 on a page a reader can reach.
+  assert.equal(docsPageOf(firstParty, new Set<string>()), null);
+  assert.equal(docsPageOf(firstParty, new Set(["someone-elses-dog"])), null);
+});
+
+test("docsPageOf gives someone else's row no page even when a page was built", () => {
+  assert.equal(docsPageOf(dogFixture("https://github.com/someone/x"), new Set(["x"])), null);
 });
 
 test("docsPageOf gives a repo that only looks like the org no page", () => {
-  assert.equal(docsPageOf(dogFixture("https://github.com/shep-pm-fake/x")), null);
+  assert.equal(docsPageOf(dogFixture("https://github.com/shep-pm-fake/x"), new Set(["x"])), null);
 });
 
 test("docsPageOf gives every first-party row of the published index its own page", () => {
-  const routes = firstPartyDogs(dogs).map((dog) => docsPageOf(dog));
+  const ours = firstPartyDogs(dogs);
+  const built = builtDogPages(ours.map((dog) => ({ adoptAs: dog.adopt_as, route: "" })));
+  const routes = ours.map((dog) => docsPageOf(dog, built));
   assert.ok(routes.length >= 1, "the published index should have at least one first-party dog");
   for (const route of routes) {
     assert.ok(route !== null && route.startsWith("/docs/dogs/"), String(route));

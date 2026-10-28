@@ -11,9 +11,12 @@
  * repository link.
  *
  * An entry that is ours also links the docs page the build imports from that
- * repository. Which rows have one is `docsPageOf`'s answer, the same filter
- * the build runs before it writes any of them, so the listing and the pages
- * cannot disagree about who has a page.
+ * repository, and only when this build wrote one. Two facts decide it and
+ * `docsPageOf` asks both: the row is one of ours, and the page is in the
+ * collection the dog route builds its own paths from. `SHEP_DOGS_STRICT` is set
+ * only by `pages.yml`, so a pull request build, an offline build, and a dog
+ * whose README fetch failed each write no page for a row of ours, and a Docs
+ * link into that gap is a 404.
  *
  * Restructured 2026-09-14 per docs/writing-plans/plans/2026-09-14-docs-the-rest.md,
  * Task 4: a short version up top; the naming gotcha moved behind
@@ -25,8 +28,9 @@ import ReferencePills from "../../components/docs/ReferencePills.astro";
 import Callout from "../../components/docs/Callout.astro";
 import CodeBlock from "../../components/docs/CodeBlock.astro";
 import ShortVersion from "../../components/docs/ShortVersion.astro";
+import { getCollection } from "astro:content";
 import { dogs, anchorOf, CATEGORIES, type Dog, type DogCategory } from "../../data/dogs";
-import { docsPageOf } from "../../data/dog-readme-fetch";
+import { builtDogPages, docsPageOf } from "../../data/dog-readme-fetch";
 
 function categoryLabel(category: DogCategory): string {
   return category.charAt(0).toUpperCase() + category.slice(1);
@@ -39,6 +43,12 @@ const groups = CATEGORIES.map((category) => ({
   label: categoryLabel(category),
   entries: dogs.filter((dog) => dog.category === category),
 })).filter((group) => group.entries.length > 0);
+
+// The dogs whose page this build wrote, read from the collection the dog route
+// builds its own paths from. It is empty whenever the build could not read a
+// README, which is how a pull request build and an offline one run, and every
+// Docs link below is a link to a page in this list.
+const built = builtDogPages((await getCollection("dog-readme")).map((entry) => entry.data));
 
 function installLine(dog: Dog): string {
   switch (dog.source.kind) {
@@ -120,7 +130,7 @@ function adoptLine(dog: Dog): string {
         <section class="dog-category">
           <h2 id={slugify(group.label)}>{group.label}</h2>
           {group.entries.map((dog) => {
-            const docs = docsPageOf(dog);
+            const docs = docsPageOf(dog, built);
             return (
               <article class="dog-entry">
                 {/* The anchor sits on the heading, not the article: that keeps
