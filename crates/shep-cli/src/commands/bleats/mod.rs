@@ -530,10 +530,10 @@ pub async fn bleats_with_signal(
 /// What a request whose link closed mid-flight means.
 ///
 /// Over a host the ssh child dies on the same Ctrl+C as this process, so a
-/// closed connection is equally consistent with the operator ending the verb:
-/// only [`RequestError::Closed`] gets the grace, and locally a Ctrl+C does.
-///
-/// `streams.out` is flushed before either way out.
+/// closed connection is equally consistent with the operator ending the
+/// verb. Only [`RequestError::Closed`] gets
+/// [`crate::remote::HOST_INTERRUPT_GRACE`], and only over a host: locally a
+/// Ctrl+C closes no connection at all.
 async fn link_gone<F, R>(
     streams: &mut Streams<'_>,
     host: Option<&str>,

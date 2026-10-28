@@ -74,7 +74,7 @@ pub(crate) const BUILT_IN_DOGS: [&str; BuiltInDog::ALL.len()] = {
 };
 
 /// How long a dog waits for a shepherd to answer again before it gives up
-/// and exits.
+/// and exits: five seconds.
 ///
 /// [`DOG_SILENCE_BUDGET`](shep_daemon::dogs::DOG_SILENCE_BUDGET) is reused,
 /// not a second number invented: a dog that waits exactly as long as the
@@ -178,10 +178,9 @@ mod tests {
     /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
     /// names its value moving too.
     ///
-    /// Three doc comments say "five seconds" in words, and none can be
-    /// checked by a reader, because the value arrives from `shep_daemon`:
-    /// a change there leaves all three quietly wrong while every doc-link
-    /// still resolves.
+    /// Three doc comments name it in words: this constant's own and the two
+    /// `mod slow` headers. The value arrives from `shep_daemon`, so a change
+    /// there leaves all three quietly wrong with no reader able to notice.
     #[test]
     fn the_budget_is_the_five_seconds_the_docs_promise() {
         assert_eq!(
