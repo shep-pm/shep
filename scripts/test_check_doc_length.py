@@ -81,6 +81,33 @@ class DocCommentLimit(unittest.TestCase):
         self.assertEqual(blocks[0].measured, 6)
         self.assertFalse(blocks[0].over)
 
+    def test_a_block_opening_on_a_heading_has_no_summary_to_forgive(self):
+        block = only("/// # Safety", *doc_fixture(6)[1:])
+        self.assertEqual(block.measured, 7)
+        self.assertTrue(block.over)
+
+    def test_a_block_opening_on_a_deeper_heading_has_no_summary_to_forgive(self):
+        for heading in ("/// ## Notes", "/// ### Safety"):
+            with self.subTest(heading=heading):
+                block = only(heading, *doc_fixture(6)[1:])
+                self.assertEqual(block.measured, 7)
+                self.assertTrue(block.over)
+
+    def test_a_block_opening_on_an_attribute_like_hash_still_has_a_summary(self):
+        block = only("/// #[derive(Debug)] is what this type carries.", *doc_fixture(6)[1:])
+        self.assertEqual(block.measured, 6)
+        self.assertFalse(block.over)
+
+    def test_a_block_opening_on_a_fence_has_no_summary_to_forgive(self):
+        block = only("/// ```", "/// let x = 1;", "/// ```", *doc_fixture(7)[1:])
+        self.assertEqual(block.measured, 7)
+        self.assertTrue(block.over)
+
+    def test_a_block_opening_on_a_bare_marker_has_no_summary_to_forgive(self):
+        block = only("///", *doc_fixture(6)[1:])
+        self.assertEqual(block.measured, 7)
+        self.assertTrue(block.over)
+
     def test_seven_body_lines_break(self):
         blocks = one_block(*doc_fixture(7))
         self.assertEqual(blocks[0].measured, 7)
@@ -318,6 +345,14 @@ class BaselineRules(unittest.TestCase):
         self.write_baseline("9 crates/other/src/lib.rs /// Summary.")
         self.assertEqual(self.check(*doc_fixture(1)), [])
 
+    def test_a_narrowed_run_reports_an_entry_for_a_file_it_read_that_has_no_comment_blocks(self):
+        # A baselined block deleted from a file leaves the file with no blocks
+        # at all, and the entry naming it still has to come off the list.
+        self.write_baseline("9 crates/fake/src/lib.rs /// Summary.")
+        failures, _, _ = check_doc_length.check([], self.baseline, narrowed=True, read={FAKE})
+        self.assertEqual(len(failures), 1)
+        self.assertIn("is stale: no block over its limit matches it", failures[0])
+
     def test_a_full_run_reports_an_entry_for_a_file_that_no_longer_exists(self):
         # A whole-repository run reads every tracked file, so an entry naming a
         # file that is gone, renamed or moved out of the tree is stale, and a
@@ -366,6 +401,14 @@ class RegeneratingTheBaseline(unittest.TestCase):
             with self.assertRaises(SystemExit) as raised:
                 self.run_main(str(source), "--write-baseline")
             self.assertIn("whole repository", str(raised.exception))
+
+    def test_a_narrowed_main_run_over_a_file_with_no_comments_reports_its_stale_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "bare.rs"
+            source.write_text("fn main() {}\n")
+            baseline = Path(tmp) / "baseline.txt"
+            baseline.write_text(f"9 {source} /// Summary.\n")
+            self.assertEqual(self.run_main(str(source), "--baseline", str(baseline)), 1)
 
     def test_a_written_baseline_round_trips(self):
         blocks = check_doc_length.blocks_in(FAKE, "\n".join(doc_fixture(8)) + "\n")
