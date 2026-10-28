@@ -21,6 +21,10 @@ updates:
     cooldown:
       default-days: 7
 
+  # The cargo groups take minor and patch only. A semver major comes as its
+  # own PR, so one breaking crate cannot sink every other bump with it.
+  # Dependabot reads 0.29 -> 0.31 as minor, so a 0.x breaking bump still
+  # rides in the group.
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -28,6 +32,7 @@ updates:
     groups:
       cargo:
         patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
@@ -45,6 +50,7 @@ updates:
     groups:
       cargo-benches:
         patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
