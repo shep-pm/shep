@@ -70,7 +70,7 @@ fn rehoming_a_dog_forgets_its_adoption_and_keeps_its_settings() {
         cfg.daemon
             .adopted_dogs
             .get("otel")
-            .map(std::path::PathBuf::as_path),
+            .map(|entry| entry.path.as_path()),
         Some(Path::new("/usr/local/bin/shep-otel"))
     );
     assert!(cfg.dog.contains_key("otel"));
@@ -388,4 +388,169 @@ fn a_hand_edited_channel_dogs_is_refused_rather_than_overwritten() {
         "{refusal:?}"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+}
+
+/// The entry is the operator's, and the path is the one `shep adopt` wrote.
+/// A bare path string gains its `env` half rather than losing the path, and
+/// a re-adopt keeps the `env` the operator set.
+#[test]
+fn setting_a_dogs_env_rewrites_its_entry_and_keeps_its_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs]\notel = \"/usr/local/bin/shep-otel\"\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "PADDOCK_KEY", Some("{{secret:paddock/key}}"))
+            .unwrap();
+        cfg.set_adopted_dog_env("otel", "RUST_LOG", Some("warn"))
+            .unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    let cfg = ShepToml::read_only(&path).unwrap();
+    assert_eq!(
+        cfg.adopted_dog_path("otel"),
+        Some(PathBuf::from("/usr/local/bin/shep-otel")),
+        "{written}"
+    );
+    assert_eq!(
+        cfg.adopted_dog_env("otel"),
+        BTreeMap::from([
+            (
+                "PADDOCK_KEY".to_owned(),
+                "{{secret:paddock/key}}".to_owned()
+            ),
+            ("RUST_LOG".to_owned(), "warn".to_owned()),
+        ]),
+        "{written}"
+    );
+    DaemonConfig::load(Some(&written), &|_| None)
+        .expect("the file the writer produced is one the daemon reads");
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.adopt_dog("otel", Path::new("/opt/new/shep-otel"), false)
+            .unwrap();
+    })
+    .unwrap();
+    let cfg = ShepToml::read_only(&path).unwrap();
+    assert_eq!(
+        (
+            cfg.adopted_dog_path("otel"),
+            cfg.adopted_dog_env("otel")
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        ),
+        (
+            Some(PathBuf::from("/opt/new/shep-otel")),
+            vec!["PADDOCK_KEY", "RUST_LOG"],
+        ),
+        "a re-adopt replaces the binary, not what the operator set beside it"
+    );
+}
+
+/// Removing the last key leaves no `env` behind, so the entry goes back to
+/// the shape every `shep.toml` had before this key existed.
+#[test]
+fn removing_a_dogs_last_env_key_leaves_no_empty_env_behind_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon.adopted_dogs.otel]\npath = \"/usr/local/bin/shep-otel\"\nenv = { RUST_LOG = \"warn\" }\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "RUST_LOG", None).unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(!written.contains("env"), "{written}");
+    assert_eq!(
+        ShepToml::read_only(&path).unwrap().adopted_dog_env("otel"),
+        BTreeMap::new(),
+    );
+}
+
+/// A built-in dog has no entry to put an `env` key in, and the refusal says
+/// which dog it means rather than naming a path the operator never wrote.
+#[test]
+fn setting_an_env_on_a_built_in_dog_refuses_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    let original = "[daemon]\nenabled_dogs = [\"metrics\"]\n";
+    std::fs::write(&path, original).unwrap();
+
+    let refusal = ShepToml::try_edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("metrics", "RUST_LOG", Some("warn"))
+    });
+
+    assert!(
+        matches!(
+            refusal,
+            Err(ShepTomlError::NoDogEntry {
+                dog: _,
+                found: "nothing",
+                ..
+            })
+        ),
+        "{refusal:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        original,
+        "a refused write leaves the file as it was"
+    );
+}
+
+/// `otel = { path = "...", env = { ... } }` is the same entry
+/// [`DaemonConfig::load`] reads and [`ShepToml::adopted_dog_env`] reads, so a
+/// writer that refused it would leave a valid `shep.toml` uneditable through
+/// the door that edits it. It also stays inline: the shape is the operator's.
+#[test]
+fn setting_an_env_key_on_an_inline_dog_entry_keeps_it_inline() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon.adopted_dogs]\notel = { path = \"/usr/local/bin/shep-otel\", env = { RUST_LOG = \"warn\" } }\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "PADDOCK_KEY", Some("{{secret:paddock/key}}"))
+            .unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("otel = {"),
+        "the entry stays inline: {written}"
+    );
+    assert_eq!(
+        ShepToml::read_only(&path).unwrap().adopted_dog_path("otel"),
+        Some(PathBuf::from("/usr/local/bin/shep-otel")),
+        "and it keeps its path: {written}"
+    );
+    let keys: Vec<String> = ShepToml::read_only(&path)
+        .unwrap()
+        .adopted_dog_env("otel")
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(keys, vec!["PADDOCK_KEY", "RUST_LOG"], "{written}");
+    let cfg = DaemonConfig::load(Some(&written), &|_| None).unwrap();
+    assert_eq!(
+        cfg.daemon.adopted_dogs.get("otel").unwrap().env["PADDOCK_KEY"],
+        "{{secret:paddock/key}}",
+        "the reference is stored as written, as a sheep's `env` stores one"
+    );
 }

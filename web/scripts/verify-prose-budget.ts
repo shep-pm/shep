@@ -124,7 +124,12 @@ export const BUDGETS: Record<string, number> = {
   // manifest and is never asked. A dog author deciding whether to declare
   // `validate` has to be able to tell those apart from a cached manifest shep
   // lost the reading of, which is the case that stops the write.
-  "writing-a-dog": 5262,
+  //
+  // Raised again from 5262 for the environment an adopted dog is spawned with:
+  // the operator's `env` beside its path is in it, and `SHEP_HOME` and
+  // `SHEP_DOG_NAME` are set over anything it claims (#1250). A dog author
+  // reading a key out of the environment has to know it is there.
+  "writing-a-dog": 5330,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -182,7 +187,11 @@ export const BUDGETS: Record<string, number> = {
   // why, that a grant tick runs the verb's own check, and that a schema is
   // probed when a row opens rather than when the screen does. Required
   // content for a surface an operator has to be able to read.
-  "lookout-config": 4160,
+  //
+  // Raised again from 4160 for the env rows an adopted dog's pane carries:
+  // which file closing the pane writes them to, that they read `<set>`, and
+  // that a built-in dog has no entry to hold one (#1250).
+  "lookout-config": 4250,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
@@ -243,7 +252,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 4090 on #1258 for the bark sink's certificate rule: which
   // roots shep trusts decides whether an `https://` sink works at all, and
   // `http://` is the only private route. Required content, not prose.
-  dogs: 4130,
+  //
+  // Raised again for an adopted dog's `env`: a key an operator writes in
+  // `shep.toml`, the one setting shep sends through a dog's environment, and
+  // the shape a file written before it existed still reads as (#1250).
+  dogs: 4260,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
@@ -265,7 +278,11 @@ export const BUDGETS: Record<string, number> = {
   // to be told. The page had drifted to 2067 against a recorded 1977.
   // Raised again from 2150 on 2026-10-13 for the store poll: a `shep secret
   // set` reaches a running dog, and the page says how soon and which keys.
-  secrets: 2200,
+  //
+  // Raised again from 2200 for an adopted dog's `env`: a reference there is
+  // resolved at spawn, and a reference with no value costs the spawn rather
+  // than the boot (#1250).
+  secrets: 2265,
   // Raised from 2020 on 2026-10-13 for `disable` and `enable`: two verbs
   // with a refusal an operator has to be told about (an id or `name:slot`
   // exits 2, and `start`, `restart` and `stock` refuse a disabled app) are

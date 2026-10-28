@@ -103,17 +103,23 @@ impl App {
     /// Sends everything the pane has filed and closes it, unless a filed
     /// union lacks a field its arm requires: a key pressed while the read
     /// was out can have picked a tag after `Escape` checked.
-    fn write_and_close(&mut self) -> Effect {
+    pub(in crate::lookout::app) fn write_and_close(&mut self) -> Effect {
         if let Some(text) = self.config_pane().and_then(ConfigPane::incomplete_union) {
             self.notice = Some(Notice::grave(text));
             return Effect::None;
         }
         let writes = self.take_pane_writes();
         self.close_pane();
-        if writes.is_empty() {
-            Effect::None
-        } else {
-            Effect::SendAll(writes)
+        match writes.env {
+            // The file half first: a dog's section write goes to the
+            // shepherd, and a shepherd must not be handed a section while
+            // `shep.toml` still refuses the entry beside it.
+            Some(env) => Effect::WriteDogEnv {
+                write: env,
+                then: writes.requests,
+            },
+            None if writes.requests.is_empty() => Effect::None,
+            None => Effect::SendAll(writes.requests),
         }
     }
 

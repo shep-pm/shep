@@ -13,8 +13,8 @@ use crate::exit::ExitCode;
 use crate::output::Streams;
 
 use super::{
-    DISABLED_STATUS, NO_SHEPHERD_DISABLE_STATUS, connect_or_absent, dog_source, emit_dog_action,
-    fail_config,
+    DISABLED_STATUS, DogEntry, NO_SHEPHERD_DISABLE_STATUS, connect_or_absent, dog_entry,
+    emit_dog_action, fail_config,
 };
 
 /// `disable`'s config half: which [`DogSource`] `name` resolved to, and the
@@ -27,26 +27,26 @@ use super::{
 ///
 /// # Errors
 /// [`ShepTomlError`] if the read-modify-write underneath the edit failed.
-pub(crate) fn disable_in_config(path: &Path, name: &str) -> Result<DogSource, ShepTomlError> {
+pub(crate) fn disable_in_config(path: &Path, name: &str) -> Result<DogEntry, ShepTomlError> {
     ShepToml::edit(path, |cfg| {
-        let source = dog_source(cfg, name, None);
+        let entry = dog_entry(cfg, name, None);
         cfg.disable_dog(name);
-        source
+        entry
     })
 }
 
 /// `shep disable <name>`: removes it from the config, and stops it if a
 /// shepherd is running.
 pub async fn disable(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str) -> ExitCode {
-    let source = match disable_in_config(&paths.daemon_config, name) {
-        Ok(source) => source,
+    let entry = match disable_in_config(&paths.daemon_config, name) {
+        Ok(entry) => entry,
         Err(err) => return fail_config(streams, &err),
     };
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,
         Err(code) => return code,
     };
-    disable_after_config(streams, name, &source, client.as_ref()).await
+    disable_after_config(streams, name, &entry.source, client.as_ref()).await
 }
 
 /// `disable`'s daemon half; see enable_after_config for the split and
@@ -101,9 +101,9 @@ mod tests {
         )
         .unwrap();
 
-        let source = disable_in_config(&path, "otel").unwrap();
+        let entry = disable_in_config(&path, "otel").unwrap();
 
-        assert!(matches!(source, DogSource::Adopted { .. }));
+        assert!(matches!(entry.source, DogSource::Adopted { .. }));
         let cfg = ShepToml::read_only(&path).unwrap();
         assert!(cfg.enabled_dog_names().is_empty());
         assert_eq!(

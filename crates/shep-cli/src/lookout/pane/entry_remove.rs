@@ -473,7 +473,13 @@ mod tests {
     #[test]
     fn the_cursor_lands_on_the_entries_row_after_removing_the_only_entry() {
         let section = "[[clients]]\nname = \"alpha\"\n";
-        let mut pane = ConfigPane::dog("paddock".into(), None, entries_schema(), section.into());
+        let mut pane = ConfigPane::dog(
+            "paddock".into(),
+            None,
+            entries_schema(),
+            section.into(),
+            Vec::new(),
+        );
         pane.move_to_key("clients");
         pane.open_table();
         pane.move_by(1);

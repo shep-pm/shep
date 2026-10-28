@@ -3,6 +3,7 @@
 //! shepherd has given up on.
 
 use super::*;
+use std::collections::BTreeMap;
 
 /// The split is a cost decision (`with_lambs`) and nothing else enforces
 /// it: both arms build their rows from the same `snapshot_all`, so a
@@ -40,6 +41,7 @@ async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
     let spec = DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     };
     let app = crate::dogs::dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
     ctx.supervisor

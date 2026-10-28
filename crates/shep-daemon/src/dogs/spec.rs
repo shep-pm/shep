@@ -7,6 +7,7 @@
 //! over one that would not start.
 
 use core::fmt;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -23,13 +24,37 @@ use crate::supervisor::SupervisorHandle;
 use super::narrate::narrate;
 use super::secrets::StoreFault;
 
-/// One dog the daemon knows about: its name, and where its binary comes from.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One dog the daemon knows about: its name, where its binary comes from,
+/// and the environment the operator set for it.
+///
+/// `Debug` is manual and redacted (IR-41): `env` is the operator's own
+/// values, `{{secret:...}}` references and literals alike, and a spec is
+/// what a boot or an `EnableDog` logs a dog's name from.
+#[derive(Clone, PartialEq, Eq)]
 pub struct DogSpec {
     /// The dog's name: the `[<name>]` key and the entry's name.
     pub name: String,
     /// Where its binary comes from.
     pub source: DogSource,
+    /// Environment the operator set for this dog, as `shep.toml` wrote it.
+    ///
+    /// A `{{secret:...}}` is still a reference here: [`crate::assemble::assemble`]
+    /// resolves it at spawn, the way a sheep's `env` is. Empty for a
+    /// built-in dog, which has no `[daemon.adopted_dogs]` entry to read one
+    /// from.
+    pub env: BTreeMap<String, String>,
+}
+
+impl fmt::Debug for DogSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DogSpec {{ name: {:?}, source: {:?}, env: <{} keys> }}",
+            self.name,
+            self.source,
+            self.env.len()
+        )
+    }
 }
 
 /// The sentence this shepherd answers a request to delete a built-in dog with.
@@ -140,11 +165,11 @@ fn builtin_program() -> Result<PathBuf, DogError> {
 /// The app config the daemon spawns `spec` from.
 ///
 /// A built-in dog is `<this binary> dog <name>`; an adopted one is the
-/// operator's binary with no arguments. The environment carries `SHEP_HOME`
-/// and `SHEP_DOG_NAME`, never a `[<name>]` value: a dog asks for its section
-/// over the socket. An adopted dog that asked for the shepherd channel gets
-/// `channel` and `shutdown_with_message`, and so the channel's own
-/// variables too; every other dog gets neither.
+/// operator's binary with no arguments. The environment carries the
+/// operator's `env`, then `SHEP_HOME` and `SHEP_DOG_NAME` over it: those two
+/// are what a dog needs to ask for its own section at all. A `[<name>]`
+/// value never travels here, and an adopted dog that asked for the shepherd
+/// channel gets the channel's own variables too.
 ///
 /// # Errors
 /// - [`DogError::NoBinary`] if a built-in dog has no program to run.
@@ -167,6 +192,10 @@ pub fn dog_app(spec: &DogSpec, paths: &ShepPaths) -> Result<ResolvedApp, DogErro
     config.args = args;
     config.channel = channel;
     config.shutdown_with_message = channel;
+    // The operator's half first, so the two names the shepherd injects land
+    // on top of anything `env` tried to claim. `normalize` validates each
+    // value's `{{...}}` grammar here; the store lookup happens at spawn.
+    config.env.extend(spec.env.clone());
     config
         .env
         .insert("SHEP_HOME".to_string(), paths.home.display().to_string());
@@ -301,7 +330,9 @@ pub async fn spawn_enabled_dogs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::SpawnSpec;
     use crate::testing::test_paths;
+    use shep_core::secrets::SecretView;
 
     /// `current_exe` cannot safely be made to return `" (deleted)"`, so this
     /// pins what `builtin_program` does with the answer it gets: it is the
@@ -339,7 +370,7 @@ mod tests {
     /// exception to the rule: it is the key a dog needs to ask for its section
     /// at all.
     #[test]
-    fn a_dogs_child_environment_carries_shep_home_and_its_name_and_no_configuration() {
+    fn a_dogs_child_environment_carries_shep_home_and_its_name_and_no_section() {
         let dir = tempfile::tempdir().unwrap();
         let paths = test_paths(&dir);
         std::fs::write(
@@ -350,6 +381,7 @@ mod tests {
         let spec = DogSpec {
             name: "bark".to_string(),
             source: DogSource::BuiltIn { grants: None },
+            env: BTreeMap::new(),
         };
         let app = dog_app(&spec, &paths).unwrap();
         // A dog's config is built by `dog_app`, never operator-templated,
@@ -381,6 +413,182 @@ mod tests {
         );
     }
 
+    /// A dog that runs other programs, or a library that reads its key from
+    /// the environment, gets it from `[daemon.adopted_dogs]` the way a sheep
+    /// gets it from its own `env`.
+    #[test]
+    fn an_adopted_dogs_env_reaches_its_child_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([
+                ("PADDOCK_KEY".to_string(), "lease-key".to_string()),
+                ("RUST_LOG".to_string(), "warn".to_string()),
+            ]),
+        );
+        let assembled = spawn_env(&spec, &paths, &SecretView::empty("production".to_string()));
+
+        assert_eq!(
+            assembled.env.get("PADDOCK_KEY"),
+            Some(&"lease-key".to_string()),
+            "the operator's key reaches the dog that asked for one"
+        );
+        assert_eq!(assembled.env.get("RUST_LOG"), Some(&"warn".to_string()));
+        assert_eq!(
+            assembled.env.get("SHEP_HOME"),
+            Some(&paths.home.display().to_string())
+        );
+        assert_eq!(
+            assembled.env.get("SHEP_DOG_NAME"),
+            Some(&"kelpie".to_string())
+        );
+    }
+
+    /// The store lookup happens at spawn, exactly as it does for a sheep's
+    /// `env`, so the reference is what sits in `shep.toml` and the value is
+    /// what the child reads.
+    #[test]
+    fn an_adopted_dogs_env_secret_arrives_resolved() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([(
+                "PADDOCK_KEY".to_string(),
+                "{{secret:PADDOCK_KEY}}".to_string(),
+            )]),
+        );
+        let view = SecretView::new(
+            "production".to_string(),
+            BTreeMap::from([(
+                "PADDOCK_KEY".to_string(),
+                BTreeMap::from([("production".to_string(), "gateway-key".to_string())]),
+            )]),
+            shep_core::secrets::ProviderCache::default(),
+        );
+        let assembled = spawn_env(&spec, &paths, &view);
+
+        assert_eq!(
+            assembled.env.get("PADDOCK_KEY"),
+            Some(&"gateway-key".to_string())
+        );
+        assert!(
+            !assembled.env.values().any(|v| v.contains("{{secret:")),
+            "no reference reaches the child once the store has answered: {:?}",
+            assembled.env
+        );
+    }
+
+    /// A reference the store cannot answer costs the spawn, not the boot: the
+    /// dog comes up `Errored` and the restart policy brings it back once the
+    /// key is pushed.
+    #[test]
+    fn an_adopted_dogs_env_secret_the_store_cannot_answer_refuses_the_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([("PADDOCK_KEY".to_string(), "{{secret:ABSENT}}".to_string())]),
+        );
+        let app = dog_app(&spec, &paths).expect("the reference grammar is valid");
+        let err = crate::assemble::assemble(
+            &app,
+            0,
+            &paths,
+            None,
+            &SecretView::empty("production".to_string()),
+        )
+        .expect_err("no value for ABSENT");
+        assert!(
+            matches!(
+                err,
+                crate::assemble::AssembleError::Template { ref field, .. } if field == "PADDOCK_KEY"
+            ),
+            "{err:?}"
+        );
+    }
+
+    /// The two names a dog needs to ask for its own section at all are the
+    /// shepherd's, whatever `env` claims.
+    #[test]
+    fn a_dogs_env_cannot_replace_shep_home_or_the_name_it_was_registered_under() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([
+                ("SHEP_HOME".to_string(), "/home/ada/elsewhere".to_string()),
+                ("SHEP_DOG_NAME".to_string(), "someone-else".to_string()),
+            ]),
+        );
+        let assembled = spawn_env(&spec, &paths, &SecretView::empty("production".to_string()));
+
+        assert_eq!(
+            assembled.env.get("SHEP_HOME"),
+            Some(&paths.home.display().to_string()),
+            "the shepherd's own home is not the operator's to rename"
+        );
+        assert_eq!(
+            assembled.env.get("SHEP_DOG_NAME"),
+            Some(&"kelpie".to_string())
+        );
+    }
+
+    /// A dog's `env` is checked against the same reserved names a sheep's is.
+    #[test]
+    fn a_dogs_env_cannot_claim_a_name_the_shepherd_injects_into_every_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(&dir);
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([("SHEP_NAME".to_string(), "x".to_string())]),
+        );
+
+        let err = dog_app(&spec, &paths).expect_err("SHEP_NAME is reserved");
+        assert!(matches!(err, DogError::Config(_)), "{err:?}");
+        assert!(err.to_string().contains("SHEP_NAME"), "{err}");
+    }
+
+    /// IR-41. A spec is what a boot logs a dog's name from, and `env` is the
+    /// operator's own values. Exact string, so a `#[derive(Debug)]` on
+    /// [`DogSpec`] fails here.
+    #[test]
+    fn a_dogs_spec_debug_prints_its_name_and_source_and_no_env_value() {
+        let spec = adopted(
+            "kelpie",
+            BTreeMap::from([("PADDOCK_KEY".to_string(), "gateway-key".to_string())]),
+        );
+
+        assert_eq!(
+            format!("{spec:?}"),
+            "DogSpec { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
+             channel: false, grants: None }, env: <1 keys> }"
+        );
+    }
+
+    /// One dog as `shep.toml` would hand it to the shepherd: adopted, with
+    /// `env` set.
+    fn adopted(name: &str, env: BTreeMap<String, String>) -> DogSpec {
+        DogSpec {
+            name: name.to_string(),
+            source: DogSource::Adopted {
+                grants: None,
+                path: "/usr/local/bin/shep-kelpie".to_string(),
+                channel: false,
+            },
+            env,
+        }
+    }
+
+    /// The environment `dog_app`'s config actually spawns with, which is where
+    /// an `env` map is merged and a reference is resolved.
+    fn spawn_env(spec: &DogSpec, paths: &ShepPaths, secrets: &SecretView) -> SpawnSpec {
+        let app = dog_app(spec, paths).expect("the fixture's config assembles");
+        crate::assemble::assemble(&app, 0, paths, None, secrets)
+            .expect("the fixture's spawn assembles")
+    }
+
     #[test]
     fn a_built_in_dog_runs_this_binary_and_an_adopted_one_runs_its_own() {
         let dir = tempfile::tempdir().unwrap();
@@ -390,6 +598,7 @@ mod tests {
             &DogSpec {
                 name: "metrics".to_string(),
                 source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::new(),
             },
             &paths,
         )
@@ -408,6 +617,7 @@ mod tests {
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
                 },
+                env: BTreeMap::new(),
             },
             &paths,
         )
@@ -429,6 +639,7 @@ mod tests {
         let spec = DogSpec {
             name: "metrics".to_string(),
             source: DogSource::BuiltIn { grants: None },
+            env: BTreeMap::new(),
         };
 
         assert!(
@@ -457,6 +668,7 @@ mod tests {
             let spec = DogSpec {
                 name: "otel".to_string(),
                 source: source.clone(),
+                env: BTreeMap::new(),
             };
             let app = dog_app(&spec, &paths).unwrap();
             let config = app.config();
@@ -481,6 +693,7 @@ mod tests {
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
                 },
+                env: BTreeMap::new(),
             },
             &paths,
         )

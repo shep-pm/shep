@@ -55,6 +55,7 @@ pub(super) fn secret_array_dog_pane() -> ConfigPane {
         None,
         schema,
         "tokens = [\"ab12cd34\", \"ef56gh78\"]\n".into(),
+        Vec::new(),
     );
     pane.move_to_key("tokens");
     pane
@@ -81,6 +82,7 @@ pub(super) fn nested_secret_dog_pane() -> ConfigPane {
         None,
         schema,
         "[db]\nhost = \"pg.internal\"\npassword = \"ab12cd34\"\n".into(),
+        Vec::new(),
     );
     pane.move_to_key("db.password");
     pane
@@ -107,6 +109,7 @@ pub(super) fn opaque_secret_dog_pane() -> ConfigPane {
         None,
         schema,
         "[[hosts]]\nname = \"a\"\nkey = \"ab12cd34\"\n".into(),
+        Vec::new(),
     );
     pane.move_to_key("hosts");
     pane
@@ -130,6 +133,7 @@ pub(super) fn secret_dog_pane_with_an_edit() -> ConfigPane {
         None,
         schema,
         "token = \"ab12cd34\"\n".into(),
+        Vec::new(),
     );
     pane.move_to_key("token");
     pane.begin_typing();
@@ -208,13 +212,8 @@ pub(super) fn field_help_under_cursor(pane: &ConfigPane) -> String {
 /// A dog pane over the bark dog, with a sink in its section.
 pub(super) fn bark_pane() -> ConfigPane {
     let schema = crate::dog::builtin_schema("bark").expect("bark is a built-in");
-    ConfigPane::dog(
-        "bark".into(),
-        None,
-        schema,
-        "poll = \"60s\"\nhistory_bytes = 4096\n\n[sinks.ops]\nkind = \"slack\"\nurl = \"https://hooks.example/x\"\n"
-            .into(),
-    )
+    ConfigPane::dog("bark".into(), None, schema, "poll = \"60s\"\nhistory_bytes = 4096\n\n[sinks.ops]\nkind = \"slack\"\nurl = \"https://hooks.example/x\"\n"
+            .into(), Vec::new())
 }
 
 /// A dog pane over a section whose nested table is written as its own
@@ -226,6 +225,7 @@ pub(super) fn nested_table_dog_pane() -> ConfigPane {
         None,
         fixtures::nested_dog_schema(),
         fixtures::nested_dog_section(),
+        Vec::new(),
     )
 }
 

@@ -304,6 +304,7 @@ mod tests {
             None,
             schema,
             super::super::fixtures::entries_section(),
+            Vec::new(),
         );
         let mut pane = on_new(pane, "clients");
         pane.begin_new_entry();
@@ -355,6 +356,7 @@ mod tests {
             None,
             defaulted_schema(),
             "retries = 3\n".to_owned(),
+            Vec::new(),
         );
         pane = on_new(pane, "clients");
         pane.begin_new_entry();
@@ -491,6 +493,7 @@ mod tests {
                 None,
                 defaulted_schema(),
                 section.to_owned(),
+                Vec::new(),
             );
             let mut pane = on_new(pane, key);
             pane.begin_new_entry();

@@ -377,7 +377,13 @@ mod tests {
     }
 
     fn nested_pane(section: &str) -> ConfigPane {
-        ConfigPane::dog("jobs".into(), None, nested_schema(), section.to_owned())
+        ConfigPane::dog(
+            "jobs".into(),
+            None,
+            nested_schema(),
+            section.to_owned(),
+            Vec::new(),
+        )
     }
 
     /// [`nested_schema`] with a list on the top level and one a table down.
@@ -387,7 +393,7 @@ mod tests {
         schema["properties"]["codes"] = json!({ "type": "array", "items": { "type": "integer" } });
         schema["$defs"]["Worker"]["properties"]["models"] =
             json!({ "type": "array", "items": { "type": "string" } });
-        ConfigPane::dog("jobs".into(), None, schema, section.to_owned())
+        ConfigPane::dog("jobs".into(), None, schema, section.to_owned(), Vec::new())
     }
 
     /// The same data in the three forms `dogs.toml` allows for a nested

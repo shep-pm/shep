@@ -410,12 +410,94 @@ mod tests {
             None,
             schema,
             "env = \"staging\"\n".to_owned(),
+            Vec::new(),
         );
         assert_eq!(pane.value("env"), "staging");
         pane.move_to_key("env");
         pane.begin_typing();
         let typing = pane.typing().expect("the editor is open");
         assert_eq!(typing.buffer.as_str(), "staging");
+    }
+
+    /// An adopted dog's pane lists the `env` its `shep.toml` entry sets, in
+    /// the same rows a sheep's `process` tab uses, and offers the row that
+    /// adds one. A built-in dog's pane lists neither: it has no entry to set
+    /// an `env` beside, so the row would only ever lead to a refusal.
+    #[test]
+    fn an_adopted_dogs_pane_lists_its_env_keys_and_a_built_in_dogs_does_not() {
+        let adopted = ConfigPane::dog(
+            "kelpie".into(),
+            Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+            serde_json::json!({ "properties": { "ratio": { "type": "number" } } }),
+            "ratio = 1.5\n".to_owned(),
+            vec!["PADDOCK_KEY".to_owned(), "RUST_LOG".to_owned()],
+        );
+        let rows = adopted.rows();
+        let env: Vec<&PaneRow> = rows
+            .iter()
+            .filter(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv))
+            .collect();
+        assert_eq!(
+            env,
+            vec![&PaneRow::Env(0), &PaneRow::Env(1), &PaneRow::AddEnv],
+            "two keys and the row that adds a third"
+        );
+        assert_eq!(adopted.env_key_names(), ["PADDOCK_KEY", "RUST_LOG"]);
+
+        let built_in = ConfigPane::dog(
+            "bark".into(),
+            None,
+            serde_json::json!({ "properties": { "poll": { "type": "string" } } }),
+            "poll = \"60s\"\n".to_owned(),
+            Vec::new(),
+        );
+        assert!(
+            !built_in
+                .rows()
+                .iter()
+                .any(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv)),
+            "a built-in dog has no entry to set an env beside"
+        );
+    }
+
+    /// `Enter` on a dog's env row opens the same editor a sheep's does, and
+    /// what it files is the same `PaneEdit::SetEnv`: the pane cannot tell a
+    /// value from a secret it was never given, and it is given neither.
+    #[test]
+    fn a_dogs_env_row_files_the_same_edit_a_sheeps_ones_does() {
+        let mut pane = ConfigPane::dog(
+            "kelpie".into(),
+            Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+            serde_json::json!({ "properties": { "ratio": { "type": "number" } } }),
+            "ratio = 1.5\n".to_owned(),
+            vec!["PADDOCK_KEY".to_owned()],
+        );
+        pane.move_to_key("ratio");
+        assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
+        pane.move_by(1);
+        assert_eq!(pane.cursor(), Some(PaneRow::Env(0)));
+        pane.begin_env_typing();
+        for typed in "gateway-key".chars() {
+            pane.type_env_text(KeyPress::TextChar(typed));
+        }
+        assert_eq!(pane.submit_env_typing(), EnvSubmit::Filed);
+        let entry = pane
+            .edits()
+            .get(&EditKey::Env("PADDOCK_KEY".into()))
+            .expect("PADDOCK_KEY was filed");
+        assert!(
+            matches!(
+                entry.edit(),
+                PaneEdit::SetEnv { key, value: Some(_) } if key == "PADDOCK_KEY"
+            ),
+            "{:?}",
+            entry.edit()
+        );
+        assert_eq!(
+            entry.impact(),
+            None,
+            "a dog's cost is the dog's own to say, so the pane says nothing"
+        );
     }
 
     /// The editor on an existing row is the shared one, and its `Debug` names

@@ -6,6 +6,7 @@ use core::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use shep_core::protocol::{Hello, HelloReply, MIN_SUPPORTED, codec, decode_frame, encode_frame};
+use std::collections::BTreeMap;
 
 use serde::de::DeserializeOwned;
 use shep_core::protocol::{
@@ -110,6 +111,7 @@ pub(super) async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
     let spec = crate::dogs::DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     };
     let app = crate::dogs::dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
     ctx.supervisor

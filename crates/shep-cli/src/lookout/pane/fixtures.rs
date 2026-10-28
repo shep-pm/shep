@@ -56,7 +56,7 @@ pub(super) fn bark_section() -> String {
 
 pub(super) fn bark_pane() -> ConfigPane {
     let schema = crate::dog::builtin_schema("bark").expect("bark is a built-in");
-    ConfigPane::dog("bark".into(), None, schema, bark_section())
+    ConfigPane::dog("bark".into(), None, schema, bark_section(), Vec::new())
 }
 
 /// A dog whose schema declares one secret string. No built-in has one:
@@ -74,6 +74,7 @@ pub(super) fn secret_dog_pane() -> ConfigPane {
         None,
         schema,
         "webhook = \"https://hook/OLD\"\n".to_owned(),
+        Vec::new(),
     )
 }
 
@@ -91,7 +92,13 @@ pub(super) fn money_schema() -> Value {
 
 /// [`money_schema`] over `section`.
 pub(super) fn money_pane(section: &str) -> ConfigPane {
-    ConfigPane::dog("kelpie".into(), None, money_schema(), section.to_owned())
+    ConfigPane::dog(
+        "kelpie".into(),
+        None,
+        money_schema(),
+        section.to_owned(),
+        Vec::new(),
+    )
 }
 
 /// A field edit, filed the way [`Edits::set`] wants it, for the tests
@@ -143,7 +150,13 @@ pub(super) fn tree_section() -> String {
 
 /// [`tree_schema`] over [`tree_section`].
 pub(super) fn tree_pane() -> ConfigPane {
-    ConfigPane::dog("tree".into(), None, tree_schema(), tree_section())
+    ConfigPane::dog(
+        "tree".into(),
+        None,
+        tree_schema(),
+        tree_section(),
+        Vec::new(),
+    )
 }
 
 /// A paddock-shaped dog: a `clients` array whose entries carry a secret
@@ -201,7 +214,13 @@ pub(super) fn entries_section() -> String {
 
 /// [`entries_schema`] over [`entries_section`].
 pub(super) fn entries_pane() -> ConfigPane {
-    ConfigPane::dog("paddock".into(), None, entries_schema(), entries_section())
+    ConfigPane::dog(
+        "paddock".into(),
+        None,
+        entries_schema(),
+        entries_section(),
+        Vec::new(),
+    )
 }
 
 /// [`entries_schema`] with defaults on the items: a client defaults to
@@ -253,5 +272,6 @@ pub(super) fn defaulted_pane() -> ConfigPane {
         None,
         defaulted_schema(),
         entries_section(),
+        Vec::new(),
     )
 }

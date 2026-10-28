@@ -3,11 +3,13 @@
 //! a name a sheep kept still deletable.
 
 use super::*;
+use std::collections::BTreeMap;
 
 fn dog(name: &str, source: DogSource) -> crate::dogs::DogSpec {
     crate::dogs::DogSpec {
         name: name.to_string(),
         source,
+        env: BTreeMap::new(),
     }
 }
 
@@ -128,6 +130,7 @@ async fn deleting_a_running_adopted_dog_deregisters_it_when_it_stops() {
                 1,
                 Request::EnableDog {
                     name: "log-rotate".to_string(),
+                    env: BTreeMap::default(),
                     source: adopted("log-rotate"),
                 },
             ),

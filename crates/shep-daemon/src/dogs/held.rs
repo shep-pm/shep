@@ -59,11 +59,13 @@ mod tests {
     use crate::testing::{capture_logs, roll_of};
     use shep_core::config::AppConfig;
     use shep_core::protocol::DogSource;
+    use std::collections::BTreeMap;
 
     fn built_in(name: &str) -> DogSpec {
         DogSpec {
             name: name.to_string(),
             source: DogSource::BuiltIn { grants: None },
+            env: BTreeMap::new(),
         }
     }
 

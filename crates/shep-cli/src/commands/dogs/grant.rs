@@ -11,7 +11,7 @@ use std::str::FromStr as _;
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::permissions::{Grants, Permission};
-use shep_core::protocol::{DogSource, Request, Response};
+use shep_core::protocol::{Request, Response};
 
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
@@ -22,7 +22,7 @@ use super::enable::unknown_dog_message;
 use super::grants::warn_if_unenforced;
 use super::upgrade::upgrade_one;
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest};
-use super::{connect_or_absent, dog_source, emit_dog_action, fail_config};
+use super::{DogEntry, connect_or_absent, dog_entry, emit_dog_action, fail_config};
 
 /// Which of the two verbs ran.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,9 +49,9 @@ impl Change {
 /// same record the verb wrote.
 #[derive(Debug)]
 pub(crate) struct Applied {
-    /// The dog as the next enable would send it, carrying the grants now
-    /// recorded.
-    pub source: DogSource,
+    /// The dog as the next enable would send it: the source carrying the
+    /// grants now recorded, and the `env` `shep.toml` holds for it.
+    pub entry: DogEntry,
     /// Whether the dog is in `enabled_dogs`.
     pub enabled: bool,
     /// What the dog's build asks for that is still not granted.
@@ -206,7 +206,7 @@ pub(crate) fn record_change(
             cfg.set_grant_record(name, &now)?;
         }
         Ok(Applied {
-            source: dog_source(cfg, name, Some(now.granted.clone())),
+            entry: dog_entry(cfg, name, Some(now.granted.clone())),
             enabled: cfg.enabled_dog_names().iter().any(|dog| dog == name),
             waiting: now.waiting.names().map(str::to_owned).collect(),
         })
@@ -284,7 +284,13 @@ async fn reach_shepherd(
     client: Option<&Client>,
 ) -> ExitCode {
     let report = |streams: &mut Streams<'_>, status| {
-        emit_dog_action(streams, change.verb(), name, applied.source.clone(), status)
+        emit_dog_action(
+            streams,
+            change.verb(),
+            name,
+            applied.entry.source.clone(),
+            status,
+        )
     };
     if !applied.enabled {
         return report(
@@ -302,11 +308,17 @@ async fn reach_shepherd(
     };
     let request = Request::EnableDog {
         name: name.to_string(),
-        source: applied.source.clone(),
+        source: applied.entry.source.clone(),
+        env: applied.entry.env.clone(),
     };
     match client.request(request).await {
         Ok(Response::DogStarted(_)) => {
-            warn_if_unenforced(streams, name, &applied.source, client.daemon().protocol);
+            warn_if_unenforced(
+                streams,
+                name,
+                &applied.entry.source,
+                client.daemon().protocol,
+            );
             report(
                 streams,
                 DogActionStatus::Acted("applied to the running dog"),

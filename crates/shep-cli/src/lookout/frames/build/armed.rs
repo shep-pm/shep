@@ -326,6 +326,7 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
             app.update(Msg::DogPane {
                 name: "paddock".to_string(),
                 adopted_path: None,
+                env_keys: Vec::new(),
                 result: Ok(entries_dog_schema()),
             });
             app.update(Msg::Replied {

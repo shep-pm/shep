@@ -157,7 +157,13 @@ fn a_dogs_own_spelling_of_a_duration_survives_the_pane() {
         },
         "$defs": { "UpDuration": { "type": "string" } }
     });
-    let pane = ConfigPane::dog("bark".into(), None, schema, "poll = \"60s\"\n".into());
+    let pane = ConfigPane::dog(
+        "bark".into(),
+        None,
+        schema,
+        "poll = \"60s\"\n".into(),
+        Vec::new(),
+    );
     assert_eq!(pane.display_value("poll"), "60s");
 }
 
@@ -258,6 +264,7 @@ fn a_dogs_string_list_opens_the_sub_screen_on_its_stored_elements() {
         None,
         schema,
         "hosts = [\"a\", \"b\"]\n".to_owned(),
+        Vec::new(),
     );
     assert!(pane.fields().by_key("hosts").expect("a field").editable);
     assert_eq!(pane.lock("hosts"), None);
@@ -289,6 +296,7 @@ fn a_dogs_secret_list_and_map_stay_locked() {
         None,
         schema,
         "keys = [\"sk-live\"]\n".to_owned(),
+        Vec::new(),
     );
     for key in ["keys", "labels"] {
         assert_eq!(pane.lock(key), Some(Lock::NoWidget), "{key}");
@@ -331,7 +339,13 @@ fn a_nested_table_in_a_dogs_own_schema_becomes_dotted_rows() {
         "models.worker.model = \"gpt\"\nmodels.worker.token = \"sk-live-51Hx9Qa\"\n",
         "models = { worker = { model = \"gpt\", token = \"sk-live-51Hx9Qa\" } }\n",
     ] {
-        let pane = ConfigPane::dog("jobs".into(), None, schema.clone(), section.to_owned());
+        let pane = ConfigPane::dog(
+            "jobs".into(),
+            None,
+            schema.clone(),
+            section.to_owned(),
+            Vec::new(),
+        );
         let keys: Vec<&str> = pane
             .fields()
             .fields()
@@ -382,6 +396,7 @@ fn a_secret_under_a_nested_table_seeds_its_editor_empty() {
         None,
         schema,
         "[db]\nhost = \"h\"\npassword = \"ab12cd34\"\n".to_owned(),
+        Vec::new(),
     );
     pane.move_to_key("db.password");
     pane.begin_typing();

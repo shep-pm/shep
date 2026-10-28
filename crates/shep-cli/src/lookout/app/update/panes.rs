@@ -101,9 +101,10 @@ impl App {
         &mut self,
         name: String,
         adopted_path: Option<PathBuf>,
+        env_keys: Vec<String>,
         result: Result<serde_json::Value, String>,
     ) -> Effect {
-        self.on_dog_pane(name, adopted_path, result)
+        self.on_dog_pane(name, adopted_path, env_keys, result)
     }
 
     /// `Msg::SheepDogNames`'s arm. The listing's own handling lives in
@@ -132,19 +133,55 @@ impl App {
         &mut self,
         edit: DogEdit,
         ticket: u64,
-        result: Result<DogSource, String>,
+        result: Result<DogEntry, String>,
     ) -> Effect {
         match result {
-            Ok(source) => Effect::Send(Sent::Dog {
+            Ok(entry) => Effect::Send(Sent::Dog {
                 name: edit.name,
                 enable: edit.enable,
-                source,
+                entry,
                 ticket,
             }),
             Err(message) => {
                 if let Some(settings) = self.settings_mut() {
                     settings.resolve(ticket);
                 }
+                self.notice = Some(Notice::grave(message));
+                Effect::None
+            }
+        }
+    }
+
+    /// `Msg::DogEnvWritten`'s arm.
+    ///
+    /// A dog's `env` has no daemon half of its own: the shepherd builds it
+    /// when it builds the dog's app, which it does at boot, on a reload, and
+    /// on an enable of a dog at rest. A dog already up keeps the environment
+    /// it was started with, so the notice names the two verbs that give it
+    /// this one. The requests the same close built go out behind it.
+    pub(super) fn on_dog_env_written(
+        &mut self,
+        name: &str,
+        ticket: u64,
+        then: Vec<Sent>,
+        result: Result<(), String>,
+    ) -> Effect {
+        if let Some(settings) = self.settings_mut() {
+            settings.resolve(ticket);
+        }
+        match result {
+            Ok(()) => {
+                self.notice = Some(Notice::info(format!(
+                    "{name}: its env is written. A dog already up keeps the one it started with; \
+                     `shep disable {name}` then `shep enable {name}` gives it this one"
+                )));
+                if then.is_empty() {
+                    Effect::None
+                } else {
+                    Effect::SendAll(then)
+                }
+            }
+            Err(message) => {
                 self.notice = Some(Notice::grave(message));
                 Effect::None
             }
@@ -174,7 +211,7 @@ impl App {
                 )));
                 self.reread_settings()
             }
-            Ok(DogTuneLanded::Grants { source, enabled }) => {
+            Ok(DogTuneLanded::Grants { entry, enabled }) => {
                 if !enabled || matches!(self.link, Link::Lost { .. }) {
                     if let Some(settings) = self.settings_mut() {
                         settings.resolve(ticket);
@@ -187,7 +224,7 @@ impl App {
                 }
                 Effect::Send(Sent::GrantDog {
                     name,
-                    source,
+                    entry,
                     ticket,
                 })
             }

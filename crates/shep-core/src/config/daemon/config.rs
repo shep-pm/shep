@@ -208,7 +208,7 @@ impl DaemonConfig {
 mod tests {
     use super::super::error::DaemonConfigError;
     use super::super::overrides::DaemonOverrides;
-    use super::super::sections::LogLevel;
+    use super::super::sections::{AdoptedDog, LogLevel};
 
     use super::super::testing::*;
     use super::*;
@@ -322,12 +322,92 @@ mod tests {
         assert_eq!(cfg.daemon.enabled_dogs, vec!["metrics", "otel"]);
         assert_eq!(
             cfg.daemon.adopted_dogs.get("otel"),
-            Some(&std::path::PathBuf::from("/usr/local/bin/shep-otel"))
+            Some(&AdoptedDog {
+                path: std::path::PathBuf::from("/usr/local/bin/shep-otel"),
+                env: BTreeMap::new(),
+            }),
+            "a path on its own is still an entry: every shep.toml written before `env` says one"
         );
         assert!(
             !cfg.daemon.adopted_dogs.contains_key("metrics"),
             "a name with no entry here is a built-in, and that is the whole distinction"
         );
+    }
+
+    /// The table shape, and the `env` half that a dog running other programs
+    /// needs. `env` is optional: a table that only names a path is the same
+    /// entry the string shape writes.
+    #[test]
+    fn an_adopted_dogs_entry_reads_its_env_beside_its_path() {
+        let cfg = DaemonConfig::load(
+            Some(
+                r#"
+    [daemon.adopted_dogs.kelpie]
+    path = "/usr/local/bin/shep-kelpie"
+    env = { PADDOCK_KEY = "{{secret:paddock/key}}", RUST_LOG = "warn" }
+    "#,
+            ),
+            &no_env,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.daemon.adopted_dogs.get("kelpie"),
+            Some(&AdoptedDog {
+                path: std::path::PathBuf::from("/usr/local/bin/shep-kelpie"),
+                env: BTreeMap::from([
+                    (
+                        "PADDOCK_KEY".to_string(),
+                        "{{secret:paddock/key}}".to_string()
+                    ),
+                    ("RUST_LOG".to_string(), "warn".to_string()),
+                ]),
+            })
+        );
+
+        let bare = DaemonConfig::load(
+            Some("[daemon.adopted_dogs.kelpie]\npath = \"/usr/local/bin/shep-kelpie\"\n"),
+            &no_env,
+        )
+        .unwrap();
+        assert_eq!(
+            bare.daemon.adopted_dogs["kelpie"].env,
+            BTreeMap::new(),
+            "a table with no `env` is the entry the string shape writes"
+        );
+    }
+
+    /// An entry is read by hand, so its grammar is this test's to pin: a key
+    /// nobody declared, a missing `path`, and an `env` value that is not
+    /// text are each refused rather than quietly dropped.
+    #[test]
+    fn an_adopted_dogs_entry_refuses_a_shape_it_does_not_define() {
+        for (src, expected) in [
+            (
+                "[daemon.adopted_dogs.otel]\npath = \"/bin/otel\"\nenvv = {}\n",
+                "unknown field `envv`",
+            ),
+            (
+                "[daemon.adopted_dogs.otel]\nenv = { A = \"b\" }\n",
+                "missing field `path`",
+            ),
+            (
+                "[daemon.adopted_dogs.otel]\npath = \"/bin/otel\"\nenv = { A = 7 }\n",
+                "invalid type: integer `7`",
+            ),
+            (
+                "[daemon.adopted_dogs.otel]\npath = 7\n",
+                "invalid type: integer `7`",
+            ),
+        ] {
+            let err = DaemonConfig::load(Some(src), &no_env).expect_err("{src} must not load");
+            let DaemonConfigError::Toml(msg) = err else {
+                panic!("{src}: {err:?} is not a TOML refusal");
+            };
+            assert!(
+                msg.contains(expected),
+                "{src}: {msg} does not name {expected}"
+            );
+        }
     }
 
     /// A `shep.toml` written before the key existed has to keep loading.

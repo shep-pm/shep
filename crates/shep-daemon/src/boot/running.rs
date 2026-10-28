@@ -172,6 +172,7 @@ mod tests {
     use crate::testing::test_paths;
     use shep_core::config::AppConfig;
     use shep_core::protocol::{DogSource, ProcessEventKind};
+    use std::collections::BTreeMap;
     use std::time::Duration;
 
     #[tokio::test]
@@ -364,6 +365,7 @@ mod tests {
                 dogs: vec![DogSpec {
                     name: "metrics".to_string(),
                     source: DogSource::BuiltIn { grants: None },
+                    env: BTreeMap::new(),
                 }],
                 ..BootOptions::default()
             },

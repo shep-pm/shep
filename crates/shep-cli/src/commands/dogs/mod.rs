@@ -9,16 +9,18 @@
 //! is touched, so a failed RPC still leaves a config the next boot honours.
 //! `adopt` puts [`vet::vet_binary`] ahead of both.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use shep_client::{Client, ConnectError};
 use shep_core::paths::ShepPaths;
 use shep_core::permissions::Grants;
-use shep_core::protocol::DogSource;
+use shep_core::protocol::{DogSource, EnvValue};
 
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionRow, DogActionStatus, Streams, emit, write_outcome};
+use crate::version_guard::{VersionGuard, refuse_version_skew};
 
 mod adopt;
 mod barks;
@@ -140,6 +142,7 @@ pub(crate) fn fail_config(streams: &mut Streams<'_>, err: &ShepTomlError) -> Exi
         ShepTomlError::Io { .. } => ExitCode::Failure,
         ShepTomlError::Parse { .. }
         | ShepTomlError::WrongShape { .. }
+        | ShepTomlError::NoDogEntry { .. }
         | ShepTomlError::BadGrants { .. } => ExitCode::InvalidConfig,
     };
     streams.fail(code, &err.to_string())
@@ -176,6 +179,34 @@ fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
     adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn { grants })
 }
 
+/// What `shep.toml` says about `name`, as the CLI hands it to the shepherd:
+/// where its binary comes from, and the `env` the operator set for it.
+///
+/// The source is the half every flock row carries. The env is the half one
+/// spawn gets, and `shep.toml` is this binary's own file: the request that
+/// starts a dog is the only way its operator-set environment reaches it.
+/// `Debug` is derived, safe because [`EnvValue`]'s own prints a byte count (IR-41).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DogEntry {
+    /// Where its binary comes from, and what it was granted.
+    pub source: DogSource,
+    /// The entry's `env`, as written. Empty for a built-in dog.
+    pub env: BTreeMap<String, EnvValue>,
+}
+
+/// [`dog_source`] and `name`'s recorded `env` together: what an `EnableDog`
+/// carries.
+fn dog_entry(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogEntry {
+    DogEntry {
+        source: dog_source(cfg, name, grants),
+        env: cfg
+            .adopted_dog_env(name)
+            .into_iter()
+            .map(|(key, value)| (key, value.into()))
+            .collect(),
+    }
+}
+
 /// [`dog_source`] for an adopted `name`, carrying its recorded channel ask
 /// and `grants`, and `None` for any other name.
 fn adopted_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> Option<DogSource> {
@@ -191,8 +222,9 @@ fn adopted_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> Option<
 ///
 /// `Ok(None)` is only [`ConnectError::Connect`], nothing listening: the one
 /// case the four verbs tolerate silently, since none may autostart a
-/// shepherd. Every other variant means a connection was established, so the
-/// refusal is reported rather than folded in.
+/// shepherd. Every other variant means a connection was established, so its
+/// refusal is reported rather than folded in, and so is a version skew: see
+/// [`crate::version_guard::refuse_version_skew`].
 ///
 /// # Errors
 /// The exit code and message [`Streams::fail`] already wrote, when the
@@ -202,7 +234,14 @@ pub(crate) async fn connect_or_absent(
     streams: &mut Streams<'_>,
 ) -> Result<Option<Client>, ExitCode> {
     match Client::connect(&paths.socket).await {
-        Ok(client) => Ok(Some(client)),
+        Ok(client) => {
+            // The guard every other write verb gets at its connect: a
+            // shepherd of another build decodes what this one sends and
+            // ignores the keys it does not know, so `shep enable` on a
+            // half-replaced install would start a dog without its `env`.
+            refuse_version_skew(streams, &client, VersionGuard::Enforce)?;
+            Ok(Some(client))
+        }
         Err(ConnectError::Connect { .. }) => Ok(None),
         Err(err) => {
             let code = ExitCode::from(&err);

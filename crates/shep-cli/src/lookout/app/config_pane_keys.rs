@@ -68,11 +68,7 @@ impl App {
                     self.close_dialog = Some(dialog);
                     return Effect::None;
                 }
-                let writes = self.take_pane_writes();
-                self.close_pane();
-                if !writes.is_empty() {
-                    return Effect::SendAll(writes);
-                }
+                return self.write_and_close();
             }
             KeyPress::SelectUp
             | KeyPress::SelectDown

@@ -36,6 +36,7 @@ pub fn app_in_dog_pane() -> App {
     app.update(Msg::DogPane {
         name: "bark".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(crate::dog::builtin_schema("bark").expect("bark is a built-in")),
     });
     app.update(Msg::Replied {
@@ -94,6 +95,7 @@ pub fn app_in_dog_pane_with_a_nested_table() -> App {
     app.update(Msg::DogPane {
         name: "jobs".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(nested_dog_schema()),
     });
     app.update(Msg::Replied {
@@ -187,6 +189,7 @@ pub fn app_in_dog_pane_with_entry_defaults() -> App {
     app.update(Msg::DogPane {
         name: "paddock".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(entries_dog_defaults_schema()),
     });
     app.update(Msg::Replied {
@@ -206,6 +209,7 @@ pub fn app_in_read_only_dog_pane_with_entries() -> App {
     app.update(Msg::DogPane {
         name: "paddock".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(entries_dog_schema()),
     });
     app.update(Msg::Replied {
@@ -214,6 +218,72 @@ pub fn app_in_read_only_dog_pane_with_entries() -> App {
         },
         result: Ok(Response::DogSection {
             toml: entries_dog_section().into(),
+        }),
+    });
+    app
+}
+
+/// An adopted dog's schema: one scalar, so the pane's own rows are short
+/// enough for an env test to walk.
+fn env_dog_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": { "ratio": { "type": "number" } },
+    })
+}
+
+/// A dashboard with an adopted dog's config pane open, with the two `env`
+/// keys its `shep.toml` entry sets carried in, the way
+/// [`Effect::LoadDogPane`](crate::lookout::app::Effect::LoadDogPane) reads
+/// them. The control gate is open, so its env rows are editable.
+pub fn app_in_adopted_dog_pane_with_env() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::DogPane {
+        name: "kelpie".to_string(),
+        adopted_path: Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+        env_keys: vec!["PADDOCK_KEY".to_string(), "RUST_LOG".to_string()],
+        result: Ok(env_dog_schema()),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "kelpie".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "ratio = 1.5\n".to_owned().into(),
+        }),
+    });
+    app
+}
+
+/// An adopted dog's pane, with one `env` key carried in, whose `dogs.toml`
+/// section holds text where its schema has a table. No field edit of that
+/// section can be written back, which is the refusal a close has to report
+/// beside the `env` edit it filed in the same keystroke.
+pub fn app_in_adopted_dog_pane_with_an_unwriteable_section() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::DogPane {
+        name: "kelpie".to_string(),
+        adopted_path: Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+        env_keys: vec!["PADDOCK_KEY".to_string()],
+        result: Ok(serde_json::json!({
+            "type": "object",
+            "properties": { "models": { "$ref": "#/$defs/Models" } },
+            "$defs": {
+                "Models": {
+                    "type": "object",
+                    "properties": { "model": { "type": "string" } },
+                },
+            },
+        })),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "kelpie".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "models = \"old\"\n".to_owned().into(),
         }),
     });
     app
@@ -303,6 +373,7 @@ pub fn app_in_dog_pane_over_lists(section: String) -> App {
     app.update(Msg::DogPane {
         name: "watch".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(list_dog_schema()),
     });
     app.update(Msg::Replied {

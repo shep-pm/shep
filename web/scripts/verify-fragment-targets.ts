@@ -18,13 +18,16 @@
 // branch came from pretending otherwise.
 //
 // Raised by CodeRabbit on PR #248.
+//
+// A README can open a `<details>` too, and a dog's page is a README, so this
+// reaches those pages as well: builtDocsPages() walks every depth under
+// `dist/docs`, which is where an imported page sits. A dog that folds a
+// section behind a disclosure fails the deploy the same way a hand-written
+// page would, and the fix is in its README.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-const distDir = fileURLToPath(new URL("../dist/docs", import.meta.url));
+import { builtDocsPages } from "./built-pages.ts";
 
 /**
  * Ids that a closed `<details>` would hide: inside one, outside its summary.
@@ -73,16 +76,25 @@ test("hiddenIds() counts a nested details at its own depth", () => {
   assert.deepEqual(hiddenIds(html), ["deep"]);
 });
 
+test("hiddenIds() catches a dog README that folds a section behind a disclosure", () => {
+  // What a README that opens a disclosure and then writes `## Setup` inside it
+  // renders to: the heading is in the body, and the renderer anchored it.
+  const readme = `<details><summary>Notes</summary><h2 id="setup">Setup</h2><p>what to install</p></details>`;
+  assert.deepEqual(hiddenIds(readme), ["setup"]);
+});
+
+test("hiddenIds() passes a dog README that keeps its heading in the summary", () => {
+  const readme = `<details><summary><h2 id="setup">Setup</h2></summary><p>what to install</p></details>`;
+  assert.deepEqual(hiddenIds(readme), []);
+});
+
 test("no built page hides a fragment target inside a closed details", async () => {
-  const dirs = await readdir(distDir, { withFileTypes: true });
-  const pages = dirs.filter((d) => d.isDirectory()).map((d) => d.name);
-  assert.ok(pages.length > 0, `no built pages under ${distDir}; run astro build first`);
-  for (const page of pages) {
-    const html = await readFile(`${distDir}/${page}/index.html`, "utf8");
+  for (const [route, html] of await builtDocsPages()) {
+    const buried = hiddenIds(html);
     assert.deepEqual(
-      hiddenIds(html),
+      buried,
       [],
-      `/docs/${page} puts id(s) ${hiddenIds(html).join(", ")} in the body of a <details>. Firefox and Safari leave the disclosure shut when a fragment targets one, so the link lands on a heading nobody can see. Move the id onto the heading inside the <summary>.`,
+      `/docs/${route} puts id(s) ${buried.join(", ")} in the body of a <details>. Firefox and Safari leave the disclosure shut when a fragment targets one, so the link lands on a heading nobody can see. Move the id onto the heading inside the <summary>, or drop the <details>. On an imported dog page that means the README in its own repository, not this site.`,
     );
   }
 });

@@ -52,7 +52,12 @@ On main at `d2483f10` (v0.12.5).
   (`crates/shep-cli/src/adopted.rs`).
 - Settings live in the dog's `[<name>]` section of `$SHEP_HOME/dogs.toml`,
   and per sheep in `[app.dogs.<dog>]` (#623). Config travels over the
-  socket, never the environment.
+  socket, never the environment. The one setting the operator sets in
+  `shep.toml` travels the other way: an adopted dog's `env`, beside its
+  `path` in `[daemon.adopted_dogs]`, is merged into the child environment
+  the way a sheep's `env` is, `{{secret:...}}` resolved at spawn, and
+  `SHEP_HOME` and `SHEP_DOG_NAME` are written over whatever `env` claims
+  (#1250).
 - shep probes the binary with flags for its version, its settings schema
   and whether it wants the shepherd channel (#656).
   `shep_client::dogs::probe` answers them (#613).
@@ -247,6 +252,7 @@ execute", rule 7 of the dog config spec ("asked fresh, never stored"), and
 | 4 | Calls and events | Triggers between dogs, `dog.<name>.*` topics | #1074 |
 | 5 | Panes, then the catalogue | Pane sections over the channel, the shared crate, browse and install in lookout | #566 |
 | 6 | 1b, spec 2, spec 5 | Prebuilt downloads, the on-ramp (welcome, hints, docs reorder), shep upgrading itself | #660 |
+| 7 | A dog's `env` | An operator-set `env` for an adopted dog, beside its `path` in `[daemon.adopted_dogs]` | #1250, #1192 |
 
 Progress is tracked in #1075.
 

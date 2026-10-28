@@ -287,6 +287,7 @@ fn a_dogs_own_section_shows_the_union_and_opens_nothing() {
         None,
         schema,
         "retro = { kind = \"none\" }\n".to_owned(),
+        Vec::new(),
     );
     assert_eq!(pane.lock("retro"), Some(Lock::NoWidget));
     pane.move_to_key("retro");

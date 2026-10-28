@@ -35,6 +35,7 @@ use super::tail::Stream;
 use super::textbox::{TextBox, TextEdit};
 use super::theme::Palette;
 use super::viewport::Viewport;
+use crate::commands::dogs::DogEntry;
 use crate::commands::settings::{DogView, SettingEdit, SettingsSnapshot};
 use crate::style::{StyleLevel, StyleSource};
 use crate::vocabulary::Reported;

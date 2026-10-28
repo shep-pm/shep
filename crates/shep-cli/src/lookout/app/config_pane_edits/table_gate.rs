@@ -43,6 +43,7 @@ fn app_in_dog_pane_over(schema: Value, section: &str) -> App {
     app.update(Msg::DogPane {
         name: "jobs".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(schema),
     });
     app.update(Msg::Replied {
