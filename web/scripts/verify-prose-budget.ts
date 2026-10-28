@@ -244,11 +244,14 @@ export const BUDGETS: Record<string, number> = {
   // prints. Surface a dog author and an operator both have to be able to
   // read, not prose to trim back out to fit.
   //
-  // Raised again from 4090 for an adopted dog's `env`: a key an operator
-  // writes in `shep.toml`, the one setting shep sends through a dog's
-  // environment, and the shape a file written before it existed still reads
-  // as (#1250).
-  dogs: 4225,
+  // Raised from 4090 on #1258 for the bark sink's certificate rule: which
+  // roots shep trusts decides whether an `https://` sink works at all, and
+  // `http://` is the only private route. Required content, not prose.
+  //
+  // Raised again for an adopted dog's `env`: a key an operator writes in
+  // `shep.toml`, the one setting shep sends through a dog's environment, and
+  // the shape a file written before it existed still reads as (#1250).
+  dogs: 4260,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.

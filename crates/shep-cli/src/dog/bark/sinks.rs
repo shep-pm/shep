@@ -1,13 +1,13 @@
 //! Bark's sinks: [`Sink`], the pure [`render_body`], and the async
 //! [`deliver`] that POSTs a rendered body to it.
 //!
-//! Hand-rolled HTTP/1.1 over `tokio-rustls`, not `reqwest`: fewer
-//! transitive dependencies and no C toolchain. The connect, TLS and
-//! status-line check live in `crate::fetch`.
+//! Hand-rolled HTTP/1.1 over `tokio-rustls`. The connect, TLS and
+//! status-line check live in `crate::fetch`: the handshake is rustls's,
+//! the root store handed to it and a refused certificate's wording are
+//! shep's. No redirect is ever followed.
 //!
 //! `http://` is accepted for a [`Sink::Json`] endpoint; only
-//! [`require_usable_url`] rejects it, for Discord and Slack. No redirect
-//! is ever followed.
+//! [`require_usable_url`] rejects it, for Discord and Slack.
 
 use core::fmt;
 use std::time::Duration;

@@ -473,6 +473,11 @@ here sends an `Authorization` header, so the pair could only be discarded
 or sent as part of a hostname. Discord and Slack put the secret in the path
 instead, which is why the whole URL is a credential.
 
+An `https://` sink needs a publicly trusted certificate. shep trusts the
+public certificate authorities compiled into it and nothing else, so a
+private-CA or self-signed endpoint is refused. `http://` is the route to a
+private endpoint.
+
 Leave `[[bark.rules]]` out entirely and the bark dog does not stay
 silent — one rule is built in by default, firing on every configured sink
 whenever a sheep reaches `Errored`. That is deliberate: it is the alert
