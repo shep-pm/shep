@@ -129,7 +129,13 @@ export const BUDGETS: Record<string, number> = {
   // the operator's `env` beside its path is in it, and `SHEP_HOME` and
   // `SHEP_DOG_NAME` are set over anything it claims (#1250). A dog author
   // reading a key out of the environment has to know it is there.
-  "writing-a-dog": 5330,
+  //
+  // Raised from 5330 on #1256 for "Your dog's own docs page": what a
+  // first-party dog's README becomes on this site, what its links become, and
+  // the `release-plz` caveat that leaves a dog's own release never rebuilding
+  // its own page. Required content for the author who ships one, not prose to
+  // trim back out.
+  "writing-a-dog": 5470,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
