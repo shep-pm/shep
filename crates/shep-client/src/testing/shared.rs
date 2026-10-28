@@ -13,10 +13,9 @@ use tokio_util::codec::Framed;
 /// `dir`.
 ///
 /// Unix uses `dir` directly. Windows names a pipe in a machine-global
-/// namespace instead of a path under `dir`, matching
-/// [`ShepPaths::pipe_name`](shep_core::paths::ShepPaths::pipe_name)'s own
-/// derivation; the pid is folded in too, since each `cargo test` binary is
-/// its own process and could otherwise collide on a shared `TempDir` name.
+/// namespace, matching [`ShepPaths::pipe_name`](shep_core::paths::ShepPaths::pipe_name)'s
+/// derivation. The pid is folded in too, since each `cargo test` binary
+/// could otherwise collide on a shared `TempDir` name.
 #[must_use]
 pub fn control_address(dir: &Path) -> PathBuf {
     #[cfg(unix)]
@@ -40,9 +39,7 @@ pub fn control_address(dir: &Path) -> PathBuf {
 
 /// Binds `path`, naming it if the bind fails.
 ///
-/// Thirteen fakes in this module bind a listener, and a bare `unwrap` on
-/// any of them reports an `AddrInUse` or a `NotFound` without saying which
-/// address it was.
+/// A bare `unwrap` here would report an `AddrInUse` without naming the address.
 ///
 /// # Panics
 ///

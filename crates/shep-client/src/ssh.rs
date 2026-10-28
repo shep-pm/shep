@@ -1,12 +1,11 @@
 //! Reaching another host's shepherd through the system `ssh`: [`SshOptions`],
 //! [`SshCause`], and the dial behind [`Client::connect_ssh`].
 //!
-//! The command is `ssh -T -- <dest> shep dial-stdio`. The child's stdout and
-//! stdin are joined into one byte stream and handed to
-//! [`Connection::open_over`], so the handshake is the one a local socket gets.
-//! ssh is never made a session leader: it reads passphrase and host-key
-//! prompts from the terminal, and a background process group is stopped by
-//! SIGTTIN when it does.
+//! The command is `ssh -T -- <dest> shep dial-stdio`. The child's pipes are
+//! joined into one byte stream and handed to [`Connection::open_over`]. The
+//! handshake is then the one a local socket gets. ssh is never made a
+//! session leader: it reads passphrase and host-key prompts from the
+//! terminal. A background process group is stopped by `SIGTTIN` when it tries.
 //!
 //! [`Client::connect_ssh`]: crate::Client::connect_ssh
 
@@ -46,18 +45,13 @@ const SSH_FAILED: i32 = 255;
 /// The remote shell's exit status for a command it cannot find.
 const COMMAND_NOT_FOUND: i32 = 127;
 
-/// How [`Client::connect_ssh_with`] runs ssh.
+/// How [`Client::connect_ssh_with`](crate::Client::connect_ssh_with) runs ssh.
 ///
-/// Non-exhaustive, with chained setters: a later release adds a setter, so no
-/// struct literal is ever written outside this crate. The default runs `ssh`
-/// from the `PATH` with batch mode off and no timeout, which suits one person
-/// at a terminal who may answer a passphrase or host-key prompt. A caller
-/// that dials many hosts at once sets [`Self::batch_mode`] and
-/// [`Self::timeout`].
-///
-/// `Debug` is derived: a program path, a flag and a duration carry no secret.
-///
-/// [`Client::connect_ssh_with`]: crate::Client::connect_ssh_with
+/// Non-exhaustive, with chained setters, so no struct literal is written
+/// outside this crate. The default runs `ssh` from the `PATH` with batch
+/// mode off and no timeout, suiting one person at a terminal. A caller
+/// dialing many hosts sets [`Self::batch_mode`] and [`Self::timeout`]. `Debug`
+/// is derived: a path, a flag and a duration carry no secret.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SshOptions {

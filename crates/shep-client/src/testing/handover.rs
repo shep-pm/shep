@@ -30,16 +30,11 @@ pub enum Handshake {
 }
 
 /// A fake shepherd that survives a handover: one listener, one accepted
-/// connection at a time, and a [`Self::cut`] that drops the accepted
-/// connection out from under the client while the listener stays bound,
-/// matching a real daemon's `execve`, which carries the listening socket
-/// across but cannot carry an accepted connection.
+/// connection at a time. Its [`Self::cut`] drops that connection while the
+/// listener stays bound, as a real daemon's `execve` does. Each connection
+/// is served by the next [`Handshake`] in the list, last one repeating.
 ///
-/// Each connection is served by the next [`Handshake`] in the list; once
-/// they run out, the last one repeats.
-///
-/// Panics if `path` cannot be bound, or on any accept, decode or encode
-/// failure.
+/// Panics if `path` cannot be bound, or on any accept, decode or encode failure.
 #[derive(Debug)]
 pub struct Handovers {
     cut: mpsc::Sender<()>,
@@ -144,9 +139,8 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
                             }
                             // Armed refusal, taken so it answers one
                             // `Subscribe` and the next is served normally.
-                            // Taken into a local first: the guard must not
-                            // be alive across the write below, or this
-                            // future stops being `Send`.
+                            // Taken into a local first: a guard alive across
+                            // the write would make this future non-`Send`.
                             let refusal = if matches!(body, Request::Subscribe { .. }) {
                                 armed_subscribe_err.lock().unwrap().take()
                             } else {
@@ -294,9 +288,8 @@ impl Handovers {
 
     /// Arms every `Request::DogConfigResolved` and
     /// `Request::SheepDogSettingsResolved` to be refused with `refusal`, as a
-    /// shepherd that has never heard of them does. `Request::DogConfig` is
-    /// still answered with the armed section, and `Request::DogSheepSettings`
-    /// with the armed tables.
+    /// shepherd that has never heard of them does. `Request::DogConfig` and
+    /// `Request::DogSheepSettings` are still answered from the armed data.
     ///
     /// Held rather than taken, like [`Self::reply_to_list`]: a dog asks
     /// again after a handover.
@@ -308,10 +301,8 @@ impl Handovers {
     /// instead of `Response::Subscribed`.
     ///
     /// Taken rather than held, so exactly one `Subscribe` is refused and a
-    /// later one is served. That is the shape a caller needs to tell a
-    /// shepherd refusing the request from a connection that died: the
-    /// second answers, and only a caller that stopped on the first will
-    /// not see it.
+    /// later one is served. That is how a caller tells a shepherd refusing
+    /// the request from a connection that died: the second one answers.
     pub fn refuse_next_subscribe(&self, refusal: RpcError) {
         *self.armed_subscribe_err.lock().unwrap() = Some(refusal);
     }
@@ -319,12 +310,9 @@ impl Handovers {
     /// Queues `event` for the generation being served now.
     ///
     /// Buffered in arrival order until that generation answers a
-    /// `Request::Subscribe`, then written straight to the wire, matching what
-    /// a real daemon does for a subscriber. An event queued for a generation
-    /// that never subscribes is dropped with it, which is the gap a handover
-    /// leaves.
-    ///
-    /// Silently does nothing once the background task is gone.
+    /// `Request::Subscribe`. Then written straight to the wire, as a real
+    /// daemon does. An event queued for a generation that never subscribes is
+    /// dropped with it. Silently does nothing once the task is gone.
     pub async fn push(&self, event: BusEvent) {
         let _ = self.events.send(event).await;
     }

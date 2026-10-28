@@ -14,9 +14,7 @@ use shep_core::dogs::validate::{Proposed, Verdict};
 /// `params` is the `params` field of the `action` message, verbatim. `check`
 /// answers for the table: [`Verdict::Accept`], or
 /// [`Verdict::refuse`](Verdict::refuse) with the sentence the operator reads.
-///
-/// A `params` shep never sent is refused without calling `check`: a dog that
-/// cannot read the table cannot clear the write either.
+/// A `params` shep never sent is refused without calling `check`.
 ///
 /// # Examples
 ///

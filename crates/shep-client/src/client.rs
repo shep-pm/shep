@@ -33,21 +33,11 @@ pub const START_DEADLINE: Duration = Duration::from_secs(30);
 
 /// Budget for `Request::Reload`.
 ///
-/// A reload matching several sheep is walked in dependency order, and the
-/// daemon holds every stage for the drains and readiness waits of the apps a
-/// later stage needs, so two stages at the default timeouts already clear
-/// [`START_DEADLINE`]. A client that gave up there would drop the walk with
-/// its later stages never issued and hand the operator a timeout over a
-/// half-reloaded fold. This asks for the daemon's whole `MAX_DEADLINE_MS`
-/// (60s), which is the most it will honour, so the client is no longer the
-/// one that gives up first.
-///
-/// It does not make the budget big enough, and no client-side value can. A
-/// reload stage is bounded by `max(listen_timeout + graceful_timeout) *
-/// swaps + STAGE_SLACK`, 16s per single-instance stage at the defaults: four
-/// such stages is 64s, and two stages of a three-instance app is 76s. Both
-/// are past the daemon's own 60s clamp, where the shepherd drops the walk
-/// exactly as the client used to.
+/// A reload walks several sheep in dependency order. It holds every stage
+/// for the drains and readiness waits a later stage needs. Two stages at
+/// the default timeouts already pass [`START_DEADLINE`]. This asks for the
+/// daemon's whole `MAX_DEADLINE_MS` (60s), the most it honours. Four
+/// default single-instance stages need 64s, past even that.
 pub const RELOAD_DEADLINE: Duration = Duration::from_secs(60);
 
 /// Budget for the log-plane verbs that walk the flock file by file:
@@ -68,12 +58,11 @@ pub const TRIGGER_DEADLINE: Duration = Duration::from_secs(60);
 
 /// Budget for `Request::Stop` and `Request::Delete`.
 ///
-/// A stop runs the kill ladder, then the lamb sweep, each bounded by a
+/// A stop runs the kill ladder, then the lamb sweep. Each is bounded by a
 /// sheep's `kill_timeout`, and a selector can match many sheep. The client
-/// cannot size that: asking the daemon for each `kill_timeout` costs a round
-/// trip and still races the actor, so this asks for the daemon's whole
-/// `MAX_DEADLINE_MS` (60s) instead. A ladder plus sweep past about 58s still
-/// meets the daemon's clamp.
+/// cannot size that: asking the daemon for each `kill_timeout` costs a
+/// round trip and still races the actor. This asks for the daemon's whole
+/// `MAX_DEADLINE_MS` (60s) instead.
 pub const STOP_DEADLINE: Duration = Duration::from_secs(60);
 
 /// How much longer the client waits than the deadline it asked the daemon
@@ -325,12 +314,6 @@ impl Client {
     /// `ssh -T [-o BatchMode=yes] -- <dest> shep dial-stdio` and handshaking
     /// over the child's pipes.
     ///
-    /// `dest` is checked with [`Destination::parse`] before anything runs:
-    /// ssh would read `-oProxyCommand=..` as an option and run it. With
-    /// [`SshOptions::timeout`] unset nothing bounds the ssh phase, so a person
-    /// may answer a passphrase or host-key prompt. The ssh child ends with
-    /// the returned client.
-    ///
     /// # Example
     ///
     /// ```no_run
@@ -347,18 +330,15 @@ impl Client {
     /// # }
     /// # let _ = dial;
     /// ```
-    ///
     /// # Errors
     ///
-    /// - [`ConnectError::Destination`]: `dest` is not a destination ssh can be handed safely.
-    /// - [`ConnectError::Ssh`]: ssh could not run, could not reach the host, or the
-    ///   far side could not serve the connection; the cause says which.
-    /// - [`ConnectError::Wire`]: `Hello` failed to encode, or the reply failed to decode.
-    /// - [`ConnectError::Io`]: a framed read or write failed.
+    /// - [`ConnectError::Destination`]: `dest` is not a destination ssh can be handed
+    ///   safely. ssh would read `-oProxyCommand=..` as an option and run it.
+    /// - [`ConnectError::Ssh`]: ssh could not run, reach the host, or be served by the far side.
+    /// - [`ConnectError::Wire`], [`ConnectError::Io`]: a frame failed to encode or decode.
     /// - [`ConnectError::HandshakeClosed`]: the stream closed before a `HelloReply`.
-    /// - [`ConnectError::HandshakeTimeout`]: ssh and the handshake took longer than
-    ///   [`SshOptions::timeout`].
-    /// - [`ConnectError::ProtocolMismatch`]: the shepherd refused on protocol-version skew.
+    /// - [`ConnectError::HandshakeTimeout`]: the phase ran past [`SshOptions::timeout`].
+    /// - [`ConnectError::ProtocolMismatch`]: the shepherd refused on version skew.
     pub async fn connect_ssh_with(dest: &str, options: &SshOptions) -> Result<Self, ConnectError> {
         let destination = Destination::parse(dest).map_err(ConnectError::Destination)?;
         let dial = Dial::Ssh {

@@ -48,11 +48,10 @@ pub use connection::{ConnectError, HANDSHAKE_TIMEOUT};
 pub use events::{EventStream, Lagged};
 /// The trait [`EventStream`] implements.
 ///
-/// Re-exported because there is no stable `core::stream::Stream`, and this
-/// trait is otherwise unnameable in a caller's own bound without a direct
-/// `futures-util` dependency. Pulling one event at a time needs no import:
-/// [`EventStream::next`] is an inherent method. Only the trait itself is
-/// re-exported, not `StreamExt`'s combinators.
+/// Re-exported because there is no stable `core::stream::Stream`. The trait
+/// is otherwise unnameable in a caller's bound without a `futures-util`
+/// dependency. Pulling one event at a time needs no import:
+/// [`EventStream::next`] is an inherent method.
 ///
 /// # Example
 ///
@@ -101,9 +100,8 @@ const _: () = {
 ///
 /// Reachable from this crate's own root because a dog depends on this
 /// crate and nothing else, and `docs/dogs.md` asks every dog to print it.
-///
-/// A re-export rather than a copy: a second definition here could
-/// disagree with the value the handshake actually compares.
+/// A re-export rather than a copy: a second definition could disagree with
+/// the value the handshake compares.
 pub use shep_core::protocol::PROTOCOL_VERSION;
 
 #[cfg(test)]
@@ -111,12 +109,10 @@ mod tests {
     /// Not an assertion, just a line of output where a wrong number would
     /// otherwise pass in silence.
     ///
-    /// The four integration binaries require `test-support` (`Cargo.toml`),
-    /// and cargo skips a target whose required features are off without a
-    /// line or a warning, so a bare `cargo test -p shep-client` silently
-    /// reports a fraction of this crate's tests as the whole. This case
-    /// compiles only when the feature is off, so it appears in exactly
-    /// the runs missing those binaries.
+    /// The four integration binaries require `test-support`. Cargo skips a
+    /// target whose required features are off without a word. A bare
+    /// `cargo test -p shep-client` then reports a fraction of this crate's
+    /// tests as the whole. This case compiles only when the feature is off.
     #[cfg(not(feature = "test-support"))]
     #[test]
     fn heads_up_four_integration_binaries_need_test_support_and_are_not_running() {

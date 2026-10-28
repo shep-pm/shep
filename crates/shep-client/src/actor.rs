@@ -153,19 +153,13 @@ async fn send_request(
     true
 }
 
-/// Decodes one frame off the wire and routes it: a [`Reply`] resolves the
-/// pending request with the matching id, and a [`BusEvent`] is broadcast
-/// to subscribers. Matched by id rather than arrival order, since the
-/// daemon may emit a [`BusEvent`] for a request before that request's own
-/// reply.
+/// Decodes one frame off the wire and routes it. A [`Reply`] resolves the
+/// pending request with the matching id; a [`BusEvent`] is broadcast.
+/// Matching is by id, not arrival order: the daemon may emit a
+/// [`BusEvent`] for a request before that request's own reply.
 ///
-/// A [`Reply`] whose id has no entry in `pending` is dropped silently:
-/// there is nobody left to tell. A frame that fails to decode is handled
-/// by id: if it names a pending request, that caller is failed with
-/// [`RequestError::Undecodable`] instead of waiting out its deadline for
-/// an answer that already arrived; an undecodable frame with no id (an
-/// event) is dropped, since nothing is waiting on it and a subscriber
-/// that cannot name it cannot act on it.
+/// A [`Reply`] with no entry in `pending` is dropped. An undecodable
+/// frame naming one fails its caller with [`RequestError::Undecodable`].
 fn route_frame(
     bytes: &[u8],
     pending: &mut HashMap<u64, oneshot::Sender<Result<Response, RequestError>>>,
