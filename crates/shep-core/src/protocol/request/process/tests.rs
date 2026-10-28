@@ -162,6 +162,16 @@ fn every_setter_writes_its_own_field_and_no_other() {
         Some(vec!["cwd".to_string()]),
         "an empty `overridden` setter body is invisible to the comparison above"
     );
+
+    // `vcs`, on the same terms.
+    assert_eq!(
+        ProcessInfo::builder(1, "web", ProcStatus::Online)
+            .vcs(Some(Vcs::new(REVISION).with_branch("main")))
+            .build()
+            .vcs,
+        Some(Vcs::new(REVISION).with_branch("main")),
+        "an empty `vcs` setter body is invisible to the comparison above"
+    );
 }
 
 #[test]
@@ -318,6 +328,7 @@ fn an_older_daemons_process_info_still_decodes() {
     assert_eq!(info.reload_deadline_ms, None);
     assert_eq!(info.disabled, None);
     assert_eq!(info.log_timestamps, None);
+    assert_eq!(info.vcs, None);
 }
 
 #[test]

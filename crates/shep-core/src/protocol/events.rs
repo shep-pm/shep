@@ -289,6 +289,7 @@ mod tests {
                     disabled: None,
                     log_timestamps: None,
                     access: None,
+                    vcs: None,
                 },
                 manually: false,
                 at_ms: 1_700_000_000_000,

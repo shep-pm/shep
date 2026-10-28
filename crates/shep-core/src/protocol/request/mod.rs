@@ -14,6 +14,7 @@ mod response;
 mod response_name;
 mod selector_spec;
 mod smit;
+mod vcs;
 mod verbs;
 
 #[cfg(test)]
@@ -34,4 +35,5 @@ pub use redacted::{DogSectionToml, EnvValue};
 pub use response::{HostUsage, Response};
 pub use selector_spec::SelectorSpec;
 pub use smit::{Smit, SmitError};
+pub use vcs::Vcs;
 pub use verbs::Request;

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::LevelRule;
 use crate::status::ProcStatus;
 
-use super::{DogAccess, DogSource};
+use super::{DogAccess, DogSource, Vcs};
 
 // Named by intra-doc links and by nothing rustc compiles, so the
 // import is behind `cfg(doc)` rather than flagged unused.
@@ -252,6 +252,15 @@ pub struct ProcessInfo {
     /// `shep.toml`. Additive, like [`Self::disabled`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<DogAccess>,
+    /// The revision this sheep's own directory is checked out on, read at
+    /// report time. `Some` only on the rows of a `Describe`, like
+    /// [`Self::lambs`]; `None` on every other row and for a peer daemon that
+    /// predates the field.
+    ///
+    /// Additive, like [`Self::access`]: the key is absent until a shepherd has
+    /// a revision to report, and no shepherd reports one yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vcs: Option<Vcs>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -305,6 +314,7 @@ impl ProcessInfo {
                 disabled: None,
                 log_timestamps: None,
                 access: None,
+                vcs: None,
             },
         }
     }
@@ -482,6 +492,13 @@ impl ProcessInfoBuilder {
         self
     }
 
+    /// Sets the revision this sheep's directory is on; `None` unless this row
+    /// came from a `Describe`.
+    pub fn vcs(mut self, vcs: Option<Vcs>) -> Self {
+        self.info.vcs = vcs;
+        self
+    }
+
     /// Finishes the row.
     #[must_use]
     pub fn build(self) -> ProcessInfo {
@@ -544,13 +561,22 @@ pub(super) fn sample_info() -> ProcessInfo {
         // `a_stamps_off_flag_is_absent_from_the_wire_until_set`.
         log_timestamps: None,
         access: None,
+        // `None` for the same reason, its shape pinned by
+        // `a_row_with_no_revision_has_no_vcs_key` and
+        // `a_revision_round_trips_with_and_without_a_branch`.
+        vcs: None,
     }
 }
+
+/// A full 40-character SHA-1 hash, the shape [`Vcs::revision`] carries.
+#[cfg(test)]
+pub(super) const REVISION: &str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 
 #[cfg(test)]
 mod sorting;
 #[cfg(test)]
 mod stamps;
-
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vcs_wire;

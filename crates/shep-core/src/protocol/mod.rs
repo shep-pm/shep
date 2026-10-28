@@ -22,7 +22,7 @@ pub use request::{
     EnvValue, Envelope, ExitInfo, Hello, HelloAck, HelloReply, HostUsage, Lamb, LineOutcome,
     LineReply, LogStream, LogTail, ProcessInfo, ProcessInfoBuilder, Reply, Request, Response,
     RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView, SheepDrift, SheepRefusal,
-    SignalOutcome, SignalReply, Smit, SmitError, sort_flock,
+    SignalOutcome, SignalReply, Smit, SmitError, Vcs, sort_flock,
 };
 pub use shep_channel::{
     CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, MetricType, ShepherdMessage,
