@@ -33,20 +33,13 @@ pub(crate) struct SecretNamer {
     pub references: BTreeSet<String>,
 }
 
-/// Every app in `procs` that the roll has a config for and that names at
-/// least one secret, deduplicated by name.
+/// Every app in `procs` the roll has a config for that names a secret,
+/// deduplicated by name.
 ///
-/// One entry per app rather than per instance: every instance of an app
-/// shares one config, so three copies would say the same thing three
-/// times.
-///
-/// Best-effort by construction. An app missing from the roll contributes
-/// nothing, which is what a sheep registered since the last roll write
-/// looks like.
-///
-/// Takes the roll already parsed: the pane reads it once for this and for
-/// [`roll_age`]. Takes `host_environment` rather than reading it, so a caller
-/// with a stream can report a `shep.toml` that would not read.
+/// One entry per app, since every instance shares one config. An app missing
+/// from the roll contributes nothing. Takes `host_environment` rather than
+/// reading it, so a caller with a stream can report a `shep.toml` that would
+/// not read.
 pub(crate) fn namers(
     host_environment: &str,
     roll: Option<&FlockSnapshot>,
@@ -88,10 +81,8 @@ pub(crate) fn namers(
 
 /// One sheep that names a secret, and whether it is running now.
 ///
-/// `online` is deliberately not "holds the current value". Nothing records
-/// when a value was set, so a running sheep was given *a* value at spawn
-/// and may have been given an older one. The pane's caption says exactly
-/// that and no more.
+/// `online` is not "holds the current value": nothing records when a value
+/// was set, so a running sheep may hold an older one.
 ///
 /// `Debug` is derived: a name and an environment, no value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,12 +130,8 @@ pub(crate) fn by_reference(
 
 /// How long ago the muster roll was written.
 ///
-/// The pane states this because a failed roll write only warns, so a stale
-/// roll is otherwise silent. A roll from the future reads as zero rather
-/// than as an error: a clock that moved is not the operator's problem to
-/// solve from this screen.
-///
-/// Takes the roll the pane already parsed for the readers.
+/// A failed roll write only warns, so a stale roll is otherwise silent. A
+/// roll from the future reads as zero rather than as an error.
 pub(crate) fn roll_age(roll: &FlockSnapshot) -> Duration {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
