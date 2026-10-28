@@ -50,7 +50,6 @@
 8 crates/shep-channel/tests/wire_export.rs // ChildMessage is one line the app writes to the shepherd.
 
 9 crates/shep-cli/src/cli/dogs.rs /// Grant a dog one permission it declared.
-10 crates/shep-cli/src/cli/dogs.rs /// Arguments to `shep enable`.
 
 12 crates/shep-cli/src/cli/flock.rs /// Keep the listing current: redraw it in place until Ctrl+C
 10 crates/shep-cli/src/cli/flock.rs /// Close the dashboard's action gate. Actions are permitted by default.

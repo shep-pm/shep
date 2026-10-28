@@ -79,15 +79,10 @@ pub struct DogArgs {
 
 /// Arguments to `shep enable`.
 ///
-/// [`DogArgs`] plus one hidden field: `--exec`, pm2's own spelling of
-/// `shep adopt`, kept as a working alias. `shep enable --exec <path> <name>`
-/// parses here and is routed to [`crate::commands::dogs::adopt`] by `main`'s
-/// dispatch, never handled by `enable` itself.
-///
-/// `name` is a required positional, unlike [`AdoptArgs`]'s optional one: pm2's
-/// spelling has no default. `main.rs`'s
-/// `the_hidden_pm2_spelling_reaches_adopt_with_the_arguments_the_right_way_round`
-/// pins the two shapes.
+/// [`DogArgs`] plus hidden `--exec`, pm2's spelling of `shep adopt`. `main`'s
+/// dispatch routes it to [`crate::commands::dogs::adopt`], never to `enable`.
+/// `name` is required, unlike [`AdoptArgs`]'s; pinned by
+/// `the_hidden_pm2_spelling_reaches_adopt_with_the_arguments_the_right_way_round`.
 #[derive(Debug, clap::Args)]
 pub struct EnableArgs {
     /// A sheep's name, `fold:<fold>`, `/<regex>/` or `all`, or a dog's name
