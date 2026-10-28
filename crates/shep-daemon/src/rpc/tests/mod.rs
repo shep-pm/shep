@@ -207,4 +207,5 @@ mod sheep_dog_secrets;
 mod start_add;
 mod stats;
 mod trigger_signal;
+mod vcs;
 mod walk;

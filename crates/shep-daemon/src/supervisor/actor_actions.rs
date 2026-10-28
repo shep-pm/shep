@@ -431,6 +431,21 @@ impl<R: ProcessRunner> Actor<R> {
             .collect())
     }
 
+    /// The working directory each sheep was configured with, by id.
+    ///
+    /// A sheep with no `cwd` has no entry: it would run in the shepherd's own
+    /// directory, which is not a statement about that sheep.
+    #[cfg(feature = "vcs")]
+    pub(super) fn working_dirs(&self) -> HashMap<u32, PathBuf> {
+        self.sheep
+            .values()
+            .filter_map(|slot| {
+                let cwd = slot.entry.spec.config().cwd.as_ref()?;
+                Some((slot.entry.id, PathBuf::from(cwd)))
+            })
+            .collect()
+    }
+
     /// Full flock listing, grouped by app name.
     ///
     /// Sorted by [`sort_flock`], the rule every operator-facing listing takes:

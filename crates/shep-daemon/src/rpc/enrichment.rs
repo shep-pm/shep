@@ -5,14 +5,33 @@
 //! [`dog_staleness`] and [`handover_refusal`] answer daemon-wide
 //! questions rather than per-row ones.
 
+#[cfg(feature = "vcs")]
+use std::collections::BTreeSet;
 use std::collections::HashMap;
+#[cfg(feature = "vcs")]
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "vcs")]
+use std::time::Duration;
 
+#[cfg(feature = "vcs")]
+use shep_core::protocol::Vcs;
 use shep_core::protocol::{Lamb, ProcessInfo};
 
 use crate::limits::stats::StatsState;
 
 use super::context::RpcContext;
+#[cfg(feature = "vcs")]
+use crate::supervisor::SupervisorHandle;
+#[cfg(feature = "vcs")]
+use crate::vcs::{Absent, revision_of};
+
+/// How long one checkout's read may take before its rows go without a `vcs`.
+///
+/// A `cwd` on a hung network mount blocks its read indefinitely, and a
+/// `Describe` reply must not wait on it.
+#[cfg(feature = "vcs")]
+const VCS_READ_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// The dogs this daemon has given up on, and the dogs it is still waiting to
 /// hear from.
@@ -153,6 +172,76 @@ pub(super) async fn with_lambs(
     for info in &mut infos {
         if let Some(lambs) = info.pid.and_then(|pid| walked.get(&pid)) {
             info.lambs = Some(lambs.clone());
+        }
+    }
+    infos
+}
+
+/// Fills each row's `vcs` from the revision checked out in its sheep's `cwd`.
+///
+/// Applied to `Describe` and to nothing else: it opens files on disk, and a
+/// flock listing is polled in a loop. A row stays `None` when its sheep names
+/// no `cwd` (never the shepherd's own directory), when the directory is not a
+/// checkout this reader recognises, or when the read outlasts
+/// [`VCS_READ_TIMEOUT`]. Each of those is logged at debug level.
+#[cfg(feature = "vcs")]
+pub(super) async fn with_vcs(
+    supervisor: &SupervisorHandle,
+    infos: Vec<ProcessInfo>,
+) -> Vec<ProcessInfo> {
+    let Ok(dirs) = supervisor.working_dirs().await else {
+        // The engine is stopping: describe the sheep without a revision
+        // rather than fail the request over a decoration.
+        return infos;
+    };
+    fill_vcs(infos, &dirs, VCS_READ_TIMEOUT, Arc::new(revision_of)).await
+}
+
+/// [`with_vcs`] over a directory table and a reader the caller supplies.
+///
+/// One read per distinct directory, each on the blocking pool under its own
+/// `timeout`, so instances of one app share a read and one hung mount does not
+/// cost the rows beside it.
+#[cfg(feature = "vcs")]
+pub(super) async fn fill_vcs<R>(
+    mut infos: Vec<ProcessInfo>,
+    dirs: &HashMap<u32, PathBuf>,
+    timeout: Duration,
+    read: Arc<R>,
+) -> Vec<ProcessInfo>
+where
+    R: Fn(&Path) -> Result<Vcs, Absent> + Send + Sync + 'static,
+{
+    let distinct: BTreeSet<&PathBuf> = infos.iter().filter_map(|info| dirs.get(&info.id)).collect();
+    let reads = distinct.into_iter().map(|dir| {
+        let dir = dir.clone();
+        let read = Arc::clone(&read);
+        async move {
+            let task = tokio::task::spawn_blocking({
+                let dir = dir.clone();
+                move || read(&dir)
+            });
+            let outcome = tokio::time::timeout(timeout, task).await;
+            (dir, outcome)
+        }
+    });
+    let mut found: HashMap<PathBuf, Vcs> = HashMap::new();
+    for (dir, outcome) in futures_util::future::join_all(reads).await {
+        match outcome {
+            Ok(Ok(Ok(vcs))) => {
+                found.insert(dir, vcs);
+            }
+            Ok(Ok(Err(absent))) => {
+                tracing::debug!(dir = %dir.display(), %absent, "no revision to report")
+            }
+            Ok(Err(_)) => tracing::debug!(dir = %dir.display(), "revision read did not finish"),
+            Err(_) => tracing::debug!(dir = %dir.display(), "revision read timed out"),
+        }
+    }
+    for info in &mut infos {
+        match dirs.get(&info.id) {
+            Some(dir) => info.vcs = found.get(dir).cloned(),
+            None => tracing::debug!(sheep = %info.name, "no cwd, so no revision to report"),
         }
     }
     infos

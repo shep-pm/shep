@@ -173,6 +173,10 @@ pub mod rpc;
 pub mod runner;
 pub mod snapshot;
 pub mod supervisor;
+// Reads a sheep's checkout for `Describe`; behind a feature because it opens
+// files in a directory the operator controls.
+#[cfg(feature = "vcs")]
+pub mod vcs;
 
 use std::time::SystemTime;
 
