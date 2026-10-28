@@ -44,7 +44,7 @@ shep-handover = { path = "crates/shep-handover", version = "0.18.2" }
 shep-tree = { path = "crates/shep-tree", version = "0.18.2" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
-toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "display"] }
 # The read-modify-write behind `shep.toml` and `dogs.toml`: `shep-cli`'s
 # `ShepToml` and `shep-daemon`'s `dogs::set_dog_section` both edit the
 # document they parsed rather than rendering a map back out, so a comment or
