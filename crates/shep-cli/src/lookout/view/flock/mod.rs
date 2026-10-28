@@ -8,7 +8,6 @@
 //! Column widths are fixed rather than measured from content: a live table
 //! whose columns resize as a pid gains a digit is a table that shivers.
 
-
 pub(super) mod columns;
 mod facts;
 mod fold;

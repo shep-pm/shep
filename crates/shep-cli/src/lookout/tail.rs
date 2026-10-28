@@ -6,12 +6,8 @@
 //! [`Tail::missed_bytes`] for what it never read, exact. One refresh costs
 //! at most one seek and one [`FEED_WINDOW_BYTES`] read per file whatever
 //! the sheep writes, so the reader is bounded by itself and not by the writer.
-//! [`read`] is pure over the filesystem, which is what lets its tests drive
-//! it with a [`std::collections::BTreeMap`] and a `tempdir`.
-//!
 //! The grammar that turns a line's own escapes into [`InkRun`]s lives in
-//! [`runs`], with the tests for what it checks. What is here is the window,
-//! the counters, and the two types a view reads.
+//! [`runs`].
 
 use std::collections::BTreeMap;
 use std::io::{Read as _, Seek as _, SeekFrom};
@@ -138,11 +134,8 @@ pub struct Tail {
     /// were therefore never read at all.
     ///
     /// Exact as a byte count; the number of lines in them is unknowable
-    /// without reading them, which is what the window exists to avoid. Zero on
-    /// the first read of a file, since a file's history is not a gap between
-    /// two reads, and zero when the file shrank, which is what a rotation or a
-    /// `shep flush` looks like from here. Either way the lines the window and
-    /// the cap dropped are still in [`Self::missed_lines`].
+    /// without reading them, which is what the window exists to avoid. Zero
+    /// on a file's first read, and zero when the file shrank.
     pub missed_bytes: u64,
     /// Bytes this refresh actually pulled off disk, both files together.
     ///
@@ -157,11 +150,10 @@ pub struct Tail {
 /// One refresh: both files, tagged, with the gap admitted to.
 ///
 /// `seen` is the caller's memory of each file's length at the previous read;
-/// [`super::source::LocalReader`] owns it, which keeps this function pure over
-/// the filesystem.
+/// [`super::source::LocalReader`] owns it, which keeps this pure over the
+/// filesystem.
 ///
-/// `std::fs`, not `tokio::fs`: shep-cli's tokio does not carry the `fs`
-/// feature, and this is a bounded read on a task that is otherwise asleep.
+/// `std::fs`, not `tokio::fs`: shep-cli's tokio does not carry the `fs` feature.
 pub fn read(seen: &mut BTreeMap<PathBuf, u64>, out: Option<&Path>, err: Option<&Path>) -> Tail {
     let mut tail = Tail::default();
     let mut notes: Vec<String> = Vec::new();
