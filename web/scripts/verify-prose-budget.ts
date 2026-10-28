@@ -234,7 +234,11 @@ export const BUDGETS: Record<string, number> = {
   // `validate` manifest field, the `shep.validate` ask, and what a refusal
   // prints. Surface a dog author and an operator both have to be able to
   // read, not prose to trim back out to fit.
-  dogs: 4090,
+  //
+  // Raised from 4090 on #1258 for the bark sink's certificate rule: which
+  // roots shep trusts decides whether an `https://` sink works at all, and
+  // `http://` is the only private route. Required content, not prose.
+  dogs: 4130,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.

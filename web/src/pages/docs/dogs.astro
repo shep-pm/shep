@@ -546,6 +546,12 @@ sinks = ["oncall"]`}</CodeBlock>
       the secret in the path instead, which is why the whole URL is a
       credential.
     </p>
+    <p class="fine">
+      An <code>https://</code> sink needs a publicly trusted certificate.
+      shep trusts the public certificate authorities compiled into it and
+      nothing else, so a private-CA or self-signed endpoint is refused.{" "}
+      <code>http://</code> is the route to a private endpoint.
+    </p>
     <p>
       Leave <code>[[bark.rules]]</code> out and bark doesn't go quiet:
       one rule is built in by default, firing on every configured sink

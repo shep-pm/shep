@@ -225,7 +225,17 @@ fsevent-sys = "4.1.0"
 # cross-compile needs a C compiler for that target, so
 # `--target x86_64-pc-windows-gnu` from macOS needs mingw-w64 installed.
 # Native builds (macOS clang, CI's musl-tools, Windows MSVC) are unaffected.
-tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+#
+# Floor 0.26.3: `fetch` needs two APIs newer than what 0.26.0 declares.
+# `peer_transport_error` names `CertificateError::NotValidForNameContext`,
+# which rustls 0.23.24 added and words a name refusal with from there up, and
+# `fetch::tests::tls` reads its PEM fixtures through
+# `rustls::pki_types::pem::PemObject`, which rustls-pki-types 1.10 added.
+# 0.26.0 declares rustls `"0.23"`, so `-Z minimal-versions` resolved rustls
+# 0.23.0 and rustls-pki-types 1.8.0, where neither name exists. 0.26.3 is the
+# lowest release whose own floor (rustls 0.23.27, rustls-pki-types 1.11)
+# carries both.
+tokio-rustls = { version = "0.26.3", default-features = false, features = ["ring", "tls12"] }
 # Mozilla's compiled-in root store. rustls itself is reached through
 # tokio-rustls's `pub use rustls;`; not named directly in
 # crates/shep-cli/Cargo.toml since only the re-exported types are needed.
