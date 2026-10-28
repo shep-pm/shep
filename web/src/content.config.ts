@@ -21,8 +21,9 @@
  * last good site up. Unset, which is how `web.yml` runs a pull request, the same
  * failure is one warning on the build log and the dog simply gets no page, so a
  * dog repository's bad release never lands in shep's own pull request queue.
- * Unset is also what an offline build gets: zero dog pages, and a site that still
- * builds.
+ * Unset is also what an offline build gets, and the loader clears the collection
+ * before it fills it, so that is zero dog pages rather than the last build's,
+ * which is a page naming a tag its bytes no longer came from.
  */
 import { defineCollection } from "astro:content";
 import { z } from "astro/zod";
@@ -72,6 +73,13 @@ export const collections = {
     loader: {
       name: "dog-readme",
       async load({ parseData, renderMarkdown, store }) {
+        // The data store outlives this build: Astro keeps it between runs, and a
+        // loader that only adds entries would serve the last build's pages when
+        // this one cannot reach GitHub, or when a new release drops a linked
+        // sub-page. This loader re-reads every dog from the network every run,
+        // so it owns the collection and starts it empty.
+        store.clear();
+
         const render = async (markdown: string): Promise<string> =>
           (await renderMarkdown(markdown)).html;
 
@@ -82,23 +90,30 @@ export const collections = {
           if (fetched === undefined) continue;
 
           try {
+            const pages: { id: string; data: Record<string, unknown> }[] = [];
             for (const [path, page] of fetched.pages) {
               const id = `${dog.adopt_as}/${path}`;
-              const data = await parseData({
+              pages.push({
                 id,
-                data: {
-                  adoptAs: dog.adopt_as,
-                  package: dog.package,
-                  name: dog.name,
-                  repo: dog.repo,
-                  tag: fetched.tag,
-                  path,
-                  route: routeSuffix(path),
-                  html: pageHtml(dog, fetched.tag, path, page.html),
-                },
+                data: await parseData({
+                  id,
+                  data: {
+                    adoptAs: dog.adopt_as,
+                    package: dog.package,
+                    name: dog.name,
+                    repo: dog.repo,
+                    tag: fetched.tag,
+                    path,
+                    route: routeSuffix(path),
+                    html: pageHtml(dog, fetched.tag, path, page.html),
+                  },
+                }),
               });
-              store.set({ id, data });
             }
+            // Nothing is stored until every page of the dog is built, because
+            // the README links its sub-pages: storing the README on its own
+            // would ship a link to a route that was never written.
+            for (const page of pages) store.set(page);
           } catch (error) {
             // The fetch succeeded and the post-processing did not: same policy,
             // same one line, so a dog that half-works never half-ships.
