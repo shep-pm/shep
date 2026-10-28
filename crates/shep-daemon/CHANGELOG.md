@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-28
+
+### Added
+
+- An adopted dog's entry carries an operator-set env **(BREAKING)**
+- Fill a sheep's vcs on Describe from its checkout, behind the vcs feature
+
+### Changed
+
+- Signal a sheep's group and own its job through shep-tree
+
+### Fixed
+
+- Keep a hung checkout to one parked read and follow a symlinked .git
+
+
 ## [0.18.2] - 2026-10-26
 
 

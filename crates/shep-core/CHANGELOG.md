@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-28
+
+### Added
+
+- Publish a JSON Schema of shep.toml
+- Read shep.toml's schema into a field tree
+- Draw every shep.toml key in the settings tree
+- A Reset request and a Reset reply, with no protocol bump
+- Put a sheep's revision on its row
+- An adopted dog's entry carries an operator-set env **(BREAKING)**
+
+### Fixed
+
+- Report a failed directory flush as Unsynced, not as a failed write
+
+
 ### Added
 
 - `Request::Reset` and `Response::Reset`, the wire shapes for zeroing a sheep's restart count. Additive: an older shepherd decodes `Request::Unrecognized` and answers `Unsupported`, so `PROTOCOL_VERSION` stays put.
