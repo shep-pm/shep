@@ -462,14 +462,11 @@ async fn quiet_does_not_suppress_a_sheeps_own_line() {
 }
 
 /// Depends on the default current-thread runtime: `overrun_by` pushes
-/// `EVENT_CHANNEL_CAPACITY + n` events in one burst, and only a
-/// receiver that has not yet been scheduled falls behind enough to see
-/// a `Lagged`. Under `multi_thread`, real parallelism keeps the
-/// receiver caught up and no lag is produced.
+/// `EVENT_CHANNEL_CAPACITY + n` events in one burst, and only a receiver
+/// that has not yet been scheduled falls behind enough to see a `Lagged`.
 ///
-/// `cfg(unix)`: a named pipe wakes its reader on a different schedule,
-/// so on Windows the receiver keeps pace and the lag never triggers,
-/// the same way `multi_thread` defeats it above.
+/// `cfg(unix)`: a named pipe wakes its reader on a different schedule, so
+/// on Windows the receiver keeps pace and the lag never triggers.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_lag_notice_reaches_stderr_and_the_follow_continues() {
@@ -579,10 +576,7 @@ impl io::Write for BrokenPipeWriter {
 
 /// `write_outcome` already treats a `BrokenPipe` write as
 /// [`ExitCode::Success`]; this exercises that path through an actual
-/// write failure.
-///
-/// The write fails on the very first event, well before
-/// `close_after_subscribe` could end the stream.
+/// write failure, on the very first event.
 ///
 /// Not on [`run_bleats`]: this run's stdout is the always-failing writer,
 /// not a buffer.

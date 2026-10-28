@@ -125,13 +125,10 @@ impl fmt::Display for StatusLabels<'_> {
 
 /// `ProcStatus`'s label value, the same spelling [`ProcStatus`]'s own
 /// `Display` and wire form use. A status this client predates decodes as
-/// `Unrecognized` and reads `unrecognized`; [`ALL_STATUSES`] has no entry for
-/// it, so it makes no series.
+/// `Unrecognized` and reads `unrecognized`; [`ALL_STATUSES`] has no entry.
 ///
 /// A `&'static str` so the status loop pays no `to_string` for a spelling
-/// fixed at compile time. The dog-source spelling lives in `shep-core`'s own
-/// `From<&DogSource> for &'static str`; the two hand-listed vocabularies sit
-/// where the type that owns them is defined.
+/// fixed at compile time.
 pub(super) fn status_label(status: ProcStatus) -> &'static str {
     match status {
         ProcStatus::Starting => "starting",
@@ -215,12 +212,10 @@ fn render_family(family: &SampleFamily, out: &mut String) {
 /// Renders `reading` as Prometheus text exposition, format version 0.0.4.
 ///
 /// One `# HELP`/`# TYPE` pair per metric name, every series of a name
-/// grouped beneath it, and a trailing newline. The built-in groups come first
-/// and the channel samples after them, each in its own name order.
+/// grouped beneath it, and a trailing newline.
 ///
-/// Label values are escaped (`\\`, `"`, `\n`). A sheep's name is
-/// operator-supplied and reaches this function verbatim, so an unescaped
-/// quote in one name would corrupt that series' line.
+/// Label values are escaped (`\\`, `"`, `\n`): a sheep's name is
+/// operator-supplied and reaches this function verbatim.
 #[must_use]
 pub fn render(reading: &Reading) -> String {
     let mut cpu = MetricGroup::new(
@@ -380,11 +375,9 @@ pub(super) mod tests {
     /// The exposition of [`golden_reading`], byte for byte, as the code
     /// before the shared-prefix change rendered it. That change moves the
     /// sheep/id/fold escapes out of the status loop so they are paid once
-    /// per sheep instead of once per candidate status, which is an
-    /// allocation change and nothing else: the wire bytes must not move.
-    ///
-    /// Captured from the pre-change `render`. After an intentional format
-    /// change, regenerate it with:
+    /// per sheep instead of once per candidate status: an allocation change
+    /// and nothing else, so the wire bytes must not move. Regenerate it
+    /// after an intentional format change with:
     ///
     /// ```text
     /// BLESS=1 cargo test -p shep --lib --all-features bless_exposition_golden -- --ignored
@@ -834,10 +827,7 @@ pub(super) mod tests {
     /// sheep, one idle sheep with no CPU or memory sample, one dog, and
     /// one sheep whose name needs all three escapes while in a non-online
     /// state, so every label path and all six status spellings appear in
-    /// it.
-    ///
-    /// `pub(super)`: the OTLP encoder's drift guard renders the same
-    /// reading through both renderers.
+    /// it. `pub(super)`: the OTLP encoder's drift guard uses it too.
     pub(in crate::dog::metrics) fn golden_reading() -> Reading {
         let mut dog = sample_info("bark");
         dog.dog = Some(DogSource::BuiltIn { grants: None });

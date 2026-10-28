@@ -44,16 +44,14 @@ pub trait EventSource: Send {
     /// The shepherd replaces its filter with each `Subscribe`, so the old
     /// stream is dropped for a new one. Frames still unread on the old one
     /// are lost, so the caller reconciles against the flock afterwards.
-    /// Does nothing when `topics` equals the current list and the shepherd
-    /// is known to hold it. A handover after this resubscribes to the new
-    /// list, and one landing during the call is waited out like
-    /// [`Self::resubscribe`] waits it out.
+    /// Does nothing when `topics` equals the current list, and a handover
+    /// after this resubscribes to the new list.
     ///
     /// # Errors
     /// [`Resubscribe`], bounded by the same budget as [`Self::resubscribe`].
     /// On [`Resubscribe::Request`] the list and stream are unchanged. On
     /// [`Resubscribe::Lost`] the request may have reached the shepherd, so
-    /// the list is the new one and the next call sends it again.
+    /// the next call sends the new list again.
     fn set_topics(
         &mut self,
         topics: Vec<String>,
@@ -66,8 +64,7 @@ pub trait EventSource: Send {
 /// subscription would have. [`run`](super::run) exits
 /// `ExitCode::from(&err)` when the shepherd refuses the opening
 /// `Subscribe`; without this a refusal after a handover would exit
-/// `DaemonUnreachable` instead, naming a shepherd that is running and
-/// answering.
+/// `DaemonUnreachable`, naming a shepherd that is running.
 #[derive(Debug)]
 #[must_use = "which of the two it was decides how the dog exits"]
 pub enum Resubscribe {
@@ -78,27 +75,9 @@ pub enum Resubscribe {
     /// Carried whole, since `RequestError` already decides an exit code and
     /// flattening it would lose that.
     ///
-    /// Four of `RequestError`'s conditions arrive here, and they are not
-    /// one fault. `Closed` is a lost link, and `subscribe` never reads the
-    /// reply's variant, so no `UnexpectedReply` either:
-    ///
-    /// - `Rpc` is a shepherd answering and saying no.
-    /// - `Wire` and `Undecodable` are the transport failing, so pointing an
-    ///   operator at the shepherd's configuration sends them to the wrong
-    ///   place.
-    /// - `Timeout` is nobody answering in time, which means the request may
-    ///   never have reached a shepherd at all.
-    ///
     /// Named for the request rather than for a refusal, matching
-    /// [`ShepherdError::Request`](shep_client::dogs::ShepherdError::Request),
-    /// because only one of the four is a refusal.
-    ///
-    /// `Timeout` cannot arrive here today: `ClientEvents::resubscribe`
-    /// bounds each attempt by what is left of `SHEPHERD_RETURN_BUDGET`,
-    /// five seconds, and `Client::subscribe` carries seven, so the outer
-    /// bound always fires first and reports a spent budget instead. That is
-    /// a consequence of the two numbers rather than a guarantee, so the
-    /// variant documents the condition rather than relying on it.
+    /// [`ShepherdError::Request`](shep_client::dogs::ShepherdError::Request):
+    /// of `Closed`, `Rpc`, `Wire` and `Timeout`, only one is a refusal.
     Request(RequestError),
 }
 
@@ -143,11 +122,8 @@ pub trait FlockSource: Send + Sync {
 /// is drivable without a socket.
 ///
 /// `BusEvent::DogConfigChanged` says nothing about what changed, so the
-/// frame is only a prompt: the answer is one `Request::DogConfig`.
-///
-/// `Sync` for the reason [`FlockSource`] is:
-/// [`run_loop`](super::event_loop::run_loop)'s future holds a `&C` across the
-/// `.await` in [`reloaded_config`](super::event_loop::reloaded_config).
+/// frame is only a prompt: the answer is one `Request::DogConfig`. `Sync`
+/// for the reason [`FlockSource`] is.
 pub trait ConfigSource: Send + Sync {
     /// This dog's `[bark]` section as it stands now, empty when the file
     /// has no such section.
@@ -250,8 +226,7 @@ impl ClientEvents {
             // Checked here rather than left to `connected_within`, which
             // returns `Ok` on a live link without consulting the budget. A
             // shepherd that answers the handshake and then fails every
-            // `Subscribe` would otherwise keep this loop going for as long
-            // as it stayed up.
+            // `Subscribe` would otherwise keep this loop going.
             if left.is_zero() {
                 return Err(Resubscribe::Lost(LinkLost::Budget {
                     waited: started.elapsed(),
@@ -264,11 +239,9 @@ impl ClientEvents {
                 .map_err(Resubscribe::Lost)?;
 
             // Bounded by what is left rather than by the request's own
-            // deadline. `Client::subscribe` carries `DEFAULT_DEADLINE` plus
-            // `DEADLINE_GRACE`, seven seconds, which on its own outlasts
-            // the budget this whole function is meant to keep. Dropping the
-            // future is safe: the client actor expects a reply receiver to
-            // go away.
+            // deadline: `Client::subscribe` carries seven seconds, which
+            // on its own outlasts this budget. Dropping the future is
+            // safe: the client actor expects a reply receiver to go away.
             let left = remaining(started.elapsed());
             if left.is_zero() {
                 return Err(Resubscribe::Lost(LinkLost::Budget {
@@ -355,11 +328,10 @@ mod tests {
     /// fails if the production adapter cannot arm a second subscription
     /// after a handover.
     ///
-    /// `run_loop` is driven by a fake in bark's own tests, so this is
-    /// the only thing that exercises `ClientEvents` itself: the client and
+    /// `run_loop` is driven by a fake in bark's own tests, so this is the
+    /// only thing that exercises `ClientEvents` itself: the client and
     /// topics held beside the stream, the wait for the link, and the
-    /// re-subscribe. Ten real reloads showed it working, which is evidence
-    /// rather than a guard.
+    /// re-subscribe.
     #[tokio::test]
     async fn the_bark_adapter_arms_a_second_subscription_after_a_handover() {
         let dir = tempfile::tempdir().unwrap();
@@ -436,10 +408,8 @@ mod tests {
     ///
     /// The bark loop's own test drives a fake that hands it a
     /// `Resubscribe::Request` ready-made. This is the other half: the
-    /// adapter producing one from a real shepherd that accepts the
-    /// handshake and then rejects the `Subscribe`. Conflating it with
-    /// `Closed` would retry until the budget was gone and then report an
-    /// unreachable shepherd for one that answered.
+    /// adapter producing one from a real shepherd that rejects the
+    /// `Subscribe`.
     #[tokio::test]
     async fn the_bark_adapter_keeps_a_refusal_rather_than_retrying_it() {
         let dir = tempfile::tempdir().unwrap();

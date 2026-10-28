@@ -20,14 +20,7 @@ use super::{
 ///
 /// A sibling field rather than a new column on [`ProcessInfo`]: `secrets`
 /// is derived by the client from local files, never a fact the shepherd
-/// reports, and `data` stays exactly the array it always was, so an
-/// existing `data[0].name` script sees no shape change. Empty skips the
-/// field entirely, matching a `fold` reply, which never computes one.
-///
-/// Only ever constructed by [`emit_described`]. `#[cfg_attr(windows,
-/// allow(dead_code))]` for `diagnostics::NoticeEnvelope`'s reason: every
-/// caller lives
-/// in `commands/` or `lib.rs`'s `#[cfg(unix)]` arms.
+/// reports. Empty skips the field. Only [`emit_described`] builds it.
 #[derive(Serialize)]
 #[cfg_attr(windows, allow(dead_code))]
 struct DescribedEnvelope<'a> {
@@ -39,21 +32,15 @@ struct DescribedEnvelope<'a> {
 }
 
 /// Renders one `describe` answer: the sheep table, then each sheep's lamb
-/// tree beneath it when the reply walked and found any.
+/// tree beneath it when the walk found any.
 ///
-/// A silent row also gets a paragraph from
-/// [`crate::vocabulary::silence_note`] (what `flock::silence_pointer` points
-/// at). A "Depends on" heading follows, once per name, naming the sheep this
-/// one waits for at a staged start; then Pending and Overridden headings,
-/// same once-per-name rule, naming `shep reload <name>` as what promotes a
-/// parked config. Never shorten the caption to "process tree": the walk
-/// follows parent-pid links while the stop ladder acts on the process group,
-/// and the two diverge.
+/// A silent row gets a paragraph from [`crate::vocabulary::silence_note`].
+/// "Depends on", "Pending" and "Overridden" follow, once per name. Never
+/// shorten the caption to "process tree": the walk follows parent-pid
+/// links while the stop ladder acts on the process group.
 ///
 /// `secrets` is `describe`'s own local read of this machine's secret
-/// stores, keyed by sheep name; pass an empty slice for a reply (`fold`,
-/// today) that never computes one. Printed once per name, right after
-/// Overridden, in the same "prose under the table" shape.
+/// stores, keyed by sheep name.
 ///
 /// # Errors
 /// The underlying write failed.

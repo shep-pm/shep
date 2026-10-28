@@ -5,10 +5,8 @@
 //! peer input is untrusted.
 //!
 //! A row's own outcome is never a request failure. `shep whisper` exits
-//! non-`Success` only when the RPC itself failed.
-//!
-//! `sent` means the bytes were written and flushed to the pipe, not that the
-//! app read them.
+//! non-`Success` only when the RPC itself failed. `sent` means the bytes
+//! reached the pipe, not that the app read them.
 
 use shep_client::Client;
 use shep_core::protocol::{Request, Response};

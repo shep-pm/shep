@@ -3,20 +3,11 @@
 //! one.
 //!
 //! None takes a connected [`Client`] and none autostarts a shepherd: all
-//! four must work against a `$SHEP_HOME` with none running, so each
-//! connects for itself and tolerates a failure to reach one, writing the
-//! config and reporting what the next shepherd will do.
+//! four must work against a `$SHEP_HOME` with none running.
 //!
 //! Config first, then the daemon: [`ShepToml::edit`] runs before the socket
 //! is touched, so a failed RPC still leaves a config the next boot honours.
 //! `adopt` puts [`vet::vet_binary`] ahead of both.
-//!
-//! One file per verb, plus [`vet`] for the binary-vetting machinery
-//! `adopt` alone needs: [`mod@enable`], [`mod@disable`], [`mod@adopt`],
-//! [`mod@remove`] (which the hidden `shep rehome` and `shep delete <dog>`
-//! both run), [`mod@barks`]. This module holds only what every verb shares:
-//! the connect-or-absent dance, the config-error mapping, and the two status
-//! strings a verb's own report reaches for when no shepherd answered.
 
 use std::path::Path;
 
@@ -88,11 +79,8 @@ pub(crate) use vet::cached_manifest;
 
 // `pub(crate)` re-exports: reached from other modules by their original
 // `dogs::<name>` path, so the split stays invisible to every caller outside
-// this directory. `shep lookout`'s config pane calls `ask_schema`, matches on
-// `DogSchema` (re-exported above), and renders `EnableRefusal`;
-// `hook::run_on_remove` calls `dog_env`; `enable_in_config`/`disable_in_config`
-// back `shep lookout`'s own dog-toggle edits; `lifecycle::restart` reads
-// `VERSION_BUDGET`.
+// this directory. The lookout config pane calls `ask_schema` and renders
+// `EnableRefusal`; `hook::run_on_remove` calls `dog_env`.
 pub(crate) use disable::disable_in_config;
 pub(crate) use enable::{EnableRefusal, enable_in_config, join_with_and};
 pub(crate) use vet::{ManifestRead, VERSION_BUDGET, ask_schema, dog_env, read_manifest};
@@ -180,13 +168,10 @@ pub(crate) fn boot_first_in_config(
 /// Where `name`'s binary comes from, according to `cfg`.
 ///
 /// A name present in `[daemon] adopted_dogs` is an adopted dog and the path
-/// recorded there is its binary; a name absent from that map is a built-in
-/// dog, an argv branch of this binary. `shep.toml` is the only place either
-/// verb can learn it.
+/// recorded there is its binary; a name absent is a built-in dog.
 ///
-/// `grants` is what [`ShepToml::granted`] read for `name`. The verbs that send
-/// the source read it with `?` so a typo stops them; the ones that only
-/// report it pass `None`, since a bad entry is no reason to refuse them.
+/// The verbs that send the source read `grants` with `?` so a typo stops
+/// them; the ones that only report it pass `None`.
 fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
     adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn { grants })
 }

@@ -20,16 +20,11 @@ use crate::output::{ImportRow, ImportRows, Streams, emit, write_outcome};
 
 /// Reads a pm2 dump into apps and writes them out as a Flockfile.
 ///
-/// Connects to nothing: reads one file, writes another.
+/// Connects to nothing: reads one file, writes another. Source is
+/// `args.from`, or `$HOME/.pm2/dump.pm2`; output is `args.out`, or
+/// `./Flockfile.toml`, never overwritten without `args.force`.
 ///
-/// Source is `args.from`, or `$HOME/.pm2/dump.pm2`. Output is `args.out`, or
-/// `./Flockfile.toml`, never overwritten without `args.force`. Neither
-/// resolving, and an existing output, are [`ExitCode::Usage`]. `args.dry_run`
-/// prints the Flockfile to stdout with no envelope and writes nothing: the
-/// output must parse back as a Flockfile.
-///
-/// Every [`ImportNote`] goes to stderr under both formats, after a read
-/// summary line.
+/// `args.dry_run` prints the Flockfile to stdout and writes nothing.
 pub fn import(streams: &mut Streams<'_>, args: &ImportPm2Args) -> ExitCode {
     let source = match resolve_source(args) {
         Ok(source) => source,
@@ -98,9 +93,8 @@ pub fn import(streams: &mut Streams<'_>, args: &ImportPm2Args) -> ExitCode {
         .unwrap_or_else(|| PathBuf::from("Flockfile.toml"));
     // `--force` truncates unconditionally: `std::fs::write` is exactly right.
     // Without it, a plain `exists()` check followed by a write is a
-    // check-then-act race, so a file created between the two would be
-    // clobbered even though `--force` was never passed. `create_new(true)`
-    // makes the refusal and the write one atomic syscall instead.
+    // check-then-act race. `create_new(true)` makes the refusal and the
+    // write one atomic syscall instead.
     if args.force {
         if let Err(err) = std::fs::write(&out_path, &rendered) {
             return streams.fail(ExitCode::Failure, &err.to_string());

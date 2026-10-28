@@ -172,16 +172,12 @@ fn a_rule_routed_at_a_sink_that_does_not_exist_is_refused_at_startup() {
 }
 
 /// The name promises an alert, so the test asks for one. The rules come in
-/// through [`rules_for`], the door the dog itself uses for a `[bark]`
-/// that has sinks and no rules, and both routes the dog walks are driven:
-/// an `Errored` event on the bus, and an errored entry in the
-/// reconciliation poll. Reading the default rule's own fields instead
-/// passes a set that is present, correctly spelled and wired to nothing.
+/// through [`rules_for`], the door the dog uses for a `[bark]` that has
+/// sinks and no rules, and both routes are driven: an `Errored` event on
+/// the bus, and an errored entry in the reconciliation poll.
 ///
-/// Two sinks, so a default routed to only one of them fails here too. Each
-/// route gets its own `Rules`: the two share one debounce, so a second
-/// firing asked of one instance answers the debounce rather than the
-/// wiring.
+/// Two sinks, so a default routed to only one fails here too. Each route
+/// gets its own `Rules`: the two share one debounce.
 #[test]
 fn a_bark_with_sinks_and_no_rules_still_alerts_when_the_shepherd_gives_up() {
     let mut sinks = one_sink("ops");
@@ -620,14 +616,10 @@ sinks = ["oncall"]
 }
 
 /// [`wire_spelling`] hand-lists the spellings instead of reading
-/// `ProcessEventKind`'s own `Serialize`, which is what makes it free of
-/// an allocation on the bus route. This pins every arm back against what
-/// serde actually emits, so a typo in an arm fails here rather than as a
-/// rule that silently stops firing days later.
-///
-/// The enum is `#[non_exhaustive]`, so this list is the only thing that
-/// would notice a variant being added: a new one needs a line here as well
-/// as an arm in `wire_spelling`.
+/// `ProcessEventKind`'s own `Serialize`. This pins every arm against what
+/// serde emits, so a typo fails here rather than as a rule that silently
+/// stops firing days later. The enum is `#[non_exhaustive]`, so a new
+/// variant needs a line here as well as an arm in `wire_spelling`.
 #[test]
 fn every_wire_spelling_matches_what_serde_emits() {
     let kinds = [

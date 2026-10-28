@@ -1,43 +1,13 @@
 //! `shep set <address> <value>` and `shep unset <address>`: one write for any
 //! settings in the flock, and the undo for it.
 //!
-//! The address is `shep copy`'s and `shep get`'s, resolved against the names
-//! the running flock carries: a sheep's name addresses its config and the
-//! `dogs.<dog>` tables inside it, and a dog's name addresses its own section
-//! of `dogs.toml`. One verb reaches all three because all three are the same
-//! thing to the shepherd, and each is written through the request the
-//! shepherd already answers: [`Request::SetSheepField`] for a field,
-//! [`Request::SetSheepDogSettings`] for a dog's table on a sheep, and
-//! [`Request::SetDogConfig`] for a dog's own section. There is no set request,
-//! so everything those refuse this refuses, with the same reason.
+//! The address is `copy`'s and `get`'s, and each kind is written through the
+//! request the shepherd already answers: [`Request::SetSheepField`],
+//! [`Request::SetSheepDogSettings`] or [`Request::SetDogConfig`], so
+//! everything those refuse this refuses.
 //!
-//! The order is `copy`'s: resolve, read, plan, print the change list with old
-//! and new values, ask, write. Nothing is sent until the operator has seen
-//! every key the write touches, which is also why a refusal never leaves a
-//! half-written sheep behind.
-//!
-//! `shep unset` is the same flow with no value: [`unset()`] plans the removal of
-//! a key, and [`run`] asks and writes it the way it does a set. A sheep's field
-//! goes through [`Request::ResetSheepField`], which drops the operator's
-//! override so the Flockfile's value returns, and a dog's key is removed from
-//! the table or the section that holds it.
-//!
-//! The value is TOML, and text that is not TOML is the string as typed: `5`
-//! is a number, `true` is a toggle, `["a", "b"]` is a list, `{ keep = 1 }` is
-//! a table, and `3s` stays `3s`. That is the grammar an operator already
-//! writes these settings in, in the file they live in.
-//!
-//! A write that carries a dog's table is checked against the schema that dog
-//! published before anything is sent, through the same door lookout's config
-//! pane files a keystroke through ([`crate::dog_settings::table`]). A value
-//! the schema turns down is refused with the key path it sits at, and nothing
-//! is written. A sheep's own field is the one write with no dog schema to ask,
-//! so the shepherd's own validation is the gate for it, as it is for `copy`.
-//!
-//! The table form prints the change list before the question, because that is
-//! what the question is asked beside. The JSON form prints one envelope at the
-//! end, carrying the same list beside `written` and `pending`: one object per
-//! invocation is the rule `--format json` keeps.
+//! The order is `copy`'s: resolve, read, plan, print the change list, ask,
+//! write. Nothing is sent until the operator has seen every key it touches.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -144,12 +114,10 @@ impl WriteRefusal {
     /// The code that reports it.
     ///
     /// [`ExitCode::InvalidConfig`] for a refused key and for a schema refusal
-    /// is the code the shepherd's own refusal of the same write carries, so
-    /// `set` and the request it stands in for exit alike.
+    /// is the code the shepherd's own refusal of the same write carries.
     ///
-    /// A holder that moved is [`ExitCode::Failure`]: nothing about the config is
-    /// invalid and nothing about the command line is wrong, only that the two
-    /// are no longer the pair this plan described.
+    /// A holder that moved is [`ExitCode::Failure`]: nothing is invalid, only
+    /// that the two are no longer the pair this plan described.
     const fn code(&self) -> ExitCode {
         match self {
             Self::Usage(_) => ExitCode::Usage,
@@ -454,19 +422,13 @@ async fn set_dog(
 /// The dog an address names.
 ///
 /// The name is the longest run of segments the shepherd answers a section for,
-/// which is what tells `kelpie` and `kelpie.worker` apart, and it is the rule
-/// [`shep get`](settings_read::get) already applies: one read per candidate,
-/// longest first, and the first candidate with a section is the dog.
+/// which is what tells `kelpie` and `kelpie.worker` apart, as [`shep get`](settings_read::get) applies it.
 ///
 /// A dog the flock runs with no section yet is the one case with nothing to
-/// read, and a write creates it: the operator named a key, and a section that
-/// does not exist yet is no reason to refuse it.
+/// read, and a write creates it.
 ///
-/// A section is not what makes a dog known. The candidate has to be a name the
-/// shepherd will take a `Request::SetDogConfig` for, which is the same set the
-/// daemon guards that request on, so a section left behind by a dog that is no
-/// longer adopted or enabled is refused here rather than sent to be refused
-/// there with a sentence that names neither.
+/// A section is not what makes a dog known: the candidate has to be a name the
+/// daemon will take a `Request::SetDogConfig` for.
 ///
 /// # Errors
 /// The [`ExitCode`] already reported to `streams`.

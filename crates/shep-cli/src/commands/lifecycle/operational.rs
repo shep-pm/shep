@@ -47,28 +47,10 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
 /// Restarts the sheep matching `args.selector`
 ///
 /// `paths` is here so a restart that names a dog is warned about before the
-/// request goes out. See [`dogs::warn_of_a_dog_a_restart_would_break`]. It is
-/// `None` over a host: the dogs it would probe are this machine's, and the
-/// restart goes to another one.
+/// request goes out. See [`dogs::warn_of_a_dog_a_restart_would_break`].
 ///
-/// Sent with [`START_DEADLINE`] rather than the client's 5s default. A
-/// restart matching several sheep now walks the dependency stages INSIDE the
-/// request handler, and one edge routinely clears 5s: the daemon holds each
-/// stage for its members' `listen_timeout` before issuing the next, so a
-/// client on the default abandons a restart the shepherd is still doing.
-/// Not [`super::staged_start_deadline`], which needs the `AppConfig`s a load
-/// holds
-/// and a selector does not: nothing the CLI has says how many stages this
-/// selector spans or what their timeouts are, and asking would cost a round
-/// trip and still race the actor. The daemon clamps at its own 60s ceiling
-/// either way.
-///
-/// That walk asks the shepherd per app, so an app it could not restart is
-/// named on stderr and exits [`WALK_REFUSED_EXIT`] with the rest of the fold
-/// still printed, exactly as [`reload`] does. Distinct from a respawn that
-/// could not exec, which is an `errored` row inside an `Ok` and exits
-/// [`ExitCode::SpawnFailed`]; both can happen in one invocation, and the
-/// spawn failure is the louder of the two.
+/// Sent with [`START_DEADLINE`]: the daemon holds each stage for its
+/// members' `listen_timeout`, so a client on the default abandons a restart.
 pub async fn restart(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -147,9 +129,7 @@ pub async fn restart_within(
         // The refused apps have nowhere else to go from here. Stdout stayed
         // empty, so the `--format json` envelope that would have carried
         // them was never printed, and a second error object is what
-        // `cli.rs`' one-object-per-invocation rule forbids. They ride this
-        // sentence rather than being dropped, which is the whole point of
-        // carrying them.
+        // `cli.rs`' one-object-per-invocation rule forbids.
         if let Some(refusal) = refused_line("restart", &refused) {
             message.push_str("; ");
             message.push_str(&refusal);
@@ -163,22 +143,10 @@ pub async fn restart_within(
 /// Reloads the sheep matching `args.selector`, replacing each instance with
 /// a fresh one so the app has a window in which it can hand over
 ///
-/// The rows printed are acceptances. One sheep is the flock as it stood when
-/// its reload was accepted; a selector matching several is walked in stages
-/// daemon-side, so the table is stitched from one acceptance per stage and
-/// the earlier stages' swaps have already happened by the time it prints.
+/// The rows printed are acceptances: a selector matching several is walked
+/// in stages daemon-side, so the table is stitched from one per stage.
 ///
-/// Sent with [`RELOAD_DEADLINE`], for `restart`'s reason and then some. A
-/// reload matching several sheep no longer answers at acceptance: the staged
-/// walk runs in the request handler and holds each stage until its swaps
-/// land, so the reply waits on a drain AND a readiness wait per stage, which
-/// is the longest budget any of these verbs needs. The client's 5s default
-/// would abandon a fold with one edge as a matter of routine, and
-/// [`START_DEADLINE`]'s 30s is provably short too: two stages at the default
-/// timeouts already cost more than that, and `with_deadline` DROPS the walk,
-/// so the later stages are never issued and the operator holds a timeout
-/// over a half-reloaded fold. 60s is the daemon's own ceiling, so asking for
-/// it costs nothing the shepherd would not already honour.
+/// Sent with [`RELOAD_DEADLINE`]: the walk holds each stage until its swaps land.
 pub async fn reload(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
     let selectors = match parse_selectors(streams, &args.selectors) {
         Ok(selectors) => selectors,
@@ -244,25 +212,19 @@ async fn render_partial(
 /// What a refused app inside an otherwise successful walk exits with
 ///
 /// A staged reload or restart asks the shepherd per app, so `shep reload
-/// all` can reload thirty-nine and be refused the fortieth. Not the
-/// [`ExitCode::Internal`] a single-target refusal exits with: that code is
-/// what the wire spells a conflict as for want of one of its own, and it
-/// tells an operator to go looking for a daemon bug where the fold in fact
-/// reloaded around one busy app.
+/// all` can reload thirty-nine and be refused the fortieth.
+///
+/// Not [`ExitCode::Internal`]: that code tells an operator to look for a
+/// daemon bug where the fold reloaded around one busy app.
 const WALK_REFUSED_EXIT: ExitCode = ExitCode::Failure;
 
 /// The tail `restart` and `reload` share: what a walk that refused part of
 /// its work prints, and what it exits with
 ///
 /// Under `--format json` the refusals rode out in the envelope
-/// [`render_partial`] printed, so saying them again on stderr is the second
-/// top-level object that guard exists to stop. `carried` is the condition
-/// and not the format alone: an envelope that never printed took the names
-/// with it, and stderr is the only stream left to name them on.
+/// [`render_partial`] printed, so stderr names them only when it never printed.
 ///
-/// `failure` is the first per-selector failure `request_each` reported, if
-/// any. It outranks the refusal, as a verb's own failure class outranks
-/// [`WALK_REFUSED_EXIT`] everywhere else in this file.
+/// `failure` is the first per-selector failure `request_each` reported.
 fn finish_walk(
     streams: &mut Streams<'_>,
     verb: &str,
@@ -284,10 +246,8 @@ fn finish_walk(
 /// every one it named
 ///
 /// `did not <verb>: name: reason`, carrying the `name: reason` shape
-/// [`super::configure::applied_line`] prints a load's refusal in, so every
-/// verb that can
-/// refuse part of its work reads alike. The reason is the shepherd's own
-/// sentence.
+/// [`super::configure::applied_line`] prints a load's refusal in. The
+/// reason is the shepherd's own sentence.
 pub(crate) fn refused_line(verb: &str, refused: &[SheepRefusal]) -> Option<String> {
     if refused.is_empty() {
         return None;

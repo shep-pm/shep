@@ -257,14 +257,9 @@ async fn init_loop() -> i32 {
 /// every process the kernel reparents here
 ///
 /// Spawns with `std::process::Command`: tokio's own process type reaps by
-/// pid on `SIGCHLD` and would race this loop's `waitpid(-1)`. Signals go to
-/// the supervisor's pid, not its process group, which the supervisor runs
-/// its own stop ladder over. Once the supervisor is gone nothing waits for
-/// a remaining orphan.
+/// pid on `SIGCHLD` and would race this loop's `waitpid(-1)`.
 ///
-/// Never returns. It exits through `std::process::exit`, since [`ExitCode`]
-/// cannot represent a relayed status such as 137. Nothing is lost by
-/// skipping destructors: no socket, no flock, no log subscriber.
+/// Never returns. It exits through `std::process::exit`, since [`ExitCode`] cannot relay 137.
 pub async fn run_init() -> std::convert::Infallible {
     let status = init_loop().await;
     std::process::exit(status);

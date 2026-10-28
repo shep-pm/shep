@@ -52,17 +52,12 @@ fn refuse_if_skewed(streams: &mut Streams<'_>, client: &Client) -> Result<(), Ex
 }
 
 /// Boots a shepherd in this process, starts `options.apps`, streams their
-/// bleats to `streams.out`, and returns when nothing is online or a signal
-/// arrives.
+/// bleats to `streams.out`, and returns when the flock empties or a signal comes.
 ///
-/// `streams` must hold unlocked handles, never a `StdoutLock`/`StderrLock`:
-/// this runs until the flock empties, and a lock held across that wedges the
-/// supervisor's own logging, written from a tokio worker thread in this same
-/// process.
+/// `streams` must hold unlocked handles: this runs until the flock empties,
+/// and a lock held across that wedges the supervisor's own logging.
 ///
-/// The shepherd is reached over its own socket, so `shep flock` from a second
-/// terminal works. `shep_daemon::boot` already installs the SIGINT/SIGTERM
-/// handlers that end the supervisor task; a second set here would race them.
+/// `shep_daemon::boot` already installs the SIGINT/SIGTERM handlers.
 pub async fn run(streams: &mut Streams<'_>, quiet: bool, options: ForegroundOptions) -> ExitCode {
     let ForegroundOptions {
         paths,
@@ -116,9 +111,8 @@ pub async fn run(streams: &mut Streams<'_>, quiet: bool, options: ForegroundOpti
 
     // Sized to the stages this flock plans, not to a flat `START_DEADLINE`.
     // The daemon holds each stage until its members settle, so a chained
-    // flock whose readiness waits sum past 30s answered `DeadlineExceeded`,
-    // and the arm below then kills the shepherd and exits non-zero: a
-    // container losing its whole flock over a start that was proceeding.
+    // flock whose readiness waits sum past 30s answered `DeadlineExceeded`
+    // and killed the shepherd over a start that was proceeding.
     let deadline = crate::commands::lifecycle::staged_start_deadline(&apps);
     if let Err(err) = client
         .request_with_deadline(Request::Start { apps }, Some(deadline))

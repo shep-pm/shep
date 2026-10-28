@@ -2,8 +2,7 @@
 //!
 //! [`SampleStore`] holds the last sample per sender, name and label set, and
 //! [`SampleStore::snapshot`] turns what is still live into [`SampleFamily`]
-//! rows. Text is rendered from that data form and never from the store, so
-//! the exporter #736 encodes the same shape the scrape serves.
+//! rows. Text is rendered from that data form and never from the store.
 //!
 //! A sender's samples go when its process stops or restarts, and so does a
 //! sender the flock no longer reports as online, or reports as an instance
@@ -207,11 +206,7 @@ impl SampleStore {
     /// holds under the same name and label set. The latest value wins.
     ///
     /// Help text is sticky: a sample that carries none keeps the text the same
-    /// series had, so an app that sets help once does not lose its `# HELP`
-    /// line on every later sample.
-    ///
-    /// Returns the refusal, or `None` when the sample was recorded. A refusal
-    /// is counted here, at ingestion, never per scrape.
+    /// series had. A refusal is counted here, at ingestion, never per scrape.
     pub(crate) fn upsert(&self, sender: u32, metric: ChannelMetric) -> Option<Refusal> {
         let ChannelMetric {
             name,
@@ -280,16 +275,10 @@ impl SampleStore {
     /// Every retained sample, grouped into one [`SampleFamily`] per metric
     /// name, names in order.
     ///
-    /// `flock` is the listing this scrape just took, and it does two things:
-    /// it names the sender labels to render, and it decides what is still
-    /// live. A sender absent from it, or present but not
-    /// [`ProcStatus::Online`], is dropped here rather than rendered, and so is
-    /// one whose uptime is more than [`STALE_MARGIN`] below the age of its
-    /// oldest retained sample. That guard is what covers the events this dog
-    /// never saw: a local lag, a `daemon.dropped`, or a handover.
-    ///
-    /// Once anything has been refused, the families carry [`REFUSED_TOTAL`]
-    /// with one point per reason.
+    /// `flock` is the listing this scrape just took: it names the sender
+    /// labels to render and decides what is still live. A sender absent from
+    /// it, or whose uptime is more than [`STALE_MARGIN`] below the age of its
+    /// oldest sample, is dropped rather than rendered.
     pub fn snapshot(&self, flock: &[ProcessInfo]) -> Vec<SampleFamily> {
         let mut state = self.state.lock().unwrap();
         let live: BTreeMap<u32, &ProcessInfo> = flock.iter().map(|info| (info.id, info)).collect();

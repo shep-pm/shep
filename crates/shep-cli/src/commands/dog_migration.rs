@@ -1,18 +1,13 @@
 //! Moving `[dog.<name>]` out of `shep.toml` and into `dogs.toml`, once.
 //!
 //! [`migrate_dog_sections`] runs at the top of every daemon boot, and
-//! `shep adopt` runs it before seeding a manifest's `defaults` so a home
-//! that still holds `[dog.<name>]` values moves them before a seeded
-//! section could collide with them. It does nothing on all but the first.
-//! It is one of the writers `dogs.toml` has:
-//! the others are [`seed_dog_defaults`], which `shep adopt` runs when a
-//! manifest carries `defaults`, and `shep_daemon::dogs::set_dog_section`,
-//! which the config pane reaches through `Request::SetDogConfig`. All
-//! rewrite the whole file when they write, so all hold `dogs.toml`'s own
-//! [`ConfigLock`] across the read-modify-write; while both the `shep.toml`
-//! and `dogs.toml` locks are held, `shep.toml`'s is the outer one.
-//! `RawDaemonConfig` keeps its `dog` field so an un-migrated file still
-//! parses under `deny_unknown_fields`.
+//! `shep adopt` runs it before seeding a manifest's `defaults`. It does
+//! nothing on all but the first.
+//!
+//! `dogs.toml`'s other writers are [`seed_dog_defaults`] and
+//! `shep_daemon::dogs::set_dog_section`. All rewrite the whole file, so all
+//! hold `dogs.toml`'s [`ConfigLock`] across the read-modify-write, with
+//! `shep.toml`'s lock as the outer one.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -85,8 +80,7 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         // Take `dogs.toml`'s lock, so the read and merge below are one
         // transaction against the other writers: a second boot here, and
         // `dogs::set_dog_section` behind the config pane. It nests inside
-        // `shep.toml`'s, which `try_edit` holds, and that order is the only
-        // one anything takes.
+        // `shep.toml`'s, which `try_edit` holds.
         let _dogs_lock =
             ConfigLock::acquire(&paths.dogs_config).map_err(DogMigrationError::Lock)?;
         // A live document, not a `toml::Table`: a second migration writes into
@@ -141,34 +135,18 @@ pub(crate) fn dog_section_exists(path: &Path, name: &str) -> Result<bool, DogMig
 }
 
 /// What `shep adopt` does with a manifest's `defaults`: writes them as
-/// `name`'s section in `dogs.toml` when the file holds no section for the
-/// dog, and touches nothing otherwise.
+/// `name`'s section in `dogs.toml` when the file holds none.
 ///
 /// `defaults` is TOML text for the dog's own section body, so it is parsed
-/// as a document and inserted whole under `[name]`: a `defaults` holding
-/// `[sinks]` arrives as `[name.sinks]`. The section lands after every
-/// section already in the file, the same way a migrated one does.
+/// as a document and inserted whole under `[name]`.
 ///
-/// `dogs.toml` is read before the `defaults` are judged, so an unreadable
-/// file is reported whatever the manifest declared: a broken `dogs.toml`
-/// cannot ride through an adopt hidden behind the warning about a dog's
-/// bad `defaults`. That first read is the gate, not the decision. Whether
-/// a section is already there is decided only inside the lock, so the
-/// answer is never a read a concurrent writer has invalidated. A kept
-/// section still means no write at all: the file survives byte-for-byte,
-/// down to its inode.
+/// `dogs.toml` is read before the `defaults` are judged.
 ///
 /// # Errors
 /// - [`DogMigrationError::ReadDogs`] and [`DogMigrationError::Parse`] when
-///   `dogs.toml` exists and cannot be read or is not valid TOML, whatever
-///   the `defaults` hold. A file shep cannot read is a file shep cannot
-///   write into, so the adopt refuses rather than replacing it.
+///   `dogs.toml` cannot be read or parsed.
 /// - [`DogMigrationError::Lock`] and [`DogMigrationError::Write`] for the
-///   underlying I/O of the write.
-///
-/// A `defaults` that is not valid TOML is not an error: it is the dog's
-/// bug, [`DefaultsOutcome::Unreadable`] reports it, and the adopt proceeds
-/// exactly as it does for a dog whose schema answer is not JSON.
+///   write's I/O.
 pub(crate) fn seed_dog_defaults(
     paths: &ShepPaths,
     name: &str,
@@ -202,11 +180,8 @@ pub(crate) fn seed_dog_defaults(
         .map_or(0, |last| last + 1);
     // The parsed document's root table is implicit, holding the defaults'
     // keys and any sub-tables its own headers spelled. Made explicit and
-    // named, it is the section; renumbered like a migrated one, it lands
-    // in one piece at the end. Cloned through `as_table` rather than taken
-    // through `DocumentMut::into_table`: that method postdates the
-    // `toml_edit` floor this workspace declares, and CI's minimal-versions
-    // job builds at the floor.
+    // named, it is the section. Cloned through `as_table` rather than
+    // `DocumentMut::into_table`, which postdates the `toml_edit` floor.
     let mut section = parsed.as_table().clone();
     section.set_implicit(false);
     let mut item = Item::Table(section);
@@ -265,14 +240,11 @@ fn read_dogs_document(path: &Path) -> Result<DocumentMut, DogMigrationError> {
 
 /// Every name `table` declares a value for under `[dog]`.
 ///
-/// The only record of what was there before
-/// [`ShepToml::take_dog_sections`] struck the table, which is what the guard
-/// inside [`migrate_dog_sections`] compares against. Read-only, over a string
-/// already in memory; empty also means do not open the file at all.
+/// The only record of what was there before [`ShepToml::take_dog_sections`]
+/// struck the table; empty also means do not open the file at all.
 ///
-/// A name holding nothing is left out. An empty `[dog.metrics]` is what
-/// `shep enable` scaffolds on older binaries, and counting it as declared
-/// refuses a boot against a `dogs.toml` that already holds `metrics`.
+/// A name holding nothing is left out, so an empty `[dog.metrics]` cannot
+/// refuse a boot.
 fn declared_dog_names(table: &toml::Table) -> BTreeSet<String> {
     match table.get("dog") {
         Some(toml::Value::Table(dog)) => dog
@@ -296,12 +268,9 @@ fn item_has_content(item: &Item) -> bool {
 
 /// Whether `value` holds nothing an operator could lose by not moving it.
 ///
-/// An empty table, an empty array, and an array of tables that are all empty.
-/// The last is why this recurses rather than testing `Table::is_empty`: an
-/// empty `[[dog.metrics]]` is a declared name that
-/// [`ShepToml::take_dog_sections`] hands back nothing for.
-///
-/// A `[[dog.metrics]]` that carries values is not this, and still refuses:
+/// An empty table, an empty array, and an array of tables that are all
+/// empty. The last is why this recurses rather than testing
+/// `Table::is_empty`. A `[[dog.metrics]]` that carries values still refuses:
 /// there is no one section for it to become.
 fn declares_nothing(value: &toml::Value) -> bool {
     match value {
@@ -315,10 +284,8 @@ fn declares_nothing(value: &toml::Value) -> bool {
 /// when it holds no positioned table at all.
 ///
 /// [`renumber_tables`]'s read-only twin, walking the same three shapes:
-/// `toml_edit` positions every table individually, so a nested `[bark.sinks]`
-/// and an `[[bark.rules]]` entry each carry one and neither is an
-/// `Item::Table` at the top level. An implicit parent has no position of its
-/// own, hence the descent into children.
+/// `toml_edit` positions every table individually, and an implicit parent
+/// has no position of its own, hence the descent into children.
 fn last_position(item: &Item) -> Option<usize> {
     match item {
         Item::Table(table) => table
@@ -345,10 +312,8 @@ fn last_position(item: &Item) -> Option<usize> {
 /// position, so a section moved out of `shep.toml` renders after everything
 /// already in `dogs.toml`.
 ///
-/// Over sub-tables too, because `toml_edit` renders every table by its own
-/// position and not by its parent's: renumbering only the top-level `bark`
-/// would leave `[bark.sinks]` back at `shep.toml`'s index. [`Item::Value`]
-/// and [`Item::None`] hold no positioned table and are left alone.
+/// Over sub-tables too: `toml_edit` renders every table by its own position,
+/// so renumbering only the top-level `bark` would leave `[bark.sinks]` behind.
 fn renumber_tables(item: &mut Item, next: &mut usize) {
     match item {
         Item::Table(table) => {
@@ -375,10 +340,8 @@ fn renumber_tables(item: &mut Item, next: &mut usize) {
 /// `OWNER_ONLY_FILE_MODE`, `fsync`ed, then `rename`d over `path`.
 ///
 /// The mode matters: this file holds dog webhook URLs, and a plain
-/// `std::fs::write` would create it at the ambient umask instead. The
-/// rename avoids the half-written file a plain write's `O_TRUNC` leaves on
-/// a crash. The directory flush publishes the rename and is a no-op on
-/// Windows.
+/// `std::fs::write` would create it at the ambient umask. The rename avoids
+/// the half-written file a plain write's `O_TRUNC` leaves on a crash.
 fn write_dogs_config(path: &Path, rendered: &str) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = create_config_file(parent)?;
@@ -621,14 +584,9 @@ mod tests {
         assert_eq!(mode, 0o600, "mode was {mode:o}");
     }
 
-    /// Exact string: it pins both that the destination keeps its own
-    /// comment and inline table, and that the moved section arrives
-    /// carrying its own `shep.toml` comments, which a `toml::to_string` of
-    /// a parsed map would drop.
-    ///
-    /// The moved section lands after everything already there:
-    /// `renumber_tables` gives it a fresh position instead of the one it
-    /// held in `shep.toml`.
+    /// Exact string: it pins that the moved section arrives carrying its
+    /// own `shep.toml` comments, which a `toml::to_string` of a parsed map
+    /// would drop, and that it lands after everything already there.
     #[test]
     fn migrating_into_a_hand_edited_file_keeps_both_files_comments() {
         let (_dir, paths) = home_with(
@@ -684,15 +642,9 @@ mod tests {
     /// Fails if a destination with nested or array-of-tables sections puts
     /// the moved section at the front instead of the end.
     ///
-    /// `last_position` must count `[bark.sinks]` (nested under an implicit
-    /// `bark`) and `[[bark.rules]]` (an array of tables), not just
-    /// top-level `Item::Table`s, or it answers 0 and the moved `[metrics]`
-    /// renders first with no blank line before `[bark.sinks]`. Two
-    /// `[[bark.rules]]` entries make the array-arm miss visible; with one,
-    /// a scan of only the nested table would tie with it by chance.
-    ///
-    /// Exact string: a reparse agrees with a wrong rendering too, so only
-    /// the string tells them apart.
+    /// `last_position` must count `[bark.sinks]` and `[[bark.rules]]`, not
+    /// just top-level `Item::Table`s, or it answers 0 and `[metrics]`
+    /// renders first. Exact string: a reparse agrees with a wrong rendering.
     #[test]
     fn a_moved_dog_lands_after_a_destination_of_nested_and_array_tables() {
         let (_dir, paths) = home_with(
@@ -711,9 +663,8 @@ mod tests {
 
     /// Fails if an empty `[dog.<name>]` can stop a shepherd booting.
     ///
-    /// An older `shep enable` scaffolds an empty `[dog.metrics]`; that must
-    /// not collide with a `dogs.toml` that already configures the same
-    /// dog, since a mixed-version host is ordinary.
+    /// An older `shep enable` scaffolds an empty `[dog.metrics]`, and a
+    /// mixed-version host is ordinary.
     ///
     /// Nothing is written on either side: the configured `dogs.toml` wins
     /// untouched, and `shep.toml` keeps its stray header.
@@ -850,11 +801,8 @@ mod tests {
     /// editing anyway.
     ///
     /// The inode is the assertion, not the bytes, which are identical
-    /// either way. `try_edit` stages a temp file and renames it over the
-    /// original whenever `save` runs, so opening the document on an idle
-    /// boot would hand an untouched `shep.toml` a fresh inode, force
-    /// `OWNER_ONLY_FILE_MODE` onto it, and turn a symlinked path into a
-    /// plain file.
+    /// either way: `try_edit` renames a temp file over the original
+    /// whenever `save` runs.
     #[cfg(unix)]
     #[test]
     fn a_boot_with_nothing_to_move_never_reopens_the_file() {
@@ -896,37 +844,17 @@ mod tests {
     /// re-runs its race.
     ///
     /// A lost update needs both threads to read `dogs.toml` before either
-    /// renames, and on this write path (stage, `fsync`, rename) that window
-    /// is wide, so one round is usually enough. Twenty makes the failure a
-    /// certainty rather than a likelihood, which is what a test guarding a
-    /// race has to be to be worth having.
+    /// renames, and on this write path that window is wide. Twenty makes
+    /// the failure a certainty rather than a likelihood.
     const ROUNDS_OF_CONTENTION: u32 = 20;
 
-    /// The two `dogs.toml` writers this test races, both named in this
-    /// module's own doc comment: [`migrate_dog_sections`], which runs at
-    /// `commands/daemon/lifecycle.rs` (boot) and again at
-    /// `commands/daemon/reload.rs` (reload), and
-    /// [`shep_daemon::dogs::set_dog_section`], which a running shepherd
-    /// calls from behind `Request::SetDogConfig` whenever the config pane
-    /// edits a dog's section. Both are reachable at once: a `shep reload`
-    /// can race a config-pane write that lands while the predecessor is
-    /// still migrating, and a fresh boot's migration can race a write sent
-    /// the moment the socket comes up.
+    /// The two `dogs.toml` writers this test races: [`migrate_dog_sections`]
+    /// at boot and reload, and [`shep_daemon::dogs::set_dog_section`] behind
+    /// `Request::SetDogConfig`. Each rewrites the whole file.
     ///
-    /// Each call rewrites the whole file, so an unserialised pair loses one
-    /// of each other's writes: whichever rename lands second wins the file
-    /// wholesale. `ConfigLock` is what turns the read, the merge and the
-    /// rename into one transaction against the other writer, proven here by
-    /// forcing the interleaving with a barrier rather than asserting the
-    /// lock exists. Pointing `_dogs_lock` at a path unique to each thread,
-    /// so it locks nothing shared, turns this red at round 0.
-    ///
-    /// Two `migrate_dog_sections` calls racing each other, by contrast,
-    /// converge safely with no lock at all: both read and re-write the same
-    /// source, so two runs against the same files always compute the same
-    /// result. It is the *other* writer, changing content
-    /// `migrate_dog_sections` never reads back out, that a dropped lock
-    /// loses.
+    /// `ConfigLock` is what makes the read, the merge and the rename one
+    /// transaction, proven here by forcing the interleaving with a barrier.
+    /// Pointing `_dogs_lock` at a path unique to each thread turns this red.
     #[test]
     fn a_boot_migration_and_a_dog_config_write_at_once_both_land() {
         use std::sync::{Arc, Barrier};

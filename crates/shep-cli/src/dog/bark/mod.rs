@@ -2,18 +2,12 @@
 //!
 //! [`run`] reads `[bark]`, subscribes, and hands over to [`run_loop`],
 //! which reads the shepherd's bus and polls the flock. [`rules`] decides
-//! which events and poll snapshots become a [`rules::Firing`], and
-//! [`sinks`] renders and posts each one. [`clock`] stamps every one, and
-//! keeps the stamp moving while the wall clock reads before the epoch.
-//! [`source`] holds the traits the
-//! loop reads the shepherd through, and their implementations over a real
-//! client.
+//! which events become a [`rules::Firing`], and [`sinks`] posts each one.
+//! [`source`] holds the traits the loop reads the shepherd through.
 //!
 //! The bus is a `tokio::sync::broadcast`, so a lagging subscriber has
 //! events dropped rather than queued, and load is when an alert matters
-//! most. A dropped frame triggers an immediate poll, and [`rules::Rules`]'s
-//! per-subject debounce is what lets an `Errored` seen by both routes fire
-//! once.
+//! most. A dropped frame triggers an immediate poll.
 
 mod clock;
 mod config;
@@ -50,15 +44,10 @@ fn subscription_topics(dog: &str, rules: &rules::Rules) -> Vec<String> {
 /// Runs the bark dog until it is signalled.
 ///
 /// Parses `[bark]`, builds [`rules::Rules`] (or
-/// [`rules::Rules::default_rules`] when the operator configured
-/// none), subscribes to the shepherd's bus on `process.*` and
-/// `config.dog.bark`, and hands both to [`run_loop`] alongside a
-/// [`ClientShepherd`](source::ClientShepherd) wrapping this same connection.
-/// `log.out` and `log.err` join the subscription only while a `log_match`
-/// rule reads them.
-///
-/// A refused config or a rule set `Rules::new` rejects are both
-/// [`ExitCode::InvalidConfig`].
+/// [`rules::Rules::default_rules`] when the operator configured none),
+/// subscribes on `process.*` and `config.dog.bark`, and hands both to
+/// [`run_loop`] alongside a [`ClientShepherd`](source::ClientShepherd). A
+/// refused config or a rejected rule set are both [`ExitCode::InvalidConfig`].
 pub async fn run(runtime: DogRuntime) -> ExitCode {
     let config = match runtime.config::<BarkConfig>() {
         Ok(config) => config,

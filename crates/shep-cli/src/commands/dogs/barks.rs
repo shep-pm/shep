@@ -11,11 +11,9 @@ use crate::output::{BarkRows, Streams, emit, write_outcome};
 ///
 /// Reads `barks.jsonl` straight off disk and never connects to the
 /// shepherd. [`barks::read`] is the forgiving half of that file's contract:
-/// a line a writer died mid-append leaves unparseable costs that one record,
-/// not the whole read.
+/// an unparseable line costs that one record, not the whole read.
 ///
-/// `--tail N` takes the last N records, oldest first, and pays for a
-/// window of the file's end rather than the whole ring ([`barks::read_last`]).
+/// `--tail N` pays for a window of the file's end rather than the whole ring.
 pub fn barks(streams: &mut Streams<'_>, paths: &ShepPaths, args: &BarksArgs) -> ExitCode {
     let history = match args.tail {
         Some(tail) => barks::read_last(&paths.barks, tail),

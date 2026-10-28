@@ -6,9 +6,8 @@
 //! dead RTC boots at 1970 and stays there until NTP corrects it. While that
 //! holds, [`Clock::now_ms`] carries the last good stamp forward by the
 //! monotonic time since it, which keeps a rule's per-subject debounce
-//! working, and names the clock as the cause once for the whole run rather
-//! than once per firing. Only a clock that never had a good reading stamps
-//! 0.
+//! working, and names the clock as the cause once for the whole run. Only a
+//! clock that never had a good reading stamps 0.
 
 use std::fmt;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};

@@ -7,14 +7,13 @@ use crate::cli::Init;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-/// The unit path a `target_resolution::StartupPlan` built for a test points at, so `step_execution::install`
-/// can be driven without writing into `/etc` or `/Library`. Every field
-/// but `home` is fixed; `home` is what each case varies.
+/// The unit path a test's `target_resolution::StartupPlan` points at, so
+/// `step_execution::install` can be driven without writing into `/etc` or
+/// `/Library`. Every field but `home` is fixed; `home` is what varies.
 ///
-/// `with_file_name` rather than a path under `home`: the two cases that
-/// matter pass a `home` that does not exist, and a unit path inside it
-/// could not be written even by the run this is meant to prove writes
-/// nothing.
+/// `with_file_name` rather than a path under `home`: the cases that matter
+/// pass a `home` that does not exist, and a unit path inside it could not
+/// be written even by the run this proves writes nothing.
 pub(super) fn plan_for_test(home: &Path) -> StartupPlan {
     StartupPlan {
         init: Init::Systemd,

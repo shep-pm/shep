@@ -4,18 +4,13 @@
 use super::Render;
 use super::width::{sanitize_cell_without_ansi, visible_width};
 
-/// Renders any payload as the padded table, returned rather than printed so
-/// a test can read it. [`emit`](super::emit) calls this for `Format::Table`.
+/// Renders any payload as the padded table, returned rather than printed.
 ///
-/// Column widths come from the widest cell in each column, header included,
-/// measured in display columns via [`visible_width`] so a CJK or emoji cell
-/// pads correctly. Cells are separated by two spaces with no box-drawing
-/// characters. An empty payload still prints the header row. Every cell goes
-/// through [`sanitize_cell_without_ansi`] first.
+/// Widths come from the widest cell in each column, header included,
+/// measured via [`visible_width`] so a CJK or emoji cell pads correctly.
 ///
 /// # Panics
-/// If any row `T::rows()` returns has a different number of cells than
-/// `T::headers()`.
+/// If a row's cell count differs from `T::headers().len()`.
 #[allow(dead_code)]
 #[track_caller]
 pub fn render_table<T: Render>(data: &T) -> String {
@@ -107,10 +102,8 @@ pub fn human_duration(ms: u64) -> String {
 ///
 /// Local, not UTC: read during an incident by an operator who thinks in
 /// wall-clock time. `%Y-%m-%d %H:%M:%S`, not RFC3339: meant to be read at
-/// a glance, not parsed back.
-///
-/// A millis value too large to fit `i64` renders as the raw number rather
-/// than failing the whole row.
+/// a glance, not parsed back. A too-large millis value renders as the raw
+/// number rather than failing the row.
 #[must_use]
 pub fn local_timestamp(at_ms: u64) -> String {
     let Ok(millis) = i64::try_from(at_ms) else {
@@ -173,12 +166,8 @@ pub(crate) struct BoxedTable {
 /// Columns are dropped by descending priority until the table fits, never
 /// below [`FLOOR_COLUMNS`]: a table that cannot say which sheep a row is
 /// about has stopped being a table. What was dropped is named in a footer.
-///
-/// Every width is computed with [`crate::output::width::visible_width`], so
-/// a styled cell pads by what it shows rather than by what it stores.
-///
-/// `output::mod`'s `table_of` reaches for [`render_boxed_ex`] instead, for
-/// the dropped-column list; only this module's own tests call this form.
+/// Every width uses [`crate::output::width::visible_width`], so a styled
+/// cell pads by what it shows.
 #[allow(dead_code)]
 pub(crate) fn render_boxed(
     headers: &[&str],
@@ -300,8 +289,7 @@ pub(crate) fn render_boxed_ex(
 /// shows.
 ///
 /// One entry per header, in header order. A row shorter than the headers
-/// contributes to the columns it has and no further; a longer one's extra
-/// cells are ignored, having no header to pad against.
+/// contributes to the columns it has and no further.
 fn column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<usize> {
     let mut widths: Vec<usize> = headers.iter().copied().map(visible_width).collect();
     for row in rows {
@@ -476,12 +464,10 @@ mod tests {
 
     /// "羊" is one character, three bytes, two display columns. Asserts on
     /// both the header line and the row: only the header line proves the
-    /// padding moved, since the row's own NAME cell is that name and would
-    /// widen regardless.
+    /// padding moved, since the row's NAME cell would widen regardless.
     ///
     /// Not asserted: that a table's lines are all one width. `write_row`
-    /// leaves the last cell unpadded, so they are not; that property
-    /// belongs to `every_line_of_a_boxed_table_has_the_same_visible_width`.
+    /// leaves the last cell unpadded, so they are not.
     #[test]
     fn column_widths_count_display_columns_not_characters_or_bytes() {
         let ascii_name = "wwwwww".to_string(); // 6 chars, 6 bytes, 6 columns
@@ -745,14 +731,9 @@ mod tests {
     /// status to: Meadow (Online), Butter (`butter`), Bark (Errored), Ink3
     /// (Stopped). Every row the same status would pin one face only.
     ///
-    /// `butter` is a parameter: the narrower snapshots below need different
-    /// Butter-role words at the same width, and `WaitingRestart`
-    /// (`"waiting-restart"`, 15 characters) is the longest.
-    ///
-    /// Every column is sized to a width of 80, injected as
-    /// `Presentation::new`'s `width` rather than measured. `EXIT`, `SMIT`
-    /// and `CFG` all read `-` here yet still cost columns, so tests that
-    /// add them widen their own `Presentation` past 80.
+    /// `butter` is a parameter: the narrower snapshots need different
+    /// Butter-role words at the same width, and `WaitingRestart` is the
+    /// longest. Columns are sized to width 80, injected not measured.
     fn mixed_flock(butter: ProcStatus) -> FlockRows {
         FlockRows(vec![
             ProcessInfo::builder(0, "web", ProcStatus::Online)
@@ -828,12 +809,8 @@ mod tests {
     /// call cannot exercise, since only `table_of`'s two-pass retry asks
     /// [`Render::rows_for`] again with the word turned off.
     ///
-    /// Width 93: `SMIT` and `CFG` cost the fixture extra columns the same
-    /// way they do in `full_wide_pins_face_word_and_colour_for_a_mixed_flock`.
-    /// `render_boxed_ex`'s priority order drops SMIT first on the
-    /// word-included pass; the retry then asks again with the word off,
-    /// every face is a fixed 5 columns, and the table fits with SMIT back
-    /// too.
+    /// Width 93: `SMIT` and `CFG` cost the fixture extra columns, so the
+    /// retry's second pass fits with SMIT back.
     #[test]
     fn full_narrow_drops_the_status_word_before_a_whole_column() {
         let presentation = Presentation::new(StyleLevel::Full, None, deep_terminal(), None, 93);

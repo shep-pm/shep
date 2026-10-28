@@ -14,11 +14,9 @@ use super::toolkit::{Paint, paint};
 /// and the run's own verdict.
 ///
 /// The four fields beside `changes` have no column, for [`crate::output::CopyReport`]'s
-/// reason: the table prints the change list, which is what the confirmation
-/// question is asked beside, and the run's state rides as a notice line.
-///
-/// `Debug` is derived: `changes` prints through [`CopyChange`]'s redacting
-/// impl, and the rest names a holder, a name, a path and two flags.
+/// reason: the table prints the change list, and the run's state rides as a
+/// notice line. `Debug` is derived: `changes` prints through [`CopyChange`]'s
+/// redacting impl.
 #[derive(Debug, Clone, Serialize)]
 pub struct SetReport {
     /// `sheep` or `dog`: which half of the flock the address named.

@@ -35,25 +35,12 @@ pub async fn save(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
 }
 
 /// Asks the daemon to assemble the flock from the muster roll `save` wrote,
-/// and reports who came up. Autostart reaches this through
-/// `connect_or_spawn_client`; boot already restores the roll by then, so
-/// this spawns nothing new.
+/// and reports who came up.
 ///
-/// Sent with [`RELOAD_DEADLINE`], which is 60s, the daemon's own
-/// `MAX_DEADLINE_MS` and the most it will honour. A cold restore already
-/// outran the client's 5s default, and `Request::Muster` now runs the staged
-/// walk inside the request handler: it holds each stage until its members
-/// settle, so the reply costs the SUM of the stages rather than the longest
-/// spawn in the roll. `START_DEADLINE`'s 30s is the budget `shep reload` was
-/// moved off for the same reason, and this walk is the largest of them, since
-/// a muster spans the whole roll rather than a selector. `with_deadline`
-/// DROPS the work future when the budget expires, so a short one abandons a
-/// restore mid-walk with its later stages never issued and reports failure
-/// for a flock that was coming up.
+/// Sent with [`RELOAD_DEADLINE`]: the staged walk runs in the request handler.
 ///
-/// `Response::Mustered` names every sheep the roll restored, not only the
-/// ones this call spawned, so the verb is safe to run twice. An empty
-/// `Mustered` gets a stderr notice beside the empty table.
+/// `Response::Mustered` names every sheep the roll restored, so the verb is
+/// safe to run twice.
 pub async fn muster(client: &Client, streams: &mut Streams<'_>) -> ExitCode {
     match client
         .request_with_deadline(Request::Muster, Some(RELOAD_DEADLINE))

@@ -36,13 +36,10 @@ enum Arm {
 /// The first shep release whose shepherd can hand its flock to a successor.
 ///
 /// A floor on the version the CLI finds running, never on its own: the
-/// handover has to exist in the shepherd being replaced. `0.1.17` is the last
-/// release that shipped without it. It also keeps `PROTOCOL_VERSION` where it
-/// is, since `Request::HandoverFitness` is a variant a shepherd below the
-/// floor would end the connection on.
+/// handover has to exist in the shepherd being replaced. It also keeps
+/// `PROTOCOL_VERSION` where it is.
 ///
-/// Only the unix arm of [`Arm::for_daemon`] reads it, hence the `allow` on
-/// Windows.
+/// Only the unix arm of [`Arm::for_daemon`] reads it, hence the `allow`.
 #[cfg_attr(windows, allow(dead_code))]
 const HANDOVER_SINCE: &str = "0.1.18";
 
@@ -68,12 +65,9 @@ impl Arm {
     /// The arm that reloads a shepherd reporting `daemon_version`.
     ///
     /// [`Self::Handover`] needs the shepherd being replaced to carry the
-    /// mechanism, so this compares its version against [`HANDOVER_SINCE`]; a
-    /// shepherd reporting this binary's own version always counts as
-    /// [`Self::Handover`], whatever the floor says. Whether that shepherd's
-    /// flock can be carried is a separate question, asked over the socket.
-    /// Unknown takes the safe arm: a `None` version, and one this CLI cannot
-    /// parse.
+    /// mechanism, so this compares its version against [`HANDOVER_SINCE`].
+    /// Whether that flock can be carried is a separate question, asked over
+    /// the socket. Unknown takes the safe arm.
     fn for_daemon(daemon_version: Option<&str>) -> Self {
         #[cfg(unix)]
         {
@@ -260,10 +254,9 @@ async fn ask_fitness(client: &Client) -> Fitness {
 /// the successor to serve and reports the flock.
 ///
 /// The flock never stops: a carried sheep keeps its pid, its log file handles
-/// and its place in the shepherd's registry. The signal is the trigger, not
-/// the decision, which already happened over the socket. A handover can still
-/// fail after the signal, so this waits for a shepherd of this binary's
-/// version and takes the stop arm's own tail when none answers.
+/// and its place in the shepherd's registry. A handover can still fail after
+/// the signal, so this waits for a shepherd of this binary's version and
+/// takes the stop arm's tail when none answers.
 #[cfg(unix)]
 async fn hand_over(
     streams: &mut Streams<'_>,
@@ -416,22 +409,12 @@ fn proven_shepherd(streams: &mut Streams<'_>, paths: &ShepPaths) -> Result<u32, 
 }
 
 /// What a reload does when [`admin::KILL_TEARDOWN_WAIT`] elapses with the
-/// control address still answering: the refusal to report, or `None` to go on
-/// and start the successor anyway.
+/// control address still answering: report the refusal, or `None`.
 ///
-/// The elapsed clock is not the answer, the pidfile lock is. A staged
-/// teardown costs a sum over stages rather than one kill ladder, so no
-/// constant is large enough for every flock, and the one state this verb must
-/// never leave behind is a signalled predecessor with no successor. So:
-///
-/// - [`Shepherd::Absent`] means the predecessor is gone and only its socket
-///   file outlived it. Starting the successor is the whole point of the verb,
-///   and refusing here is what would strand the flock.
-/// - [`Shepherd::Running`] and [`Shepherd::Booting`] mean the predecessor
-///   still owns the home, so it is still the shepherd supervising the flock
-///   and nothing has been lost by not replacing it yet.
-/// - An unreadable pidfile answers neither, so it refuses rather than start a
-///   second shepherd over a first that may still be running.
+/// The elapsed clock is not the answer, the pidfile lock is: no constant is
+/// large enough for every flock, and a signalled predecessor with no
+/// successor is the one state this verb must never leave behind. An
+/// unreadable pidfile answers neither, so it refuses.
 fn refusal_after_teardown_budget(
     liveness: Result<Shepherd, BootError>,
 ) -> Option<(ExitCode, String)> {
@@ -457,14 +440,11 @@ fn refusal_after_teardown_budget(
 
 /// Stops the shepherd, waits it out, starts a successor, and musters.
 ///
-/// [`boot::daemon_liveness`] proves the pid, `commands::admin` owns the signal
-/// and the teardown wait, and `crate::client::connect_or_spawn_client` is the
-/// autostart `shep start` already uses.
+/// [`boot::daemon_liveness`] proves the pid, `commands::admin` owns the
+/// signal and the teardown wait.
 ///
-/// A budget that elapses is a question rather than an answer, and
-/// [`refusal_after_teardown_budget`] asks the lock: the predecessor has been
-/// signalled by then, so reading the clock as a failure is how this verb
-/// would leave a home with no shepherd at all.
+/// A budget that elapses is a question, not an answer: see
+/// [`refusal_after_teardown_budget`].
 async fn stop_and_start(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,

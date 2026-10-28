@@ -75,11 +75,9 @@ pub(crate) struct AppEnv {
 /// the operator has to decide about.
 ///
 /// A key in the declared union (the row's `env_<name>` maps, combined) is
-/// written, taking its value from `env` when the running process has one and
-/// from the declared map otherwise. An undeclared key in `env` is dropped
-/// when it is in [`SESSION_SHELL`] or [`PM2_INJECTED`], becomes
-/// [`AppEnv::instance_var`] when it is [`PM2_INSTANCE_VAR`], and is otherwise
-/// named in [`AppEnv::inherited`] and not written.
+/// written, taking its value from `env` when the process has one. An
+/// undeclared key is dropped when it is in [`SESSION_SHELL`] or
+/// [`PM2_INJECTED`], and otherwise named in [`AppEnv::inherited`].
 pub(crate) fn split(row: &DumpRow) -> AppEnv {
     let mut declared_union: BTreeMap<&str, &str> = BTreeMap::new();
     for declared in row.declared.values() {

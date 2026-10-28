@@ -1,22 +1,13 @@
 //! `shep unset <address>`: the undo for `shep set`.
 //!
-//! The address is `set`'s, resolved the same way, and the flow after it is
-//! [`run`]'s: print every key the write touches, ask, write. What differs is
-//! the plan, because there is no value to write:
+//! The address is `set`'s and the flow after it is [`run`]'s. What differs is
+//! the plan: there is no value to write, and no schema to check against a
+//! key that is simply gone.
 //!
-//! - A sheep's field is [`Request::ResetSheepField`]. The shepherd drops the
-//!   operator's override, and the Flockfile's value comes back. A field with no
-//!   override has nothing to drop and is refused.
-//! - A key in a sheep's dog table leaves the table, so the dog's own default
-//!   applies. The whole table can go too, through
-//!   [`Request::SetSheepDogSettings`] with no table.
-//! - A key in a dog's own section leaves `dogs.toml`'s text, edited in place so
-//!   the comments around it survive. The section as a whole is not removed
-//!   here: the shepherd keeps the sections of the dogs it runs.
-//!
-//! A removal is not checked against the dog's schema. The key is gone and the
-//! dog's own default applies, which is the one state no schema rule is written
-//! against.
+//! - A sheep's field is [`Request::ResetSheepField`]: the shepherd drops the
+//!   operator's override and the Flockfile's value comes back.
+//! - A key in a sheep's dog table leaves the table, so the dog's default applies.
+//! - A key in a dog's own section leaves `dogs.toml`'s text, edited in place.
 
 use std::collections::BTreeSet;
 

@@ -19,17 +19,13 @@ fn is_live(info: &ProcessInfo) -> bool {
     )
 }
 
-/// Brings every sheep in `matched` up, and reports the ones that were already
-/// up rather than replacing them
+/// Brings every sheep in `matched` up, reporting the ones already up
 ///
 /// `selector` is the operator's own token, `None` when the match came from
-/// a path or Flockfile. Only a token can be quoted back as a remedy, so a
-/// path falls back to listing the names. One notice for the whole
-/// already-up set.
+/// a path or Flockfile. Only a token can be quoted back as a remedy.
 ///
 /// Respawns go out per row, by id: a name selector reaches every instance
-/// the name has, which would widen `shep start 0` to the whole app and walk
-/// back over the `live`/`asleep` partition.
+/// the name has.
 pub(crate) async fn resume_all(
     client: &Client,
     streams: &mut Streams<'_>,
