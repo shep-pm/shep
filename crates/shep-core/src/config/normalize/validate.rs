@@ -7,21 +7,19 @@ use crate::values::UpDuration;
 
 use super::NormalizeError;
 
-/// Validates one template value, naming `field` in any rejection so the user
-/// knows which entry to edit.
+/// Validates one template value, naming `field` in any rejection.
+/// The user then knows which entry to edit.
 ///
-/// The `{{SHEP_HOME}}` check lives here rather than beside the log paths
-/// because all four templated field kinds run through this one function, and
-/// a value nothing can expand is as broken in an `env` entry as in a path.
+/// All four templated field kinds run through here, so the
+/// `{{SHEP_HOME}}` check lives here too. A value nothing can expand is
+/// as broken in an `env` entry as in a path.
 ///
 /// # Errors
-/// - [`NormalizeError::BadTemplate`] if `value` carries a `{{...}}` this
-///   grammar does not define, or a `{{` this value never closes. Both of
-///   [`crate::config::template::validate`]'s own rejections map here, so the
-///   two are told apart by the rendered `reason` the variant carries rather
-///   than by the variant.
-/// - [`NormalizeError::NoShepHome`] if `value` carries a `{{SHEP_HOME}}` and
-///   `shep_home` is `None`.
+/// - [`NormalizeError::BadTemplate`]: `value` carries a `{{...}}` this
+///   grammar does not define, or a `{{` it never closes. Both
+///   [`crate::config::template::validate`] rejections map here, told
+///   apart by the rendered `reason` the variant carries.
+/// - [`NormalizeError::NoShepHome`]: `value` carries a `{{SHEP_HOME}}` and `shep_home` is `None`.
 pub(super) fn validate_template(
     name: &str,
     field: &str,
@@ -251,11 +249,10 @@ target = "http://127.0.0.1:8080/healthz"
 
     #[test]
     fn a_sub_second_readiness_interval_is_accepted() {
-        // fails if both probes are validated against the liveness floor: a
-        // readiness wait is bounded by `listen_timeout` and shortens an
-        // `interval` only where it would push the next poll past a quarter of
-        // that bound, so a fast app polling every 50ms to leave `starting`
-        // sooner must not be refused.
+        // Both probes are validated against the liveness floor. A readiness
+        // wait is bounded by `listen_timeout`. It shortens an `interval`
+        // only where that would push the next poll past a quarter of the
+        // bound. A fast app polling every 50ms must not be refused.
         let mut app = AppConfig::minimal("web", "./srv");
         let mut probe = probe_config("http://127.0.0.1:8080/healthz");
         probe.interval = UpDuration::from_millis(50);

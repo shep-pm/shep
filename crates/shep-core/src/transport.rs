@@ -1,18 +1,13 @@
 //! The control transport: one address, two implementations
 //!
-//! shep's control plane is a length-delimited framed byte stream: an
-//! `AF_UNIX` socket on unix, a named pipe on Windows. The only module
-//! naming an OS transport type; everything above carries no `cfg`.
+//! shep's control plane is a length-delimited framed byte stream. An
+//! `AF_UNIX` socket on unix, a named pipe on Windows.
 //!
-//! The address is a [`Path`], but the Windows pipe name is only
-//! path-*shaped*: never take its `parent()` or ask `exists()`.
+//! The address is a [`Path`]. A Windows pipe name is only path-shaped:
+//! never take its `parent()` or ask `exists()`.
 //!
-//! Security: unix relies on `0700` on `$SHEP_HOME/run` plus a same-uid
-//! `peer_cred` check; Windows relies on the pipe's ACL, which grants
-//! `Everyone` read but not write (canonical writeup: shep-daemon's `RpcServer`).
-//! A pipe that must admit only the shepherd's own user is bound with
-//! `Listener::bind_with`, whose `PipeInstances` the daemon implements
-//! where its unsafe code lives.
+//! Security: unix uses `0700` on `$SHEP_HOME/run` plus a same-uid
+//! `peer_cred` check. Windows uses the pipe's ACL.
 
 use std::io;
 use std::path::Path;
@@ -25,15 +20,12 @@ use std::path::Path;
 #[cfg(windows)]
 const PIPE_BUSY_RETRY: std::time::Duration = std::time::Duration::from_millis(20);
 
-/// Windows' `ERROR_PIPE_BUSY`: the pipe exists but every server instance is
-/// already spoken for. Transient by definition, since the server creates
-/// the next instance immediately after accepting, so it is retried, never
-/// surfaced.
+/// Windows' `ERROR_PIPE_BUSY`: the pipe exists but every server instance
+/// is already spoken for. Transient by definition: the server creates
+/// the next instance right after accepting. It is retried, never surfaced.
 ///
-/// Hardcoded rather than pulled from `windows-sys`: this crate has no
-/// Windows-only dependency, and one stable, well-known error code does not
-/// earn it one. The same reasoning [`kv`](crate::kv) applies to
-/// `ERROR_SHARING_VIOLATION`.
+/// Hardcoded rather than pulled from `windows-sys`. This crate has no
+/// Windows-only dependency, and one stable error code does not earn one.
 #[cfg(windows)]
 const ERROR_PIPE_BUSY: i32 = 231;
 
@@ -68,17 +60,11 @@ pub type ServerWriteHalf = tokio::io::WriteHalf<ServerStream>;
 
 /// Splits an accepted connection into halves that can be owned by two tasks.
 ///
-/// The daemon reads requests on one task and writes replies on another, so
-/// the two halves must be separately owned and `'static`.
+/// The daemon reads requests on one task and writes replies on another.
 ///
-/// [`tokio::io::split`], not `UnixStream::into_split` (unix-only): it costs
-/// a small lock per frame in exchange for one code path on both platforms.
-/// This now also carries the log data path (a subscriber's `log.out` and
-/// `log.err` frames), not just a control plane's handful of frames per
-/// command; an uncontended `BiLock` acquire is on the order of tens of
-/// nanoseconds, so even at a thousand lines a second the total is
-/// microseconds. Keep the single code path; do not fork it onto
-/// `into_split` without measuring a real cost first.
+/// [`tokio::io::split`], not `UnixStream::into_split` (unix-only): one code
+/// path on both platforms, for a small lock per frame. That lock also
+/// carries the log data path.
 #[must_use]
 pub fn split(stream: ServerStream) -> (ServerReadHalf, ServerWriteHalf) {
     tokio::io::split(stream)
@@ -153,15 +139,11 @@ pub async fn connect(addr: &Path) -> io::Result<ClientStream> {
 
 /// How a Windows listener creates each server instance of its pipe
 ///
-/// The seam for a pipe's security descriptor. `CreateNamedPipe` takes one as a
-/// raw pointer, so setting it needs `unsafe`, which this crate forbids. The
-/// daemon implements this where its unsafe code lives, and a [`Listener`]
-/// bound with [`Listener::bind_with`] asks it for every instance, the first
-/// and each replacement after an accept, so no instance is ever created
-/// under a different descriptor.
+/// The seam for a pipe's security descriptor. `CreateNamedPipe` takes one
+/// as a raw pointer, so setting it needs `unsafe`, which this crate
+/// forbids. The daemon implements it where its unsafe code lives.
 ///
-/// Windows only: a unix socket is protected by the mode of the directory
-/// holding it, not by anything on the socket.
+/// Windows only. A unix socket is protected by the mode of its directory.
 #[cfg(windows)]
 pub trait PipeInstances: core::fmt::Debug + Send + Sync + 'static {
     /// Creates one server instance named `addr`, with `options` as given.
@@ -202,14 +184,13 @@ impl PipeInstances for DefaultSecurity {
 pub struct Listener {
     #[cfg(unix)]
     listener: tokio::net::UnixListener,
-    /// The idle instance the next client will connect to, taken on every
-    /// accept and replaced with a fresh one.
+    /// The idle instance the next client will connect to.
+    /// Taken on every accept and replaced with a fresh one.
     ///
     /// `None` only between an accept handing out its connection and the
-    /// replacement being created, and across an accept whose replacement
-    /// could not be created at all. [`Self::accept`] makes one when it
-    /// finds the slot empty, which is what keeps a single failed `create`
-    /// from ending the daemon's ability to serve anyone.
+    /// replacement being created, or after a `create` that failed.
+    /// [`Self::accept`] fills an empty slot. One failed `create` does not end
+    /// the daemon's ability to serve.
     #[cfg(windows)]
     server: Option<tokio::net::windows::named_pipe::NamedPipeServer>,
     /// The pipe name, kept so each replacement instance can be created on
@@ -276,16 +257,11 @@ impl Listener {
 
     /// Wraps a socket this process was handed rather than one it bound.
     ///
-    /// The successor's half of a daemon handover. The control socket is one
-    /// of the descriptors an outgoing shepherd passes across its `execve`,
-    /// so the image that takes over adopts the listener instead of binding
-    /// the address again: a rebind would race the predecessor's socket file
-    /// and lose whatever connection a client had already made.
+    /// The successor's half of a daemon handover. The control socket is a
+    /// descriptor an outgoing shepherd passes across its `execve`. A rebind
+    /// would race the predecessor's socket file.
     ///
-    /// Unix only, and the whole handover is. Windows has no `execve`, and
-    /// its arm of [`Self::bind`] makes the bind itself the daemon's mutual
-    /// exclusion, so a second image could not create the pipe to hand on in
-    /// the first place.
+    /// Unix only, as the whole handover is. Windows has no `execve`.
     #[cfg(unix)]
     #[must_use]
     pub fn from_unix_listener(listener: tokio::net::UnixListener) -> Self {
@@ -295,13 +271,10 @@ impl Listener {
     /// The descriptor this listener is bound on.
     ///
     /// The predecessor's half of a daemon handover, and the counterpart to
-    /// [`Self::from_unix_listener`]: an outgoing shepherd has to name this
-    /// number in the blob it hands on, since a descriptor number is only
-    /// meaningful in the process that owns it and the successor adopts it by
-    /// number. Borrowed, never owned: closing it would close the control
-    /// socket out from under a daemon that is still serving.
-    ///
-    /// Unix only, as the whole handover is.
+    /// [`Self::from_unix_listener`]. The successor adopts it by number. The
+    /// outgoing shepherd names it in the blob it hands on. Borrowed, never
+    /// owned: closing it would close the control socket under a live daemon.
+    /// Unix only.
     #[cfg(unix)]
     #[must_use]
     pub fn as_raw_fd(&self) -> std::os::fd::RawFd {

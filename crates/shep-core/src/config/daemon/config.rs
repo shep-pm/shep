@@ -14,10 +14,8 @@ use std::collections::BTreeMap;
 /// Dog sections stay untyped here: each dog deserializes its own
 /// `[dog.<name>]` table, so dog config schemas live with the dog code.
 ///
-/// `#[non_exhaustive]` guards against a breaking struct literal as this
-/// type grows sections, but is not a validation gate: its `pub` fields
-/// can still be mutated after [`Self::load`]/[`Self::load_layered`]
-/// validate, and shep-core cannot detect that.
+/// `#[non_exhaustive]` guards a breaking struct literal, not a validation
+/// gate: its `pub` fields can still be mutated after [`Self::load`] validates.
 #[non_exhaustive]
 #[derive(Clone, Default, PartialEq)]
 pub struct DaemonConfig {
@@ -32,26 +30,18 @@ pub struct DaemonConfig {
     /// The `[interpreters]` section: a script extension (no leading dot,
     /// `"js"` not `".js"`) mapped to the interpreter that runs it.
     ///
-    /// Read by the CLI only, before a request reaches the wire: target
-    /// resolution folds a match into an app's own
-    /// [`AppConfig::interpreter`](crate::config::AppConfig::interpreter)
-    /// only when that field is unset, and `--interpreter` on the command
-    /// line outranks both. The daemon itself never reads this field.
-    ///
-    /// Declared here, like [`StyleSection`], so `RawDaemonConfig`'s
-    /// `deny_unknown_fields` does not turn an unrecognized `[interpreters]`
-    /// section into a hard parse error on every boot.
+    /// Read by the CLI only: a match folds into an app's own
+    /// [`AppConfig::interpreter`](crate::config::AppConfig::interpreter) only
+    /// when that field is unset, and `--interpreter` outranks both. Declared
+    /// here so `deny_unknown_fields` does not refuse an unknown section.
     pub interpreters: BTreeMap<String, String>,
     /// The top-level `hosts` array: ssh destinations of the machines whose
     /// shepherds this CLI reaches, in file order.
     ///
     /// Read by the CLI only, which checks each entry against
-    /// [`Destination`](crate::destination::Destination) when it reads. The
-    /// shepherd never reads this field and does not validate it, so a bad
-    /// hand-edited entry cannot stop a boot.
-    ///
-    /// Declared here, like [`Self::interpreters`], so `RawDaemonConfig`'s
-    /// `deny_unknown_fields` does not turn the key into a hard parse error.
+    /// [`Destination`](crate::destination::Destination). The shepherd never
+    /// reads or validates it, so a bad hand-edited entry cannot stop a boot.
+    /// Declared here so `deny_unknown_fields` does not refuse the key.
     pub hosts: Vec<String>,
     /// Raw `[dog.<name>]` sections keyed by dog name
     pub dog: BTreeMap<String, toml::Table>,

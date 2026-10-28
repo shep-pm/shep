@@ -4,15 +4,11 @@ use std::path::PathBuf;
 
 /// The CLI-flag layer of `file < env < flags` (spec §5).
 ///
-/// Every field is `Option`: `None` means the flag was absent and the
-/// layer below wins. Nothing here validates; [`DaemonConfig::load_layered`](crate::config::daemon::DaemonConfig::load_layered)
-/// runs the single validation pass once, after all three layers.
-///
-/// `#[non_exhaustive]`: this type grows a field whenever the hidden
-/// `daemon` subcommand grows a flag. Build one with [`Self::new`] and the
-/// chained setters.
-///
-/// `Debug` is derived, not redacted: four values, none a secret.
+/// Every field is `Option`: `None` means the flag was absent and the layer
+/// below wins. Nothing here validates;
+/// [`DaemonConfig::load_layered`](crate::config::daemon::DaemonConfig::load_layered)
+/// runs one validation pass after all three layers. Build one with
+/// [`Self::new`] and the chained setters.
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DaemonOverrides {
@@ -30,12 +26,8 @@ pub struct DaemonOverrides {
 /// `0`, `true`, `false`, and nothing else.
 ///
 /// One function so the file/env layer and the `--log-json` flag cannot
-/// drift. clap's own `BoolishValueParser` additionally accepts
-/// `yes`/`no`/`y`/`n`/`on`/`off`; using it would widen the grammar on the
-/// flag side only.
-///
-/// Not a general boolean parser: exporting it only under this name keeps
-/// exactly one answer to what counts as true in shep's daemon config.
+/// drift. clap's `BoolishValueParser` also accepts `yes`/`no`/`y`/`n`/
+/// `on`/`off`, which would widen the grammar on the flag side only.
 #[must_use]
 pub fn parse_daemon_bool(value: &str) -> Option<bool> {
     match value {

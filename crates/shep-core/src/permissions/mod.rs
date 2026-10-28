@@ -1,14 +1,13 @@
-//! What a dog may ask of the shepherd: [`Permission`], the [`Grants`] an
-//! operator gave a dog, and [`need()`], the table that says which permission
+//! What a dog may ask of the shepherd: [`Permission`] and the [`Grants`]
+//! an operator gave it. `need()` is the table saying which permission
 //! each [`Request`] takes.
 //!
 //! Grants keep an honest dog in bounds and make its requests attributable.
-//! They do not confine it: a dog runs as the operator and could open the
+//! They do not confine it. A dog runs as the operator and could open the
 //! control socket like the CLI.
 //!
 //! Names are stable: never renamed or split. A request joins a group only
-//! when it is no more powerful than what the group already holds, otherwise
-//! it gets a new name.
+//! when it is no more powerful than what the group already holds.
 
 use core::fmt;
 use core::str::FromStr;
@@ -150,13 +149,11 @@ impl FromStr for Permission {
 
 /// The permissions an operator granted one dog.
 ///
-/// Held as the names the operator wrote, so a name a newer shep wrote still
-/// reads and simply matches nothing here. [`Self::parse`] is the strict door
-/// for a name typed by hand.
+/// Held as the names the operator wrote. A name from a newer shep reads
+/// and matches nothing here. [`Self::parse`] is the strict door for a
+/// name typed by hand.
 ///
-/// A dog with no `Grants` at all is undeclared and keeps full access; a dog
-/// with an empty one was granted nothing. The difference lives in the
-/// `Option` that carries these, never in this type.
+/// A dog with no `Grants` keeps full access; an empty one grants nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Grants(BTreeSet<String>);

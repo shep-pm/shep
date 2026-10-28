@@ -16,15 +16,11 @@ use crate::config::AppConfig;
 
 /// One process the OS reports as a descendant of a sheep.
 ///
-/// Not the set of processes that die with the sheep: this is a parent-pid
-/// walk, where the stop ladder acts on the process group. A lamb that forks
-/// and exits leaves children re-parented to init, out of this list and still
-/// in the group; a `setsid()` grandchild stays in the list and leaves the
-/// group.
+/// Not the set of processes that die with the sheep. This is a
+/// parent-pid walk; the stop ladder acts on the process group. A
+/// `setsid()` grandchild is in this list and outside the group.
 ///
-/// `name` is the executable's name (`node`, `sh`), never argv, which carries
-/// credentials and would ride into `shep describe --format json`. Build one
-/// with [`Self::new`].
+/// `name` is the executable's name, never argv, which carries credentials.
 // wire format: changing this is a breaking change
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,11 +83,10 @@ pub struct ExitInfo {
 /// Construct one with [`ProcessInfo::builder`]: `#[non_exhaustive]` forbids
 /// a struct literal outside this crate, though not inside it. The fields
 /// stay `pub`.
-// wire format: changing this is a breaking change. No `Eq`: `cpu_percent` is
-// an `f32`. Paths travel as `String`, since serde's `PathBuf` refuses a
+// wire format: changing this is a breaking change. No `Eq`: `cpu_percent`
+// is an `f32`. Paths travel as `String`. serde's `PathBuf` refuses a
 // non-UTF-8 path and would blank a whole `Reply`. Every added field is an
-// `Option` or a defaulted collection, so a peer built before it sends no key
-// and the empty reading means unknown.
+// `Option` or a defaulted collection: an older peer sends no key.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcessInfo {
@@ -133,17 +128,10 @@ pub struct ProcessInfo {
     /// The tree's cumulative CPU-milliseconds, or `None` when the shepherd
     /// is not sampling this sheep.
     ///
-    /// Present in one case [`Self::cpu_percent`] is not: a sheep spawned
-    /// since the last periodic tick has a counter already, but no baseline
-    /// to measure it against, so this is `Some` while the percent is still
-    /// `None`.
+    /// A sheep spawned since the last periodic tick has a counter but no
+    /// baseline. So this is `Some` while [`Self::cpu_percent`] is `None`.
     ///
-    /// The counter rather than a rate, so a client polling faster than the
-    /// shepherd's own sampling interval can difference two readings and get
-    /// the mean over its own interval. [`Self::cpu_percent`] cannot serve
-    /// that: it is measured against a baseline the shepherd rewrites on its
-    /// own schedule, so consecutive readings share one and each is a running
-    /// mean over a window that grows and then resets.
+    /// A counter, not a rate: a client polling faster can difference two readings.
     pub cpu_ms: Option<u64>,
     /// Set when this entry is a dog, naming where the dog came from;
     /// `None` for a sheep.
@@ -151,15 +139,13 @@ pub struct ProcessInfo {
     /// Two cases, not [`Self::cpu_percent`]'s three: "not a dog" is the true
     /// answer whether the peer predates the field or the entry is a sheep.
     pub dog: Option<DogSource>,
-    /// The processes the OS reports as descendants of this sheep, or `None`
-    /// when this reply did not walk for them.
+    /// The processes the OS reports as descendants of this sheep, or `None` when this reply did not walk for them.
     ///
     /// `None` covers two cases: this reply is not a `Describe` (only
     /// `Describe` walks), or the peer daemon predates the field.
     /// `Some(vec![])` is the third: walked, and this sheep has no children.
     ///
-    /// Read [`Lamb`]'s own doc before rendering this: the list is not the set
-    /// of processes a stop kills, and any output built from it has to say so.
+    /// Read [`Lamb`]'s own doc before rendering this: a stop kills a group, not this list.
     pub lambs: Option<Vec<Lamb>>,
     /// How this sheep's process most recently stopped existing under this
     /// daemon. `None` while it has never exited under this daemon, and when
@@ -172,10 +158,8 @@ pub struct ProcessInfo {
     /// `None` when no dog has painted one, which also covers a peer daemon
     /// that predates the field.
     ///
-    /// A `String` rather than a [`Smit`]: this is a report, and the
-    /// validation that makes it safe to print happened at the daemon's
-    /// ingress. Every instance of a name shows the same marker, since smits
-    /// are keyed by sheep name.
+    /// A `String` rather than a [`Smit`]: this is a report, and the daemon
+    /// validated it at ingress. Every instance of a name shows the same marker.
     pub smit: Option<String>,
     /// Which instance slot of its app this sheep occupies, counting from 0.
     ///
@@ -183,29 +167,21 @@ pub struct ProcessInfo {
     /// defaulted to 0: an app stocked to four instances would report four
     /// rows all claiming slot 0.
     pub instance: Option<u32>,
-    /// Whether this dog has completed a handshake with the shepherd that is
-    /// reporting it, and not been refused since; `None` for a sheep.
+    /// Whether this dog has completed a handshake with the reporting
+    /// shepherd, and not been refused since. `None` for a sheep.
     ///
-    /// `None` on [`Self::dog`]'s two-case terms: a sheep has no connection
-    /// to the shepherd, so "no handshake fact to report" is the true answer
-    /// for a sheep and for a peer that predates the field alike.
+    /// A sheep has no connection to the shepherd. `None` is the true answer
+    /// for it and for a peer that predates the field.
     ///
-    /// `Some(false)` is the one that matters: a dog on a protocol this
-    /// shepherd refuses is alive, which is all [`Self::status`] reports, and
-    /// not doing its job. A fact and not a verdict, though: a dog spawned a
-    /// moment ago has not handshaken yet and is healthy.
+    /// `Some(false)` covers a dog spawned a moment ago and one the shepherd refuses.
     pub handshook: Option<bool>,
-    /// Whether the reporting shepherd has given up on this dog: restarted it
-    /// once for never answering, watched that not help, and stopped
-    /// restarting it. `None` for a sheep, on [`Self::handshook`]'s terms.
+    /// Whether the reporting shepherd has given up on this dog. It restarted
+    /// it for never answering, watched that not help, and stopped restarting
+    /// it. `None` for a sheep, on [`Self::handshook`]'s terms.
     ///
-    /// Not derivable from [`Self::handshook`]. `Some(false)` there covers
-    /// both a dog spawned three seconds ago that has not dialled back and one
-    /// this shepherd has permanently stopped restarting; the first needs
-    /// nothing done and the second is an incident.
-    ///
-    /// A fact and not a verdict: it says the shepherd stopped, never why.
-    /// The why is in that dog's own log (`shep bleats <dog>`).
+    /// Not derivable from [`Self::handshook`]. `Some(false)` there covers a
+    /// dog that has not dialled back yet, and one given up on. It says the
+    /// shepherd stopped, never why.
     pub dog_stale: Option<bool>,
     /// The [`AppConfig`] field names this sheep's spec differs from a load's
     /// parked config for, in field-name order. `None` when nothing is parked,
@@ -245,30 +221,22 @@ pub struct ProcessInfo {
     // stale between polls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub level_rules: Vec<LevelRule>,
-    /// How long the shepherd gives ONE swap of this instance before it
-    /// gives up on it: this instance's own `listen_timeout` plus its
-    /// `graceful_timeout` plus the shepherd's slack, in milliseconds.
+    /// How long the shepherd gives one swap of this instance before it gives
+    /// up: its `listen_timeout` plus `graceful_timeout` plus the shepherd's
+    /// slack, in milliseconds.
     ///
     /// `Some` only on the rows of a reload's acceptance
-    /// ([`Response::Reloading`]), and only for an instance that reload will
-    /// try to replace. `None` everywhere else, which covers a listing with
-    /// no reload in flight, an instance a reload is skipping, and a peer
-    /// daemon that predates the field.
-    ///
-    /// Per instance, not per app: a client that inferred it from its own
-    /// copy of the Flockfile would be reading a file the shepherd may have
-    /// moved past. Additive, like [`Self::max_memory`] before it, so
-    /// neither `PROTOCOL_VERSION` nor `SCHEMA_VERSION` moves.
+    /// ([`Response::Reloading`]), and only where reload will replace. `None`
+    /// elsewhere. Per instance, not per app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload_deadline_ms: Option<u64>,
     /// `Some(true)` when the sheep's app is disabled: stopped, and refused a
     /// spawn until `shep enable`. `None` otherwise, which also covers a peer
     /// daemon that predates the field.
     ///
-    /// Beside [`Self::status`] rather than a [`ProcStatus`] variant, since a
-    /// peer that predates a status could not tell it from `stopped`. A
-    /// disabled row keeps `status: "stopped"`. Never `Some(false)`, so the key is absent
-    /// from every row that is not disabled.
+    /// Beside [`Self::status`] rather than a [`ProcStatus`] variant. A peer
+    /// that predates a status could not tell it from `stopped`. A disabled
+    /// row keeps `status: "stopped"`, and the key is never `Some(false)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled: Option<bool>,
     /// Whether this sheep's own log lines carry the shepherd's stamp, from
@@ -289,13 +257,9 @@ pub struct ProcessInfo {
 /// Orders one flock listing the way every operator-facing surface presents
 /// one: `(name, instance, id)`.
 ///
-/// Name first: an id is assigned at registration and a `delete all` plus a
-/// fresh start renumbers the flock, where a name survives. A name is not a
-/// total order on its own, so the id breaks the tie and stays an addressing
-/// key (`shep stop 11`).
-///
-/// A listing whose rows all carry `None` for the slot collapses to
-/// `(name, id)`, since `None` sorts before every `Some`.
+/// Name first: an id is assigned at registration and renumbered by a
+/// `delete all`, where a name survives. The id breaks the tie and stays
+/// an addressing key (`shep stop 11`). A listing with `None` slots throughout collapses to `(name, id)`.
 pub fn sort_flock(listing: &mut [ProcessInfo]) {
     listing.sort_unstable_by(|a, b| {
         (a.name.as_str(), a.instance, a.id).cmp(&(b.name.as_str(), b.instance, b.id))
@@ -349,11 +313,10 @@ impl ProcessInfo {
 /// Builds a [`ProcessInfo`], which is `#[non_exhaustive]` and so cannot be
 /// written as a struct literal outside this crate.
 ///
-/// Every setter takes the field's own type, `Option` included, so a caller
-/// already holding `Option<u32>` writes `.pid(entry.pid())` rather than an
-/// `if let` ladder. A setter is skipped, not passed `None`, when a row has
-/// nothing to say about that field; the skipped defaults are the ones a
-/// not-yet-running sheep has.
+/// Every setter takes the field's own type, `Option` included. A caller
+/// holding `Option<u32>` writes `.pid(entry.pid())` rather than an `if let`
+/// ladder. A setter is skipped, not passed `None`, when a row has nothing
+/// to say about that field.
 #[derive(Debug, Clone)]
 #[must_use = "a builder that is never `build`-ed produces no ProcessInfo"]
 pub struct ProcessInfoBuilder {

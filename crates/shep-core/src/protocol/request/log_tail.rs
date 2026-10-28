@@ -16,16 +16,11 @@ pub enum LogStream {
 
 /// What reading the end of one sheep's log file came to.
 ///
-/// Every outcome of the read, a missing or unreadable file included, is a
-/// value here and never an `RpcError`: a client prints the same notice a
-/// local `bleats` does. An `RpcError` is left for a request that could not
-/// be served at all, such as an id no sheep holds.
+/// Every outcome of the read is a value here, never an `RpcError`, a
+/// missing or unreadable file included: a client prints the same notice
+/// a local `bleats` does.
 ///
-/// One answer holds the tail of one file, at most
-/// [`TAIL_WINDOW_BYTES`](crate::logtail::TAIL_WINDOW_BYTES) of it. JSON
-/// escapes a control byte to six, so an answer stays near 1.5 MiB against
-/// [`MAX_FRAME_BYTES`](crate::protocol::MAX_FRAME_BYTES). A request for
-/// every sheep's files could not promise that.
+/// One answer holds the tail of one file, at most [`TAIL_WINDOW_BYTES`](crate::logtail::TAIL_WINDOW_BYTES) of it.
 // wire format: changing existing variants is a breaking change
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

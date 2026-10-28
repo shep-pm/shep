@@ -35,11 +35,9 @@ pub struct DaemonSection {
     /// Where an adopted dog's binary lives, keyed by dog name
     /// (`shep adopt` writes this; `shep rehome` removes it).
     ///
-    /// A name in [`Self::enabled_dogs`] with no entry here is a built-in
-    /// dog, an argv branch of the shep binary itself. Not recorded inside
-    /// `[dog.<name>]`: that table is the dog's own opaque configuration,
-    /// and a shep-owned key inside it would collide with a third-party
-    /// dog's schema.
+    /// A name in [`Self::enabled_dogs`] with no entry here is a built-in dog,
+    /// an argv branch of the shep binary itself. Not recorded inside
+    /// `[dog.<name>]`: that table is the dog's own opaque configuration.
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub adopted_dogs: BTreeMap<String, PathBuf>,
     /// Adopted dogs whose `--version` answer asked for the shepherd channel,
@@ -61,19 +59,11 @@ pub struct DaemonSection {
     pub dog_grants: BTreeMap<String, DogGrantsSection>,
     /// Dogs that run before every sheep, rather than after the flock.
     ///
-    /// The default position for a dog is a final stage, for the reason
-    /// `boot.rs` gives: a metrics dog must not answer for a flock that is not
-    /// up yet. A log-rotation dog is the opposite case, since it has to be
-    /// running before a sheep starts writing. shep cannot tell which is
-    /// which, because an adopted dog is a third-party binary, so the
-    /// operator says.
-    ///
-    /// Here rather than in `dogs.toml` for the reason [`Self::adopted_dogs`]
-    /// gives: that file's `[<name>]` table is the dog's own opaque
-    /// configuration and a shep-owned key inside it would collide with a
-    /// third-party dog's schema.
-    ///
-    /// A name absent from [`Self::enabled_dogs`] is inert here.
+    /// The default position for a dog is a final stage: a metrics dog must
+    /// not answer for a flock that is not up yet. A log-rotation dog is the
+    /// opposite case. shep cannot tell which is which, because an adopted dog
+    /// is a third-party binary, so the operator says. A name absent from
+    /// [`Self::enabled_dogs`] is inert here.
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub boot_first_dogs: Vec<String>,
     /// Longest a cron worker sleeps before re-deriving its next occurrence.
@@ -109,15 +99,10 @@ impl Default for DaemonSection {
 /// How much of the daemon's own diagnostics reaches its log.
 ///
 /// Written as one of the names below in `[daemon] log_level` or in
-/// `SHEP_LOG_LEVEL`, lowercase and nothing else, the same closed grammar
-/// `log_json` accepts, so a typo is a startup error naming the value
-/// rather than a level silently reverting to the default.
-///
-/// The default is [`LogLevel::Warn`]. The daemon's records are dominated
-/// by warn-and-continue arms, each the only account of a decision the
-/// operator cannot otherwise see. [`LogLevel::Debug`] adds per-decision
-/// detail firing per dropped restart and per child metric sample, a
-/// firehose on a busy flock.
+/// `SHEP_LOG_LEVEL`, lowercase and nothing else, so a typo is a startup
+/// error naming the value rather than a level silently reverting. The
+/// default is [`LogLevel::Warn`]: the daemon's records are dominated by
+/// warn-and-continue arms. [`LogLevel::Debug`] is a firehose on a busy flock.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 // Serialize only so the schema can print `warn` as the field's default.
 #[cfg_attr(feature = "schema", derive(serde::Serialize, schemars::JsonSchema))]
@@ -149,15 +134,10 @@ pub(super) const MIN_CRON_SLEEP: UpDuration = UpDuration::from_millis(1_000);
 /// The `[whistle]` section.
 ///
 /// One key, a gate rather than a tuning knob: `shep whistle`'s four
-/// control tools exist only when this is `true`; its five read-only
-/// tools exist regardless.
-///
-/// Lives only in `shep.toml`, no flag or env var, since config is
-/// auditable where a flag is not. The shepherd itself never reads this
-/// key; `shep whistle` reads the file directly. Declared here anyway
-/// because `RawDaemonConfig` denies unknown fields, so an undeclared
-/// `[whistle]` section would refuse the whole file to boot. `Debug` is
-/// derived, not redacted: one boolean, nothing to leak.
+/// control tools exist only when this is `true`; its five read-only tools
+/// exist regardless. Lives only in `shep.toml`, with no flag or env var,
+/// since config is auditable where a flag is not. Declared here because
+/// `RawDaemonConfig` denies unknown fields.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, default)]
@@ -170,10 +150,9 @@ pub struct WhistleSection {
 /// The `[secrets]` section: whether the CLI will print a stored value back.
 ///
 /// One key, a gate rather than a tuning knob, for [`WhistleSection`]'s
-/// reason and read the same way: `shep secret get` reads this file itself,
-/// the shepherd never reads this key, and it is declared here so an
-/// undeclared `[secrets]` section is not a refused boot.
-///
+/// reason and read the same way: `shep secret get` reads this file
+/// itself, the shepherd never reads this key, and it is declared here so
+/// an undeclared `[secrets]` section is not a refused boot.
 /// `Debug` is derived rather than redacted: one boolean, no secret.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

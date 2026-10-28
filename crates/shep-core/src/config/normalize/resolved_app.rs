@@ -27,37 +27,12 @@ impl ResolvedApp {
     }
 }
 
-/// Validates one app config
+/// Validates one app config.
 ///
 /// # Errors
 ///
-/// - [`NormalizeError::MissingName`]: `name` is empty.
-/// - [`NormalizeError::InvalidName`]: `name` contains a path separator or a colon, or is `.`/`..`.
-/// - [`NormalizeError::InvalidEnvironment`]: `environment` is `all`, the secrets store's every-environment slot, or falls outside the store's name grammar.
-/// - [`NormalizeError::ReservedEnvVar`]: `env` sets `SHEP_INSTANCE`, `SHEP_NAME` or `SHEP_ENVIRONMENT`, which shep injects itself.
-/// - [`NormalizeError::MissingScript`]: `script` is empty.
-/// - [`NormalizeError::ZeroInstances`]: `instances == 0`.
-/// - [`NormalizeError::InvalidCron`]: `cron_restart` is not valid in croner's dialect.
-/// - [`NormalizeError::InvalidTimezone`]: `cron_timezone` is not a name in the IANA time-zone database.
-/// - [`NormalizeError::InvalidProbe`]: a `readiness_probe`/`liveness_probe` target [`ProbeTarget::parse`](crate::config::ProbeTarget::parse) rejects.
-/// - [`NormalizeError::ZeroFailureThreshold`]: a probe's `failure_threshold` is explicitly `0`.
-/// - [`NormalizeError::IntervalBelowMinimum`]: a probe's `interval` is under the floor its own loop honours.
-/// - [`NormalizeError::ZeroMaxMemory`]: `max_memory` is `0`.
-/// - [`NormalizeError::ActionTimeoutTooLong`]: `action_timeout` is above the ceiling no RPC caller could wait past.
-/// - [`NormalizeError::InvalidKillSignal`]: `kill_signal` names a signal the daemon's stop ladder cannot send.
-/// - [`NormalizeError::WatchWithoutCwd`]: `watch` is `true` with no `cwd` set.
-/// - [`NormalizeError::ZeroWatchDelay`]: `watch_delay` is `0`.
-/// - [`NormalizeError::InvalidWatchGlob`]: a `watch_options` or `ignore_watch` pattern globset will not compile.
-/// - [`NormalizeError::InvalidLevelRule`]: a `level_rules` entry has an empty pattern, one regex will not compile, or the list is longer than the ceiling on how many rules an app may declare.
-/// - [`NormalizeError::EmptyDogName`]: a `dogs` key is the empty string.
-/// - [`NormalizeError::BadTemplate`]: an `env`/`args`/log-path value carries an undefined or unclosed `{{...}}` token.
-/// - [`NormalizeError::SecretInLogPath`]: `out_file` or `err_file` carries a `{{secret:...}}`.
-/// - [`NormalizeError::SharedLogPath`]: `out_file` or `err_file` renders to the same path for two instances.
-/// - [`NormalizeError::TildeUser`]: a path field names another user's `~user` home.
-/// - [`NormalizeError::NoHomeForTilde`]: a path field expands `~/` but no home directory could be found.
-/// - [`NormalizeError::NoShepHome`]: a templated value carries `{{SHEP_HOME}}` but no shep home could be found.
-/// - [`NormalizeError::SelfDependency`]: an app names itself in `depends_on`.
-/// - [`NormalizeError::InstanceDependency`]: a `depends_on` entry is written `name:slot`.
+/// Every rejection names its own [`NormalizeError`] variant, and that
+/// enum documents the trigger for each one.
 pub fn normalize(app: AppConfig) -> Result<ResolvedApp, NormalizeError> {
     let home = std::env::home_dir();
     let shep_home = crate::paths::shep_home(&|key| std::env::var(key).ok(), home.as_deref());
@@ -100,13 +75,11 @@ pub fn normalize_all(apps: Vec<AppConfig>) -> Result<Vec<ResolvedApp>, Normalize
 
 /// Shortest `interval` a `liveness_probe` may name.
 ///
-/// The daemon's liveness loop floors whatever it is handed at this same
-/// value, so a smaller number would be silently honoured as this one with
-/// no warning.
-///
-/// One second is a floor no legitimate configuration wants to be under: for
-/// [`ProbeKind::Exec`](crate::config::ProbeKind::Exec) a shorter interval is
-/// that many process spawns per second, per sheep, for as long as it runs.
+/// The daemon's liveness loop floors whatever it is handed at this value.
+/// A smaller number would be silently honoured as this one. One second is
+/// a floor no legitimate configuration wants to be under. For
+/// [`ProbeKind::Exec`](crate::config::ProbeKind::Exec) a shorter interval
+/// is that many process spawns per second, per sheep.
 pub(super) const MIN_LIVENESS_INTERVAL: UpDuration = UpDuration::from_millis(1_000);
 
 /// Shortest `interval` a `readiness_probe` may name.
@@ -121,22 +94,18 @@ pub(super) const MIN_READINESS_INTERVAL: UpDuration = UpDuration::from_millis(1)
 /// Longest `action_timeout` an app may name. The ceiling itself is
 /// accepted: `normalize` refuses only a value above it.
 ///
-/// The daemon clamps every RPC deadline to `MAX_DEADLINE_MS` (60s, in
-/// shep-daemon's `rpc` module), so a wait above that line could
-/// never be honoured by any caller. Set 2s under the clamp so the daemon
-/// still has room to build the `TimedOut` row and send it back after the
-/// wait gives up.
+/// The daemon clamps every RPC deadline to `MAX_DEADLINE_MS` (60s). A
+/// wait above that line could never be honoured by any caller. It sits
+/// 2s under the clamp, leaving room for the `TimedOut` row.
 const MAX_ACTION_TIMEOUT: UpDuration = UpDuration::from_millis(58_000);
 
-/// Parameters so the `~/` expansion above is testable without mutating the
-/// process environment, which is racy under a parallel `cargo test`. This is
-/// also the seam that matters for correctness rather than only for tests:
-/// the daemon may run as a different user than the CLI, so `~` has to be
-/// resolved where the config is normalised, not where it is executed.
+/// Parameters so the `~/` expansion is testable without mutating the
+/// process environment. Mutating it is racy under a parallel `cargo test`.
 ///
-/// `shep_home` arrives the same way and for the same reason: it is the
-/// directory `{{SHEP_HOME}}` expands to, and reading it inside the renderer
-/// would resolve it wherever the value happened to be rendered.
+/// The seam matters for correctness too. The daemon may run as a
+/// different user than the CLI. `~` is resolved where the config is
+/// normalised. `shep_home` arrives the same way. Reading it inside the
+/// renderer would resolve it wherever a value happened to be rendered.
 ///
 /// [`normalize`], with both home directories supplied rather than read.
 ///

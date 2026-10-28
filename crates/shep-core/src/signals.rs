@@ -1,26 +1,21 @@
 //! The signals `shep signal` may name.
 //!
 //! A grammar of its own, next to [`KillSignal`](crate::config::KillSignal)'s
-//! four: that one is what a Flockfile's `kill_signal` may say and the stop
-//! ladder delivers; this one is a nudge an operator hands a running app,
+//! four. That one is what a Flockfile's `kill_signal` may say and the stop
+//! ladder delivers. This one is a nudge an operator hands a running app,
 //! with no ladder and no escalation.
 //!
-//! No `as_raw`: signal numbers are not portable (`SIGUSR1` is 10 on Linux,
-//! 30 on macOS), and shep-core has no libc to ask.
-//!
-//! `SIGSTOP` parses to nothing: a `SIGSTOP`ed sheep still reads `online`
-//! everywhere shep reports state. `SIGCONT` is accepted, for the way back.
+//! No `as_raw`: signal numbers are not portable, and shep-core has no libc
+//! to ask. `SIGSTOP` parses to nothing, because a stopped sheep still reads
+//! `online`. `SIGCONT` is accepted.
 
 /// A signal `shep signal` may name.
 ///
-/// Nine, not every signal on the platform: each is something an operator
-/// plausibly means to say to an application. Nothing here is a signal shep
-/// would deliver on the kernel's behalf (`SIGSEGV`, `SIGBUS`, `SIGPIPE` and
-/// the rest are the kernel's to send).
+/// Nine, not every signal on the platform. Each is something an operator
+/// plausibly means to say to an application. None is a signal shep would
+/// deliver on the kernel's behalf.
 ///
-/// Exhaustive, not `#[non_exhaustive]`: a caller matching on all nine
-/// should get a compile error the day a tenth arrives, not a silent
-/// wildcard arm.
+/// Exhaustive, not `#[non_exhaustive]`: a tenth must break a caller's `match`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperatorSignal {
     /// `SIGHUP`: hang up, the near-universal "re-read your configuration".

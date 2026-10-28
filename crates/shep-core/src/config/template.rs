@@ -1,31 +1,13 @@
 //! The `{{...}}` grammar for Flockfile values.
 //!
-//! Four tokens in env values, args, and the two log-path fields:
-//! `{{instance}}` and `{{name}}` substitute from the sheep's identity,
-//! `{{SHEP_HOME}}` from the directory the shepherd keeps its state in, and
-//! `{{secret:KEY}}` (or `{{secret:namespace/KEY}}`) reads
-//! [`crate::secrets`]. An unknown token between doubled braces is refused
-//! at config time rather than reaching a child process as literal text.
-//!
-//! # Casing
-//!
-//! **An uppercase name is something from the environment; a lowercase one is
-//! something from the config.** `SHEP_HOME` is an environment variable, so
-//! it is `{{SHEP_HOME}}`. `name` and `instance` are fields of the app, so
-//! they stay lowercase. `{{secret:API_KEY}}` is both halves at once: a
-//! lowercase `secret:` names the mechanism, and the uppercase key is an
-//! environment-variable-shaped name.
-//!
-//! The rule is convention rather than enforcement, since [`crate::secrets`]
-//! accepts a key in any case. It exists so a reader can predict what a token
-//! added later will look like.
-//!
-//! Doubled braces avoid collision with single-brace content already in these
-//! values: JSON blobs, regex quantifiers, Go or Helm templates passed
-//! through as args.
+//! Four tokens, in env values, args, and the two log-path fields.
+//! `{{instance}}` and `{{name}}` read the sheep's own identity.
+//! `{{SHEP_HOME}}` reads the directory the shepherd keeps its state in.
+//! `{{secret:KEY}}`, or `{{secret:namespace/KEY}}`, reads [`crate::secrets`].
+//! An unknown token is refused at config time, not left to a child as text.
 //!
 //! `{{{{` and `}}}}` escape to literal `{{` and `}}`. A lone `}}`, as in
-//! `{"a":{"b":1}}`, is ordinary text and passes through unchanged.
+//! `{"a":{"b":1}}`, is ordinary text.
 
 use core::convert::Infallible;
 use core::fmt;
@@ -52,9 +34,6 @@ const SHEP_HOME: &str = "SHEP_HOME";
 ///
 /// [`SecretRef::parse`] is the only grammar for a reference, so a token
 /// [`validate`] accepts is one [`render`] can parse.
-///
-/// `pub(crate)`: [`crate::secrets::references`] shares this rather than
-/// re-deriving what a `secret:` body is.
 pub(crate) fn secret_reference(token: &str) -> Option<SecretRef<'_>> {
     token.strip_prefix(SECRET_PREFIX).and_then(SecretRef::parse)
 }
@@ -104,14 +83,10 @@ impl core::error::Error for TemplateError {}
 /// A value whose grammar is valid but whose `{{secret:...}}` cannot be
 /// resolved.
 ///
-/// Redacted by construction (IR-41): a variant carries the reference as the
-/// operator wrote it, the namespace and the environment, and no field can
-/// hold a value.
-///
-/// `#[non_exhaustive]`: shep-core is published, so a new way for a
-/// reference to fail must not break an out-of-tree `match`. It costs
-/// in-tree callers nothing, since [`Self::is_retriable`] already gives them
-/// the one classification they act on.
+/// Redacted by construction (IR-41): no field can hold a value. A variant
+/// carries the reference as written, the namespace and the environment.
+/// `#[non_exhaustive]` because shep-core is published: a new failure mode
+/// must not break an out-of-tree `match`.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderError {
@@ -206,16 +181,10 @@ pub(crate) enum Completion {
 
 /// Walks `value`, calling `on_segment` for each literal run and each token.
 ///
-/// One walker, one closure, so [`validate`], [`render`], [`render_positional`]
-/// and [`crate::secrets::references`] can never disagree about what a token
-/// is.
-///
-/// Generic over the closure's error so each caller keeps its own, with an
-/// unclosed `{{` reported through [`Completion`] rather than as an error
-/// every caller would have to be able to spell.
-///
-/// `pub(crate)`: [`crate::secrets::references`] walks a config's own values
-/// for `{{secret:...}}` tokens rather than parsing them a second way.
+/// One walker, so [`validate`], [`render`], [`render_positional`] and
+/// [`crate::secrets::references`] cannot disagree about what a token is.
+/// Generic over the closure's error, so each caller keeps its own. An
+/// unclosed `{{` comes back through [`Completion`], not as a shared error.
 ///
 /// # Errors
 ///
@@ -349,18 +318,13 @@ pub(crate) fn validate(value: &str) -> Result<(), TemplateError> {
     }
 }
 
-/// The text a token that both renderers resolve identically expands to, or
-/// `None` for a token neither knows positionally.
+/// The text a token expands to, or `None` for a token neither renderer
+/// knows positionally.
 ///
-/// The positional tokens live here rather than in each renderer's match: one
-/// added to only one of them would make a value render one way under
-/// `render_positional` and another under `render`, which is not a difference
-/// either caller could see coming.
-///
-/// `{{SHEP_HOME}}` with no `shep_home` answers `None`, so it is written back
-/// with its braces the way an undefined token is. `normalize` refuses that
-/// value before either renderer sees it, so the arm is a degradation rather
-/// than a reachable spelling.
+/// The positional tokens live here, not in each renderer's match. No token
+/// expands one way under `render` and another under `render_positional`.
+/// `{{SHEP_HOME}}` with no `shep_home` answers `None` and is written back
+/// with its braces, as an unknown token is.
 fn positional<'a>(
     token: &str,
     name: &'a str,
@@ -378,17 +342,10 @@ fn positional<'a>(
 /// Substitutes `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` only, leaving
 /// every other token, `{{secret:...}}` included, exactly as written.
 ///
-/// For callers that have no store to consult. `normalize` uses it to compare
-/// two instances' log paths, where a secret resolves to the same value for
-/// both instances and so cannot tell them apart anyway.
-///
-/// `shep_home` is the directory `$SHEP_HOME` names, from
-/// [`crate::paths::shep_home`]. `None` leaves `{{SHEP_HOME}}` written back
-/// with its braces; `normalize` refuses that value rather than letting one
-/// reach a child.
-///
-/// Call `validate` first: an unclosed `{{` renders truncated at that
-/// point.
+/// For callers with no store to consult. `shep_home` is the directory
+/// [`crate::paths::shep_home`] names; `None` leaves `{{SHEP_HOME}}` written
+/// back with its braces. Call `validate` first: an unclosed `{{` renders
+/// truncated at that point.
 #[must_use]
 pub fn render_positional(
     value: &str,
@@ -412,23 +369,18 @@ pub fn render_positional(
 }
 
 /// Substitutes every token in `value`, resolving `{{secret:...}}` against
-/// `secrets`.
+/// `secrets`. `shep_home` means what it does in [`render_positional`]: the
+/// two share one resolver.
 ///
-/// `shep_home` is the directory `$SHEP_HOME` names, and carries the same
-/// meaning it does in [`render_positional`]: the two share one resolver, so
-/// a token cannot expand one way here and another way there.
-///
-/// Call `validate` first: this assumes the grammar already passed, so a
-/// token this grammar does not define is written back as it was, and an
-/// unclosed `{{` renders truncated at that point.
+/// Call `validate` first, which this assumes already passed. An unknown
+/// token is written back as it was, and an unclosed `{{` renders truncated.
 ///
 /// # Errors
 ///
 /// - [`RenderError::Unresolved`]: a reference the store has no value for in
-///   this view's environment. Nothing but a person will supply it.
+///   this view's environment.
 /// - [`RenderError::NamespaceUnready`]: a namespace no provider dog has
-///   pushed to for this view's environment yet.
-///   [`RenderError::is_retriable`] is `true` for this one alone.
+///   pushed to yet. [`RenderError::is_retriable`] is `true` for this alone.
 pub fn render(
     value: &str,
     name: &str,
@@ -455,22 +407,17 @@ pub fn render(
 }
 
 /// Substitutes only the `{{secret:...}}` tokens in `value`, resolving them
-/// against `secrets`, and copies every other byte through as written.
+/// against `secrets`. Every other byte is copied through as written.
 ///
-/// Other `{{...}}` tokens, the `{{{{` and `}}}}` escapes, and an unclosed
-/// `{{` all come out exactly as they went in: this is for text another
-/// reader will parse for its own tokens, so unescaping or expanding them
-/// here would change what that reader sees.
+/// Another reader parses this text for its own tokens. Unescaping or
+/// expanding them here would change what it sees.
 ///
 /// # Errors
 ///
-/// - [`RenderError::Malformed`]: a `{{secret:` token outside the
-///   [`SecretRef::parse`] grammar. Refused rather than passed through, so a
-///   typo cannot reach a consumer as literal text.
-/// - [`RenderError::Unresolved`]: a reference the store has no value for in
-///   this view's environment.
-/// - [`RenderError::NamespaceUnready`]: a namespace no provider dog has
-///   pushed to for this view's environment yet.
+/// - [`RenderError::Malformed`]: a `{{secret:` token outside
+///   [`SecretRef::parse`]'s grammar, refused rather than passed through.
+/// - [`RenderError::Unresolved`]: the store has no value for it in this view's environment.
+/// - [`RenderError::NamespaceUnready`]: no provider dog has pushed to that namespace yet.
 pub fn render_secrets(value: &str, secrets: &SecretView) -> Result<String, RenderError> {
     let mut out = String::with_capacity(value.len());
     // How much of `value` the segments so far account for. `walk` hands an

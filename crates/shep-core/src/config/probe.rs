@@ -1,14 +1,12 @@
 //! `ProbeTarget`: parsing a probe's `target` once, at config time.
 //!
-//! `ProbeConfig::target` is free-form text whose grammar depends on
-//! `ProbeConfig::kind`: an `http://` URL, a `host:port` pair, or a shell
-//! command line. Parsing at Flockfile-normalize time means a malformed
-//! target fails `shep start` naming the Flockfile field, rather than
-//! surfacing at the daemon's first poll after the sheep comes online.
+//! `ProbeConfig::target` is free-form text, and its grammar depends on
+//! `ProbeConfig::kind`. HTTP gives a URL, TCP a `host:port` pair, exec a
+//! shell command line. A malformed target then fails `shep start` naming
+//! the Flockfile field.
 //!
-//! No URL crate: the grammar needs no userinfo, query, fragment, IDN, or
-//! percent-decoding, so a hand-rolled split covers it without pulling in
-//! `url` and the `idna`/Unicode tables it drags along.
+//! The grammar needs no userinfo, query, fragment, IDN or percent-decoding,
+//! so a hand-rolled split covers it.
 
 use core::fmt;
 
@@ -22,15 +20,13 @@ use crate::config::app::{ProbeConfig, ProbeKind};
 pub enum ProbeTarget {
     /// `http://host[:port]/path`: port defaults to 80, path to `/`.
     Http {
-        /// The host or IP literal. A bracketed IPv6 literal (`[::1]`) has
-        /// its brackets stripped.
+        /// The host or IP literal, with brackets stripped from an IPv6
+        /// literal.
         ///
-        /// Carried for the prober: connect with
-        /// `(host.as_str(), port)`, not by formatting `"{host}:{port}"`
-        /// into a `SocketAddr` parse: a stripped IPv6 literal has no
-        /// brackets to make that string parseable. For the RFC 7230
-        /// `Host:` header, re-bracket an IPv6 host (`format!("[{host}]")`)
-        /// before writing it.
+        /// Connect with `(host.as_str(), port)`. Formatting
+        /// `"{host}:{port}"` into a `SocketAddr` parse fails: the stripped
+        /// literal has no brackets. For an RFC 7230 `Host:` header,
+        /// re-bracket it (`format!("[{host}]")`).
         host: String,
         /// The port; defaults to 80 when the authority carries none.
         port: u16,
@@ -64,10 +60,8 @@ pub enum ProbeTarget {
 }
 
 impl ProbeTarget {
-    /// Parses `config.target` according to `config.kind`.
-    ///
-    /// HTTP and TCP targets are trimmed before parsing, so surrounding
-    /// whitespace is accepted; an exec command is kept verbatim.
+    /// Parses `config.target` according to `config.kind`. HTTP and TCP
+    /// targets are trimmed first; an exec command is kept verbatim.
     ///
     /// # Errors
     ///
@@ -75,8 +69,8 @@ impl ProbeTarget {
     /// - [`ProbeTargetError::HttpsUnsupported`]: an `https://` URL.
     /// - [`ProbeTargetError::NotHttpUrl`]: no `http://` scheme.
     /// - [`ProbeTargetError::MissingHost`]: the authority has no host.
-    /// - [`ProbeTargetError::InvalidHost`]: the host contains `@`, whitespace, or an embedded `:`.
-    /// - [`ProbeTargetError::InvalidPath`]: the path contains whitespace or a control character.
+    /// - [`ProbeTargetError::InvalidHost`]: the host has `@`, whitespace, or an embedded `:`.
+    /// - [`ProbeTargetError::InvalidPath`]: the path has whitespace or a control character.
     /// - [`ProbeTargetError::MissingPort`]: a TCP target with no `:port`.
     /// - [`ProbeTargetError::BadPort`]: the port is not a `u16`.
     pub fn parse(config: &ProbeConfig) -> Result<Self, ProbeTargetError> {
@@ -225,15 +219,12 @@ fn parse_http(target: &str) -> Result<ProbeTarget, ProbeTargetError> {
 }
 
 /// Splits an authority into `(host, port)`. The port is `None` when the
-/// authority carries none, leaving "default it" (HTTP, to 80) versus
-/// "require it" (TCP, [`ProbeTargetError::MissingPort`]) to the caller.
-/// Shared by [`parse_http`] and [`parse_tcp`] so both schemes agree on what
-/// a bracketed IPv6 host looks like.
+/// authority carries none: HTTP defaults it, TCP requires it
+/// ([`ProbeTargetError::MissingPort`]).
 ///
-/// Bracketed IPv6 (`[::1]:8080`) is matched before the general "split on the
-/// last colon" rule runs: splitting on the last colon alone puts `1]` in
-/// the host, and on the first puts an empty host and `:1]:8080` in the
-/// port.
+/// Bracketed IPv6 (`[::1]:8080`) matches before the "split on the last
+/// colon" rule. A last-colon split leaves `1]` as the host, a first-colon
+/// split an empty host.
 fn split_authority<'a>(
     authority: &'a str,
     target: &str,
@@ -312,12 +303,10 @@ fn strip_prefix_ignore_ascii_case<'a>(s: &'a str, prefix: &str) -> Option<&'a st
 /// Parses a TCP `host:port` target: the whole target is the authority,
 /// since a TCP target carries no scheme or path.
 fn parse_tcp(target: &str) -> Result<ProbeTarget, ProbeTargetError> {
-    // The whole target is trimmed before the split, the way `parse_http`
-    // trims before its scheme match, so `"  host:5432  "` parses as
-    // `"host:5432"` instead of failing on a port `"5432  "`. Only the whole
-    // target is trimmed: whitespace inside the host survives the split and
-    // is still refused by `validate_host`. Errors keep reporting the
-    // original `target`, naming the line the operator has to edit.
+    // The whole target is trimmed before the split, so `"  host:5432  "`
+    // parses. Whitespace inside the host survives the split and is still
+    // refused by `validate_host`. Errors report the original `target`,
+    // naming the line the operator has to edit.
     let trimmed = target.trim();
     let (host, port_str) = split_authority(trimmed, target)?;
     if host.is_empty() {

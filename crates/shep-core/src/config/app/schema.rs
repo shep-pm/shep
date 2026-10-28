@@ -7,13 +7,12 @@ use crate::config::LevelRule;
 use crate::values::{MemSize, UpDuration};
 use serde::{Deserialize, Serialize};
 
-/// Per-app configuration — one sheep's entry in a Flockfile
+/// Per-app configuration: one sheep's entry in a Flockfile.
 ///
-/// Field names are the Flockfile contract (sheep-native; pm2 spellings are
-/// rejected — the importer translates them). Deserializing this type
-/// directly tolerates an unknown field, since it also rides the wire; a
-/// Flockfile typo instead fails loudly at [`Flockfile::parse`](crate::config::Flockfile::parse),
-/// the input that really is hand-written.
+/// Field names are the Flockfile contract, and sheep-native: pm2
+/// spellings are rejected, the importer translates them. Deserializing
+/// this type directly tolerates an unknown field, since it rides the
+/// wire. A Flockfile typo fails at [`Flockfile::parse`](crate::config::Flockfile::parse).
 ///
 /// # Example
 /// ```
@@ -23,21 +22,9 @@ use serde::{Deserialize, Serialize};
 /// assert!(app.autorestart); // spec default
 /// ```
 // wire format: changing field names/defaults is a breaking change
-//
-// `deny_unknown_fields` used to sit beside `default` here. This type rides
-// the wire inside `Request::Start`, `Request::Add`, and
-// `Response::SheepConfig` — the last of which is a newer daemon handing an
-// older client a config it does not fully understand, which is exactly the
-// case an unknown field means "a newer peer", not a typo. The denial moved
-// to `Flockfile::parse`, where the input really is a hand-written file. Do
-// not restore the serde attribute here.
-//
-// The schema-only sibling attribute below is not the same thing and stays:
-// `schemars(deny_unknown_fields)` only shapes the generated
-// `additionalProperties: false`, which an editor uses to flag a Flockfile
-// typo before a parse ever runs. It never reaches `#[derive(Deserialize)]`
-// (schemars mirrors it into a synthesized attribute its own macro expansion
-// reads, not the real one), so the wire still tolerates an unknown field.
+// No `deny_unknown_fields` here: this type rides the wire, where an
+// unknown field means a newer peer. The denial lives in `Flockfile::parse`.
+// `schemars(deny_unknown_fields)` below shapes a schema only, never a parse.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(deny_unknown_fields))]
@@ -97,12 +84,10 @@ pub struct AppConfig {
     /// Environment for the sheep (merged over the daemon's filtered env).
     ///
     /// A value may arrive as a string, a bare boolean, or a bare whole
-    /// number (`SOME_BOOL = true`, `PORT = 8080`), and leaves as a string
-    /// either way, so this field stays `BTreeMap<String, String>` and the
-    /// wire always carries strings. A float is refused: `1.10` would reach
-    /// the process as `1.1`. YAML resolves an unquoted `yes` to `"true"`
-    /// and `0x1F` to `"31"`, so quote a value whose text must survive. An
-    /// `env` key that is not a table is refused, naming the key.
+    /// number. It leaves as a string either way, so the wire always carries
+    /// strings. A float is refused: `1.10` would reach the process as `1.1`.
+    /// Quote a YAML value whose text must survive: `yes` becomes `"true"`
+    /// and `0x1F` becomes `"31"`.
     #[serde(deserialize_with = "deserialize_env")]
     #[cfg_attr(feature = "schema", schemars(
         extend(
@@ -187,19 +172,10 @@ pub struct AppConfig {
     pub restart_delay: Option<UpDuration>,
     /// Initial backoff delay; grows ×1.5 capped at 15s (spec §4)
     ///
-    /// Defaults to 100ms, not unset. An unstable exit (sooner than
-    /// `min_uptime`) with neither this nor `restart_delay` configured would
-    /// otherwise restart with no delay at all, so an app that can never
-    /// start (a missing dependency, a bad config) would burn its whole
-    /// `max_restarts` budget inside a second, logging the same failure
-    /// dozens of times.
-    ///
-    /// All of the above assumes `restart_delay` is unset. A fixed
-    /// `restart_delay` takes precedence over this field on every exit,
-    /// stable or not, so a stable exit restarts immediately only while
-    /// `restart_delay` stays unset, and setting this field to `"0"`
-    /// disables the backoff without producing an immediate restart if a
-    /// nonzero `restart_delay` is also configured.
+    /// Defaults to 100ms, not unset. An unstable exit with no delay burns
+    /// the whole `max_restarts` budget in a second. A fixed `restart_delay`
+    /// takes precedence over this field on every exit. So `"0"` here
+    /// disables the backoff only while `restart_delay` is unset.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "5s",
         "group": "restart",
@@ -250,20 +226,10 @@ pub struct AppConfig {
     /// How long a triggered action gets to answer on the shepherd channel
     /// before its row becomes `ActionOutcome::TimedOut`.
     ///
-    /// Defaults to 3s — comfortably under the 5s an RPC caller gets when it
-    /// sends no deadline of its own (`shep-client`'s `DEFAULT_DEADLINE`,
-    /// mirrored daemon-side as `rpc`'s `DEFAULT_DEADLINE_MS`). The margin
-    /// matters more than the number: push this past that budget and a caller
-    /// using the plain default gives up with `DeadlineExceeded` before the
-    /// daemon's own honest `TimedOut` row ever reaches it. A legitimately
-    /// slow action (a cache flush, say) can still ask for longer, but its
-    /// caller has to ask for a longer deadline in step —
-    /// `Client::request_with_deadline`, the way `shep logs -f` already asks
-    /// for `LOG_PLANE_DEADLINE` rather than the client's default. `normalize`
-    /// refuses a value no caller could ever satisfy, however long a deadline
-    /// it asks for; a value merely above the *default* budget is a caller's
-    /// choice to widen its own deadline, not a config error this crate can
-    /// see.
+    /// Defaults to 3s, under the 5s an RPC caller gets when it sends no
+    /// deadline of its own. Past that budget a caller gives up with
+    /// `DeadlineExceeded` before the daemon's `TimedOut` row reaches it. A
+    /// slow action can ask for longer through `Client::request_with_deadline`.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "shutdown",
         "blurb": "How long a triggered action has to answer before shep gives up"
@@ -322,13 +288,11 @@ pub struct AppConfig {
     pub fold: Option<String>,
     /// Sheep or dogs that must be up before this one starts
     ///
-    /// Names, never `name:slot`: a dependency on one instance of a
-    /// load-balanced app is not a claim about availability. A dependency on
-    /// a multi-instance app waits for every instance.
+    /// Names, never `name:slot`. A dependency on a multi-instance app waits
+    /// for every instance.
     ///
-    /// Read once when a batch is ordered, at a boot, a muster, or a staged
-    /// start, so an edit reaches the next such operation rather than the
-    /// running child.
+    /// Read once when a batch is ordered: at a boot, a muster, or a staged
+    /// start. An edit reaches the next such operation, not the running child.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "[\"db\", \"cache\"]",
         "group": "process",
@@ -410,10 +374,9 @@ pub struct AppConfig {
     /// filters by one.
     ///
     /// Ordered: rules are tried as written and the first match wins.
-    /// Declaring any replaces the reader's built-in guess for this app
-    /// rather than adding to it, so a line matching no rule announces no
-    /// level. Nothing here hides a line: an unclassified line survives
-    /// every level filter.
+    /// Declaring any replaces the reader's built-in guess rather than
+    /// adding to it. Nothing here hides a line: an unclassified line
+    /// survives every level filter.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "[{ pattern = '\\[ERROR\\]', level = 'error' }]",
         "group": "logging",
@@ -428,14 +391,10 @@ pub struct AppConfig {
     pub level_rules: Vec<LevelRule>,
     /// One table per dog, keyed by dog name, for this sheep alone.
     ///
-    /// shep stores this and hands it to the dog it names. It is never read
-    /// or validated here. A dog name need not be one shep already knows:
-    /// configuring a dog before installing it is the order an operator
-    /// wants. Never read by the daemon at a spawn or a decision, so a write
-    /// takes effect the moment it lands.
-    ///
-    /// A `dogs` key that is not a table is refused, naming the key. Each
-    /// table inside it keeps its own rules.
+    /// shep stores this and hands it to the dog it names, and never reads or
+    /// validates it. A dog name need not be one shep already knows: an
+    /// operator configures a dog before installing it. A `dogs` key that is
+    /// not a table is refused, naming the key.
     #[serde(deserialize_with = "deserialize_dogs")]
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "jobs": { "concurrency": 2 } },
@@ -459,29 +418,11 @@ pub struct AppConfig {
     pub channel: bool,
     /// Open a pipe on this sheep's stdin, so `shep whisper` can write to it.
     ///
-    /// Defaults to `false`, and the default is the decision rather than a
-    /// convenience. Without it a sheep gets `/dev/null` on fd 0, which is what
-    /// every sheep has had until now, and three things argue for keeping it
-    /// that way unless an app asks otherwise:
-    ///
-    /// - Flipping it for the whole flock is a behaviour change to processes
-    ///   nobody asked to change.
-    /// - **Programs detect stdin.** A closed or null fd 0 is how a great many
-    ///   programs decide they are non-interactive — no prompt, no pager, no
-    ///   readline, no colour. Handing them a pipe silently moves them to the
-    ///   other branch.
-    /// - It costs a descriptor and a pump task per sheep for the whole life of
-    ///   the process, against spec §14.11's single-digit-MB idle-RSS goal — the
-    ///   same budget [`Self::channel`]'s own default is protecting.
-    ///
-    /// Unlike `channel`, nothing implies this: `wait_ready` and
-    /// `shutdown_with_message` both need fd 3 and so turn `channel` on for you,
-    /// while nothing in shep needs a sheep's stdin except an operator typing
-    /// `shep whisper`. A sheep without it answers a `no_stdin` row and names
-    /// this field.
-    ///
-    /// The pipe's write end lives as long as the sheep does, so the app sees
-    /// EOF on stdin when the process is on its way out, never before.
+    /// Defaults to `false`. A null fd 0 is how many programs decide they are
+    /// non-interactive. A pipe moves them to the other branch without being
+    /// asked, and costs a descriptor and a pump task per sheep. Nothing
+    /// implies this field: `wait_ready` and `shutdown_with_message` imply
+    /// `channel`, not this. The app sees EOF only when the sheep is leaving.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "inputs",
         "blurb": "Keeps stdin open so shep whisper can write to the process"
@@ -493,41 +434,13 @@ pub struct AppConfig {
         "blurb": "Wait for the app to say it is ready on the channel"
     })))]
     pub wait_ready: bool,
-    /// Asserts that the app itself sets `SO_REUSEPORT` before it binds —
-    /// shep binds nothing, so it cannot set the option on the app's behalf.
-    /// The child process owns the mechanism (Node ≥22's `reusePort`, Go's
-    /// `net.ListenConfig.Control`, nginx's `reuseport`); shep's contribution
-    /// is permission for the old and new instance to overlap during reload,
-    /// not the socket option itself.
+    /// Whether the app itself sets `SO_REUSEPORT` before it binds. shep binds
+    /// nothing, so it cannot set the option for the app.
     ///
-    /// That permission is what the field buys, and it is read by exactly one
-    /// thing: which reload the daemon runs for the app.
-    ///
-    /// - **Unset**, and the app has a `readiness_probe`: reload is SERIAL.
-    ///   The instance being replaced is drained first and its replacement is
-    ///   spawned into the empty slot, so the app is down for the length of
-    ///   the drain. That is the cost of an honest answer — while both
-    ///   instances are up, a probe against an address cannot say which of
-    ///   them answered, and shep would take the outgoing instance's reply as
-    ///   proof the incoming one is ready.
-    /// - **Set**: reload OVERLAPS. The replacement is spawned alongside the
-    ///   instance it replaces and takes over without a gap — if the app really does set
-    ///   `SO_REUSEPORT`. If it does not, the replacement takes `EADDRINUSE`
-    ///   and the reload fails, which is the failure this field exists to keep
-    ///   opt-in.
-    ///
-    /// An app with no `readiness_probe` overlaps either way: with nothing
-    /// probing an address, there is no answer for the wrong instance to give.
-    /// So does one using `wait_ready`, because the shepherd channel a
-    /// replacement reports on is its own — the instance being replaced has no
-    /// way to answer it. Both of those need `SO_REUSEPORT` as much as a
-    /// `reuse_port` app does if they bind an address, since they are overlapped
-    /// too; what this field changes is which apps get overlapped, not what an
-    /// overlap costs.
-    ///
-    /// Setting this on an app that does NOT set the socket option is the one
-    /// way to get it wrong, and shep cannot check it: the option is set
-    /// inside the child, after the fork, on a socket shep never sees.
+    /// Read by one thing: which reload the daemon runs. Set, and the
+    /// replacement is spawned alongside the instance it replaces. An app that
+    /// claims the option but does not set it takes `EADDRINUSE`. Unset with a
+    /// `readiness_probe`, reload is serial: a probe cannot say which instance answered.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "process",
         "blurb": "The app sets SO_REUSEPORT itself, so reload may overlap the two instances"
@@ -682,13 +595,11 @@ mod tests {
 
     /// A protocol-8 peer still serializes `increment_var`, which this build
     /// no longer has. It must deserialize and be dropped rather than error,
-    /// since `MIN_SUPPORTED` is 8 and an error here would refuse every peer
-    /// built before the field went.
+    /// since `MIN_SUPPORTED` is 8.
     ///
-    /// Fails if `deny_unknown_fields` comes back to this struct. It was
-    /// moved to `Flockfile::parse` on purpose, so a newer daemon can hand an
-    /// older client a config it does not fully understand. Why dropping the
-    /// field is safe rather than merely tolerated is in `docs/decisions.md`.
+    /// Fails if `deny_unknown_fields` comes back to this struct. The denial
+    /// lives in `Flockfile::parse` so a newer daemon can hand an older client
+    /// a config it does not fully understand.
     #[test]
     fn a_protocol_8_payload_carrying_increment_var_still_deserializes() {
         let src = r#"{ "name":"web","script":"./srv","increment_var":null }"#;

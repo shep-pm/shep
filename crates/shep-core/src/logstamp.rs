@@ -1,15 +1,13 @@
 //! The timestamp every line in a sheep's or a dog's log file carries, and
 //! how a reader takes it back off.
 //!
-//! Shared between the daemon, which writes the stamp, and every reader:
-//! `shep bleats --no-follow`, `shep lookout`'s tail pane, and the `whistle`
-//! tool. The stamp lives on the line rather than the file's `mtime`, which
-//! answers only for the whole file and stops answering once anything
-//! touches it, log rotation included.
+//! Shared between the daemon, which writes the stamp, and every reader.
+//! Readers are `shep bleats --no-follow`, `shep lookout`'s tail pane, and
+//! `whistle`. The stamp lives on the line, not in the file's `mtime`.
+//! `mtime` answers only for the whole file, and stops once anything touches it.
 //!
-//! [`strip`] never changes what a sheep is reported to have said:
-//! `Bus::publish_log` carries its line verbatim, so a stripped line matches
-//! what `--follow` and `log.*` subscribers already saw.
+//! [`strip`] never changes what a sheep is reported to have said.
+//! `Bus::publish_log` carries its line verbatim, so a stripped line matches.
 
 use core::fmt::{self, Write as _};
 
@@ -27,7 +25,7 @@ pub const LOG_TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3f%:z";
 ///
 /// Fixed because every field in [`LOG_TIMESTAMP_FORMAT`] is zero-padded, and
 /// `%:z` always renders `+HH:MM` (chrono truncates rarer sub-minute
-/// offsets). 10 date + 1 `T` + 8 time + 4 `.mmm` + 6 offset + 1 space.
+/// offsets). 10 date + 1 `T` + 8 time. 4 `.mmm` + 6 offset + 1 space.
 pub const LOG_STAMP_BYTES: usize = 30;
 
 /// [`LOG_TIMESTAMP_FORMAT`] up to the milliseconds.
@@ -37,15 +35,11 @@ const STAMP_HEAD: &str = "%Y-%m-%dT%H:%M:%S";
 const STAMP_TAIL: &str = "%:z";
 
 /// Appends the current local time in [`LOG_TIMESTAMP_FORMAT`], plus the
-/// separating space, to `buf`.
-///
-/// Formats in full on every call. A writer stamping more than one line
-/// holds a [`Stamper`] instead.
+/// separating space, to `buf`. Formats in full on every call: a writer
+/// stamping more than one line holds a [`Stamper`] instead.
 ///
 /// # Panics
-///
-/// Debug builds only, when [`LOG_TIMESTAMP_FORMAT`]'s width diverges from
-/// [`LOG_STAMP_BYTES`].
+/// Debug builds only, if the width diverges from [`LOG_STAMP_BYTES`].
 #[track_caller]
 pub fn stamp_into(buf: &mut String) {
     Stamper::default().stamp_into(buf);
@@ -113,15 +107,10 @@ impl Stamper {
 /// `line` with its stamp removed, or `line` unchanged if it does not carry
 /// one.
 ///
-/// Recognises the stamp by its shape: the fixed layout [`stamp_into`] writes,
-/// byte for byte, each field inside the range chrono renders it in (month 01
-/// to 12, day 01 to 31, hour 00 to 23, minute 00 to 59, second 00 to 60,
-/// offset hour 00 to 23, offset minute 00 to 59). A line predating this
-/// format, or one appended by other tooling, keeps its first 30 characters.
-///
-/// The ranges are the layout's, not the calendar's: `2026-04-31` is a stamp,
-/// `2026-99-99T99:99:99.999+99:99` is not. No parse: the check is one pass
-/// over 30 bytes.
+/// Recognises the stamp by shape, not by parsing. It matches the fixed
+/// layout [`stamp_into`] writes, field by field. The ranges are the
+/// layout's, not the calendar's: `2026-04-31` is a stamp, and
+/// `2026-99-99T99:99:99.999+99:99` is not.
 #[must_use]
 pub fn strip(line: &str) -> &str {
     let Some((stamp, rest)) = line.split_at_checked(LOG_STAMP_BYTES) else {

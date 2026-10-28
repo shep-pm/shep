@@ -6,20 +6,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 /// A short marker a dog attaches to a sheep for `shep flock` to paint.
 ///
-/// shep stores and prints it, never parses it: `▲ main@a1b2c3` is a
-/// deploy tool's sentence.
-///
-/// The grammar: non-empty once whitespace is discounted, at most
-/// [`Self::MAX_CHARS`] characters, no [`char::is_control`] character,
-/// `\u{1b}` included. Refused, never repaired, and validated here rather
-/// than at the renderer: `shep`'s own `output::width::sanitize_cell` keeps
-/// a well-formed CSI sequence, since shep's colouring is made of them.
-///
-/// [`Self::MAX_CHARS`] counts `char`s, not bytes: a byte cap would refuse a
-/// legitimate CJK smit at roughly a third of its apparent length.
-///
-/// `Debug` is derived: a smit carries no secret, so there is nothing to
-/// redact.
+/// shep stores and prints it, never parses it. Non-empty once whitespace
+/// is discounted, at most [`Self::MAX_CHARS`] `char`s, no
+/// [`char::is_control`] character. Refused, never repaired. Validated
+/// here, not at the renderer: shep's colouring keeps CSI sequences.
 ///
 /// # Example
 /// ```

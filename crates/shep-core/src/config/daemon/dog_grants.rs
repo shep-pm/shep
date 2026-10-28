@@ -4,15 +4,10 @@ use crate::permissions::Grants;
 
 /// One dog's entry under `[daemon.dog_grants]`: what the operator granted it.
 ///
-/// A dog with no entry is undeclared and keeps full access. An entry with an
-/// empty `granted` is a dog granted nothing. Here rather than in `dogs.toml`
-/// for the reason [`super::DaemonSection::adopted_dogs`] gives: that file's
-/// `[<name>]` table is the dog's own, and a dog must never be able to
-/// grant itself anything.
-///
-/// Only `granted` is judged by the shepherd. `waiting`, `revoked` and
-/// `reviewed` are the CLI's record of the upgrade path, read here so the
-/// strict table accepts them.
+/// A dog with no entry is undeclared and keeps full access. An entry with
+/// an empty `granted` is a dog granted nothing. Here rather than in
+/// `dogs.toml`, whose `[<name>]` table is the dog's own: a dog must never
+/// grant itself anything. Only `granted` is judged by the shepherd.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]

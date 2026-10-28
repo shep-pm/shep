@@ -31,9 +31,8 @@ impl fmt::Debug for SecretView {
 /// The outcome of resolving one [`SecretRef`].
 ///
 /// [`Self::MissingKey`] and [`Self::MissingNamespace`] are kept apart
-/// because they need different remedies: a pair no dog has pushed is a dog
-/// that has not reported yet, which a retry fixes, while a missing key is a
-/// person's to set.
+/// because they need different remedies. A pair no dog has pushed is one
+/// a retry fixes. A missing key is a person's to set.
 ///
 /// Debug does not leak a value: [`Self::Found`] prints as `Found(..)`.
 pub enum Resolution<'a> {
@@ -90,16 +89,10 @@ impl SecretView {
     /// The value `reference` resolves to in this view's environment.
     ///
     /// Exact environment, then [`ALL_ENVIRONMENTS`], then nothing. There is
-    /// deliberately no fallback to another named environment: filling an
-    /// empty `staging` slot from `production` would hand a live credential
-    /// to staging the first time somebody forgot to set one.
+    /// no fallback to another named environment.
     ///
     /// A miss on a namespaced reference is [`Resolution::MissingNamespace`]
-    /// unless a provider has pushed this view's own environment for that
-    /// namespace: a push carries one `(namespace, environment)` pair, so a
-    /// dog part way through `production` then `staging` has said nothing
-    /// about staging yet, and calling that a missing key would `Errored` a
-    /// staging sheep permanently for a value arriving a second later.
+    /// unless a provider has pushed this view's environment for that namespace.
     #[must_use]
     pub fn resolve(&self, reference: &SecretRef<'_>) -> Resolution<'_> {
         let table = match reference.namespace {
@@ -128,11 +121,8 @@ impl SecretView {
     /// environment or for [`ALL_ENVIRONMENTS`].
     ///
     /// A push to [`ALL_ENVIRONMENTS`] populates the namespace for every
-    /// environment, [`resolve`](Self::resolve)'s value lookup included, so
-    /// the pair check has to agree: a namespace pushed only under `all`
-    /// counts as pushed here too, or a key genuinely absent from that push
-    /// would read as the transient `MissingNamespace` instead of the
-    /// permanent `MissingKey` it actually is.
+    /// environment, so this agrees with [`resolve`](Self::resolve)'s value
+    /// lookup. A namespace pushed only under `all` counts as pushed here.
     fn is_pushed(&self, namespace: &str) -> bool {
         self.providers
             .pushed

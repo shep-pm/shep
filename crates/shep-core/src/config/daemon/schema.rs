@@ -24,11 +24,9 @@ pub const APPLY_NEXT_COMMAND: &str = "next-command";
 /// Returns the JSON Schema of `shep.toml`.
 ///
 /// Generated from the type [`DaemonConfig::load`](super::DaemonConfig::load)
-/// deserializes into, so the schema and the loader cannot drift. Describes
-/// the deserializer, not [`DaemonConfig::load`](super::DaemonConfig::load)'s
-/// validation: a `max_cron_sleep` under the floor is a string here, and the
-/// loader still refuses it.
-///
+/// deserializes into, so the schema and the loader cannot drift. It
+/// describes the deserializer, not the validation: a `max_cron_sleep`
+/// under the floor is a string here, and the loader still refuses it.
 /// `[dog.<name>]` is absent: each dog's own `--schema` describes its table.
 #[must_use]
 pub fn daemon_config_schema_json() -> Schema {

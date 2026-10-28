@@ -157,13 +157,11 @@ impl fmt::Display for ParseMemSizeError {
 impl core::error::Error for ParseMemSizeError {}
 
 /// String-shaped, matching this type's `Serialize`/`Deserialize`, which go
-/// through `Display`/`FromStr` rather than the wrapped `u64`. A derive here
-/// would emit `{"type":"integer"}` and describe a wire form that does not
-/// exist.
+/// through `Display`/`FromStr` rather than the wrapped `u64`. A derive
+/// here would emit `{"type":"integer"}` for a wire form that does not exist.
 ///
-/// The pattern is `FromStr`'s own grammar, lifted from its doc comment
-/// above. If you change one, change the other: the paired test below is
-/// what catches it.
+/// The pattern is `FromStr`'s own grammar. The paired test below catches
+/// the two drifting apart.
 #[cfg(feature = "schema")]
 impl schemars::JsonSchema for MemSize {
     fn schema_name() -> std::borrow::Cow<'static, str> {
@@ -182,12 +180,9 @@ impl schemars::JsonSchema for MemSize {
 /// A duration from the Flockfile grammar `^\d+(ms|h|m|s)?$`
 ///
 /// Plain digits are milliseconds; `ms`/`s`/`m`/`h` are
-/// milliseconds/seconds/minutes/hours. Used for `min_uptime`,
-/// `kill_timeout`, and the other lifecycle timers.
-///
-/// `ms` is checked before the single-letter suffixes, so `m` still means
-/// minutes and only a trailing `ms` means milliseconds: `5m` and `5ms`
-/// differ by a factor of sixty thousand.
+/// milliseconds/seconds/minutes/hours. `ms` is checked before the
+/// single-letter suffixes. So `5m` and `5ms` differ by a factor of sixty
+/// thousand.
 ///
 /// # Example
 /// ```
@@ -361,16 +356,10 @@ impl schemars::JsonSchema for UpDuration {
 /// Tree CPU over a window, as a percentage of one core.
 ///
 /// `cpu_ms` is the CPU-milliseconds the tree spent during `window`. A value
-/// over 100 is a tree using more than one core, not a bug.
+/// over 100 is a tree using more than one core, not a bug. `None` when
+/// `window` is zero: dividing by it gives a nonsense figure.
 ///
-/// `None` when `window` is zero: dividing by it produces a nonsense figure
-/// rather than a large one.
-///
-/// Shared by the shepherd, which measures against its own periodic
-/// baseline, and by `shep lookout`, which differences two readings of
-/// [`ProcessInfo::cpu_ms`](crate::protocol::ProcessInfo::cpu_ms) over its
-/// own poll. Both put a percentage on the same screen, so the conversion
-/// lives in one place.
+/// Shared by the shepherd and `shep lookout`, so the conversion lives here.
 #[must_use]
 pub fn cpu_percent(cpu_ms: u64, window: core::time::Duration) -> Option<f32> {
     if window.is_zero() {

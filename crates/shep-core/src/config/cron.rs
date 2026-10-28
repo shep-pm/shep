@@ -3,12 +3,11 @@
 //! Five-field standard cron only. croner still accepts `L`, `W`, `#` and
 //! `?` natively; rejecting them is this module's job, done by a
 //! token-aware pre-parse scan, since a character scan alone would reject
-//! `JUL` and `WED` (both contain a reserved letter).
+//! `JUL` and `WED`.
 //!
 //! The seven vixie `@nickname` shorthands are expanded to five fields
-//! before croner ever sees them: its own nickname table has no
-//! `@midnight` arm, so delegating would accept `@daily` and reject
-//! `@midnight`.
+//! before croner sees them: its own nickname table has no `@midnight`
+//! arm, so delegating would accept `@daily` and reject `@midnight`.
 
 use core::fmt;
 
@@ -186,16 +185,12 @@ impl fmt::Display for CronScheduleError {
 impl core::error::Error for CronScheduleError {}
 
 /// Builds the five-field-only parser. Not a `const`/`static`:
-/// `CronParserBuilder::build` is not a `const fn`, and the builder itself is
-/// cheap enough (no allocation) that building fresh per call costs nothing
-/// measurable at Flockfile-parse rates.
+/// `CronParserBuilder::build` is not a `const fn`.
 ///
-/// `Seconds::Disallowed` is the one load-bearing call here: croner's own
-/// default is `Seconds::Optional`, which accepts a six-field pattern and
-/// would ship the wide dialect by accident. No `.dom_and_dow(true)` call:
-/// croner's default is OR semantics between day-of-month and day-of-week,
-/// which is the dialect map.md promises; `true` would switch to AND and
-/// silently change what an existing pattern means.
+/// `Seconds::Disallowed` is the load-bearing call: croner's default is
+/// `Seconds::Optional`, which accepts a six-field pattern. No
+/// `.dom_and_dow(true)` call: croner's default OR semantics is the dialect
+/// map.md promises, and `true` would change what an existing pattern means.
 fn cron_parser() -> CronParser {
     CronParser::builder().seconds(Seconds::Disallowed).build()
 }
@@ -210,13 +205,7 @@ pub(super) fn parse_timezone_name(name: &str) -> Option<Tz> {
 
 /// True when `trimmed` is exactly one whitespace-free token starting with
 /// `@`, the only shape nickname expansion applies to. A multi-token
-/// pattern containing `@` is left alone; croner rejects it on its own
-/// terms.
-///
-/// The `split_whitespace().count() == 1` clause has no mutation test: a
-/// multi-token `@`-leading pattern ends in the same error either way, just
-/// with a different message, so weakening the clause changes which
-/// message fires, not whether the pattern is accepted.
+/// pattern containing `@` is left alone; croner rejects it on its own terms.
 fn is_single_at_token(trimmed: &str) -> bool {
     trimmed.starts_with('@') && trimmed.split_whitespace().count() == 1
 }

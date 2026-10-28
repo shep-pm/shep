@@ -408,11 +408,10 @@ fn reply_wire_snapshots() {
                 vec!["env".to_string()],
             )))),
         },
-        // The three acknowledgements. None echoes what was written:
-        // `SheepEnvSet` names the key and not its value, for the reason
-        // the row above pins, `SheepFieldSet` does the same and adds
-        // the one bit the caller cannot derive, and `DogConfigSet`
-        // names the dog and not the section.
+        // The three acknowledgements. None echoes what was written.
+        // `SheepEnvSet` names the key, never its value. `SheepFieldSet`
+        // adds a bit the caller cannot derive. `DogConfigSet` names the
+        // dog, never the section.
         Reply {
             id: 35,
             result: Ok(Response::SheepEnvSet {
@@ -450,12 +449,9 @@ fn reply_wire_snapshots() {
             id: 38,
             result: Ok(Response::SecretsPut { accepted: 2 }),
         },
-        // Key names only, on all three lists, and none empty here on
-        // purpose: an empty `Vec` serializes the same whether it holds
-        // strings or something else, so a reader that guessed the
-        // element type wrong would still pass against an empty-list
-        // fixture. `collisions` also proves a forced write can name a
-        // key in both `set` and `collisions` at once.
+        // Key names only, on all three lists. None is empty here on
+        // purpose: an empty `Vec` serializes the same whatever it holds.
+        // `collisions` shows one key in `set` and `collisions` at once.
         Reply {
             id: 39,
             result: Ok(Response::SheepEnvBatch {
@@ -465,11 +461,9 @@ fn reply_wire_snapshots() {
                 collisions: vec!["API_KEY".to_string()],
             }),
         },
-        // Both halves of the same reply: a machine that has been read
-        // and one that has not been read for long enough yet. The rates
-        // are what separate them, and they are `null` rather than `0`
-        // in the second, which is the whole distinction the renderer
-        // spells as `-`.
+        // Both halves of one reply: a read machine, and one not read
+        // long enough. The rates separate them. They are `null` rather
+        // than `0` in the second, which the renderer spells as `-`.
         Reply {
             id: 40,
             result: Ok(Response::HostUsage(Some(HostUsage {
@@ -576,19 +570,10 @@ fn reply_wire_snapshots() {
     insta::assert_json_snapshot!("reply_wire_v12", replies);
 }
 
-/// The additive claim on `SheepFieldSet::warning` has three halves and
-/// the reply fixture pins only the first. `None` staying off the wire is
-/// what makes the field additive at all; `Some` surviving a round trip is
-/// what makes it useful; and a payload with no `warning` key reading back
-/// as `None` is what lets a daemon built before the field answer a client
-/// built after it.
-///
-/// The third pins the behaviour, not the attribute. Measured by removing
-/// `#[serde(default)]` and re-running: it still passes, because serde
-/// already reads a missing `Option` field as `None` without being asked.
-/// So the attribute is belt-and-braces and this test would not notice its
-/// removal. What it does notice is the field being renamed, retyped, or
-/// made required, which is what would actually break an older peer.
+// `SheepFieldSet::warning` is additive in three parts. `None` stays off
+// the wire. `Some` survives a round trip. A payload with no `warning`
+// key reads back as `None`. That is what lets an older daemon answer a
+// newer client.
 #[test]
 fn the_set_field_warning_is_additive_in_both_directions() {
     let quiet = Response::SheepFieldSet {

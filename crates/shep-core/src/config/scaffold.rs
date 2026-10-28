@@ -1,15 +1,13 @@
 //! Building the commented Flockfile `shep init` writes, in every format shep can read.
 //!
-//! Builds the document uncommented, tagging each line as prose or code,
-//! then comments it in one pass, so adding a format is a table entry
-//! (`Syntax::of`) rather than a rewrite.
-//!
-//! Two comment styles, tested apart: prose is marker then a space; a
+//! Builds the document uncommented with each line tagged prose or code,
+//! then comments it. Adding a format is then a table entry (`Syntax::of`).
+//! Two comment styles, tested apart: prose is marker then a space. A
 //! commented field is marker then the value, no space. Uncommenting strips
 //! the marker from exactly the lines whose next character is not a space.
 //!
 //! JSON has no comment syntax, so [`Scaffold::build`] emits a live minimal
-//! document there and refuses [`Depth::All`] rather than pin every default.
+//! document there and refuses [`Depth::All`].
 
 use core::fmt;
 
@@ -17,14 +15,10 @@ use crate::config::FlockFormat;
 
 /// How much of the Flockfile grammar a scaffold shows.
 ///
-/// Verbosity belongs to the moment rather than to the template: a newcomer
-/// and a veteran want the same file at different depths.
-///
-/// Only [`Depth::All`] is machine-checkable. The drift test compares it
-/// against the generated schema, which works precisely because that level is
-/// meant to be exhaustive. [`Depth::Curated`] is editorial judgement about
-/// what matters on day one, and no test can tell anyone it has gone stale,
-/// so the friendly level is the expensive one to maintain.
+/// Only [`Depth::All`] is machine-checkable: the drift test compares it
+/// against the generated schema. That works because the level is meant to
+/// be exhaustive. [`Depth::Curated`] is editorial judgement about what
+/// matters on day one. No test can call it stale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Depth {
     /// The fields somebody needs on their first day. A file to read.
@@ -66,14 +60,9 @@ impl core::error::Error for ScaffoldError {}
 
 /// The fields [`Depth::Curated`] shows, in the order it shows them.
 ///
-/// An explicit ordered list rather than a flag scattered across `AppConfig`'s
-/// attributes, so membership and order stay one editorial decision, readable
-/// at a glance. The order is a narrative: what is it, what runs, keep it
-/// alive, where it runs.
-///
-/// Generation cannot supply this. schemars emits properties into a sorted
-/// map, so a derived curated file would read `autorestart, cwd, name,
-/// script`: alphabetical, and meaningless to somebody opening it first.
+/// The order is a narrative: what is it, what runs, keep it alive, where
+/// it runs. schemars emits properties into a sorted map, so no derived
+/// list could carry that order.
 pub const CURATED: &[&str] = &["name", "script", "autorestart", "cwd"];
 
 /// Group order for [`Depth::All`], coarsest concern first: what it is,
@@ -259,13 +248,9 @@ fn curated_names() -> Vec<String> {
 /// Every field name: the curated four first, then the rest by
 /// [`GROUP_ORDER`] and alphabetically within each group.
 ///
-/// The curated names lead because within a group the order is alphabetical,
-/// which buried `name` and `script` at the ninth and twelfth lines of the
-/// full scaffold. Those are the two fields `normalize` actually requires, so
-/// a reader meeting the file for the first time should not have to hunt for
-/// them. [`CURATED`] already records what matters first and in what order,
-/// and reusing it here means one editorial decision rather than two that can
-/// disagree.
+/// The curated names lead because alphabetical order buries `name` and
+/// `script`, the two fields `normalize` requires. [`CURATED`] already
+/// records what matters first.
 fn grouped_order() -> Vec<String> {
     let schema = crate::config::flockfile_schema_json();
     let props = properties(&schema);
@@ -395,14 +380,11 @@ fn render(syntax: &Syntax, lines: &[Line]) -> String {
 
 /// What a field's line should explain.
 ///
-/// Takes `init.blurb` rather than the `///` doc: the doc is written for
-/// somebody reading the source, and cites internal type names and spec
-/// section numbers a Flockfile reader would not recognize.
+/// Takes `init.blurb`, not the `///` doc, which cites type names a
+/// Flockfile reader would not recognize.
 ///
 /// # Panics
-/// If `field` has no `init.blurb`. Falling back to the `///` doc would put
-/// source-facing prose in a file that otherwise reads as documentation;
-/// `every_field_carries_a_group_and_a_blurb` should make this unreachable.
+/// If `field` has no `init.blurb`.
 #[track_caller]
 fn blurb(name: &str, field: &serde_json::Value) -> String {
     field["init"]
@@ -415,12 +397,10 @@ fn blurb(name: &str, field: &serde_json::Value) -> String {
 
 /// A field's placeholder value, written the way `syntax` spells literals.
 ///
-/// A field's schema `default` is only usable when it is both present and
-/// non-empty: `Option<T>` fields serialize their `None` as `null`, but a
-/// required `String` field still gets a `default` from `#[serde(default)]`
-/// at the struct level, holding `String::new()`. That empty string is not a
-/// value anyone would want uncommented, so it is treated the same as no
-/// default at all, and both fall through to `init.example`.
+/// A schema `default` is usable only when present and non-empty. A
+/// required `String` field still gets one from `#[serde(default)]` at the
+/// struct level, holding `String::new()`. An empty string is no more a
+/// placeholder than no default at all. Both fall through to `init.example`.
 fn literal(syntax: &Syntax, field: &serde_json::Value) -> String {
     let has_no_real_default = field["default"].is_null() || field["default"].as_str() == Some("");
     let value = if has_no_real_default {
@@ -586,12 +566,9 @@ mod tests {
 
     #[test]
     fn the_all_depth_toml_scaffold_is_ninety_two_lines() {
-        // Nothing else pins this number, so a field added to AppConfig
-        // without a matching line in the scaffold's own layout drifts
-        // silently; a docs page said 84 once and had no way to notice it
-        // had become something else. This is the red test that page needed,
-        // and it went red exactly as intended when `depends_on` and
-        // `environment` each added a line.
+        // Nothing else pins this number. A field added to AppConfig
+        // without a matching scaffold line drifts silently, and no
+        // other test here would notice. This count is what catches it.
         let text = Scaffold::new(FlockFormat::Toml, Depth::All)
             .build()
             .expect("builds");

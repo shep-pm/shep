@@ -105,18 +105,13 @@ pub enum LineOutcome {
     ///
     /// One outcome for two causes: both answer "there is no pipe here".
     NoStdin,
-    /// The shepherd had a pipe and did not confirm a write to it; carries
-    /// why.
+    /// The shepherd had a pipe and did not confirm a write to it; carries why.
     ///
-    /// Three shapes reach it: the write failed (the far end is gone), the
-    /// line found the sheep's queue already full, or the write did not
-    /// finish inside the shepherd's own bound. The reason names which.
+    /// Three shapes reach it. The write failed. The line found the sheep's
+    /// queue already full. The write did not finish inside the shepherd's
+    /// own bound. The reason names which.
     ///
-    /// A timed-out write is not a promise the line was never written: the
-    /// bytes may be part-written into a pipe the app is not draining, and
-    /// land in full the moment it drains. A line still queued behind that one
-    /// is dropped once its caller gives up, so treat a retry as a second
-    /// command.
+    /// A timed-out write does not promise the line was never written.
     NotWritten {
         /// What went wrong, in plain English.
         reason: String,

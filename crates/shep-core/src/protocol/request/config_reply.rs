@@ -41,17 +41,13 @@ impl SheepDrift {
     }
 }
 
-/// What one app's [`Request::ApplyConfig`] did: the answer a load owes the
-/// operator who ran it
+/// What one app's [`Request::ApplyConfig`] did: the answer a load owes the operator who ran it
 ///
 /// One of these per app the request named, found or not and changed or not.
 ///
-/// [`Self::applied`] and [`Self::pending`] carry field names only, never
-/// their values, as [`SheepDrift`] does; the merged config never reaches a
-/// client. [`Self::refused`] is prose and is scoped out of that rule: it
-/// quotes values out of the file the caller just sent, never out of the
-/// flock's stored config. `Debug` is derived on that basis: nothing here
-/// needs redacting.
+/// [`Self::applied`] and [`Self::pending`] carry field names only, as
+/// [`SheepDrift`] does. [`Self::refused`] quotes values from the file the
+/// caller sent, not the flock's stored config. `Debug` is derived.
 // wire format: changing field names is a breaking change
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,18 +93,11 @@ impl SheepApplied {
 
 /// One app a multi-sheep reload or restart could not accept, and why
 ///
-/// A staged walk asks the supervisor per app, so an app already reloading is
-/// refused on its own while the rest of the fold goes ahead, and so is one
-/// that left the flock after the walk was planned. One of these per refused
-/// app rides back in [`Response::Reloading`] or [`Response::Restarted`],
-/// which is what lets the client name the app and exit non-zero instead of
-/// printing a table with a row quietly missing from it.
-///
-/// [`Self::reason`] is the daemon's own sentence rather than a code, the
-/// rule [`SheepApplied::refused`] takes and for its reason: the class of
-/// refusal is not on the wire, and the message is what tells two of them
-/// apart. `Debug` is derived; a name and a refusal sentence carry no env,
-/// no path and no argument vector.
+/// A staged walk asks the supervisor per app: one refused app does not
+/// stop the fold. One of these per refused app rides back in
+/// [`Response::Reloading`] or [`Response::Restarted`], so the client can
+/// name it and exit non-zero. [`Self::reason`] is the daemon's sentence,
+/// not a code.
 // wire format: changing field names is a breaking change
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,17 +124,13 @@ impl SheepRefusal {
 /// values, plus which fields an operator has overridden and which are
 /// waiting on a respawn.
 ///
-/// The answer to [`Request::SheepConfig`], and the one reply in this module
-/// that carries a whole [`AppConfig`]. [`SheepApplied`] deliberately carries
-/// field names alone, and the difference is what each is for: that one is
-/// printed at an operator who already has the file, this one feeds a pane
-/// that is about to edit fields it has to be able to show first.
+/// The answer to [`Request::SheepConfig`], and the one reply here
+/// carrying a whole [`AppConfig`]. A pane that edits fields has to show
+/// them first.
 // wire format: changing field names is a breaking change
 //
-// `#[non_exhaustive]`: shep-core is a published library and a sixth field
-// would otherwise break an out-of-tree consumer's construction of this with
-// no version bump to say so (IR-20). [`SheepConfigView::new`] is how the
-// daemon builds one, and it is what enforces the emptied `env`.
+// `#[non_exhaustive]`: a sixth field would otherwise break an out-of-tree
+// consumer with no version bump (IR-20). [`SheepConfigView::new`] enforces the emptied `env`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SheepConfigView {

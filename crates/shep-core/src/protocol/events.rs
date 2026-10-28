@@ -10,9 +10,8 @@ use crate::protocol::request::ProcessInfo;
 /// What happened to a sheep
 // wire format: changing existing variants is a breaking change
 //
-// A new variant is free for a subscriber built from this point on: an
-// unrecognized string decodes as `Unrecognized` instead of failing the
-// whole frame.
+// A new variant is free: an unrecognized string decodes as
+// `Unrecognized` instead of failing the whole frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -50,9 +49,7 @@ pub enum ProcessEventKind {
     ///
     /// Only ever produced by decoding: an unrecognized string falls through
     /// to this variant via `#[serde(other)]` instead of failing the whole
-    /// frame. Nothing constructs one to send, and `bark`'s `is_known_kind`
-    /// refuses the spelling before a rule can name it. That is a call-site
-    /// invariant rather than a type-level one: `#[serde(other)]` governs
+    /// frame. Nothing constructs one to send. `#[serde(other)]` governs
     /// decoding only, so serializing this would emit `"unrecognized"`.
     #[serde(other)]
     Unrecognized,
@@ -102,13 +99,11 @@ pub enum BusEvent {
     },
     /// One message a sheep wrote on its shepherd channel (fd 3).
     ///
-    /// Child -> shepherd only: the shepherd's own writes (a shutdown
-    /// message, a dispatched action) are reported elsewhere, by
-    /// `process.stop` and `Response::Triggered`.
+    /// Child to shepherd only: the shepherd's own writes are reported
+    /// elsewhere, by `process.stop` and `Response::Triggered`.
     ///
     /// `message` is the app's own text, whole and unredacted. The daemon
-    /// adds nothing of its own; app-provided text must be safe for every
-    /// subscriber, since it is broadcast verbatim.
+    /// adds nothing, and the text is broadcast verbatim to every subscriber.
     Channel {
         /// The sheep that wrote it.
         id: u32,
@@ -126,34 +121,20 @@ pub enum BusEvent {
     /// `config.dog.<name>`, so a dog subscribes to its own name and hears
     /// nobody else's.
     ///
-    /// Carries only the dog's name, nothing else: the bus is a broadcast,
-    /// and a `[bark]` section can hold a webhook URL as a bearer credential
-    /// (why [`DogSectionToml`] redacts its own `Debug`). A dog that wants
-    /// the values re-asks with
-    /// [`Request::DogConfig`](crate::protocol::Request::DogConfig), which
-    /// answers only that dog's own section.
-    ///
-    /// [`DogSectionToml`]: crate::protocol::DogSectionToml
+    /// Carries only the dog's name: a `[bark]` section can hold a webhook
+    /// URL as a bearer credential. A dog that wants the values re-asks with
+    /// [`Request::DogConfig`](crate::protocol::Request::DogConfig).
     DogConfigChanged {
         /// The dog whose section changed.
         dog: String,
     },
     /// A dog's `[app.dogs.<name>]` table changed on one sheep. Published
-    /// under `config.sheep.<dog>`, so a dog subscribes to its own name and
-    /// hears nobody else's, the way [`Self::DogConfigChanged`] does for
-    /// `dogs.toml`.
+    /// under `config.sheep.<dog>`, so a dog hears nobody else's.
     ///
-    /// Fires once per dog and sheep for a change that adds, removes or
-    /// edits that sheep's table for `dog`: a name gaining its first table,
-    /// the last instance of such a name being deleted, or a load,
-    /// `Request::SetSheepDogSettings` or `--reset` changing one. Never for
-    /// a handover, since that changes no answer.
+    /// Fires once per dog and sheep for a change to that sheep's table for
+    /// `dog`. Never for a handover, which changes no answer.
     ///
-    /// Carries only the sheep's name and the dog's: a table can hold a
-    /// credential, the same reason [`Self::DogConfigChanged`] carries only
-    /// the dog's own name. A dog that wants the values re-asks with
-    /// [`Request::DogSheepSettings`](crate::protocol::Request::DogSheepSettings),
-    /// which answers with that dog's tables.
+    /// Carries only the sheep's name and the dog's: a table can hold a credential.
     DogSheepSettingsChanged {
         /// The dog whose table changed.
         dog: String,
@@ -185,10 +166,9 @@ impl BusEvent {
                 ProcessEventKind::Delete => "process.delete",
                 ProcessEventKind::Errored => "process.errored",
                 // Decode-only, never emitted by this build. Given its own
-                // topic rather than acted on: a subscriber sees it pass
-                // through like any other kind it does not specifically
-                // filter for, instead of the daemon treating it as a real
-                // lifecycle transition.
+                // topic rather than acted on. A subscriber sees it pass
+                // through like any other kind. The daemon does not treat it
+                // as a real lifecycle transition.
                 ProcessEventKind::Unrecognized => "process.unrecognized",
             },
             Self::LogOut { .. } => "log.out",

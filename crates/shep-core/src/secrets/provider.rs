@@ -22,16 +22,10 @@ pub type PushedPairs = BTreeMap<String, BTreeSet<String>>;
 /// What provider dogs have pushed: the values, and which
 /// `(namespace, environment)` pairs carry a push at all.
 ///
-/// The two travel together because they are read together and must come
-/// from one moment: a values map from before a push read beside a pair set
-/// from after it would call a key permanently missing that the push had
-/// just supplied.
-///
-/// An empty push is why the pair set is not derivable from the values. A
-/// dog saying "I have nothing for staging" registers the pair and holds no
-/// keys, which is a different answer from a dog that has not pushed.
-///
-/// Debug does not leak a value: it prints two counts.
+/// The two are read together and must come from one moment. Values from
+/// before a push beside pairs from after it would call a supplied key
+/// permanently missing. An empty push registers a pair and holds no keys.
+/// Debug prints two counts.
 #[derive(Default, Clone)]
 pub struct ProviderCache {
     /// Every namespace's values.
@@ -128,15 +122,12 @@ impl fmt::Debug for ProviderCacheFile {
 /// on the other into an empty cache, with nothing to say why.
 pub const PROVIDER_CACHE_VERSION: u32 = 2;
 
-/// The provider cache as `secrets-cache.json` currently holds it on disk,
-/// or nothing when the file is missing, will not parse, or is a version
-/// this build does not understand.
+/// The provider cache as `secrets-cache.json` currently holds it on disk.
+/// Nothing when the file is missing, unparseable, or of a newer version.
 ///
-/// Best-effort, more so than [`all`](crate::secrets::all): a namespace whose provider pushed
-/// with `persist = false` never reaches this file at all, so a caller here
-/// can under-report `MissingNamespace` for a pair the running shepherd
-/// currently holds in memory. A caller that needs the shepherd's live
-/// answer has to ask it directly rather than read this file.
+/// Best-effort, more so than [`all`](crate::secrets::all): a namespace
+/// pushed with `persist = false` never reaches this file. A caller needing
+/// the shepherd's live answer has to ask the shepherd directly.
 #[must_use]
 pub fn provider_cache_on_disk(path: &Path) -> ProviderCache {
     let Ok(raw) = std::fs::read_to_string(path) else {
