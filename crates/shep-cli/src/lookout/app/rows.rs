@@ -383,8 +383,20 @@ pub enum DogTuneLanded {
     /// order is read at boot.
     BootOrder,
     /// `[daemon] dog_grants` changed, carrying the source the record now
-    /// describes.
-    Grants(DogSource),
+    /// describes and whether the dog is in `enabled_dogs`.
+    ///
+    /// `enabled` is the one `record_change` read under the lock, which is why
+    /// it travels here rather than being re-read from the screen: the settings
+    /// screen can be closed, or re-read, between the write landing and this
+    /// answer, and a dog that is running does not stop being enabled because the
+    /// operator pressed `Esc`. `shep dogs grant` decides the same way, from the
+    /// `Applied` it just computed.
+    Grants {
+        /// What the record now describes, which is what telling the shepherd needs.
+        source: DogSource,
+        /// Whether the dog is enabled, as the file read it under the lock.
+        enabled: bool,
+    },
 }
 
 /// A dog's schema, and the binary it was probed from.

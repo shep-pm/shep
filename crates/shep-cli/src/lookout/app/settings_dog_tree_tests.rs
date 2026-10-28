@@ -446,7 +446,10 @@ async fn a_grant_from_the_checklist_writes_what_shep_dogs_grant_writes() {
     let effect = app.update(Msg::DogTuneWritten {
         tune: tune.clone(),
         ticket,
-        result: Ok(DogTuneLanded::Grants(applied.source)),
+        result: Ok(DogTuneLanded::Grants {
+            source: applied.source,
+            enabled: applied.enabled,
+        }),
     });
     let Effect::Send(sent @ Sent::GrantDog { .. }) = effect else {
         panic!("an enabled dog is told its new grants: {effect:?}");
@@ -536,4 +539,108 @@ fn source_and_channel_are_read_only_rows() {
             "the cursor stays on the row"
         );
     }
+}
+
+/// A key the section does not set is drawn `(unset)`, which is a rendering and
+/// not a value. Its editor opens empty, the way a dog pane's does, so `Enter`
+/// cannot arm a write of the placeholder itself into `dogs.toml`.
+#[test]
+fn an_unset_dog_field_opens_its_editor_empty_and_never_with_the_placeholder() {
+    let mut app = fixtures::app_in_settings_with_a_dog_open();
+    fixtures::select_setting(&mut app, "dog.bark.sink_timeout");
+    assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+
+    let (label, buffer) = app
+        .settings()
+        .expect("the settings screen is open")
+        .typing()
+        .expect("a typed field opens an editor");
+    assert_eq!(label, "bark sink_timeout");
+    assert_eq!(
+        buffer.as_str(),
+        "",
+        "the row draws (unset); the buffer must not hold it"
+    );
+
+    // The rest is the same key sequence a dog pane gets, so nothing it arms
+    // can name the placeholder.
+    let _ = app.update(Msg::Key(KeyPress::TextApply));
+    if let Some(prompt) = app.settings().expect("still open").pending() {
+        assert!(
+            !prompt.text.contains("(unset)"),
+            "the armed write carries the placeholder: {}",
+            prompt.text
+        );
+    }
+    if let Some((_, buffer)) = app.settings().expect("still open").typing() {
+        assert!(
+            !buffer.as_str().contains("(unset)"),
+            "a reopened editor holds the placeholder: {}",
+            buffer.as_str()
+        );
+    }
+}
+
+/// A section write that never left the queue has to clear the screen's sent
+/// line. The reply it was waiting on can no longer arrive, and a prompt left
+/// at "sent" reads as a write in flight forever.
+#[test]
+fn a_dog_section_write_that_was_never_sent_clears_the_prompt() {
+    let mut app = fixtures::app_in_settings_with_a_dog_open();
+    fixtures::select_setting(&mut app, "dog.bark.poll");
+    let _ = app.update(Msg::Key(KeyPress::Confirm));
+    type_text(&mut app, "60s", "30s");
+    let effect = app.update(Msg::Key(KeyPress::Confirm));
+    let Effect::Send(sent @ Sent::SetDogSection { .. }) = effect else {
+        panic!("Enter sends the section, got {effect:?}");
+    };
+    assert!(
+        app.settings().expect("open").pending().is_some(),
+        "the prompt says the write is in flight"
+    );
+
+    let _ = app.update(Msg::Unsent { sent });
+    assert!(
+        app.settings().expect("still open").pending().is_none(),
+        "a write that never went out leaves nothing waiting"
+    );
+    assert!(app.notice().expect("one sentence").is_grave());
+}
+
+/// The enabled bit travels with the write's answer, because `record_change`
+/// read it under the lock. Leaving the settings screen before the answer lands
+/// changes what is on screen, not whether the running dog has to be told.
+#[test]
+fn a_grant_still_reaches_the_shepherd_when_the_screen_closed_first() {
+    let (_dir, paths, mut app) = fixtures::settings_over(fixtures::BARK_RECORDED);
+    fixtures::open_dog_row(&mut app, "bark");
+    select_grant(&mut app, "bark", "events:log.");
+    assert_eq!(app.update(Msg::Key(KeyPress::Cycle)), Effect::None);
+    let Effect::WriteDogTune { tune, ticket, .. } = app.update(Msg::Key(KeyPress::Confirm)) else {
+        panic!("Enter sends the tune");
+    };
+    let applied = crate::commands::dogs::record_change(
+        &paths,
+        crate::commands::dogs::Change::Grant,
+        "bark",
+        "events:log.",
+    )
+    .expect("events:log. is a permission bark declares");
+    assert!(applied.enabled, "the fixture's bark is enabled");
+
+    let _ = app.update(Msg::Key(KeyPress::Escape));
+    assert!(app.settings().is_none(), "the operator left the screen");
+
+    let effect = app.update(Msg::DogTuneWritten {
+        tune,
+        ticket,
+        result: Ok(DogTuneLanded::Grants {
+            source: applied.source,
+            enabled: applied.enabled,
+        }),
+    });
+    assert!(
+        matches!(effect, Effect::Send(Sent::GrantDog { .. })),
+        "a running dog is told its new grants even with the screen closed: {effect:?}"
+    );
 }

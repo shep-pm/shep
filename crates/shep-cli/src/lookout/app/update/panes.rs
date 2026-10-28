@@ -194,6 +194,11 @@ impl App {
     /// file. A grant has one: `shep dogs grant` tells a running shepherd, and
     /// lookout does the same, because a dog already up would otherwise keep
     /// the grants it was started with while the screen says otherwise.
+    ///
+    /// Whether it is enabled arrives with the answer rather than being read off
+    /// the screen here: the operator can close the settings screen between the
+    /// write and this reply, and that changes what is on screen, not what the
+    /// file says about a running dog.
     pub(super) fn on_dog_tune_written(
         &mut self,
         tune: DogTune,
@@ -211,10 +216,7 @@ impl App {
                 )));
                 self.reread_settings()
             }
-            Ok(DogTuneLanded::Grants(source)) => {
-                let enabled = self.settings().is_some_and(|settings| {
-                    settings.dog_named(&name).is_some_and(|dog| dog.enabled)
-                });
+            Ok(DogTuneLanded::Grants { source, enabled }) => {
                 if !enabled || matches!(self.link, Link::Lost { .. }) {
                     if let Some(settings) = self.settings_mut() {
                         settings.resolve(ticket);

@@ -2,6 +2,7 @@
 //! opens with, and the edit that removes the row.
 
 use super::*;
+use crate::lookout::pane::UNSET;
 
 impl Settings {
     /// Where an editor opened on the cursor's row writes, and what it opens
@@ -53,7 +54,8 @@ impl Settings {
     /// What an editor opened on one row of a dog's own tree writes, and what
     /// it opens with. `None` for a row that folds, cycles, is locked, or is a
     /// secret, which is seeded empty rather than with a value the screen is
-    /// not allowed to show.
+    /// not allowed to show. A key the section does not set is seeded empty too,
+    /// not with the `(unset)` its row shows.
     fn dog_field_editor(&self, dog: usize, row: usize) -> Option<(String, String, String)> {
         let name = self.snapshot.dogs.get(dog)?.name.clone();
         let pane = self.dog_tree(dog)?.pane()?;
@@ -64,12 +66,17 @@ impl Settings {
         if !field.editable || !is_typed(&field.kind) || pane.lock(&field.key).is_some() {
             return None;
         }
-        // A secret's value is never held here, so the editor opens empty, the
-        // same way a dog pane's does.
-        let seed = if field.secret {
+        // The seed is what [`ConfigPane::begin_typing`] would open with, key
+        // for key: a secret's value is never held here, and a key the section
+        // does not set shows [`UNSET`], which is a rendering and not a value.
+        // Seeding either as it is drawn would put text in the buffer that no
+        // dog pane would ever send, and `Enter` on it would arm a write of the
+        // placeholder itself into `dogs.toml`.
+        let shown = pane.value(&field.key);
+        let seed = if field.secret || shown == UNSET {
             String::new()
         } else {
-            pane.value(&field.key)
+            shown
         };
         Some((name, field.key.clone(), seed))
     }

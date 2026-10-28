@@ -538,7 +538,10 @@ where
                             crate::commands::dogs::Change::Revoke
                         };
                         crate::commands::dogs::record_change(&paths, change, name, permission)
-                            .map(|applied| super::app::DogTuneLanded::Grants(applied.source))
+                            .map(|applied| super::app::DogTuneLanded::Grants {
+                                source: applied.source,
+                                enabled: applied.enabled,
+                            })
                             .map_err(|refusal| match refusal {
                                 crate::commands::dogs::GrantRefusal::Usage { message, .. } => {
                                     message

@@ -117,7 +117,13 @@ impl App {
                 )));
                 Effect::None
             }
-            Sent::SetDogSection { name, .. } => {
+            Sent::SetDogSection { name, ticket, .. } => {
+                // The write never left, so nothing is in flight: the prompt has
+                // to say so rather than sit at "sent" waiting on a reply that
+                // can no longer arrive.
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                }
                 self.notice = Some(Notice::grave(format!("{name}: its config was not sent")));
                 Effect::None
             }
