@@ -25,13 +25,16 @@
 //
 // Reads the built pages rather than the `.astro` sources, for the reason
 // verify-fragment-targets.ts gives: `.astro` is not HTML.
+//
+// A dog's README can reach this too. Markdown passes a raw `<div>` through
+// untouched, so a README that copies the site's callout markup lands here with
+// whatever children the copy left it — which is exactly the defect this file
+// was written for. builtDocsPages() walks every depth under `dist/docs`, so an
+// imported page is read and not skipped.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-const distDir = fileURLToPath(new URL("../dist", import.meta.url));
+import { builtDocsPages } from "./built-pages.ts";
 
 /** Elements with no closing tag, which must not open a level. */
 const VOID = new Set([
@@ -110,24 +113,6 @@ export function pWrapped(html: string): string[] {
     .map((c) => `${c.variant || "callout"}: ${c.children.join(" ")}`);
 }
 
-async function docsPages(): Promise<[string, string][]> {
-  const dirs = await readdir(`${distDir}/docs`, { withFileTypes: true });
-  const names = dirs.filter((d) => d.isDirectory()).map((d) => d.name);
-  assert.ok(
-    names.length > 0,
-    `no built pages under ${distDir}/docs; run astro build first`,
-  );
-  return Promise.all(
-    names.map(
-      async (name) =>
-        [name, await readFile(`${distDir}/docs/${name}/index.html`, "utf8")] as [
-          string,
-          string,
-        ],
-    ),
-  );
-}
-
 test("callouts() reads the two children a callout should have", () => {
   const html = `<div class="callout note" data-astro-cid-x><span class="tag" data-astro-cid-x>note</span><div class="body" data-astro-cid-x><p>text</p></div></div>`;
   assert.deepEqual(callouts(html), [
@@ -179,35 +164,48 @@ test("pWrapped() passes a wrapper that can hold a paragraph", () => {
   assert.deepEqual(pWrapped(html), []);
 });
 
+test("extraItems() catches a dog README that copies the callout markup loosely", () => {
+  // A README writing its own `<div class="callout">` with paragraphs straight
+  // in it. Markdown passes the div through untouched, so this is the site's own
+  // defect arriving from a dog's repository instead of from a page here.
+  const readme = `<div class="callout note"><span class="tag">note</span><p>one</p><p>two</p></div>`;
+  assert.deepEqual(extraItems(readme), ["note: span.tag p p"]);
+});
+
+test("extraItems() passes a dog README that copies the callout markup whole", () => {
+  const readme = `<div class="callout note"><span class="tag">note</span><div class="body"><p>one</p><p>two</p></div></div>`;
+  assert.deepEqual(extraItems(readme), []);
+});
+
 test("every callout's markup holds exactly the tag and the body", async () => {
-  for (const [page, html] of await docsPages()) {
+  for (const [route, html] of await builtDocsPages()) {
     const bad = extraItems(html);
     assert.deepEqual(
       bad,
       [],
-      `/docs/${page} has ${bad.length} callout(s) whose markup holds something other than the tag and the body: ${bad.join(" | ")}. Every extra child is a grid item of its own, and the tag's column grows to hold the widest of them, which leaves the prose column at zero and runs its text off the side of the page.`,
+      `/docs/${route} has ${bad.length} callout(s) whose markup holds something other than the tag and the body: ${bad.join(" | ")}. Every extra child is a grid item of its own, and the tag's column grows to hold the widest of them, which leaves the prose column at zero and runs its text off the side of the page. On an imported dog page the markup is the README's own: markdown passes a raw <div> through untouched, so wrap the prose in a <div class="body"> there.`,
     );
   }
 });
 
 test("every callout keeps its prose where a paragraph can go", async () => {
-  for (const [page, html] of await docsPages()) {
+  for (const [route, html] of await builtDocsPages()) {
     const bad = pWrapped(html);
     assert.deepEqual(
       bad,
       [],
-      `/docs/${page} has ${bad.length} callout(s) holding their prose in a <p>: ${bad.join(" | ")}. A <p> is closed by the parser the moment a caller passes one, and every paragraph after it becomes a grid item. That is how /docs/writing-a-dog came to scroll sideways on a phone, and the check above only catches it once some page is passing paragraphs.`,
+      `/docs/${route} has ${bad.length} callout(s) holding their prose in a <p>: ${bad.join(" | ")}. A <p> is closed by the parser the moment a caller passes one, and every paragraph after it becomes a grid item. That is how /docs/writing-a-dog came to scroll sideways on a phone, and the check above only catches it once some page is passing paragraphs.`,
     );
   }
 });
 
 test("every callout container is one the walk found", async () => {
-  for (const [page, html] of await docsPages()) {
+  for (const [route, html] of await builtDocsPages()) {
     const containers = [...html.matchAll(/<div class="callout[ "]/g)].length;
     assert.equal(
       callouts(html).length,
       containers,
-      `/docs/${page} has ${containers} callout container(s) and ${callouts(html).length} the tag walk reached. A container it cannot reach is one the checks above never read.`,
+      `/docs/${route} has ${containers} callout container(s) and ${callouts(html).length} the tag walk reached. A container it cannot reach is one the checks above never read.`,
     );
   }
 });
