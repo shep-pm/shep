@@ -68,12 +68,11 @@ fn script_strategy() -> impl proptest::strategy::Strategy<Value = ProcScript> {
 
 /// How many scripted procs one generated case may spawn.
 ///
-/// A 9-command run reaches at most 30 command-driven spawns plus
-/// crash-loop respawns capped at 16 per sheep: under 200 all told. An
-/// exhausted `ScriptedRunner` answers `SpawnFailed`, which the actor turns
-/// into `Errored`, so a claim about a restart that must not happen would
-/// pass for the wrong reason. Still finite: a `stable_then_exit` script
-/// resets the restart budget, and the pool running dry ends the chain.
+/// A 9-command run reaches at most 30 command-driven spawns plus crash-loop
+/// respawns capped at 16 per sheep: under 200 all told. An exhausted
+/// `ScriptedRunner` answers `SpawnFailed`, which the actor turns into
+/// `Errored`, so a claim about a restart that must not happen would pass for
+/// the wrong reason.
 const SCRIPT_POOL: usize = 512;
 
 /// How long the steady-state drain waits for one more transition before

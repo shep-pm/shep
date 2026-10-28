@@ -43,11 +43,9 @@ impl<R: ProcessRunner> Actor<R> {
     /// Registers one app as a member of the flock without spawning anything.
     ///
     /// The flock is a membership list, not a list of live processes: `stop`
-    /// leaves a sheep registered and `Stopped`, `delete` ends membership.
-    ///
-    /// One entry per app rather than one per configured instance, at
-    /// `instance: 0`, the slot `start` fills first, so a later `restart` lands
-    /// where it would have. Idempotent by name.
+    /// leaves a sheep registered and `Stopped`, `delete` ends membership. One
+    /// entry per app rather than one per configured instance, at `instance: 0`,
+    /// the slot `start` fills first. Idempotent by name.
     pub(super) fn register_at_rest(&mut self, app: &ResolvedApp) -> ProcessInfo {
         self.register_without_spawning(app, ProcStatus::Stopped, None)
             .into_info()
@@ -75,24 +73,13 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// The secret view one spawn, or one batch of instances, resolves
-    /// against.
+    /// The secret view one spawn, or one batch of instances, resolves against.
     ///
     /// The store is read here rather than inside [`assemble`], the same way
-    /// `credentials` is resolved by the caller: real I/O belongs to the
-    /// caller so the assembler stays a pure function of its arguments. Read
-    /// per spawn call, or per batch of instances of one app, rather than
-    /// cached, so a `shep secret set` between two calls reaches the second
-    /// without a daemon restart.
-    ///
-    /// A store that cannot be read yields an empty view rather than failing
-    /// here, and logs why. A sheep that needs nothing from it still spawns,
-    /// and one that does gets the ordinary refusal naming its own reference,
-    /// which on its own would send an operator to `shep secret set` for a
-    /// store that is corrupt or newer than this build.
-    ///
-    /// The namespaced half comes from [`ProviderSecrets`], in memory, so
-    /// this reads the file for the operator's own store and nothing else.
+    /// `credentials` is resolved by the caller: real I/O belongs to the caller.
+    /// Read per spawn call rather than cached, so a `shep secret set` between
+    /// two calls reaches the second. A store that cannot be read yields an
+    /// empty view rather than failing here, and logs why.
     pub(super) fn secret_view(&self, app: &ResolvedApp) -> SecretView {
         let environment = app
             .config()
@@ -134,14 +121,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Registers one app as a flock member in `status`, spawning nothing.
     ///
     /// Registers the status it is handed: [`Self::register_at_rest`] passes
-    /// `Stopped`, [`Self::do_start`] passes `Errored` when credential
-    /// resolution fails under [`BatchPolicy::PerApp`].
-    ///
-    /// The entry's identity is [`SpawnIdentity::Unresolved`] whatever the
-    /// status, so a later `restart` resolves it through
-    /// [`Self::credentials_for_spawn`] instead of reusing a settled `None` and
-    /// starting the sheep as the shepherd. Idempotent by name: an app already
-    /// known is left as it is, and [`Registration`] says which happened.
+    /// `Stopped`, [`Self::do_start`] passes `Errored` when credential resolution
+    /// fails under [`BatchPolicy::PerApp`]. The entry's identity is
+    /// [`SpawnIdentity::Unresolved`] whatever the status, so a later `restart`
+    /// resolves it. Idempotent by name.
     pub(super) fn register_without_spawning(
         &mut self,
         app: &ResolvedApp,
@@ -216,16 +199,11 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// Registers + spawns one brand-new instance (a fresh id, `restarts: 0`).
     ///
-    /// Always inserts a [`SheepSlot`] before returning: on success `Starting`
-    /// with a readiness task armed when the app configures `wait_ready` or
-    /// `readiness_probe`, `Starting` with a readiness task armed on its
-    /// `listen_timeout` fallback when the app's name is in `gate` even though
-    /// it configures no signal of its own, and `Online` otherwise. `Errored`
-    /// with no task on failure. `dog` lands on the entry either way, so a dog
-    /// whose binary cannot be spawned still shows up in the dogs table.
-    ///
-    /// `secrets` is the caller's: a `Start` and a scale-up each read the
-    /// operator's store once for the whole batch of instances they spawn.
+    /// Always inserts a [`SheepSlot`] before returning: `Starting` with a
+    /// readiness task armed when the app configures `wait_ready`, a
+    /// `readiness_probe` or a `listen_timeout` fallback, and `Online` otherwise;
+    /// `Errored` with no task on failure. `dog` lands on the entry either way,
+    /// so a dog whose binary cannot be spawned still shows in the dogs table.
     pub(super) fn spawn_fresh(
         &mut self,
         app: &ResolvedApp,
@@ -247,11 +225,9 @@ impl<R: ProcessRunner> Actor<R> {
             },
             Err(err) => {
                 // Registered before the refusal is routed: a sheep that never
-                // spawned still has to be visible, and `refuse_spawn` reads
-                // the slot it lands in. Its log paths come from `describe`,
-                // since `assemble` is what just refused. The `Errored` here
-                // is never published: `refuse_spawn` decides the status this
-                // sheep is first seen in, and emits that one.
+                // spawned still has to be visible, and `refuse_spawn` reads the
+                // slot it lands in. Its log paths come from `describe`, since
+                // `assemble` is what just refused.
                 let described = describe(app, instance, &self.paths, credentials, secrets);
                 let entry = ProcessEntry {
                     id,
@@ -682,13 +658,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Runs after the whole flock is installed, not per sheep: a job names two
     /// entries and reads an app's timings off one of them.
-    ///
     /// [`Self::arm_reload_deadline`] is the only thing that removes a
-    /// [`ReloadJob`] nothing else can finish, and its stamp comes off the
-    /// carried `next_deadline`. A swap in [`ReloadPhase::Verify`] is re-armed
-    /// through the same [`Self::post_drain_probe`] the original went through.
-    /// A job whose swap names no registered entry is dropped: arming against a
-    /// missing entry would panic.
+    /// [`ReloadJob`] nothing else can finish; a job naming no entry is dropped.
     #[cfg(unix)]
     pub(super) fn install_carried_reloads(&mut self, reloads: Vec<CarriedReload>) {
         for carried in reloads {

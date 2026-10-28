@@ -70,14 +70,7 @@ pub(super) fn spawn_sheep_task<P: RunningProcess>(
 /// which the task sweeps the sheep's lambs, reports `Msg::Exited` and returns.
 ///
 /// `sweep` is `None` for an engine without extras, which leaves lambs alone.
-///
-/// A natural exit racing an in-flight `Kill` cannot produce two `Msg::Exited`s
-/// or hang a caller: `tokio::select!` picks one ready branch per iteration,
-/// that branch alone breaks, and the loop never revisits the other.
-///
-/// The `if <channel>_open` guards take a closed channel out of consideration;
-/// without them its `recv()` resolves to `None` on every poll, busy-spinning
-/// the `select!`. Nine parameters: each is threaded through that `select!`.
+/// The `if <channel>_open` guards keep a closed channel out of the `select!`.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_sheep<P: RunningProcess>(
     id: u32,

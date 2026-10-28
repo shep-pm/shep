@@ -73,13 +73,11 @@ impl Registration {
 
 /// What a [`Command::SetSheepField`] did.
 ///
-/// Two facts, and only the second is a judgement: the config the caller
-/// should record on the muster roll, and whether the running child has the
-/// value yet.
+/// Two facts, and only the second is a judgement: the config the caller should
+/// record on the muster roll, and whether the running child has the value yet.
 ///
-/// `Debug` is derived (IR-41): [`ResolvedApp`] wraps an [`AppConfig`], whose
-/// own manual `Debug` redacts `env`, and the rest is a bool and an
-/// operator-facing string with no value from a live flock in it.
+/// `Debug` is derived (IR-41): [`ResolvedApp`] wraps an [`AppConfig`], whose own
+/// manual `Debug` redacts `env`.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldSet {
     /// The app as it now stands, for `rpc/dispatch.rs` to hand the registry: the
@@ -228,8 +226,7 @@ pub(crate) struct Applied {
     /// every process afresh.
     ///
     /// `None` for an app whose merge never produced one: the refusals above
-    /// that touch nothing, plus a merge that does not normalize at the
-    /// instance count really running.
+    /// that touch nothing, plus a merge that will not normalize.
     pub(crate) app: Option<ResolvedApp>,
 }
 

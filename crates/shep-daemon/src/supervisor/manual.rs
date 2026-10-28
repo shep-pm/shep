@@ -46,8 +46,7 @@ pub(crate) enum CommandOrigin {
 ///
 /// Crosses a handover whole, on [`CarriedSheep::manual`]. Without the marker
 /// a successor would hand an `autorestart` app its ordinary respawn, so a
-/// `shep stop` would come back as a running sheep. [`Self::origin`] crosses
-/// unchanged too, answering who caused this exit.
+/// `shep stop` would come back as a running sheep.
 ///
 /// [`CarriedSheep::manual`]: crate::handover::CarriedSheep::manual
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

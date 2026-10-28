@@ -191,16 +191,11 @@ async fn a_pump_that_missed_the_deadline_is_not_in_the_parked_set() {
     );
 }
 
-/// Six wedged pumps is the size this test pins, and the bound it asserts
-/// is about the shape rather than about any one budget: a serial sweep
-/// scales with N and a concurrent one does not. Under the paused clock a
-/// serial sweep reads six [`REPORT_DEADLINE`]s (12s) and a concurrent one
-/// about one (2s); the bound below sits in that gap. Six was also where a
-/// serial sweep first outlasted `shep-cli`'s `admin::KILL_TEARDOWN_WAIT`
-/// while that was 10s, past which the client gives up first, falls back
-/// to a predecessor still serving, and exits 0 before the gate refuses
-/// for real. At 60s that crossing moved to thirty; the failure it names
-/// did not go away, it got further off.
+/// Six wedged pumps is the size this test pins, and the bound it asserts is
+/// about the shape rather than about any one budget: a serial sweep scales
+/// with N and a concurrent one does not. Under the paused clock a serial sweep
+/// reads six [`REPORT_DEADLINE`]s (12s) and a concurrent one about one (2s);
+/// the bound below sits in that gap.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_sweep_of_six_wedged_pumps_costs_one_deadline_not_six() {

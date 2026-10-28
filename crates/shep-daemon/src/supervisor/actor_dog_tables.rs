@@ -56,8 +56,7 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// The slot is the one [`Self::dog_tables`] picks, ranked by
     /// [`speaker_rank`], so this and the plain read agree about which slot
-    /// speaks for the name. `None` when no sheep has that name; a dog's own
-    /// name has none, since [`Self::dog_tables`] never lists a dog.
+    /// speaks for the name. `None` when no sheep has that name.
     pub(super) fn handle_sheep_dog_read(&self, name: &str, dog: &str) -> Option<SheepDogRead> {
         let (_, slot) = self
             .sheep

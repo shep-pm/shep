@@ -90,13 +90,11 @@ async fn a_snapshot_carries_every_dog_that_is_not_parked_and_leaves_one_that_is(
 
 /// The shape `shep disable` holds from the moment it sets the mark until its
 /// stop finishes: marked, and still holding a process. It carries, because the
-/// snapshot is the only way a successor learns a pid, and a process no
-/// successor learned is one no successor can stop.
+/// snapshot is the only way a successor learns a pid.
 ///
 /// The mark arrives through [`SupervisorHandle::register_at_rest`], the actor's
-/// door for a mark with no stop attached. It leaves the actor in the state a
-/// disable mid-ladder leaves it, and it gets there without a kill ladder that a
-/// paused clock has to hold mid-flight.
+/// door for a mark with no stop attached, and gets there without a kill ladder
+/// a paused clock has to hold mid-flight.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_snapshot_carries_a_disabled_dog_that_still_holds_a_process() {
@@ -280,10 +278,8 @@ async fn a_successor_marks_a_carried_dog_it_stopped_and_the_config_dropped() {
 /// process it carried is in the flock regardless. `stop_unenabled_dogs` reads
 /// the flock, so that dog goes down too.
 ///
-/// The assembly fails on the shape `adopted_dogs = { metrics = "" }` gives: an
-/// adopted source with no binary, which `normalize` refuses as `MissingScript`.
-/// A dog's name is checked where its app is assembled, not where the config
-/// names it.
+/// The assembly fails on `adopted_dogs = { metrics = "" }`: an adopted source
+/// with no binary, which `normalize` refuses as `MissingScript`.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_successor_stops_a_carried_dog_whole_config_could_not_assemble() {

@@ -20,19 +20,15 @@ pub(super) struct SheepSlot {
     ///
     /// Never cleared, unlike `ctl`: a send fails the moment the pump ends, so
     /// clearing this too would be a second copy of that fact. It costs the
-    /// pump no extra life, `spawn_log_pump`'s `select!` also ending on its
-    /// `logs` receiver.
+    /// pump no extra life.
     pub(super) log_ctl: Option<mpsc::Sender<LogCtl>>,
     /// A clone of the [`ProcIo::to_child`] the most recent successful spawn
     /// handed out: the daemon's writing end of this sheep's shepherd channel,
     /// and the actor's only way to reach a live child directly. `None`
     /// whenever no process is running under this id.
     ///
-    /// Not carried as a `ctl` message: [`Actor::claim_manual`] ignores a
-    /// `Full` on that mailbox on the strength of [`SheepCtl::Kill`] being its
-    /// sole occupant. Cleared where `log_ctl` is not: `tokio_runner`'s writer
-    /// task parks on `recv()`, so a clone left here past the exit leaks that
-    /// task and the daemon's half of the socketpair.
+    /// Not carried as a `ctl` message: [`Actor::claim_manual`] ignores a `Full`
+    /// on that mailbox on the strength of [`SheepCtl::Kill`] being its sole occupant.
     pub(super) to_child: Option<mpsc::Sender<ShepherdMessage>>,
     /// Sender for this sheep's signal mailbox, separate from [`Self::ctl`].
     /// `None` whenever no process is running under this id.
@@ -44,15 +40,10 @@ pub(super) struct SheepSlot {
     /// A clone of the [`ProcIo::to_stdin`] the most recent successful spawn
     /// handed out: the daemon's writing end of this sheep's stdin pipe. `None`
     /// whenever no process is running under this id; present but closed when
-    /// the running one never asked for a pipe (`AppConfig::stdin == false`),
-    /// which is what [`Self::open_stdin`] filters.
+    /// the running one never asked for a pipe (`AppConfig::stdin == false`).
     ///
-    /// Cleared with [`Self::to_child`], for that field's reason.
-    ///
-    /// No `.await` on this sender may appear on the actor loop: an app that
-    /// has stopped reading fd 0 fills its pipe and blocks the writer task, and
-    /// the actor would park with it. [`Actor::begin_send_line`] uses
-    /// `try_send`.
+    /// No `.await` on this sender may appear on the actor loop: an app that has
+    /// stopped reading fd 0 fills its pipe and blocks the writer task.
     pub(super) to_stdin: Option<mpsc::Sender<StdinWrite>>,
     /// Which manual command (if any) is waiting on this sheep's next exit,
     /// and who asked for it. Claimed through [`Actor::claim_manual`].
@@ -83,26 +74,17 @@ pub(super) struct SheepSlot {
     /// This instance's readiness wait ended without a signal, and a reload
     /// left it standing anyway: up, registered, and known not to be serving.
     ///
-    /// Read by [`Actor::advance_reload`]'s replaceable test. A reload replaces
-    /// `Online` instances, so without this the instance a failed reload left
-    /// behind would be beyond the reach of the reload that rolls it back. Also
+    /// Read by [`Actor::advance_reload`]'s replaceable test, so the instance a
+    /// failed reload left behind is still within reach of the next one. Also
     /// read by [`Actor::handle_extra_restart`]'s status guard: an abandoned
-    /// reload's replacement is armed the same extras an `Online` sheep is
-    /// (see [`Actor::reload_ready_result`]), so its own liveness probe or
-    /// memory limit must still be able to restart it.
-    ///
-    /// Cleared wherever the id gets a new process or a new verdict:
-    /// [`Actor::respawn`]'s success arm and [`Actor::went_online`].
+    /// reload's replacement is armed the same extras an `Online` sheep is.
     pub(super) ready_failed: bool,
     /// When this slot's owed respawn falls due, in wall-clock terms.
     ///
     /// The same fact as [`Actor::schedule_restart`]'s monotonic timer, in the
-    /// only clock that survives an `execve`: a handover carries this and
-    /// re-arms a fresh timer from it. See
+    /// only clock that survives an `execve`: a handover carries this and re-arms
+    /// a fresh timer from it. See
     /// [`backoff::adopted_restart_delay`](crate::backoff::adopted_restart_delay).
-    ///
-    /// `None` on every other status, and not cleared on the way out of
-    /// `WaitingRestart`. Nothing reads it without the status.
     pub(super) restart_due: Option<SystemTime>,
 }
 
