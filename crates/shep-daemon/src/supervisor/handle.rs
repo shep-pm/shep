@@ -820,6 +820,17 @@ impl SupervisorHandle {
         self.call(|reply| Command::List { reply }).await
     }
 
+    /// Each sheep's configured working directory, by id. A sheep without one
+    /// is absent.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    #[cfg(feature = "vcs")]
+    pub(crate) async fn working_dirs(&self) -> Result<HashMap<u32, PathBuf>, SupervisorError> {
+        self.call(|reply| Command::WorkingDirs { reply }).await
+    }
+
     /// Full flock listing, by name, then instance slot, then id
     /// (`shep_core::protocol::sort_flock`, which `snapshot_all` calls).
     ///

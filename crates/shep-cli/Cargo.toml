@@ -81,6 +81,10 @@ assets = [
 # `invalid_config` naming this feature rather than running an exporter that
 # exports nothing.
 otel = []
+# Option: `shep describe` reports the revision checked out in each sheep's
+# `cwd`, read from git's files with no `git` run. Off by default: it opens
+# files in a directory the operator controls.
+vcs = ["shep-daemon/vcs"]
 
 [dependencies]
 # `features = ["schema"]`: `shep schema` prints `shep_core::config::

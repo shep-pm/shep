@@ -250,6 +250,11 @@ impl<R: ProcessRunner> Actor<R> {
                 let _ = reply.send(self.snapshot_all());
                 false
             }
+            #[cfg(feature = "vcs")]
+            Command::WorkingDirs { reply } => {
+                let _ = reply.send(self.working_dirs());
+                false
+            }
             Command::Reopen { selector, reply } => {
                 self.handle_reopen(&selector, reply);
                 false

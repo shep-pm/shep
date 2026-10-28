@@ -11,12 +11,18 @@ documentation = "https://docs.rs/shep-daemon"
 keywords = ["shep", "process-manager", "supervisor", "daemon", "restart"]
 categories = ["os", "os::unix-apis", "asynchronous"]
 
-# No `[package.metadata.docs.rs]`: `test-fakes` is this crate's only
-# feature, and it is test scaffolding, not public API worth unlocking.
+# No `[package.metadata.docs.rs]`: `test-fakes` is test scaffolding, not public
+# API worth unlocking, and `vcs` adds one reader module.
 [features]
 # Option: expose the scripted fake runner (`fake::ScriptedRunner`) to other
 # crates' tests. Off by default, since it is test scaffolding, not public API.
 test-fakes = []
+# Option: `Describe` fills a sheep's `vcs` from the revision checked out in its
+# `cwd`. Off by default, and it adds no dependency: the reader parses git's
+# files itself and runs no `git`. A feature because it opens files in a
+# directory the operator controls, which a build that never asked for a
+# revision should not do.
+vcs = []
 
 [dependencies]
 shep-core.workspace = true

@@ -245,7 +245,11 @@ fn json_format_matches_the_committed_fixtures() {
     let script = write_logging_script(&dir, "fixture-line-1", None);
     let mut guard = DaemonGuard::default();
 
+    // The sheep's `cwd` is the directory `start` runs in. The tempdir keeps it
+    // out of any checkout, so `describe` gains no `vcs` on a build with the
+    // feature and the fixture is the same on both.
     let start_out = shep(home)
+        .current_dir(dir.path())
         .arg("--format")
         .arg("json")
         .arg("start")
