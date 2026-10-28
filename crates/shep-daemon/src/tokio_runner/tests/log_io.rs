@@ -202,7 +202,7 @@ impl AsyncWrite for WriteCounter {
 
 /// A [`LogFile`] writing through `sink`, for the cases that drive one directly
 /// rather than through [`PumpHarness`]. The one place these tests name
-/// [`LogFile`]`'s fields, and generic over the sink for the same reason
+/// [`LogFile`]'s fields, and generic over the sink for the same reason
 /// [`LogFile`] is.
 ///
 /// Neither goes through [`LogFile::open`], which is the one that swallows a

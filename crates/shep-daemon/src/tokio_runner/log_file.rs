@@ -328,7 +328,7 @@ pub(super) struct PipeFds {
     /// Reported here for the reason [`Self::stdin`] gives, but the ownership
     /// argument is weaker: the writer task also ends on a write that fails,
     /// which a child that closed its fd 3 produces.
-    /// `Actor::handle_handover_snapshot` masks this field when it is gone.
+    /// `Actor::handle_handover_snapshot` masks it when the channel is gone.
     pub(super) channel: Option<RawFd>,
 }
 

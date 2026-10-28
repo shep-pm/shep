@@ -101,8 +101,8 @@ impl<R: ProcessRunner> Actor<R> {
     ///
     /// Synchronous and `&self` for the reason [`Self::handle_reopen`] gives;
     /// the entries are cloned because the assembly runs after the loop, which
-    /// is what [`OwnedCandidate`] exists for. Every sheep holding a process
-    /// is described; every parked dog is left for a successor to register.
+    /// is what [`OwnedCandidate`] exists for. Every registered entry is
+    /// described except a parked dog, which a successor registers for itself.
     #[cfg(unix)]
     pub(super) fn handle_handover_snapshot(
         &self,

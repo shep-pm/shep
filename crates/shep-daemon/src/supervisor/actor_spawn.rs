@@ -199,11 +199,11 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// Registers + spawns one brand-new instance (a fresh id, `restarts: 0`).
     ///
-    /// Always inserts a [`SheepSlot`] before returning: `Starting` with a
-    /// readiness task armed when the app configures `wait_ready`, a
-    /// `readiness_probe` or a `listen_timeout` fallback, and `Online` otherwise;
-    /// `Errored` with no task on failure. `dog` lands on the entry either way,
-    /// so a dog whose binary cannot be spawned still shows in the dogs table.
+    /// Always inserts a [`SheepSlot`] before returning. A gated app lands
+    /// `Starting` with a readiness task armed; an ungated one lands `Online`.
+    /// An app is gated by `wait_ready` or a `readiness_probe`, or by its name
+    /// being in `gate`. A gated heuristic app waits on `listen_timeout`.
+    /// Failure lands `Errored` with no task. `dog` lands on the entry either way.
     pub(super) fn spawn_fresh(
         &mut self,
         app: &ResolvedApp,

@@ -25,13 +25,13 @@ pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "liveness_probe",
 ];
 
-/// Records what a load's `env` branch just merged: the file's env keys are
-/// established from here, and an override of one is spent, unless it is a
-/// tombstone, which is spent by nothing a load can do.
+/// Records what a load's `env` branch merged. The file's env keys are
+/// established from here, and an override of one is spent. A tombstone is
+/// spent by nothing a load can do: it means a key is absent.
 ///
-/// A tombstone means the absence of a key, and a file that declares that key
-/// is where it still has work to do. Known gap: an env key skipped because an
-/// override holds it is established anyway, so clearing it leaves the key out.
+/// A file declaring that key is where a tombstone still has work to do.
+/// Known gap, under [`ResetDepth::None`]: an env key an override holds is
+/// established anyway. Clearing that override leaves the key out of scope.
 fn establish_env(next: &mut AppOverrides, incoming: &DeclaredApp) {
     if let Some(serde_json::Value::Object(env)) = next.fields.get_mut("env") {
         for key in &incoming.declared_env {
