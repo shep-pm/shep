@@ -7,13 +7,8 @@ use std::fmt;
 ///
 /// One dial, not three switches: colour, boxes and sheep are not independent
 /// tastes in practice. `NO_COLOR` stays orthogonal, being a convention about
-/// colour alone.
-///
-/// `clap::ValueEnum` so `--style` and [`Self::parse`] agree on spelling by
-/// construction. [`Self::parse`] alone reads the two free-form sources,
-/// `$SHEP_STYLE` and `shep.toml`'s `[style] level`, and trims them; clap's
-/// own parser does not trim, so routing `[style] level` through it once let
-/// `level = " full "` fail silently.
+/// colour alone. `clap::ValueEnum` so `--style` and [`Self::parse`] agree on
+/// spelling by construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum StyleLevel {
     /// Sheep, boxes and colour.
@@ -89,13 +84,8 @@ pub(crate) fn no_color_set(no_color: Option<&OsStr>) -> bool {
 
 /// Whether the terminal supports the 256-colour tier: `$COLORTERM`
 /// containing `truecolor`/`24bit`, or `$TERM` containing `256color`.
-/// The values are compared case-insensitively, because terminals do not
-/// promise a case: `COLORTERM=TrueColor` is common and an upper-case
-/// `$TERM` is still a match (#282).
-///
-/// Anything else gets the 16-colour fallback.
-///
-/// Lives here for the same reason [`no_color_set`] does.
+/// Compared case-insensitively, because terminals do not promise a case:
+/// `COLORTERM=TrueColor` is common (#282). Anything else gets 16 colours.
 pub(crate) fn deep_colour_terminal(term: Option<&OsStr>, colorterm: Option<&OsStr>) -> bool {
     colorterm.is_some_and(|value| {
         let value = value.to_string_lossy().to_ascii_lowercase();
@@ -111,14 +101,9 @@ pub(crate) fn deep_colour_terminal(term: Option<&OsStr>, colorterm: Option<&OsSt
 /// The level the operator chose, whether colour survived `NO_COLOR`, and
 /// how deep the terminal's own colour support is.
 ///
-/// Four independent axes: `level` is a layout dial, `colour` is
-/// `NO_COLOR`'s veto over it, `deep_colour` is a fact about the terminal,
-/// and `width` a fourth. None implies another.
-///
-/// Resolved once, at [`Presentation::new`], and never per render: `width`
-/// in particular reads the process's real controlling terminal, which a
-/// per-attempt read would make a test's result depend on how it was
-/// launched.
+/// Four independent axes: `level`, `colour`, `deep_colour` and `width`.
+/// None implies another. Resolved once, at [`Presentation::new`], and never
+/// per render: `width` reads the process's real controlling terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Presentation {
     pub(crate) level: StyleLevel,

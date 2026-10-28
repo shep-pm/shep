@@ -21,9 +21,7 @@ use crate::{cli, commands, exit, output};
 ///
 /// A verb belongs here only if it is a way out of a skew, never merely one
 /// that is inconvenient to lose: a guard whose remedy is itself guarded
-/// leaves a live daemon and a live flock nothing can touch.
-/// [`VERSION_SKEW_REMEDY`] reads `shep daemon reload` out of this list rather
-/// than spelling it twice.
+/// leaves a live daemon nothing can touch.
 const RECOVERY_VERBS: [&str; 3] = ["kill", "daemon reload", "ping"];
 
 /// Which [`RECOVERY_VERBS`] entry `command` is, or `None` for an ordinary
@@ -49,10 +47,8 @@ fn recovery_verb(command: &Commands) -> Option<&'static str> {
 /// them, which a version skew warns about and does not refuse.
 ///
 /// `bleats` is the whole verb: both its forms send one `ListFlock` and then
-/// read. A verb belongs here only if it changes nothing, so a pane or a tool
-/// that can write (`lookout`, `whistle`) stays out whatever it mostly does.
-///
-/// Read only by the test that holds it against [`read_verb`].
+/// read. A verb belongs here only if it changes nothing, so a pane that can
+/// write (`lookout`, `whistle`) stays out.
 #[allow(dead_code)]
 const READ_VERBS: [&str; 3] = ["flock", "describe", "bleats"];
 
@@ -73,11 +69,8 @@ fn read_verb(command: &Commands) -> Option<&'static str> {
 /// Whether a shepherd this build cannot write to refuses this invocation.
 ///
 /// What a shepherd cannot be written to is the link's question, not the
-/// verb's: see [`skew_of`].
-///
-/// `pub(crate)`: `lookout`, `whistle` and `foreground` call `Client::connect`
-/// in their own modules and name this at each connect site, always
-/// [`Self::Enforce`].
+/// verb's: see [`skew_of`]. `pub(crate)`: `lookout`, `whistle` and
+/// `foreground` call `Client::connect` in their own modules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum VersionGuard {
     /// Refuse: this verb needs a shepherd that agrees with this binary.
@@ -253,23 +246,12 @@ fn one_line_refusal(summary: &str, command: &str) -> String {
 }
 
 /// What the handshake this client already completed says about versions, in
-/// the two forms a guard needs.
+/// the two forms a guard needs: equal [`PROTOCOL_VERSION`], not a floor.
 ///
-/// The two links ask different questions, and each asks the one its own
-/// failure mode needs. The local socket asks whether this machine is
-/// half-replaced: `cargo install shep` replaces the binary and leaves the
-/// shepherd running the old code, so the two can agree on every byte of the
-/// wire while disagreeing about what a verb does. A link over `--host` asks
-/// only whether the two agree on the wire: that host has its own install, so
-/// there is no half machine to forget to reload, and a fleet upgrades one host
-/// at a time, which makes a version difference the normal state of six of
-/// seven rather than a mistake.
-///
-/// Equal protocols, not `peer >= MIN_SUPPORTED`: every change to a wire shape
-/// bumps [`PROTOCOL_VERSION`], so agreeing on the number is agreeing on the
-/// grammar. A floor would let this build write to a shepherd whose `AppConfig`
-/// refuses a field it has never heard of, which is the case
-/// `docs/decisions.md` turned the protocol floor down over.
+/// The local socket asks whether this machine is half-replaced: `cargo
+/// install shep` replaces the binary and leaves the old shepherd running. A
+/// link over `--host` asks only whether the two agree on the wire, since a
+/// fleet upgrades one host at a time.
 fn skew_of(client: &Client) -> Skew {
     let ack = client.daemon();
     let host = client.host();
@@ -356,21 +338,13 @@ pub(crate) fn host_skew(client: &Client, guard: VersionGuard) -> Result<Option<S
 /// and goes ahead.
 ///
 /// Which difference refuses is the link's, and [`skew_of`] states it: crate
-/// versions over the local socket, [`PROTOCOL_VERSION`] over `--host`. Both
-/// read a handshake that already succeeded, from
-/// [`shep_core::protocol::HelloAck`].
-///
-/// A difference the link tolerates writes [`Skew::notice`] to stderr as a
-/// notice and proceeds, so stdout stays whatever the verb prints.
+/// versions over the local socket, [`PROTOCOL_VERSION`] over `--host`. A
+/// tolerated difference writes [`Skew::notice`] to stderr, not to stdout.
 ///
 /// # Errors
 /// [`ExitCode::VersionSkew`], after writing the refusal to `streams`, when
 /// `guard` is [`VersionGuard::Enforce`] and this link refuses the difference.
 /// A [`VersionGuard::Exempt`] or [`VersionGuard::Warn`] verb is always `Ok`.
-///
-/// A client reached over ssh gets a refusal or a notice that names its host,
-/// and a fix on whichever side of the gap is behind: over ssh for a host on
-/// an older protocol, on this machine for one on a newer protocol.
 pub(crate) fn refuse_version_skew(
     streams: &mut Streams<'_>,
     client: &Client,
@@ -444,22 +418,10 @@ pub(crate) async fn connect_client(
 /// `shep flock`'s own dispatch, split out of [`run`](crate::dispatch::run) so
 /// a test can drive it against a real fixture socket.
 ///
-/// Uses its own `Client::connect`, not [`connect_client`], because that
-/// helper reports and gives up and this arm has a roll fallback to reach.
-/// The version guard is applied by hand here.
-///
-/// A refusal is not an absence. The roll fallback is for
-/// [`shep_client::ConnectError::Connect`] alone, nothing listening at all;
-/// every other variant means the shepherd is there and answered.
-///
-/// With a `hosts` list in this machine's `shep.toml`, and neither `--host` nor
-/// `--follow`, the arm is [`query::fleet::flock_all`] instead: every host's
-/// flock, this machine's first. `--host` under `--format json` tags every row
-/// with the host as typed.
-///
-/// Over a host there is no roll fallback: the roll is this machine's
-/// `flock.json`, so printing it for a dead host would list the wrong flock.
-/// The connect error's own code ends the run instead.
+/// Uses its own `Client::connect`, not [`connect_client`], because that helper
+/// reports and gives up and this arm has a roll fallback to reach. The roll
+/// fallback is for [`shep_client::ConnectError::Connect`] alone: every other
+/// variant means the shepherd is there and answered.
 pub(crate) async fn flock_command(
     streams: &mut Streams<'_>,
     link: &Link<'_>,
@@ -523,14 +485,8 @@ pub(crate) async fn flock_command_on(
 /// [`connect_client`] and the redraw loop.
 ///
 /// [`connect_client`], not [`flock_command`]'s hand-rolled connect, because
-/// this path has no roll to fall back to. A saved roll is one moment, and a
-/// follow exists for the moments after it, so a shepherd that is not running
-/// is a refusal here rather than a listing.
-///
-/// Both refusals are usage errors rather than degradations. A follow written
-/// into a file would be a file of escape sequences, and a follow that quietly
-/// printed once instead would exit zero having done something else than what
-/// was asked.
+/// this path has no roll to fall back to: a saved roll is one moment, and a
+/// follow exists for the moments after it.
 async fn follow_flock_command(
     streams: &mut Streams<'_>,
     link: &Link<'_>,

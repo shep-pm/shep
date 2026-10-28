@@ -2,12 +2,9 @@
 //! string an untrusted host worded, [`sanitise_multiline`] for prose shep
 //! lays out in lines itself.
 //!
-//! Lives here, at a leaf both `crate::fetch` and `dog_index` can reach,
-//! rather than in either: a module cycle is the wrong way to share it.
-//!
-//! Strips rather than escapes: a stripped sequence's printable tail
-//! survives as inert text (`\u{1b}[2J` prints as `[2J`), which is
-//! simpler to get right than rendering it literally.
+//! Lives here, at a leaf both `crate::fetch` and `dog_index` can reach: a
+//! module cycle is the wrong way to share it. Strips rather than escapes: a
+//! stripped sequence's printable tail survives as inert text (`[2J`).
 //!
 //! Not [`crate::output::width::sanitize_cell`], which keeps a
 //! well-formed CSI sequence since shep's own colouring is made of them.
@@ -28,10 +25,7 @@ pub fn sanitise(field: &str) -> (String, bool) {
 ///
 /// `\n` is the only character spared, and the weaker guarantee is
 /// deliberate: a kept `\n` can forge a line of output, so a string an
-/// untrusted host worded goes through [`sanitise`] at its own seam
-/// instead. Everything that moves the cursor or rewrites a drawn row
-/// still goes, `\r`, `\t`, `\u{1b}` and `\u{9b}` among them. Reports
-/// `true` on [`sanitise`]'s terms, counting a kept `\n` as nothing removed.
+/// untrusted host worded goes through [`sanitise`] at its own seam.
 pub fn sanitise_multiline(field: &str) -> (String, bool) {
     strip_unprintable(field, true)
 }
@@ -68,14 +62,8 @@ fn strip_unprintable(field: &str, keep_line_breaks: bool) -> (String, bool) {
 ///
 /// Two groups: `char::is_control` (Unicode `Cc`, including `\u{1b}` and
 /// `\u{9b}`, the single-character CSI introducer), and a fixed list of
-/// invisible or reordering format characters that are not control
-/// characters: zero-width spaces and joiners, bidi overrides (`U+202E`
-/// can make `exe.gnp` read as `png.exe`), variation selectors, and tags
-/// (`U+E0000..=U+E007F` maps onto ASCII, so it can carry a hidden string).
-///
-/// Everything else survives: accented Latin, kana, Han, emoji and
-/// combining marks are ordinary prose. Stripping `U+FE0F` costs an
-/// emoji's presentation form, so `❤️` prints as `❤`.
+/// invisible or reordering format characters: zero-width joiners, bidi
+/// overrides (`U+202E` can make `exe.gnp` read as `png.exe`), and tags.
 fn is_unprintable(ch: char) -> bool {
     ch.is_control()
         || matches!(ch,

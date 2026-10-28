@@ -11,14 +11,10 @@ use crate::output::{OutputEnvelope, SCHEMA_VERSION, Streams};
 
 /// The art, with `{version}` and `{home}` substituted at render time.
 ///
-/// About a third the height of pm2's banner: the point is to be seen
-/// once and not resented.
-///
-/// No `\` line-continuation before the first line: `\` followed by a
-/// newline strips the newline and the next line's leading whitespace,
-/// which would unindent the leftmost sheep by six columns. A pinning
-/// test cannot catch that on its own: the expected string is written the
-/// same way and loses the same six columns.
+/// About a third the height of pm2's banner: the point is to be seen once
+/// and not resented. No `\` line-continuation before the first line: `\`
+/// followed by a newline strips it and the next line's leading whitespace,
+/// which would unindent the leftmost sheep by six columns.
 const ART: &str = "      ,-~-.     ,-~-.     ,-~-.
      ( o.o )   ( o.o )   ( o.o )       shep {version}
       `-^-'     `-^-'     `-^-'        flock at {home}
@@ -65,9 +61,6 @@ pub(crate) fn render(home: &Path) -> String {
 ///
 /// Not a [`crate::output::Render`] impl: that trait is for tabular data and
 /// requires `headers()` and `rows()`, which free-form text has neither of.
-/// The envelope is built from the same [`OutputEnvelope`] and
-/// [`SCHEMA_VERSION`] every other verb goes through, so the schema stays
-/// consistent without pretending this is a table.
 #[derive(Debug, serde::Serialize)]
 struct WelcomeData {
     /// The rendered welcome, newlines and all.
@@ -77,15 +70,9 @@ struct WelcomeData {
 /// Prints the welcome as a side effect of whichever command created the home.
 ///
 /// Suppressed under `--format json` and when stderr is not a terminal: a cold
-/// machine is exactly where a provisioning script runs first, and a banner in
-/// the middle of `shep start server.js | jq` is a bug. The home is still
-/// created when the text is suppressed. Suppression governs the output, never
-/// the side effect.
-///
-/// `stderr_is_terminal` is a parameter rather than an `IsTerminal` call in
-/// here for the same reason [`crate::commands::daemon`]'s `ansi_enabled`
-/// takes one: a test writing into a `Vec` could not otherwise reach this
-/// branch.
+/// machine is exactly where a provisioning script runs first. The home is
+/// still created when the text is suppressed. `stderr_is_terminal` is a
+/// parameter so a test writing into a `Vec` can reach this branch.
 pub(crate) fn on_first_run(streams: &mut Streams<'_>, home: &Path, stderr_is_terminal: bool) {
     if streams.fmt == Format::Json || !stderr_is_terminal {
         return;
