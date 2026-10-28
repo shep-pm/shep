@@ -460,6 +460,11 @@ stopped being cosmetic. The split is still open: the field arrived the cheap
 way Phase 10 built for it (`ProcessInfo` is `#[non_exhaustive]` with a
 builder), and nothing since has forced the four concerns apart.
 
+`docs/decisions.md` moved the trigger when `lambs` landed: a second consumer
+that needs a genuinely different projection of the row, not a field
+arriving. The likeliest one, as of 2026-10-28, is shep-status, the JSON
+status dog that replaces #346: it wants a row with no paths and no env.
+
 Tracked as https://github.com/shep-pm/shep/issues/352.
 
 ### `check_log_ancestry`'s TOCTOU window, and the Linux syscall that would close it
