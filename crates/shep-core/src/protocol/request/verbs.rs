@@ -454,17 +454,13 @@ pub enum Request {
         name: String,
         /// Where its binary comes from
         source: DogSource,
-        /// The environment the operator set for the dog, as written in
-        /// `[daemon.adopted_dogs]`, `{{secret:...}}` references included.
+        /// The dog's operator-set environment, as written in `shep.toml`
         ///
         /// The CLI owns `shep.toml` and the shepherd never reads it, so the
-        /// half of an entry the shepherd spawns with arrives here rather than
-        /// on `source`, which every flock row carries: an env value belongs
-        /// to one spawn, not to a listing. Empty for a built-in dog, and
-        /// absent on the wire when it is.
-        ///
-        /// [`EnvValue`], not a bare `String`, for the reason that type's own
-        /// doc gives (IR-41).
+        /// half of an `[daemon.adopted_dogs]` entry this daemon spawns with
+        /// arrives here rather than on `source`, which every flock row
+        /// carries. A value may be a `{{secret:...}}`, still a reference here.
+        /// Empty for a built-in dog, and absent on the wire when it is.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         env: BTreeMap<String, EnvValue>,
     },

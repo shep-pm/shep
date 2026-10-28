@@ -34,14 +34,13 @@ pub struct DaemonSection {
     /// Dogs to autostart with the daemon (`shep enable` writes this)
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub enabled_dogs: Vec<String>,
-    /// Where an adopted dog's binary lives, and the environment the operator
-    /// sets for it, keyed by dog name (`shep adopt` writes this; `shep
-    /// delete` removes it).
+    /// An adopted dog's binary and the environment the operator sets beside
+    /// it, keyed by dog name
     ///
-    /// A name in [`Self::enabled_dogs`] with no entry here is a built-in dog,
-    /// an argv branch of the shep binary itself. Not recorded inside
-    /// `[dog.<name>]`: that table is the dog's own opaque configuration,
-    /// which the dog asks for over the socket. This is the operator's half.
+    /// `shep adopt` writes this and `shep delete` removes it. A name in
+    /// [`Self::enabled_dogs`] with no entry here is a built-in dog, an argv
+    /// branch of the shep binary itself. Kept out of `[dog.<name>]`, which is
+    /// the dog's own configuration and travels over the socket.
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub adopted_dogs: BTreeMap<String, AdoptedDog>,
     /// Adopted dogs whose `--version` answer asked for the shepherd channel,
@@ -104,13 +103,9 @@ impl Default for DaemonSection {
 /// environment the operator sets for it.
 ///
 /// Two shapes on disk. A bare path string is what every `shep.toml` wrote
-/// before `env` existed and what `shep adopt` still writes; it reads as an
-/// entry with an empty `env`. A table spells both halves out:
-/// `path = "..."` with an optional `env` table beside it.
-///
-/// `Debug` is manual and redacted (IR-41): `env` holds the operator's own
-/// values, `{{secret:...}}` references and literals alike, and a
-/// `DaemonConfig` is printed when a boot refuses its file.
+/// before `env` existed, and reads as an entry with an empty `env`. A table
+/// spells both halves out: `path = "..."` with an optional `env` beside it.
+/// `Debug` is manual and redacted (IR-41): `env` holds the operator's values.
 #[derive(Clone, PartialEq, Eq)]
 pub struct AdoptedDog {
     /// Where the dog's binary lives, exactly as the operator wrote it.
