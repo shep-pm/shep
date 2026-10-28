@@ -107,21 +107,23 @@ impl App {
         name: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        let Some((schema, adopted_path, env_keys)) = self.settings().and_then(|settings| {
+        let Some((schema, adopted_path)) = self.settings().and_then(|settings| {
             let schema = settings.dog_tree_named(name)?.schema()?.clone();
             let dog = settings.dog_named(name)?;
-            Some((schema, dog.adopted_path.clone(), dog.env_keys.clone()))
+            Some((schema, dog.adopted_path.clone()))
         }) else {
             return Effect::None;
         };
         match result {
             Ok(Response::DogSection { toml }) => {
+                // No `env` keys here: this tree has no cell for one and no
+                // write path for one. A dog's `env` is edited in its own pane.
                 let pane = ConfigPane::dog(
                     name.to_owned(),
                     adopted_path,
                     schema.clone(),
                     toml.as_str().to_owned(),
-                    env_keys,
+                    Vec::new(),
                 );
                 self.open_settings_dog(name, pane, schema);
             }

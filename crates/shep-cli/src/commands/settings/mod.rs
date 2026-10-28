@@ -313,12 +313,6 @@ pub struct DogView {
     /// Read off the file rather than off the dog's binary: an adopted dog's
     /// record was written out of its manifest when `shep enable` asked.
     pub offered: Vec<String>,
-    /// The key names of `[daemon] adopted_dogs.<name>`'s `env`.
-    ///
-    /// Names only, never values: a value is a secret and this snapshot is
-    /// printed. Empty for a built-in dog, which has no entry to set an `env`
-    /// beside.
-    pub env_keys: Vec<String>,
 }
 
 impl DogView {
@@ -345,7 +339,6 @@ impl DogView {
             channel: false,
             grants: DogGrants::Undeclared,
             offered: Vec::new(),
-            env_keys: Vec::new(),
         }
     }
 
@@ -507,7 +500,6 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
         .into_iter()
         .map(|name| {
             let adopted_path = doc.adopted_dog_path(&name);
-            let env_keys: Vec<String> = doc.adopted_dog_env(&name).keys().cloned().collect();
             let is_enabled = enabled.contains(&name);
             let is_first = boot_first.contains(&name);
             let channel = doc.asked_for_channel(&name);
@@ -525,7 +517,6 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
                 channel,
                 grants,
                 offered,
-                env_keys,
             }
         })
         .collect()

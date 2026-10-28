@@ -201,6 +201,47 @@ fn an_opened_dog_draws_the_same_tree_the_dog_pane_draws() {
     assert_eq!(rows_under(&app, "bark"), expected);
 }
 
+/// An adopted dog's pane carries its `env` keys, and this tree has neither a
+/// cell for one nor a write path for one: they are edited in the dog's own
+/// pane. Listing them as rows here would draw a blank line the cursor could
+/// sit on.
+#[test]
+fn the_settings_tree_lists_no_dog_row_it_cannot_draw() {
+    let app = fixtures::app_in_settings_with_an_adopted_dog_open();
+    let settings = app.settings().expect("the settings screen is open");
+    let pane = settings
+        .dog_tree_named("otel")
+        .and_then(|tree| tree.pane())
+        .expect("the fixture opens the dog's row");
+    assert!(
+        pane.rows().iter().any(|row| matches!(row, PaneRow::AddEnv)),
+        "an adopted dog's pane does carry its env rows: {:?}",
+        pane.rows()
+    );
+    let listed: Vec<PaneRow> = settings
+        .rows()
+        .into_iter()
+        .filter_map(|row| match row {
+            SettingsRow::DogField { dog, row } => Some((dog, row)),
+            _ => None,
+        })
+        .map(|(dog, row)| {
+            settings
+                .dog_tree(dog)
+                .and_then(|tree| tree.pane())
+                .expect("every listed row sits under an open dog")
+                .rows()[row]
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        !listed
+            .iter()
+            .any(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv)),
+        "the tree lists {listed:?}"
+    );
+}
+
 /// A field edited under the dog's row leaves the section a dog pane's close
 /// leaves for the same field: same gate, same typing, same text in
 /// `Request::SetDogConfig`, operator's comments intact.

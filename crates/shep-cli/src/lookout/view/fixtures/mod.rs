@@ -67,7 +67,7 @@ pub use self::secrets::{
 pub use self::settings::{
     BARK_RECORDED, app_in_settings, app_in_settings_at, app_in_settings_on, app_in_settings_on_dog,
     app_in_settings_on_enabled_dog, app_in_settings_with_a_dog_open,
-    app_in_settings_with_control,
+    app_in_settings_with_an_adopted_dog_open, app_in_settings_with_control,
     app_in_settings_with_dog_drift, app_in_settings_with_shadowed_style,
     app_in_settings_with_silent_dog, app_in_settings_with_silent_style, home_with, open_dog_row,
     select_setting, setting_set, setting_unset, settings_over, settings_snapshot,

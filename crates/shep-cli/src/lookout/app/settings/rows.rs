@@ -56,7 +56,16 @@ impl Settings {
         let Some(pane) = tree.pane() else {
             return;
         };
-        rows.extend((0..pane.rows().len()).map(|row| SettingsRow::DogField { dog: index, row }));
+        // Only the rows this screen can draw and edit. A dog's pane also
+        // carries its `env` keys, and this tree has neither a cell for one nor
+        // a write path for one: they are edited in the dog's own pane.
+        rows.extend(
+            pane.rows()
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| pane.tree_row((*row).to_owned()).is_some())
+                .map(|(row, _)| SettingsRow::DogField { dog: index, row }),
+        );
     }
 
     fn push_children(&self, children: &[Child], rows: &mut Vec<SettingsRow>) {

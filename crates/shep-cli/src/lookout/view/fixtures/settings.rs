@@ -189,6 +189,46 @@ pub fn app_in_settings_with_a_dog_open() -> App {
     app
 }
 
+/// [`app_in_settings_with_control`] with an adopted dog's row opened: the same
+/// two reads [`open_dog_row`] feeds, with the schema a probe of its binary
+/// would answer with. An adopted dog is the one whose `shep.toml` entry can
+/// set an `env`, so it is the one whose pane carries `env` rows.
+pub fn app_in_settings_with_an_adopted_dog_open() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.set_control_for_tests(Control::Allowed);
+    app.update(Msg::Key(KeyPress::Settings));
+    app.update(Msg::Settings {
+        result: Ok(settings_snapshot_with_dogs(vec![DogView::adopted(
+            "otel",
+            true,
+            Path::new("/usr/local/bin/shep-otel"),
+        )])),
+    });
+    select_setting(&mut app, "dog.otel");
+    let effect = app.update(Msg::Key(KeyPress::Edit));
+    if !matches!(effect, Effect::LoadDogPane { .. }) {
+        panic!("opening a dog row asks for its schema, got {effect:?}");
+    }
+    app.update(Msg::DogPane {
+        name: "otel".to_owned(),
+        adopted_path: Some(PathBuf::from("/usr/local/bin/shep-otel")),
+        env_keys: Vec::new(),
+        result: Ok(serde_json::json!({
+            "type": "object",
+            "properties": { "ratio": { "type": "number" } },
+        })),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "otel".to_owned(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "ratio = 1.5\n".to_owned().into(),
+        }),
+    });
+    app
+}
+
 /// `e` on the row of the dog named `name`, then the two reads that opening
 /// it asks for, answered the way the event loop answers them. A built-in dog
 /// only, because the schema comes from this binary rather than a probe.
