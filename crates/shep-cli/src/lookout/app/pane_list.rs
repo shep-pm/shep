@@ -219,7 +219,7 @@ impl App {
     /// The env editor's own text keymap, in force for as long as
     /// [`ConfigPane::env_typing`] is `Some`. The secrets pane's
     /// [`App::on_secrets_text_key`] answers the same keys the same way,
-    /// because both are driving one [`KeyValues`](crate::lookout::keyvalue::KeyValues).
+    /// because both are driving one [`KeyValues`].
     ///
     /// `TextApply` files, exactly as the field editor's does: nothing on an
     /// env row reaches the shepherd before the pane closes, so an env key

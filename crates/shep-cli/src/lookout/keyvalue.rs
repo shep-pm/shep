@@ -4,7 +4,8 @@
 //! them: two [`TextBox`]es side by side, one under the cursor, `Tab` and
 //! `Shift-Tab` moving between them, `Enter` on VALUE submitting both, and
 //! `Esc` dropping the whole thing. What each pane does with what is
-//! submitted is its own: an env row files a [`PaneEdit::SetEnv`], a secrets
+//! submitted is its own: an env row files a
+//! [`PaneEdit::SetEnv`](crate::lookout::pane::PaneEdit::SetEnv), a secrets
 //! row raises a [`SecretEdit`](crate::lookout::app::SecretEdit).
 //!
 //! The editor never holds a stored value. Neither pane is ever told one:
