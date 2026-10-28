@@ -124,6 +124,8 @@ impl Render for FlockRows {
         "dog",
         // Always `null`: only `Describe` walks for lambs.
         "lambs",
+        // Describe only, like `lambs`.
+        "vcs",
         // A handshake is a fact about a dog, and every row here is a sheep.
         "handshook",
         // A dog fact too: a shepherd gives up only on dogs.
@@ -243,6 +245,7 @@ impl Render for FlushedRows {
 #[cfg(test)]
 pub(crate) mod tests {
     use shep_core::protocol::ExitInfo;
+    use shep_core::protocol::Vcs;
     use shep_core::status::ProcStatus;
 
     use crate::vocabulary::Role;
@@ -253,14 +256,16 @@ pub(crate) mod tests {
 
     #[test]
     fn flock_rows_do_not_drift() {
-        // `reload_deadline_ms` and `disabled` on top of `sample_flock`, not
-        // in it: this type renders a reload's acceptance as well as a
+        // `reload_deadline_ms`, `disabled` and `vcs` on top of `sample_flock`,
+        // not in it: this type renders a reload's acceptance as well as a
         // listing, and the gate only sees a key a fixture serializes.
         // `skip_serializing_if` means an unset field has no key.
         let FlockRows(mut rows) = sample_flock();
         for row in &mut rows {
             row.reload_deadline_ms = Some(15_000);
             row.disabled = Some(true);
+            row.vcs =
+                Some(Vcs::new("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0").with_branch("main"));
         }
         // UPTIME/CPU/MEM are formatted, EXIT's JSON value is a nested object,
         // and CFG is a summary of two fields.
