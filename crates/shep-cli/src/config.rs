@@ -13,8 +13,7 @@ use crate::{cli, style};
 /// Flockfile's own field, then `--interpreter`.
 ///
 /// Empty covers every way this layer can say nothing, a file that will not
-/// parse included: `shep start` must still start a script by path while an
-/// operator is mid-edit.
+/// parse included: `shep start` must still start a script by path.
 pub(crate) fn interpreters_from_config(
     shep_toml: Option<&str>,
 ) -> std::collections::BTreeMap<String, String> {
@@ -35,14 +34,9 @@ pub(crate) fn style_from_config(shep_toml: Option<&str>) -> Option<style::StyleL
 /// `$SHEP_STYLE`, then `shep.toml`'s `[style] level`, then `full`.
 ///
 /// Reads `shep.toml` via [`resolve_paths`] rather than
-/// [`crate::home::ensure_home`], so
-/// `--style` still works with no `$SHEP_HOME` resolvable and nothing here
-/// creates a directory. An unreadable `shep.toml` reads as an empty config.
-///
-/// Unforced: the hard rule that `--format json` or a piped stdout means
-/// [`style::StyleLevel::Bare`] is applied in [`crate::entry::run_argv`], so
-/// `shep style`'s
-/// report says what is configured.
+/// [`crate::home::ensure_home`], so `--style` still works with no
+/// `$SHEP_HOME` resolvable and nothing here creates a directory. Unforced:
+/// the hard rule that a piped stdout means [`style::StyleLevel::Bare`].
 pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::StyleSource) {
     let config_text = resolve_paths(global)
         .ok()
@@ -55,13 +49,11 @@ pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::S
 }
 
 /// Whether a level [`crate::cli::Commands::Style`]'s set form just wrote to
-/// `shep.toml`
-/// is actually the level that will run.
+/// `shep.toml` is actually the level that will run.
 ///
 /// Only `Flag` and `Env` can say no: they are the two layers
 /// [`style::resolve`] puts above `shep.toml`, and so the two spellings an
-/// operator needs named when the write keeps being overridden. `Config` is
-/// the value this call just wrote, and `Default` cannot follow a write.
+/// operator needs named when the write keeps being overridden.
 #[cfg_attr(windows, allow(dead_code))]
 pub(crate) fn style_write_is_overridden(source: style::StyleSource) -> bool {
     matches!(source, style::StyleSource::Flag | style::StyleSource::Env)

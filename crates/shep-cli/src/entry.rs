@@ -42,11 +42,8 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     }
     // `try_parse_from`, not `parse_from`: the latter prints and exits inside
     // clap, so bare `shep` and `shep help` could not carry a status line.
-    // `try_get_matches_from` on a command built here, not `Cli::try_parse_from`:
-    // the grouped verb listing in `--help` is hand-written copy that adopted
-    // dogs join, and clap bakes the rendered help into the error it answers a
-    // `--help` with. Anything that changes that render has to change the
-    // command before the parse.
+    // The grouped verb listing in `--help` is hand-written copy, so clap's
+    // own `Cli::try_parse_from` could not carry it either.
     let mut command = Cli::command();
     if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)

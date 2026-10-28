@@ -249,10 +249,6 @@ fn strip_trailing_cr(line: &[u8]) -> &[u8] {
 /// The status line's reason phrase is empty (`HTTP/1.1 200 `), which RFC
 /// 7230 §3.1.2 allows; every caller here reads the status code.
 ///
-/// The head goes through [`write_head`] with no extra headers, so the one
-/// spelling of a response head in this module serves both functions and a
-/// change to it cannot reach one and miss the other.
-///
 /// # Errors
 /// - The underlying write failed. No [`HttpError::BadHeader`] is possible:
 ///   the header list is empty.
@@ -280,13 +276,10 @@ pub struct Header<'a> {
 ///
 /// [`write_response`] is the right function when the whole body is already
 /// a `&[u8]`. This one exists for `serve`, which streams a file it has not
-/// read: `content_length` comes from the file's metadata. Every response
-/// carries `Connection: close`, so a caller that writes fewer bytes than it
-/// declared gives a truncated response rather than a hang.
+/// read: `content_length` comes from the file's metadata.
 ///
-/// A 304 carries no `Content-Length` at all (RFC 9110 §8.6: a server MUST
-/// NOT generate one in a 304): the reply has no body, and a zero there
-/// reads as a length the client should compare its copy against.
+/// A 304 carries no `Content-Length` at all (RFC 9110 §8.6): a zero there
+/// reads as a length to compare a copy against.
 ///
 /// # Errors
 /// - [`HttpError::Io`] if the write failed.

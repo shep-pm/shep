@@ -1,15 +1,13 @@
 //! The OTLP/JSON payload shape, as types: `ExportMetricsServiceRequest`
-//! with its `resourceMetrics`, `scopeMetrics` and `metrics` nesting, the
-//! `gauge`/`sum` pair that is how OTLP spells a metric's type in JSON, and
-//! the builders that fill it.
+//! with its `resourceMetrics`, `scopeMetrics` and `metrics` nesting, and
+//! the `gauge`/`sum` pair that is how OTLP spells a metric's type in JSON.
 //!
 //! Where the shape differs from plain serde: 64-bit integers are decimal
 //! strings ([`Nanos`], [`IntStr`]), doubles are numbers, and
 //! `aggregationTemporality` is the integer `2` rather than a name.
 //!
-//! Nothing here knows what a sheep is. The series themselves are built by
-//! [`super`] from a `Reading`, and by [`super::samples`] from what a sender
-//! sent on its channel.
+//! Nothing here knows what a sheep is: [`super`] builds the series from a
+//! `Reading`, and [`super::samples`] from what a sender sent on its channel.
 
 use std::borrow::Cow;
 
@@ -101,8 +99,7 @@ struct Scope<'a> {
 /// app-supplied text the store holds as `String`, while every built-in
 /// series names itself with a `&'static str`.
 ///
-/// `unit` is left out entirely. A unit is what makes a Prometheus-side
-/// collector append `_bytes` to a name that already ends in it.
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Metric<'a> {

@@ -103,13 +103,10 @@ fn apply(store: &SampleStore, event: BusEvent) {
 /// Whether `kind` means the samples this sender sent belong to an instance
 /// that no longer exists.
 ///
-/// The arm a kind this build has not been taught lands on frees the samples.
-/// [`ProcessEventKind`] is `#[non_exhaustive]`, so this crate cannot match it
-/// exhaustively, and the guess that has to be made is made on the side that
-/// costs less: a sender sends its next sample, so freeing on a kind that
-/// turned out to mean "still the same instance" loses one sample period, while
-/// keeping on a kind that meant "this one is gone" leaves a dead instance's
-/// series in every scrape for good.
+/// The arm a kind this build has not been taught lands on frees the
+/// samples. The guess is made on the side that costs less: freeing on a
+/// kind that meant "still the same instance" loses one sample period,
+/// keeping on one that meant "gone" leaks a series in every scrape.
 fn clears_samples(kind: ProcessEventKind) -> bool {
     match kind {
         ProcessEventKind::Start
@@ -118,15 +115,10 @@ fn clears_samples(kind: ProcessEventKind) -> bool {
         | ProcessEventKind::Stop
         | ProcessEventKind::Delete
         | ProcessEventKind::Errored => true,
-        // Still the instance that is serving. `Online` follows a `Start` this
-        // dog already cleared for, and a reload that gave up changed nothing
-        // about the one it left holding the slot.
-        //
-        // `Reloaded` belongs here because it names the replacement, not the
-        // instance it drained: the shepherd deregisters the drainee, which
-        // clears that id, and only then announces `Reloaded` on the fresh id
-        // that is now serving. Clearing on it throws away the numbers of the
-        // sheep that just came back healthy.
+        // Still the instance that is serving. `Online` follows a `Start`
+        // this dog already cleared for, and `Reloaded` names the
+        // replacement, not the drainee the shepherd already deregistered
+        // and cleared. Clearing on it loses the new instance's numbers.
         ProcessEventKind::Online
         | ProcessEventKind::Reload
         | ProcessEventKind::Reloaded
@@ -333,13 +325,10 @@ mod tests {
     /// A replay of what a completed swap puts on the bus, read from the
     /// shepherd's own test of it
     /// (`crates/shep-daemon/src/supervisor/tests/reload_bus.rs`): `Reload`
-    /// names the instance being drained, the replacement starts on a fresh id,
-    /// the drainee is `Delete`d, and `Reloaded` lands on the replacement, which
-    /// is the instance now serving.
+    /// names the drainee, the replacement starts on a fresh id, the drainee
+    /// is `Delete`d, and `Reloaded` lands on the replacement.
     ///
-    /// The replacement's own sample survives the swap, and the drainee's does
-    /// not. Its `Delete` is what frees it, which is why keeping on `Reloaded`
-    /// leaks nothing.
+    /// The replacement's own sample survives the swap; its `Delete` frees it.
     #[test]
     fn a_completed_swap_keeps_the_replacements_sample_and_frees_the_draineed() {
         let store = SampleStore::new();

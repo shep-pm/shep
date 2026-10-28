@@ -2,22 +2,12 @@
 //!
 //! Nothing here reads the machine. Three of the four numbers are rates, and
 //! a rate needs two readings separated by time, so the shepherd holds the
-//! baseline and serves the difference off its own tick
-//! (`shep_daemon::host`). A one-shot `shep flock` and a followed one ask the
-//! same question and get the same answer, which is the only way the two can
-//! be made to agree.
+//! baseline and serves the difference off its own tick (`shep_daemon::host`).
 //!
 //! The strip is `lookout`'s, ported rather than reinvented: self-labelled
-//! segments joined in a drop order, truncated from the right so truncation
-//! is the drop order with no second mechanism, and muted except for the two
-//! gauges. See `lookout::view::host`, which argues each of those.
-//!
-//! One difference, and it is the reason rather than the rule that carries
-//! over. Lookout labels every segment `host` or `flock` because it mixes
-//! both halves on one line and a truncated `mem 12.4G` beside a bare
-//! `mem 706.0M` says nothing. This line has one half, so `host` is said once
-//! at the front, as it always has been, and each segment names only which
-//! number it is.
+//! segments joined in a drop order, truncated from the right. Lookout labels
+//! every segment `host` or `flock` because it mixes both halves on one line;
+//! this line has one half, so `host` is said once at the front.
 
 use shep_core::protocol::HostUsage;
 
@@ -36,17 +26,9 @@ const SEPARATOR: &str = "   ";
 /// The strip, fitted to `width` and painted for `style`.
 ///
 /// `None` is a platform `sysinfo` cannot read at all, which is not the same
-/// claim as a rate with no window behind it yet: that one renders `-`, in
-/// its own segment, beside numbers that did arrive.
-///
-/// Two forms, on [`crate::style::StyleLevel::boxes`], the same dial that
-/// decides whether the table under this line is box-drawn. Drawn, it carries
-/// two gauges and truncates to `width` with a `…`. Plain, it drops both
-/// gauges and is not truncated at all, exactly as `output::render_table`
-/// drops its rules and ignores the width: a pipe has no window, and `width`
-/// there is the 80 [`crate::output::terminal_width`] answers when there is
-/// nothing to measure. Cutting real numbers to fit a guess would be the
-/// worst of both.
+/// claim as a rate with no window behind it yet: that one renders `-`. Two
+/// forms, on [`crate::style::StyleLevel::boxes`]: plain drops both gauges
+/// and is not truncated, as `render_table` drops its rules and ignores width.
 pub(crate) fn strip(usage: Option<HostUsage>, style: Presentation, width: usize) -> String {
     let drawn = style.level.boxes();
     let runs = runs(usage, drawn);
@@ -67,9 +49,7 @@ struct Run {
 /// Most of the line is words and numbers with no status behind them, so it
 /// stays muted. The two gauges are the exception, for
 /// `lookout::view::host`'s reason: two bars on one line are unreadable
-/// without something to tell them apart by. The roles are lookout's own,
-/// `attention` for the busy-ness bar and `sky` for the memory one, so the
-/// same number wears the same colour in both places.
+/// without something to tell them apart by.
 #[derive(Clone, Copy)]
 enum Ink {
     Muted,

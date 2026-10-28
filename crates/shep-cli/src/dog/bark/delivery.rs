@@ -14,10 +14,8 @@ use tokio::sync::Mutex;
 /// [`deliver_and_record`] travel as one.
 ///
 /// `Clone` is what [`spawn_firings`] hands each spawned task: three
-/// [`Arc`] bumps and two copies.
-///
-/// `Debug` is safe despite `sinks` holding webhook URLs, which are bearer
-/// credentials: [`Sink`]'s own `Debug` redacts them.
+/// [`Arc`] bumps and two copies. `Debug` is safe despite `sinks` holding
+/// bearer credentials: [`Sink`]'s own `Debug` redacts them.
 #[derive(Debug, Clone)]
 pub(super) struct Delivery {
     /// Every configured sink by name, for resolving a firing's own list.
@@ -68,34 +66,10 @@ pub(super) fn spawn_firings(firings: Vec<Firing>, delivery: &Delivery) {
 /// Delivers `firing` to each of its named sinks, then writes the resulting
 /// [`shep_core::barks::Bark`] to `barks_path`.
 ///
-/// The sinks are driven together rather than in turn: a dead endpoint's
-/// timeout runs beside the healthy sinks' deliveries instead of ahead of
-/// them, so one unreachable webhook no longer holds up an alert the
-/// others could have carried. Each delivery keeps its own
-/// [`Delivery::sink_timeout`] and its own [`SinkOutcome`], and `join_all`
-/// hands the outcomes back in `firing.sinks`' order, which is the order
-/// the trail has always recorded them in.
-///
-/// The bark is written after delivery, since a [`Firing`]'s
-/// [`shep_core::barks::Bark::sinks`] is empty until each sink has been tried.
-/// Written even when every sink refused it: the local trail is what an
-/// operator reads when the page never arrived.
-///
-/// [`Delivery::append_lock`] covers only the [`barks::append`] call, a
-/// read-modify-rename against one file that several of these run at once.
-/// It does not replace `append`'s own cross-process `flock(2)`.
-///
-/// The append runs on `tokio`'s blocking pool rather than inline. Measured
-/// 2026-10-13 on an Apple Silicon mac (macOS 26.2) with
-/// `benches/benches/bark_append.rs` at commit `55a769f0`: a ring already
-/// at [`barks::DEFAULT_MAX_BYTES`] costs a median of 26.5 ms per append
-/// (slowest sample 31.4 ms), an empty ring a median of 8.0 ms (slowest
-/// 9.9 ms). Both sit far over the 1 ms that would have left the call
-/// inline, and the empty-ring figure says most of it is the two `fsync`s
-/// rather than the ring-sized rewrite. Inline on a one-worker runtime that
-/// is 27 ms of reading no bus frames. The [`Delivery::append_lock`] guard
-/// is still held across the `.await`, so this process's appends queue on
-/// one lock rather than parking blocking-pool threads on `flock(2)`.
+/// The sinks are driven together, not in turn: a dead endpoint's timeout
+/// runs beside the healthy deliveries. The bark is written after delivery,
+/// even when every sink refused it: the trail is what an operator reads
+/// when the page never arrived. The append runs on the blocking pool.
 async fn deliver_and_record(firing: Firing, delivery: &Delivery) {
     let mut bark = firing.bark;
     let outcomes = join_all(firing.sinks.iter().map(|name| async {
@@ -203,18 +177,11 @@ mod tests {
     }
 
     /// A dead endpoint's timeout must run beside the healthy sinks, not
-    /// ahead of them. Asserted as an order rather than a duration, the
-    /// way `slow_sink`'s own doc suggests, and read off events rather
-    /// than off a clock: the live sink's request has to arrive while the
-    /// dead delivery is still hanging, and the trail has to be empty at
-    /// the moment it lands. Driven in turn, the live sink is not
-    /// contacted until that delivery has already ended, so the order is
-    /// what fails.
-    ///
-    /// Every wait below is a failure guard, none of them a budget a
-    /// loaded machine has to beat, and the test does not pay its own
-    /// `sink_timeout`: the dead sink is released once the order is
-    /// proven, so the delivery ends on the closed connection.
+    /// ahead of them. Asserted as an order read off events, not off a
+    /// clock: the live sink's request has to arrive while the dead
+    /// delivery is still hanging, and the trail has to be empty when it
+    /// lands. Driven in turn, the live sink is contacted only after that
+    /// delivery ended, so the order is what fails.
     #[tokio::test]
     async fn a_dead_sink_does_not_delay_the_live_ones_delivery() {
         let (dead_addr, dead_connected, dead_release) = slow_sink_with_release().await;
@@ -343,11 +310,9 @@ mod tests {
         /// waiting on the blocking pool.
         ///
         /// A plain OS thread holds the [`shep_core::file_lock::FileLock`]
-        /// `append` needs for 300 ms, so the append can only finish after
-        /// that hold. On a `current_thread` runtime with the call inline,
-        /// the single worker is parked for the whole hold and a task
-        /// ticking every 10 ms gets 0 or 1 ticks; on the blocking pool the
-        /// worker keeps running and gets roughly 30.
+        /// `append` needs for 300 ms. On a `current_thread` runtime with
+        /// the call inline the single worker is parked for the whole hold
+        /// and a task ticking every 10 ms gets 0 or 1 ticks.
         #[tokio::test(flavor = "current_thread")]
         async fn a_ring_write_waiting_on_another_writer_leaves_the_worker_running() {
             let dir = tempfile::tempdir().unwrap();
@@ -363,10 +328,8 @@ mod tests {
             });
             // The hold must be real before the delivery starts, or the
             // append wins the flock uncontended and the test measures a
-            // delivery nobody blocked. The sender drops only when the
-            // holder's closure ends, so a disconnect before the message
-            // means the holder died before reporting the hold: take its
-            // panic rather than spin on a hold that will never come.
+            // delivery nobody blocked. A disconnect before the message
+            // means the holder died: take its panic, do not spin.
             loop {
                 match locked_rx.try_recv() {
                     Ok(()) => break,

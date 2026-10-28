@@ -55,15 +55,10 @@ fn sender_start(labels: &[(String, String)], starts: &[SenderStart]) -> Option<N
 /// When `info`'s current instance started, floored to a whole second.
 ///
 /// The listing carries `uptime_ms` and no absolute start, so the instant is
-/// derived: this export's clock minus how long the process has been up. Two
-/// things move that derivation, and both are why the floor is here. The
-/// uptime is millisecond-truncated, and it is measured by the shepherd at the
-/// listing rather than by this dog at the encode, so the derived instant
-/// carries a millisecond of noise. A `startTimeUnixNano` that moves at all
-/// between two exports of a counter that never reset reads to a collector as
-/// a reset, so the noise has to land below the floor. A restart moves the
-/// start by the lifetime of the instance that ended, which is the change OTLP
-/// means by a reset and the one worth reporting.
+/// derived: this export's clock minus how long the process has been up. The
+/// uptime is millisecond-truncated and measured by the shepherd, so the
+/// derived instant carries noise a collector would read as a counter reset;
+/// the floor puts that noise below a whole second.
 fn instance_start(info: &ProcessInfo, now: Nanos) -> Nanos {
     let up_nano = info.uptime_ms.saturating_mul(1_000_000);
     Nanos::new(now.as_u64().saturating_sub(up_nano) / NANOS_PER_SECOND * NANOS_PER_SECOND)
@@ -92,12 +87,8 @@ fn finite(points: &[SamplePoint]) -> impl Iterator<Item = &SamplePoint> {
 /// the same order `render` appends them in.
 ///
 /// A counter's `startTimeUnixNano` is the instant its sender's instance
-/// started, read off `flock`, because OTLP reads a change of start as the
-/// counter having reset and a sender that restarts resets its own counters.
-/// A point whose sender the listing does not name, which is the dog's own
-/// refusal counter and nothing else the store builds, keeps the exporter's
-/// start: the dog restarting restarts the exporter with it, which is also the
-/// stamp `shep_sheep_restart_total` carries.
+/// started, read off `flock`, because OTLP reads a change of start as a
+/// reset and a sender that restarts resets its own counters.
 pub(super) fn sample_metrics<'a>(
     samples: &'a [SampleFamily],
     flock: &'a [ProcessInfo],

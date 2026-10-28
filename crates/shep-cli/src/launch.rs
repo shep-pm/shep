@@ -130,14 +130,9 @@ const FD_DIR: &str = "/dev/fd";
 /// the daemon inherits none of it.
 ///
 /// A leaked descriptor, typically the launcher's own stdout/stderr pipe,
-/// keeps a reader blocked on EOF for as long as the daemon lives: EOF
-/// arrives only when the last copy of the write end closes. Leaked
+/// keeps a reader blocked on EOF for as long as the daemon lives. Leaked
 /// descriptors are not enumerable in advance, so this sweeps everything
-/// above stdio rather than closing one known fd.
-///
-/// Marks rather than closes: this process still needs those descriptors for
-/// its own output, and every failure here (an unreadable `/dev/fd`, a
-/// descriptor closed mid-sweep) is ignored rather than refusing to start.
+/// above stdio, and marks rather than closes: this process still needs them.
 #[cfg(unix)]
 fn seal_inherited_fds() {
     let Ok(entries) = std::fs::read_dir(FD_DIR) else {

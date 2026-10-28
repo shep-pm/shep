@@ -300,12 +300,8 @@ fn series_labels(line: &str) -> Vec<(String, String)> {
 /// labels, appears in the OTLP payload as the same kind with the same
 /// points.
 ///
-/// Fails if a series lands in one renderer and not the other, which is
-/// the defect two renderers that share no code grow by default. The
-/// reading carries channel samples beside the flock, because the sample
-/// path is the one that renders nothing at all when nobody writes it, and
-/// a gauge and a counter, help text and none, and the dog's own refusal
-/// counter are all on it.
+/// Fails if a series lands in one renderer and not the other, which is the
+/// defect two renderers that share no code grow by default.
 #[test]
 fn the_payload_names_every_series_the_exposition_names() {
     let mut reading = exposition::tests::golden_reading();

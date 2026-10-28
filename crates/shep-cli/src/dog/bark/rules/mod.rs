@@ -5,10 +5,9 @@
 //! [`Rules::on_poll`] catches what the bus drops: it evaluates the same
 //! rules against the flock's current state instead of one event. Both
 //! routes share one per-subject debounce in [`Rules`]'s `subjects` map, so
-//! a rule fired by one route is not fired again by the other.
-//!
-//! Debounce is per rule per subject, never global: a global debounce would
-//! silence the second sheep to go down during an incident.
+//! a rule fired by one route is not fired again by the other. Debounce is
+//! per rule per subject, never global: a global one would silence the
+//! second sheep to go down during an incident.
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -137,15 +136,9 @@ fn trigger_name(when: &Trigger) -> &'static str {
 /// `kind`'s wire spelling, the string `kinds` in a rule names it by.
 ///
 /// Hand-listed rather than read from `ProcessEventKind`'s own `Serialize`,
-/// because this runs once per bus event and the serde round-trip allocated a
-/// `Value` to answer a question fixed at compile time.
-///
-/// `ProcessEventKind` is `#[non_exhaustive]`, so the last arm is the one that
-/// catches a variant this build has not been taught. It is also the spelling
-/// `#[serde(other)]` gives `Unrecognized`, which is what the round-trip this
-/// replaced returned for it. A variant added upstream therefore needs an arm
-/// here as soon as `is_known_kind` starts accepting its name, or a rule naming
-/// it would compare against `"unrecognized"` and never fire.
+/// because this runs once per bus event and the serde round-trip allocated
+/// a `Value` to answer a question fixed at compile time. A variant added
+/// upstream needs an arm here as soon as `is_known_kind` accepts its name.
 fn wire_spelling(kind: ProcessEventKind) -> &'static str {
     match kind {
         ProcessEventKind::Start => "start",
@@ -270,13 +263,10 @@ struct SubjectState {
 
 /// The subject's entry in `subjects`, created on first sight.
 ///
-/// Looks before inserting: on a steady flock every event's subject is already
-/// in the map, and `entry` takes its key by value, so it would allocate a
-/// `String` on every call only to drop it when the key is already there. The
-/// owned key is built only on a miss, which is once per subject per bark run.
-///
-/// `contains_key` first rather than a `get_mut` match, because a reference
-/// returned from the lookup has to outlive the insert that follows it.
+/// Looks before inserting: on a steady flock every event's subject is
+/// already in the map, and `entry` takes its key by value, so it would
+/// allocate a `String` on every call only to drop it. The owned key is
+/// built only on a miss.
 fn subject_state<'a>(
     subjects: &'a mut BTreeMap<String, SubjectState>,
     subject: &str,
@@ -349,8 +339,7 @@ impl Rules {
     ///   not a regex, or compiles to more than 1 MiB.
     /// - [`RulesError::UnusableSink`]: a `[bark.sinks]` entry is a
     ///   Discord or Slack webhook using `http://`, or carries credentials
-    ///   before its host. Both are checked whether or not any rule routes
-    ///   to that sink.
+    ///   before its host.
     pub fn new(rules: Vec<Rule>, sinks: &BTreeMap<String, Sink>) -> Result<Self, RulesError> {
         for (name, sink) in sinks {
             sinks::require_usable_url(name, sink)?;
@@ -433,9 +422,8 @@ impl Rules {
     /// forward once `within` has elapsed.
     ///
     /// The baseline starts at zero on first observation, so restarts from
-    /// before bark's own first poll count toward it. Once `within` elapses
-    /// with no new firing, the baseline resets to the current count, so a
-    /// sheep that stopped flapping stops re-triggering the rule.
+    /// before bark's first poll count. Once `within` elapses with no new
+    /// firing the baseline resets.
     fn restart_window_crossed(
         &mut self,
         idx: usize,

@@ -54,13 +54,8 @@ pub enum ExitCode {
     ///
     /// The handshake succeeded. Over the local socket this is the state
     /// `cargo install shep` leaves behind: the crate versions differ and the
-    /// wire does not. Over `--host` it is the other way round, a shepherd
-    /// speaking a protocol this build does not, since that host has its own
-    /// install. A handshake the peer refused outright is
-    /// [`ExitCode::ProtocolMismatch`] instead. Never returned for `kill`,
-    /// `daemon reload` or `ping`, which are how an operator gets out of it,
-    /// nor for `flock`, `describe` or `bleats`, which only read and warn on
-    /// stderr instead.
+    /// wire does not. Over `--host` it is the other way round. `kill`,
+    /// `daemon reload` and `ping` never return this: they are the way out.
     VersionSkew = 12,
     /// The daemon understood the handshake but not the request itself.
     ///

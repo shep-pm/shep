@@ -2,10 +2,9 @@
 //! [`DogRuntime`], the connection and configuration every dog needs.
 //!
 //! A dog inherits `$SHEP_HOME` and nothing else: no `[dog.<name>]` value
-//! rides in the environment, since that is readable from the process
-//! table and captured into crash dumps. [`DogRuntime::start`] instead
-//! connects to the socket and asks for the section over
-//! `Request::DogConfigResolved`.
+//! rides in the environment, since that is readable from the process table
+//! and captured into crash dumps. [`DogRuntime::start`] instead connects to
+//! the socket and asks for the section over `Request::DogConfigResolved`.
 //!
 //! [`run_dog`] parses the name into a [`BuiltInDog`], connects, and
 //! dispatches: `"metrics"` to [`metrics::run`], `"bark"` to [`bark::run`].
@@ -77,26 +76,10 @@ pub(crate) const BUILT_IN_DOGS: [&str; BuiltInDog::ALL.len()] = {
 /// How long a dog waits for a shepherd to answer again before it gives up
 /// and exits.
 ///
-/// A shepherd that execs a successor has not gone away, and every dog is
-/// meant to cross that without restarting. A shepherd that stopped has
-/// gone away, and a dog that waits for it indefinitely is still running
-/// when an unrelated shepherd binds that socket later, at which point it
-/// attaches itself to that one beside that shepherd's own dog of the same
-/// kind and doubles its alerts quietly.
-///
-/// Measured on this machine over ten `shep daemon reload` runs against a
-/// three-sheep flock: the control socket turned away a full connect,
-/// handshake and request for 38ms at the shortest, 254ms at the longest,
-/// 80ms on average. A larger flock and a busier host both push that up.
-///
-/// [`DOG_SILENCE_BUDGET`](shep_daemon::dogs::DOG_SILENCE_BUDGET) is the
-/// number to reuse rather than a second one to invent: it is how long the
-/// shepherd lets a dog go quiet before acting on it, so a dog that waits
-/// exactly that long cannot outlive the budget it is judged by. It is also
-/// around twenty times the longest handover measured, which leaves room
-/// for a far slower one. Five seconds of waiting is not the lingering this
-/// guards against; that one is measured in however long it takes another
-/// shepherd to come along.
+/// [`DOG_SILENCE_BUDGET`](shep_daemon::dogs::DOG_SILENCE_BUDGET) is reused,
+/// not a second number invented: a dog that waits exactly as long as the
+/// shepherd lets it go quiet cannot outlive the budget it is judged by. A
+/// dog that waits forever joins the next shepherd to bind that socket.
 const SHEPHERD_RETURN_BUDGET: Duration = shep_daemon::dogs::DOG_SILENCE_BUDGET;
 
 /// The schema a built-in dog would print for the schema flag, without
@@ -127,11 +110,9 @@ pub(crate) fn builtin_manifest(name: &str) -> Option<shep_core::dogs::manifest::
 /// Runs the named dog until it is signalled. `main`'s `Commands::Dog` arm.
 ///
 /// An unknown name is refused before the socket is touched
-/// ([`ExitCode::Usage`]), naming every built-in in the refusal.
-///
-/// A dog's own diagnostics go to stderr, plain text: the daemon's log pump
-/// captures it into `$SHEP_HOME/logs/<name>-0-err.log` like any sheep's,
-/// read with `shep bleats <name>`.
+/// ([`ExitCode::Usage`]), naming every built-in in the refusal. A dog's own
+/// diagnostics go to stderr, plain text: the daemon's log pump captures it
+/// into `$SHEP_HOME/logs/<name>-0-err.log`, read with `shep bleats <name>`.
 pub async fn run_dog(name: &str, paths: ShepPaths) -> ExitCode {
     let Some(dog) = BuiltInDog::from_name(name) else {
         let known: Vec<String> = BUILT_IN_DOGS
@@ -197,16 +178,10 @@ mod tests {
     /// fails if [`SHEPHERD_RETURN_BUDGET`] moves without the prose that
     /// names its value moving too.
     ///
-    /// Three doc comments say "five seconds" in words: the constant's own,
-    /// and the two `mod slow` headers that explain why those tests take
-    /// that long. None of them can be checked by a reader, because the
-    /// value arrives from `shep_daemon` rather than from the line above
-    /// them, so a change there leaves all three quietly wrong while every
-    /// doc-link still resolves.
-    ///
-    /// Pinning it here rather than deleting the numbers: a budget a reader
-    /// has to go and look up is worse documentation, and this makes the
-    /// concrete version safe to keep.
+    /// Three doc comments say "five seconds" in words, and none can be
+    /// checked by a reader, because the value arrives from `shep_daemon`:
+    /// a change there leaves all three quietly wrong while every doc-link
+    /// still resolves.
     #[test]
     fn the_budget_is_the_five_seconds_the_docs_promise() {
         assert_eq!(

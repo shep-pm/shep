@@ -62,17 +62,9 @@ impl LagPacing {
 /// `stop`, or when `events` ends and its re-subscribe fails.
 ///
 /// A dropped frame polls immediately unless the last poll was under
-/// [`LAG_POLL_MIN_GAP`] ago, since the bus drops what a lagging subscriber
-/// cannot keep up with. Firings are spawned, never awaited
-/// inline, or a slow sink causes the drop this loop exists to catch.
-/// Appends serialize behind an in-process [`tokio::sync::Mutex`]; the
-/// cross-process race is `barks::append`'s own `flock(2)`.
-///
-/// One [`Clock`] for the whole run: one view of the wall clock, and one
-/// report of a clock that reads before the epoch.
-///
-/// A plain `fn`, not `async fn`: the returned future must borrow neither
-/// `config` nor `barks_path`, so callers can spawn it.
+/// [`LAG_POLL_MIN_GAP`] ago. Firings are spawned, never awaited inline, or
+/// a slow sink causes the drop this loop exists to catch. A plain `fn`, not
+/// `async fn`: the returned future borrows neither `config` nor `barks_path`.
 pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
     events: E,
     flock: F,
@@ -111,16 +103,14 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                     match next {
                         // One connection generation ended. Usually the
                         // shepherd exec'd a successor, which is not the
-                        // shepherd going away: `resubscribe` waits a
-                        // bounded time for one to answer, and only a
-                        // shepherd that never does ends this dog.
+                        // shepherd going away: only a shepherd that never
+                        // answers again ends this dog.
                         None => match events.resubscribe().await {
                             Ok(()) => {
                                 // Reconcile whichever daemon answered.
                                 // Frames sent with no subscription are
-                                // gone, and the verdict decides nothing
-                                // here: bark debounces on a sheep's name,
-                                // never on an id the shepherd minted.
+                                // gone. The verdict decides nothing here:
+                                // bark debounces on a sheep's name, not an id.
                                 reconcile(&flock, &mut rules, &mut clock, &delivery).await;
                                 pacing.polled();
                             }
@@ -283,10 +273,6 @@ async fn deferred_poll(due: Option<Instant>) {
 /// `interval_at`, not `interval`: a plain `interval` fires its first tick
 /// immediately, so the first poll would be attributable to the timer's
 /// startup rather than to a drop or an elapsed interval.
-///
-/// One function, not two call sites: a reload that rebuilt the timer and
-/// forgot `MissedTickBehavior::Delay` would leave a poll that ran long
-/// firing a burst of catch-up ticks.
 fn poll_timer(period: Duration) -> tokio::time::Interval {
     let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -477,10 +463,7 @@ mod tests {
     ///
     /// The proof is an order, not a duration. The slow sink signals that
     /// it has accepted and parked, and the fast sink is reached after
-    /// that; an inline-awaiting loop would still be parked. `sink_timeout`
-    /// is ten minutes and both timeouts are failure guards, so their
-    /// values change how long a broken loop takes to report, never what
-    /// passes.
+    /// that; an inline-awaiting loop would still be parked.
     #[tokio::test]
     async fn a_slow_sink_never_stalls_the_loop() {
         let (slow_addr, slow_connected) = slow_sink().await;
@@ -584,9 +567,8 @@ mod tests {
         let barks_path = dir.path().join("barks.jsonl");
         // Empty on purpose. A re-subscribe reconciles, and a flock with
         // anything firing in it would deliver a bark from that reconcile,
-        // which satisfies `captured` without the third generation ever
-        // being read. The only bark this test can produce has to come from
-        // the stream.
+        // satisfying `captured` without the third generation ever being
+        // read. The only bark here has to come from the stream.
         let flock = ScriptedFlock::answering(Vec::new());
 
         let loop_handle = tokio::spawn(run_loop(
@@ -896,12 +878,9 @@ mod tests {
     /// next firing is delivered to the sink the new section names, over a
     /// real socket, while the old sink's server is still up.
     ///
-    /// The loop is the same loop throughout, which is the other half of
-    /// what this pins: bark's config is pure data with no OS resource
-    /// attached, so it swaps in place instead of restarting.
-    ///
-    /// A real clock, not `start_paused`, or a broken swap hangs the suite
-    /// rather than failing it.
+    /// The loop is the same loop throughout: bark's config is pure data
+    /// with no OS resource attached, so it swaps in place. A real clock,
+    /// not `start_paused`, or a broken swap hangs the suite.
     #[tokio::test]
     async fn a_config_change_swaps_barks_sinks_in_place() {
         let (old_addr, mut old_captured) = one_shot_sink(200, "").await;

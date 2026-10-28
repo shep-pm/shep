@@ -19,11 +19,8 @@ use crate::{cli, commands, exit, output, status, welcome};
 /// answers by itself.
 ///
 /// stderr rather than stdout: `shep completions zsh > _shep` writes shell
-/// meant to be sourced, which would execute a status line as code.
-///
-/// Silent when stderr is not a terminal, and silent when `argv` names a
-/// `--home` or a `--host`: the parse that would say which one is the one that
-/// just failed, and this machine's status line would answer for neither.
+/// meant to be sourced, which would execute a status line as code. Silent
+/// when stderr is not a terminal or `argv` names a `--home` or `--host`.
 #[cfg_attr(windows, allow(dead_code))]
 pub(crate) async fn print_shepherd_status(argv: &[OsString]) {
     if !std::io::stderr().is_terminal() || names_another_shepherd(argv) {
@@ -66,19 +63,14 @@ fn names_another_shepherd(argv: &[OsString]) -> bool {
 ///
 /// Bridges clap's already-folded `GlobalArgs::home` back into the closure
 /// shape `ShepPaths::resolve` reads the environment through. Which variables
-/// name a home directory is [`user_home`]'s question, and differs by
-/// platform.
+/// name a home directory is [`user_home`]'s question, and differs by platform.
 ///
 /// # Errors
-///
 /// - [`HomeRefusal::Relative`] if whichever of the two supplied the root
 ///   named a path without one. Decided here rather than in
-///   [`ShepPaths::resolve`], which promises to touch no filesystem: the
-///   absolute form of a relative path is a read of this process's own
-///   directory.
+///   [`ShepPaths::resolve`], which promises to touch no filesystem.
 /// - [`HomeRefusal::Unresolved`] if neither `--home`/`$SHEP_HOME` nor a home
-///   directory resolves a root. The home directory is read only as that
-///   fallback, so a `--home` invocation still works with none at all.
+///   directory resolves a root.
 pub(crate) fn resolve_paths(global: &GlobalArgs) -> Result<ShepPaths, HomeRefusal> {
     resolve_paths_in(global, &|key| std::env::var_os(key))
 }
@@ -273,10 +265,8 @@ impl core::fmt::Display for HomeRefusal {
 /// copies straight into one.
 ///
 /// Unquoted, `--home "/tmp/my shep"` rendered `mkdir -p /tmp/my shep`, which
-/// creates two directories, reports no error, and leaves the operator with
-/// the empty invisible flock this refusal exists to prevent. Single quotes
-/// rather than backslashes because a path is one word and reads as one; an
-/// embedded `'` closes the quoting around an escaped one and reopens it.
+/// creates two directories and reports no error. Single quotes rather than
+/// backslashes because a path is one word and reads as one.
 #[cfg(not(windows))]
 fn shell_quoted(path: &Path) -> String {
     format!("'{}'", one_line(path).replace('\'', r"'\''"))
@@ -285,11 +275,8 @@ fn shell_quoted(path: &Path) -> String {
 /// `path` as one argument for [`MKDIR_COMMAND`], for a hint an operator
 /// copies straight into a shell.
 ///
-/// Double quotes are the only wrap both shells honour. `cmd.exe` reads a
-/// single quote as an ordinary character. A Windows path cannot hold a `"`,
-/// so the wrap always closes and nothing inside it needs escaping. Neither
-/// shell's variable syntax is quoted by it, so `%TEMP%` or `$env:TEMP` in a
-/// path still expands.
+/// Double quotes are the only wrap both shells honour: `cmd.exe` reads a
+/// single quote as an ordinary character. A Windows path cannot hold a `"`.
 #[cfg(windows)]
 fn shell_quoted(path: &Path) -> String {
     format!("\"{}\"", one_line(path))
@@ -396,10 +383,7 @@ fn ensure_home_at(paths: ShepPaths, explicit: bool) -> Result<(ShepPaths, bool),
 /// `$SHEP_HOME` is first created.
 ///
 /// Not folded into [`welcome::on_first_run`]: the banner is suppressed under
-/// `--format json` and a piped stderr, and this mapping is written regardless,
-/// since it is what lets a provisioning script's `shep start server.js` work
-/// without `--interpreter`.
-///
+/// `--format json` and a piped stderr, and this mapping is written regardless.
 /// Best-effort: a failure reports to stderr and continues.
 pub(crate) fn scaffold_first_run_interpreters(paths: &ShepPaths) {
     if let Err(err) = ShepToml::edit(&paths.daemon_config, ShepToml::write_starter_interpreters) {
