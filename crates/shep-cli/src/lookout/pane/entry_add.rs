@@ -4,8 +4,7 @@
 //! array appends at once; a map opens a text editor for the new entry's key,
 //! which [`ConfigPane::apply_typing`] hands to [`ConfigPane::apply_new_key`].
 //! The entry holds what its schema declares a `default` for and nothing else:
-//! the dog is the authority on its own config, so a required field left empty
-//! is the dog's to refuse, and `SetDogConfig` only checks the text is TOML.
+//! the dog is the authority on its own config.
 //!
 //! Like a removal, an addition files the entries row's whole new value, see
 //! [`ConfigPane::file_whole`], and `u` gives it back through the same record.

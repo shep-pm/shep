@@ -3,12 +3,11 @@
 //!
 //! The change is applied to the tables the section already holds, never by
 //! rendering the new value: the tables that stay keep the comments and key
-//! order the operator wrote, and the ones that go leave with theirs. A table
-//! the section lacks is added after the last one it has, or creates the
-//! array or map when it has none. A table can only be added at the end of an
-//! array, so a value whose new tables are not its last ones is not written
-//! as given: they land at the end, and the write is refused when the section
-//! then reads differently from the value.
+//! order the operator wrote. A table the section lacks is added after the
+//! last one it has, or creates the array or map when it has none. A table
+//! can only be added at the end of an array, so a value whose new tables are
+//! not its last ones is not written as given: they land at the end, and the
+//! write is refused when the section then reads differently from the value.
 
 use serde_json::{Map, Value};
 
@@ -164,13 +163,10 @@ fn plan_map(
 /// For each of `held`, the new table it becomes, or [`None`] for one that
 /// goes, and the new tables left over, which are to be added. The new tables
 /// keep their order: each is matched to a held one that comes later than the
-/// one before it, and the ones left over are the last of them.
+/// one before it.
 ///
 /// The match with the most keys in common wins, and a table identical to a
-/// new one outweighs any partial match. Where two held tables are equally
-/// good, the earlier stays and the later goes. Where matching one more new
-/// table to a held one scores no better than adding it, it is matched, so a
-/// table edited down to nothing in common stays the table it was.
+/// new one outweighs any partial match. Ties go to the earlier held table.
 fn align<'a>(held: &[Value], new: &'a [Value]) -> (Vec<Option<&'a Value>>, &'a [Value]) {
     // `best[i][j]`: the most the first `j` new tables score against the first
     // `i` held ones, or [`None`] when they cannot all be placed.

@@ -1,15 +1,13 @@
 //! The list sub-screen: one row per element of an array field.
 //!
-//! An array is edited element by element and filed whole. Every keystroke
+//! An array is edited element by element and filed whole: every keystroke
 //! that lands rebuilds the array and files one `PaneEdit::Set` over the
-//! field, so the shepherd never sees a half-written list and the pane never
-//! has to reconcile two representations of one field.
+//! field, so the shepherd never sees a half-written list.
 //!
 //! An element is checked against the bounds its item schema published
-//! ([`super::super::field::Bounds::items`]) before it is filed, which is
-//! the only gate a dog's `Request::SetSheepDogSettings` has: that write
-//! replaces the whole table without the shepherd reading it, so an element
-//! the dog cannot deserialize is a table the operator has already saved.
+//! ([`super::super::field::Bounds::items`]) before it is filed. A dog's
+//! `Request::SetSheepDogSettings` replaces the whole table unread, so this
+//! is the only gate that write has.
 
 use serde_json::Value;
 
@@ -32,15 +30,13 @@ pub enum ListRow {
     New,
 }
 
-/// The list sub-screen: one array field's elements, and an editor over
-/// them.
+/// The list sub-screen: one array field's elements, plus an editor.
 ///
-/// Values are drawn, unlike an env row: an array arrives with the
-/// config, so hiding an element would leave the cursor unable to say
-/// which one it holds. `Debug` is manual and redacted (IR-41),
-/// exact-string-tested below, for the same reason as [`ConfigPane`]'s:
-/// `args` can carry a token an operator typed. Elements are held as
-/// text; [`ListItem`] turns the array back to JSON on write.
+/// Values are drawn, unlike an env row: an array arrives with the config,
+/// so hiding an element would leave the cursor unable to say which one it
+/// holds. `Debug` is manual and redacted (IR-41), exact-string-tested
+/// below, for the same reason as [`ConfigPane`]'s. Elements are held as
+/// text; [`ListItem`] turns the array back to JSON.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ListPane {
     key: String,
@@ -232,11 +228,9 @@ impl ListPane {
     /// Closes the editor and reads what it holds.
     ///
     /// `Ok(None)` three ways, and only one of them closes the editor: an
-    /// empty buffer is nothing to write and leaves the array alone, since
-    /// `d` is the key that removes an element, and no editor open is the
-    /// same answer. An element the item schema refuses keeps the editor
-    /// open, the same rule [`ConfigPane::apply_typing`] follows, because
-    /// the operator is mid-word rather than wrong.
+    /// empty buffer is nothing to write, and `d` is the key that removes an
+    /// element. An element the item schema refuses keeps the editor open,
+    /// the same rule [`ConfigPane::apply_typing`] follows.
     ///
     /// # Errors
     ///
@@ -428,16 +422,13 @@ impl ConfigPane {
             .unwrap_or_default()
     }
 
-    /// `key`'s array as the operator has it: the elements of whatever is
-    /// filed for the field, and the shepherd's own array when nothing is.
+    /// `key`'s array as the operator has it: whatever is filed for the
+    /// field, or the shepherd's own array when nothing is.
     ///
-    /// The filed entry is the source of truth, not the stored value, and
-    /// this is what makes a sub-screen compose. Nothing writes until the
-    /// pane closes, so the stored value stays as the shepherd sent it for
-    /// as long as the operator is editing: seeding from it would show an
-    /// operator who leaves the array and comes back none of their own
-    /// work, and would recompute the next keystroke from an array they
-    /// have already changed.
+    /// The filed entry is the source of truth, not the stored value:
+    /// nothing writes until the pane closes, so seeding from the stored
+    /// value would drop the operator's work and recompute the next
+    /// keystroke from an array they have already changed.
     pub(super) fn filed_elements_of(&self, key: &str) -> Vec<String> {
         let filed = match self.edits.get(&EditKey::Field(key.to_owned())) {
             Some(entry) => match entry.edit() {
@@ -497,23 +488,16 @@ impl ConfigPane {
     /// Files `elements` as the field's whole value, then makes the open
     /// sub-screen show them.
     ///
-    /// The second half is what stops a keystroke being lost. Every filing
-    /// door here rebuilds the whole array from the sub-screen's own
-    /// elements, so a sub-screen left showing the shepherd's array would
-    /// recompute the next keystroke from it and file an array missing this
-    /// one. The write that used to refresh the screen is gone: the pane
-    /// files and writes once, when it closes.
+    /// The second half stops a keystroke being lost: every filing door here
+    /// rebuilds the array from the sub-screen's own elements, so one left
+    /// showing the shepherd's array loses this keystroke.
     ///
     /// # Errors
     ///
     /// [`Refusal`] naming the first element of an integer list that is not
-    /// an integer, on a dog's pane, with nothing filed. A dog's section is
-    /// written by this pane and not by the shepherd, and the writer has no
-    /// cell for an array that mixes strings and integers, so the refusal
-    /// would otherwise land when the pane closes and take every other filed
-    /// edit with it. A hand-written `ports = [80, "http"]` reaches the
-    /// sub-screen as it is; removing the odd element files the rest. A
-    /// sheep's pane files it, and the daemon refuses it by name.
+    /// an integer, on a dog's pane, with nothing filed. This pane writes a
+    /// dog's section itself, so a refusal at the close would take every
+    /// other filed edit with it.
     fn file_list(&mut self, elements: Vec<String>) -> Result<(), Refusal> {
         let Some(list) = self.list.as_ref() else {
             return Ok(());
@@ -548,9 +532,8 @@ impl ConfigPane {
     /// operator.
     ///
     /// Seeded from [`Self::filed_elements_of`], not from the config that
-    /// has just arrived: a refresh replaces the shepherd's values and keeps
-    /// the operator's filed set, and the sub-screen has to keep showing the
-    /// set.
+    /// has just arrived: a refresh keeps the operator's filed set, and the
+    /// sub-screen has to keep showing it.
     pub(in crate::lookout) fn adopt_list_view(&mut self, key: &str, view: Viewport) {
         let Some(field) = self.field_of(key) else {
             return;
