@@ -6,6 +6,7 @@ use core::pin::Pin;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::{CertificateError, Error as RustlsError};
 
 use super::{Target, tls_connector};
 use crate::terminal_safe;
@@ -14,8 +15,19 @@ use crate::terminal_safe;
 /// TLS: all a reader needs once the request is out.
 pub(crate) type ReplyStream = Pin<Box<dyn AsyncRead + Send>>;
 
-/// Connects to `target`, over TLS when `target.https`, writes `request`,
-/// flushes, and hands back the stream to read the reply from.
+/// What [`peer_transport_error`] says when rustls finds no root it trusts
+/// behind a peer's certificate.
+///
+/// Named here rather than inline because an operator has to be able to act
+/// on it, and the action is a change to the endpoint, not to shep.
+const UNKNOWN_ISSUER: &str = concat!(
+    "the certificate this endpoint presented chains to a certificate authority shep does not trust; ",
+    "shep trusts only public certificate authorities, and offers no way to add a private one or to skip verification; ",
+    "use http:// for a private endpoint, or a publicly trusted certificate (Let's Encrypt, or a Cloudflare-proxied hostname)"
+);
+
+/// Connects to `target` with [`tls_connector`], writes `request`, flushes,
+/// and hands back the stream to read the reply from.
 ///
 /// The one connect-and-send every client in this crate shares, so the
 /// guards on it exist once: a TLS handshake failure comes back through
@@ -30,13 +42,25 @@ pub(crate) async fn connect_and_send(
     target: &Target,
     request: &[u8],
 ) -> Result<ReplyStream, std::io::Error> {
+    connect_with(tls_connector(), target, request).await
+}
+
+/// [`connect_and_send`] over a connector the caller chose.
+///
+/// rustls checks a certificate chain before it checks a name, so reaching
+/// the name check at all needs a store the presented chain lands in.
+pub(super) async fn connect_with(
+    connector: &tokio_rustls::TlsConnector,
+    target: &Target,
+    request: &[u8],
+) -> Result<ReplyStream, std::io::Error> {
     let tcp = TcpStream::connect((target.host.as_str(), target.port)).await?;
     if target.https {
         let domain = ServerName::try_from(target.host.clone()).map_err(std::io::Error::other)?;
-        let mut tls = tls_connector()
+        let mut tls = connector
             .connect(domain, tcp)
             .await
-            .map_err(peer_transport_error)?;
+            .map_err(|source| peer_transport_error(&target.host, source))?;
         send(&mut tls, request).await?;
         Ok(Box::pin(tls))
     } else {
@@ -52,37 +76,59 @@ async fn send<S: AsyncWrite + Unpin>(stream: &mut S, request: &[u8]) -> Result<(
     stream.flush().await
 }
 
-/// A transport failure the peer had a hand in wording, sanitised.
+/// A transport failure the peer had a hand in wording.
 ///
-/// The OS writes most of these and is not the threat. A TLS handshake is the
-/// exception: rustls's `CertificateError::NotValidForNameContext` prints the
-/// names the peer's certificate presented.
-///
-/// Keeps the [`std::io::ErrorKind`] and drops the nested source.
-fn peer_transport_error(source: std::io::Error) -> std::io::Error {
-    std::io::Error::new(
-        source.kind(),
-        terminal_safe::sanitise(&source.to_string()).0,
-    )
+/// The OS writes most of these and is not the threat, and they keep their
+/// text, sanitised. A rustls certificate refusal is the exception: its
+/// message names the subject names the peer's certificate chose to carry,
+/// so those two get shep's own wording. The [`std::io::ErrorKind`] is kept.
+fn peer_transport_error(host: &str, source: std::io::Error) -> std::io::Error {
+    let message = match source
+        .get_ref()
+        .and_then(|src| src.downcast_ref::<RustlsError>())
+    {
+        Some(RustlsError::InvalidCertificate(CertificateError::UnknownIssuer)) => {
+            UNKNOWN_ISSUER.to_owned()
+        }
+        Some(RustlsError::InvalidCertificate(
+            CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. },
+        )) => format!("the certificate for {host} is not valid for that name"),
+        _ => source.to_string(),
+    };
+    std::io::Error::new(source.kind(), terminal_safe::sanitise(&message).0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A rustls handshake error prints the names the peer's certificate
-    /// carried, so the text it keeps is the sanitised one.
+    /// The fallback arm: a peer-worded failure that is not a rustls
+    /// certificate refusal keeps its text, minus what would drive a terminal.
     #[test]
     fn a_handshake_error_the_peer_worded_cannot_drive_a_terminal() {
         let source = std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            "certificate not valid for name \"evil\u{1b}[2J.example\u{7}\"",
+            "tls handshake eof \u{1b}[2J\u{7}",
         );
-        let kept = peer_transport_error(source);
+        let kept = peer_transport_error("127.0.0.1", source);
         assert_eq!(kept.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(kept.to_string(), "tls handshake eof [2J");
+    }
+
+    /// `host` comes from a URL, and a URL is not a trusted string.
+    #[test]
+    fn a_reworded_name_refusal_cannot_carry_a_control_character() {
+        let source = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            RustlsError::InvalidCertificate(CertificateError::NotValidForNameContext {
+                expected: ServerName::try_from("example.com").unwrap().to_owned(),
+                presented: vec!["evil\u{1b}[2J.shep.test\u{7}".to_owned()],
+            }),
+        );
+        let kept = peer_transport_error("127.0.0.\u{1b}[2J1", source);
         assert_eq!(
             kept.to_string(),
-            "certificate not valid for name \"evil[2J.example\""
+            "the certificate for 127.0.0.[2J1 is not valid for that name"
         );
     }
 }
