@@ -7,8 +7,7 @@
 //! poll comes round.
 //!
 //! Derived, never authored: a file that will not read is skipped rather
-//! than refused, unlike [`shep_core::secrets`], which holds the operator's
-//! own store and refuses instead of guessing.
+//! than refused, unlike [`shep_core::secrets`], which holds the operator's own store.
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -98,13 +97,9 @@ impl core::error::Error for CacheWriteFailed {
 /// ones survive a restart in.
 ///
 /// Shared between the connection task that serves `Request::PutSecrets` and
-/// the supervisor actor that reads a view out of it per spawn. The two
-/// mutexes exist to keep those apart: `state` is never held across file
-/// I/O, so the actor's [`Self::snapshot`] can never wait on an `fsync`,
-/// and `writer` serializes the rewrites so the file ends up holding the
-/// last push rather than whichever write finished last.
-///
-/// Lock order is `writer` then `state`, never the reverse.
+/// the supervisor actor that reads a view out of it per spawn. `state` is
+/// never held across file I/O, so the actor's [`Self::snapshot`] can never
+/// wait on an `fsync`, and `writer` serializes the rewrites.
 pub struct ProviderSecrets {
     state: Mutex<State>,
     writer: Mutex<()>,
@@ -145,25 +140,13 @@ impl ProviderSecrets {
     /// resolve to something else in `host_environment`.
     ///
     /// Replaces rather than merges: a key the provider has deleted is
-    /// absent from the push, and must be absent here too. Other
-    /// environments of the same namespace are untouched.
-    ///
-    /// `persist` decides whether the namespace may reach `cache`, and it is
-    /// read per push rather than settled once: a push that turns it off
-    /// takes the namespace out of the file on the spot. An empty `entries`
-    /// still registers the namespace, because "the dog has nothing" and "no
-    /// dog has pushed" send an operator to different places.
-    ///
-    /// A key resolves as [`shep_core::secrets::SecretView::resolve`] does it:
-    /// the exact slot for `host_environment`, then [`ALL_ENVIRONMENTS`]. The
-    /// before and after are taken under the `state` lock that applies the
-    /// push, so two pushes cannot each miss the other's change.
+    /// absent from the push, and must be absent here too. `persist` decides
+    /// whether the namespace may reach `cache`, read per push rather than
+    /// settled once. An empty `entries` still registers the namespace.
     ///
     /// # Errors
-    /// [`CacheWriteFailed`] if the cache had to be rewritten and the staging
-    /// file, the `fsync` or the `rename` failed. The in-memory values are
-    /// already updated in that case: a spawn resolves against them, and
-    /// only a restart loses them. It reports the changed keys all the same.
+    /// [`CacheWriteFailed`] if the cache had to be rewritten and the write
+    /// failed. The in-memory values are already updated in that case.
     pub fn put(
         &self,
         host_environment: &str,
@@ -231,9 +214,7 @@ impl ProviderSecrets {
     ///
     /// Cloned rather than borrowed: the supervisor holds the result across
     /// a whole resolution pass, and a guard held that long would be the
-    /// thing a push waits on. Both halves come out under one lock, so a
-    /// resolution never reads values from before a push beside the pairs
-    /// from after it.
+    /// thing a push waits on. Both halves come out under one lock.
     pub fn snapshot(&self) -> ProviderCache {
         let state = self.state();
         ProviderCache::new(state.namespaces.clone(), state.pushed.clone())
