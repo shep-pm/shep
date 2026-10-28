@@ -214,7 +214,7 @@ notify-debouncer-full = { version = "0.7.0", default-features = false }
 # needs FSEventsGetCurrentEventId, FSEventStreamGetDeviceBeingWatched and
 # FSEventsPurgeEventsForDeviceUpToEventId, all added in 4.1.0. macOS only,
 # but unconditional since Cargo resolves one version workspace-wide.
-fsevent-sys = "4.1.0"
+fsevent-sys = "5.2.0"
 # Bark's sinks are Discord and Slack webhooks (HTTPS), the one thing here
 # needing TLS. tokio-rustls + webpki-roots, not reqwest: reqwest's default
 # rustls pulls in aws-lc-sys, needing both a C compiler and cmake; this

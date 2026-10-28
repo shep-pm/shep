@@ -197,6 +197,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-foundation"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -317,6 +327,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch2"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "either"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -390,6 +409,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "fsevent-sys"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e90520699e70a2008360ae6259fa3474a8c14fcf2e6b067c71b58eb6b1f53625"
+dependencies = [
+ "core-foundation",
+ "dispatch2",
 ]
 
 [[package]]
@@ -663,7 +692,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
 dependencies = [
  "bitflags",
- "fsevent-sys",
+ "fsevent-sys 4.1.0",
  "inotify",
  "kqueue",
  "libc",
@@ -987,14 +1016,14 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.13.0"
+version = "0.18.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "shep-core"
-version = "0.13.0"
+version = "0.18.2"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -1023,12 +1052,12 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.13.0"
+version = "0.18.2"
 dependencies = [
  "bytes",
  "chrono",
  "command-fds",
- "fsevent-sys",
+ "fsevent-sys 5.2.0",
  "futures-util",
  "getrandom",
  "globset",
@@ -1039,6 +1068,7 @@ dependencies = [
  "serde_json",
  "shep-core",
  "shep-handover",
+ "shep-tree",
  "sysinfo",
  "tempfile",
  "tokio",
@@ -1052,12 +1082,21 @@ dependencies = [
 
 [[package]]
 name = "shep-handover"
-version = "0.13.0"
+version = "0.18.2"
 dependencies = [
  "nix 0.29.0",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "shep-tree"
+version = "0.18.2"
+dependencies = [
+ "nix 0.29.0",
+ "rustix",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
