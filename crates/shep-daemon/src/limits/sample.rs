@@ -56,13 +56,16 @@ pub trait MemorySampler: Send + Sync + 'static {
     /// Every process currently visible to this process's user.
     fn sample(&self) -> Vec<ProcessRss>;
 
+    // Walks the table separately from `sample` rather than sharing it: see
+    // `SysinfoSampler`'s own `identify` for why a shared table would give
+    // stale names forever.
     /// Every process currently visible, with the name the OS reports for it.
     ///
-    /// Walks the table separately from [`Self::sample`] rather than sharing
-    /// it: see [`SysinfoSampler`]'s own `identify` for why a shared table
-    /// would give stale names forever.
     /// # Default implementation
-    /// Empty, so a `pub` trait gains it without breaking an out-of-tree implementor.
+    ///
+    /// Empty, so a `pub` trait gains it without breaking an out-of-tree
+    /// implementor. Callers must read an empty answer as "unknown", never as
+    /// "no lambs".
     fn identify(&self) -> Vec<ProcessIdentity> {
         Vec::new()
     }

@@ -229,12 +229,13 @@ mod tests {
             .canonicalize()
             .expect("canonicalize tempdir root")
     }
+
     /// Waits up to `within` for a batch satisfying `wanted`, returning every batch delivered up to and including it.
     ///
-    /// A write does not always land in the next batch: FSEvents coalesces one write
-    /// into one batch, while inotify may report the create, write and close separately.
+    /// A write need not land in the next batch: FSEvents coalesces, and inotify splits one.
     ///
     /// # Panics
+    ///
     /// If the deadline passes with no matching batch, or the source ends first.
     async fn batches_until(
         rx: &mut UnboundedReceiver<WatchBatch>,

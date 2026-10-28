@@ -5,9 +5,9 @@
 //! daemon reads the defaults, paths, credentials and secret store before the
 //! call; only the process env is read here, through a closure a test swaps.
 //!
-//! Only [`assemble`] may be spawned: it resolves every `{{secret:...}}` and
-//! refuses the spec when one will not. The private `describe` serves callers
-//! that read a spec without starting a process.
+//! Only [`assemble`] may be spawned: it resolves every `{{secret:...}}` or refuses the spec.
+//!
+//! Public for `tests/real_runner/` and [`instance_slots`]'s doc example alone.
 
 mod assembly_errors;
 mod environment_inheritance;
