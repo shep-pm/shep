@@ -164,9 +164,9 @@ mod tests {
         assert!(!text.contains("too narrow"), "{text}");
     }
 
-    /// The tab row used to let `Buffer::set_line` cut its overrun, so a
-    /// store with more environments than one row holds lost the count and
-    /// cut the last visible name mid-word.
+    /// `Buffer::set_line` cuts an overrun in silence, so a tab row built from
+    /// more environments than one row holds can lose its count and cut a
+    /// visible name mid-word.
     ///
     /// Swept over counts and widths, and every assertion is on the whole
     /// line: a `contains` passes on a truncated line too.

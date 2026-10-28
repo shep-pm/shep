@@ -184,8 +184,8 @@ fn runs(app: &App) -> Vec<Run> {
             });
             // The two host readings sit together, then the flock's own
             // numbers: the line reads left to right as machine, then flock,
-            // rather than interleaving them. The cost is that the summary is
-            // no longer the segment most likely to survive a narrow terminal.
+            // rather than interleaving them. The cost is that the summary
+            // sits at the tail, where a narrow terminal cuts first.
             out.push(sep());
             out.push(Run {
                 text: summary(app),
