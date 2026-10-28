@@ -5,16 +5,8 @@ use super::super::*;
 ///
 /// Raised by [`App::close_offer`], answered by [`App::on_close_dialog_key`],
 /// and expired by the same [`CONFIRM_EXPIRY`] every other prompt gets.
-///
-/// Everything is carried rather than recomputed: the unsent names are
-/// taken from the pane when the dialog goes up, and `parked` is the
-/// shepherd's own answer from the last fetch.
-///
-/// `Debug` is derived (IR-41): field names the operator is already
-/// reading on screen, two counts, an instance count, two durations
-/// rendered for display, a reload mode, a name, a status, a pid and a
-/// time. No value of any field, and no env value, since the wire never
-/// sends one.
+/// `Debug` is derived (IR-41): names and counts the operator is already
+/// reading on screen, and no field value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloseDialog {
     unsent: Vec<String>,
@@ -37,9 +29,7 @@ impl CloseDialog {
     /// filed edits (`live`) the running sheep already takes without one.
     ///
     /// `status` and `pid` are the one pair a [`ConfigPane`] cannot answer,
-    /// since only the flock map carries them, and the heading names both:
-    /// an operator answering a question that restarts a process should not
-    /// have to read the dimmed pane behind the box to learn which one.
+    /// since only the flock map carries them.
     #[must_use]
     pub(in crate::lookout) fn new(
         unsent: Vec<String>,
@@ -56,11 +46,8 @@ impl CloseDialog {
             reload: pane.reload_kind(),
             // `value` renders the pane's own map as JSON and `instances`
             // is a plain `u32` every `AppConfig` carries, so the parse
-            // cannot fail for a sheep. The only target without the field
-            // is a dog, and `close_offer` refuses a dog before it builds
-            // one of these. A fallback that ever fired would understate
-            // how many processes the reload row is describing, which is
-            // the one number that row exists to give.
+            // cannot fail for a sheep. A fallback that ever fired would
+            // understate how many processes the reload row is describing.
             instances: pane.value("instances").parse().unwrap_or(1),
             kill_timeout: pane.display_value("kill_timeout"),
             graceful_timeout: pane.display_value("graceful_timeout"),
@@ -250,15 +237,10 @@ mod tests {
         );
     }
 
-    /// The gap that let a second held verb through: two `R` answers in a
-    /// row, with the first batch's replies still outstanding when the
-    /// second is asked. The bug was `self.held` being overwritten by the
-    /// second session, so the first session's own replies (an unrelated
-    /// batch, and the wrong count) resolved the second session's verb
-    /// early. Proof of the fix: the first write's reply alone must not
-    /// finish anything (the held count is still the first batch's own two,
-    /// not the second batch's one), and the second session's `R` never
-    /// gets an action at all, in flight or otherwise.
+    /// Two `R` answers in a row, with the first batch's replies still
+    /// outstanding when the second is asked. The first write's reply alone
+    /// must not finish anything, and the second session's `R` never gets an
+    /// action at all.
     #[test]
     fn a_second_r_never_holds_over_the_first() {
         let mut app = fixtures::app_in_sheep_pane_with_two_edits();
@@ -483,9 +465,8 @@ mod tests {
     fn esc_with_only_live_edits_writes_and_closes_with_no_dialog() {
         // `app_in_sheep_pane` parks `kill_signal` unconditionally
         // (`sheep_config_view`'s own default), which alone would raise the
-        // dialog regardless of what is filed. This test is about the
-        // unsent half alone, so it needs a pane starting with nothing
-        // parked.
+        // dialog regardless of what is filed. This test is about the unsent
+        // half alone, so the pane must start with nothing parked.
         let mut app = fixtures::app_in_sheep_pane_with_nothing_parked();
         // `max_restarts` is `ApplyGroup::Live`.
         fixtures::file_edit(&mut app, "max_restarts", "9");

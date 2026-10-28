@@ -196,14 +196,8 @@ impl App {
     }
 
     /// The refusal ladder shared by [`Self::arm`] and [`Self::arm_sheep_pane`]:
-    /// the gate, the link. Neither caller's own target-specific refusal
-    /// (nothing selected, one action already in flight, the pane's pinned
-    /// sheep is gone) lives here, since the two callers order those three
-    /// differently: `arm` asks "nothing selected" before "one already in
-    /// flight", `arm_sheep_pane` cannot ask the first (the pane would not be
-    /// open without a sheep) so only asks the second. Folding "in flight"
-    /// in here once put it ahead of `arm`'s "nothing selected" for every
-    /// caller, which is the bug this comment now exists to keep out.
+    /// the gate, then the link. Each caller's own target-specific refusal
+    /// stays outside, since the two order those differently.
     pub(super) fn confirm_refusal(&self) -> Option<String> {
         if self.control == Control::ReadOnly {
             Some(READ_ONLY_REFUSAL.to_string())
@@ -215,11 +209,8 @@ impl App {
     /// Arms a confirm, or refuses and says why.
     ///
     /// Every refusal happens here rather than at confirm time, so an operator
-    /// never answers a question that was never going to be honoured. The
-    /// ladder is [`Self::confirm_refusal`]'s own gate and link, then nothing
-    /// selected, then one action already in flight, but this method checks
-    /// nothing selected first, since a keypress with no target asked a
-    /// question that was never about the in-flight action at all.
+    /// never answers a question that was never going to be honoured. Nothing
+    /// selected is checked before an action already in flight.
     pub(super) fn arm(&mut self, verb: ActionVerb) -> Effect {
         if let Some(text) = self.confirm_refusal() {
             self.notice = Some(Notice::grave(text));
@@ -229,13 +220,10 @@ impl App {
             self.notice = Some(Notice::grave("no sheep is selected".to_string()));
             return Effect::None;
         };
-        // `self.held` as well as `self.action`, the same pair
-        // `answer_close` refuses on and in the same sentence: a verb the
-        // close dialog is holding until its writes land has not gone out
-        // yet, so `self.action` is still empty, and arming a second one
-        // here would have `send_held_action` overwrite it on the reply
-        // that releases it. [`Self::arm_sheep_pane`] is the only other
-        // door that arms from a keypress, and it refuses on the same pair.
+        // `self.held` as well as `self.action`: a verb the close dialog is
+        // holding until its writes land has not gone out yet, so
+        // `self.action` is still empty, and arming a second one here would
+        // have `send_held_action` overwrite it on the releasing reply.
         if self.action.is_some() || self.held.is_some() {
             self.notice = Some(Notice::grave("one action is already in flight".to_string()));
             return Effect::None;
