@@ -45,17 +45,11 @@ fn cycle_feed_axis(pane: &mut BleatsPane, axis: FeedAxis) {
 
 impl App {
     /// The feed keys both screens claim, run ahead of each pane's own keymap.
-    ///
     /// `feed` names the feed they act on: [`Self::bleats_pane_mut`] for the
     /// full-screen pane, [`Self::sheep_feed_mut`] for the embedded one.
     ///
     /// `Some` for a key this function owns, `None` for the caller's keymap to
-    /// answer. Owning them here rather than in each keymap is the point: a key
-    /// added to this match is answered on both screens at once, which is the
-    /// drift this module exists to stop. The scroll, follow, wrap and
-    /// match-step keys stay in each pane's own keymap, and
-    /// [`Self::on_feed_text_key`] takes what an operator types once `/` has
-    /// opened the box.
+    /// answer. A key added here is answered on both screens at once.
     pub(super) fn on_feed_key(
         &mut self,
         key: KeyPress,
@@ -95,11 +89,8 @@ impl App {
     ///
     /// A cancelling keypress is consumed: a stray `j` cancels the confirm
     /// rather than also moving the selection the next Enter would act on.
-    /// Cancelling is silent. `Ctrl-C` is the one key a cancel does not
-    /// consume: an operator whose Ctrl-C does nothing reaches for `kill -9`.
-    ///
-    /// `Some` when something was armed and this key went to it, `None` when
-    /// nothing was, leaving the caller's own keymap to run.
+    /// `Ctrl-C` is the one key a cancel does not consume. `Some` when
+    /// something was armed and this key went to it.
     pub(super) fn on_armed_key(&mut self, key: KeyPress) -> Option<Effect> {
         if self
             .action
@@ -118,11 +109,8 @@ impl App {
         None
     }
 
-    /// The match box, in force while a feed owns [`InputMode::Text`].
-    ///
-    /// `feed` names the pane the box is typed into: [`Self::bleats_pane_mut`]
-    /// for the full-screen pane, [`Self::sheep_feed_mut`] for the sheep
-    /// pane's embedded one.
+    /// The match box, in force while a feed owns [`InputMode::Text`]. `feed`
+    /// names the pane the box is typed into.
     ///
     /// Typing narrows live through [`BleatsPane::set_match`], while
     /// [`KeyPress::TextAbandon`] restores what [`BleatsPane::begin_match_edit`]

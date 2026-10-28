@@ -52,11 +52,8 @@ impl Focus {
 /// sheep it was asked for.
 ///
 /// The key is the point. A keystroke can ask for another sheep's config while
-/// this one's read is still in flight, and [`App::on_sheep_config`]'s guard
-/// drops the reply nobody is waiting for any more. A tab and a dog left over
-/// from that dropped ask would open the next sheep's pane on a tab and a table
-/// its own operator never named, so [`App::ask_for_sheep_config`] retires the
-/// ask the moment an ask for another sheep replaces it.
+/// this one's read is still in flight, and a tab and a dog left over from that
+/// ask would open the next sheep's pane on a tab its operator never named.
 #[derive(Debug, Clone)]
 pub(crate) struct FocusAsk {
     /// The sheep the command line named, and the only pane this ask may open.
@@ -75,20 +72,12 @@ impl App {
     }
 
     /// The first flock answer's chance to open the screen the command line
-    /// asked for.
-    ///
-    /// `None` when nothing was asked for, when the answer has already been
+    /// asked for. `None` when nothing was asked for, when the answer has been
     /// spent, and when it could not be honoured, in which case the notice
-    /// names what was not found. Spent on the first answer whatever that
-    /// answer says: a shepherd still restoring the flock is a reason to
-    /// report a missing sheep, not a reason to keep trying, and a lookout
-    /// that reopened a pane on every poll would outrace the operator's own
-    /// keys.
+    /// names what was not found. Spent on the first answer whatever it says.
     ///
     /// The sheep is the one the flock answers with, not the row the table
-    /// happens to select: an app with instances has several, and the lowest
-    /// id is the one the pane pins. A dog is not a sheep and is reported as
-    /// not found, the same way a name in no flock at all is.
+    /// selects: an app with instances has several, and the lowest id wins.
     pub(super) fn resolve_focus(&mut self) -> Option<Effect> {
         let focus = self.focus.take()?;
         let Some((id, name)) = self

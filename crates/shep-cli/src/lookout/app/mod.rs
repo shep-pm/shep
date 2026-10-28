@@ -5,32 +5,8 @@
 //! `Instant` arrives on a message.
 //!
 //! The bus is lossy, so [`Msg::Event`] upserts and [`Msg::Snapshot`] replaces
-//! the whole flock map. The cursor is a [`RowKey`], not a row index: the map is
-//! replaced wholesale every two seconds, and [`App::reseat`] puts the cursor
-//! back on a real row.
-//!
-//! [`App`] and [`Body`] are declared here; everything that reads or changes
-//! them is a sibling module, one per screen or per subject, each with its own
-//! tests:
-//!
-//! - [`msg`] and [`rows`] are the vocabulary: what arrives, what departs, and
-//!   the small value types both sides name.
-//! - [`update`] is the reducer, [`keys`] the fork every keypress goes through,
-//!   and [`read`] what the renderer reads back.
-//! - [`selection`] owns which rows are visible and where the cursor sits;
-//!   [`samples`] the sparkline series; [`lambs`] the walk under one sheep.
-//! - [`action`] is the one armed verb, and [`close_dialog`] the one a pane
-//!   raises on its way out.
-//! - [`feed_keys`] is what the bleats pane and the sheep pane's embedded feed
-//!   answer the same way, and the armed-confirm prelude both their screens
-//!   run.
-//! - A screen apiece: [`settings`], [`secrets_pane`], [`config_pane`],
-//!   [`sheep_pane`], [`bleats`], [`dog_pane`], and the sub-screens in
-//!   [`pane_list`] and [`pane_dogs`].
-//! - [`config_pane_keys`] is the keyboard over an open config pane, moved out
-//!   of [`config_pane`] under IR-48's 1000-line ceiling.
-//! - [`focus`] is the screen the command line asked for, which the first
-//!   flock answer either opens or reports as unopenable.
+//! the whole flock map. The cursor is a [`RowKey`], and [`App::reseat`] puts
+//! it back on a real row. Sibling modules hold what reads or changes them.
 
 use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -127,17 +103,8 @@ pub use settings::*;
 /// A variant per pane rather than a shared "which pane is open" enum plus
 /// separate state for each: the flock table needs no state of its own, and
 /// the other two carry their screen's whole state directly, so there is
-/// nowhere for a stale value to survive a switch. See [`App::body`]'s doc
-/// comment for why this replaced two `Option` fields.
-///
-/// One field, one variant at a time, which is what used to be two
-/// independent `Option`s (`settings`, `config_pane`) kept disjoint only by
-/// convention. That made the pair's own history reachable: opening a config
-/// pane never cleared a settings screen still parked underneath it, so an
-/// `Escape` from a pane that outraced a slower settings read could resurface
-/// a screen the operator had already walked past. With one field there is
-/// nothing left underneath to resurface — see
-/// `escape_from_a_config_pane_that_outraced_a_settings_read_lands_on_the_dashboard`.
+/// nowhere for a stale value to survive a switch. One field, one variant at
+/// a time: nothing is left underneath to resurface.
 #[derive(Debug)]
 pub(crate) enum Body {
     /// The dashboard: flock table, host strip, sheep detail, bleats feed.
@@ -385,12 +352,9 @@ pub struct App {
     /// open pane is out and has not answered yet.
     ///
     /// Set by [`Self::reread_pane`], cleared by [`Self::on_sheep_config`],
-    /// [`Self::on_dog_section`], or an unsent read. `r` and
-    /// [`Self::reread_before_closing`] both route through `reread_pane`, and
-    /// a reply carries nothing back to say which of two outstanding reads it
-    /// answers, so this stops a second one going out while the first is
-    /// still in flight: without it, a close's own re-read and a stray
-    /// refresh could each answer the other's request.
+    /// [`Self::on_dog_section`], or an unsent read. A reply carries nothing
+    /// back to say which of two outstanding reads it answers, so this stops a
+    /// second one going out while the first is still in flight.
     config_read_in_flight: bool,
     /// The close dialog over the open pane, or `None`.
     ///
@@ -413,9 +377,7 @@ pub struct App {
     ///
     /// Populated by [`Msg::Snapshot`] only: the bus's per-event
     /// [`Msg::Event`] carries no CPU reading, so a sample is one point per
-    /// poll, not per bus message. A row missing from the latest snapshot
-    /// loses its entry entirely, so a sheep that left the flock leaves no
-    /// history behind for a later id to inherit.
+    /// poll. A row missing from the latest snapshot loses its entry entirely.
     cpu_history: HashMap<u32, VecDeque<f32>>,
     /// The whole flock's summed CPU percent, one sample per poll, same
     /// depth and ordering as [`Self::cpu_history`].
@@ -461,10 +423,8 @@ pub struct App {
     /// of the one sheep the command line named, and spent by that pane's read
     /// and by the `dogs` tab's listing.
     ///
-    /// Retired with the pane, so a later `e` opens on the pane's own first tab
-    /// rather than on an ask the operator has walked past, and retired by
-    /// [`Self::ask_for_sheep_config`] the moment an ask for another sheep
-    /// replaces the read this one was waiting on.
+    /// Retired with the pane, and by [`Self::ask_for_sheep_config`] the moment
+    /// an ask for another sheep replaces the read this one was waiting on.
     focus_ask: Option<FocusAsk>,
 }
 

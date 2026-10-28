@@ -58,13 +58,9 @@ impl App {
     /// second half of an open.
     ///
     /// Guarded on [`Self::dog_target`] the way [`Self::on_sheep_config`] is
-    /// guarded on `config_target`, and for the same reason: a reply for a
-    /// dog the operator has already left must not re-open a pane over the
-    /// screen they went back to.
-    ///
-    /// The schema comes off `dog_target` rather than off the wire. Nothing
-    /// records a dog's schema, so the probe that ran at open is the only
-    /// copy, and a refresh reuses it rather than respawning the binary.
+    /// guarded on `config_target`, and for the same reason: a reply for a dog
+    /// the operator has already left must not re-open a pane over the screen
+    /// they went back to.
     pub(super) fn on_dog_section(
         &mut self,
         name: &str,
@@ -99,14 +95,11 @@ impl App {
 
     /// The settings screen's own half of a `Request::DogConfig` reply: the
     /// schema this screen already parked beside the row, the section the
-    /// shepherd just answered with, and a [`ConfigPane::dog`] built from both,
-    /// which is the same constructor `e` from the flock builds. The tree fills
-    /// in under the dog's header; the screen never leaves.
+    /// shepherd just answered with, and a [`ConfigPane::dog`] built from both.
+    /// The tree fills in under the dog's header; the screen never leaves.
     ///
-    /// A refusal closes the row and puts the sentence on it, which is what the
-    /// dog pane does with the same failure and what the issue asks for here:
-    /// the operator is pointed at `dogs.toml` rather than left with a row that
-    /// opened onto nothing.
+    /// A refusal closes the row and puts the sentence on it, pointing the
+    /// operator at `dogs.toml`.
     fn on_settings_dog_section(
         &mut self,
         name: &str,
@@ -142,8 +135,7 @@ impl App {
     ///
     /// Everything a refresh has to carry across is read before the rebuild
     /// replaces the pane: see `Self::on_sheep_config`, which states the
-    /// argument for each. A dog pane has no env sub-screen, so its view, its
-    /// open tables, its list sub-screen and its edits carry across.
+    /// argument for each.
     pub(super) fn rebuild_dog_pane(&mut self, probe: DogProbe, toml: &str) -> usize {
         let carried = self.config_pane().map(|pane| pane.view().clone());
         let carried_list = self
@@ -184,15 +176,11 @@ impl App {
 
     /// One `Request::SetDogConfig` reply.
     ///
-    /// Reaches for no pane: a write goes out when the pane closes, so
-    /// this lands with the dashboard on screen. A success still re-reads
-    /// the section, the same shape [`Self::on_field_applied`] has, and
-    /// [`Self::on_dog_section`] drops the answer when nobody is waiting
-    /// for it.
-    ///
-    /// The sentence says the change was published and stops there.
-    /// Whether the dog acted on it is the dog's own answer, which this
-    /// reply does not carry and shep cannot predict.
+    /// Reaches for no pane: a write goes out when the pane closes, so this
+    /// lands with the dashboard on screen. A success still re-reads the
+    /// section, the same shape [`Self::on_field_applied`] has. The sentence
+    /// says the change was published and stops there: whether the dog acted
+    /// on it is the dog's own answer.
     pub(super) fn on_dog_section_set(
         &mut self,
         name: &str,

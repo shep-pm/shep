@@ -123,20 +123,16 @@ impl App {
             // An armed confirm (including one already in flight) owns
             // `Enter` before it ever reaches here: the prelude above fires
             // only on `Stage::Armed`. With nothing armed, `Enter` opens the
-            // sheep pane on the selected row, or does nothing on a dog, a
-            // group or a fold header, none of which is a sheep to open one
-            // on.
+            // sheep pane on the selected row, or does nothing on a header.
             KeyPress::Confirm => self.open_sheep_pane(),
             KeyPress::FilterStart => {
                 self.mode = InputMode::Text;
                 Effect::None
             }
             // `TextChar`/`TextBackspace`/`TextApply`/`TextAbandon` reach here
-            // only from text mode, already branched above. `map_key` also
-            // sends `Remove`/`StepUp`/`StepDown` from Normal mode
-            // (`d`/`K`/`J`), so those land here too, just inert.
-            // `NextGroup`/`PrevGroup`/`Group`/`Undo` belong to the config pane: no other
-            // screen has groups to walk or a filed edit set to undo.
+            // only from text mode. `map_key` also sends `Remove`/`StepUp`/
+            // `StepDown` from Normal mode, so those land here too, just inert,
+            // as do the config pane's group and `Undo` keys.
             KeyPress::TextChar(_)
             | KeyPress::TextBackspace
             | KeyPress::TextEdit(_)
@@ -196,12 +192,9 @@ impl App {
             // it reach here.
             KeyPress::Help => self.open_keymap(),
             // Toggles rather than opening: pressing it twice is where it
-            // began. But `ByFold` collapses a grouped app to its
-            // `RowKey::Group` header alone (`push_fold_group_rows`), so a
-            // `RowKey::Sheep` row the flat view was pointing at can vanish
-            // from `visible_rows()` even though the id survives in
-            // `self.selected`. `reseat` reads `selected_index`, not id
-            // survival, so the same fixup `set_filter` uses applies here.
+            // began. But `ByFold` collapses a grouped app to its group header
+            // alone, so a `RowKey::Sheep` row the flat view pointed at can
+            // vanish from `visible_rows()` even though the id survives.
             KeyPress::FoldView => {
                 let previous = self.selected_index();
                 self.grouping = match self.grouping {
@@ -219,10 +212,7 @@ impl App {
             // Only a `RowKey::Fold` header answers to this key; anything
             // else, including no selection at all, is a no-op rather than a
             // refusal, the same silence `Cycle` falls back to outside its own
-            // screen. Not `Help` any more: the overlay's own screen is every
-            // screen, so `h` acts here rather than falling silent. Left
-            // naming `Cycle` alone rather than dropped, because the next
-            // reader of this arm wants to know a no-op is deliberate.
+            // screen. The no-op is deliberate.
             KeyPress::Collapse => {
                 if let Some(RowKey::Fold(name)) = self.selected()
                     && !self.collapsed_folds.remove(&name)
@@ -237,8 +227,7 @@ impl App {
             // All four scroll or cycle a bleats-pane axis, and the
             // dashboard has neither a filter axis nor a feed to scroll;
             // named here rather than left to fall through the arm above,
-            // the same way `KeyPress::Bleats` would be ignored on a screen
-            // with no bleats pane.
+            // as `KeyPress::Bleats` would be on a screen with no feed.
             KeyPress::StreamCycle
             | KeyPress::LevelCycle
             | KeyPress::PageDown
@@ -253,16 +242,10 @@ impl App {
     /// Puts the keyboard back to [`InputMode::Normal`] when no pane editor
     /// owns it any more.
     ///
-    /// [`InputMode::Text`] is remembered on `App` while the buffer it
-    /// belongs to lives on the pane, so anything that drops or replaces the
-    /// pane can leave the two disagreeing, and a lookout in `Text` mode
-    /// with nothing to type into eats every keystroke until `Esc`. A
-    /// re-read rebuilds the whole `ConfigPane`, which is exactly that, and
-    /// a landed write asks for one.
-    ///
-    /// Called only from paths where the config pane is the screen in
-    /// question. The filter box owns `Text` with no marker but the mode
-    /// itself, and it cannot be open while the pane is.
+    /// [`InputMode::Text`] is remembered on `App` while the buffer it belongs
+    /// to lives on the pane, so anything that drops or replaces the pane can
+    /// leave the two disagreeing, and a lookout in `Text` mode with nothing
+    /// to type into eats every keystroke until `Esc`.
     pub(super) fn release_text_mode_if_unowned(&mut self) {
         if self.mode != InputMode::Text {
             return;
@@ -279,11 +262,8 @@ impl App {
     fn on_text_key(&mut self, key: KeyPress) -> Effect {
         // Six now, and the split is still total: the config pane, the
         // settings screen, the bleats pane, the secrets pane and the sheep
-        // pane cannot coexist with each other (`e`, `s` and `S` reach the
-        // dashboard only from the dashboard, and `b`/`↵` only from there
-        // too), and none of them
-        // coexist with the dashboard's own filter box, which `Msg::Settings`'s
-        // own arm closed the window on.
+        // pane cannot coexist with each other, nor with the dashboard's own
+        // filter box.
         if self.config_pane().is_some() {
             return self.on_pane_text_key(key);
         }
@@ -651,26 +631,12 @@ mod tests {
     }
 
     /// It opens from the three bodies `Confirm`, `Secrets` and `Bleats` set
-    /// synchronously (`self.body` changes on the keystroke itself, no reply
-    /// needed). `Edit` and `Settings` open their screens only once a reply
-    /// lands, so a `Help` pressed right after either still reaches the
-    /// dashboard's own arm, which also opens the overlay but proves nothing
-    /// about `on_pane_key` or `on_settings_key`: those two get their own
-    /// dedicated tests instead
-    /// (`h_opens_the_keymap_overlay_in_the_config_pane`,
-    /// `the_overlay_opens_from_the_settings_screen`). The list sub-screen is
-    /// not a `Body` at all (it is `ConfigPane::list`, nested inside
-    /// `Body::ConfigPane`, and reached by a `pane_to` plus `Confirm` rather
-    /// than a single opener from the dashboard), so it was never in scope
-    /// for this loop either; it gets its own dedicated test too
-    /// (`h_opens_the_keymap_overlay_from_the_list_sub_screen`).
+    /// synchronously. `Edit` and `Settings` open their screens only once a
+    /// reply lands, so they get their own dedicated tests instead.
     ///
     /// Each iteration asserts it reached the body before pressing `Help`.
-    /// Without that the loop is the shape it was narrowed for: an opener
-    /// that stops setting `Body` synchronously leaves the dashboard on
-    /// screen, `Help` opens the overlay from there, and the loop passes
-    /// three times while testing one body. `Edit` and `Settings` did
-    /// exactly that before they were dropped from it.
+    /// Without that, an opener that stops setting `Body` synchronously leaves
+    /// the dashboard on screen and the loop passes three times testing one body.
     #[test]
     fn the_overlay_opens_from_every_synchronously_opened_body() {
         /// An opener paired with the predicate that says it landed.
