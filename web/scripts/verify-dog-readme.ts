@@ -1,10 +1,16 @@
 // Regression guard for a first-party dog's fetched docs pages
-// (web/src/data/dog-readme-fetch.ts and web/src/data/dog-readme-links.ts).
+// (web/src/data/dog-readme-fetch.ts, web/src/data/dog-readme-links.ts and
+// web/src/data/dog-readme-tables.ts).
 //
 // The next slice draws `/docs/dogs/<adopt_as>` from a dog repo's README at its
 // latest release tag. That needs two things proven before any page exists: the
 // fetch reaches the right URLs and stops on its own, and a README's links come
 // out pointing at this site rather than at GitHub.
+//
+// The third module is the page slice's own: a README's markdown tables render
+// as real `<table>` elements, which the site's phone-width table rules do not
+// reach, so each cell past the first has to carry its column's heading as
+// `data-label` before `dog-readme.css` can stack the table at all.
 //
 // Every case here runs against a fake `fetchFn`, so no case touches the
 // network and no case can be skipped by a rate limit or a missing token. That
@@ -35,6 +41,7 @@ import {
   rewriteLinks,
 } from "../src/data/dog-readme-links.ts";
 import type { DogPageAddress } from "../src/data/dog-readme-links.ts";
+import { labelTableCells } from "../src/data/dog-readme-tables.ts";
 import { dogs } from "../src/data/dogs.ts";
 import type { Dog } from "../src/data/dogs.ts";
 
@@ -566,12 +573,105 @@ test("the links that get a page and the links that get rewritten are the same li
   assert.equal(hrefs.length, 3);
 });
 
+/* --- labelTableCells ---------------------------------------------------- */
+
+/** A three-column table, the shape a markdown pipe table renders to. */
+const grid = `<table><thead><tr><th>code</th><th>means</th><th>the flock is</th></tr></thead>` +
+  `<tbody><tr><td><code>12</code></td><td>the deploy was rejected</td><td>healthy</td></tr></tbody></table>`;
+
+test("labelTableCells() puts the header text on every cell past the first", () => {
+  const out = labelTableCells(grid);
+  assert.ok(out.includes(`<td data-label="means">`), out);
+  assert.ok(out.includes(`<td data-label="the flock is">`), out);
+});
+
+test("labelTableCells() leaves the first cell of a row unlabelled", () => {
+  const out = labelTableCells(grid);
+  assert.ok(out.includes("<td><code>12</code></td>"), out);
+  assert.equal(out.match(/data-label/g)?.length, 2, out);
+});
+
+test("labelTableCells() leaves a table with no header cells alone", () => {
+  const html = `<table><tbody><tr><td>one</td><td>two</td></tr></tbody></table>`;
+  assert.equal(labelTableCells(html), html);
+  // A header row of `td` is still no header row.
+  const rows = `<table><tr><td>one</td><td>two</td></tr><tr><td>three</td><td>four</td></tr></table>`;
+  assert.equal(labelTableCells(rows), rows);
+});
+
+test("labelTableCells() labels every body row, not only the first", () => {
+  const html = `<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody>` +
+    `<tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>`;
+  const out = labelTableCells(html);
+  assert.equal(out.match(/data-label="b"/g)?.length, 2, out);
+});
+
+test("labelTableCells() keeps a label the README already wrote", () => {
+  const html = `<table><thead><tr><th>a</th><th>b</th></tr></thead><tr><td>1</td><td data-label="own">2</td></tr></table>`;
+  assert.equal(labelTableCells(html), html);
+});
+
+test("labelTableCells() leaves a column the header row does not name unlabelled", () => {
+  // A row header: the `th` names the row, and the header row has nothing for it.
+  const html = `<table><thead><tr><th></th><th>bark</th></tr></thead><tr><td>alerts</td><td>yes</td></tr></table>`;
+  const out = labelTableCells(html);
+  assert.ok(out.includes(`<td data-label="bark">yes</td>`), out);
+  assert.ok(out.includes("<td>alerts</td>"), out);
+});
+
+test("labelTableCells() strips a header cell's tags and collapses its whitespace", () => {
+  const html = `<table><thead><tr><th>a</th><th>the\n  <em>flock</em> is</th></tr></thead><tr><td>x</td><td>y</td></tr></table>`;
+  assert.ok(labelTableCells(html).includes(`<td data-label="the flock is">y</td>`), labelTableCells(html));
+});
+
+test("labelTableCells() decodes a header cell's character references and re-escapes them", () => {
+  const html = `<table><thead><tr><th>a</th><th>Q&amp;a</th><th>&quot;quoted&quot;</th></tr></thead>` +
+    `<tr><td>x</td><td>y</td><td>z</td></tr></table>`;
+  const out = labelTableCells(html);
+  assert.ok(out.includes(`<td data-label="Q&amp;a">y</td>`), out);
+  assert.ok(out.includes(`<td data-label="&quot;quoted&quot;">z</td>`), out);
+});
+
+test("labelTableCells() copies out everything outside a cell's opening tag unchanged", () => {
+  const html = `<p>See the <code>&lt;table&gt;</code> below.</p>` +
+    `<table class="wide" style="text-align:left"><thead><tr><th class="h">a</th><th>b</th></tr></thead>` +
+    `<tr><td style="text-align:center">1</td><td>2</td></tr></table>`;
+  const out = labelTableCells(html);
+  assert.ok(out.includes(`<td style="text-align:center">1</td>`), out);
+  assert.ok(out.includes(`<td data-label="b">2</td>`), out);
+  assert.ok(out.includes(`<table class="wide" style="text-align:left">`), out);
+  assert.ok(out.includes(`<th class="h">a</th>`), out);
+  assert.ok(out.includes(`<p>See the <code>&lt;table&gt;</code> below.</p>`), out);
+});
+
+test("labelTableCells() reads a tag whose quoted attribute holds >", () => {
+  const html = `<table><thead><tr><th>a</th><th title="x > y">b</th></tr></thead>` +
+    `<tr><td title="p > q">1</td><td>2</td></tr></table>`;
+  assert.equal(
+    labelTableCells(html),
+    `<table><thead><tr><th>a</th><th title="x > y">b</th></tr></thead>` +
+      `<tr><td title="p > q">1</td><td data-label="b">2</td></tr></table>`,
+  );
+});
+
+test("labelTableCells() ends a table at its own closing tag, not a nested one's", () => {
+  const html = `<table><thead><tr><th>outer</th><th>col</th></tr></thead><tr><td><table>` +
+    `<thead><tr><th>in</th></tr></thead><tr><td>ner</td></tr></table></td><td>tail</td></tr></table>`;
+  assert.ok(labelTableCells(html).includes(`<td data-label="col">tail</td>`), labelTableCells(html));
+});
+
+test("labelTableCells() returns the document untouched when it has no table", () => {
+  const html = `<h2 id="x">X</h2><p>text with a <code>table</code> in it</p>`;
+  assert.equal(labelTableCells(html), html);
+});
+
 /* --- the shape of the modules themselves --------------------------------- */
 
-test("neither module imports anything from astro, and neither reads the environment", async () => {
+test("no dog-readme module imports anything from astro, and none reads the environment", async () => {
   const fetchSource = await readFile(new URL("../src/data/dog-readme-fetch.ts", import.meta.url), "utf8");
   const linksSource = await readFile(new URL("../src/data/dog-readme-links.ts", import.meta.url), "utf8");
-  for (const source of [fetchSource, linksSource]) {
+  const tablesSource = await readFile(new URL("../src/data/dog-readme-tables.ts", import.meta.url), "utf8");
+  for (const source of [fetchSource, linksSource, tablesSource]) {
     assert.ok(!/from\s+["']astro:/.test(source), "a data module the test runner loads cannot import from astro:");
     assert.ok(!/from\s+["'][^"']*\?raw/.test(source), "nor from a build-time ?raw import");
     assert.ok(!source.includes("import.meta"), "neither module reads the build environment");
