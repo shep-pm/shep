@@ -575,9 +575,7 @@ mod tests {
 
     /// A log rotated away between two polls leaves exactly one of the two
     /// reads failing. Half a total would read as a smaller log rather than as
-    /// a partial answer, so the answer is no size at all. This is the rule
-    /// `view::detail::log_row` used to carry when it read the filesystem
-    /// itself.
+    /// a partial answer, so the answer is no size at all.
     #[test]
     fn a_missing_log_sizes_to_nothing_rather_than_to_one_file() {
         let dir = tempfile::Builder::new()

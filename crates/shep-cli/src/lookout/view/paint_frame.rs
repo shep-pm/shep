@@ -833,12 +833,9 @@ mod tests {
         }
     }
 
-    /// `F` used to draw the flock's fourteen-column header over an eight-
-    /// column fold table: `view::mod`'s draw loop called
-    /// `super::super::flock::columns_for` unconditionally for both the header and the
-    /// rows under it, never branching on `App::grouping`. This pins the fix:
-    /// the STATUS label in the column header and the STATUS word in a
-    /// fold's own member row must land at the same column.
+    /// A fold table draws under the flock's own column set, not its own
+    /// eight-column one: the STATUS label in the header and the STATUS word
+    /// in a fold's member row land at the same column.
     #[test]
     fn the_fold_views_header_and_its_rows_share_one_column_set() {
         let mut app = super::super::fixtures::app_with(

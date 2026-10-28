@@ -57,8 +57,8 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // and pinning is what its reader needs.
     let right = if matches!(app.link(), Link::Lost { .. }) {
         // Ahead of both: whether this dashboard is reading a live shepherd
-        // outranks whether a pane is pinned to the newest line, and it
-        // outranks a control state that no longer decides anything.
+        // outranks whether a pane is pinned to the newest line, and outranks
+        // a control state the lost link already settles.
         "\u{2588} frozen"
     } else if app.bleats_pane().is_some_and(BleatsPane::following) {
         "\u{2588} following"

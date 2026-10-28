@@ -131,11 +131,9 @@ mod tests {
     use super::layout::{FULL_TIER_MIN_HEIGHT, MIN_HEIGHT_FOR_CHARTS, TERMINAL_OVERHEAD};
     use super::*;
 
-    /// The bug the reviewer reproduced: pane pinned to sheep 1, sheep 1
-    /// deleted, `pane.sheep()` still reads `Sheep(1)` while `app.selected()`
-    /// has moved to `Sheep(2)` (`alpha`'s alphabetical neighbour, `bravo`,
-    /// the only row left once the reseat runs). Reading `App::selected_row`
-    /// here would draw `bravo`'s facts under a band still naming `alpha`.
+    /// A pinned pane keeps its own sheep: after `Sheep(1)` is deleted the
+    /// selection reseats to `bravo`, and reading `App::selected_row` here
+    /// would draw `bravo`'s facts under a band still naming `alpha`.
     #[test]
     fn the_band_does_not_draw_the_sheep_that_replaced_the_pinned_one() {
         let mut app = fixtures::app_with(

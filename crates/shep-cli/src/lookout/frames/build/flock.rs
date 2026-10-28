@@ -325,10 +325,9 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
                     at,
                 });
             }
-            // The returned row has to carry the same reading the loop's
-            // last snapshot sent, not the pre-loop clone: this used to
-            // mutate `warming_up` only, leaving `pending_row.cpu_ms` at
-            // `None` forever.
+            // The returned row carries the reading the loop's last snapshot
+            // sent, not the pre-loop clone: a scene whose returned row
+            // disagrees with its own snapshots tests nothing.
             pending_row.cpu_ms = Some(cpu_ms);
             vec![pending_row, overridden_row, plain_row]
         }

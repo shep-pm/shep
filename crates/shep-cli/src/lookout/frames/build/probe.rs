@@ -99,7 +99,7 @@ pub(super) fn tab_dog_row_for<'a>(frame: &'a str, name: &str) -> Option<&'a str>
 /// terminal width, so `prefix` only needs to fit the eight-column
 /// floor `name_width` never shrinks below. Selection is read off
 /// `buffer`'s own painted gutter ([`row_is_selected`]), not a `>`
-/// glyph the gallery's palette no longer draws.
+/// glyph, which the gallery's palette does not draw.
 // Dead on Windows: only the cfg(unix) tests call it.
 #[cfg_attr(windows, allow(dead_code))]
 pub(super) fn marked_row_name_starts_with(text: &str, buffer: &Buffer, prefix: &str) -> bool {

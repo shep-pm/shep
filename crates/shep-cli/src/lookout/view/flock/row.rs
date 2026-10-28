@@ -640,8 +640,8 @@ mod tests {
         ]
         .join("  ");
 
-        // Trailing pad compared separately: since NAME gained a ceiling
-        // ([`NAME_MAX`]), the columns no longer fill a wide terminal and the
+        // Trailing pad compared separately: NAME has a ceiling
+        // ([`NAME_MAX`]), so the columns do not fill a wide terminal and the
         // row is padded out to it. Both facts are worth pinning, but the
         // cells are the ones this test is about.
         assert_eq!(rendered.trim_end(), expected.trim_end(), "got {rendered:?}");

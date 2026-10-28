@@ -224,8 +224,8 @@ mod tests {
     #[test]
     fn the_title_names_the_target_and_no_longer_calls_it_read_only() {
         let text = text_of(&pane_lines(&web_pane(), fixtures::plain(), 120, 0));
-        // Named once, on the title band: `title_line` no longer draws a
-        // second row repeating it (see `title_band_line`'s own doc).
+        // Named once, on the title band: `title_line` draws no second row
+        // repeating it (see `title_band_line`'s own doc).
         assert!(text[0].contains("web"), "{:?}", text[0]);
         assert!(text[0].contains("(sheep config)"), "{:?}", text[0]);
         assert!(!text[0].contains("read-only"), "{:?}", text[0]);

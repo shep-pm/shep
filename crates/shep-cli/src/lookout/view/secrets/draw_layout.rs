@@ -484,13 +484,10 @@ mod tests {
         );
     }
 
-    /// Interleaved sources (operator, namespace, operator): `draw`'s own
-    /// scan used to close the operator group at the first row that was not
-    /// the operator's own, index 1, while `SecretsPane::screen_slots` (the
-    /// cursor) anchored on the highest operator index, 2. `G` would then
-    /// select the affordance while it rendered two lines above where the
-    /// cursor logic put it. Both now read [`SecretsPane::new_key_anchor`](crate::lookout::app::SecretsPane::new_key_anchor),
-    /// so `G`'s target and the drawn affordance are the same line.
+    /// Interleaved sources (operator, namespace, operator): the drawn
+    /// operator group and the cursor's anchor are one line, because both read
+    /// [`SecretsPane::new_key_anchor`](crate::lookout::app::SecretsPane::new_key_anchor).
+    /// `G` selects the affordance at the row it draws.
     #[test]
     fn interleaved_sources_still_agree_between_the_cursor_and_the_drawn_affordance() {
         let mut app = fixtures::app_with_interleaved_secret_sources();

@@ -239,8 +239,7 @@ mod tests {
         );
     }
 
-    /// One row of one byte: the length is printed in two places and both
-    /// used to read `1 bytes`.
+    /// One row of one byte: both places that print a length pluralize it.
     #[test]
     fn a_one_byte_value_is_one_byte_in_both_places_that_print_a_length() {
         assert_eq!(byte_count(1), "1 byte");

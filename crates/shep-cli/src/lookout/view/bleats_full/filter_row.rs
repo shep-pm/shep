@@ -310,10 +310,10 @@ mod tests {
 
     /// A redraw compiles the match axis's pattern no times at all.
     ///
-    /// `highlighted` runs once per rendered line, so this used to be one
-    /// `Regex::new` per line per frame, against `lookout::MIN_REDRAW`'s 33 ms
-    /// frame budget. The count is what pins it: a timing assertion would be
-    /// flaky.
+    /// `highlighted` runs once per rendered line, so an uncompiled pattern
+    /// costs one `Regex::new` per line per frame against
+    /// `lookout::MIN_REDRAW`'s 33 ms budget. The count pins it: a timing
+    /// assertion is flaky.
     #[test]
     fn a_redraw_compiles_the_match_axis_no_times() {
         let mut app = with_selection(ProcessInfo::builder(9, "web", ProcStatus::Online).build());
