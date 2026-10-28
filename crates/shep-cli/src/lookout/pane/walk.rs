@@ -63,9 +63,8 @@ impl ConfigPane {
     }
 
     /// One row per field of the active group, in display order, then, on a
-    /// sheep's `process` tab or on a dog pane, its own env keys and the row
-    /// that adds one. A field carrying no group is visible whatever group is
-    /// active.
+    /// sheep's `process` tab or a dog pane, its own env keys and the row that
+    /// adds one. A field carrying no group is visible whatever group is active.
     ///
     /// The `env` field is left out of the field portion for a sheep: its
     /// [`PaneRow::Env`] rows say the same thing. See [`Self::dog_rows`] for a
@@ -108,8 +107,7 @@ impl ConfigPane {
 
     /// Whether the env rows and the row that adds one belong to the tab the
     /// pane is on: a sheep's `process` tab, and an adopted dog's own pane,
-    /// which has no groups at all and so shows them under whichever one is
-    /// active.
+    /// which has no groups at all.
     ///
     /// A dog's are the `env` its `shep.toml` entry sets, not its
     /// `[<name>]` section: see [`Self::dog`]. A built-in dog has no entry to

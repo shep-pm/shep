@@ -182,12 +182,9 @@ fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
 /// where its binary comes from, and the `env` the operator set for it.
 ///
 /// The source is the half every flock row carries. The env is the half one
-/// spawn gets: `shep.toml` is this binary's own file and the shepherd never
-/// reads it, so the request that starts a dog is the only way its
-/// operator-set environment reaches it.
-///
-/// `Debug` is derived, and safe because [`EnvValue`]'s own prints a byte
-/// count (IR-41).
+/// spawn gets, and `shep.toml` is this binary's own file: the request that
+/// starts a dog is the only way its operator-set environment reaches it.
+/// `Debug` is derived, safe because [`EnvValue`]'s own prints a byte count (IR-41).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DogEntry {
     /// Where its binary comes from, and what it was granted.

@@ -416,8 +416,9 @@ impl ShepToml {
     ///
     /// Empty for a built-in dog, for a name the document never heard of, and
     /// for an entry written as a bare path string. A value that is not text is
-    /// left out: [`DaemonConfig::load`] refuses the whole file before this
-    /// document reaches a spawn, and a reader here has no error to report.
+    /// left out: [`shep_core::config::DaemonConfig::load`] refuses the whole
+    /// file before this document reaches a spawn, and a reader here has no
+    /// error to report.
     #[must_use]
     pub fn adopted_dog_env(&self, name: &str) -> BTreeMap<String, String> {
         let Some(env) = self

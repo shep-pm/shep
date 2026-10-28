@@ -191,20 +191,13 @@ impl ConfigPane {
         }
     }
 
-    /// A pane over one dog's `[<name>]` section, and over the `env` its
-    /// `shep.toml` entry sets for it.
+    /// A pane over one dog's `[<name>]` section and its operator-set `env`
     ///
-    /// `schema` is the dog's own answer to the schema flag, probed at open
-    /// rather than read from anywhere; `section` is the table as
-    /// `Request::DogConfig` rendered it, empty when `dogs.toml` has none.
-    /// `env_keys` is the key names of `[daemon] adopted_dogs.<name>`'s `env`,
-    /// read off `shep.toml` by the caller: names only, because a value is a
-    /// secret and this pane never holds one, exactly as [`Self::sheep`] reads
-    /// them off [`SheepConfigView`]. Empty for a built-in dog, which has no
-    /// entry to set an `env` in.
-    ///
-    /// In schema order, with no group headers: a dog's schema carries no
-    /// `init.group`.
+    /// `schema` is the dog's own answer to the schema flag, probed at open;
+    /// `section` is the table as `Request::DogConfig` rendered it, empty when
+    /// `dogs.toml` has none. `env_keys` is the key names of that `env`, names
+    /// only, because a value is a secret and this pane never holds one. In
+    /// schema order, with no group headers: a dog's schema carries none.
     #[must_use]
     pub fn dog(
         name: String,

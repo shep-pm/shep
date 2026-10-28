@@ -592,8 +592,7 @@ pub enum Effect {
     /// Its own effect, not [`Self::WriteSetting`]: a dog's `env` sits beside
     /// its path in `[daemon] adopted_dogs`, and one key of it is written
     /// through [`crate::commands::shep_toml::ShepToml::set_adopted_dog_env`],
-    /// which keeps the path. `spawn_blocking`, for [`Self::WriteSetting`]'s
-    /// reason.
+    /// which keeps the path. `spawn_blocking`, for [`Self::WriteSetting`]'s reason.
     WriteDogEnv {
         /// The dog, and every key its close filed, with the value or [`None`]
         /// for a removal.

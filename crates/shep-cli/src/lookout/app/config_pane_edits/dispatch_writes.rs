@@ -5,17 +5,13 @@ use crate::lookout::edits::EditKey;
 use crate::lookout::pane::toml_table;
 
 impl App {
-    /// Everything the open pane has filed, as the writes that carry it,
-    /// leaving the pane holding nothing.
+    /// Everything the open pane has filed, as the writes that carry it
     ///
-    /// A sheep's set is one request per entry; a dog's is one request for the
-    /// lot, since [`Sent::SetDogSection`] and [`Sent::SetSheepDogTable`] each
-    /// replace a whole table. Reported rather than sent for a dog whose
-    /// section stopped parsing between the read and the keystroke.
-    ///
-    /// A dog pane's `env` edits are the one half that is not a request: they
-    /// go to `shep.toml`, which the shepherd never reads. See
-    /// [`Effect::WriteDogEnv`].
+    /// The pane holds nothing afterwards. A sheep's set is one request per
+    /// entry; a dog's is one for the lot, since a whole table is replaced at
+    /// once, and a section that stopped parsing between the read and the
+    /// keystroke is reported rather than sent. A dog pane's `env` edits go to
+    /// `shep.toml` rather than the socket: [`Effect::WriteDogEnv`].
     pub(in crate::lookout::app) fn take_pane_writes(&mut self) -> PaneWrites {
         let mut writes = self.take_seated_writes();
         let edited = self
