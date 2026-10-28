@@ -14,12 +14,9 @@ impl App {
             self.body = Body::Bleats(pane.feed().clone());
         }
         // The embedded feed never clamps its own offset: it draws no
-        // scrollback, so `N` can walk the stored value past anything the
-        // full screen can scroll back to. Clamping on arrival rather than
-        // leaving it is what `scroll_bleats_back` already documents, in
-        // those words: the render clamps while the stored value keeps
-        // climbing, so `j` stops appearing to work until the operator has
-        // pressed it as many times as `N` was pressed before.
+        // scrollback, so `N` can walk the stored value past anything the full
+        // screen can scroll back to. Clamping on arrival is what
+        // `scroll_bleats_back` already documents.
         let ceiling = self.bleats_pane().map_or(0, |pane| {
             crate::lookout::view::bleats_full::max_scroll_offset(self, pane)
         });
@@ -30,22 +27,11 @@ impl App {
     }
 
     /// The sheep pane's own keymap, in force while [`Self::sheep_pane`] is
-    /// `Some`. `esc` closes it; `e` opens the config editor over it,
-    /// routed by [`ConfigFor`] once the reply lands, since both send the
-    /// same request; `J`/`K` step to the next or previous sheep without
-    /// leaving the pane; `x`/`R`/`L` arm a confirm against the pane's own
-    /// pinned sheep ([`Self::arm_sheep_pane`]), `↵` confirms it and any
-    /// other key cancels it, through the same [`Self::on_armed_key`] prelude
-    /// [`Self::on_key`] runs. It is needed here too: `on_key` routes to this
-    /// method ahead of its own call, so an action armed from inside this pane
-    /// never reaches that one. `j`/`k` and `g`/`G` scroll the config/env
-    /// column through its own `Viewport`. `/`, `o` and `m` are claimed ahead
-    /// of this keymap by [`Self::on_feed_key`], the dispatcher
-    /// [`Self::on_bleats_key`] runs for the full-screen pane; `f`, `w`, `n`
-    /// and `N` belong to the embedded feed ([`Self::sheep_feed_mut`]), the
-    /// same axes and match box that dispatcher and [`Self::on_feed_text_key`]
-    /// wire for the full-screen pane, and `b` hands that same feed to
-    /// [`Self::promote_feed_to_full_screen`] rather than opening a fresh one.
+    /// `Some`. `esc` closes it; `e` opens the config editor over it;
+    /// `J`/`K` step to the next or previous sheep; `x`/`R`/`L` arm a confirm
+    /// against the pane's pinned sheep, `↵` confirms it and any other key
+    /// cancels, through the same [`Self::on_armed_key`] prelude `on_key` runs.
+    /// `j`/`k` and `g`/`G` scroll the config column through its own `Viewport`.
     /// Every other key is inert.
     pub(in crate::lookout::app) fn on_sheep_pane_key(&mut self, key: KeyPress) -> Effect {
         if let Some(effect) = self.on_armed_key(key) {
@@ -123,13 +109,9 @@ impl App {
                 Effect::None
             }
             // `N`: the same, toward the oldest matching line. Unlike
-            // `on_bleats_key`'s own `MatchPrev` arm, this does not clamp
-            // through `bleats_full::max_scroll_offset`: the embedded feed
-            // draws no scrollback of its own (there is no `j`/`k` for it
-            // here, unlike the full-screen pane), and `window_range`
+            // `on_bleats_key`'s own `MatchPrev` arm, this does not clamp: the
+            // embedded feed draws no scrollback of its own, and `window_range`
             // saturates a stale offset rather than reading past the end.
-            // `promote_feed_to_full_screen` clamps on arrival, which is
-            // where an unclamped value would otherwise be felt.
             KeyPress::MatchPrev => {
                 let stepping = self
                     .sheep_pane()

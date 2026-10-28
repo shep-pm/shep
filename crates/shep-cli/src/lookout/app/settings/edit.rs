@@ -69,9 +69,7 @@ impl Settings {
         // The seed is what [`ConfigPane::begin_typing`] would open with, key
         // for key: a secret's value is never held here, and a key the section
         // does not set shows [`UNSET`], which is a rendering and not a value.
-        // Seeding either as it is drawn would put text in the buffer that no
-        // dog pane would ever send, and `Enter` on it would arm a write of the
-        // placeholder itself into `dogs.toml`.
+        // Seeding either as drawn would arm a write of the placeholder itself.
         let shown = pane.value(&field.key);
         let seed = if field.secret || shown == UNSET {
             String::new()

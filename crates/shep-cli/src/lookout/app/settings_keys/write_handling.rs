@@ -4,12 +4,10 @@ impl App {
     /// The operator's `Enter` on the settings screen. On a section it folds;
     /// on a typed key or a map entry with nothing pending it opens
     /// [`Pending::Typing`] and switches [`InputMode::Text`] on; on an armed
-    /// candidate it sends and moves to [`Pending::Sent`]; anything else is
-    /// untouched.
+    /// candidate it sends and moves to [`Pending::Sent`].
     ///
-    /// Both acting cases go through [`Self::authorize_write`]. Opening the
-    /// editor is gated as well as applying it, so the refusal arrives before a
-    /// whole socket path is typed.
+    /// Both acting cases go through [`Self::authorize_write`], the editor
+    /// included, so the refusal arrives before a whole socket path is typed.
     pub(super) fn confirm_setting(&mut self) -> Effect {
         let Some(settings) = self.settings_mut() else {
             return Effect::None;
@@ -231,24 +229,12 @@ mod tests {
     }
 
     /// A refused write reopens the text editor, and the overlay must not
-    /// survive to hide it: `on_key` checks text mode ahead of
-    /// `keymap_open`, so a still-open overlay would swallow every key
-    /// meant for the reopened editor.
-    ///
-    /// The ordering in `on_key` is deliberate and documented: `h` typed into
-    /// an open filter box is a letter, so the overlay can never be raised
-    /// from inside text mode. It says nothing about the other direction, and
-    /// `Msg::SettingWritten`'s `Err` arm restores `InputMode::Text` from a
-    /// message rather than a keypress.
+    /// survive to hide it: `on_key` checks text mode ahead of `keymap_open`,
+    /// so a still-open overlay would swallow every key meant for it.
     ///
     /// Reachable because `is_armed` covers `Pending::Armed` and
     /// `Pending::DogArmed` and not `Pending::Sent`, so `h` with a write in
-    /// flight opens the overlay instead of cancelling anything. The reply
-    /// then lands, and the operator has a box on screen while every key goes
-    /// into a socket path they cannot see.
-    ///
-    /// It is the shape a green suite cannot see: two messages in an order
-    /// no single test sends.
+    /// flight opens the overlay, and the reply then restores text mode.
     #[test]
     fn a_refused_write_closes_the_overlay_before_reopening_the_editor() {
         let mut app = fixtures::app_in_settings_on("daemon.max_cron_sleep");
