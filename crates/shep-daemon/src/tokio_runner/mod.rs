@@ -38,15 +38,9 @@ const READ_BUFFER: usize = 8 * 1024;
 ///
 /// Without it [`pump::spawn_log_pump`]'s `select!` can take the
 /// `logs_tx.closed()` branch with the child's last line still in the pipe:
-/// `tokio::select!` picks between ready branches at random. A reaped child's
-/// write ends are closed, so the common case answers EOF at once. The budget
-/// is spent only when a lamb still holds a write end, and it does not bound
-/// the lamb.
-///
-/// 100ms against a worst case of 7 to 12ms for two full pipes;
-/// `both_pipes_filled_to_capacity_drain_inside_the_budget` pins it. Not
-/// wider: a draining pump does not poll `ctl_rx`, and a handover gives each
-/// pump one `REPORT_DEADLINE` (2s) to answer.
+/// `tokio::select!` picks between ready branches at random. The budget is
+/// spent only when a lamb still holds a write end, and it does not bound the
+/// lamb. 100ms against a worst case of 7 to 12ms for two full pipes.
 const FINAL_DRAIN: Duration = Duration::from_millis(100);
 
 #[cfg(unix)]

@@ -41,20 +41,16 @@ impl<R: AsyncRead + Unpin> LineReader<R> {
     }
 
     /// The next line without its `\n` or `\r\n`, or `None` at EOF. A last
-    /// line with no terminator is still a line.
-    ///
-    /// The line borrows the scratch buffer, so it is gone at the next call.
+    /// line with no terminator is still a line. The line borrows the scratch
+    /// buffer, so it is gone at the next call.
     ///
     /// # Errors
-    ///
     /// The read failed, or the line is not UTF-8 ([`io::ErrorKind::InvalidData`]).
     ///
     /// # Cancellation safety
-    ///
     /// Cancel-safe. A partially read line stays in the scratch buffer and the
     /// next call carries on from it: the buffer is cleared only once a line
-    /// has been handed out, never at the start of a call. `read_line` would
-    /// not do, since it loses a partial line when cancelled.
+    /// has been handed out.
     pub(super) async fn read_line(&mut self) -> io::Result<Option<&str>> {
         if self.handed_out {
             self.release();

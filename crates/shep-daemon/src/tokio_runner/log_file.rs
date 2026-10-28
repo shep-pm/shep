@@ -28,9 +28,8 @@ use super::{IDLE_FLUSH, LOG_BUFFER};
 ///
 /// A sheep whose log open had failed before the handover carries no handle
 /// for that stream, which is a `None` rather than a refusal (see
-/// `handover::adopt`). Opening the path here is the right recovery: it is
-/// what the predecessor's pump would have done at its next reopen, and it
-/// costs the successor nothing when the open fails again.
+/// `handover::adopt`). Opening the path here is what the predecessor's pump
+/// would have done at its next reopen.
 #[cfg(unix)]
 pub(super) fn carried_sink(path: PathBuf, handle: Option<tokio::fs::File>) -> LogSink {
     match handle {
@@ -234,12 +233,7 @@ pub(crate) async fn open_append(path: &Path) -> io::Result<tokio::fs::File> {
 /// [`BufWriter`] owned by the pump, and [`crate::dogs::narrate`] through its
 /// own handle. One `write_all` is not enough: a `BufWriter` writes through
 /// directly at or over capacity, and a short write is several `poll_write`
-/// calls the other handle can land between, tearing a line into one half
-/// with two stamps and one with none.
-///
-/// Keyed by path, since narration reaches a log through a path and never
-/// sees the `LogFile`. The map grows one entry per log path opened and is
-/// never freed.
+/// calls the other handle can land between. Keyed by path.
 pub(crate) fn record_lock(path: &Path) -> Arc<tokio::sync::Mutex<()>> {
     static LOCKS: std::sync::OnceLock<
         std::sync::Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
@@ -257,14 +251,8 @@ impl<W: AsyncWrite + Unpin> LogFile<W> {
     /// logged rather than propagated: a log we cannot write to must not stop
     /// the pump draining the child's pipes.
     ///
-    /// The stamp, the line and the newline are joined in `self.stamp` and
-    /// handed to one `write_all`. [`crate::dogs::narrate`] writes through a
-    /// second handle on this same path, so three separate writes let a
-    /// narration line land between a stamp and the body it belongs to,
-    /// breaking the one-stamp-per-line contract
-    /// [`shep_core::logstamp::strip`] reads on.
-    ///
-    /// The line forwarded on `logs_tx` is the sheep's own bytes, unstamped.
+    /// The stamp, the line and the newline go to one `write_all`, so a
+    /// narration line cannot land between a stamp and the body it belongs to.
     pub(super) async fn append(&mut self, line: &str) {
         let Some(handle) = self.handle.as_mut() else {
             return;
@@ -329,22 +317,18 @@ pub(super) struct PipeFds {
     /// The write end of the child's stdin, held by the stdin pump rather
     /// than by this one.
     ///
-    /// Reported here because this pump is the only party a snapshot asks.
-    /// The stdin pump ends when the last `to_stdin` sender drops, and the
+    /// Reported here because this pump is the only party a snapshot asks. The
+    /// stdin pump ends when the last `to_stdin` sender drops, and the
     /// supervisor's slot holds one while the sheep is registered, so the
-    /// write end cannot be closed and its number reissued between the report
-    /// and the exec.
-    ///
-    /// Never cleared as a stream ends: it has no EOF to reach.
+    /// number cannot be reissued between the report and the exec.
     pub(super) stdin: Option<RawFd>,
     /// The daemon's end of the child's shepherd-channel socketpair, held by
     /// that channel's two pump tasks rather than by this one.
     ///
     /// Reported here for the reason [`Self::stdin`] gives, but the ownership
     /// argument is weaker: the writer task also ends on a write that fails,
-    /// which a child that has closed its fd 3 produces, and this pump never
-    /// hears about it. `Actor::handle_handover_snapshot` masks this field
-    /// when `SheepSlot::open_channel` says the channel is gone.
+    /// which a child that closed its fd 3 produces.
+    /// `Actor::handle_handover_snapshot` masks this field when it is gone.
     pub(super) channel: Option<RawFd>,
 }
 
@@ -383,11 +367,8 @@ impl LogFiles {
     /// False between a [`LogCtl::ReportFds`] and the exec that consumes it:
     /// the report hands the successor descriptor numbers and a flush behind
     /// them, so a pump still reading would append lines the `execve` erases
-    /// and strand pipe bytes the successor cannot see.
-    ///
-    /// Also pins both stream numbers: a paused pump cannot reach EOF, drop a
-    /// reader, or free its number. The residual is one line per reload, the
-    /// one the sheep was mid-write on at the exec.
+    /// and strand pipe bytes the successor cannot see. It also pins both
+    /// stream numbers: a paused pump cannot reach EOF or drop a reader.
     pub(super) fn reading(&self) -> bool {
         #[cfg(unix)]
         {
@@ -427,14 +408,11 @@ impl LogFiles {
 
     /// Carries out one control request and then answers it.
     ///
-    /// The acknowledgement is the last statement, after both streams have
-    /// been dealt with: a caller that has heard back knows both handles were
-    /// swapped, or that neither has a write left in flight.
-    ///
-    /// stderr is served even when stdout's turn just failed, since
-    /// short-circuiting would take a sheep's working half offline over the
-    /// broken one. Both failures then travel joined by `", "`, where the
-    /// supervisor joins one of these per sheep with `"; "`.
+    /// The acknowledgement is the last statement, after both streams have been
+    /// dealt with: a caller that has heard back knows both handles were swapped,
+    /// or that neither has a write left in flight. stderr is served even when
+    /// stdout's turn just failed, since short-circuiting would take a sheep's
+    /// working half offline.
     #[cfg_attr(
         not(unix),
         allow(
