@@ -146,7 +146,7 @@ pub enum Response {
     /// Answer to `SetSheepField`: which field moved, and whether the
     /// running child has it.
     ///
-    /// Not [`Self::Applied]'s three lists: this request names one field of
+    /// Not [`Self::Applied`]'s three lists: this request names one field of
     /// one sheep. A second way to say no beside the `Err` arm would only be
     /// a trap. The remaining bit is not the field's own
     /// [`ApplyGroup`](crate::config::ApplyGroup).

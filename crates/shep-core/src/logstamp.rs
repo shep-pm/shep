@@ -25,7 +25,8 @@ pub const LOG_TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3f%:z";
 ///
 /// Fixed because every field in [`LOG_TIMESTAMP_FORMAT`] is zero-padded, and
 /// `%:z` always renders `+HH:MM` (chrono truncates rarer sub-minute
-/// offsets). 10 date + 1 `T` + 8 time. 4 `.mmm` + 6 offset + 1 space.
+/// offsets). The parts, in order: 10 date, 1 `T`, 8 time, 4 `.mmm`, 6
+/// offset, 1 space.
 pub const LOG_STAMP_BYTES: usize = 30;
 
 /// [`LOG_TIMESTAMP_FORMAT`] up to the milliseconds.

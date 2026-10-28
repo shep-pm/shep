@@ -249,10 +249,10 @@ target = "http://127.0.0.1:8080/healthz"
 
     #[test]
     fn a_sub_second_readiness_interval_is_accepted() {
-        // Both probes are validated against the liveness floor. A readiness
-        // wait is bounded by `listen_timeout`. It shortens an `interval`
-        // only where that would push the next poll past a quarter of the
-        // bound. A fast app polling every 50ms must not be refused.
+        // fails if both probes share the liveness floor. The readiness wait
+        // has its own floor, 1ms, bounded by `listen_timeout`. So only zero
+        // needs rejecting, and a fast app polling every 50ms must not be
+        // refused.
         let mut app = AppConfig::minimal("web", "./srv");
         let mut probe = probe_config("http://127.0.0.1:8080/healthz");
         probe.interval = UpDuration::from_millis(50);
