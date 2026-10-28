@@ -48,12 +48,8 @@ impl ShepherdStatus {
     /// Never fails: "nothing answered" is an answer, not an error.
     ///
     /// Reports online only after the connect, the handshake, and a real
-    /// [`Request::Ping`] round-trip all succeed: a daemon can hold a
-    /// listening socket and complete a handshake while wedged past the
-    /// point of serving anything.
-    ///
-    /// `version` and `pid` come off the handshake, not the reply, since
-    /// `Response::Pong` carries neither.
+    /// [`Request::Ping`] round-trip all succeed. `version` and `pid` come off
+    /// the handshake, since `Response::Pong` carries neither.
     pub(crate) async fn probe(paths: &ShepPaths) -> Self {
         let online = match Client::connect(&paths.socket).await {
             Ok(client) => {
@@ -220,15 +216,6 @@ mod tests {
         }
     }
 
-    /// A shepherd wedged past its own handshake is not online: `probe`
-    /// connects and handshakes, then reports offline because the
-    /// [`Request::Ping`] it sends is never answered.
-    ///
-    /// `handshook` is the load-bearing assertion. A handshake that failed
-    /// would give the same `None`, and the liveness path would go untested
-    /// while the test still passed.
-    ///
-    /// `start_paused` so the request deadline costs no wall clock.
     #[tokio::test(start_paused = true)]
     async fn a_socket_that_handshakes_but_never_answers_is_not_online() {
         let dir = tempfile::tempdir().unwrap();

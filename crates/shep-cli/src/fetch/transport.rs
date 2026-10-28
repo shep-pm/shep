@@ -54,13 +54,11 @@ async fn send<S: AsyncWrite + Unpin>(stream: &mut S, request: &[u8]) -> Result<(
 
 /// A transport failure the peer had a hand in wording, sanitised.
 ///
-/// The OS writes most of these and is not the threat. A TLS handshake is
-/// the exception: rustls's `CertificateError::NotValidForNameContext`
-/// prints the names the peer's certificate presented, and an error's
-/// `Display` puts those in front of an operator.
+/// The OS writes most of these and is not the threat. A TLS handshake is the
+/// exception: rustls's `CertificateError::NotValidForNameContext` prints the
+/// names the peer's certificate presented.
 ///
-/// Keeps the [`std::io::ErrorKind`] and drops the nested source, which
-/// nothing walks.
+/// Keeps the [`std::io::ErrorKind`] and drops the nested source.
 fn peer_transport_error(source: std::io::Error) -> std::io::Error {
     std::io::Error::new(
         source.kind(),

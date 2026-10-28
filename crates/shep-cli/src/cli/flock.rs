@@ -9,16 +9,10 @@
 /// The floor and the default for `shep flock --follow`'s `--interval`, in
 /// seconds.
 ///
-/// One second, from two measurements rather than taste. `sysinfo` reports no
-/// CPU at all over a window shorter than its own
-/// `MINIMUM_CPU_UPDATE_INTERVAL`, which is 200 ms, so a faster cadence buys
-/// a column of dashes. And one redraw costs the shepherd a
-/// `Request::ListFlock` plus a host sample measured at 5.6 ms a tick on
-/// macOS (`crate::host`'s own module doc): 0.6% of a core at this floor, and
-/// 5.6% of one at the 100 ms somebody would otherwise reach for.
-///
-/// Seconds rather than milliseconds because the operator types it, and
-/// nothing between 200 ms and 1 s is worth the unit confusion.
+/// One second: `sysinfo` reports no CPU over a window shorter than its own
+/// `MINIMUM_CPU_UPDATE_INTERVAL` (200 ms), and a redraw costs the shepherd
+/// about 5.6 ms a tick on macOS (`crate::host`). Seconds, not milliseconds,
+/// because the operator types it.
 pub(crate) const FOLLOW_INTERVAL_FLOOR_SECONDS: u64 = 1;
 
 /// Arguments to `shep flock`.
@@ -180,11 +174,9 @@ impl LookoutArgs {
     /// Builds the arguments, refusing a dog that follows any tab but
     /// [`DOG_TAB`].
     ///
-    /// The one grammar rule clap cannot say: clap's requirements are between
-    /// arguments, never between one argument's value and another's presence.
-    /// Positional order already guarantees a tab before a dog, so this is the
-    /// whole check, and it runs inside the parse, before any terminal is
-    /// opened.
+    /// The one grammar rule clap cannot say, since clap's requirements run
+    /// between arguments, never between one value and another's presence. It
+    /// runs inside the parse, before any terminal is opened.
     fn finish(spec: LookoutSpec) -> Result<Self, clap::Error> {
         if let (Some(tab), Some(dog)) = (spec.tab.as_deref(), spec.dog.as_ref())
             && tab != DOG_TAB

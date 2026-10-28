@@ -1,18 +1,12 @@
 //! The clap command tree: [`Cli`], [`Commands`], and every argument struct.
 //!
 //! The whole parse surface of the `shep` binary, pure tier (spec §11): it
-//! compiles and its tests run on every target, Windows included, so
-//! `Cli::command().debug_assert()` and the alias tests in `verbs` cover a
-//! platform that cannot build the rest of this crate.
+//! compiles and its tests run on every target, Windows included.
 //!
-//! One submodule per group of verbs, each owning the argument structs
-//! behind those verbs and the tests that pin their grammar. Every type is
-//! re-exported here, so the rest of the crate names them
-//! `crate::cli::<Name>` and never has to know which group a verb landed in.
-//!
-//! What stays in this module is what the whole tree shares: the top-level
-//! `Cli`, the flags valid on every subcommand, and the two `ValueEnum`s a
-//! `#[cfg(unix)]` module could not own.
+//! One submodule per group of verbs, each owning the argument structs and the
+//! tests that pin their grammar; every type is re-exported here. This module
+//! keeps what the whole tree shares: `Cli`, the global flags, and the two
+//! `ValueEnum`s a `#[cfg(unix)]` module could not own.
 
 mod dogs;
 #[cfg(test)]
@@ -72,19 +66,9 @@ pub use system::{
 pub use verbs::Commands;
 
 /// The `shep` command line.
-// `bin_name = "shep"` below is load-bearing, not decoration. Without it, clap
-// renders every `Usage:` line from `argv[0]` rather than from `name` — so
-// `shep-runtime --help` prints `Usage: shep-runtime runtime ...` and
-// `shep-dev --help` prints `Usage: shep-dev dev ...` when both alias
-// binaries are built and run with no override.
-// Pinned so every rendering of a verb's own usage line reads `shep <verb>`
-// regardless of which of the three `[[bin]]` targets produced it — the alias
-// binaries are convenience entrypoints for exactly that invocation, not
-// commands in their own right, and their own `--help` should say so.
-//
-// A `//` comment, not `///`, deliberately: clap renders a doc comment as
-// `long_about`, so as a doc comment this paragraph WAS the opening of
-// `shep --help` for three phases. See the test
+// `bin_name = "shep"` is load-bearing: without it clap renders `Usage:` from
+// `argv[0]`, so `shep-runtime --help` would print `Usage: shep-runtime ...`.
+// A `//` comment, not `///`: clap renders a doc comment as `long_about`; see
 // `the_top_level_help_carries_no_implementation_notes`.
 #[derive(Debug, clap::Parser)]
 #[command(
@@ -144,16 +128,10 @@ pub struct GlobalArgs {
     /// Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You
     /// almost certainly want the default, ~/.shep. Must be an absolute path:
     /// a relative one would name a different flock from every directory.
-    // Declared last on purpose. It was the first global option anyone read,
-    // which announced it as a choice when it is really the daemon's
-    // data-root. `{options}` renders in declaration order and ignores
-    // `help_heading`, so position is the only lever available here: a `Less
-    // common` section would need `{all-args}`, which re-emits the
-    // alphabetical command wall this template exists to replace.
-    //
-    // `//`, not `///`, for the same reason the note above `Cli` is one. This
-    // paragraph shipped in `shep --help` for exactly one build before the
-    // render was read.
+    // Declared last on purpose: it is the daemon's data-root, not a choice
+    // anyone should read first. `{options}` renders in declaration order and
+    // ignores `help_heading`. A `//`, not `///`, so it stays out of
+    // `shep --help`.
     #[arg(long, global = true, env = "SHEP_HOME")]
     pub home: Option<PathBuf>,
 }
@@ -180,19 +158,10 @@ pub enum Format {
 
 /// Which init system a unit is written for.
 ///
-/// Five variants, all constructible on every target: `--init` lets an
-/// operator name one directly, which is also what lets a macOS machine
-/// exercise the systemd, openrc and rc.d renderers at all. Selection without
-/// the flag is `commands::startup::current_init` — a runtime probe on Linux,
-/// where systemd and openrc share one target triple, and a compile-time fact
-/// everywhere else, where nothing else the target could be exists.
-///
-/// It lives in `cli.rs` rather than beside the renderers because `cli.rs`
-/// compiles on **every** target while `mod commands` is `#[cfg(unix)]`. A
-/// field on `StartupArgs` naming a type from a unix-only module breaks
-/// `cargo check --workspace --all-targets --all-features --target
-/// x86_64-pc-windows-gnu`, which is a phase-gate command. `Format` above is
-/// the precedent: a `clap::ValueEnum` the parse surface owns.
+/// All five variants are constructible on every target, so `--init` can name
+/// one directly. Without the flag, `commands::startup::current_init` picks.
+/// It lives here because this module compiles on every target while
+/// `mod commands` is `#[cfg(unix)]`; `Format` is the precedent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 #[clap(rename_all = "kebab-case")]
 pub enum Init {

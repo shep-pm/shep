@@ -4,13 +4,10 @@
 //! The order is the security order: auth, method, request body,
 //! resolution, hidden, containment, then a directory or a file. Auth runs
 //! before resolution so a client cannot map the filesystem through
-//! 400-vs-404, and every 404 funnels through [`send_not_found`], which is
-//! also where the SPA fallback lives.
+//! 400-vs-404. Every 404 funnels through [`send_not_found`], which is also
+//! where the SPA fallback lives.
 //!
-//! Writing a reply and logging it is `response`'s: this module only picks
-//! which reply to write. For a file, which of the four replies a request
-//! gets (200, 206, 304, 416) is `serve::conditional`'s call, made from the
-//! metadata the open handle already carries.
+//! Writing a reply and logging it is `response`'s.
 
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 use tokio::net::TcpStream;
@@ -167,14 +164,12 @@ pub(super) async fn answer(
     serve_file(stream, request, content_type, file, &metadata).await
 }
 
-/// Answers a 404, or, if `cfg.spa` is set, the method is `GET`/`HEAD`, and
-/// the request's `Accept` header names `text/html`, serves the docroot's
-/// `index.html` instead. Every 404 this worker would otherwise answer
-/// funnels through here, so the gate lives in one place.
+/// Answers a 404, or serves the docroot's `index.html` when `cfg.spa` is set,
+/// the method is `GET`/`HEAD`, and `Accept` names `text/html`.
 ///
-/// The fallback goes through the same file path as an ordinary hit, so the
-/// `index.html` an SPA gets carries the same validators, and a conditional
-/// request against a fallback answers 304 rather than re-sending the page.
+/// Every 404 this worker would answer funnels through here. The fallback goes
+/// through the same file path as a hit, so it carries the same validators and
+/// a conditional request answers 304.
 async fn send_not_found(
     stream: &mut TcpStream,
     cfg: &ServeConfig,
@@ -200,23 +195,12 @@ async fn send_not_found(
     reply(stream, 404, "text/plain", b"not found\n", vec![]).await
 }
 
-/// Streams `file` (already open, its `metadata` read from that same handle)
-/// as the body of whichever reply the request's own `Range` and validator
-/// headers pick: a 200, a 206, a 304 or a 416.
+/// Streams `file` as the body of whichever reply the request's `Range` and
+/// validators pick.
 ///
-/// Returns the status answered and the body byte count for
-/// [`super::handle_connection`]'s access-log line, which is the length the
-/// head declared, the same number every in-memory reply reports.
-///
-/// A slice is reached by seeking and then `take`ing, never by reading the
-/// file whole. The length every reply is built from, `Content-Range`'s
-/// suffix included, is the one the open handle's own `fstat` reported, so a
-/// file that grew between the open and this copy still matches the
-/// `Content-Length` already declared. A file another process truncated in
-/// that window sends fewer bytes than declared: `Connection: close` turns
-/// that into a visible truncation rather than a hang. Re-reading the length
-/// before the head would narrow the window and not close it, so one `fstat`
-/// per request is what this server spends.
+/// Returns the status and body byte count for [`super::handle_connection`]'s
+/// access-log line. Every length comes from the handle's own `fstat`, so a
+/// file truncated since the open sends fewer bytes than declared.
 async fn serve_file(
     stream: &mut TcpStream,
     request: &HttpRequest,
@@ -243,8 +227,7 @@ async fn serve_file(
     let body_len = body.map_or(0, |(start, stop)| stop - start);
 
     // The seek runs before the head so the copy starts at the right offset.
-    // It is not the reachability check: seeking past EOF succeeds and the
-    // read then yields nothing (see the case in `crate::serve::fs`). What
+    // It is not the reachability check: seeking past EOF succeeds. What
     // refuses a slice the file cannot fill is `conditional::decide`, against
     // the length the open handle reported.
     let mut slice = match body {

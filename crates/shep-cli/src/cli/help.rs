@@ -9,17 +9,11 @@ use std::sync::LazyLock;
 
 use shep_core::protocol::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
-/// The verb groups [`HELP_TEMPLATE`] renders, and the source of truth the
-/// drift test checks the real command tree against.
+/// The verb groups [`HELP_TEMPLATE`] renders, checked against the command tree.
 ///
-/// clap 4.6 has no subcommand grouping -- `#[command(help_heading = ..)]` on
-/// a subcommand variant does not compile, checked against 4.6.6 -- so the
-/// section is hand-written and this table is what keeps it from rotting. Add
-/// a verb without filing it here and
-/// `every_visible_verb_appears_in_exactly_one_help_group` fails.
-///
-/// `#[cfg(test)]` because it is exactly that: the assertions' structured copy
-/// of what [`HELP_TEMPLATE`] states in prose. The template is what ships.
+/// clap has no subcommand grouping, so the section is hand-written. This
+/// table keeps it honest: `every_visible_verb_appears_in_exactly_one_help_group`
+/// fails on a verb filed nowhere. The template is what ships.
 #[cfg(test)]
 const HELP_GROUPS: &[(&str, &[&str])] = &[
     (
@@ -53,14 +47,9 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
 
 /// `--help`'s shape.
 ///
-/// `{options}`, not `{all-args}`: the latter re-emits clap's own
-/// alphabetical `Commands:` list underneath the grouped one, which is the
-/// wall this replaces. The options section stays generated, so `--home`'s
-/// `Less common` heading is still clap's work.
-///
-/// `pub(crate)` because [`crate::adopted_help`] renders adopted dogs into the
-/// Dogs group of a copy of it: the group listing is hand-written, and clap
-/// has no grouping of its own to hand the dogs to.
+/// `{options}`, not `{all-args}`: the latter re-emits clap's alphabetical
+/// `Commands:` list under the grouped one. `pub(crate)` because
+/// [`crate::adopted_help`] renders adopted dogs into a copy of the Dogs group.
 pub(crate) const HELP_TEMPLATE: &str = "\
 {about}
 
@@ -87,16 +76,10 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
 
 {options}{after-help}";
 
-/// `shep --version`'s extra line, naming the protocol this build speaks and
-/// how far back it reaches.
+/// `shep --version`'s extra line: the protocol this build speaks and accepts.
 ///
-/// `-V` still prints the bare crate version (clap's `version` attribute
-/// covers that); this is `--version`'s `long_version`, which clap falls
-/// back to `version` for when unset, so this is purely additive.
-///
-/// `clap::Command::long_version` wants `&'static str` in the clap version
-/// this workspace pins, not `String`. A `LazyLock` builds the text once, on
-/// first access, and every caller after that borrows the same allocation.
+/// `-V` still prints the bare crate version. clap's `long_version` wants a
+/// `&'static str`. A `LazyLock` builds the text once and callers borrow it.
 static VERSION_TEXT: LazyLock<String> = LazyLock::new(|| {
     format!(
         "{}\nspeaks protocol {PROTOCOL_VERSION}, accepts {MIN_SUPPORTED} and newer",
@@ -130,23 +113,12 @@ mod tests {
         );
     }
 
-    /// The test above exercises `version_text()`, the free function. It
-    /// cannot catch a `#[command(long_version = ..)]` attribute that stops
-    /// wiring that function in, or a `propagate_version` that stops
-    /// carrying it to subcommands -- both survive a refactor that never
-    /// touches `version_text()` itself. This renders the real `clap::Command`
-    /// clap builds from the derive, the way `shep --version` and `shep
-    /// daemon reload --version` actually do, so either regression fails
-    /// here.
+    /// Renders the real `clap::Command`, so a `long_version` or
+    /// `propagate_version` regression fails here.
     ///
-    /// `PROTOCOL_VERSION` and `MIN_SUPPORTED` are both 7 today, so a bare
-    /// "does '7' appear" assertion would pass even if the two numbers were
-    /// swapped. Matching each constant against the label `version_text()`
-    /// prints next to it (`"speaks protocol"` / `"accepts .. and newer"`)
-    /// checks the two numbers in their roles rather than merely finding "7"
-    /// twice -- it would fail if the labels were swapped even though the
-    /// values are equal. It would not fail if both constants moved to the
-    /// same new value together; nothing can, while they are pinned equal.
+    /// The free-function test above cannot catch either. Each constant is
+    /// matched against its own label. Both are 7 today, so a swap would
+    /// otherwise pass.
     #[test]
     fn the_rendered_version_names_the_protocol_and_the_floor_on_the_real_command() {
         use clap::CommandFactory;
@@ -161,17 +133,10 @@ mod tests {
             "top-level --version lost the floor line: {top}"
         );
 
-        // `propagate_version = true` on `Cli` is supposed to carry the same
-        // `long_version` down to every subcommand. `shep daemon reload` is
-        // two levels deep (`daemon` -> `reload`), the deepest nesting this
-        // command tree has, so it is the strongest check available that
-        // propagation actually reaches leaves rather than just top-level
-        // verbs.
-        // `propagate_version` is applied by `Command::build`, which
-        // `get_matches`/`parse` calls internally on the real CLI path but
-        // `Cli::command()` alone does not -- an un-built `Command` has not
-        // pushed `long_version` down to its subcommands yet, so `build()`
-        // here is what makes this test see what a real invocation sees.
+        // `shep daemon reload` is the deepest subcommand, so it is the
+        // strongest check that `propagate_version` reaches leaves.
+        // `Cli::command()` is unbuilt; `build()` pushes `long_version` down,
+        // as a real invocation does.
         let mut top_command = Cli::command();
         top_command.build();
         let daemon = top_command
@@ -191,24 +156,18 @@ mod tests {
         );
     }
 
-    /// `web/`, three directories above this file, only when it actually
-    /// exists.
+    /// `web/`, three directories above this file, only when it exists.
     ///
-    /// Same helper, and the same reasoning, as
-    /// `dog_index::tests::workspace_web_dir` -- see that one for why this
-    /// has to be a runtime check rather than `include_str!`. Duplicated
-    /// rather than shared: two call sites and six lines each did not earn a
-    /// crate-wide test-support module.
+    /// Duplicates `dog_index::tests::workspace_web_dir`, which says why this
+    /// is a runtime check rather than `include_str!`.
     fn workspace_web_dir() -> Option<PathBuf> {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../web"));
         dir.is_dir().then(|| dir.to_path_buf())
     }
 
-    /// Reads `web/{relative}`, or `None` outside the workspace checkout
-    /// (see [`workspace_web_dir`]).
+    /// Reads `web/{relative}`, or `None` outside the workspace checkout.
     ///
-    /// `web/` present but `relative` missing is real drift inside the
-    /// checkout, not a published-crate build, and panics accordingly.
+    /// Inside it a missing file is real drift, so this panics.
     ///
     /// # Panics
     /// Inside the workspace, if `relative` cannot be read.
@@ -221,20 +180,12 @@ mod tests {
         )
     }
 
-    /// The workspace root, only when this build really sits inside this
-    /// repo's checkout.
+    /// The workspace root, only when this build sits inside this repo.
     ///
-    /// Two ancestors up is not proof of that on its own: a crate extracted
-    /// from a registry or from a `cargo vendor` tree has two ancestors too,
-    /// and the one that exists there is a crates.io source index or a vendor
-    /// directory rather than this repo. The marker is the root `Cargo.toml`
-    /// this checkout writes, the one that opens a `[workspace]` table and
-    /// names `crates/shep-cli` among its members. A foreign workspace that
-    /// vendors this crate names its own paths there instead, and a registry
-    /// or vendor root names no manifest at all. The one layout it cannot
-    /// tell apart is a foreign checkout that copies this crate to this same
-    /// `crates/shep-cli` member path: there the assertion fires and names
-    /// the README it compared.
+    /// Two ancestors up is not proof: a registry or `cargo vendor` tree has
+    /// them too. The marker is a root `Cargo.toml` opening a `[workspace]`
+    /// that names `crates/shep-cli`. A foreign checkout with that exact member
+    /// path is indistinguishable. There the assertion names the README.
     fn workspace_root() -> Option<PathBuf> {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
         let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
@@ -270,17 +221,11 @@ mod tests {
         &tail[..end]
     }
 
-    /// fails when the README's own copy of the grouped verb listing --
-    /// under "Everything else" -- drifts from what `shep --help` actually
-    /// renders.
+    /// Fails when the README's grouped verb listing, under "Everything else",
+    /// drifts from what `shep --help` renders.
     ///
-    /// Nothing else reads that block: it is prose the generator does not
-    /// touch, so a verb move that updates [`HELP_GROUPS`] and
-    /// [`HELP_TEMPLATE`] leaves the README as a plausible-looking lie until
-    /// something reads it back.
-    ///
-    /// Skips outside the workspace checkout -- see
-    /// [`read_workspace_readme`] and [`workspace_root`].
+    /// The generator does not touch that prose, so nothing else reads it
+    /// back. Skips outside the workspace checkout; see [`read_workspace_readme`].
     #[test]
     fn the_readme_names_the_same_verb_groups_as_help_does() {
         let Some(readme) = read_workspace_readme() else {
@@ -361,18 +306,11 @@ mod tests {
         found
     }
 
-    /// fails when a visible verb or subcommand is missing from the docs
+    /// Fails when a visible verb or subcommand is missing from the docs
     /// site's CLI reference generator.
     ///
-    /// The generator's `VERBS` array is hand-kept and regenerating the
-    /// reference refreshes only what it already names, so a verb left out
-    /// is invisible on the published site while the generator reports
-    /// success. `style` and `welcome` shipped that way, found 2026-08-23
-    /// when `init` did the same. So did every `shep secret` flag: a host's
-    /// own `--help` names its subcommands without their flags, and this
-    /// walk used to stop at the top level.
-    ///
-    /// Skips outside the workspace checkout -- see
+    /// `VERBS` is hand-kept. A verb left out is invisible on the site, yet
+    /// regeneration succeeds. Skips outside the workspace checkout; see
     /// [`read_workspace_web_file`].
     #[test]
     fn every_visible_verb_reaches_the_docs_site_generator() {
@@ -396,17 +334,11 @@ mod tests {
         );
     }
 
-    /// fails when the committed CLI reference has no block for something
-    /// the generator's `VERBS` array names.
+    /// Fails when the committed CLI reference has no block for a verb in the
+    /// generator's `VERBS` array.
     ///
-    /// The array and the generated file are two separate edits and only the
-    /// first one is typing, so a stale file is the ordinary way this drifts.
-    /// `web/src/data/cli-reference.ts` reads its verb list off the
-    /// `@@VERB:...@@` markers rather than keeping a second copy of the
-    /// array, which leaves an entry with no block as a verb the site
-    /// quietly does not have.
-    ///
-    /// Skips outside the workspace checkout -- see
+    /// The array and the file are separate edits, so a stale file is the
+    /// usual drift. Skips outside the workspace checkout; see
     /// [`read_workspace_web_file`].
     #[test]
     fn every_listed_verb_has_a_block_in_the_committed_reference() {
@@ -465,13 +397,9 @@ mod tests {
     }
 
     /// Every visible alias is named in `--help`, and only real ones are.
-    /// The grouped listing replaces clap's own `Commands:` block, which
-    /// would otherwise render `[aliases: list, ls]` beside each verb, so
-    /// nothing else guarantees an alias stays mentioned while it keeps
-    /// working.
     ///
-    /// Derived from clap rather than compared against a second list, so
-    /// adding `visible_alias` to a verb fails here until the line says so.
+    /// The grouped listing replaces clap's `[aliases: ...]` column. Derived
+    /// from clap, so a new `visible_alias` fails here until the line says so.
     #[test]
     fn the_help_template_names_every_visible_alias() {
         use clap::CommandFactory;

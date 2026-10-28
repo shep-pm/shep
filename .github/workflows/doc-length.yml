@@ -1,0 +1,36 @@
+name: doc length
+# IR-47 sets a shape for comments: a comment says only what the code cannot.
+# Nothing but a reviewer checked it, so #1169's nine-line `write_json_line` doc
+# passed every gate it went through. `scripts/check-doc-length.py` counts lines
+# only: `///` at 6 body lines after the summary (12 counting `# Errors`), `//!`
+# at 10, `//` at 4 in a row, with fenced code and `# Example` sections free.
+# Sentence length, history and the argument for keeping a line stay with
+# whoever reads the code.
+# `.github/doc-length-baseline.txt` lists the blocks already over their limit,
+# each by file and first line: a listed block may shrink but never past its
+# recorded count, a block not listed may not appear, and an entry whose block
+# now fits has to come off the list.
+# Locally: `python3 scripts/check-doc-length.py`, and its tests through the
+# `manifests` workflow's `python3 -m unittest discover --start-directory scripts`.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  doc-length:
+    name: comment blocks (IR-47)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No toolchain and no cargo: the checker reads text, so it wants a Python
+      # and nothing else. It takes its file list from `git ls-files '*.rs'`, so
+      # it needs the checkout's git index rather than an archive.
+      - name: Check every comment block against IR-47's line limits
+        run: python3 scripts/check-doc-length.py

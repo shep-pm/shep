@@ -1,17 +1,12 @@
 //! The `Range` grammar `shep serve` reads, the validators a served file
 //! carries, and the status a request's own headers answer with.
 //!
-//! Pure: it reads the request's header map and the metadata the open handle
-//! already gave `worker::answer`, and decides between a 200, a 206, a 304 and
-//! a 416. Writing any of them is `worker::response`'s.
+//! Pure: it reads the request's header map and the open handle's metadata,
+//! and picks a 200, a 206, a 304 or a 416. `worker::response` writes them.
 //!
-//! Two deliberate limits. A header naming several ranges is ignored and
-//! answered as a full 200, which RFC 9110 §14.1.2 permits and which saves a
-//! multipart encoder. And every ETag here is weak, built from metadata
-//! rather than from the file's contents: RFC 9110 §14.2.1 requires strong
-//! comparison for an `If-Range` carrying an entity-tag, so a client that
-//! echoes this server's own ETag back in `If-Range` gets the full 200, while
-//! `If-Range` carrying the file's own `Last-Modified` does apply the range.
+//! Two limits. A header naming several ranges is answered as a full 200
+//! (RFC 9110 §14.1.2). Every ETag is weak, so an `If-Range` echoing it gets
+//! the full 200 (§14.2.1); one carrying `Last-Modified` applies the range.
 
 use std::collections::BTreeMap;
 use std::time::SystemTime;
