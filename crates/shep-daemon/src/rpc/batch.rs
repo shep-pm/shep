@@ -22,13 +22,9 @@ use super::error::invalid_config;
 /// of its own `[<namespace>]` table in `dogs.toml`, or `true`.
 ///
 /// Read per push rather than at boot, so an operator who edits the file
-/// does not have to restart the shepherd for it to take.
-///
-/// Every way of not finding a boolean answers `true`: no file, no section,
-/// no key, a key of some other type, or a file that will not parse. The
-/// cache is what makes a pushed value survive a restart, and a dog whose
-/// config says nothing about it wants one. An operator who does not says
-/// so explicitly.
+/// does not have to restart the shepherd for it to take. Every way of not
+/// finding a boolean answers `true`: no file, no section, no key, a key of
+/// another type, or a file that will not parse.
 pub(super) fn persists(dogs_config: &Path, namespace: &str) -> bool {
     let Ok(source) = std::fs::read_to_string(dogs_config) else {
         return true;
@@ -47,34 +43,22 @@ pub(super) fn persists(dogs_config: &Path, namespace: &str) -> bool {
 /// The stages `apps` starts in, or the cycle that refuses the whole batch.
 ///
 /// The graph spans the batch AND the registered flock: a cycle can close
-/// through a sheep this request does not carry, so a Flockfile naming an
-/// `api` that waits for `db` is a cycle against a flock whose `db` already
-/// waits for `api`, with neither document showing one on its own.
-///
-/// The stages it answers with cover the batch alone. Everything else in the
-/// graph is registered already and is not this request's to start; it is
-/// there to be ordered around and to close a cycle.
+/// through a sheep this request does not carry. The stages it answers with
+/// cover the batch alone; everything else is registered already and is
+/// there to be ordered around.
 ///
 /// Refused rather than warned about, which is the opposite of what a boot
-/// does with the same graph in `snapshot::muster`. A boot has nobody at the
-/// keyboard and must not strand a machine over a typo; an operator typed
-/// this and is there to fix it.
+/// does with the same graph in `snapshot::muster`.
 ///
 /// # Errors
-///
 /// - [`shep_core::protocol::RpcErrorCode::InvalidConfig`]: the graph holds a
-///   cycle ONE OF THIS BATCH'S APPS IS IN, named as the path to break. A knot
-///   standing elsewhere in the registry is left to whichever request drew it.
-///   The same code `normalize_all`'s own refusal carries a few lines up, so
-///   it reaches the operator as `ExitCode::InvalidConfig`.
+///   cycle ONE OF THIS BATCH'S APPS IS IN, named as the path to break.
 pub(super) fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<BootPlan, RpcError> {
     let mut edges = ctx.registry.depends_on_by_name();
     // A dog is a node with no edges of its own, so an edge naming one
     // resolves instead of reading as a typo. `or_default` rather than
     // `insert`, for `nodes_for_with_dogs`' reason: a sheep already holding
     // that name is the node, and a second one would be started twice.
-    // Where the dogs sort is immaterial here, since they are running before
-    // any request arrives and the stages are filtered to the batch anyway.
     for dog in &ctx.dog_names {
         edges.entry(dog.clone()).or_default();
     }
@@ -85,19 +69,10 @@ pub(super) fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<Boot
     }
     let plan = crate::boot_order::plan_for_names(&edges);
     let batch: BTreeSet<&str> = apps.iter().map(|app| app.config().name.as_str()).collect();
-    // Only a cycle this batch is in, for the reason the `unresolved` loop
-    // below gives: the graph spans the whole registry, so taking the first
-    // cycle refuses a request over a knot no app it names is part of. Two
-    // Flockfile loads, neither drawing a cycle, can leave one standing
-    // elsewhere in the flock, and `shep start` would then refuse every app
-    // in the fold with an error naming apps the operator never mentioned.
-    // A cycle that closes THROUGH the batch still has a batch member in it
-    // and is still refused.
-    // Membership, not the path: `cycles` holds one representative path per
-    // knot, so a knot of three reached by two edges names two of them and a
-    // batch holding only the third would pass a test against the path.
-    // `knots` is index-aligned with `cycles`, so the path is still what the
-    // message renders.
+    // Only a cycle this batch is in: the graph spans the whole registry, so
+    // taking the first cycle refuses a request over a knot no app it names
+    // is part of. Membership, not the path: `cycles` holds one representative
+    // path per knot, so a knot of three names only two of them.
     let cycle = plan
         .knots
         .iter()
@@ -145,14 +120,9 @@ pub(super) fn staged_plan(ctx: &RpcContext, apps: &[ResolvedApp]) -> Result<Boot
 ///
 /// `handle_apply_config` reads the override store once for the whole request
 /// and writes it once at the end, so a second entry of the same name merges
-/// against the store as the first entry found it: the first entry's record is
-/// overwritten and nothing says so.
+/// against the store as the first entry found it.
 ///
-/// Refused whole rather than per app, since a document naming one app twice
-/// is malformed rather than partly wrong.
-///
-/// Linear in a `BTreeSet`, matching `normalize_all`: a request carries the
-/// apps one Flockfile declared.
+/// Refused whole rather than per app, since a document naming one app twice is malformed.
 pub(super) fn duplicate_name(apps: &[DeclaredApp]) -> Option<String> {
     let mut seen = BTreeSet::new();
     apps.iter()

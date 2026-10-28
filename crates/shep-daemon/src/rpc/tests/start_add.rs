@@ -255,10 +255,9 @@ async fn a_cycle_closing_through_a_registered_sheep_is_refused_too() {
 #[tokio::test(start_paused = true)]
 async fn a_batch_in_a_knot_the_named_path_leaves_out_is_still_refused() {
     // fails if the cycle check tests the batch against the representative
-    // PATH instead of the knot's members: `plan` reports one path per
-    // knot, so a knot of three reached through two edges names only two
-    // of them, and the third starts into a dependency that can never be
-    // satisfied while the operator is told nothing.
+    // PATH instead of the knot's members: `plan` reports one path per knot,
+    // so a knot of three reached through two edges names only two of them,
+    // and the third starts into a dependency that can never be satisfied.
     let h = harness(vec![ProcScript::never_exits(); 3]);
     let _started = reply_of(
         dispatch(
@@ -312,11 +311,10 @@ async fn a_batch_in_a_knot_the_named_path_leaves_out_is_still_refused() {
 
 #[tokio::test(start_paused = true)]
 async fn a_knot_no_app_in_the_batch_is_in_does_not_refuse_the_batch() {
-    // fails if the cycle check takes the first cycle in the graph: the
-    // graph spans the whole registry, so a knot two earlier Flockfile
-    // loads left standing elsewhere in the flock would wedge `shep
-    // start` and `shep add` for every app, with an error naming apps the
-    // operator never mentioned.
+    // fails if the cycle check takes the first cycle in the graph: the graph
+    // spans the whole registry, so a knot two earlier Flockfile loads left
+    // standing elsewhere in the flock would wedge `shep start` and `shep
+    // add` for every app, with an error naming apps the operator never mentioned.
     let h = harness(vec![
         ProcScript::never_exits(),
         ProcScript::never_exits(),

@@ -92,12 +92,10 @@ pub(super) fn rpc_error(err: &SupervisorError) -> RpcError {
         // reaches it is the caller's own key or value, and the message names
         // the field.
         SupervisorError::InvalidField(msg) => invalid_config(msg),
-        // `Internal`, on the same rule the log-maintenance pair above
-        // states: an override store that cannot be read or written is an
-        // unexpected daemon-side failure, and there is no code for it that
-        // a client predating this build could decode. `err.to_string()`
-        // rather than the bare payload, so the reader is told the store was
-        // the thing that failed and not the request.
+        // `Internal`, on the same rule the log-maintenance pair above states:
+        // an override store that cannot be read or written is an unexpected
+        // daemon-side failure, and there is no code for it that a client
+        // predating this build could decode.
         SupervisorError::Overrides(_) => RpcError {
             code: RpcErrorCode::Internal,
             message: err.to_string(),

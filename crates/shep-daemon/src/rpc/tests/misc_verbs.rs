@@ -141,16 +141,12 @@ async fn reopen_routes_to_the_supervisor_and_leaves_the_sheep_running() {
 }
 
 /// Fails if the arm is routed to another verb's supervisor call while
-/// keeping `Response::Reloading`, which no assertion on the reply alone
-/// can see. What separates a reload is the flock it leaves behind: two
-/// entries in one instance slot, the drainee `Stopping` under its
-/// original id and a replacement `Starting` under a new one.
+/// keeping `Response::Reloading`, which no assertion on the reply alone can
+/// see. What separates a reload is the flock it leaves behind: two entries
+/// in one instance slot, the drainee `Stopping` under its original id and a
+/// replacement `Starting` under a new one.
 ///
-/// The mid-swap state is not a race: nothing advances the clock, and
-/// `ListFlock` is queued to an actor that runs `handle_reload` to
-/// completion before it takes another message. Three scripts, of which a
-/// correct run uses two; the third is sized for the spawn a broken arm
-/// performs, so it lands as a live entry rather than as `Errored`.
+/// The mid-swap state is not a race: `ListFlock` is queued to an actor that runs `handle_reload` to completion.
 #[tokio::test(start_paused = true)]
 async fn reload_routes_to_the_supervisor_and_starts_a_swap() {
     let h = harness(vec![ProcScript::never_exits(); 3]);
@@ -392,13 +388,12 @@ async fn a_scale_is_recorded_in_the_roll_the_next_muster_reads() {
 }
 
 /// `web` at two instances, scaled to four, with one script left so the
-/// first new spawn succeeds and the second fails. Three instances are
-/// then running: a roll saying `2` stops one at the next muster, a roll
-/// saying `4` brings up a count that never ran. Only `3` is the truth,
-/// and it gets there only if the handler records off the `Err` path too.
+/// first new spawn succeeds and the second fails. Three instances are then
+/// running: a roll saying `2` stops one at the next muster, a roll saying
+/// `4` brings up a count that never ran.
 ///
-/// The reply is asserted as well as the roll: recording what the daemon
-/// did must not turn "three of four" into a success.
+/// The reply is asserted as well as the roll: recording what the daemon did
+/// must not turn "three of four" into a success.
 #[tokio::test]
 async fn a_partial_scale_is_recorded_in_the_roll_and_still_reported_short() {
     let h = harness(vec![ProcScript::never_exits(); 3]);
@@ -457,14 +452,13 @@ async fn save_roll_against_a_stopped_engine_is_an_error_not_a_silent_success() {
     );
 }
 
-/// Assembling a flock that is already assembled starts nothing, so a
-/// reply naming only what this call spawned cannot be told from "the roll
-/// was empty".
+/// Assembling a flock that is already assembled starts nothing, so a reply
+/// naming only what this call spawned cannot be told from "the roll was
+/// empty".
 ///
-/// One script: `web`'s first start consumes it, so a muster that started
-/// the roll's apps unconditionally would exhaust the pool and land a
-/// second, `Errored` `web` in the listing. The count and the name
-/// assertion are what catch it.
+/// One script: `web`'s first start consumes it, so a muster that started the
+/// roll's apps unconditionally would exhaust the pool and land a second,
+/// `Errored` `web` in the listing.
 #[tokio::test]
 async fn a_second_muster_still_reports_the_flock_the_roll_restored() {
     let h = harness(vec![ProcScript::never_exits()]);

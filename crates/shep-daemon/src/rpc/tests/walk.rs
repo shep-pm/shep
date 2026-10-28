@@ -13,11 +13,10 @@ const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_millis(1600);
 /// A `db` and an `api` that waits for it, started through the ordinary
 /// `Start` arm so the registry holds the edge an ordered walk reads.
 ///
-/// `api` is started first, and alone, deliberately: it takes the lower
-/// id, and it sorts first by name as well, so neither the id order a
-/// batch verb resolves in nor the name order a reload queues in matches
-/// the dependency order. Started together, the staged `Start` would give
-/// `db` the lower id and an unordered restart would pass by accident.
+/// `api` is started first, and alone, deliberately: it takes the lower id,
+/// and it sorts first by name as well, so neither the id order a batch verb
+/// resolves in nor the name order a reload queues in matches the dependency
+/// order.
 async fn start_api_before_the_db_it_waits_for(h: &Harness) {
     let mut api = AppConfig::minimal("api", "./api");
     api.depends_on = vec!["db".to_string()];
@@ -304,18 +303,12 @@ async fn a_stage_still_waits_for_an_app_whose_reload_was_refused() {
 }
 
 /// fails if a staged restart drops the name of an app it went around: the
-/// walk asks per app, so one the flock no longer holds is refused on its
-/// own and the reply would otherwise be a success with that app's row
-/// silently missing.
+/// walk asks per app, so one the flock no longer holds is refused on its own
+/// and the reply would otherwise be a success with that app's row silently
+/// missing.
 ///
-/// The refusal is planted the way the real one arrives. `walk_for` reads
-/// a listing and `restart_in_stages` calls the supervisor per member
-/// afterwards, so a sheep that leaves the flock in between is named by
-/// the walk and no longer matched by the supervisor; deleting `db`
-/// between the two calls is that interleaving, held still. Going through
-/// `Request::Restart` instead would take both halves inside one handler
-/// with nothing able to run between them. Three scripts: two for the
-/// pair's first spawn and one for `api`'s respawn.
+/// The refusal is planted the way the real one arrives: deleting `db` between
+/// the walk's listing and the supervisor call is that interleaving, held still.
 #[tokio::test(start_paused = true)]
 async fn a_staged_restart_names_the_app_it_could_not_restart() {
     let h = harness(vec![ProcScript::never_exits(); 3]);
@@ -353,13 +346,11 @@ async fn a_staged_restart_names_the_app_it_could_not_restart() {
 }
 
 /// fails if a staged restart keeps only the first refusal, which is what
-/// the walk did with the error before `refused` existed: two apps gone
-/// from the flock have to produce two names, not one.
+/// the walk did with the error before `refused` existed: two apps gone from
+/// the flock have to produce two names, not one.
 ///
-/// The same interleaving as the sibling above, over three apps with two
-/// of them deleted, so `api` still restarts and the answer is the
-/// partial one a client has to render. Four scripts: three for the first
-/// spawns and one for `api`'s respawn.
+/// The same interleaving as the sibling above, over three apps with two of
+/// them deleted, so `api` still restarts and the answer is the partial one.
 #[tokio::test(start_paused = true)]
 async fn a_staged_restart_collects_every_refusal_and_not_just_the_first() {
     let h = harness(vec![ProcScript::never_exits(); 4]);
