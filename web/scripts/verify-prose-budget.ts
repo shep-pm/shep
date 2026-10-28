@@ -237,7 +237,13 @@ export const BUDGETS: Record<string, number> = {
   // <sheep> [tab] [dog]` is a new thing an operator types, and the page owes
   // them which tab names parse and what a name the flock does not have does
   // (#1194).
-  lookout: 3090,
+  //
+  // Raised from 3090 on 2026-10-27 for "Editing a key and a value": a sheep's
+  // env rows and the secrets pane now drive one editor, so an operator has to
+  // be told which keys move between the two fields, where a key name is
+  // checked, and that a rename is one Enter (#1193). Required content, not
+  // prose to trim back out.
+  lookout: 3180,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

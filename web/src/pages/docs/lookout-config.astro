@@ -356,8 +356,7 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
         gated on <code>allow_read</code>
       </li>
       <li>
-        <code>Enter</code> opens a value input on an operator row, or
-        confirms an armed delete
+        <code>Enter</code> opens the <a href="/docs/lookout#editing-a-key-and-a-value">key and value editor</a> on an operator row, or confirms an armed delete
       </li>
       <li>
         <code>D</code> arms deleting the selected key; like every other
@@ -595,10 +594,8 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       <code>process</code> tab's fields and on no other tab, rather than
       behind their own row. No value ever appears there, because the
       shepherd never sends one: every key reads{" "}
-      <code>(set)</code>. <code>e</code> or <code>Enter</code> on a
-      key types a new value for it, and filing an empty one removes the
-      key. Either on the <code>+ new</code> row takes{" "}
-      <code>KEY=value</code>.
+      <code>(set)</code>. <code>e</code> or <code>Enter</code> opens the{" "}
+      <a href="/docs/lookout#editing-a-key-and-a-value">key and value editor</a> on the row, the same one the secrets pane drives; filing an empty value removes the key, and renaming the key writes the new one and removes the old one at once. <code>D</code> arms a delete there too, and <code>Enter</code> confirms it.
     </p>
     <p>
       An env write files the same way a field does, a set as much as a
