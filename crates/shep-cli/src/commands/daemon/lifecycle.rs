@@ -86,18 +86,13 @@ pub(super) fn read_daemon_config_source(
     }
 }
 
-/// Installs the subscriber that renders the daemon's own records, for the
-/// remaining life of this process.
+/// Installs the subscriber that renders the daemon's own records.
 ///
-/// The one global install in the workspace; `shep-daemon`'s
-/// `testing::capture_logs` installs a scoped one per test. The sink is
-/// stderr, which `launch.rs` has already redirected into
+/// The sink is stderr, which `launch.rs` has already redirected into
 /// `$SHEP_HOME/logs/shepd.err.log` for a re-exec'd daemon.
 ///
 /// Records are written from tokio worker threads, so `main::run`'s `daemon`
-/// arm must not hold a `stderr().lock()` guard while this process runs. A
-/// failed install means a subscriber is already there, and is reported on
-/// stderr rather than failing the boot.
+/// arm must not hold a `stderr().lock()` guard while this process runs.
 fn install_log_subscriber(config: &DaemonConfig) {
     let builder = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(config.daemon.log_level.as_str()))
@@ -220,19 +215,13 @@ pub fn daemon_overrides(args: &DaemonArgs) -> DaemonOverrides {
         .max_cron_sleep(args.max_cron_sleep)
 }
 
-/// Builds [`BootOptions`] from `config`, the `daemon` subcommand's own
-/// flags, and whatever `$NOTIFY_SOCKET` held.
+/// Builds [`BootOptions`] from `config`, the daemon flags, and `$NOTIFY_SOCKET`.
 ///
 /// `ready_fd` stays `None`: readiness is a completed handshake, and this crate
-/// forbids unsafe code. `max_cron_sleep` stays an `Option`, so the daemon
-/// applies its own default and nothing here invents a value. `notify_socket`
-/// is a parameter rather than an environment read, since `std::env::set_var`
-/// is `unsafe` in edition 2024; `--foreground` gates it.
+/// forbids unsafe code. `notify_socket` is a parameter, since
+/// `std::env::set_var` is `unsafe` in edition 2024.
 ///
-/// `[daemon] enabled_dogs` names each dog to start, in the order an operator
-/// wrote it; `[daemon] adopted_dogs` says which of those names is a
-/// third-party binary, and a name absent from it is [`DogSource::BuiltIn`].
-/// `[daemon] channel_dogs` says which adopted ones asked for the channel.
+/// `[daemon] enabled_dogs` names each dog to start, in the order written.
 #[must_use]
 pub fn boot_options(
     config: &DaemonConfig,
@@ -255,15 +244,10 @@ pub fn boot_options(
             .iter()
             .map(|name| dog_spec(config, name))
             .collect(),
-        // Every dog that EXISTS, which is not the list above: that one is
-        // the spawn order and holds only what an operator switched on. The
-        // shepherd lists each at rest, and `Request::SetDogConfig` is
-        // guarded on this one, because the dog most in need of configuring
-        // is the one that is disabled or has never started. The same two
-        // sources `fail_enable_unknown_dog` calls valid names, plus
-        // `enabled_dogs` itself, so a name a hand-edited `shep.toml`
-        // enables without adopting is still a dog this shepherd tries to
-        // spawn and still one it may hold a section for.
+        // Every dog that exists, not the spawn order above: the shepherd
+        // lists each at rest, and `Request::SetDogConfig` is guarded on
+        // this one, because the dog most in need of configuring is one that
+        // is disabled or has never started.
         known_dogs: crate::dog::BUILT_IN_DOGS
             .iter()
             .map(|built_in| (*built_in).to_string())

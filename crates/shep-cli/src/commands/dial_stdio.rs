@@ -30,9 +30,7 @@ use crate::launch::launch_daemon;
 /// answers.
 ///
 /// Never returns. tokio's stdin read runs on a blocking thread that dropping
-/// the runtime waits for, so returning an [`ExitCode`] would hang the process
-/// on an open stdin after the shepherd side closed. Stdout is flushed by
-/// [`bridge`] before this exits.
+/// the runtime waits for, so returning an [`ExitCode`] would hang the process.
 pub(crate) async fn dial_stdio(fmt: Format, paths: &ShepPaths, autostart: bool) -> Infallible {
     let launch_paths = paths.clone();
     let code = dial(
@@ -50,11 +48,7 @@ pub(crate) async fn dial_stdio(fmt: Format, paths: &ShepPaths, autostart: bool) 
 /// Connects to the shepherd at `socket` and runs [`bridge`] over it.
 ///
 /// With `autostart`, `launch` boots the shepherd when none answers, through
-/// the state machine a local `muster` uses. Its handshake is spent: the client
-/// it returns is dropped and the bridge dials afresh, so the bridge stays the
-/// same bytes-only copy with or without the flag. A shepherd that refuses the
-/// probe on a protocol mismatch is already up, so that case bridges too.
-/// Without `autostart`, `launch` is never called.
+/// the state machine a local `muster` uses. Its handshake is spent.
 ///
 /// Nothing is written to `output` when no shepherd answers or the boot fails:
 /// the one error goes to stderr.

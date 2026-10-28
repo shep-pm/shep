@@ -6,10 +6,8 @@
 //! [`HookOutcome::Refused`] rather than anything having gone wrong.
 //!
 //! `tokio::process`, not the `std::process` poll loop `dogs::vet_binary`
-//! runs: that probe nulls every stdio handle and never reads a byte, so it
-//! cannot deadlock. This one reads, and a child filling one pipe while its
-//! reader is parked on the other hangs until the budget kills it, losing
-//! everything it wrote.
+//! runs: this one reads, and a child filling one pipe while its reader is
+//! parked on the other hangs until the budget kills it.
 
 use core::fmt;
 use std::path::Path;
@@ -78,10 +76,8 @@ pub(crate) enum HookOutcome {
     /// failed, or the wait did.
     ///
     /// Distinct from [`Self::NotSpawned`] because the two send a caller in
-    /// opposite directions. That one says the hook did not run and the
-    /// binary needs looking at; this one says the hook may well have done
-    /// its work and only the outcome was lost, which for a hook that
-    /// deletes something is the difference worth keeping.
+    /// opposite directions: that one says the hook did not run, this one
+    /// that it may well have done its work and only the outcome was lost.
     Unread {
         /// The OS error, rendered, since it is only ever shown.
         reason: String,
@@ -115,13 +111,10 @@ impl fmt::Display for HookOutcome {
 /// Runs `binary`'s hook, bounded by `budget`.
 ///
 /// `home` and `name` reach the dog as `$SHEP_HOME` and `$SHEP_DOG_NAME`,
-/// through the same [`dog_env`] the adopt probe runs a candidate under:
-/// this is a stranger's binary, and the operator's own environment is not
-/// its business.
+/// through the same [`dog_env`] the adopt probe uses: the operator's own
+/// environment is not a stranger's business.
 ///
-/// Both pipes are read concurrently, and whatever the dog printed is
-/// stripped of terminal escapes before it is kept. A dog still running at
-/// `budget` has its whole process group killed.
+/// A dog still running at `budget` has its whole process group killed.
 pub(crate) async fn run_on_remove(
     binary: &Path,
     home: &Path,
@@ -165,11 +158,8 @@ pub(crate) async fn run_on_remove(
     match finished {
         // Both failure arms take the ladder, because both can leave a
         // child running: the budget expired, or a read gave up before the
-        // wait was ever reached. The group goes first, and while it still
-        // has members, since a sweep after the leader is reaped names a
-        // pid the OS may have handed to somebody else.
-        // `dogs::kill_probe_tree` orders it the same way for the same
-        // reason.
+        // wait was ever reached. The group goes first, while it still has
+        // members, before the OS hands its pid to somebody else.
         Err(_elapsed) => {
             kill_group(leader);
             let _ = child.kill().await;
@@ -248,12 +238,10 @@ async fn read_head<R: tokio::io::AsyncRead + Unpin>(src: Option<R>) -> std::io::
 
 /// SIGKILLs the process group `leader` leads, which `kill_on_drop` does
 /// not: that reaches the leader alone, so a dog that forked leaves the
-/// fork behind. `dogs::kill_probe_tree` sweeps the adopt probe's group for
-/// the same reason and on the same terms.
+/// fork behind.
 ///
 /// A descendant that calls `setsid` leaves the group and survives either
-/// way. Failure is never reported: an empty group answers `ESRCH` and the
-/// outcome is the same.
+/// way. Failure is never reported: an empty group answers `ESRCH`.
 #[cfg(unix)]
 fn kill_group(leader: Option<u32>) {
     // POSIX holds a group id out of the pool while the group has members,
@@ -275,13 +263,9 @@ fn kill_group(_leader: Option<u32>) {}
 ///
 /// [`read_head`] has already bounded the length. Cutting a multi-byte
 /// character in half yields a replacement character rather than dropping
-/// the whole stream, which `read_to_string`'s all-or-nothing would.
+/// the whole stream.
 ///
-/// Sanitised here rather than at whatever prints it, on the same terms as
-/// `dog_index` and `fetch`: the bytes are a third party's, and a caller
-/// that forgets is how an escape sequence reaches an operator's terminal.
-/// [`sanitise`] collapses runs of whitespace, so the output arrives as one
-/// line.
+/// Sanitised here rather than at whatever prints it: the bytes are a third party's.
 fn capped(raw: &[u8]) -> String {
     sanitise(&String::from_utf8_lossy(raw)).0
 }
@@ -300,10 +284,8 @@ mod tests {
     /// in its script. Those tests assert what the dog did, not how fast,
     /// so the budget is only the forcing mechanism for a deadlock and must
     /// never be what ends a green run. A contended runner spends seconds
-    /// just reaching a `/bin/sh` fixture's first command — a shared 2s
-    /// budget killed these fixtures mid-print (#651) — so this is generous
-    /// against the 30s [`BOUND`], which stays the arm that fires on a true
-    /// hang.
+    /// reaching a `/bin/sh` fixture's first command, so this is generous
+    /// against the 30s [`BOUND`], which fires on a true hang.
     const RUN_BUDGET: Duration = Duration::from_secs(20);
 
     /// The budget for the fork sweep test. It waits for two things: the
@@ -484,12 +466,7 @@ mod tests {
     /// backgrounded any work leaves it running with nobody left to reap it.
     ///
     /// The grandchild announces itself before it waits, so the test fails
-    /// outright when the runner was too slow to fork it inside the budget:
-    /// the sweep must have had a fork to reach, not pass on one that never
-    /// existed. It then writes its file only once the dog is dead, which
-    /// only a missing sweep allows, and the test watches for that file up
-    /// to [`SURVIVOR_BOUND`] rather than checking once after a fixed
-    /// grace.
+    /// outright when the runner was too slow to fork it inside the budget.
     #[tokio::test]
     async fn a_fork_the_dog_left_behind_is_swept_with_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -522,10 +499,8 @@ mod tests {
 
         // Watch for the survivor under a generous bound rather than check
         // once past a fixed grace: a contended runner can take longer than
-        // any fixed grace to wake the grandchild, notice the dog is gone
-        // and write, and the sweep must be caught however slow that notice
-        // is. The timeout is the forcing mechanism for the watch; timing
-        // out is absence, and absence is the sweep.
+        // any fixed grace to wake the grandchild and write. The timeout is
+        // the forcing mechanism; timing out is absence, and absence is the sweep.
         let survivor_seen = async {
             loop {
                 if survivor.exists() {

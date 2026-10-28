@@ -20,13 +20,9 @@ const CACHE_DIR: &str = "manifests";
 /// [`super::DogSchema`] uses one flag over.
 ///
 /// The line is between a dog that has no manifest and a record of one this
-/// machine cannot read. A dog that gave nothing, in any of the ways a dog gives
-/// nothing, declared nothing: that is every dog adopted before
-/// [`MANIFEST_FLAG`], every dog built on a `parse_args` that rejects an unknown
-/// flag, and every dog that ignores the flag and runs. A cache file is the
-/// other thing: shep wrote it itself, out of a probe that answered a manifest,
-/// and a record it cannot read back leaves a declaration unread rather than
-/// never made.
+/// machine cannot read. A dog that gave nothing declared nothing.
+///
+/// A cache file is the other thing: shep wrote it out of a probe that answered.
 // `large_enum_variant` allowed, not fixed: clippy's remedy is to box
 // `Manifest`, and that buys nothing. This enum lives for one read of one
 // manifest inside one command, its payload is read field by field and
@@ -124,13 +120,9 @@ fn no_manifest(record: bool) -> ManifestRead {
 /// probes the binary.
 ///
 /// [`read_manifest`] asks a dog that has not been asked before. Nothing here
-/// does, because `shep --help` and `shep completions` run on whatever the
-/// operator already adopted and would otherwise spawn a dog to answer a
-/// question about how to spell its name.
+/// does: `shep --help` and `shep completions` would otherwise spawn a dog.
 ///
-/// `None` is ordinary: a dog adopted before manifests existed, one that
-/// answers no manifest, one whose recorded binary has since moved, and a
-/// cache file that will not parse all answer it.
+/// `None` is ordinary: a dog adopted before manifests existed, or a moved binary.
 pub(crate) fn cached_manifest(path: &Path, home: &Path) -> Option<Manifest> {
     read_cached(
         &home

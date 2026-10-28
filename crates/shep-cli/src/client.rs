@@ -202,12 +202,9 @@ fn boot_message(home: &Path, restored: Option<usize>) -> String {
 ///
 /// The absent-socket case gets its own sentence and the next command: on a
 /// machine where no shepherd has ever run, `shep-client`'s `ENOENT` reads as
-/// a broken install, about a path the operator did not choose. Every other
-/// failure keeps the library's wording, since `EACCES` and `ECONNREFUSED`
-/// each mean something specific.
+/// a broken install. Every other failure keeps the library's wording.
 ///
-/// `pub(crate)`: `version_guard::connect_client` reports a failed connect
-/// through this same wording.
+/// `pub(crate)`: `version_guard::connect_client` reports through this too.
 pub(crate) fn unreachable_message(err: &shep_client::ConnectError) -> String {
     match err {
         shep_client::ConnectError::Connect { path, source }

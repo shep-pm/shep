@@ -1,21 +1,13 @@
 //! The address grammar: a sheep name, then a path inside its config.
 //!
-//! A sheep name may itself contain a dot, so the split is not "the first
-//! dot". It is the longest flock sheep name the address starts with, and
-//! failing that, the first segment that is a path root: `dogs`, or a name
-//! `AppConfig` has a field for. Both readings agree on every address a real
-//! flock can be asked for, and a name that is neither is refused by name
-//! rather than guessed at.
+//! A sheep name may contain a dot, so the split is not "the first dot". It
+//! is the longest flock sheep name the address starts with, or failing that
+//! the first segment that is a path root: `dogs`, or a name `AppConfig` has
+//! a field for.
 //!
-//! A dog name may contain a dot, and so may a key inside a dog's table, and
-//! neither is a segment. Each step past the sheep name therefore takes the
-//! longest name the copy's tables actually hold: a dog name is a table one
-//! side carries before it is a dog the flock runs, and a key is a key of the
-//! table the step is standing in. `web.dogs.foo.bar` is the dog `foo.bar`
-//! when a side holds a table under that name, and the dog `foo` with the key
-//! `bar` when it does not, even in a flock that runs a dog named `foo.bar`
-//! neither sheep has a table for. Nothing holds either reading, the first
-//! segment stands, and the plan reports the source that is not there.
+//! Each step past the sheep name takes the longest name the copy's tables
+//! hold. `web.dogs.foo.bar` is the dog `foo.bar` when a side holds a table
+//! under that name, and the dog `foo` with the key `bar` when it does not.
 
 use std::collections::BTreeSet;
 
@@ -290,17 +282,10 @@ pub(crate) fn path_of(
 
 /// The key path inside a dog's table, resolved against what both sides hold.
 ///
-/// Each step takes the longest key the tables actually hold that matches what
-/// is left, so `api.token` is one key when a table holds `api.token`, and
-/// `api` then `token` when it holds a table under `api`. A key nothing holds
-/// stays one segment, which is what lets the plan name the source that is
-/// missing rather than invent a path.
-///
-/// The walk descends by the key it matched, not by the segments that spelled
-/// it. A table holding `api.token` has no `api` to fall into, so stepping one
-/// segment at a time lands outside the table and reads the rest of the address
-/// as segments nothing holds: `api.token.auth.key` becomes `api.token`, `auth`,
-/// `key` instead of `api.token`, `auth.key`.
+/// Each step takes the longest key the tables hold that matches what is left,
+/// so `api.token` is one key when a table holds `api.token`, and a key
+/// nothing holds stays one segment. The walk descends by the key it matched:
+/// a table holding `api.token` has no `api` to fall into.
 pub(crate) fn resolve_keys(
     rest: &[String],
     source: Option<&Value>,

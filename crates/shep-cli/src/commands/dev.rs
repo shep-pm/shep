@@ -116,19 +116,12 @@ fn require_absolute(knob: &'static str, candidate: PathBuf) -> Result<PathBuf, D
 /// land the forced `watch = true` on production apps.
 ///
 /// The home is injected as [`ShepPaths::resolve`]'s own answer for
-/// `SHEP_HOME`, so every derived path matches the other verbs. `resolve`
-/// therefore never reaches its own `home_dir` fallback, and is handed the
-/// dev home rather than a second path that would go unread.
-///
-/// `home_dir` is read for the `~/.shep-dev` fallback alone, so `None` (no
-/// passwd home, no `$HOME`) is answerable as long as `$SHEP_DEV_HOME` names
-/// somewhere.
+/// `SHEP_HOME`, so every derived path matches the other verbs, and
+/// `home_dir` is read for the `~/.shep-dev` fallback alone.
 ///
 /// # Errors
 ///
-/// - [`DevHomeRefusal::Relative`] if whichever of the two answered named a
-///   path with no root. Gated here rather than in [`dev`], so the rule
-///   travels with the resolver that reads them.
+/// - [`DevHomeRefusal::Relative`] if whichever answered named a path with no root.
 /// - [`DevHomeRefusal::Unresolved`] if neither named a root.
 fn dev_home(
     env: &impl Fn(&str) -> Option<String>,

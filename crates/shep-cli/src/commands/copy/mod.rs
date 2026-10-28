@@ -1,26 +1,13 @@
 //! `shep copy`: one setting, one dog's whole table, or a sheep's env, from one
 //! sheep onto another.
 //!
-//! Three requests do the talking. `Request::ListFlock` resolves the two names
-//! against the flock, `Request::SheepConfig` reads each side, and the write is
-//! the request the plan turns into: [`Request::SetSheepField`] for a field,
-//! [`Request::SetSheepDogSettings`] for a dog's table, so everything those
-//! refuse this refuses, with the same reason. `env` is the exception: a client
-//! is never sent env values, so [`mod@env`] plans and writes it through
-//! [`Request::CopySheepEnv`], and the shepherd does the merge.
+//! `Request::ListFlock` resolves the two names, `Request::SheepConfig` reads
+//! each side, and the plan turns into [`Request::SetSheepField`] or
+//! [`Request::SetSheepDogSettings`], so everything those refuse this refuses.
+//! `env` is the exception: a client is never sent env values, so [`mod@env`]
+//! plans and writes it through [`Request::CopySheepEnv`].
 //!
-//! The order is resolve, read, plan, print, ask, write. Nothing is sent until
-//! the operator has seen every key the copy touches, which is also why a
-//! refusal never leaves a half-written sheep behind. A copy that carries a
-//! dog's whole table asks that dog first, through the same
-//! [`crate::dog_settings::ask_dog`] `shep set` and the lookout dashboard ask
-//! through: the table the copy would leave behind is the table the dog is shown
-//! whether it declared `validate` or not.
-//!
-//! The table form prints the change list before the question, because that is
-//! what the question is asked beside. The JSON form prints one envelope at the
-//! end, carrying the same list beside `written` and `pending`: one object per
-//! invocation is the rule `--format json` keeps.
+//! Nothing is sent until the operator has seen every key the copy touches.
 
 pub(crate) mod address;
 pub(crate) mod confirm;
@@ -84,11 +71,9 @@ impl CopyRefusal {
     ///
     /// [`ExitCode::InvalidConfig`] for a refused key is the code the shepherd's
     /// own refusal of that key carries, so `copy` and the request it stands in
-    /// for exit alike. A dog's refusal of its own table takes the same code for
-    /// the same reason: `shep set` refuses it that way too.
+    /// for exit alike.
     ///
-    /// `pub(crate)`: `shep set` refuses the same keys with the same reasons
-    /// (issue #1096).
+    /// `pub(crate)`: `shep set` refuses the same keys with the same reasons.
     pub(crate) const fn code(&self) -> ExitCode {
         match self {
             Self::Usage(_) => ExitCode::Usage,

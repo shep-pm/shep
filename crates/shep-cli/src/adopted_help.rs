@@ -1,15 +1,13 @@
 //! Adopted dogs as part of shep's own help and completion surface.
 //!
-//! A dog's verb is `shep <name>` and only that: the registry in `shep.toml`
+//! A dog's verb is `shep <name>` and only that. The registry in `shep.toml`
 //! decides which names are dogs, and [`crate::adopted`] runs one only for a
-//! token clap could not place as a verb. A manifest's `verb` says how that
-//! name is described. `description` is the line `shep --help` lists it with,
-//! and `subcommands` are what `shep <dog> --help` prints and what a
-//! completion script offers.
+//! token clap could not place as a verb.
 //!
-//! Every read goes to the manifest cache `shep adopt` wrote, never to the
-//! binary: a help screen must not spawn a dog. A dog with nothing cached, or
-//! which declared no `verb`, is listed with nothing beside its name.
+//! A manifest's `verb` says how the name is described. Its `description`
+//! and `subcommands` fill the help lines and the completion scripts. Every
+//! read goes to the manifest cache `shep adopt` wrote: a help screen must
+//! not spawn a dog.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -38,15 +36,11 @@ const VERB_COLUMN: usize = 17;
 
 /// One adopted dog, as `--help` and a completion script need it.
 ///
-/// Every string here went through [`printable`]: one line, no control
-/// characters, no clap placeholder braces. A manifest is written by whoever
-/// built the dog, and its text lands in a template clap parses and in a
-/// completion script a shell reads.
+/// Every string here went through [`printable`]: a manifest's text lands in
+/// a clap help template and in a completion script a shell reads.
 ///
-/// `Debug` is derived and needs no redaction: a verb's description and its
-/// subcommands' one-liners are copy an operator is meant to read. The half of
-/// a manifest that can carry a credential, its `defaults`, never reaches
-/// here.
+/// `Debug` is derived: a manifest's credential-carrying `defaults` never
+/// reach here.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct AdoptedVerb {
     /// The name the operator types: `shep <name>`.
@@ -61,17 +55,10 @@ pub(crate) struct AdoptedVerb {
 /// Every dog `[daemon] adopted_dogs` records, in name order, each with what
 /// its cached manifest declares.
 ///
-/// `shep.toml` is read read-only and creates nothing, so a listing costs a
-/// mistyped verb or a `--help` no filesystem change. A `shep.toml` that
-/// cannot be read or parsed lists nothing rather than failing the invocation
-/// that only wanted to print help: the verb that reads the broken file has
-/// its own refusal, and `--help` is not it.
+/// `shep.toml` is read read-only, and a file that cannot be read or parsed
+/// lists nothing: the verb that reads it has its own refusal.
 ///
-/// A name a verb or alias already owns is left out. `shep adopt` refuses such
-/// a name, but a hand-written `shep.toml` can hold one, and clap's verb wins
-/// the token every time, so listing the dog would promise a command that can
-/// never run. A name [`printable`] would have to rewrite is left out for the
-/// same reason in reverse: it is not the name the operator types.
+/// A name a verb or alias owns is left out, as is one [`printable`] rewrites.
 #[must_use]
 pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
     let Ok(config) = ShepToml::read_only(&paths.daemon_config) else {
@@ -107,12 +94,9 @@ pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
 /// One string from a manifest, fit for a help line or a completion script.
 ///
 /// [`crate::terminal_safe::sanitise`] first: a line break or an escape in a
-/// dog's own copy forges a line of shep's output, and a completion script is
-/// read by a shell. Then the placeholder braces go. clap's
-/// `write_templated_help` splits the help template on `{` and has no escape
-/// for a literal brace, so a spliced `{all-args}` re-renders the options
-/// section rather than naming it, and a `{` with no `}` after it swallows the
-/// rest of the template.
+/// dog's own copy forges a line of shep's output. Then the placeholder
+/// braces go. clap splits its help template on `{` with no escape for a
+/// literal brace, so a spliced brace re-renders part of the template.
 fn printable(field: &str) -> String {
     let (cleaned, _) = crate::terminal_safe::sanitise(field);
     cleaned.replace(['{', '}'], "")
@@ -144,12 +128,10 @@ fn printable_verb(verb: Verb) -> Option<Verb> {
 /// Whether this argv can want the top-level help, which is the only render
 /// the dog listing changes.
 ///
-/// A token scan rather than a parse, because building the listing costs a
-/// read of `shep.toml` and a sha256 of every adopted dog's binary, and a
-/// plain `shep stop web` must not pay that. It answers `true` for a `--help`
-/// aimed at one verb, and for a token that is only somebody's argument: both
-/// cost the listing and change nothing, since a subcommand renders with
-/// clap's own template rather than this one.
+/// A token scan rather than a parse: building the listing costs a read of
+/// `shep.toml` and a sha256 of every adopted dog's binary, and a plain
+/// `shep stop web` must not pay that. A `--help` aimed at one verb answers
+/// `true` and changes nothing: clap renders it with its own template.
 #[must_use]
 pub(crate) fn top_level_help_asked(argv: &[OsString]) -> bool {
     argv.len() == 1
@@ -181,10 +163,7 @@ pub(crate) fn paths_from_argv(argv: &[OsString]) -> Option<ShepPaths> {
 /// renders `HELP_TEMPLATE` byte for byte.
 ///
 /// # Panics
-///
-/// Panics when `HELP_TEMPLATE` has lost the `Dogs and agents` heading the
-/// group table files `dogs`, `adopt` and `whistle` under, which is the copy
-/// `cli::help`'s tests pin. The panic names the heading.
+/// Panics when `HELP_TEMPLATE` has lost the `Dogs and agents` heading.
 #[track_caller]
 pub(crate) fn list_in_help(command: &mut clap::Command, verbs: &[AdoptedVerb]) {
     if verbs.is_empty() {
@@ -229,19 +208,11 @@ fn dog_lines(verbs: &[AdoptedVerb]) -> Vec<String> {
 
 /// Whether `name` is a word a shell takes as a bare word.
 ///
-/// `clap_complete` 4.6.9 writes subcommand names into its scripts with no
-/// quoting at all. Its bash generator emits `opts="pipeline $(touch>x)"`
-/// inside double quotes, which the shell expands when the completion runs,
-/// and `shep,two)words)` case patterns, which stop the script parsing. Its
-/// fish generator puts the names inside `-n "…"`, and its zsh generator
-/// escapes the help text while writing the name raw. Nothing to escape
-/// against: a name is an identifier the operator types, so an unsafe one is
-/// dropped from the script rather than rewritten, and a doctored name would
-/// complete to a word no dog answers to.
+/// `clap_complete` writes subcommand names into its scripts unquoted, so an
+/// unsafe name becomes shell code there. A name is what the operator types,
+/// so an unsafe one is dropped from the script rather than rewritten.
 ///
-/// Letters of any script and digits, separated by `-`, `_` or `.`, starting
-/// on a letter or digit. The punctuation is ASCII-only, and a leading `-`
-/// would read as a flag.
+/// Letters of any script and digits, separated by `-`, `_` or `.`.
 fn shell_safe(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -253,13 +224,10 @@ fn shell_safe(name: &str) -> bool {
 /// Add each dog, and each declared subcommand under it, to a command tree
 /// built only to generate a completion script.
 ///
-/// This tree is never parsed. `shep <dog>` still reaches the dog through
-/// clap's unknown-subcommand path, which is what keeps a dog's argv a
-/// pass-through and keeps a manifest from claiming a verb.
+/// This tree is never parsed. A dog still runs through clap's
+/// unknown-subcommand path, which keeps a manifest from claiming a verb.
 ///
-/// A name [`shell_safe`] rejects is left out of this tree alone: the dog is
-/// still in `shep --help`, and still runs, because help prints text and a
-/// completion script is code a shell reads.
+/// A name [`shell_safe`] rejects is left out of this tree alone.
 pub(crate) fn with_completion_entries(
     command: clap::Command,
     verbs: &[AdoptedVerb],
