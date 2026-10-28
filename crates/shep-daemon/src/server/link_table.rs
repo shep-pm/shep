@@ -2,17 +2,12 @@
 //! them.
 //!
 //! The server task that reads a connection owns its descriptor, and nothing
-//! else can name it. This table holds a duplicate of each, plus the two facts
-//! about the connection the exec would otherwise erase: whether the dog has
-//! said `Hello`, and what it subscribed to.
+//! else can name it. This table holds a duplicate of each. It also holds the
+//! two facts the exec would erase: the `Hello` and the subscriptions.
 //!
-//! The serving tasks keep running while a handover takes its snapshot, so the
-//! table has a freeze. [`DogLinks::freeze`] copies the rows and from then on
-//! holds every task that would change one, until [`DogLinks::thaw`]. A task
-//! records a change before it replies, so a row never says less than the dog
-//! has been told, and it never changes after the copy. What the dog sent in
-//! the gap goes unanswered and is lost with the exec, as any request in
-//! flight is.
+//! Serving tasks keep running while a handover takes its snapshot. The table
+//! has a freeze: [`DogLinks::freeze`] copies the rows and holds every writer
+//! until [`DogLinks::thaw`].
 
 use core::time::Duration;
 use std::collections::BTreeMap;
@@ -113,11 +108,9 @@ impl DogLinks {
     /// and writer to park at a frame boundary, and returns a fresh duplicate
     /// of each connection that did, for a handover to carry.
     ///
-    /// Duplicates rather than the table's own descriptors, so the numbers the
-    /// blob names stay valid for as long as the caller holds these, whatever
-    /// happens to the connections meanwhile. A connection still mid-frame when
-    /// the wait ends is left out. The caller that does not exec calls
-    /// [`thaw`](Self::thaw).
+    /// Duplicates, so the numbers the blob names stay valid for as long as the
+    /// caller holds these. A connection still mid-frame when the wait ends is
+    /// left out. A caller that does not exec calls [`thaw`](Self::thaw).
     pub(crate) async fn freeze(&self, within: Duration) -> Vec<DogConnection> {
         self.lock().frozen = true;
         self.changed.notify_waiters();

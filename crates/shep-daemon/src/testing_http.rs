@@ -80,19 +80,13 @@ pub(crate) async fn loopback_http(script: Vec<HttpReply>) -> LoopbackHttp {
     loopback_http_on("127.0.0.1:0", script).await
 }
 
-/// Binds a loopback HTTP fake on `bind` and serves one reply per accepted
-/// connection, in queue order: the script first, then anything the test
-/// queues through [`LoopbackHttp::queue_reply`]. A connection with no reply
-/// queued yet waits for one, so the fake never hands out a verdict the test
-/// has not chosen.
+/// Binds a loopback HTTP fake on `bind` and serves one reply per accepted connection,
+/// in queue order: the script first, then anything the test queues through
+/// [`LoopbackHttp::queue_reply`]. A connection with no reply queued yet waits for one.
+/// Binds before spawning the accept loop, so a probe dialing the address cannot race it.
 ///
-/// Binds before spawning the accept loop and returns the already-bound
-/// address, so a probe dialing it cannot race the bind. Restructuring this
-/// into a task that binds brings that race back.
-///
-/// Every connection is read before it is replied to, [`HttpReply::Hang`]
-/// included: the reply does not depend on the request, so recording it is the
-/// only way a prober that dropped the `Host:` header would fail.
+/// Every connection is read before it is replied to, [`HttpReply::Hang`] included:
+/// recording the request is how a prober that dropped `Host:` fails.
 pub(crate) async fn loopback_http_on(bind: &str, script: Vec<HttpReply>) -> LoopbackHttp {
     let listener = TcpListener::bind(bind)
         .await

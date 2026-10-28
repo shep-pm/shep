@@ -239,13 +239,13 @@ mod tests {
     /// clock it bounds is virtual.
     const LADDER_BUDGET: Duration = Duration::from_secs(45);
 
-/// Waits for `settled` to answer true, and answers how much virtual time
-/// that took.
-///
-/// Sleeping here is a barrier rather than a slower spin: under
-/// `start_paused` the runtime advances the clock only once every task is
-/// idle, and work on the blocking pool holds it there. Panics, naming
-/// `what`, if `settled` has not answered true within `within`.
+    /// Waits for `settled` to answer true, and answers how much virtual time
+    /// that took.
+    ///
+    /// Sleeping here is a barrier rather than a slower spin: under
+    /// `start_paused` the runtime advances the clock only once every task is
+    /// idle, and work on the blocking pool holds it there. Panics, naming
+    /// `what`, if `settled` has not answered true within `within`.
     async fn settle_until(
         what: &str,
         within: Duration,
@@ -453,13 +453,13 @@ mod tests {
         );
     }
 
-/// Fails if the warm-up swallows the one verdict it exists to protect, or
-/// if `spawn_silent_dog_watch`'s own loop stops calling `check_silent_dogs`
-/// at all: every test above calls it directly, and would keep passing with
-/// the watcher's tick path deleted.
-///
-/// A warm-up wider than the ladder spends the stale rung against a map that
-/// is still cold, and `silent_dogs` then drops the dog.
+    /// Fails if the warm-up swallows the one verdict it exists to protect, or
+    /// if `spawn_silent_dog_watch`'s own loop stops calling `check_silent_dogs`
+    /// at all: every test above calls it directly, and would keep passing with
+    /// the watcher's tick path deleted.
+    ///
+    /// A warm-up wider than the ladder spends the stale rung against a map that
+    /// is still cold, and `silent_dogs` then drops the dog.
     #[tokio::test(start_paused = true)]
     async fn a_dog_that_never_calls_still_earns_its_rebuild_after_the_warm_up() {
         // A lower bound on when `PeerContacts` started warming, taken before

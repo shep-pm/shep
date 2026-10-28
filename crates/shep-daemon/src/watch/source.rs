@@ -98,9 +98,7 @@ pub struct WatchBatch {
     /// Carried as its own field rather than inferred: an empty path list is
     /// inotify's shape for a rescan and not macOS's, and a path equal to the
     /// watch root is macOS's shape for it but also an ordinary event on the
-    /// root's own inode.
-    ///
-    /// Not a path, so no glob set can match it.
+    /// root's own inode. Not a path, so no glob set can match it.
     pub rescan: bool,
 }
 
@@ -231,19 +229,13 @@ mod tests {
             .canonicalize()
             .expect("canonicalize tempdir root")
     }
-
-    /// Waits up to `within` for a batch satisfying `wanted`, returning every
-    /// batch delivered up to and including it.
+    /// Waits up to `within` for a batch satisfying `wanted`, returning every batch delivered up to and including it.
     ///
-    /// A write does not always land in the next batch: FSEvents coalesces one
-    /// write into one batch, while inotify may report the create, write and
-    /// close separately, so the same write can arrive as two or three batches
-    /// on Linux. Callers must not assume the first batch is the match.
+    /// A write does not always land in the next batch: FSEvents coalesces one write
+    /// into one batch, while inotify may report the create, write and close separately.
     ///
     /// # Panics
-    ///
-    /// If the deadline passes with no matching batch, or the source ends
-    /// first.
+    /// If the deadline passes with no matching batch, or the source ends first.
     async fn batches_until(
         rx: &mut UnboundedReceiver<WatchBatch>,
         within: Duration,
@@ -447,11 +439,10 @@ mod tests {
             let root = canonical_root(&dir);
             let (source, mut rx) = watch_tree(&root, TEST_DELAY).unwrap();
 
-            // Prove the watch is live first, so a failure below can't be
-            // confused with "this watch never worked in the first place".
-            // On the write itself, not the first batch: on FSEvents that can
-            // be the arm-time root event, and dropping the source on it would
-            // read `first.txt`'s own late batch as a leak.
+            // Prove the watch is live first, so a failure below can't be confused with
+            // "this watch never worked in the first place". On the write itself, not the
+            // first batch: on FSEvents that can be the arm-time root event, and dropping
+            // the source on it would read `first.txt`'s own late batch as a leak.
             let first = root.join("first.txt");
             std::fs::write(&first, b"hello").unwrap();
             batches_until(&mut rx, SMOKE_DEADLINE, &format!("{first:?}"), |batch| {

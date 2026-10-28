@@ -7,8 +7,7 @@
 //! [`adopt_fd`] is `unsafe fn` rather than a safe wrapper: its ordering
 //! precondition is a caller obligation it cannot check from inside.
 //! [`adopt_handover_fd`] is safe because inheritance across `execve`
-//! discharges that obligation. [`crate::boot`] calls neither and holds an
-//! already-owned [`std::fs::File`].
+//! discharges that obligation.
 #![allow(unsafe_code)] // every unsafe site in this crate's unix build is in this file
 
 use core::fmt;
@@ -250,13 +249,10 @@ mod tests {
 
     #[test]
     fn a_fd_this_process_never_owned_is_refused() {
-        // fd 4096 is a number this process never owns: fd-table limits sit
-        // far below it, so `F_GETFD` fails deterministically even under a
-        // parallel harness.
-        // SAFETY: fd 4096 is never open in this process; adopt_fd's
-        // F_GETFD probe rejects it before from_raw_fd ever runs, so there
-        // is no ordering precondition to uphold for a call that never
-        // actually adopts.
+        // fd 4096 is a number this process never owns: fd-table limits sit far
+        // below it, so `F_GETFD` fails deterministically even under a parallel harness.
+        // SAFETY: adopt_fd's F_GETFD probe rejects it before `from_raw_fd` ever runs,
+        // so there is no ordering precondition to uphold for a call that never adopts.
         let err = unsafe { adopt_fd(4096) }.unwrap_err();
         assert!(
             matches!(err, SysError::BadFd { fd: 4096, .. }),

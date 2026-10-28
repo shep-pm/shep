@@ -35,13 +35,11 @@ impl AcceptBackoff {
 
     /// How long to wait before accepting again: `None` means at once.
     ///
-    /// A verdict of `None` leaves the pending wait alone; only
-    /// [`Self::on_success`] resets it. A peer-consumed failure and an
-    /// interrupted call are not evidence the listener got healthier.
+    /// `None` leaves the pending wait alone; only [`Self::on_success`] resets
+    /// it. A peer-consumed failure is no evidence the listener got healthier.
     ///
-    /// tokio's `UnixListener::accept` retries only `WouldBlock` around the
-    /// syscall, and mio's `accept4` wrapper retries nothing, so all three
-    /// kinds below reach this loop as errors.
+    /// tokio's `accept` retries only `WouldBlock` and mio's `accept4` retries
+    /// nothing, so all three kinds below arrive as errors.
     #[must_use]
     pub(super) fn on_error(&mut self, err: &io::Error) -> Option<Duration> {
         if matches!(

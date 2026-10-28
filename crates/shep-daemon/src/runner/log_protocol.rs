@@ -96,8 +96,8 @@ pub struct ReopenError {
     /// streams failed. Never empty: a reopen that opened both answers `Ok`.
     ///
     /// `", "` and not `"; "` because this list nests:
-    /// [`SupervisorError::ReopenFailed`] joins one of these per sheep with `"; "`.
-    /// [`SupervisorError::ReopenFailed`]: crate::supervisor::SupervisorError::ReopenFailed
+    /// [`SupervisorError::ReopenFailed`](crate::supervisor::SupervisorError::ReopenFailed)
+    /// joins one of these per sheep with `"; "`.
     pub message: String,
 }
 

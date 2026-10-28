@@ -462,10 +462,10 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         events.subscribe(),
     );
 
-        // 5. A failure is a `warn!` and the boot continues: only systemd's
-        //    view is wrong. Unix only, since `$NOTIFY_SOCKET` is a unix
-        //    datagram socket. Reported after the restore, which is the honest
-        //    answer to `Type=notify`: each stage extends the deadline itself.
+    // 5. A failure is a `warn!` and the boot continues: only systemd's
+    //    view is wrong. Unix only, since `$NOTIFY_SOCKET` is a unix
+    //    datagram socket. Reported after the restore, which is the honest
+    //    answer to `Type=notify`: each stage extends the deadline itself.
     #[cfg(unix)]
     if let Some(target) = options.notify_socket.as_deref()
         && let Err(err) = crate::notify::notify(target)

@@ -2,19 +2,12 @@
 //!
 //! `FlockRegistry::roll` turns the registry's [`AppConfig`]s plus a live
 //! [`ProcessInfo`] listing into a [`FlockSnapshot`], written to `flock.json`
-//! by `write_atomic`. A `SnapshotWriter` task debounces lifecycle events so a
-//! restart storm produces one write. `restorable` re-validates every entry,
-//! since the file is human-editable.
+//! by `write_atomic`. A `SnapshotWriter` task debounces lifecycle events, so
+//! a restart storm produces one write. `restorable` re-validates every entry.
 //!
-//! `muster` reads the roll and starts those apps, from `boot` and from the
-//! `Muster` request alike, stage by stage in `depends_on` order
-//! (`crate::boot_order`). An app restores iff it was running when the roll was
-//! saved (`instances_running > 0`) and `autostart` is still true; one the flock
-//! already has is left where it stands, still reported as restored. Nothing
-//! about the graph refuses a restore: a cycle, a name nothing answers to and a
-//! dependency that opted out of `autostart` or is disabled are each warned
-//! about and started
-//! around, because the machine this runs on has nobody watching it.
+//! `muster` reads the roll and starts those apps in `depends_on` order
+//! (`crate::boot_order`). A cycle, an unknown name and an opted-out dependency
+//! are warned about and started around.
 
 use core::fmt;
 
@@ -65,13 +58,10 @@ pub struct FlockSnapshot {
 impl FlockSnapshot {
     /// A roll holding `apps`, under the schema version this build writes.
     ///
-    /// `saved_at_ms` is left at zero, which is what a roll nothing has
-    /// written yet carries: `FlockRegistry::roll` is the path that stamps a
-    /// real clock reading, and `restorable` reads only `instances_running`.
-    /// The version constant is not public, so this is the only way a caller
-    /// outside this crate can build a roll the daemon will accept rather
-    /// than hard-coding a number that stops being true when the schema
-    /// moves.
+    /// `saved_at_ms` is left at zero: `FlockRegistry::roll` is the path that
+    /// stamps a real clock reading, and `restorable` reads only
+    /// `instances_running`. The version constant is not public, so this is how
+    /// a caller outside the crate builds a roll the daemon will accept.
     #[must_use]
     pub fn with_apps(apps: Vec<SavedApp>) -> Self {
         Self {
@@ -132,11 +122,8 @@ impl FlockRegistry {
     ///
     /// [`Self::record`] takes [`ResolvedApp`]s because every other caller has
     /// just normalized one. A successor holds only the [`AppConfig`] the blob
-    /// carried, and the supervisor re-normalizes that on its own way to
-    /// installing the sheep.
-    ///
-    /// The roll is written from this registry, so a successor that left it
-    /// empty would overwrite a good roll within seconds of taking over.
+    /// carried. The roll is written from this registry, so a successor that left
+    /// it empty would overwrite a good roll within seconds of taking over.
     #[cfg(unix)]
     pub(crate) fn record_config(&self, config: &AppConfig) {
         self.apps
@@ -155,14 +142,12 @@ impl FlockRegistry {
         self.dirty.notify_one();
     }
 
-    /// Drops every recorded app, so the next [`Self::roll`] describes an
-    /// empty flock regardless of what is still live in the supervisor's own
-    /// listing.
+    /// Drops every recorded app, so the next [`Self::roll`] describes an empty
+    /// flock regardless of what is still live in the supervisor's listing.
     ///
     /// The one caller is [`crate::boot::RunningDaemon::run`]'s teardown, under
     /// `BootOptions::delete_flock_on_shutdown`: `shep dev`'s isolated session,
-    /// where nothing should survive for a later `shep muster`. A production
-    /// shutdown never calls it.
+    /// where nothing should survive for a later `shep muster`.
     pub(crate) fn clear(&self) {
         self.apps
             .lock()
@@ -253,13 +238,11 @@ fn is_running(status: ProcStatus) -> bool {
 
 /// Error type returned from `write_atomic` and [`read`]
 ///
-/// Wraps `io::Error`/`serde_json::Error` directly rather than stringifying
-/// them, so callers keep the underlying diagnostic through
-/// [`core::error::Error::source`]. That costs the enum
-/// `Clone`/`PartialEq`/`Eq`.
+/// Wraps `io::Error`/`serde_json::Error` directly, so callers keep the
+/// underlying diagnostic through [`core::error::Error::source`]. That costs
+/// the enum `Clone`/`PartialEq`/`Eq`.
 ///
-/// `#[non_exhaustive]`: a future roll-format refusal would need its own
-/// variant, distinct from [`Self::Parse`]'s version refusal.
+/// `#[non_exhaustive]`: a future roll-format refusal would need its own variant.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum SnapshotError {
@@ -380,14 +363,10 @@ pub(crate) struct Restorable {
 /// Splits a loaded [`FlockSnapshot`] into members, the subset to start, and
 /// the entries rejected on re-validation.
 ///
-/// Membership survives everything but `delete`: a sheep stopped when the roll
-/// was written comes back registered and `Stopped`. What to START is a
-/// separate question, answered by `instances_running > 0 && autostart`. A
-/// disabled entry is never started, whatever its count says.
-///
-/// The roll is a file a human can edit, so every entry is run back through
-/// [`normalize()`] like peer input, and a bad one is collected into `rejected`
-/// rather than aborting the muster.
+/// Membership survives everything but `delete`. A sheep stopped when the
+/// roll was written comes back registered and `Stopped`. What to start is
+/// answered by `instances_running > 0 && autostart`. The roll is
+/// human-editable, so every entry is run back through [`normalize()`].
 #[must_use]
 pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
     let mut members = Vec::new();
@@ -418,25 +397,16 @@ pub(crate) fn restorable(snapshot: FlockSnapshot) -> Restorable {
     }
 }
 
-/// Reads the muster roll and starts every app it restores, returning the
-/// names it restored.
+/// Reads the muster roll and starts every app it restores, returning the names it restored.
 ///
-/// The daemon's one restore path: `boot` runs it under `--restore`, the
-/// `Muster` request runs it for an operator. An app the flock already has is
-/// left where it stands, still counted as restored, which makes the verb
-/// idempotent; starting it again is not a no-op, since
-/// [`instance_slots`](crate::assemble::instance_slots) takes the lowest free
-/// slot. A missing roll is not an error; an unparseable one is reported.
+/// The daemon's one restore path. `boot` runs it under `--restore`, the `Muster` request
+/// runs it for an operator. An app the flock already has is left where it stands, still
+/// counted as restored. A missing roll is not an error; an unparseable one is reported.
 ///
-/// `dogs` names every dog this shepherd holds and `boot_first_dogs` the ones
-/// `[daemon] boot_first_dogs` promotes ahead of the flock. Neither is spawned
-/// here: they are the graph's dog nodes, and the split is what positions a
-/// dog in the plan. Which of them [`warn_about_the_graph`] reports on is
-/// decided by the live flock as well, since an unpromoted dog is already up
-/// on every restore but the boot's own.
-///
-/// `notify_socket` is the boot's resolved `$NOTIFY_SOCKET`, which each stage
-/// extends the start deadline through; the `Muster` request passes `None`.
+/// `dogs` names every dog this shepherd holds. `boot_first_dogs` names the ones
+/// `[daemon] boot_first_dogs` promotes ahead of the flock. Neither is spawned here: they
+/// are the graph's dog nodes, and the split positions a dog in the plan. `notify_socket`
+/// is the boot's `$NOTIFY_SOCKET`, which each stage extends the start deadline through.
 ///
 /// # Errors
 /// - [`SnapshotError`]: the roll exists but could not be read or parsed.
@@ -525,11 +495,9 @@ pub(crate) async fn muster(
     );
     warn_about_disabled_dependencies(&to_start, &restorable.disabled);
     // `BatchPolicy::PerApp`, not `AllOrNothing`: a whole-batch refusal over an
-    // app whose script provably is not there is right for an operator typing
-    // `shep start` and wrong at an unattended boot, where a binary missing
-    // after a rebuild would cost the machine its entire flock.
-    // `PerApp` never answers `Err`; warned rather than discarded so a later
-    // change of policy here cannot lose a failure silently.
+    // app whose script provably is not there is right for `shep start` and
+    // wrong at an unattended boot, where a binary missing after a rebuild would
+    // cost the machine its entire flock. `PerApp` never answers `Err`.
     if let Err(err) = crate::boot_order::start_in_stages(
         &plan,
         &to_start,
@@ -568,14 +536,9 @@ fn warn_about_disabled_dependencies(to_start: &[ResolvedApp], disabled: &BTreeSe
 ///
 /// A boot that restores the roll leaves out any dog a saved sheep names, so
 /// this fires on an operator's `Muster` into a flock whose dog took the name
-/// since: [`muster`]'s `known` finds the dog running and filters the roll's
-/// sheep of that name out of both the membership pass and the start. Without
-/// this line that sheep is lost in silence. A handover successor neither
-/// filters nor restores, so it never reaches this.
-///
-/// The name stays in the restored list. It really is in the flock, and
-/// dropping it would report the loss as an absence on a terminal that has no
-/// room to say why; the reply carries no per-app note to put the reason in.
+/// since. [`muster`]'s `known` filters that sheep out of the membership pass
+/// and the start; without this line it is lost in silence. The name stays in
+/// the restored list: it really is in the flock.
 fn warn_about_dogs_holding_sheep_names(members: &[ResolvedApp], running: &[ProcessInfo]) {
     for app in members {
         let name = app.config().name.as_str();
@@ -612,12 +575,8 @@ fn is_up(running: &[ProcessInfo], name: &str) -> bool {
 /// Nothing here refuses. A restore runs on a machine nobody is watching, so
 /// each of these brings the flock up and says what it did instead: a
 /// dependency nothing in the roll answers to, one that opted out of
-/// `autostart`, one that is a dog starting after the flock rather than
-/// before it, and a cycle.
-///
-/// `running` is the flock as it stands, which is what keeps the dog warning
-/// from firing on a dog that is already up: this runs at an operator's
-/// `shep muster` as well as at boot.
+/// `autostart`, one that is a dog starting after the flock, and a cycle.
+/// `running` is the flock as it stands, which keeps a live dog off the list.
 fn warn_about_the_graph(
     plan: &BootPlan,
     to_start: &[ResolvedApp],
@@ -635,11 +594,10 @@ fn warn_about_the_graph(
         .filter(|app| !app.config().autostart)
         .map(|app| app.config().name.as_str())
         .collect();
-    // Every name the roll can put back, whether or not this restore starts
-    // it. The plan is built from `to_start` alone, so a dependency already
-    // running, saved stopped, or opted out is absent from the graph and reads
-    // as unresolved. On `shep muster` against a live flock that is the whole
-    // flock, and the warning below would fire on the commonest path there is.
+    // Every name the roll can put back, whether or not this restore starts it.
+    // The plan is built from `to_start` alone, so a dependency already running,
+    // saved stopped, or opted out is absent from the graph and reads as
+    // unresolved. On `shep muster` against a live flock that is the whole flock.
     let restorable: BTreeSet<&str> = members
         .iter()
         .map(|app| app.config().name.as_str())
@@ -668,21 +626,17 @@ fn warn_about_the_graph(
         }
     }
     // A dog gets an ordinary graph position, but `boot` spawns dogs in two
-    // groups and neither is at a stage boundary: the promoted ones before
-    // this restore, the rest after every stage. So a dependency on an
-    // unpromoted dog is ordered by the plan and by nothing else, and the
-    // sheep starts while the dog is not running.
+    // groups and neither is at a stage boundary: the promoted ones before this
+    // restore, the rest after every stage. A dependency on an unpromoted dog
+    // is ordered by the plan and by nothing else.
     let unpromoted: BTreeSet<&str> = dogs
         .iter()
         .map(String::as_str)
         .filter(|dog| !boot_first_dogs.iter().any(|first| first == dog))
-        // A dog that is already up is not one this restore starts after the
-        // flock, whatever the promotion list says. `muster` is the handler for
-        // an operator's `Request::Muster` as well as the boot's restore, and
-        // there both dog groups have been running for hours, so reading the
-        // list alone would warn about every such edge on every `shep muster`.
-        // The live flock, read the way `warn_about_dogs_holding_sheep_names`
-        // reads it, is what tells the two apart.
+        // A dog that is already up is not one this restore starts after the flock,
+        // whatever the promotion list says. `muster` answers an operator's
+        // `Request::Muster` too, and there both dog groups have been running for
+        // hours, so the live flock is what tells the two apart.
         .filter(|dog| !is_up(running, dog))
         // A dog whose name a started sheep already holds is not a node at
         // all; the sheep is, and it is ordered properly. `plan_for` drops it
@@ -707,15 +661,10 @@ fn warn_about_the_graph(
             "a dependency cycle; those sheep start last, in no particular order"
         );
     }
-    // `BootPlan::cycles` carries ONE representative path per knot, so a sheep
-    // inside the knot but off that path is just as stuck and is never named by
-    // the warning above. The cyclic stage is every one of them.
-    //
-    // Silent when the paths already named everybody, which is the plain
-    // two-node cycle: `plan` puts every knot in one stage, so this line is
-    // flock-wide and would otherwise repeat the line above verbatim.
-    // `BootPlan::knots` carries the membership per knot; this line wants the
-    // flock-wide set, which the cyclic stage already is.
+    // `BootPlan::cycles` carries one representative path per knot, so a sheep
+    // inside the knot but off that path is just as stuck and is never named.
+    // The cyclic stage is every one of them. Silent when the paths already
+    // named everybody, as a plain two-node cycle does.
     if let Some(stuck) = cyclic_stage(plan) {
         let named: BTreeSet<&str> = plan.cycles.iter().flatten().map(String::as_str).collect();
         if stuck.iter().any(|name| !named.contains(name.as_str())) {
@@ -778,8 +727,7 @@ impl SnapshotWriter {
 /// write) into a single [`write_atomic`] call per [`SNAPSHOT_DEBOUNCE_MS`]
 /// window. Log traffic never resets or starts the debounce timer.
 ///
-/// Woken by [`FlockRegistry`]'s own writes as well as by the bus, so a config
-/// change that parks a field reaches the file without a process having moved.
+/// Woken by [`FlockRegistry`]'s own writes as well as by the bus.
 pub(crate) fn spawn_snapshot_writer(
     path: PathBuf,
     supervisor: SupervisorHandle,

@@ -6,10 +6,8 @@
 //! single-flighted like [`crate::cron`]'s.
 //!
 //! A triggering change restarts every instance of the name, stopped ones
-//! included: disarming a sheep's watch, not filtering the restart, is what
-//! keeps it down. A rescan bypasses both glob sets and always restarts.
-//! `watch = true` requires `cwd`; the debounce runs on notify's own OS
-//! thread, so a paused clock in tests never moves it.
+//! included: disarming a sheep's watch is what keeps it down. A rescan
+//! bypasses both glob sets and always restarts. `watch = true` requires `cwd`.
 
 mod filter;
 mod group;
@@ -21,14 +19,13 @@ pub(crate) use filter::own_log_ignores;
 pub use group::spawn_watch_group;
 pub(crate) use group::{DEFAULT_WATCH_DELAY, MIN_WATCH_DELAY};
 
-/// The real-time constants shared by every real-filesystem test suite
-/// in this crate: [`source`]'s smoke tests, this module's own case for
+/// The real-time constants shared by every real-filesystem test suite in
+/// this crate: [`source`]'s smoke tests, this module's own case for
 /// [`spawn_watch_group`], and the extras registry's arm/disarm case.
 ///
-/// One owner rather than a copy per suite, since every one of them
-/// drives the same debouncer at the same delay. `TEST_DELAY` and
-/// `NO_EVENT_WINDOW` are load-bearing together; see the assertion at the
-/// top of `source`'s tests.
+/// One owner rather than a copy per suite, since every one of them drives
+/// the same debouncer at the same delay. `TEST_DELAY` and `NO_EVENT_WINDOW`
+/// are load-bearing together; see the assertion at the top of `source`'s tests.
 #[cfg(test)]
 pub(crate) mod real_time {
     use core::time::Duration;

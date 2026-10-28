@@ -37,11 +37,9 @@ pub fn check_peer(stream: &tokio::net::UnixStream, daemon_uid: u32) -> Result<u3
 ///
 /// Separate from [`check_peer`], which reads the same
 /// [`UCred`](tokio::net::unix::UCred): that answer admits or ends the
-/// connection, and this is a diagnostic that must never do either.
-///
-/// `None` does not mean no process is there, only that the platform has no
-/// answer; callers degrade through
-/// [`Contact::Unknown`](crate::dogs::Contact::Unknown). Unix only.
+/// connection, this one is a diagnostic and must never do either. `None`
+/// means the platform has no answer, not that no process is there; callers
+/// degrade through [`Contact::Unknown`](crate::dogs::Contact::Unknown).
 #[cfg(unix)]
 #[must_use]
 pub fn peer_pid(stream: &tokio::net::UnixStream) -> Option<u32> {
@@ -100,9 +98,8 @@ impl core::error::Error for AuthError {}
 /// Every variant is terminal: the connection layer logs it and closes the
 /// socket. A malformed or hostile peer can only cost itself its connection.
 ///
-/// `#[non_exhaustive]`: a future failure point, a TLS handshake or a
-/// rate-limit refusal, would add its own variant rather than overloading
-/// [`Self::Auth`], which is specifically [`check_peer`]'s verdict.
+/// `#[non_exhaustive]`: a future failure point would add its own variant
+/// rather than overloading [`Self::Auth`], which is [`check_peer`]'s verdict.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum ConnError {

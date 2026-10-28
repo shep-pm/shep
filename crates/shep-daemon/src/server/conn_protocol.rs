@@ -162,20 +162,13 @@ async fn read_loop(
     Ok(())
 }
 
-/// Picks up a connection whose dog shook hands with the shepherd this one
-/// replaced
+/// Picks up a connection whose dog shook hands with this daemon's predecessor
 ///
-/// No `Hello` is read: the dog sent it once, to the predecessor, and its next
-/// frame is a request. What the handshake would have recorded is recorded
-/// here, since the silence watch and the refusal ledger start empty in a
-/// successor and would otherwise read a dog that is talking as one that never
-/// has. Its subscription died with the predecessor's memory, so it is armed
-/// again from `topics`, after a [`BusEvent::Dropped`] notice: events were
-/// published between the exec and now, and a dog that sees no end to its
-/// stream would not know to ask for them.
-///
-/// The notice's count is 1, the least that is true: the number lost is
-/// unknowable from here.
+/// No `Hello` is read: the dog sent it once, to the predecessor. Its next
+/// frame is a request. The handshake's facts are recorded here, since a
+/// successor starts with an empty silence watch and refusal ledger.
+/// `topics` arms the subscription again, behind a [`BusEvent::Dropped`]
+/// notice. Its count is 1, the least that is true of what the exec lost.
 async fn resume(
     out: &mpsc::Sender<Bytes>,
     peer: Option<u32>,
@@ -253,11 +246,10 @@ async fn handshake(
         ctx.peer_contacts.named_a_dog(pid);
     }
     if hello.protocol < MIN_SUPPORTED {
-        // Version skew is a typed error, not silence (spec §6). No upper
-        // bound: a peer newer than this daemon is accepted deliberately,
-        // since anything it asks for that this daemon cannot name is
-        // refused per request by `RpcErrorCode::Unsupported` rather than
-        // at connect time.
+        // Version skew is a typed error, not silence (spec §6). There is no
+        // upper bound: a newer peer is accepted deliberately. A request this
+        // daemon cannot name is refused at dispatch by
+        // `RpcErrorCode::Unsupported`.
         let refusal: HelloReply = Err(RpcError {
             code: RpcErrorCode::ProtocolMismatch,
             message: format!(
@@ -382,9 +374,8 @@ async fn write_loop<W: AsyncWrite + Unpin>(
         let Some(first) = first else { return };
         // `send` is feed plus flush, one flush per frame. What is already
         // queued shares one flush, taken before waiting again. The batch is
-        // capped: `try_recv` never yields, so a producer that refills the
-        // queue as fast as it drains would otherwise hold this task, and the
-        // flush, off the scheduler.
+        // capped because `try_recv` never yields: an endless producer would
+        // hold this task off the scheduler.
         let mut next = Some(first);
         let mut fed = 0;
         while let Some(bytes) = next {
@@ -698,15 +689,12 @@ mod tests {
     }
 
     // --- The incident: a dog that reaches shep and never names itself ---
-    /// fails if a dog that is CONNECTED to this shepherd is reported as a
-    /// binary that cannot talk to it.
+    /// fails if a dog connected to this shepherd is reported as a binary
+    /// that cannot talk to it.
     ///
-    /// End to end rather than against `DogRefusals`: the ladder's verdict was
-    /// already right and only the sentence drawn from it was wrong.
-    /// `harness_at_pid` runs the scripted dog at this test's own pid, so the
-    /// peer credentials the daemon reads name one process. Unix only:
-    /// `peer_pid` answers `None` on Windows and the ladder reaches
-    /// [`Silence::Unattributed`](crate::dogs::Silence::Unattributed) instead.
+    /// End to end rather than against `DogRefusals`. The verdict was right;
+    /// the sentence drawn from it was not. `harness_at_pid` runs the dog at
+    /// this test's own pid, so the peer credentials name one process.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_dog_that_connects_without_naming_itself_is_not_called_a_stale_binary() {

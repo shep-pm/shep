@@ -28,9 +28,8 @@ pub(super) const EVENT_WAIT: Duration = Duration::from_secs(30);
 /// scheduling turn. Never advances the paused clock itself.
 ///
 /// A plain round count bounds it because everything this waits on is an
-/// in-process mpsc send or actor hop, pushed straight onto the run queue.
-/// A wait on an OS-delivered event needs a real sleep instead, to force the
-/// runtime to park and poll its reactor.
+/// in-process mpsc send or actor hop, pushed straight onto the run queue. A
+/// wait on an OS-delivered event needs a real sleep instead.
 const SETTLE_YIELDS: usize = 16;
 
 pub(super) async fn settle() {
@@ -223,14 +222,13 @@ pub(super) fn batch_strategy() -> impl proptest::strategy::Strategy<Value = Batc
     (proptest::bool::ANY, gap_strategy()).prop_map(|(triggers, gap)| Batch { triggers, gap })
 }
 
-/// When a correct group loop finishes each restart, given the instants
-/// its batches arrive at and how long one restart takes.
+/// When a correct group loop finishes each restart, given the instants its
+/// batches arrive at and how long one restart takes.
 ///
 /// A strictly sequential model: it holds no notion of two restarts
-/// overlapping, because the loop it models has none. Every arrival
-/// already queued when the loop next looks is folded into one check,
-/// and a restart occupies the model for exactly `restart` from the
-/// moment that check decided to run it.
+/// overlapping, because the loop it models has none. Every arrival already
+/// queued when the loop next looks is folded into one check, and a restart
+/// occupies the model for exactly `restart` from that moment.
 pub(super) fn expected_restart_instants(batches: &[Batch], restart: Duration) -> Vec<Duration> {
     let mut arrivals = Vec::with_capacity(batches.len());
     let mut at = Duration::ZERO;
