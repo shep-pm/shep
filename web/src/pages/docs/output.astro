@@ -137,6 +137,23 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
       override has been true since the last load.
     </p>
 
+    <h3 id="what-describe-prints-under-its-table">What describe prints under its table</h3>
+    <p>
+      A row is one line, so anything that needs a sentence goes under the
+      table instead: the lamb trees, then <code>Depends on for</code>,{" "}
+      <code>Pending for</code>, <code>Overridden for</code> and{" "}
+      <code>Secrets for</code>, each once per name.
+    </p>
+    <p>
+      <code>Revision for web: a1b2c3d (main)</code> names the commit the
+      sheep's <code>cwd</code> is checked out on, or <code>(detached)</code>{" "}
+      when its head is on no branch. It needs a shepherd built with the{" "}
+      <code>vcs</code> feature, and prints nothing without it or for a sheep
+      whose directory is no checkout the shepherd can read. It is the revision
+      now, not the one the sheep started from. <code>--format json</code>{" "}
+      carries the whole hash; see <a href="/docs/json-output">JSON output</a>.
+    </p>
+
     <h2 id="grouped-instances">Multi-instance apps group</h2>
     <p>
       An app with <code>instances</code> above 1 gets a header row above its

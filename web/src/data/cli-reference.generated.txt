@@ -1467,6 +1467,9 @@ this list and is still killed, and a setsid() one stays in it and survives.
 
 Lamb names are executable names, never command lines.
 
+With the `vcs` feature, the revision the sheep's `cwd` is checked out on now is shown under the
+table, not necessarily the one it started from.
+
 Usage: shep describe [OPTIONS] <SELECTORS>...
 
 Arguments:

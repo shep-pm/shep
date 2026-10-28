@@ -46,7 +46,7 @@
 13 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog back on. A sheep named here has its disabled
 12 crates/shep-cli/src/cli/verbs.rs /// Stop a sheep and refuse to start it again until `shep enable`, or turn
 18 crates/shep-cli/src/cli/verbs.rs /// Vet a binary shep has never seen and register it as a dog: writes
-8 crates/shep-cli/src/cli/verbs.rs /// Describe one sheep in detail.
+11 crates/shep-cli/src/cli/verbs.rs /// Describe one sheep in detail.
 11 crates/shep-cli/src/cli/verbs.rs /// Send a named action to matched sheep and report what each app
 14 crates/shep-cli/src/cli/verbs.rs /// Send a unix signal to matched sheep.
 13 crates/shep-cli/src/cli/verbs.rs /// Write one line to matched sheep's stdin.

@@ -1247,6 +1247,31 @@ reading that carries samples as well as a flock, and compares every series'
 own labels beside the names, kinds, descriptions and point counts it already
 compared.
 
+**vcs metadata** (the `vcs` cargo feature, off by default) **shipped**,
+2026-10-28, over https://github.com/shep-pm/shep/issues/345: `shep_daemon::vcs`
+reads the revision a directory is checked out on out of git's own files —
+`HEAD`, a loose ref, `packed-refs`, a worktree's `commondir`, a `gitdir:`
+pointer — with no `git` binary, no dependency, and no environment variable,
+every read capped at 4 KiB, and anything outside that grammar reported as
+absent rather than guessed. `Describe` fills each row's `vcs` from the sheep's
+own `cwd`; `ListFlock` and every lifecycle reply never do. The feature gates
+the reader and not the wire, so a client of either build decodes either reply,
+and it stays off by default because the reader opens files in a directory the
+operator controls. `shep describe` prints it as one line under its table,
+`Revision for web: a1b2c3d (main)`, or `(detached)` for a head with no branch;
+`--format json` carries the whole hash. Lookout and whistle do not show it.
+The reasoning is in `docs/decisions.md` under "A sheep's revision".
+
+**What the cut got right, and what it is still blind to.** Reading four files
+instead of running `git` means a directory another user owns cannot make the
+shepherd execute that directory's config, hooks or `safe.directory` rules, and
+a shepherd needs no `git` on its `PATH`. The narrow grammar is the same
+decision seen from the other side: a reftable repository, a symbolic loose ref
+and a `packed-refs` over the cap all read as absent, so a repository with many
+refs says nothing about a branch it packed. And the revision is what the `cwd`
+is checked out on when `describe` is asked, not what the sheep started from —
+a checkout moved after the start moves the line with it.
+
 ### Rendering each dog's README as its own docs-site page — rejected
 
 The maintainer proposed this, 2026-08-26, then agreed to drop it once the reasoning
