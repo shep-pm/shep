@@ -82,7 +82,7 @@ syn-floor = { package = "syn", version = "1.0.1", default-features = false }
 # return.
 proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
-syn = { version = "2.0", default-features = false }
+syn = { version = "3.0", default-features = false }
 # Floor 0.4.1: `json5::Deserializer` is what `serde_ignored` wraps to report
 # unknown Flockfile keys. 0.4.0 exposes `from_str` but not the `Deserializer`
 # type itself, so -Z minimal-versions fails to compile shep-core without this.
@@ -229,7 +229,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 # Mozilla's compiled-in root store. rustls itself is reached through
 # tokio-rustls's `pub use rustls;`; not named directly in
 # crates/shep-cli/Cargo.toml since only the re-exported types are needed.
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 # The lookout TUI (spec §9): cell diffing, resize handling and cursor
 # arithmetic are the whole cost of a terminal UI, already solved by an
 # established crate.
