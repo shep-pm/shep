@@ -121,8 +121,8 @@ pub enum Scene {
     SettingsConfirm,
     /// The settings screen with the `socket` editor open mid-path.
     SettingsTyping,
-    /// The settings screen's dogs table, showing the drift it exists to
-    /// make visible.
+    /// The settings screen with every dog on its own folded row, showing
+    /// the drift those rows exist to make visible.
     SettingsDogs,
     /// The settings screen on a narrow terminal, where both of its tables
     /// have dropped a column.
@@ -417,13 +417,13 @@ impl Scene {
                 "The socket editor open mid-path. The status bar names the field being typed, not the dashboard's own filter box, which is what it showed here before the fix this frame now pins."
             }
             Self::SettingsDogs => {
-                "The dogs table showing the drift it exists to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent."
+                "Every dog on its own folded row, showing the drift those rows exist to reveal: otel running while disabled in the file, ledger enabled and absent, and bark enabled, running, and silent."
             }
             Self::SettingsNarrow => {
-                "The same screen at 45 columns. Both of its tables have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dogs table has lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
+                "The same screen at 45 columns. Both kinds of row have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dog header rows have lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
             }
             Self::SettingsShort => {
-                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the dogs caption and column header cost the same height a row does."
+                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does."
             }
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."

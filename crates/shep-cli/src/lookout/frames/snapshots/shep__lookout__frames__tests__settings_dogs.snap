@@ -23,11 +23,11 @@ shep lookout   /home/ada/.shep                                                  
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  otel                                                                no       /usr/local/bin/shep-otel  online         
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    
-  bark                                                                yes      built-in                  silent         
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
+  ▸ bark                                                            yes      built-in                  silent           
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

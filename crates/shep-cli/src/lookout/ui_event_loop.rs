@@ -503,6 +503,62 @@ where
                     }
                 }));
             }
+            // One of a dog's other `[daemon] keys, off the settings screen.
+            // `spawn_blocking` for `Effect::WriteSetting`'s reason: both halves
+            // take `shep.toml`'s lock, and a grant reads the dog's manifest,
+            // which can cost up to `VERSION_BUDGET` of somebody else's binary
+            // starting up. The refusal is the CLI's own sentence, so a grant
+            // lookout refuses reads the same as the one `shep dogs grant`
+            // refuses. `_authority` is dropped as in `Effect::WriteSetting`.
+            Effect::WriteDogTune {
+                tune,
+                ticket,
+                authority: _authority,
+            } => {
+                let paths = paths.clone();
+                let for_msg = tune.clone();
+                let handle = tokio::task::spawn_blocking(move || match &tune {
+                    super::app::DogTune::BootFirst { name, first } => {
+                        crate::commands::dogs::boot_first_in_config(
+                            &paths.daemon_config,
+                            name,
+                            *first,
+                        )
+                        .map(|()| super::app::DogTuneLanded::BootOrder)
+                        .map_err(|err| err.to_string())
+                    }
+                    super::app::DogTune::Grant {
+                        name,
+                        permission,
+                        grant,
+                    } => {
+                        let change = if *grant {
+                            crate::commands::dogs::Change::Grant
+                        } else {
+                            crate::commands::dogs::Change::Revoke
+                        };
+                        crate::commands::dogs::record_change(&paths, change, name, permission)
+                            .map(|applied| super::app::DogTuneLanded::Grants {
+                                source: applied.source,
+                                enabled: applied.enabled,
+                            })
+                            .map_err(|refusal| match refusal {
+                                crate::commands::dogs::GrantRefusal::Usage { message, .. } => {
+                                    message
+                                }
+                                crate::commands::dogs::GrantRefusal::Config(err) => err.to_string(),
+                            })
+                    }
+                });
+                inflight.push(Box::pin(async move {
+                    let result = join_blocking(handle).await;
+                    Msg::DogTuneWritten {
+                        tune: for_msg,
+                        ticket,
+                        result,
+                    }
+                }));
+            }
             // `super::secrets::set`/`super::secrets::unset` take `secrets.json.lock`,
             // which acquires with no deadline, for `Effect::WriteSetting`'s
             // reason. `_authority` is dropped as it is there.

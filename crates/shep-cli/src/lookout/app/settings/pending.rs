@@ -1,0 +1,132 @@
+//! The pending edit the settings screen holds: the candidate `space` arms, the
+//! prompt a confirm shows, the sentence a write is waiting on, and what a reply
+//! clears.
+
+use super::*;
+
+impl Settings {
+    /// A freshly opened screen, cursor on the first row, every section open.
+    pub(in crate::lookout::app) fn new(snapshot: SettingsSnapshot) -> Self {
+        Self {
+            snapshot,
+            folded: BTreeSet::new(),
+            view: Viewport::new(),
+            pending: None,
+            dog_trees: BTreeMap::new(),
+        }
+    }
+
+    /// The armed candidate and its prompt, or `None`.
+    #[must_use]
+    pub fn pending(&self) -> Option<SettingsPrompt<'_>> {
+        match &self.pending {
+            Some(
+                Pending::Armed { text, .. }
+                | Pending::DogArmed { text, .. }
+                | Pending::DogTuneArmed { text, .. }
+                | Pending::DogSectionArmed { text, .. },
+            ) => Some(SettingsPrompt { text, sent: false }),
+            Some(Pending::Sent { text, .. }) => Some(SettingsPrompt { text, sent: true }),
+            Some(Pending::Typing { .. }) | None => None,
+        }
+    }
+
+    /// Whether `ticket` names the write this screen is still waiting on,
+    /// clearing the prompt when it does.
+    ///
+    /// A reply whose ticket is not the one [`Pending::Sent`] holds belongs
+    /// to a write the screen has moved on from: a second edit armed over
+    /// the first, or a screen closed and reopened while the first was still
+    /// in flight. Both leave a write in flight with nothing on screen
+    /// waiting for it, and neither lets its answer touch the edit that is.
+    pub(in crate::lookout::app) fn resolve(&mut self, ticket: u64) -> bool {
+        let mine = matches!(
+            self.pending,
+            Some(Pending::Sent { ticket: waiting, .. }) if waiting == ticket
+        );
+        if mine {
+            self.pending = None;
+        }
+        mine
+    }
+
+    /// Whether a candidate is waiting on `Enter`: the one state a stray key
+    /// (movement, `Escape`, `Settings`, `Refresh`) eats rather than also doing
+    /// its ordinary job.
+    pub(in crate::lookout::app) fn is_armed(&self) -> bool {
+        matches!(
+            self.pending,
+            Some(
+                Pending::Armed { .. }
+                    | Pending::DogArmed { .. }
+                    | Pending::DogTuneArmed { .. }
+                    | Pending::DogSectionArmed { .. }
+            )
+        )
+    }
+
+    /// The label and buffer of an in-flight free-text edit, or `None`.
+    #[must_use]
+    pub fn typing(&self) -> Option<(String, &TextBox)> {
+        match &self.pending {
+            Some(Pending::Typing { target, buffer }) => Some((target.label(), buffer)),
+            _ => None,
+        }
+    }
+
+    /// The next candidate for `field`, or `None` for a key that is not a
+    /// cycle: only a boolean and a closed set of names are.
+    ///
+    /// Advances from a candidate already armed for this field, so a second
+    /// `space` walks one step further along the cycle. From nothing armed the
+    /// base is what the file says, which for `[style] level` is the file's
+    /// value rather than the level in force: cycling the resolved level could
+    /// propose a write that changes nothing.
+    pub(in crate::lookout::app) fn next_candidate(&self, field: &Field) -> Option<String> {
+        let armed_here = match &self.pending {
+            Some(Pending::Armed {
+                edit: SettingEdit::Set { value, .. },
+                ..
+            }) if self.armed_for(field) => Some(value.clone()),
+            _ => None,
+        };
+        let base = armed_here
+            .or_else(|| {
+                self.snapshot.file_value(&field.key).map(|value| {
+                    value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned)
+                })
+            })
+            .or_else(|| {
+                field.default_value.as_ref().map(|value| {
+                    value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned)
+                })
+            })
+            // The schema carries no default for `[style] level`; `full` is
+            // what `style::resolve` falls back to.
+            .or_else(|| {
+                (field.key == STYLE_LEVEL_KEY).then(|| crate::style::StyleLevel::Full.to_string())
+            });
+        match &field.kind {
+            FieldKind::Bool => Some((base.as_deref() != Some("true")).to_string()),
+            FieldKind::Choice(names) => {
+                let at = base
+                    .and_then(|base| names.iter().position(|name| *name == base))
+                    .map_or(0, |index| index + 1);
+                names.get(at % names.len().max(1)).cloned()
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the armed candidate is an edit of `field`.
+    fn armed_for(&self, field: &Field) -> bool {
+        matches!(
+            &self.pending,
+            Some(Pending::Armed { edit, .. }) if edit.key() == field.key
+        )
+    }
+}

@@ -3,16 +3,16 @@ source: crates/shep-cli/src/lookout/frames/mod.rs
 expression: render_text(&buffer)
 ---
 shep lookout   /home/ada/.shep                                                                            2 in the flock
-  ... 13 above                                                                                                          
+  ... 12 above                                                                                                          
+    level             full                            shep.toml    the next command reads it                            
   ▾ interpreters      1 entry                         shep.toml    the next command reads it                            
     py                python3                         shep.toml    the next command reads it                            
     + add an entry                                                                                                      
   hosts               none                            the default  the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  otel                                                                no       /usr/local/bin/shep-otel  online         
-  ledger                                                              yes      /opt/ledger/bin/dog       not running    
-> bark                                                                yes      built-in                  silent         
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
+> ▸ bark                                                            yes      built-in                  silent           
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled

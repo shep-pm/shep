@@ -18,10 +18,10 @@ use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
-use super::enable::fail_enable_unknown_dog;
+use super::enable::unknown_dog_message;
 use super::grants::warn_if_unenforced;
 use super::upgrade::upgrade_one;
-use super::vet::{ManifestRead, VERSION_BUDGET, fail_adopt, read_manifest};
+use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest};
 use super::{connect_or_absent, dog_source, emit_dog_action, fail_config};
 
 /// Which of the two verbs ran.
@@ -44,65 +44,100 @@ impl Change {
 }
 
 /// What the change left in `shep.toml`.
+///
+/// `pub(crate)`: [`record_change`] hands it to lookout too, which reports the
+/// same record the verb wrote.
 #[derive(Debug)]
-struct Applied {
+pub(crate) struct Applied {
     /// The dog as the next enable would send it, carrying the grants now
     /// recorded.
-    source: DogSource,
+    pub source: DogSource,
     /// Whether the dog is in `enabled_dogs`.
-    enabled: bool,
+    pub enabled: bool,
     /// What the dog's build asks for that is still not granted.
-    waiting: Vec<String>,
+    pub waiting: Vec<String>,
 }
 
-/// [`change`]'s own failure, so its `try_edit` closure can refuse from
-/// inside the lock.
+/// Why [`record_change`] wrote nothing, and what to tell the operator.
 ///
 /// `Debug` is derived: [`Self::Config`] forwards to [`ShepTomlError`]'s own
-/// redacted `Debug`.
+/// redacted `Debug`, and [`Self::Usage`]'s message names a dog and a
+/// permission, never a value.
 #[derive(Debug)]
-enum Refusal {
-    /// The read-modify-write underneath the closure failed.
+pub(crate) enum GrantRefusal {
+    /// A name or permission the operator has to be told about: not a
+    /// permission shep can read, a name that answers to no dog, a permission
+    /// the dog never declared, or a dog with no recorded grants. Carries the
+    /// exit code the verb answers with.
+    Usage {
+        /// Which kind of refusal, so a caller cannot turn an unknown dog into
+        /// a usage error.
+        code: ExitCode,
+        /// The sentence, already worded for the operator.
+        message: String,
+    },
+    /// The read-modify-write underneath failed.
     Config(ShepTomlError),
-    /// The dog has no `dog_grants` entry.
-    Unrecorded,
 }
 
-impl From<ShepTomlError> for Refusal {
+impl From<ShepTomlError> for GrantRefusal {
     fn from(err: ShepTomlError) -> Self {
         Self::Config(err)
     }
 }
 
-/// `shep dogs grant|revoke <name> <permission>`: records the change in
-/// `shep.toml`.
-pub(crate) async fn change(
-    streams: &mut Streams<'_>,
+/// One permission change's file half, with no streams and no shepherd: the
+/// check, the record, and what the record now says.
+///
+/// `shep dogs grant`, `shep dogs revoke` and lookout's settings screen all
+/// reach the record through here, so a surface cannot write a grant another
+/// one would refuse. What the caller does with `Applied` is its own: the verb
+/// also tells a running shepherd, and lookout reports the change on screen.
+///
+/// # Errors
+/// [`GrantRefusal::Usage`] for a permission shep cannot read, a name that
+/// answers to no dog, a permission the dog's manifest never declared, or a
+/// dog with no recorded grants. [`GrantRefusal::Config`] when the
+/// read-modify-write failed.
+// Windows only, for the same reason as `commands::shep_toml`'s module-wide
+// allow: `GrantRefusal::Config` carries `ShepTomlError`, and `Err` crosses
+// clippy's 128-byte threshold there.
+#[cfg_attr(windows, allow(clippy::result_large_err))]
+pub(crate) fn record_change(
     paths: &ShepPaths,
     change: Change,
     name: &str,
     permission: &str,
-) -> ExitCode {
+) -> Result<Applied, GrantRefusal> {
+    let usage = |message: String| GrantRefusal::Usage {
+        code: ExitCode::Usage,
+        message,
+    };
     let permission = match Permission::from_str(permission) {
         Ok(permission) => permission.to_string(),
-        Err(err) => return streams.fail(ExitCode::Usage, &err.to_string()),
+        Err(err) => return Err(usage(err.to_string())),
     };
-    let cfg = match ShepToml::read_only(&paths.daemon_config) {
-        Ok(cfg) => cfg,
-        Err(err) => return fail_config(streams, &err),
-    };
+    let cfg = ShepToml::read_only(&paths.daemon_config)?;
     let binary = cfg.adopted_dog_path(name);
     if binary.is_none() && !crate::dog::BUILT_IN_DOGS.contains(&name) {
-        return fail_enable_unknown_dog(streams, name, &cfg.adopted_dog_names());
+        return Err(GrantRefusal::Usage {
+            code: ExitCode::InvalidConfig,
+            message: unknown_dog_message(name, &cfg.adopted_dog_names()),
+        });
     }
     if change == Change::Grant {
         let manifest = match &binary {
             Some(binary) => match read_manifest(binary, &paths.home, name, VERSION_BUDGET) {
-                Ok(ManifestRead::Unreadable) => {
-                    return streams.fail(ExitCode::Usage, &unreadable(name));
-                }
+                Ok(ManifestRead::Unreadable) => return Err(usage(unreadable(name))),
                 Ok(read) => read.manifest().cloned(),
-                Err(refusal) => return fail_adopt(streams, binary, &refusal),
+                // `fail_adopt`'s own sentence, since this is the same refusal
+                // seen from a caller with no streams to write it through.
+                Err(refusal) => {
+                    return Err(GrantRefusal::Usage {
+                        code: ExitCode::InvalidConfig,
+                        message: format!("{}: {refusal}", binary.display()),
+                    });
+                }
             },
             None => crate::dog::builtin_manifest(name),
         };
@@ -114,19 +149,17 @@ pub(crate) async fn change(
                 .collect()
         });
         if !declared.contains(&permission) {
-            return streams.fail(ExitCode::Usage, &not_declared(name, &permission, &declared));
+            return Err(usage(not_declared(name, &permission, &declared)));
         }
     }
     // Before the edit, so a permission the dog's build has just come to ask
     // for is already waiting when the operator grants it. Only for a dog that
     // has a record: writing one here would mark a whole declared list
     // reviewed on the strength of one permission named.
-    if matches!(cfg.grant_record(name), Ok(Some(_)))
-        && let Err(err) = upgrade_one(paths, name)
-    {
-        return fail_config(streams, &err);
+    if matches!(cfg.grant_record(name), Ok(Some(_))) {
+        upgrade_one(paths, name)?;
     }
-    let applied = ShepToml::try_edit(&paths.daemon_config, |cfg| {
+    ShepToml::try_edit(&paths.daemon_config, |cfg| {
         let Some(held) = cfg.grant_record(name)? else {
             return Err(Refusal::Unrecorded);
         };
@@ -177,11 +210,45 @@ pub(crate) async fn change(
             enabled: cfg.enabled_dog_names().iter().any(|dog| dog == name),
             waiting: now.waiting.names().map(str::to_owned).collect(),
         })
-    });
-    let applied = match applied {
+    })
+    .map_err(|refusal: Refusal| match refusal {
+        Refusal::Config(err) => GrantRefusal::Config(err),
+        Refusal::Unrecorded => usage(unrecorded(name)),
+    })
+}
+
+/// [`change`]'s own failure, so its `try_edit` closure can refuse from
+/// inside the lock.
+///
+/// `Debug` is derived: [`Self::Config`] forwards to [`ShepTomlError`]'s own
+/// redacted `Debug`.
+#[derive(Debug)]
+enum Refusal {
+    /// The read-modify-write underneath the closure failed.
+    Config(ShepTomlError),
+    /// The dog has no `dog_grants` entry.
+    Unrecorded,
+}
+
+impl From<ShepTomlError> for Refusal {
+    fn from(err: ShepTomlError) -> Self {
+        Self::Config(err)
+    }
+}
+
+/// `shep dogs grant|revoke <name> <permission>`: records the change in
+/// `shep.toml`.
+pub(crate) async fn change(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    change: Change,
+    name: &str,
+    permission: &str,
+) -> ExitCode {
+    let applied = match record_change(paths, change, name, permission) {
         Ok(applied) => applied,
-        Err(Refusal::Config(err)) => return fail_config(streams, &err),
-        Err(Refusal::Unrecorded) => return streams.fail(ExitCode::Usage, &unrecorded(name)),
+        Err(GrantRefusal::Usage { code, message }) => return streams.fail(code, &message),
+        Err(GrantRefusal::Config(err)) => return fail_config(streams, &err),
     };
     // An enable would start a dog the operator switched off; a disabled
     // dog picks the grants up from `shep.toml` when it is enabled.

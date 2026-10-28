@@ -96,6 +96,11 @@ impl App {
                 ticket,
                 result,
             } => self.on_dog_written(edit, ticket, result),
+            Msg::DogTuneWritten {
+                tune,
+                ticket,
+                result,
+            } => self.on_dog_tune_written(tune, ticket, result),
             Msg::Secrets {
                 environment,
                 result,

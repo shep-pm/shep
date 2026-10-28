@@ -1,13 +1,13 @@
 //! A dog's config pane, and the TOML section behind it.
 
-use shep_core::protocol::Response;
+use shep_core::protocol::{DogSource, ProcessInfo, Response};
+use shep_core::status::ProcStatus;
 
 use crate::lookout::app::{App, Control, KeyPress, Msg, Sent};
 use crate::lookout::pane::{EntryBody, PaneRow};
 
 use super::flock::{app_with, flock_of};
 use super::palette::plain;
-use super::settings::settings_snapshot;
 use super::sheep_pane::{resolved, select_field};
 
 /// The bark dog's `[bark]` section as `Request::DogConfig` would answer it:
@@ -21,23 +21,22 @@ pub fn dog_section() -> String {
         .to_string()
 }
 
-/// A dashboard with the bark dog's config pane open, opened the way the
-/// event loop opens it: `e` on the settings screen's own dog row, then the
-/// schema its binary answered with, then the shepherd's section. The
-/// control gate is open, so the pane can write.
+/// A dashboard with the bark dog's config pane open, opened the way the event
+/// loop opens it from the flock: `e` on the dog's own row, then the schema its
+/// binary answered with, then the shepherd's section. The control gate is open,
+/// so the pane can write.
 ///
-/// bark is [`settings_snapshot`]'s first dog, and the six scalar rows
-/// always sort ahead of the dogs, so row 6 is its row.
+/// Opened from the flock rather than from the settings screen because the
+/// settings screen's own `e` now folds the dog's tree into its own row instead
+/// of replacing the screen with a pane. Same pane, same two reads, one door
+/// later.
 pub fn app_in_dog_pane() -> App {
-    let mut app = app_with(flock_of(3, 0), plain());
+    let bark = ProcessInfo::builder(91, "bark", ProcStatus::Online)
+        .pid(Some(91_000))
+        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .build();
+    let mut app = app_with(vec![bark], plain());
     app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Settings));
-    app.update(Msg::Settings {
-        result: Ok(settings_snapshot()),
-    });
-    for _ in 0..6 {
-        app.update(Msg::Key(KeyPress::SelectDown));
-    }
     app.update(Msg::Key(KeyPress::Edit));
     app.update(Msg::DogPane {
         name: "bark".to_string(),

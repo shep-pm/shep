@@ -12,6 +12,16 @@ impl App {
         {
             return Effect::None;
         }
+        // Ahead of the gate: these two rows write nothing whatever the gate
+        // says, and the reason is about the key rather than about this
+        // lookout's permissions. A gate refusal here would send an operator to
+        // `--allow-control` for a key no lookout may change.
+        if let Some(SettingsRow::DogKey { key, .. }) = self.settings().and_then(Settings::cursor)
+            && let Some(reason) = key.read_only_reason()
+        {
+            self.notice = Some(Notice::grave(reason.to_string()));
+            return Effect::None;
+        }
         if self.authorize_write().is_none() {
             return Effect::None;
         }
@@ -21,9 +31,14 @@ impl App {
         match cursor {
             SettingsRow::Field(index) => self.cycle_key(index),
             SettingsRow::Dog(index) => self.cycle_dog(index),
-            SettingsRow::Table(_) | SettingsRow::Entry { .. } | SettingsRow::AddEntry(_) => {
-                Effect::None
-            }
+            SettingsRow::DogKey { dog, key } => self.cycle_dog_key(dog, key),
+            SettingsRow::DogGrant { dog, index } => self.cycle_dog_grant(dog, index),
+            // A dog's own field is typed, not cycled: `Enter` opens its editor,
+            // which is the same door a typed key of `shep.toml` opens.
+            SettingsRow::DogField { .. }
+            | SettingsRow::Table(_)
+            | SettingsRow::Entry { .. }
+            | SettingsRow::AddEntry(_) => Effect::None,
         }
     }
 

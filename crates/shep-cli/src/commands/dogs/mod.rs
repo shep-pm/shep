@@ -18,6 +18,8 @@
 //! the connect-or-absent dance, the config-error mapping, and the two status
 //! strings a verb's own report reaches for when no shepherd answered.
 
+use std::path::Path;
+
 use shep_client::{Client, ConnectError};
 use shep_core::paths::ShepPaths;
 use shep_core::permissions::Grants;
@@ -73,7 +75,7 @@ pub use adopt::adopt;
 pub use barks::barks;
 pub use disable::disable;
 pub use enable::enable;
-pub(crate) use grant::{Change, change};
+pub(crate) use grant::{Change, GrantRefusal, change, record_change};
 pub use remove::rehome;
 pub(crate) use remove::{Removal, remove_dog};
 pub(crate) use upgrade::{upgrade_grants, upgrade_notice};
@@ -153,6 +155,26 @@ pub(crate) fn fail_config(streams: &mut Streams<'_>, err: &ShepTomlError) -> Exi
         | ShepTomlError::BadGrants { .. } => ExitCode::InvalidConfig,
     };
     streams.fail(code, &err.to_string())
+}
+
+/// `[daemon] boot_first_dogs`: put `name` in, or take it out.
+///
+/// `pub(crate)`: `shep lookout`'s settings screen writes this key through
+/// here. There is no verb for it, because `boot_first_dogs` is a `shep.toml`
+/// key the boot reads rather than a thing you ask a running shepherd to do,
+/// and an operator editing the file by hand and one editing it on screen should
+/// not end up with two different shapes of the same file. Same
+/// read-modify-write under the config lock every other dog edit uses.
+///
+/// # Errors
+/// [`ShepTomlError`] from the lock, the read, `daemon` or `boot_first_dogs`
+/// holding something other than an array of names, or the write.
+pub(crate) fn boot_first_in_config(
+    path: &Path,
+    name: &str,
+    first: bool,
+) -> Result<(), ShepTomlError> {
+    ShepToml::try_edit(path, |cfg| cfg.set_boot_first_dog(name, first))
 }
 
 /// Where `name`'s binary comes from, according to `cfg`.

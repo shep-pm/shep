@@ -6,12 +6,13 @@
 
 use ratatui::text::{Line, Span};
 
-use super::super::super::app::{Settings, SettingsRow, apply_needs};
+use super::super::super::app::{DogKey, Settings, SettingsRow, apply_needs};
 use super::super::super::field::{Field, shep_toml_shape};
+use super::super::super::pane::{ChoiceRow, PaneRow, UNSET};
 use super::super::super::theme::Palette;
 use super::super::flock::{fit, mark};
 use super::super::pane::open_glyph;
-use crate::commands::settings::{STYLE_LEVEL_KEY, ScalarView};
+use crate::commands::settings::{DogGrants, STYLE_LEVEL_KEY, ScalarView};
 use crate::style::StyleSource;
 
 /// NAME column width: fits `boot_first_dogs`, the longest key, two columns
@@ -51,6 +52,11 @@ enum RowColumn {
     /// three leave.
     Cost,
 }
+
+/// The columns of a row that has nothing but a name: its name, and nothing
+/// after it. Padding the empty cells out to their column widths would push a
+/// name fitted to the body past the terminal.
+const NAME_ONLY: &[RowColumn] = &[RowColumn::Name];
 
 const ROW_ALL: &[RowColumn] = &[
     RowColumn::Name,
@@ -208,7 +214,118 @@ fn cells(settings: &Settings, row: SettingsRow) -> Option<Cells> {
             source: String::new(),
             cost: String::new(),
         }),
+        // The dog's own header row is not this function's: it answers four
+        // questions in four columns and lives in [`super::dogs`].
         SettingsRow::Dog(_) => None,
+        SettingsRow::DogKey { dog, key } => {
+            let dog = settings.dog(dog)?;
+            Some(Cells {
+                name: name_cell(1, None, key.label()),
+                value: dog_key_value(key, dog),
+                source: String::new(),
+                cost: key_cost(key).to_owned(),
+            })
+        }
+        SettingsRow::DogGrant { dog, index } => {
+            let dog = settings.dog(dog)?;
+            let permission = dog.offered.get(index)?;
+            // The checklist #801 put on a dog's pane, one indent deeper here
+            // because it hangs under this screen's `grants` row rather than
+            // under a field of a dog's own schema.
+            let row = ChoiceRow {
+                depth: 2,
+                label: permission.clone(),
+                held: dog.grants.grants(permission),
+                known: true,
+            };
+            Some(Cells {
+                name: name_cell(row.depth, None, &row.text()),
+                value: String::new(),
+                source: String::new(),
+                cost: String::new(),
+            })
+        }
+        SettingsRow::DogField { dog, row } => {
+            let pane = settings.dog_tree(dog)?.pane()?;
+            let pane_row = pane.rows().get(row)?.to_owned();
+            let tree = pane.tree_row(pane_row)?;
+            let (value, cost) = match pane_row {
+                PaneRow::Field(index) => {
+                    let field = pane.fields().fields().get(index)?;
+                    (
+                        masked(field.secret, pane.display_value(&field.key)),
+                        if pane.lock(&field.key).is_some() {
+                            "read-only".to_owned()
+                        } else {
+                            DOG_SECTION_COST.to_owned()
+                        },
+                    )
+                }
+                _ => (String::new(), String::new()),
+            };
+            Some(Cells {
+                name: name_cell(tree.depth + 1, tree.open, &tree.label),
+                value,
+                source: String::new(),
+                cost,
+            })
+        }
+    }
+}
+
+/// What a dog's own field costs to change, in one cell. The dog's section is
+/// `dogs.toml`, the shepherd writes it, and the dog is told: none of that is a
+/// reload, which is what the tree's own cost column is usually deciding.
+const DOG_SECTION_COST: &str = "dogs.toml, it is told";
+
+/// A secret's cell: whether there is one, never the value. The same rule
+/// `view::pane::layout::mask_secret` applies to a dog pane's row.
+fn masked(secret: bool, raw: String) -> String {
+    if secret && raw != UNSET {
+        "<set>".to_owned()
+    } else {
+        raw
+    }
+}
+
+/// A boolean as one cell.
+fn yes_no(flag: bool) -> String {
+    if flag { "yes" } else { "no" }.to_owned()
+}
+
+/// What the VALUE cell of one of a dog's `[daemon] key` rows says.
+fn dog_key_value(key: DogKey, dog: &crate::commands::settings::DogView) -> String {
+    match key {
+        DogKey::BootFirst => yes_no(dog.boot_first),
+        DogKey::Channel => yes_no(dog.channel),
+        DogKey::Source => dog
+            .adopted_path
+            .as_ref()
+            .map_or_else(|| "built-in".to_owned(), |path| path.display().to_string()),
+        DogKey::Grants => match &dog.grants {
+            // The same fact `shep dogs grant` refuses on, in the row that
+            // would otherwise look like an empty checklist.
+            DogGrants::Undeclared => "nothing recorded".to_owned(),
+            DogGrants::Unreadable(why) => why.clone(),
+            DogGrants::Recorded(_) if dog.offered.is_empty() => "nothing declared".to_owned(),
+            DogGrants::Recorded(_) => format!(
+                "{} of {} held",
+                dog.offered.iter().filter(|p| dog.grants.grants(p)).count(),
+                dog.offered.len()
+            ),
+        },
+    }
+}
+
+/// What changing one of a dog's `[daemon] keys costs. None of them is a
+/// reload: `boot_first_dogs` is read at boot, `dog_grants` when the shepherd
+/// starts the dog, and the other two are not this screen's to change at all.
+fn key_cost(key: DogKey) -> &'static str {
+    match key {
+        DogKey::BootFirst => "the next boot reads it",
+        DogKey::Grants => "its next start reads it",
+        DogKey::Source => "shep adopt writes it",
+        DogKey::Channel => "the dog's own answer",
     }
 }
 
@@ -234,15 +351,27 @@ pub(super) fn tree_line(
     let Some(cells) = cells(settings, row) else {
         return Line::default();
     };
-    let columns = row_columns_for(width);
-    let (value_width, cost_width) = row_widths(width, columns);
+    let all = row_columns_for(width);
+    let (value_width, cost_width) = row_widths(width, all);
+    // A row with nothing but a name has no column to leave room for, so its
+    // name takes the whole body and the empty cells are not drawn at all. A
+    // checklist item's permission name is longer than the tree's NAME column
+    // and has nowhere else it could go.
+    let name_only = cells.value.is_empty() && cells.source.is_empty() && cells.cost.is_empty();
+    let columns = if name_only { NAME_ONLY } else { all };
     let mut text = format!("{} ", mark(selected));
     for (index, column) in columns.iter().enumerate() {
         if index > 0 {
             text.push_str("  ");
         }
         let cell_width = match column {
-            RowColumn::Name => ROW_NAME_W,
+            RowColumn::Name => {
+                if name_only {
+                    width
+                } else {
+                    ROW_NAME_W
+                }
+            }
             RowColumn::Value => value_width,
             RowColumn::Source => ROW_SOURCE_W,
             RowColumn::Cost => cost_width,

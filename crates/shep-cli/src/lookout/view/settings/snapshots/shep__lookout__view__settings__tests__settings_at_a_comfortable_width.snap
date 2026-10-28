@@ -24,10 +24,10 @@ shep lookout   /home/ada/.shep                                                  
   hosts               ada@box                         shep.toml    the next command reads it                            
                                                                                                                         
   [dogs]                                                                                                                
-  space arms, Enter applies; a dog needs no reload                                                                      
-  NAME                                                                IN FILE  SOURCE                    RUNNING        
-  bark                                                                no       built-in                  not running    
-  metrics                                                             yes      built-in                  not running    
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▸ bark                                                            no       built-in                  not running      
+  ▸ metrics                                                         yes      built-in                  not running      
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

@@ -23,11 +23,11 @@ shep lookout   /home/ada/.shep 2 in the flock
   hosts               none        the default
                                              
   [dogs]                                     
-  space arms, Enter applies; a dog needs no …
-  NAME               IN FILE  RUNNING        
-  otel               no       online         
-  ledger             yes      not running    
-  bark               yes      silent         
+  space arms, Enter applies; e opens a dog; …
+  ▸ otel           no       online           
+  ▸ ledger         yes      not running      
+  ▸ bark           yes      silent           
+                                             
                                              
                                              
                                              

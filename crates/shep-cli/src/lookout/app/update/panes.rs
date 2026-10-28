@@ -37,14 +37,25 @@ impl App {
                 // `Settings::cursor` clamps on every read, so a
                 // preserved `Viewport` past a shorter dogs list
                 // still lands somewhere real.
-                let kept = self
-                    .settings()
-                    .map(|settings| (settings.view.clone(), settings.folded.clone()));
+                // A dog already opened keeps its tree across the re-read, so
+                // a landed write does not make the operator re-probe a dog's
+                // binary for a screen they never left. A dog whose row was
+                // dropped from the new snapshot drops its tree with it, since
+                // [`Settings::dog_tree`] looks the tree up by the name the
+                // snapshot carries.
+                let kept = self.settings().map(|settings| {
+                    (
+                        settings.view.clone(),
+                        settings.folded.clone(),
+                        settings.dog_trees.clone(),
+                    )
+                });
                 let mut settings = Settings::new(snapshot);
                 if !opening {
-                    if let Some((view, folded)) = kept {
+                    if let Some((view, folded, trees)) = kept {
                         settings.view = view;
                         settings.folded = folded;
+                        settings.dog_trees = trees;
                     }
                     let len = settings.rows().len();
                     settings.view.clamp(len);
@@ -166,6 +177,62 @@ impl App {
                 source,
                 ticket,
             }),
+            Err(message) => {
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                }
+                self.notice = Some(Notice::grave(message));
+                Effect::None
+            }
+        }
+    }
+
+    /// `Msg::DogTuneWritten`'s arm.
+    ///
+    /// The two keys answer differently. `boot_first_dogs` is read at boot, so
+    /// a landed write has no daemon half and the screen just re-reads the
+    /// file. A grant has one: `shep dogs grant` tells a running shepherd, and
+    /// lookout does the same, because a dog already up would otherwise keep
+    /// the grants it was started with while the screen says otherwise.
+    ///
+    /// Whether it is enabled arrives with the answer rather than being read off
+    /// the screen here: the operator can close the settings screen between the
+    /// write and this reply, and that changes what is on screen, not what the
+    /// file says about a running dog.
+    pub(super) fn on_dog_tune_written(
+        &mut self,
+        tune: DogTune,
+        ticket: u64,
+        result: Result<DogTuneLanded, String>,
+    ) -> Effect {
+        let name = tune.dog().to_owned();
+        match result {
+            Ok(DogTuneLanded::BootOrder) => {
+                if let Some(settings) = self.settings_mut() {
+                    settings.resolve(ticket);
+                }
+                self.notice = Some(Notice::info(format!(
+                    "{name}: the next shepherd boot starts it in a different place"
+                )));
+                self.reread_settings()
+            }
+            Ok(DogTuneLanded::Grants { source, enabled }) => {
+                if !enabled || matches!(self.link, Link::Lost { .. }) {
+                    if let Some(settings) = self.settings_mut() {
+                        settings.resolve(ticket);
+                    }
+                    self.notice = Some(Notice::info(format!(
+                        "{name}: its grants are recorded, and it picks them up when the shepherd \
+                         next starts it"
+                    )));
+                    return self.reread_settings();
+                }
+                Effect::Send(Sent::GrantDog {
+                    name,
+                    source,
+                    ticket,
+                })
+            }
             Err(message) => {
                 if let Some(settings) = self.settings_mut() {
                     settings.resolve(ticket);
