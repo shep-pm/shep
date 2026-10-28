@@ -18,6 +18,7 @@
 // `?raw` (see web/src/data/lexicon.ts's header comment) inlines the file's
 // text content at build time.
 import lexiconSource from "./lexicon-table.md?raw";
+import { htmlEscape } from "./html-escape";
 
 export interface LexiconRow {
   /** Plain text — rendered in the term column's own font/color, no markup. */
@@ -117,9 +118,6 @@ export const lexiconTable: LexiconRow[] = parseLexiconTable(lexiconSource);
  * deliberately narrow rather than a general markdown-to-HTML pass.
  */
 export function mdInlineToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const escaped = htmlEscape(text);
   return escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
 }

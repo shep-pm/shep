@@ -16,6 +16,7 @@
 // `?raw` (see web/src/data/lexicon.ts's header comment) inlines the file's
 // text content at build time.
 import generatedSource from "./cli-reference.generated.txt?raw";
+import { htmlEscape } from "./html-escape";
 
 export interface CliVerb {
   name: string;
@@ -58,10 +59,7 @@ function fail(message: string): never {
 
 /** Escapes HTML, then applies `code` and **bold** inline spans. */
 function inlineToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const escaped = htmlEscape(text);
   return escaped
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
