@@ -344,6 +344,17 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         out from a Flockfile copy. The key is absent, not <code>null</code>,
         on a row no swap is queued for, and on every other command.
       </li>
+      <li>
+        <code>vcs</code> appears only on <code>shep describe</code> rows from
+        a shepherd built with the <code>vcs</code> feature, and is absent,
+        not <code>null</code>, everywhere else. It holds{" "}
+        <code>revision</code>, the full commit hash, and <code>branch</code>,
+        which is <code>null</code> for a detached head. It is what the
+        sheep's <code>cwd</code> is checked out on now, which is not
+        necessarily what the sheep started from. A sheep with no{" "}
+        <code>cwd</code>, or one that is no checkout the shepherd can read,
+        has no key.
+      </li>
     </ul>
 
     <h2 id="streaming">Streaming output carries no envelope</h2>
