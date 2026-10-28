@@ -292,11 +292,7 @@ async fn a_target_that_matches_nothing_is_a_usage_error_naming_what_was_tried() 
 ///
 /// The whole `sent.body` is asserted, so a verb sending the wrong request
 /// kind is caught. Also pins each verb's budget: `stop` and `delete` ask
-/// for `STOP_DEADLINE` because a ladder and a sweep outlast the default,
-/// and `restart` and `reload` ask for their own because their staged walk
-/// runs inside the request handler. `reload` asks for the larger of the two: its
-/// stages cost a drain as well as a readiness wait, and two of them
-/// clear `START_DEADLINE` at the default timeouts.
+/// for `STOP_DEADLINE`, `restart` and `reload` for their own, `reload` larger.
 #[tokio::test]
 async fn a_selector_reaches_the_wire_in_its_compiled_form() {
     let dir = tempfile::tempdir().unwrap();
@@ -343,12 +339,9 @@ async fn a_selector_reaches_the_wire_in_its_compiled_form() {
             let sent = envelopes.recv().await.unwrap();
             assert_eq!(sent.body, expected_body, "verb={verb:?} input={input}");
             // fails if a staged verb goes out on the client's 5s
-            // default: `restart` and `reload` now walk the dependency
-            // stages inside the request handler, and one edge clears 5s,
-            // so the client would abandon a walk the shepherd is still
-            // doing. `request_with_deadline` fills in `DEFAULT_DEADLINE`
-            // for a `None`, so an envelope carrying exactly that is the
-            // signal that the call site passed one.
+            // default: `restart` and `reload` walk the dependency stages
+            // inside the request handler, and one edge clears 5s.
+            // `DEFAULT_DEADLINE` in the envelope is the signal of a `None`.
             let expected_deadline = match verb {
                 Verb::Stop | Verb::Delete => STOP_DEADLINE,
                 Verb::Restart => START_DEADLINE,

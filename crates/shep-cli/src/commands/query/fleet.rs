@@ -119,11 +119,9 @@ pub(crate) async fn flock_all(
 /// `--format json` one envelope of every row.
 ///
 /// Every host is dialled through `ssh` and given `timeout` for the dial and
-/// both requests together: a box that accepts the connection and then says
-/// nothing is abandoned, and the others still print. Returns
-/// [`ExitCode::Success`] only when every shepherd answered, otherwise the
-/// code of the first one that did not, this machine's first. A shepherd that
-/// did not answer has no rows in the JSON envelope; its failure is on stderr.
+/// both requests together: a box that says nothing is abandoned.
+///
+/// Returns [`ExitCode::Success`] only when every shepherd answered.
 pub(super) async fn fleet(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,

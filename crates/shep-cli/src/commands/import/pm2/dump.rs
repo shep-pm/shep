@@ -2,14 +2,12 @@
 //!
 //! A dump is a JSON array of instance rows, one per running process: a
 //! clustered app comes back as several rows sharing a `name`. A row is flat,
-//! its config fields and the whole process environment splatted together at
-//! the top level. The row's `env` object holds that environment plus one
-//! `env_<mode>` object per ecosystem-file block; its keys being a superset of
-//! the splatted ones is what bounds env against config.
+//! its config fields and the process environment splatted together.
 //!
-//! [`parse`] reads through [`serde_json::Value`]: `#[serde(flatten)]` would
-//! need a catch-all map for the `env_<name>` keys, which a row carrying the
-//! environment as siblings defeats.
+//! The row's `env` object holds that environment plus one `env_<mode>`
+//! object per ecosystem-file block, and its keys bound env against config.
+//!
+//! [`parse`] reads through [`serde_json::Value`], not `#[serde(flatten)]`.
 
 use std::collections::BTreeMap;
 use std::fmt;

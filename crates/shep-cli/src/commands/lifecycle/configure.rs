@@ -29,13 +29,11 @@ pub(crate) fn any_restart_failed(procs: &[shep_core::protocol::ProcessInfo]) -> 
 
 /// Gives every app that set no `cwd` the Flockfile's own directory
 ///
-/// Fills the field without adding `cwd` to the declared key set: the
-/// document did not ask for this directory, so a load must not establish it
-/// on a sheep the flock already has and overwrite a `--cwd` set since.
+/// Fills the field without adding `cwd` to the declared key set: a load
+/// must not establish a directory the document did not ask for.
 ///
 /// Absolute, via `canonicalize`, because the daemon resolves a relative cwd
-/// against its own. A path that cannot be canonicalised is a silent no-op,
-/// and an app that sets its own `cwd` keeps it.
+/// against its own.
 pub(crate) fn default_cwd_to_flockfile_dir(
     apps: Vec<DeclaredApp>,
     flockfile: &Path,
@@ -62,14 +60,9 @@ pub(crate) fn default_cwd_to_flockfile_dir(
 /// and tells the operator what that did
 ///
 /// `Request::Start` on a name the flock already has adds instances rather
-/// than reconciling config, so this is the request that applies an edited
-/// file to a running app.
+/// than reconciling config, so this applies an edited file to a running app.
 ///
-/// Additive: a Flockfile arrives from the app's own repository, so a load
-/// appends what nobody has established and leaves alone what an operator
-/// set since. `--reset` widens that. Only apps whose document declared
-/// something are sent, so `shep start ./thing` applies nothing. Field names
-/// only, never values, since `env` carries secrets.
+/// Additive: a load appends what nobody has established. Field names only.
 pub(crate) async fn apply_declared(
     client: &Client,
     streams: &mut Streams<'_>,

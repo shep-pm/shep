@@ -4,23 +4,9 @@ use crate::output::width;
 /// saying how much it dropped.
 ///
 /// Rows, not lines: a line wider than the terminal wraps onto more than one
-/// of them, so counting lines would overrun a narrow window and leave every
-/// redraw scrolling. One row is held back for the cursor the redraw leaves
-/// behind, and the notice's own height for the notice.
+/// of them, so counting lines would overrun a narrow window.
 ///
-/// The notice wraps like anything else, which is why its height is measured
-/// rather than assumed to be one. Giving a kept line back to make room was
-/// the earlier answer and it does not hold: at 30 columns the notice takes
-/// two rows and the line handed back was worth one, so the frame overran by
-/// one row and the window scrolled on every redraw. Measured at 12, 16, 20,
-/// 24 and 30 columns. Reserving the worst case, every line dropped, costs at
-/// most one row more than the final count needs, and no circularity.
-///
-/// A size of nothing is not a window of nothing. A pty that has never been
-/// told how big it is reports zero, and `script(1)` hands `--follow` exactly
-/// that: measured 2026-09-12, where trimming to it printed the notice alone,
-/// every second, and no flock at all. Sizes that leave no room to trim get
-/// the frame whole, the same answer a terminal that will not measure gets.
+/// The notice's height is measured, not assumed. A size of nothing is not a window of nothing.
 pub(super) fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
     let (columns, budget) = (usize::from(columns), usize::from(rows).saturating_sub(1));
     if columns == 0 || budget == 0 {
@@ -49,10 +35,8 @@ pub(super) fn fit_rows(frame: &str, columns: u16, rows: u16) -> String {
     }
     // `budget - used` rather than the whole notice: a window too narrow to
     // hold it is the one case the reservation above cannot satisfy, and
-    // printing it whole overruns the budget and scrolls the screen, which is
-    // the single thing this function exists to prevent. Clipped, the frame
-    // stays inside its rows and the operator still reads the leading digits,
-    // which is the part that says how much is missing.
+    // printing it whole scrolls the screen, which is what this function
+    // exists to prevent. Clipped, the operator still reads the leading digits.
     fitted.push_str(&clip_rows(
         &notice(lines.len() - kept),
         columns,
@@ -102,13 +86,9 @@ mod tests {
     /// window with rows to spare come back byte-identical, trailing newline
     /// and all.
     /// fails if the notice's own height stops being reserved. It wraps like
-    /// any other line, so at 30 columns it is two rows and the old "hand one
-    /// kept line back" reservation bought one. Measured overruns before the
-    /// fix: 12x3, 12x5, 16x3, 20x3, 24x3 and 30x3.
+    /// any other line, so at 30 columns it is two rows.
     ///
-    /// Including the window too narrow to hold the notice whole, which is
-    /// the case that used to be skipped here: it is clipped now rather than
-    /// allowed to overrun.
+    /// Including the window too narrow to hold the notice whole: it is clipped now.
     #[test]
     fn a_trimmed_frame_never_overruns_the_rows_it_was_given() {
         let frame: String = (0..40)

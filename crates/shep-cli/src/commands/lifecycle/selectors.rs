@@ -77,9 +77,7 @@ where
 /// second, so `shep start backed` reaches a fold called `backed`.
 ///
 /// A wildcard passes a dog and a disabled sheep by and an exact selector
-/// reaches either, keyed off [`ProcessSelector::is_exact`] so a form like
-/// `name:slot` cannot land on the wrong side. The fold fallback counts as a
-/// wildcard.
+/// reaches either, keyed off [`ProcessSelector::is_exact`].
 pub(crate) fn flock_matches(selector: &ProcessSelector, flock: &[ProcessInfo]) -> Vec<ProcessInfo> {
     let sheep_only = |flock: &[ProcessInfo], keep: &dyn Fn(&ProcessInfo) -> bool| {
         flock

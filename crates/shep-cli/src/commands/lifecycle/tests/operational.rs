@@ -330,14 +330,10 @@ async fn a_partly_refused_reload_prints_one_json_envelope_carrying_both_halves()
 /// fails if a JSON walk whose envelope never printed drops the refused
 /// app's name with it
 ///
-/// The nearest existing test is
-/// [`a_partly_refused_reload_prints_one_json_envelope_carrying_both_halves`],
-/// the other side of `carried`: there the envelope printed, so stderr stayed
-/// silent. Here one selector answers a refusal with no accepted row and the
-/// next answers a response this client cannot read (`Response` is
-/// `#[non_exhaustive]`, so this is the shape a newer daemon produces), which
-/// makes `carried` false: no envelope prints, and stderr is the only stream
-/// left to name `db` on.
+/// The other side of `carried` is
+/// [`a_partly_refused_reload_prints_one_json_envelope_carrying_both_halves`].
+///
+/// Here no envelope prints, so stderr is the only stream left to name `db`.
 #[tokio::test]
 async fn a_json_walk_whose_envelope_never_printed_names_the_refused_apps_on_stderr() {
     use shep_client::testing::fake_client_answering;

@@ -54,25 +54,11 @@ fn matches_filter(filter: &str, haystacks: &[&str]) -> bool {
 
 /// Lists the dogs published in the community index: `shep dogs --available`
 ///
-/// Reaches no [`Client`], so it answers with no shepherd running. Under
-/// `Format::Table` a filter matching one dog prints its detail view, and a
-/// filter matching nothing prints `no dog matches "<filter>"` and still
-/// exits [`ExitCode::Success`]. `--format json` always renders the array.
+/// Reaches no [`Client`], so it answers with no shepherd running.
 ///
 /// # Errors reaching the operator
 /// A failure to read or parse the index names the URL and exits
-/// [`ExitCode::Failure`]: [`dog_index::IndexError`] carries it on one
-/// variant only.
-///
-/// The one URL not named is one holding an `@`. A dog index URL is a
-/// public location, which is why this quotes it at all, but
-/// `SHEP_DOG_INDEX` is an operator's own string and nothing stops a
-/// password reaching it. This message is built here rather than by
-/// [`dog_index::IndexError`], so the refusals inside [`crate::fetch`] do
-/// not cover it, and it asks [`fetch::url_for_message`] rather than
-/// deciding for itself: an earlier version asked
-/// `url_carries_credentials` instead and printed urls that `parse_url`
-/// had just withheld.
+/// [`ExitCode::Failure`]. A URL holding an `@` is not named at all.
 pub async fn available_dogs(streams: &mut Streams<'_>, args: &DogsArgs) -> ExitCode {
     let url = dog_index::index_url();
     let index = match dog_index::fetch_index(&url).await {

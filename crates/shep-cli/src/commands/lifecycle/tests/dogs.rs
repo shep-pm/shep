@@ -4,13 +4,9 @@ use super::*;
 ///
 /// The `restart` cases fork and exec a dog's binary inside a budget. A
 /// probe that runs out of budget answers unknown, and unknown is silent,
-/// so contention turns their subject into thin air. A `/bin/sh` probe
-/// takes single-digit milliseconds idle and over a second at
-/// `--test-threads=64`. The node case needs a real node to start and
-/// exit inside the budget, which is a claim about the machine.
-/// The node case climbs a ladder of budgets: the pipe wait spends the
-/// whole budget, so one number cannot be both cheap and enough. See
-/// `BUDGETS`.
+/// so contention turns their subject into thin air.
+///
+/// The node case needs a real node to start and exit inside the budget.
 mod slow {
     /// A probe budget no contention can exhaust
     ///

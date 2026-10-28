@@ -1,31 +1,13 @@
 //! `shep import env`: reading a `.env` into shep's stores.
 //!
 //! [`parse`] is the grammar. [`plan`] decides which store each key is bound
-//! for and whether shep can hold it. This module does the I/O, in one order:
+//! for and whether shep can hold it. This module does the I/O: read and
+//! parse, plan, ask the daemon for the sheep's env, dry-run the batch,
+//! check secret collisions, then write `secrets.json` and send for real.
 //!
-//! 1. read and parse, then plan. Nothing written.
-//! 2. `Request::SheepConfig`, for the environment the secrets go in. Skipped
-//!    when `--env` names one, so this step is not what proves the sheep
-//!    exists.
-//! 3. `SetSheepEnvBatch` with `dry_run`, so the daemon names env collisions
-//!    against the values it holds and this process never sees them. This is
-//!    the step that refuses an unknown sheep, a dog, and a merged config
-//!    `normalize` will not take, on either path into it, before either
-//!    store is written.
-//! 4. secret-store collisions, decided here, since this process holds those
-//!    values.
-//! 5. any collision without `--force`: name them all and exit, writing
-//!    nothing.
-//! 6. write `secrets.json`, then send the batch for real. The daemon decides
-//!    collisions afresh, so the real send can still refuse what step 3 said
-//!    it would take; that refusal is reported like step 5's, and says the
-//!    secret store is already written.
-//!
-//! Secrets first and the batch second on purpose. A failure at the last step
-//! leaves values in the store that nothing references, which are inert, and
-//! the re-run is clean because an identical value is not a collision. The
-//! reverse order leaves `{{secret:KEY}}` pointing at nothing and the re-run
-//! then needs `--force`.
+//! Secrets first and the batch second on purpose: a failure at the last
+//! step leaves inert values in the store, while the reverse order leaves
+//! `{{secret:KEY}}` pointing at nothing.
 
 pub(crate) mod parse;
 pub(crate) mod plan;
@@ -65,10 +47,7 @@ const SECRET_HOLDER: &str = "the secret store";
 /// prints a value: a row carries a byte length, and no refusal names
 /// anything but a key, a store and a path.
 ///
-/// `"import"` is the envelope's command for this verb as much as for
-/// `shep import pm2`: the noun names the command and the `data` shape
-/// varies, which is the rule `shep secret`'s four subcommands already
-/// follow.
+/// `"import"` is the envelope's command for both `shep import` verbs.
 pub async fn import_env(
     client: &Client,
     streams: &mut Streams<'_>,

@@ -2,14 +2,12 @@
 //!
 //! Strict on purpose. Every shape this file does not recognise refuses with
 //! a line number rather than being guessed at, because the values are
-//! credentials and a wrong guess is silent. No variable interpolation: `$`
-//! is a literal character everywhere, which is the one place this parser
-//! deliberately differs from most `.env` readers. dotenvy resolves `${NAME}`
-//! against the reading process's own environment and turns an undefined name
-//! into an empty string, which on this path would store a truncated secret.
+//! credentials and a wrong guess is silent.
 //!
-//! The trailing-comment rule is the subtle one and it is in
-//! [`unquoted_value`].
+//! No variable interpolation: `$` is a literal character everywhere.
+//! dotenvy resolves `${NAME}` against the reading process's own environment
+//! and turns an undefined name into an empty string, which here would store
+//! a truncated secret.
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -172,10 +170,8 @@ fn read_value(
 /// comment rule applied.
 ///
 /// A `#` is a comment only when whitespace comes before it *and* the value
-/// before that whitespace has no whitespace of its own. `PORT=8080 # dev` is
-/// a port and a comment; `KEY=v#3` is a three-character value; and
-/// `PASSPHRASE=correct horse battery #4` refuses, because taking the comment
-/// truncates a credential and not taking it stores a note.
+/// before that whitespace has no whitespace of its own. `PORT=8080 # dev`
+/// is a port and a comment; `KEY=v#3` is a three-character value.
 fn unquoted_value(rest: &str, line_number: usize) -> Result<String, ParseError> {
     let comment_at = rest.char_indices().find(|&(index, c)| {
         c == '#'
