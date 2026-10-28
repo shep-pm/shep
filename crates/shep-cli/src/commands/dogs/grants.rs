@@ -33,11 +33,14 @@ pub(super) fn warn_if_unenforced(
 
 #[cfg(all(test, unix))]
 mod tests {
+    use std::collections::BTreeMap;
+
     use shep_client::Client;
     use shep_client::testing::{fake_daemon_answering_with_ack, sample_ack, sample_info};
     use shep_core::permissions::{Grants, Permission};
     use shep_core::protocol::{HelloAck, Response};
 
+    use super::super::DogEntry;
     use super::super::enable::{EnableRefusal, enable_after_config, enable_in_config};
     use super::*;
     use crate::commands::dogs::test_support::streams;
@@ -119,10 +122,14 @@ mod tests {
             let mut out = Vec::new();
             let mut err = Vec::new();
 
+            let entry = DogEntry {
+                source: granted(),
+                env: BTreeMap::default(),
+            };
             let code = enable_after_config(
                 &mut streams(&mut out, &mut err),
                 "otel",
-                &granted(),
+                &entry,
                 Some(&client),
             )
             .await;

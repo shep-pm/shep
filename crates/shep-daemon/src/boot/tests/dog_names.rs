@@ -14,11 +14,13 @@ use crate::dogs::DogSpec;
 use crate::fake::ProcScript;
 use shep_core::config::AppConfig;
 use shep_core::protocol::{DogSource, ProcessInfo};
+use std::collections::BTreeMap;
 
 fn built_in(name: &str) -> DogSpec {
     DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     }
 }
 

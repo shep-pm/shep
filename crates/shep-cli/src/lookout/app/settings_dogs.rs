@@ -271,7 +271,10 @@ mod tests {
         let effect = app.update(Msg::DogWritten {
             edit,
             ticket,
-            result: Ok(DogSource::BuiltIn { grants: None }),
+            result: Ok(DogEntry {
+                source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::default(),
+            }),
         });
         assert!(matches!(
             effect,
@@ -338,7 +341,10 @@ mod tests {
         let Effect::Send(sent) = app.update(Msg::DogWritten {
             edit,
             ticket,
-            result: Ok(DogSource::BuiltIn { grants: None }),
+            result: Ok(DogEntry {
+                source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::default(),
+            }),
         }) else {
             panic!("a landed write must raise the daemon half");
         };

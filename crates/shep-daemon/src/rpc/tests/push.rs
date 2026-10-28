@@ -191,6 +191,7 @@ async fn enabling_a_dog_over_a_sheeps_name_is_refused_rather_than_faked() {
                 2,
                 Request::EnableDog {
                     name: "bark".to_string(),
+                    env: BTreeMap::default(),
                     source: DogSource::BuiltIn { grants: None },
                 },
             ),

@@ -516,8 +516,15 @@ mod tests {
     /// The count a row reads, never the value: `clients` holds a credential.
     #[test]
     fn an_entries_row_reads_as_a_count() {
-        let section =
-            |text: &str| ConfigPane::dog("paddock".into(), None, entries_schema(), text.to_owned());
+        let section = |text: &str| {
+            ConfigPane::dog(
+                "paddock".into(),
+                None,
+                entries_schema(),
+                text.to_owned(),
+                Vec::new(),
+            )
+        };
         let one = section("[[clients]]\nkey = \"hunter2\"\n");
         let none = section("clients = []\n");
         let absent = section("retries = 3\n");
@@ -577,6 +584,7 @@ mod tests {
             None,
             schema,
             "[[hosts]]\nname = \"hunter2\"\n".to_owned(),
+            Vec::new(),
         );
         assert_eq!(labels(&mut pane, "hosts"), ["#0"]);
     }
@@ -601,6 +609,7 @@ mod tests {
             None,
             schema,
             "[[clients]]\nname = \"alpha\"\nkey = \"hunter2\"\n".to_owned(),
+            Vec::new(),
         );
         assert_eq!(labels(&mut pane, "clients"), ["#0"]);
         pane.move_by(1);
@@ -637,6 +646,7 @@ mod tests {
             schema,
             "[[clients]]\n[[clients.peers]]\nkey = \"a\"\n[[clients.peers]]\nkey = \"b\"\n"
                 .to_owned(),
+            Vec::new(),
         );
         pane.move_to_key("clients");
         pane.open_table();

@@ -14,6 +14,7 @@ use crate::testing::test_paths;
 use shep_core::config::AppConfig;
 use shep_core::protocol::DogSource;
 use shep_core::status::ProcStatus;
+use std::collections::BTreeMap;
 
 /// A metrics dog that starts first answers for an empty flock for the
 /// whole restore window, and a bark dog alerts on every restored sheep.
@@ -35,6 +36,7 @@ async fn boot_restores_the_flock_before_it_lets_the_dogs_out() {
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
                 source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::new(),
             }],
             ..BootOptions::default()
         },
@@ -88,6 +90,7 @@ fn a_dog_that_will_not_start_does_not_fail_the_boot() {
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
                 source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::new(),
             }],
             ..BootOptions::default()
         },
@@ -129,6 +132,7 @@ fn a_dog_enabled_under_a_sheeps_name_does_not_start_and_does_not_fail_the_boot()
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
                 source: DogSource::BuiltIn { grants: None },
+                env: BTreeMap::new(),
             }],
             ..BootOptions::default()
         },

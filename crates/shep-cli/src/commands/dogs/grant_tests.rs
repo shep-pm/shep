@@ -1,15 +1,16 @@
 //! What `shep dogs grant` and `shep dogs revoke` leave in `shep.toml`, through
 //! the verbs with a real `/bin/sh` dog and no shepherd running.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use shep_client::testing::{sample_ack, sample_info, serve_one_request};
+use shep_client::testing::{sample_info, serve_one_request};
 use shep_core::paths::ShepPaths;
 use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, Envelope, Request, Response};
 
 use super::grant::{Change, change};
-use super::test_support::streams;
+use super::test_support::{streams, this_builds_ack};
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 
@@ -146,7 +147,7 @@ async fn run_with_shepherd(
     std::fs::create_dir_all(&paths.run).unwrap();
     let handle = serve_one_request(
         &paths.socket,
-        sample_ack(),
+        this_builds_ack(),
         Response::DogStarted(sample_info()),
     )
     .await;
@@ -172,6 +173,7 @@ async fn a_revoke_on_an_enabled_dog_sends_the_shepherd_the_grants_now_held() {
         sent.body,
         Request::EnableDog {
             name: "otel".to_string(),
+            env: BTreeMap::default(),
             source: DogSource::Adopted {
                 path: dir.path().join("shep-otel").display().to_string(),
                 channel: false,

@@ -85,8 +85,9 @@ impl App {
             Msg::DogPane {
                 name,
                 adopted_path,
+                env_keys,
                 result,
-            } => self.on_dog_pane_answer(name, adopted_path, result),
+            } => self.on_dog_pane_answer(name, adopted_path, env_keys, result),
             Msg::SheepDogNames { sheep, ask, dogs } => {
                 self.on_sheep_dog_names_answer(sheep, ask, dogs)
             }
@@ -96,6 +97,12 @@ impl App {
                 ticket,
                 result,
             } => self.on_dog_written(edit, ticket, result),
+            Msg::DogEnvWritten {
+                name,
+                ticket,
+                then,
+                result,
+            } => self.on_dog_env_written(&name, ticket, then, result),
             Msg::DogTuneWritten {
                 tune,
                 ticket,

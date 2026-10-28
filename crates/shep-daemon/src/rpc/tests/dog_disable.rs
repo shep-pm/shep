@@ -2,6 +2,7 @@
 //! `Deleted` for the older CLI that only accepts that reply.
 
 use super::*;
+use std::collections::BTreeMap;
 
 async fn disable_dog(h: &Harness, id: u64, name: &str) -> Reply {
     reply_of(
@@ -63,6 +64,7 @@ async fn disabling_a_dog_that_never_ran_marks_it_and_answers_deleted() {
     let spec = crate::dogs::DogSpec {
         name: "bark".to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     };
     crate::dogs::register_dogs_at_rest(&[spec], &[], &h.ctx.paths, &h.ctx.supervisor).await;
     let before = list_flock(&h.ctx, 1).await;

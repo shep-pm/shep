@@ -98,16 +98,16 @@ pub enum Sent {
         /// Its name at arm time.
         name: String,
     },
-    /// One dog's daemon half, after its file half landed. `source` is what
-    /// the write returned, so the request cannot disagree with the file.
+    /// One dog's daemon half, after its file half landed. `entry` is what the
+    /// write returned, so the request cannot disagree with the file.
     Dog {
         /// The dog's name.
         name: String,
         /// `true` to start it, `false` to stop it and keep it listed as disabled.
         enable: bool,
-        /// Where the binary comes from, exactly as the config write
-        /// answered.
-        source: DogSource,
+        /// Where the binary comes from and what `env` the operator set for
+        /// it, exactly as the config write answered.
+        entry: DogEntry,
         /// The ticket the file half went out with, carried on so the
         /// shepherd's answer resolves the prompt that toggle raised and no
         /// other.
@@ -123,9 +123,9 @@ pub enum Sent {
     GrantDog {
         /// The dog.
         name: String,
-        /// The source carrying the grants the record now holds, exactly as the
-        /// config write answered.
-        source: DogSource,
+        /// The entry carrying the grants the record now holds and the `env`
+        /// the operator set, exactly as the config write answered.
+        entry: DogEntry,
         /// The ticket the file half went out with, carried on so the
         /// shepherd's answer resolves the prompt that grant raised and no
         /// other.
@@ -260,11 +260,12 @@ impl Sent {
             Self::Dog {
                 name,
                 enable: true,
-                source,
+                entry,
                 ..
             } => Request::EnableDog {
                 name: name.clone(),
-                source: source.clone(),
+                env: entry.env.clone(),
+                source: entry.source.clone(),
             },
             Self::Dog {
                 name,
@@ -274,9 +275,10 @@ impl Sent {
             // The same request an enable sends, for the reason
             // `Self::GrantDog`'s own doc gives: the shepherd records the
             // grants a source carries before it finds the dog already running.
-            Self::GrantDog { name, source, .. } => Request::EnableDog {
+            Self::GrantDog { name, entry, .. } => Request::EnableDog {
                 name: name.clone(),
-                source: source.clone(),
+                env: entry.env.clone(),
+                source: entry.source.clone(),
             },
             Self::SheepConfig { name } => Request::SheepConfig { name: name.clone() },
             // One field, recorded as an operator override, not an
@@ -336,6 +338,32 @@ impl Sent {
     }
 }
 
+/// One dog pane's close, split by where its edits land.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PaneWrites {
+    /// The requests the link task sends to the shepherd, in order.
+    pub requests: Vec<Sent>,
+    /// The dog pane's `shep.toml` half, when it has one: every `env` key the
+    /// close filed, with the value or [`None`] for a removal.
+    pub env: Option<DogEnvWrite>,
+}
+
+/// One dog's `env` keys, as one `shep.toml` write.
+///
+/// `Debug` is derived, safe because [`EnvValue`]'s own prints a byte count
+/// (IR-41).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DogEnvWrite {
+    /// The dog.
+    pub name: String,
+    /// Each key the close filed, with its value, or [`None`] to remove it.
+    pub edits: Vec<(String, Option<EnvValue>)>,
+    /// Which write this is, for [`Effect::WriteSetting`]'s reason.
+    pub ticket: u64,
+    /// Proof the control gate was open.
+    pub authority: WriteAuthority,
+}
+
 /// One dog toggle, ready for the file half: [`Effect::WriteDog`] carries one
 /// and [`Msg::DogWritten`] echoes it back.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -358,15 +386,16 @@ pub enum DogTuneLanded {
     /// `[daemon] boot_first_dogs` changed. Nothing to tell the shepherd: the
     /// order is read at boot.
     BootOrder,
-    /// `[daemon] dog_grants` changed, carrying the source the record now
-    /// describes and whether the dog is in `enabled_dogs`.
+    /// `[daemon] dog_grants` changed, carrying what the record now describes
+    /// and whether the dog is in `enabled_dogs`.
     ///
     /// `enabled` is the one `record_change` read under the lock, so it does
     /// not depend on the settings screen still being open when this answer
     /// lands.
     Grants {
-        /// What the record now describes, which is what telling the shepherd needs.
-        source: DogSource,
+        /// What the record now describes, which is what telling the shepherd
+        /// needs: its source, and the `env` the operator set beside it.
+        entry: DogEntry,
         /// Whether the dog is enabled, as the file read it under the lock.
         enabled: bool,
     },
@@ -387,6 +416,10 @@ pub struct DogProbe {
     pub adopted_path: Option<PathBuf>,
     /// What it answered the schema flag with.
     pub schema: serde_json::Value,
+    /// The key names of the `env` its `shep.toml` entry sets, carried from
+    /// [`Msg::DogPane`] so a refresh of the pane does not have to re-read
+    /// `shep.toml` to know which rows it has.
+    pub env_keys: Vec<String>,
 }
 
 /// What the cursor can sit on: one sheep, or the header above an app's

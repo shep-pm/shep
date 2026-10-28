@@ -103,7 +103,7 @@ pub(super) async fn check(ctx: &RpcContext, dog: &str, request: &Request) -> Res
 /// grants anything, and that holds for the dogs it enables too.
 pub(super) fn pin_grants(ctx: &RpcContext, request: Request) -> Request {
     match request {
-        Request::EnableDog { name, source } => {
+        Request::EnableDog { name, source, env } => {
             let recorded = ctx
                 .known_dogs
                 .recorded(&name)
@@ -111,6 +111,7 @@ pub(super) fn pin_grants(ctx: &RpcContext, request: Request) -> Request {
             Request::EnableDog {
                 source: source.with_grants(recorded),
                 name,
+                env,
             }
         }
         other => other,

@@ -371,6 +371,7 @@ pub(crate) async fn run(
                         ShepTomlError::Io { .. } => ExitCode::Failure,
                         ShepTomlError::Parse { .. }
                         | ShepTomlError::WrongShape { .. }
+                        | ShepTomlError::NoDogEntry { .. }
                         | ShepTomlError::BadGrants { .. } => ExitCode::InvalidConfig,
                     };
                     return streams.fail(code, &err.to_string());

@@ -319,6 +319,7 @@ fn a_number_field_refuses_a_value_outside_the_numeric_enum_it_published() {
             None,
             schema.clone(),
             "ratio = 1.5\n".into(),
+            Vec::new(),
         );
         pane.move_to_key("ratio");
         pane.begin_typing();
@@ -341,7 +342,13 @@ fn a_number_field_refuses_a_value_outside_the_numeric_enum_it_published() {
             "{typed}"
         );
     }
-    let mut pane = ConfigPane::dog("kelpie".into(), None, schema, "ratio = 1.5\n".into());
+    let mut pane = ConfigPane::dog(
+        "kelpie".into(),
+        None,
+        schema,
+        "ratio = 1.5\n".into(),
+        Vec::new(),
+    );
     pane.move_to_key("ratio");
     pane.begin_typing();
     for _ in 0..3 {
@@ -515,7 +522,13 @@ fn d_on_a_dog_field_files_null_even_with_a_schema_default() {
             "merge_logs": { "type": "boolean", "default": true },
         },
     });
-    let mut pane = ConfigPane::dog("bark".into(), None, schema, "merge_logs = false\n".into());
+    let mut pane = ConfigPane::dog(
+        "bark".into(),
+        None,
+        schema,
+        "merge_logs = false\n".into(),
+        Vec::new(),
+    );
     pane.move_to_key("merge_logs");
     pane.file_default();
     assert_eq!(

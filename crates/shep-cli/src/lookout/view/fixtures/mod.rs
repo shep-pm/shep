@@ -31,6 +31,7 @@ pub use self::config_rows::{
     config_pane_title_band_for_tests,
 };
 pub use self::dog_pane::{
+    app_in_adopted_dog_pane_with_an_unwriteable_section, app_in_adopted_dog_pane_with_env,
     app_in_dog_pane, app_in_dog_pane_over_lists, app_in_dog_pane_with_a_nested_table,
     app_in_dog_pane_with_entries, app_in_dog_pane_with_entry_defaults, app_in_dog_pane_with_lists,
     app_in_dog_pane_with_two_edits, app_in_read_only_dog_pane_with_entries, dog_section,
@@ -65,7 +66,8 @@ pub use self::secrets::{
 };
 pub use self::settings::{
     BARK_RECORDED, app_in_settings, app_in_settings_at, app_in_settings_on, app_in_settings_on_dog,
-    app_in_settings_on_enabled_dog, app_in_settings_with_a_dog_open, app_in_settings_with_control,
+    app_in_settings_on_enabled_dog, app_in_settings_with_a_dog_open,
+    app_in_settings_with_an_adopted_dog_open, app_in_settings_with_control,
     app_in_settings_with_dog_drift, app_in_settings_with_shadowed_style,
     app_in_settings_with_silent_dog, app_in_settings_with_silent_style, home_with, open_dog_row,
     select_setting, setting_set, setting_unset, settings_over, settings_snapshot,

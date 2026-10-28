@@ -12,11 +12,13 @@ use crate::testing::test_paths;
 use shep_core::config::AppConfig;
 use shep_core::protocol::{DogSource, ProcessInfo};
 use shep_core::status::ProcStatus;
+use std::collections::BTreeMap;
 
 fn built_in(name: &str) -> DogSpec {
     DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     }
 }
 
@@ -149,6 +151,7 @@ async fn an_adopted_disabled_dog_is_listed_with_the_source_it_would_run_from() {
             known_dogs: vec![DogSpec {
                 name: "otel".to_string(),
                 source: adopted.clone(),
+                env: BTreeMap::new(),
             }],
             ..BootOptions::default()
         },

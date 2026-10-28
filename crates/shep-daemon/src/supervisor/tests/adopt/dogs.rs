@@ -6,6 +6,7 @@
 //! read, which is why a parked dog is left behind rather than carried.
 
 use super::*;
+use std::collections::BTreeMap;
 
 /// One dog as the boot hands it over: built-in, and named as `shep.toml`
 /// would name it.
@@ -13,6 +14,7 @@ fn dog(name: &str) -> crate::dogs::DogSpec {
     crate::dogs::DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     }
 }
 
@@ -304,6 +306,7 @@ async fn a_successor_stops_a_carried_dog_whole_config_could_not_assemble() {
             path: String::new(),
             channel: false,
         },
+        env: BTreeMap::new(),
     };
     crate::dogs::register_dogs_at_rest(&[unassemblable], &[], &paths, &sup).await;
 

@@ -1,6 +1,8 @@
 use super::DogGrantsSection;
 use crate::values::UpDuration;
+use core::fmt;
 use serde::Deserialize;
+use serde::de::{self, Deserializer, MapAccess, Visitor};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -32,14 +34,15 @@ pub struct DaemonSection {
     /// Dogs to autostart with the daemon (`shep enable` writes this)
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
     pub enabled_dogs: Vec<String>,
-    /// Where an adopted dog's binary lives, keyed by dog name
-    /// (`shep adopt` writes this; `shep rehome` removes it).
+    /// An adopted dog's binary and the environment the operator sets beside
+    /// it, keyed by dog name
     ///
-    /// A name in [`Self::enabled_dogs`] with no entry here is a built-in dog,
-    /// an argv branch of the shep binary itself. Not recorded inside
-    /// `[dog.<name>]`: that table is the dog's own opaque configuration.
+    /// `shep adopt` writes this and `shep delete` removes it. A name in
+    /// [`Self::enabled_dogs`] with no entry here is a built-in dog, an argv
+    /// branch of the shep binary itself. Kept out of `[dog.<name>]`, which is
+    /// the dog's own configuration and travels over the socket.
     #[cfg_attr(feature = "schema", schemars(extend("x-shep-apply" = "reload")))]
-    pub adopted_dogs: BTreeMap<String, PathBuf>,
+    pub adopted_dogs: BTreeMap<String, AdoptedDog>,
     /// Adopted dogs whose `--version` answer asked for the shepherd channel,
     /// so they are spawned with `channel` and `shutdown_with_message` set.
     ///
@@ -93,6 +96,119 @@ impl Default for DaemonSection {
             boot_first_dogs: Vec::new(),
             max_cron_sleep: None,
         }
+    }
+}
+
+/// One entry of `[daemon.adopted_dogs]`: an adopted dog's binary, and the
+/// environment the operator sets for it.
+///
+/// Two shapes on disk. A bare path string is what every `shep.toml` wrote
+/// before `env` existed, and reads as an entry with an empty `env`. A table
+/// spells both halves out: `path = "..."` with an optional `env` beside it.
+/// `Debug` is manual and redacted (IR-41): `env` holds the operator's values.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AdoptedDog {
+    /// Where the dog's binary lives, exactly as the operator wrote it.
+    pub path: PathBuf,
+    /// Environment the shepherd adds to the dog's, as written.
+    ///
+    /// A value may hold a `{{secret:...}}`, resolved at spawn the way a
+    /// sheep's `env` is. `SHEP_HOME` and `SHEP_DOG_NAME` are the shepherd's
+    /// own and an entry here cannot replace them.
+    pub env: BTreeMap<String, String>,
+}
+
+impl fmt::Debug for AdoptedDog {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "AdoptedDog {{ path: {:?}, env: <{} keys> }}",
+            self.path,
+            self.env.len()
+        )
+    }
+}
+
+/// The two shapes `[daemon.adopted_dogs]` writes one entry as.
+struct AdoptedDogShape;
+
+impl<'de> Visitor<'de> for AdoptedDogShape {
+    type Value = AdoptedDog;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a binary path, or a table with `path` and an optional `env`")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        Ok(AdoptedDog {
+            path: PathBuf::from(v),
+            env: BTreeMap::new(),
+        })
+    }
+
+    fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+        self.visit_str(&v)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut path: Option<PathBuf> = None;
+        let mut env: Option<BTreeMap<String, String>> = None;
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "path" => {
+                    if path.is_some() {
+                        return Err(de::Error::duplicate_field("path"));
+                    }
+                    path = Some(PathBuf::from(map.next_value::<String>()?));
+                }
+                "env" => {
+                    if env.is_some() {
+                        return Err(de::Error::duplicate_field("env"));
+                    }
+                    env = Some(map.next_value()?);
+                }
+                other => return Err(de::Error::unknown_field(other, &["path", "env"])),
+            }
+        }
+        Ok(AdoptedDog {
+            path: path.ok_or_else(|| de::Error::missing_field("path"))?,
+            env: env.unwrap_or_default(),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AdoptedDog {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(AdoptedDogShape)
+    }
+}
+
+/// The schema of the two shapes, which serde's derive cannot express for a
+/// union the deserializer reads by hand.
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for AdoptedDog {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "AdoptedDog".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "anyOf": [
+                { "type": "string" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "env": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" }
+                        }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                }
+            ]
+        })
     }
 }
 
@@ -255,6 +371,27 @@ mod tests {
             let cfg = DaemonConfig::load(None, &env).unwrap();
             assert_eq!(cfg.daemon.log_level, level, "SHEP_LOG_LEVEL={name}");
         }
+    }
+
+    /// IR-41. `env` is the operator's own values, and a `DaemonConfig` is
+    /// printed when a boot refuses its file. Exact string, so a
+    /// `#[derive(Debug)]` on [`AdoptedDog`] fails here.
+    #[test]
+    fn an_adopted_dogs_debug_prints_its_path_and_no_env_value() {
+        let cfg = DaemonConfig::load(
+            Some("[daemon.adopted_dogs.otel]\npath = \"/bin/otel\"\nenv = { KEY = \"hunter2\" }\n"),
+            &no_env,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{:?}", cfg.daemon.adopted_dogs["otel"]),
+            "AdoptedDog { path: \"/bin/otel\", env: <1 keys> }"
+        );
+        assert!(
+            !format!("{cfg:?}").contains("hunter2"),
+            "{:?}",
+            cfg.daemon.adopted_dogs
+        );
     }
 
     #[test]
