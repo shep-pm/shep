@@ -1,6 +1,6 @@
 // Regression guard for the definition tables on a phone.
 //
-// Every one of these tables is a grid with a header row on top. Under 640px
+// The tables this site writes are a grid with a header row on top. Under 640px
 // the grid collapses to one column, the header row hides, and each cell
 // carries its own heading as a `data-label`. Two things go wrong, and each
 // one had already gone wrong on four or five pages before it was caught:
@@ -15,7 +15,9 @@
 //
 // So there are two checks here, and they are one rule read from both ends: a
 // table with a header row stacks on a phone, and a table that stacks labels
-// its cells.
+// its cells. Each one is run twice, once over the site's own `div.row.header`
+// grids and once over a real `<table>`, because the rule is about the header
+// row going away and not about which markup carries it.
 //
 // Neither check names a table class. The first version of this file did, and
 // the list was already wrong when it was written: it covered `.field-table`
@@ -27,13 +29,20 @@
 // verify-fragment-targets.ts gives: `.astro` is not HTML. It reads the built
 // CSS too, both the inline `<style>` blocks Astro puts in each page and the
 // sheets that page links.
+//
+// A second kind of table is in the build now, and it is the reason the walk
+// reaches every depth under `dist/docs`. A fetched dog README renders its
+// markdown tables as real `<table>` elements, which the two checks above cannot
+// see at all: there is no `div.row.header` in one. `dog-readme-tables.ts`
+// labels their cells and `dog-readme.css` stacks them, and this is what proves
+// both happened — over the built page, where a label that never got spliced in
+// or a rule that never got emitted is visible instead of assumed. `/docs/dog-grants`
+// writes its own `<table>` by hand and is read by the same two checks.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-const distDir = fileURLToPath(new URL("../dist", import.meta.url));
+import { readFile } from "node:fs/promises";
+import { builtDocsPages, distDir } from "./built-pages.ts";
 
 /** A definition table: the classes on its container, and its markup. */
 interface Table {
@@ -144,6 +153,199 @@ export function unstacked(html: string, css: string): string[] {
     .map((t) => t.classes.join("."));
 }
 
+/** One open tag found directly inside a span of the document. */
+interface Element {
+  /** Index of its `<`. */
+  start: number;
+  /** Index just past its matching closing tag. */
+  end: number;
+  /** Its opening tag's attributes, `data-label` among them. */
+  attrs: string;
+  /** Index just past its opening tag's `>`. */
+  bodyStart: number;
+  /** Index of its matching closing tag's `<`. */
+  bodyEnd: number;
+}
+
+/** A cell of a `<table>`: its tag, its attributes, and its text. */
+interface Cell {
+  tag: string;
+  attrs: string;
+  /** Tags stripped and whitespace collapsed, for naming the cell in a message. */
+  text: string;
+}
+
+/** A `<table>` element on the page. */
+export interface ElementTable {
+  /** The table's own markup, opening tag to closing tag. */
+  html: string;
+  /** Its rows, and each row's cells, this table's own only. */
+  rows: { cells: Cell[] }[];
+  /** True when its first row holds a `th`, which is the row a phone hides. */
+  headed: boolean;
+}
+
+/**
+ * The tags in `family` sitting directly inside `[from, to)`, in document order.
+ *
+ * Counts opens and closes, so a tag of the same family inside another stays
+ * with the outer one: a nested `<table>`, the `<tr>` belonging to it, and a
+ * `<td>` inside a `<td>` all read as part of the cell holding them, which is
+ * how `labelTableCells()` treats them too.
+ *
+ * An attribute value holding a `>` throws the walk off, the same limit
+ * verify-callout-children.ts records. None of these pages has one, and the last
+ * test in this file is what notices if that stops being true.
+ */
+function direct(html: string, from: number, to: number, family: string): Element[] {
+  const out: Element[] = [];
+  const tag = new RegExp(`<(\\/)?(${family})\\b([^>]*)>`, "g");
+  tag.lastIndex = from;
+  let depth = 0;
+  let open: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = tag.exec(html)) !== null && m.index < to) {
+    if (m[1] === "/") {
+      if (depth === 0) break;
+      depth -= 1;
+      if (depth === 0 && open !== null) {
+        out.push({
+          start: open.index,
+          end: m.index + m[0].length,
+          attrs: open[3],
+          bodyStart: open.index + open[0].length,
+          bodyEnd: m.index,
+        });
+        open = null;
+      }
+    } else {
+      if (depth === 0) open = m;
+      depth += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Every `<table>` on the page, a table nested in a cell included.
+ *
+ * A nested table is its own entry for the reason `dog-readme-tables.ts` gives
+ * for labelling one: it has its own header row, and `dog-readme.css` stacks it
+ * on a phone like any other.
+ */
+export function elementTables(html: string): ElementTable[] {
+  const found: ElementTable[] = [];
+  const walk = (from: number, to: number): void => {
+    for (const table of direct(html, from, to, "table")) {
+      const rows = direct(html, table.bodyStart, table.bodyEnd, "tr").map((row) => ({
+        cells: direct(html, row.bodyStart, row.bodyEnd, "td|th").map((cell) => ({
+          tag: html.slice(cell.start + 1, cell.start + 3),
+          attrs: cell.attrs,
+          text: html
+            .slice(cell.bodyStart, cell.bodyEnd)
+            .replace(/<[^>]*>/g, "")
+            .replace(/\s+/g, " ")
+            .trim(),
+        })),
+      }));
+      found.push({
+        html: html.slice(table.start, table.end),
+        rows,
+        headed: rows.length > 0 && rows[0].cells.some((c) => c.tag === "th"),
+      });
+      walk(table.bodyStart, table.bodyEnd);
+    }
+  };
+  walk(0, html.length);
+  return found;
+}
+
+/** A table's first header cell, for naming it in a message. */
+function headerLabel(table: ElementTable): string {
+  const cell = table.rows[0]?.cells[0];
+  return cell === undefined || cell.text === "" ? "table" : cell.text;
+}
+
+/**
+ * `<table>` cells past the first in a body row that carry no `data-label`, as
+ * `table: text`.
+ *
+ * The exemptions are the ones `labelTableCells()` works with, for the same
+ * reasons: the header row is the thing a phone hides, so its cells name the
+ * columns instead of carrying a copy of themselves, and a `th` in a body row is
+ * a row header that names itself.
+ */
+export function unlabelledElementCells(html: string): string[] {
+  const missing: string[] = [];
+  for (const table of elementTables(html)) {
+    if (!table.headed) continue;
+    for (const row of table.rows.slice(1)) {
+      for (const [index, cell] of row.cells.entries()) {
+        if (index === 0 || cell.tag === "th") continue;
+        if (/\sdata-label="/.test(cell.attrs)) continue;
+        missing.push(`table: ${cell.text.slice(0, 40)}`);
+      }
+    }
+  }
+  return missing;
+}
+
+/**
+ * `<table>` elements on a page that has no phone-width rule stacking one, as
+ * their header labels.
+ *
+ * Stacking means the table, its rows and its cells all become blocks and its
+ * header row goes away, which is what `dog-readme.css` does under 640px, and
+ * `phoneStacksTables()` requires both halves. Read per page rather than per
+ * table because the rule belongs to a stylesheet: one phone block covers every
+ * table the page has.
+ */
+export function unstackedElementTables(html: string, css: string): string[] {
+  const headed = elementTables(html).filter((t) => t.headed);
+  if (headed.length === 0) return [];
+  return phoneStacksTables(css) ? [] : headed.map(headerLabel);
+}
+
+/**
+ * True when the selector's subject, the element it actually paints, is `name`.
+ *
+ * The subject is the last compound selector, the one after every combinator:
+ * `.dog-readme table code` paints `code` and `.dog-readme table` paints
+ * `table`. A compound carrying its own modifiers still names its element
+ * first, which is how Astro's scoped output reads (`table:where(.astro-cid-x)`).
+ * A subject wrapped in `:is()` or `:where()` is not read as that element, and
+ * no sheet on this site writes one.
+ */
+function targetsElement(selector: string, name: string): boolean {
+  const compounds = selector.split(/[\s>+~]+/).filter(Boolean);
+  const subject = compounds[compounds.length - 1] ?? "";
+  return new RegExp(`^${name}(?![\\w-])`).test(subject);
+}
+
+/**
+ * True when some phone-width block both stacks `<table>` and hides `<thead>`.
+ *
+ * Both halves are the rule, and the label check above only makes sense once
+ * the second one holds: the header row is what goes away, and each cell's
+ * `data-label` is what replaces it. A rule whose subject is not the element is
+ * not a rule about it either, so `.dog-readme table code{display:block}`
+ * restyles the code inside a table and leaves the table laid out as a table.
+ */
+function phoneStacksTables(css: string): boolean {
+  let stacked = false;
+  let headHidden = false;
+  for (const rule of phoneRules(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = rule[1].split(",").map((s) => s.trim());
+    if (/display:\s*block/.test(rule[2])) {
+      stacked ||= selectors.some((s) => targetsElement(s, "table"));
+    }
+    if (/display:\s*none/.test(rule[2])) {
+      headHidden ||= selectors.some((s) => targetsElement(s, "thead"));
+    }
+  }
+  return stacked && headHidden;
+}
+
 /** A page's CSS: the styles Astro inlines, plus the sheets the page links. */
 async function styles(html: string): Promise<string> {
   const inline = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(
@@ -158,23 +360,8 @@ async function styles(html: string): Promise<string> {
   return [...inline, ...sheets].join("\n");
 }
 
-async function docsPages(): Promise<[string, string][]> {
-  const dirs = await readdir(`${distDir}/docs`, { withFileTypes: true });
-  const names = dirs.filter((d) => d.isDirectory()).map((d) => d.name);
-  assert.ok(
-    names.length > 0,
-    `no built pages under ${distDir}/docs; run astro build first`,
-  );
-  return Promise.all(
-    names.map(
-      async (name) =>
-        [name, await readFile(`${distDir}/docs/${name}/index.html`, "utf8")] as [
-          string,
-          string,
-        ],
-    ),
-  );
-}
+// The page list used to be a `readdir` of `dist/docs` here, one level deep. It
+// is builtDocsPages() in built-pages.ts now, which walks every depth.
 
 test("tables() finds a table by its header row, whatever it is called", () => {
   const html = `<div class="wire-table" data-astro-cid-x><div class="row header"><span>A</span></div><div class="row"><span>b</span></div></div>`;
@@ -213,35 +400,118 @@ test("unstacked() ignores a hide rule outside a phone-width block", () => {
   assert.deepEqual(unstacked(html, css), ["verb-table"]);
 });
 
+/** A README's table, labelled the way `labelTableCells()` leaves it. */
+const DOG_TABLE = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td data-label="Does">skips the prompt</td></tr></tbody></table>`;
+
+/** The phone block `dog-readme.css` writes, minified the way Astro emits it. */
+const STACKING_CSS = `@media (width<=640px){.dog-readme table,.dog-readme tbody,.dog-readme tr,.dog-readme td{display:block}.dog-readme thead{display:none}}`;
+
+test("unstackedElementTables() catches a dog page whose stylesheet never stacks table", () => {
+  assert.deepEqual(
+    unstackedElementTables(DOG_TABLE, `@media (width<=640px){.dog-readme p{color:red}}`),
+    ["Flag"],
+  );
+});
+
+test("unstackedElementTables() catches a dog page that stacks table and keeps its thead", () => {
+  // One column, header row still on screen: the reader sees `Flag` and `Does`
+  // above a run of stacked values that also carry them as `data-label`.
+  assert.deepEqual(
+    unstackedElementTables(
+      DOG_TABLE,
+      `@media (width<=640px){.dog-readme table{display:block}}`,
+    ),
+    ["Flag"],
+  );
+});
+
+test("unstackedElementTables() catches a phone rule about something inside the table", () => {
+  assert.deepEqual(
+    unstackedElementTables(
+      DOG_TABLE,
+      `@media (width<=640px){.dog-readme table code{display:block}.dog-readme thead{display:none}}`,
+    ),
+    ["Flag"],
+  );
+});
+
+test("unstackedElementTables() passes a dog page whose stylesheet stacks table and hides its thead", () => {
+  assert.deepEqual(unstackedElementTables(DOG_TABLE, STACKING_CSS), []);
+});
+
+test("unlabelledElementCells() catches a dog README table whose cells lost their labels", () => {
+  const readme = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td>skips the prompt</td></tr></tbody></table>`;
+  assert.deepEqual(unlabelledElementCells(readme), ["table: skips the prompt"]);
+});
+
+test("unlabelledElementCells() passes a dog README table labelled from its header row", () => {
+  const readme = `<table><thead><tr><th>Flag</th><th>Does</th></tr></thead><tbody><tr><td><code>--yes</code></td><td data-label="Does">skips the prompt</td></tr></tbody></table>`;
+  assert.deepEqual(unlabelledElementCells(readme), []);
+});
+
+test("elementTables() reaches a table nested in a cell and keeps its cells its own", () => {
+  const html = `<table><thead><tr><th>Outer</th><th>Col</th></tr></thead><tbody><tr><td><table><thead><tr><th>In</th><th>Out</th></tr></thead><tbody><tr><td>a</td><td>b</td></tr></tbody></table></td><td>tail</td></tr></tbody></table>`;
+  assert.equal(elementTables(html).length, 2);
+  assert.deepEqual(unlabelledElementCells(html), ["table: tail", "table: b"]);
+});
+
 test("every table with a header row stacks under 640px", async () => {
-  for (const [page, html] of await docsPages()) {
+  for (const [route, html] of await builtDocsPages()) {
     const left = unstacked(html, await styles(html));
     assert.deepEqual(
       left,
       [],
-      `/docs/${page} has ${left.length} table(s) whose header row is still on screen at 640px: ${left.join(" | ")}. A table that does not stack keeps its column floors, runs wider than the container, and loses the right-hand column to the overflow that rounds its corners.`,
+      `/docs/${route} has ${left.length} table(s) whose header row is still on screen at 640px: ${left.join(" | ")}. A table that does not stack keeps its column floors, runs wider than the container, and loses the right-hand column to the overflow that rounds its corners.`,
     );
   }
 });
 
 test("every stacking table labels the cells a hidden header would have named", async () => {
-  for (const [page, html] of await docsPages()) {
+  for (const [route, html] of await builtDocsPages()) {
     const missing = unlabelled(html);
     assert.deepEqual(
       missing,
       [],
-      `/docs/${page} has ${missing.length} cell(s) with no data-label: ${missing.slice(0, 4).join(" | ")}. Under 640px the header row hides, so each of these stacks as a value with nothing naming it.`,
+      `/docs/${route} has ${missing.length} cell(s) with no data-label: ${missing.slice(0, 4).join(" | ")}. Under 640px the header row hides, so each of these stacks as a value with nothing naming it.`,
     );
   }
 });
 
-test("every header row opens its table", async () => {
-  for (const [page, html] of await docsPages()) {
+test("every <table> with a header row has a phone-width rule stacking it", async () => {
+  for (const [route, html] of await builtDocsPages()) {
+    const left = unstackedElementTables(html, await styles(html));
+    assert.deepEqual(
+      left,
+      [],
+      `/docs/${route} has ${left.length} <table> element(s) nothing stacks at 640px: ${left.join(" | ")}. A <table> that does not stack keeps its column floors and loses a column to horizontal scroll. src/styles/dog-readme.css has the rule for an imported page and src/styles/docs-page.css for a page written here; a new table needs one of them.`,
+    );
+  }
+});
+
+test("every stacking <table> labels the cells a hidden header would have named", async () => {
+  for (const [route, html] of await builtDocsPages()) {
+    const missing = unlabelledElementCells(html);
+    assert.deepEqual(
+      missing,
+      [],
+      `/docs/${route} has ${missing.length} <table> cell(s) past the first with no data-label: ${missing.slice(0, 4).join(" | ")}. Under 640px its header row hides, so each of these stacks as a value with nothing naming it. On an imported dog page src/data/dog-readme-tables.ts is what labels these and did not reach this one; a column its header row left blank needs a heading in the README.`,
+    );
+  }
+});
+
+test("every header row opens its table, and every <table> is one the walk reached", async () => {
+  for (const [route, html] of await builtDocsPages()) {
     const headers = [...html.matchAll(/<div class="row header"/g)].length;
     assert.equal(
       tables(html).length,
       headers,
-      `/docs/${page} has ${headers} header row(s) and ${tables(html).length} reachable table(s). tables() finds a table by the container tag immediately before its header row, so a header row that is not its table's first child is invisible to both checks above.`,
+      `/docs/${route} has ${headers} header row(s) and ${tables(html).length} reachable table(s). tables() finds a table by the container tag immediately before its header row, so a header row that is not its table's first child is invisible to both checks above.`,
+    );
+    const opened = [...html.matchAll(/<table(?=[\s/>])/g)].length;
+    assert.equal(
+      elementTables(html).length,
+      opened,
+      `/docs/${route} opens ${opened} <table> tag(s) and ${elementTables(html).length} elementTables() reached. A table it cannot reach is one the two checks above never read, which is also what an unclosed table or an attribute holding a bare > looks like.`,
     );
   }
 });

@@ -334,4 +334,40 @@
     opacity: 0.62;
     margin-bottom: 2px;
   }
+
+  /* A table written as `<table>` rather than as a `div.row.header` grid, which
+     is what a fetched dog README renders its markdown tables as and what
+     /docs/dog-grants writes by hand.
+
+     The same shape dog-readme.css gives those pages, for the same reason the
+     rules above exist: under 640px a header row cannot survive one column, so
+     it goes and every cell past the first names its own column off the
+     `data-label` its row carries. Without the hide rule the table keeps its
+     column floors, runs wider than the container, and a column ends up past
+     the edge with no scrollbar to get it back.
+
+     Kept here rather than in a page's own scoped block for the reason recorded
+     beside `.metrics-table` above: a scoped selector is pinned to the page that
+     wrote it, and the next `<table>` on another page matches none of it. */
+  .docs-shell main table,
+  .docs-shell main tbody,
+  .docs-shell main tr,
+  .docs-shell main th,
+  .docs-shell main td {
+    display: block;
+  }
+
+  .docs-shell main thead {
+    display: none;
+  }
+
+  .docs-shell main td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.62;
+    margin-bottom: 2px;
+  }
 }
