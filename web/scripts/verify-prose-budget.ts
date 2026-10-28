@@ -342,7 +342,11 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 1470 for the fleet listing: `origin` on a row and a `hosts`
   // map beside `host` are a shape a script has to be told about.
-  "json-output": 1500,
+  //
+  // Raised from 1500 for `vcs`: a key that exists on one command and one
+  // build, and is absent from every other, is a shape a script has to be
+  // told about.
+  "json-output": 1580,
   startup: 1250,
   examples: 1200,
   "not-built": 1080,

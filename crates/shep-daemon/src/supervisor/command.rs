@@ -337,6 +337,12 @@ pub(crate) enum Command {
         /// Answers with the current snapshot.
         reply: oneshot::Sender<Vec<ProcessInfo>>,
     },
+    /// Every sheep's working directory, by id (see [`Actor::working_dirs`]).
+    #[cfg(feature = "vcs")]
+    WorkingDirs {
+        /// Answers with one entry per sheep that names a `cwd`.
+        reply: oneshot::Sender<HashMap<u32, PathBuf>>,
+    },
     /// Reopens the log files of every sheep matching `selector`.
     Reopen {
         /// Which sheep.

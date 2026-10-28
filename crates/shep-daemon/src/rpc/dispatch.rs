@@ -21,6 +21,8 @@ use crate::supervisor::{BatchPolicy, ConnId, SheepDogRead, SupervisorError};
 use super::batch::{duplicate_name, persists, staged_plan};
 use super::context::{Outcome, RpcContext, budget};
 use super::dog_secrets::{resolved_section, resolved_sheep_table};
+#[cfg(feature = "vcs")]
+use super::enrichment::with_vcs;
 use super::enrichment::{
     dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats,
 };
@@ -122,6 +124,8 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                     } else {
                         let hits = with_live_stats(&ctx.stats, hits).await;
                         let hits = with_lambs(&ctx.stats, hits).await;
+                        #[cfg(feature = "vcs")]
+                        let hits = with_vcs(&ctx.supervisor, hits).await;
                         reply(Ok(Response::Described(with_dog_contact(
                             &ctx.dog_refusals,
                             hits,
