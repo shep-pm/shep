@@ -111,15 +111,10 @@ impl App {
         self.froze_at = Some(self.now);
         self.frozen_for = Duration::ZERO;
         self.disarm_on_link_change();
-        // Every notice is about a shepherd that no longer exists,
-        // and none of them can be acted on. Left standing, the last
-        // one outranks the key hint for the rest of the session
-        // (`view::status::status_line`'s own ordering), so an
-        // operator reads `the shepherd is shutting down` where the
-        // bar should be naming the keys that still work. Whether the
-        // shutdown was clean is on the screen either way: the link
-        // panel quotes an error that says the socket was removed
-        // rather than refusing.
+        // Every notice is about a shepherd that no longer exists, and none
+        // of them can be acted on. Left standing, the last one outranks the
+        // key hint for the rest of the session
+        // (`view::status::status_line`'s own ordering).
         self.notice = None;
         Effect::None
     }
@@ -176,14 +171,10 @@ impl App {
                 settings.pending = None;
             }
         }
-        // The config pane has no expiry of its own any more:
-        // nothing on it is a question waiting for an answer. Its
-        // edits sit until the operator writes them or undoes them,
-        // and a set that timed out would throw work away silently.
-        // Outside the link guard for the same reason, and one more:
-        // `until` was set off `self.now`, which a dead link stops
-        // advancing, so the tick's own `now` is what expires a
-        // reveal at all once the link has gone.
+        // The config pane has no expiry of its own any more: nothing on it is
+        // a question waiting for an answer, and a set that timed out would
+        // throw work away silently. `until` was set off `self.now`, which a
+        // dead link stops advancing.
         if let Some(pane) = self.secrets_pane_mut()
             && pane
                 .reveal
@@ -214,17 +205,10 @@ impl App {
         {
             pane.armed = None;
         }
-        // Neither full-screen feed has a timer of its own; each
-        // rides every tick instead of the dashboard's own cadence,
-        // which is fixed for the connection's lifetime (see
-        // `RefreshFeed`'s own doc). The dashboard raises nothing
-        // here, or every lookout would poll twice as often for
-        // nothing. `Link::Lost` too: `Msg::Bleats` throws the tail
-        // away while the link is down, so every read would be work
-        // done and discarded once a second. `Msg::Snapshot` and
-        // `select_at` guard on the same thing, and
-        // `a_frozen_dashboard_does_not_re_read_anything` states the
-        // rule.
+        // Neither full-screen feed has a timer of its own; each rides every
+        // tick. The dashboard raises nothing here, or every lookout would
+        // poll twice as often for nothing. `Link::Lost` too: `Msg::Bleats`
+        // throws the tail away while the link is down.
         if matches!(self.body, Body::Bleats(_) | Body::Sheep(_))
             && !matches!(self.link, Link::Lost { .. })
         {
