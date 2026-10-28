@@ -242,11 +242,13 @@ execute", rule 7 of the dog config spec ("asked fresh, never stored"), and
 | Step | Spec | Covers | Existing issues |
 |---|---|---|---|
 | 1 | Spec 0, re-planned | Verbs for sheep and dogs, every dog listed, `delete` absorbs `rehome` | #600, #382 |
-| 2 | Manifest and grants | Probe flag, manifest v1, per-dog connection, the permission table, prompts, the upgrade path | #356, #350 |
+| 2 | Manifest and grants | Probe flag, manifest v1, per-dog connection, the permission table, prompts, the upgrade path | #1073, #356, #350 |
 | 3 | Spec 1, rewritten | `shep install`, `shep upgrade`, receipts, SOURCE tiers, VERSION column | #357 |
-| 4 | Calls and events | Triggers between dogs, `dog.<name>.*` topics | none |
+| 4 | Calls and events | Triggers between dogs, `dog.<name>.*` topics | #1074 |
 | 5 | Panes, then the catalogue | Pane sections over the channel, the shared crate, browse and install in lookout | #566 |
-| 6 | 1b, spec 2, spec 5 | Prebuilt downloads, the on-ramp (welcome, hints, docs reorder), shep upgrading itself | #660, #605 |
+| 6 | 1b, spec 2, spec 5 | Prebuilt downloads, the on-ramp (welcome, hints, docs reorder), shep upgrading itself | #660 |
+
+Progress is tracked in #1075.
 
 #350 (the Windows channel pipe authenticates nobody) sits at step 2
 because the per-dog descriptor needs a Windows arm.
