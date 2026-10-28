@@ -136,9 +136,10 @@ fn row_cell(
     now: Instant,
 ) -> String {
     match column {
-        Column::Key => {
-            editor.map_or_else(|| row.key.clone(), |editor| field_cell(editor, Field::Key, column.width()))
-        }
+        Column::Key => editor.map_or_else(
+            || row.key.clone(),
+            |editor| field_cell(editor, Field::Key, column.width()),
+        ),
         Column::Value => value_cell(
             row,
             revealed,
@@ -183,7 +184,7 @@ pub(super) fn row_line(
     // which is the same fact a rename is measured against: it keeps drawing on
     // the row it opened on while its KEY field names something else.
     let editor = selected
-        .then(|| pane.typing.as_ref())
+        .then_some(pane.typing.as_ref())
         .flatten()
         .filter(|editor| editor.opened_under() == Some(row.key.as_str()));
     let environment_count = pane.model.environments.len();
@@ -220,7 +221,7 @@ pub(super) fn new_key_row_line(
     // An editor opened on an existing row never draws here: the add row is
     // under no key, and `opened_under` is how the two are told apart.
     let editor = selected
-        .then(|| pane.typing.as_ref())
+        .then_some(pane.typing.as_ref())
         .flatten()
         .filter(|editor| editor.opened_under().is_none());
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(columns.len());

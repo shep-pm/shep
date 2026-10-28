@@ -257,7 +257,11 @@ pub(super) fn add_env_row_line(
         text.push_str("  ");
         text.push_str(&fit(&value, value_w));
     }
-    let style = if muted { palette.muted() } else { Style::default() };
+    let style = if muted {
+        palette.muted()
+    } else {
+        Style::default()
+    };
     Line::from(vec![mark_span, Span::styled(text, style.patch(ground))])
 }
 
@@ -447,7 +451,9 @@ mod tests {
 
         pane.begin_env_typing();
         pane.step_env_field(true);
-        pane.type_env_text(KeyPress::TextEdit(crate::lookout::textbox::TextEdit::DeleteToStart));
+        pane.type_env_text(KeyPress::TextEdit(
+            crate::lookout::textbox::TextEdit::DeleteToStart,
+        ));
         type_into(&mut pane, "LOG_VERBOSITY");
 
         let after = rows_of(&pane);

@@ -132,9 +132,11 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // names the field under the cursor, and the secrets pane's branch
         // below reads the same words for the same field.
         (
-            editor
-                .buffer
-                .line(&format!("{}  ", editor.label), &format!("   {}", editor.keys), left_width),
+            editor.buffer.line(
+                &format!("{}  ", editor.label),
+                &format!("   {}", editor.keys),
+                left_width,
+            ),
             palette.attention(),
         )
     } else if let Some(action) = app.action().filter(|a| !a.sent) {
@@ -168,9 +170,11 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // pane's own free-text branch above gives: this shares
         // `InputMode::Text` with `App::filter` too.
         (
-            editor
-                .buffer
-                .line(&format!("{}  ", editor.label), &format!("   {}", editor.keys), left_width),
+            editor.buffer.line(
+                &format!("{}  ", editor.label),
+                &format!("   {}", editor.keys),
+                left_width,
+            ),
             palette.attention(),
         )
     } else if let Some(key) = secrets_armed(app) {
@@ -727,10 +731,12 @@ mod tests {
         secret_app.update(Msg::Key(KeyPress::Confirm));
         let secret_key = rendered(&status_line(&secret_app, 200));
 
-        for keys in ["tab value   enter next   esc cancels"] {
-            assert!(env_key.contains(keys), "env KEY focus: {env_key:?}");
-            assert!(secret_key.contains(keys), "secrets KEY focus: {secret_key:?}");
-        }
+        let on_key = "tab value   enter next   esc cancels";
+        assert!(env_key.contains(on_key), "env KEY focus: {env_key:?}");
+        assert!(
+            secret_key.contains(on_key),
+            "secrets KEY focus: {secret_key:?}"
+        );
 
         env_app.update(Msg::Key(KeyPress::TextChar('A')));
         secret_app.update(Msg::Key(KeyPress::TextChar('A')));
@@ -739,10 +745,15 @@ mod tests {
         let env_value = rendered(&status_line(&env_app, 200));
         let secret_value = rendered(&status_line(&secret_app, 200));
 
-        for keys in ["tab key   enter writes   esc cancels"] {
-            assert!(env_value.contains(keys), "env VALUE focus: {env_value:?}");
-            assert!(secret_value.contains(keys), "secrets VALUE focus: {secret_value:?}");
-        }
+        let on_value = "tab key   enter writes   esc cancels";
+        assert!(
+            env_value.contains(on_value),
+            "env VALUE focus: {env_value:?}"
+        );
+        assert!(
+            secret_value.contains(on_value),
+            "secrets VALUE focus: {secret_value:?}"
+        );
     }
 
     /// An armed env delete takes the bar the way an armed secret delete
@@ -761,7 +772,10 @@ mod tests {
             bar.contains("delete DB_HOST? enter confirms, any other key cancels"),
             "{bar:?}"
         );
-        assert!(!bar.contains("e edit"), "the arm outranks the pane's own hint: {bar:?}");
+        assert!(
+            !bar.contains("e edit"),
+            "the arm outranks the pane's own hint: {bar:?}"
+        );
     }
 
     #[test]

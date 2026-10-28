@@ -31,7 +31,9 @@ impl App {
         // that. The arm is taken before the key is dispatched so `Escape` can
         // eat its own press rather than also closing the pane behind it.
         let was_armed = !matches!(key, KeyPress::Confirm | KeyPress::Quit)
-            && self.config_pane_mut().is_some_and(ConfigPane::disarm_env_delete);
+            && self
+                .config_pane_mut()
+                .is_some_and(ConfigPane::disarm_env_delete);
         if self.close_dialog.is_some() {
             return self.on_close_dialog_key(key);
         }

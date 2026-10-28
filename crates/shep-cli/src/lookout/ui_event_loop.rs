@@ -535,19 +535,32 @@ where
             // its set half ran.
             Effect::WriteSecrets(edits, _authority) => {
                 let store = paths.secrets.clone();
-                let handle = tokio::task::spawn_blocking(move || -> Result<bool, shep_core::secrets::SecretError> {
-                    let mut changed = false;
-                    for edit in &edits {
-                        match &edit.value {
-                            Some(value) => {
-                                shep_core::secrets::set(&store, &edit.key, &edit.environment, value)?;
-                                changed = true;
+                let handle = tokio::task::spawn_blocking(
+                    move || -> Result<bool, shep_core::secrets::SecretError> {
+                        let mut changed = false;
+                        for edit in &edits {
+                            match &edit.value {
+                                Some(value) => {
+                                    shep_core::secrets::set(
+                                        &store,
+                                        &edit.key,
+                                        &edit.environment,
+                                        value,
+                                    )?;
+                                    changed = true;
+                                }
+                                None => {
+                                    changed |= shep_core::secrets::unset(
+                                        &store,
+                                        &edit.key,
+                                        &edit.environment,
+                                    )?
+                                }
                             }
-                            None => changed |= shep_core::secrets::unset(&store, &edit.key, &edit.environment)?,
                         }
-                    }
-                    Ok(changed)
-                });
+                        Ok(changed)
+                    },
+                );
                 inflight.push(Box::pin(async move {
                     let result = join_blocking(handle).await;
                     Msg::SecretWritten { result }

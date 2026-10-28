@@ -13,8 +13,6 @@
 //! starts empty on an existing row too, and the only text this type has ever
 //! held is what the operator typed.
 
-use shep_core::secrets::MAX_KEY_BYTES;
-
 use super::app::KeyPress;
 use super::textbox::TextBox;
 
@@ -35,7 +33,9 @@ pub const EMPTY_RENAME: &str = "a rename needs a value typed: this pane never re
 #[must_use]
 pub fn is_env_key(name: &str) -> bool {
     let mut chars = name.chars();
-    let Some(first) = chars.next() else { return false };
+    let Some(first) = chars.next() else {
+        return false;
+    };
     (first.is_ascii_alphabetic() || first == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
@@ -78,12 +78,6 @@ impl Grammar {
             }
             Self::Env => "a letter or `_`, then letters, digits or `_`",
         }
-    }
-
-    /// The longest KEY this grammar accepts, in bytes.
-    #[must_use]
-    pub const fn key_limit(self) -> usize {
-        MAX_KEY_BYTES
     }
 }
 
@@ -293,10 +287,11 @@ impl KeyValues {
     /// backspace away from fixing it, and a cursor that had moved would have
     /// them typing a value for a key that cannot be written.
     fn move_focus(&mut self, to: Field) -> Outcome {
-        if self.focus == Field::Key && to == Field::Value {
-            if !self.grammar.accepts(self.key.as_str()) {
-                return Outcome::Refused(Refusal::Key(self.grammar.rule()));
-            }
+        if self.focus == Field::Key
+            && to == Field::Value
+            && !self.grammar.accepts(self.key.as_str())
+        {
+            return Outcome::Refused(Refusal::Key(self.grammar.rule()));
         }
         self.focus = to;
         Outcome::Moved
@@ -309,6 +304,7 @@ mod tests {
     use crate::lookout::app::{App, Body, Effect, Msg};
     use crate::lookout::textbox::TextEdit;
     use crate::lookout::view::fixtures;
+    use shep_core::secrets::MAX_KEY_BYTES;
 
     fn typed(editor: &mut KeyValues, text: &str) {
         for c in text.chars() {
@@ -402,9 +398,17 @@ mod tests {
             typed(&mut editor, text);
             let refusal = Refusal::Key(grammar.rule());
 
-            assert_eq!(editor.submit(), Outcome::Refused(refusal), "{grammar:?} {text}");
+            assert_eq!(
+                editor.submit(),
+                Outcome::Refused(refusal),
+                "{grammar:?} {text}"
+            );
             assert_eq!(editor.focus(), Field::Key, "{grammar:?} {text}");
-            assert_eq!(editor.step(false), Outcome::Refused(refusal), "{grammar:?} {text}");
+            assert_eq!(
+                editor.step(false),
+                Outcome::Refused(refusal),
+                "{grammar:?} {text}"
+            );
             assert_eq!(editor.focus(), Field::Key, "{grammar:?} {text}");
             assert_eq!(editor.key().as_str(), text, "and nothing was thrown away");
         }
@@ -421,7 +425,7 @@ mod tests {
         for key in ["DB-HOST", "a.b", "9BAD", "", ".leading"] {
             assert!(!Grammar::Env.accepts(key), "{key}");
         }
-        for key in ["DB HOST", "", ".leading", &"x".repeat(Grammar::Secret.key_limit() + 1)] {
+        for key in ["DB HOST", "", ".leading", &"x".repeat(MAX_KEY_BYTES + 1)] {
             assert!(!Grammar::Secret.accepts(key), "{key}");
         }
     }
@@ -605,19 +609,18 @@ mod tests {
 
     /// `"@"` is the pane's own key, so one table covers both.
     fn named(key: &str, existing: &str) -> String {
-        if key == "@" { existing.to_owned() } else { key.to_owned() }
+        if key == "@" {
+            existing.to_owned()
+        } else {
+            key.to_owned()
+        }
     }
 
     fn expected(case: &Case, existing: &str) -> Vec<Written> {
         let mut out: Vec<Written> = case
             .writes
             .iter()
-            .map(|(key, value)| {
-                Written(
-                    named(key, existing),
-                    value.map(|value| value.to_owned()),
-                )
-            })
+            .map(|(key, value)| Written(named(key, existing), value.map(|value| value.to_owned())))
             .collect();
         out.sort();
         out
@@ -641,7 +644,10 @@ mod tests {
                 };
                 Some(Written(
                     key.clone(),
-                    value.as_ref().map(shep_core::protocol::EnvValue::as_str).map(str::to_owned),
+                    value
+                        .as_ref()
+                        .map(shep_core::protocol::EnvValue::as_str)
+                        .map(str::to_owned),
                 ))
             })
             .collect();
@@ -658,7 +664,11 @@ mod tests {
                     out.push(Written(edit.key.clone(), edit.value.clone()));
                 }
                 Effect::WriteSecrets(edits, _) => {
-                    out.extend(edits.iter().map(|edit| Written(edit.key.clone(), edit.value.clone())));
+                    out.extend(
+                        edits
+                            .iter()
+                            .map(|edit| Written(edit.key.clone(), edit.value.clone())),
+                    );
                 }
                 _ => {}
             }
@@ -669,11 +679,10 @@ mod tests {
 
     fn run_env(case: &Case) -> Vec<Written> {
         let mut app = fixtures::app_in_sheep_pane_with_env(&[(ENV_KEY, "db.internal")]);
-        match case.row {
-            None => {
-                app.update(Msg::Key(KeyPress::SelectLast));
-            }
-            Some(_) => fixtures::select_env_key(&mut app, ENV_KEY),
+        if case.row.is_none() {
+            app.update(Msg::Key(KeyPress::SelectLast));
+        } else {
+            fixtures::select_env_key(&mut app, ENV_KEY);
         }
         for step in &case.steps {
             apply(&mut app, step);
@@ -683,11 +692,8 @@ mod tests {
 
     fn run_secrets(case: &Case) -> (Vec<Written>, Vec<Effect>) {
         let mut app = fixtures::app_with_secrets_and_control();
-        match case.row {
-            None => {
-                app.update(Msg::Key(KeyPress::SelectLast));
-            }
-            Some(_) => {}
+        if case.row.is_none() {
+            app.update(Msg::Key(KeyPress::SelectLast));
         }
         let mut effects: Vec<Effect> = Vec::new();
         for step in &case.steps {
@@ -727,7 +733,12 @@ mod tests {
                 case.name
             );
             let (writes, _) = run_secrets(&case);
-            assert_eq!(writes, expected(&case, SECRET_KEY), "secrets: {}", case.name);
+            assert_eq!(
+                writes,
+                expected(&case, SECRET_KEY),
+                "secrets: {}",
+                case.name
+            );
         }
     }
 
@@ -778,7 +789,11 @@ mod tests {
         env.update(Msg::Key(KeyPress::NextField));
         let env_notice = env.notice().expect("a refusal says so").to_string();
         assert_eq!(
-            env.config_pane().expect("open").env_typing().expect("open").focus(),
+            env.config_pane()
+                .expect("open")
+                .env_typing()
+                .expect("open")
+                .focus(),
             Field::Key
         );
 
@@ -793,16 +808,19 @@ mod tests {
         let Body::Secrets(pane) = secrets.body() else {
             panic!("the secrets pane is not open");
         };
-        assert_eq!(
-            pane.typing.as_ref().expect("open").focus(),
-            Field::Key
-        );
+        assert_eq!(pane.typing.as_ref().expect("open").focus(), Field::Key);
 
         // Both name their own grammar, and both say it in the same shape.
         for notice in [&env_notice, &secret_notice] {
-            assert!(notice.contains("\"A BAD\" is not a valid key: "), "{notice}");
+            assert!(
+                notice.contains("\"A BAD\" is not a valid key: "),
+                "{notice}"
+            );
         }
         assert!(env_notice.contains("a letter or `_`"), "{env_notice}");
-        assert!(secret_notice.contains("not starting with a dot"), "{secret_notice}");
+        assert!(
+            secret_notice.contains("not starting with a dot"),
+            "{secret_notice}"
+        );
     }
 }

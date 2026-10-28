@@ -113,13 +113,9 @@ impl App {
     /// moves the key instead of asking the operator to delete it and add it
     /// again.
     fn apply_secrets_text(&mut self) -> Effect {
-        let Some(editor) = self
-            .secrets_pane_mut()
-            .and_then(|pane| pane.typing.take())
-        else {
+        let Some(mut editor) = self.secrets_pane_mut().and_then(|pane| pane.typing.take()) else {
             return Effect::None;
         };
-        let mut editor = editor;
         let Some(refused) = (match editor.submit() {
             Outcome::Submitted => None,
             Outcome::Moved => {
@@ -240,6 +236,7 @@ mod tests {
     use super::*;
 
     use super::super::testing::*;
+    use crate::lookout::keyvalue::Field;
     use crate::lookout::view::fixtures;
 
     #[test]

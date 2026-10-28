@@ -373,7 +373,9 @@ mod tests {
         assert_eq!(pane.cursor(), Some(PaneRow::Env(0)));
         pane.begin_env_typing();
         pane.step_env_field(true);
-        pane.type_env_text(KeyPress::TextEdit(crate::lookout::textbox::TextEdit::DeleteToStart));
+        pane.type_env_text(KeyPress::TextEdit(
+            crate::lookout::textbox::TextEdit::DeleteToStart,
+        ));
         type_into(&mut pane, "DB_URL");
         pane.step_env_field(false);
         type_into(&mut pane, "db.internal");
@@ -461,7 +463,10 @@ mod tests {
         pane.move_by(-1);
         assert_eq!(pane.cursor(), Some(PaneRow::Env(0)));
         pane.arm_env_delete(Instant::now());
-        assert_eq!(pane.armed_env().map(|armed| armed.key.as_str()), Some("DB_HOST"));
+        assert_eq!(
+            pane.armed_env().map(|armed| armed.key.as_str()),
+            Some("DB_HOST")
+        );
         assert!(pane.confirm_env_delete(), "the arm was there to confirm");
         let removal = pane
             .edits()
@@ -473,7 +478,10 @@ mod tests {
         ));
 
         pane.arm_env_delete(Instant::now());
-        assert!(pane.disarm_env_delete(), "and a second arm clears the same way");
+        assert!(
+            pane.disarm_env_delete(),
+            "and a second arm clears the same way"
+        );
         assert!(pane.armed_env().is_none());
     }
 

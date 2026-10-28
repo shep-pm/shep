@@ -368,7 +368,6 @@ impl fmt::Debug for SecretEdit {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

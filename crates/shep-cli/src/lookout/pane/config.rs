@@ -28,8 +28,8 @@ use super::sheep_dog::SheepDogTable;
 // type's own field indexes into.
 #[cfg(doc)]
 use super::super::field::ValueKind;
-use super::dogs::{DogsTab, dog_names};
 use super::super::keyvalue::KeyValues;
+use super::dogs::{DogsTab, dog_names};
 use super::{ArmedEnv, ListPane, Lock, PaneEdit, PaneRow, PaneTarget, PaneTyping, PathStep};
 #[cfg(doc)]
 use shep_core::config::GROUP_ORDER;

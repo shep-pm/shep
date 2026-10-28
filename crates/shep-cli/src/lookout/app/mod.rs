@@ -110,7 +110,7 @@ pub(crate) use config_pane::*;
 // Re-exported rather than imported (IR-32): every module under `app` opens
 // `use super::super::*` or `use super::*`, and the shared key/value editor is
 // what they all drive.
-pub(crate) use super::keyvalue::{Field, Grammar, KeyValues, Outcome};
+pub(crate) use super::keyvalue::{Grammar, KeyValues, Outcome};
 pub(crate) use super::pane::EnvSubmit;
 pub(crate) use focus::{Focus, FocusAsk};
 pub use msg::*;
