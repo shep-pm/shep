@@ -504,7 +504,7 @@ mod tests {
         let schema = serde_json::json!({
             "properties": { "limits": { "type": "object", "properties": {} } }
         });
-        let pane = ConfigPane::dog("jobs".into(), None, schema, String::new());
+        let pane = ConfigPane::dog("jobs".into(), None, schema, String::new(), Vec::new());
         let text = text_of(&pane_lines(&pane, fixtures::plain(), 120, 0));
         assert!(text.iter().any(|line| line.contains("limits")), "{text:?}");
     }

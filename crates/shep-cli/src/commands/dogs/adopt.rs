@@ -1,13 +1,14 @@
 //! `shep adopt`: vets a third-party binary shep has never seen, records it,
 //! and starts it if a shepherd is running.
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use shep_client::{Client, RequestError};
 use shep_core::paths::{ShepPaths, user_home};
 use shep_core::permissions::Grants;
-use shep_core::protocol::{DogSource, Request, Response, RpcErrorCode};
+use shep_core::protocol::{DogSource, EnvValue, Request, Response, RpcErrorCode};
 
 use crate::cli::AdoptArgs;
 use crate::commands::dog_migration::{
@@ -91,7 +92,7 @@ pub(super) async fn adopt_asking(
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
-    let (adopted, grants, declined) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
+    let (adopted, grants, declined, env) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
         cfg.adopt_dog(&name, &path, channel)?;
         // The answer was asked against a read taken before the question. A
         // grant another shep wrote since was decided by someone with the
@@ -110,7 +111,12 @@ pub(super) async fn adopt_asking(
             }
             Some(Verdict::Grant(None)) | None => {}
         }
-        Ok((cfg.adopted_dog_names(), cfg.granted(&name)?, declined))
+        Ok((
+            cfg.adopted_dog_names(),
+            cfg.granted(&name)?,
+            declined,
+            cfg.adopted_dog_env(&name),
+        ))
     }) {
         Ok(recorded) => recorded,
         Err(err) => return fail_config(streams, &err),
@@ -160,7 +166,16 @@ pub(super) async fn adopt_asking(
         };
         return declined_after_config(streams, &name, source, client.as_ref()).await;
     }
-    adopt_after_config(streams, &name, &path, channel, grants, client.as_ref()).await
+    adopt_after_config(
+        streams,
+        &name,
+        &path,
+        channel,
+        grants,
+        &env,
+        client.as_ref(),
+    )
+    .await
 }
 
 /// A declined adopt's daemon half: the config now has the dog disabled, so a
@@ -425,14 +440,16 @@ fn fail_dogs_config(streams: &mut Streams<'_>, err: &DogMigrationError) -> ExitC
 }
 
 /// `adopt`'s daemon half; see enable_after_config for the split and for
-/// what `client: None` means. `channel` is the binary's own ask and `grants`
-/// what `shep.toml` records for the dog.
+/// what `client: None` means. `channel` is the binary's own ask, `grants`
+/// what `shep.toml` records for the dog, and `env` the `env` that entry holds
+/// after the adopt wrote it, which a re-adopt keeps.
 async fn adopt_after_config(
     streams: &mut Streams<'_>,
     name: &str,
     path: &Path,
     channel: bool,
     grants: Option<Grants>,
+    env: &BTreeMap<String, String>,
     client: Option<&Client>,
 ) -> ExitCode {
     let source = DogSource::Adopted {
@@ -446,6 +463,10 @@ async fn adopt_after_config(
     let request = Request::EnableDog {
         name: name.to_string(),
         source: source.clone(),
+        env: env
+            .iter()
+            .map(|(key, value)| (key.clone(), EnvValue::from(value.clone())))
+            .collect(),
     };
     match client.request(request).await {
         Ok(Response::DogStarted(info)) => {
@@ -509,6 +530,7 @@ mod tests {
                 &binary,
                 channel,
                 None,
+                &BTreeMap::new(),
                 Some(&client),
             )
             .await;
@@ -518,6 +540,7 @@ mod tests {
                 sent.body,
                 Request::EnableDog {
                     name: "otel".to_string(),
+                    env: BTreeMap::default(),
                     source: DogSource::Adopted {
                         grants: None,
                         path: "/usr/local/bin/shep-otel".to_string(),
@@ -601,7 +624,16 @@ mod tests {
             let mut streams = streams(&mut out, &mut err);
             streams.fmt = Format::Json;
 
-            let code = adopt_after_config(&mut streams, "otel", &binary, false, None, client).await;
+            let code = adopt_after_config(
+                &mut streams,
+                "otel",
+                &binary,
+                false,
+                None,
+                &BTreeMap::new(),
+                client,
+            )
+            .await;
 
             assert_eq!(code, ExitCode::Success);
             let json: serde_json::Value = serde_json::from_slice(&out).unwrap();

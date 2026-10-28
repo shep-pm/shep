@@ -440,11 +440,17 @@ mod tests {
                 },
             },
         });
-        crate::lookout::pane::ConfigPane::dog("log-rotate".to_owned(), None, schema, String::new())
-            .fields()
-            .by_key("max_age")
-            .expect("the schema declares max_age")
-            .clone()
+        crate::lookout::pane::ConfigPane::dog(
+            "log-rotate".to_owned(),
+            None,
+            schema,
+            String::new(),
+            Vec::new(),
+        )
+        .fields()
+        .by_key("max_age")
+        .expect("the schema declares max_age")
+        .clone()
     }
 
     /// A bound written the way [`crate::lookout::field::Bounds`] keeps one.

@@ -447,12 +447,26 @@ pub enum Request {
         /// Which dog's table to read.
         dog: String,
     },
-    /// Start one dog now, marking it as coming from `source`
+    /// Start one dog now, marking it as coming from `source` and spawning it
+    /// with `env`
     EnableDog {
         /// The dog's name
         name: String,
         /// Where its binary comes from
         source: DogSource,
+        /// The environment the operator set for the dog, as written in
+        /// `[daemon.adopted_dogs]`, `{{secret:...}}` references included.
+        ///
+        /// The CLI owns `shep.toml` and the shepherd never reads it, so the
+        /// half of an entry the shepherd spawns with arrives here rather than
+        /// on `source`, which every flock row carries: an env value belongs
+        /// to one spawn, not to a listing. Empty for a built-in dog, and
+        /// absent on the wire when it is.
+        ///
+        /// [`EnvValue`], not a bare `String`, for the reason that type's own
+        /// doc gives (IR-41).
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        env: BTreeMap<String, EnvValue>,
     },
     /// Stop and deregister one dog
     ///

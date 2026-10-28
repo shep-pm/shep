@@ -286,6 +286,7 @@ fn a_failed_probe_leaves_the_row_folded_with_the_refusal_on_it() {
     let effect = app.update(Msg::DogPane {
         name: "bark".to_string(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Err("bark publishes no schema; edit dogs.toml with $EDITOR".to_string()),
     });
     assert_eq!(effect, Effect::None, "a failed probe asks for nothing else");
@@ -447,7 +448,7 @@ async fn a_grant_from_the_checklist_writes_what_shep_dogs_grant_writes() {
         tune: tune.clone(),
         ticket,
         result: Ok(DogTuneLanded::Grants {
-            source: applied.source,
+            entry: applied.entry,
             enabled: applied.enabled,
         }),
     });
@@ -635,7 +636,7 @@ fn a_grant_still_reaches_the_shepherd_when_the_screen_closed_first() {
         tune,
         ticket,
         result: Ok(DogTuneLanded::Grants {
-            source: applied.source,
+            entry: applied.entry,
             enabled: applied.enabled,
         }),
     });

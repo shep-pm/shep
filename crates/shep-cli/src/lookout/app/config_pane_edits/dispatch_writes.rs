@@ -1,26 +1,32 @@
 use super::super::*;
 
 use crate::dog_settings::touched_refusal;
+use crate::lookout::edits::EditKey;
 use crate::lookout::pane::toml_table;
 
 impl App {
-    /// Everything the open pane has filed, as the requests that carry it,
+    /// Everything the open pane has filed, as the writes that carry it,
     /// leaving the pane holding nothing.
     ///
     /// A sheep's set is one request per entry; a dog's is one request for the
     /// lot, since [`Sent::SetDogSection`] and [`Sent::SetSheepDogTable`] each
     /// replace a whole table. Reported rather than sent for a dog whose
     /// section stopped parsing between the read and the keystroke.
-    pub(in crate::lookout::app) fn take_pane_writes(&mut self) -> Vec<Sent> {
+    ///
+    /// A dog pane's `env` edits are the one half that is not a request: they
+    /// go to `shep.toml`, which the shepherd never reads. See
+    /// [`Effect::WriteDogEnv`].
+    pub(in crate::lookout::app) fn take_pane_writes(&mut self) -> PaneWrites {
         let mut writes = self.take_seated_writes();
         let edited = self
             .config_pane()
             .map(|pane| pane.dogs_tab().edited())
             .unwrap_or_default();
         for dog in edited {
-            writes.extend(
+            writes.requests.extend(
                 self.in_dog_table(dog, Self::take_seated_writes)
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .requests,
             );
         }
         writes
@@ -28,24 +34,45 @@ impl App {
 
     /// [`Self::take_pane_writes`] for the pane that is the body, without the
     /// tables a sheep pane holds.
-    fn take_seated_writes(&mut self) -> Vec<Sent> {
+    fn take_seated_writes(&mut self) -> PaneWrites {
         // `WriteAuthority::granted`, not `Self::authorize_write`: the gate
         // is checked on the keystroke that files an edit, so a read-only
         // pane reaches here with an empty set and must not be told off for
         // leaving.
         let Some(authority) = WriteAuthority::granted(self) else {
-            return Vec::new();
+            return PaneWrites::default();
         };
         let Some(pane) = self.body.config_pane_mut() else {
-            return Vec::new();
+            return PaneWrites::default();
         };
         let edits = pane.close();
         if edits.is_empty() {
-            return Vec::new();
+            return PaneWrites::default();
         }
         let mut ticket = self.next_write_ticket;
-        let sent = match pane.target().clone() {
+        let mut writes = PaneWrites::default();
+        match pane.target().clone() {
             PaneTarget::Dog { name, .. } => {
+                // The env half first, so its ticket is the batch's first and
+                // the section write's own tickets follow it.
+                let env: Vec<(String, Option<EnvValue>)> = edits
+                    .iter()
+                    .filter_map(|(key, entry)| match (key, entry.edit()) {
+                        (EditKey::Env(key), PaneEdit::SetEnv { value, .. }) => {
+                            Some((key.clone(), value.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if !env.is_empty() {
+                    writes.env = Some(DogEnvWrite {
+                        name: name.clone(),
+                        edits: env,
+                        ticket,
+                        authority,
+                    });
+                    ticket += 1;
+                }
                 let schema = pane.schema().cloned();
                 match pane.edited_section_with(&edits) {
                     SectionWrite::Written(toml) => {
@@ -61,34 +88,33 @@ impl App {
                             )
                         }) {
                             self.notice = Some(Notice::grave(format!("{name}: {}", refused.text)));
-                            return Vec::new();
+                            return PaneWrites::default();
                         }
-                        let section = vec![Sent::SetDogSection {
+                        writes.requests.push(Sent::SetDogSection {
                             name,
                             ticket,
                             toml,
                             authority,
-                        }];
+                        });
                         ticket += 1;
-                        section
                     }
                     // The section already says what every filed edit asked for, so
                     // the close is finished and has nothing to send. Not a
                     // refusal, and nothing to report: the edit reached this arm
                     // through a re-read that landed it under the operator's hand.
-                    SectionWrite::Nothing => Vec::new(),
+                    SectionWrite::Nothing => {}
                     SectionWrite::Refused => {
                         self.notice = Some(Notice::grave(format!(
                             "{name}: its section in dogs.toml does not parse, or is not shaped for the edit"
                         )));
-                        return Vec::new();
+                        return PaneWrites::default();
                     }
                 }
             }
             PaneTarget::Sheep { name } => {
-                let writes = edits.into_writes();
-                let mut requests = Vec::with_capacity(writes.len());
-                for edit in writes {
+                let filed = edits.into_writes();
+                let mut requests = Vec::with_capacity(filed.len());
+                for edit in filed {
                     let this = ticket;
                     ticket += 1;
                     requests.push(match edit {
@@ -112,7 +138,7 @@ impl App {
                         },
                     });
                 }
-                requests
+                writes.requests = requests;
             }
             // One write for the whole table, since the request replaces
             // it: every key no edit touched rides along unchanged.
@@ -125,24 +151,23 @@ impl App {
                     .and_then(|schema| touched_refusal(schema, &table, &touched))
                 {
                     self.notice = Some(Notice::grave(format!("{sheep}.{dog}: {}", refused.text)));
-                    return Vec::new();
+                    return PaneWrites::default();
                 }
-                let write = vec![Sent::SetSheepDogTable {
+                writes.requests.push(Sent::SetSheepDogTable {
                     name: sheep,
                     dog,
                     ticket,
                     table: Some(table.into()),
                     authority,
-                }];
+                });
                 ticket += 1;
-                write
             }
-        };
+        }
         // One ticket per request that goes out, and never reused: the
         // counter is what keeps two `Sent` values for the same field
         // distinguishable.
         self.next_write_ticket = ticket;
-        sent
+        writes
     }
 }
 
@@ -403,6 +428,167 @@ mod tests {
         );
     }
 
+    /// A dog's `env` lives in `shep.toml`, which the shepherd never reads, so
+    /// its write is a file write and not a request. The dog's own section is
+    /// the shepherd's to write, and one close can hold both halves.
+    #[test]
+    fn closing_a_dogs_env_edit_writes_the_file_before_anything_else() {
+        let mut app = fixtures::app_in_adopted_dog_pane_with_env();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(
+            app.config_pane().unwrap().cursor(),
+            Some(PaneRow::Env(1)),
+            "RUST_LOG, the fixture's second env key"
+        );
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "warn".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+
+        let sent = read_dog_close(&mut app);
+        let effect = app.update(Msg::Replied {
+            sent,
+            result: Ok(Response::DogSection {
+                toml: "ratio = 1.5\n".to_owned().into(),
+            }),
+        });
+        let Effect::WriteDogEnv { write, then } = effect else {
+            panic!("a dog's env edit writes shep.toml: {effect:?}");
+        };
+        assert_eq!(write.name, "kelpie");
+        assert_eq!(write.edits.len(), 1);
+        assert_eq!(write.edits[0].0, "RUST_LOG");
+        assert!(
+            then.is_empty(),
+            "the section says what it said, so the close has no daemon half: {then:?}"
+        );
+    }
+
+    /// The section write rides behind the file write rather than beside it:
+    /// a shepherd handed a `dogs.toml` section is being told about a dog
+    /// whose `shep.toml` entry the same close is still changing.
+    #[test]
+    fn a_dogs_env_and_section_edits_close_as_the_file_half_then_the_request() {
+        let mut app = fixtures::app_in_adopted_dog_pane_with_env();
+        pane_to(&mut app, "ratio");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            let _ = app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for typed in "2.5".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "warn".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+
+        let sent = read_dog_close(&mut app);
+        let effect = app.update(Msg::Replied {
+            sent,
+            result: Ok(Response::DogSection {
+                toml: "ratio = 1.5\n".to_owned().into(),
+            }),
+        });
+        let Effect::WriteDogEnv { write, then } = effect else {
+            panic!("the file half goes first: {effect:?}");
+        };
+        assert_eq!(write.edits.len(), 1);
+        assert_eq!(then.len(), 1);
+        assert!(matches!(then[0], Sent::SetDogSection { .. }), "{then:?}");
+
+        let effect = app.update(Msg::DogEnvWritten {
+            name: write.name,
+            ticket: write.ticket,
+            then,
+            result: Ok(()),
+        });
+        let Effect::SendAll(mut sent) = effect else {
+            panic!("the request the close built goes once the file lands: {effect:?}");
+        };
+        assert!(
+            matches!(sent.remove(0), Sent::SetDogSection { .. }),
+            "and it is the section write"
+        );
+        let notice = app.notice().expect("the write reports itself").to_string();
+        assert!(notice.contains("kelpie"), "{notice}");
+        assert!(notice.contains("next starts the dog"), "{notice}");
+    }
+
+    /// A `shep.toml` this process cannot write means no section goes to a
+    /// shepherd either: the two halves are one close, and the one this
+    /// process owns is the one that failed.
+    #[test]
+    fn a_refused_dog_env_write_sends_no_section() {
+        let mut app = fixtures::app_in_adopted_dog_pane_with_env();
+        pane_to(&mut app, "ratio");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for _ in 0..64 {
+            let _ = app.update(Msg::Key(KeyPress::TextBackspace));
+        }
+        for typed in "2.5".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "warn".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+
+        let sent = read_dog_close(&mut app);
+        let Effect::WriteDogEnv { write, then } = app.update(Msg::Replied {
+            sent,
+            result: Ok(Response::DogSection {
+                toml: "ratio = 1.5\n".to_owned().into(),
+            }),
+        }) else {
+            panic!("wanted the file half");
+        };
+        let effect = app.update(Msg::DogEnvWritten {
+            name: write.name,
+            ticket: write.ticket,
+            then,
+            result: Err("permission denied".to_owned()),
+        });
+        assert_eq!(effect, Effect::None, "nothing goes to the shepherd");
+        assert!(app.notice().expect("the refusal says so").is_grave());
+    }
+
+    /// Asserted on the whole `Effect`, as `a_write_effects_debug_names_no_value`
+    /// does for a sheep's: the value was typed into this pane and nothing
+    /// above it may print it (IR-41).
+    #[test]
+    fn a_dog_env_write_effect_debug_names_no_value() {
+        let mut app = fixtures::app_in_adopted_dog_pane_with_env();
+        let _ = app.update(Msg::Key(KeyPress::SelectLast));
+        let _ = app.update(Msg::Key(KeyPress::SelectUp));
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        for typed in "sk_live_1".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let sent = read_dog_close(&mut app);
+        let effect = app.update(Msg::Replied {
+            sent,
+            result: Ok(Response::DogSection {
+                toml: "ratio = 1.5\n".to_owned().into(),
+            }),
+        });
+        assert_eq!(
+            format!("{effect:?}"),
+            "WriteDogEnv { write: DogEnvWrite { name: \"kelpie\", edits: [(\"RUST_LOG\", Some(EnvValue(<9 bytes>)))], ticket: 0, authority: WriteAuthority(()) }, then: [] }"
+        );
+    }
+
     /// Two writes to the same field in one batch is unreachable, since
     /// the set holds one entry per key, but two closes of two panes are
     /// not: the counter is monotonic and never reused, so no two `Sent`
@@ -437,6 +623,16 @@ mod tests {
             first[0], second[0],
             "a second close does not reuse the first's tickets"
         );
+    }
+
+    /// `Escape` on a dog pane with edits filed: the close reads the section
+    /// first, so this returns that read and leaves the close half-open.
+    #[track_caller]
+    fn read_dog_close(app: &mut App) -> Sent {
+        let Effect::Send(sent) = app.update(Msg::Key(KeyPress::Escape)) else {
+            panic!("a dog close reads its section first");
+        };
+        sent
     }
 
     /// A dog pane's rows are dotted for a nested table, and the write walks

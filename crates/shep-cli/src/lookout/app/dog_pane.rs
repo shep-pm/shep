@@ -19,6 +19,7 @@ impl App {
         &mut self,
         name: String,
         adopted_path: Option<PathBuf>,
+        env_keys: Vec<String>,
         result: Result<serde_json::Value, String>,
     ) -> Effect {
         // The settings screen asked for this dog's own tree, so the answer
@@ -44,6 +45,7 @@ impl App {
                     name: name.clone(),
                     adopted_path,
                     schema,
+                    env_keys,
                 });
                 Effect::Send(Sent::DogSection { name })
             }
@@ -105,12 +107,10 @@ impl App {
         name: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        let Some((schema, adopted_path)) = self.settings().and_then(|settings| {
+        let Some((schema, adopted_path, env_keys)) = self.settings().and_then(|settings| {
             let schema = settings.dog_tree_named(name)?.schema()?.clone();
-            let adopted_path = settings
-                .dog_named(name)
-                .and_then(|dog| dog.adopted_path.clone());
-            Some((schema, adopted_path))
+            let dog = settings.dog_named(name)?;
+            Some((schema, dog.adopted_path.clone(), dog.env_keys.clone()))
         }) else {
             return Effect::None;
         };
@@ -121,6 +121,7 @@ impl App {
                     adopted_path,
                     schema.clone(),
                     toml.as_str().to_owned(),
+                    env_keys,
                 );
                 self.open_settings_dog(name, pane, schema);
             }
@@ -150,6 +151,7 @@ impl App {
             probe.adopted_path,
             probe.schema,
             toml.to_owned(),
+            probe.env_keys,
         );
         let dropped = self
             .config_pane()
@@ -379,6 +381,7 @@ mod tests {
             app.update(Msg::DogPane {
                 name: "otel".to_string(),
                 adopted_path: None,
+                env_keys: Vec::new(),
                 result: Err("otel publishes no schema; edit dogs.toml with $EDITOR".to_string()),
             }),
             Effect::None
@@ -404,6 +407,7 @@ mod tests {
             app.update(Msg::DogPane {
                 name: "metrics".to_string(),
                 adopted_path: None,
+                env_keys: Vec::new(),
                 result: Ok(crate::dog::builtin_schema("metrics").expect("a built-in")),
             }),
             Effect::Send(Sent::DogSection {
@@ -438,6 +442,7 @@ mod tests {
         app.update(Msg::DogPane {
             name: "metrics".to_string(),
             adopted_path: None,
+            env_keys: Vec::new(),
             result: Ok(crate::dog::builtin_schema("metrics").expect("a built-in")),
         });
         assert!(app.config_pane().is_none(), "one half is not a pane yet");

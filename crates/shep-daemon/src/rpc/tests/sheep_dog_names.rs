@@ -2,11 +2,13 @@
 //! dog runs or sits at rest.
 
 use super::*;
+use std::collections::BTreeMap;
 
 fn dog(name: &str, source: DogSource) -> crate::dogs::DogSpec {
     crate::dogs::DogSpec {
         name: name.to_string(),
         source,
+        env: BTreeMap::new(),
     }
 }
 

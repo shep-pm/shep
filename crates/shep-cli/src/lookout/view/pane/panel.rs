@@ -304,6 +304,7 @@ mod tests {
             None,
             schema,
             "per_item_usd = 12.5\n".into(),
+            Vec::new(),
         );
         let field = pane
             .fields()

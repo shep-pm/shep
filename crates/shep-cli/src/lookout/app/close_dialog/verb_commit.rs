@@ -55,7 +55,9 @@ impl App {
             .close_dialog
             .as_ref()
             .map(|dialog| dialog.target_name().to_owned());
-        let writes = self.take_pane_writes();
+        // A close dialog is a sheep pane's own, so this batch has no
+        // `shep.toml` half: see [`Self::close_offer`].
+        let writes = self.take_pane_writes().requests;
         self.close_pane();
         let (Some(verb), Some(name)) = (verb, name) else {
             return Effect::SendAll(writes);

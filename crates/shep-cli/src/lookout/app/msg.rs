@@ -349,6 +349,10 @@ pub enum Msg {
         /// The adopted binary, or [`None`] for a built-in, echoed back so
         /// the pane records what it probed.
         adopted_path: Option<PathBuf>,
+        /// The key names of the `env` its `shep.toml` entry sets, read in the
+        /// same blocking half as the probe. Names only: a value is a secret,
+        /// and the pane that takes these never holds one.
+        env_keys: Vec<String>,
         /// The dog's schema, or why there is no pane for it.
         result: Result<serde_json::Value, String>,
     },
@@ -372,7 +376,7 @@ pub enum Msg {
         /// What the dog answered.
         entry: SheepDogEntry,
     },
-    /// An [`Effect::WriteDog`] has landed. `Ok` carries the [`DogSource`] the
+    /// An [`Effect::WriteDog`] has landed. `Ok` carries the [`DogEntry`] the
     /// write resolved, which [`Sent::Dog`] then rides to the shepherd, so the
     /// request cannot disagree with the file.
     DogWritten {
@@ -383,10 +387,23 @@ pub enum Msg {
         ticket: u64,
         /// Whether the write landed and what it resolved to, or why it did
         /// not.
-        result: Result<DogSource, String>,
+        result: Result<DogEntry, String>,
+    },
+    /// An [`Effect::WriteDogEnv`] has landed.
+    DogEnvWritten {
+        /// The dog, echoed back for the sentence this reports.
+        name: String,
+        /// The ticket the file half went out with, echoed back for
+        /// [`Self::SettingWritten`]'s reason.
+        ticket: u64,
+        /// The requests the same close built, held until the file half
+        /// answered. A refused write sends none of them.
+        then: Vec<Sent>,
+        /// Whether the write landed, or why it did not.
+        result: Result<(), String>,
     },
     /// An [`Effect::WriteDogTune`] has landed. `Ok` carries what the file now
-    /// says, which for a grant is the [`DogSource`] the record describes and
+    /// says, which for a grant is the [`DogEntry`] the record describes and
     /// which [`Sent::GrantDog`] then rides to the shepherd, so the request
     /// cannot disagree with the file.
     DogTuneWritten {
@@ -568,6 +585,23 @@ pub enum Effect {
         ticket: u64,
         /// Proof the control gate was open.
         authority: WriteAuthority,
+    },
+    /// Apply one dog pane's `env` edits to `shep.toml`; the result lands as
+    /// [`Msg::DogEnvWritten`].
+    ///
+    /// Its own effect, not [`Self::WriteSetting`]: a dog's `env` sits beside
+    /// its path in `[daemon] adopted_dogs`, and one key of it is written
+    /// through [`crate::commands::shep_toml::ShepToml::set_adopted_dog_env`],
+    /// which keeps the path. `spawn_blocking`, for [`Self::WriteSetting`]'s
+    /// reason.
+    WriteDogEnv {
+        /// The dog, and every key its close filed, with the value or [`None`]
+        /// for a removal.
+        write: DogEnvWrite,
+        /// The requests the same close built, sent once the file half lands:
+        /// a dog pane can hold a section edit and an env edit at once, and a
+        /// section must not be written over a file the env write refused.
+        then: Vec<Sent>,
     },
     /// Apply one of a dog's other `[daemon] keys; the result lands as
     /// [`Msg::DogTuneWritten`].

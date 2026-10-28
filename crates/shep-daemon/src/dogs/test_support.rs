@@ -4,6 +4,7 @@
 //! log test, so it lives here rather than in either.
 
 use core::time::Duration;
+use std::collections::BTreeMap;
 
 use shep_core::protocol::DogSource;
 
@@ -19,6 +20,7 @@ pub(super) async fn start_test_dog(ctx: &crate::rpc::RpcContext, name: &str) {
     let spec = DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     };
     let app = dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
     // Bounded, because the callers below run under a paused clock and this

@@ -8,7 +8,13 @@ use super::fixtures::{entries_schema, field};
 use super::{ConfigPane, SectionWrite};
 
 fn pane(section: &str) -> ConfigPane {
-    ConfigPane::dog("paddock".into(), None, entries_schema(), section.to_owned())
+    ConfigPane::dog(
+        "paddock".into(),
+        None,
+        entries_schema(),
+        section.to_owned(),
+        Vec::new(),
+    )
 }
 
 fn edits_of(pairs: &[(&str, Value)]) -> Edits {

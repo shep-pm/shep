@@ -63,8 +63,9 @@ impl ConfigPane {
     }
 
     /// One row per field of the active group, in display order, then, on a
-    /// sheep's `process` tab, its own env keys and the row that adds one. A
-    /// field carrying no group is visible whatever group is active.
+    /// sheep's `process` tab or on a dog pane, its own env keys and the row
+    /// that adds one. A field carrying no group is visible whatever group is
+    /// active.
     ///
     /// The `env` field is left out of the field portion for a sheep: its
     /// [`PaneRow::Env`] rows say the same thing. See [`Self::dog_rows`] for a
@@ -74,6 +75,7 @@ impl ConfigPane {
         if self.is_tree() {
             let mut rows = Vec::new();
             self.push_tree_rows(&self.outline.roots, &mut rows);
+            self.push_env_rows(&mut rows);
             return rows;
         }
         let group = self.group();
@@ -90,18 +92,35 @@ impl ConfigPane {
             .filter(|(_, field)| field.group.as_deref().is_none_or(|g| g == group))
             .map(|(index, _)| PaneRow::Field(index))
             .collect();
-        if self.shows_env() {
-            rows.extend((0..self.env_keys.len()).map(PaneRow::Env));
-            rows.push(PaneRow::AddEnv);
-        }
+        self.push_env_rows(&mut rows);
         rows
     }
 
+    /// Appends this pane's [`PaneRow::Env`] rows and its [`PaneRow::AddEnv`]
+    /// row, when [`Self::shows_env`] says the tab the pane is on has them.
+    fn push_env_rows(&self, rows: &mut Vec<PaneRow>) {
+        if !self.shows_env() {
+            return;
+        }
+        rows.extend((0..self.env_keys.len()).map(PaneRow::Env));
+        rows.push(PaneRow::AddEnv);
+    }
+
     /// Whether the env rows and the row that adds one belong to the tab the
-    /// pane is on: a sheep's `process` tab, and no other.
+    /// pane is on: a sheep's `process` tab, and an adopted dog's own pane,
+    /// which has no groups at all and so shows them under whichever one is
+    /// active.
+    ///
+    /// A dog's are the `env` its `shep.toml` entry sets, not its
+    /// `[<name>]` section: see [`Self::dog`]. A built-in dog has no entry to
+    /// set one beside, so its pane offers no row that a write would refuse.
     #[must_use]
     pub fn shows_env(&self) -> bool {
-        matches!(self.target, PaneTarget::Sheep { .. }) && self.group() == GROUP_ORDER[0]
+        match &self.target {
+            PaneTarget::Sheep { .. } => self.group() == GROUP_ORDER[0],
+            PaneTarget::Dog { adopted_path, .. } => adopted_path.is_some(),
+            PaneTarget::SheepDog { .. } => false,
+        }
     }
 
     /// [`Self::rows`]'s own [`PaneRow::Field`] and [`PaneRow::Table`] entries, alone: what the

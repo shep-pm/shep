@@ -400,8 +400,15 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 Err(err) => reply(Err(rpc_error(&err))),
             }
         }
-        Request::EnableDog { name, source } => {
-            let spec = DogSpec { name, source };
+        Request::EnableDog { name, source, env } => {
+            let spec = DogSpec {
+                name,
+                source,
+                env: env
+                    .into_iter()
+                    .map(|(key, value)| (key, value.into_string()))
+                    .collect(),
+            };
             let grants = spec.source.grants().cloned();
             match crate::dogs::dog_app(&spec, &ctx.paths) {
                 Err(err) => reply(Err(invalid_config(err))),

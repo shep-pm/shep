@@ -31,8 +31,9 @@ pub use self::config_rows::{
     config_pane_title_band_for_tests,
 };
 pub use self::dog_pane::{
-    app_in_dog_pane, app_in_dog_pane_over_lists, app_in_dog_pane_with_a_nested_table,
-    app_in_dog_pane_with_entries, app_in_dog_pane_with_entry_defaults, app_in_dog_pane_with_lists,
+    app_in_adopted_dog_pane_with_env, app_in_dog_pane, app_in_dog_pane_over_lists,
+    app_in_dog_pane_with_a_nested_table, app_in_dog_pane_with_entries,
+    app_in_dog_pane_with_entry_defaults, app_in_dog_pane_with_lists,
     app_in_dog_pane_with_two_edits, app_in_read_only_dog_pane_with_entries, dog_section,
     entries_dog_schema, entries_dog_section, list_dog_section, nested_dog_schema,
     nested_dog_section, select_node,

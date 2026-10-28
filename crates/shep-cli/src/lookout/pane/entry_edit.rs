@@ -42,7 +42,13 @@ const SECTION: &str = concat!(
 );
 
 fn pane() -> ConfigPane {
-    ConfigPane::dog("paddock".into(), None, schema(), SECTION.to_owned())
+    ConfigPane::dog(
+        "paddock".into(),
+        None,
+        schema(),
+        SECTION.to_owned(),
+        Vec::new(),
+    )
 }
 
 /// The pane with its cursor on the row `key`, as an operator would reach it.

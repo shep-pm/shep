@@ -9,6 +9,7 @@
 use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, LogStream, ServerFrame};
 use shep_daemon::dogs::DogSpec;
+use std::collections::BTreeMap;
 
 use super::*;
 
@@ -86,6 +87,7 @@ impl Session {
                 channel: false,
                 grants: grants.map(|names| Grants::parse(names).unwrap()),
             },
+            env: BTreeMap::new(),
         };
         let daemon = tokio::time::timeout(
             RECV_TIMEOUT,

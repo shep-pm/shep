@@ -1,6 +1,7 @@
 //! Boot and lifecycle: config load, the log subscriber, [`boot_supervisor`]
 //! and [`run_daemon`], and the exit-code mapping for both.
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::io::IsTerminal;
 
@@ -266,25 +267,29 @@ pub fn boot_options(
     }
 }
 
-/// The dog `name` is: adopted from the path `shep.toml` records, or built in,
-/// with the grants `shep.toml` records for it.
+/// The dog `name` is: adopted from the entry `shep.toml` records, or built
+/// in, with the grants and the `env` `shep.toml` records for it.
 fn dog_spec(config: &DaemonConfig, name: &str) -> DogSpec {
     let grants = config
         .daemon
         .dog_grants
         .get(name)
         .map(|section| section.granted.clone());
-    let source = match config.daemon.adopted_dogs.get(name) {
-        Some(path) => DogSource::Adopted {
-            grants,
-            path: path.display().to_string(),
-            channel: config.daemon.channel_dogs.iter().any(|dog| dog == name),
-        },
-        None => DogSource::BuiltIn { grants },
+    let (source, env) = match config.daemon.adopted_dogs.get(name) {
+        Some(entry) => (
+            DogSource::Adopted {
+                grants,
+                path: entry.path.display().to_string(),
+                channel: config.daemon.channel_dogs.iter().any(|dog| dog == name),
+            },
+            entry.env.clone(),
+        ),
+        None => (DogSource::BuiltIn { grants }, BTreeMap::new()),
     };
     DogSpec {
         name: name.to_string(),
         source,
+        env,
     }
 }
 
@@ -415,7 +420,8 @@ jobs = "/usr/local/bin/shep-jobs"
             vec![
                 DogSpec {
                     name: "metrics".into(),
-                    source: DogSource::BuiltIn { grants: None }
+                    source: DogSource::BuiltIn { grants: None },
+                    env: BTreeMap::new(),
                 },
                 DogSpec {
                     name: "otel".into(),
@@ -423,7 +429,8 @@ jobs = "/usr/local/bin/shep-jobs"
                         grants: None,
                         path: "/usr/local/bin/shep-otel".into(),
                         channel: false,
-                    }
+                    },
+                    env: BTreeMap::new(),
                 },
                 DogSpec {
                     name: "jobs".into(),
@@ -431,7 +438,8 @@ jobs = "/usr/local/bin/shep-jobs"
                         grants: None,
                         path: "/usr/local/bin/shep-jobs".into(),
                         channel: true,
-                    }
+                    },
+                    env: BTreeMap::new(),
                 },
             ]
         );
@@ -468,11 +476,13 @@ otel = "/usr/local/bin/shep-otel"
             vec![
                 DogSpec {
                     name: "metrics".into(),
-                    source: DogSource::BuiltIn { grants: None }
+                    source: DogSource::BuiltIn { grants: None },
+                    env: BTreeMap::new(),
                 },
                 DogSpec {
                     name: "bark".into(),
-                    source: DogSource::BuiltIn { grants: None }
+                    source: DogSource::BuiltIn { grants: None },
+                    env: BTreeMap::new(),
                 },
                 DogSpec {
                     name: "otel".into(),
@@ -480,7 +490,8 @@ otel = "/usr/local/bin/shep-otel"
                         grants: None,
                         path: "/usr/local/bin/shep-otel".into(),
                         channel: false,
-                    }
+                    },
+                    env: BTreeMap::new(),
                 },
             ],
             "adopted-and-disabled is the case this field exists for"

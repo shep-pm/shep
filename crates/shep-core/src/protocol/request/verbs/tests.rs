@@ -1,6 +1,6 @@
 use super::super::{Envelope, LineOutcome, LineReply, Response, SignalOutcome, SignalReply};
 use super::*;
-use crate::protocol::MIN_SUPPORTED;
+use crate::protocol::{EnvValue, MIN_SUPPORTED};
 
 /// A wire fixture row with no deadline, which every row but the first uses.
 fn envelope(id: u64, body: Request) -> Envelope {
@@ -46,6 +46,48 @@ fn a_signal_request_and_its_reply_round_trip() {
     assert!(json.contains(r#""kind":"delivered""#), "{json}");
     assert!(json.contains(r#""kind":"not_running""#), "{json}");
     assert!(json.contains(r#""kind":"failed""#), "{json}");
+}
+
+/// A dog's `env` rides the request that starts it and nothing else.
+///
+/// `DogSource` is the half every flock row carries, so it has no room for a
+/// value: `shep flock --json` would print one. An `EnableDog` with no env
+/// writes no `env` key at all, which is what a peer older than it sends and
+/// what this build reads back as none.
+#[test]
+fn an_enable_dog_carries_its_env_and_hides_its_values() {
+    let request = Request::EnableDog {
+        name: "kelpie".to_string(),
+        source: DogSource::Adopted {
+            grants: None,
+            path: "/usr/local/bin/shep-kelpie".to_string(),
+            channel: false,
+        },
+        env: BTreeMap::from([(
+            "PADDOCK_KEY".to_string(),
+            EnvValue::from("gateway-key".to_string()),
+        )]),
+    };
+    let json = serde_json::to_string(&request).unwrap();
+    assert!(
+        json.contains(r#""env":{"PADDOCK_KEY":"gateway-key"}"#),
+        "{json}"
+    );
+    assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+    assert_eq!(
+        format!("{request:?}"),
+        "EnableDog { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
+         channel: false, grants: None }, env: {\"PADDOCK_KEY\": EnvValue(<11 bytes>)} }"
+    );
+
+    let bare = Request::EnableDog {
+        name: "metrics".to_string(),
+        source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
+    };
+    let json = serde_json::to_string(&bare).unwrap();
+    assert!(!json.contains("env"), "{json}");
+    assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), bare);
 }
 
 /// `instances` is a per-app number, so `shep stock /web.*/ 4` could mean
@@ -287,6 +329,7 @@ fn request_wire_snapshots() {
             12,
             Request::EnableDog {
                 name: "metrics".to_string(),
+                env: BTreeMap::default(),
                 source: DogSource::BuiltIn { grants: None },
             },
         ),

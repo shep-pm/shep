@@ -5,6 +5,7 @@
 //! nobody mapped. What it cannot say is which group a request is in.
 
 use crate::protocol::{DogSectionToml, EnvValue, LogStream, Request, SelectorSpec};
+use std::collections::BTreeMap;
 
 use super::{Need, Permission, need};
 
@@ -194,6 +195,7 @@ fn dog_control_holds_enabling_and_disabling_a_dog() {
     for request in [
         Request::EnableDog {
             name: "jobs".into(),
+            env: BTreeMap::default(),
             source: crate::protocol::DogSource::BuiltIn { grants: None },
         },
         Request::DisableDog {

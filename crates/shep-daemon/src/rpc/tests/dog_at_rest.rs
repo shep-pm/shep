@@ -1,11 +1,13 @@
 //! `shep enable` on a dog the shepherd already lists at rest.
 
 use super::*;
+use std::collections::BTreeMap;
 
 fn built_in(name: &str) -> crate::dogs::DogSpec {
     crate::dogs::DogSpec {
         name: name.to_string(),
         source: DogSource::BuiltIn { grants: None },
+        env: BTreeMap::new(),
     }
 }
 

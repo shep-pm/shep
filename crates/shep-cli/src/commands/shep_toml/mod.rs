@@ -19,7 +19,7 @@ use std::io::Write as _;
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
 
-use toml_edit::{Array, DocumentMut, Item, Table, Value};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value};
 
 use crate::style::StyleLevel;
 
@@ -327,10 +327,32 @@ impl ShepToml {
             expected: "a table",
             found,
         })?;
-        adopted_dogs.insert(
-            name,
-            Item::Value(exec.to_string_lossy().into_owned().into()),
-        );
+        // A re-adopt replaces the binary, not the operator's `env` for the
+        // dog: an entry that had one is rewritten as the table shape with the
+        // new path and the env it held. An entry with none keeps the bare
+        // path string every shep has written since the key existed.
+        let held = adopted_dogs
+            .get(name)
+            .and_then(|entry| entry.get("env"))
+            .and_then(Item::as_table_like)
+            .filter(|env| !env.is_empty())
+            .map(|env| {
+                env.iter()
+                    .filter_map(|(key, value)| {
+                        value.as_str().map(|text| (key.to_owned(), text.to_owned()))
+                    })
+                    .collect::<BTreeMap<String, String>>()
+            });
+        let entry = match held {
+            Some(env) => {
+                let mut table = Table::new();
+                table["path"] = Item::Value(exec.to_string_lossy().into_owned().into());
+                table["env"] = Item::Value(Value::InlineTable(inline_table(&env)));
+                Item::Table(table)
+            }
+            None => Item::Value(exec.to_string_lossy().into_owned().into()),
+        };
+        adopted_dogs.insert(name, entry);
         if channel {
             self.push_daemon_name("channel_dogs", name)?;
         } else {
@@ -378,16 +400,122 @@ impl ShepToml {
 
     /// The binary path recorded for `name` in `[daemon] adopted_dogs`, if
     /// any. `None` for a built-in dog, or a name this document never heard of.
+    ///
+    /// Reads both shapes an entry takes: the bare path string, and the table
+    /// that holds an `env` beside its `path`.
     #[must_use]
     pub fn adopted_dog_path(&self, name: &str) -> Option<PathBuf> {
+        let entry = self.adopted_dog_entry(name)?;
+        if let Some(text) = entry.as_str() {
+            return Some(PathBuf::from(text));
+        }
+        entry.get("path")?.as_str().map(PathBuf::from)
+    }
+
+    /// The `env` of `name`'s `[daemon] adopted_dogs` entry, as written.
+    ///
+    /// Empty for a built-in dog, for a name the document never heard of, and
+    /// for an entry written as a bare path string. A value that is not text is
+    /// left out: [`DaemonConfig::load`] refuses the whole file before this
+    /// document reaches a spawn, and a reader here has no error to report.
+    #[must_use]
+    pub fn adopted_dog_env(&self, name: &str) -> BTreeMap<String, String> {
+        let Some(env) = self
+            .adopted_dog_entry(name)
+            .and_then(|entry| entry.get("env"))
+            .and_then(Item::as_table_like)
+        else {
+            return BTreeMap::new();
+        };
+        env.iter()
+            .filter_map(|(key, value)| value.as_str().map(|text| (key.to_owned(), text.to_owned())))
+            .collect()
+    }
+
+    /// Sets, or with `None` removes, one `env` key of `name`'s `[daemon]
+    /// adopted_dogs` entry, keeping its path.
+    ///
+    /// An entry written as a bare path string is rewritten as the table shape
+    /// first, so the dog keeps its binary and gains the `env` half. Removing
+    /// the last key leaves `env` out of the entry entirely rather than an
+    /// empty table behind it.
+    ///
+    /// # Errors
+    /// [`ShepTomlError::NoDogEntry`] when `name` has no entry, or its entry is
+    /// neither a path string nor a table: a built-in dog has no entry to put
+    /// an `env` key in.
+    pub fn set_adopted_dog_env(
+        &mut self,
+        name: &str,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<(), ShepTomlError> {
+        let path = self.path.clone();
+        let refusal = |found: &'static str| ShepTomlError::NoDogEntry {
+            path: path.clone(),
+            dog: name.to_owned(),
+            found,
+        };
+        let Some(entry) = self
+            .doc
+            .get_mut("daemon")
+            .and_then(Item::as_table_mut)
+            .and_then(|daemon| daemon.get_mut("adopted_dogs"))
+            .and_then(Item::as_table_mut)
+            .and_then(|adopted| adopted.get_mut(name))
+        else {
+            return Err(refusal("nothing"));
+        };
+        let (path_text, mut env) = match entry {
+            Item::Value(value) => match value.as_str() {
+                Some(text) => (text.to_owned(), BTreeMap::new()),
+                None => return Err(refusal(value.type_name())),
+            },
+            Item::Table(table) => (
+                table
+                    .get("path")
+                    .and_then(Item::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                table
+                    .get("env")
+                    .and_then(Item::as_table_like)
+                    .map(|env| {
+                        env.iter()
+                            .filter_map(|(key, value)| {
+                                value.as_str().map(|text| (key.to_owned(), text.to_owned()))
+                            })
+                            .collect::<BTreeMap<String, String>>()
+                    })
+                    .unwrap_or_default(),
+            ),
+            other => return Err(refusal(other.type_name())),
+        };
+        match value {
+            Some(value) => {
+                env.insert(key.to_owned(), value.to_owned());
+            }
+            None => {
+                env.remove(key);
+            }
+        }
+        let mut table = Table::new();
+        table["path"] = Item::Value(path_text.into());
+        if !env.is_empty() {
+            table["env"] = Item::Value(Value::InlineTable(inline_table(&env)));
+        }
+        *entry = Item::Table(table);
+        Ok(())
+    }
+
+    /// `name`'s `[daemon] adopted_dogs` entry, or `None` when there is none.
+    fn adopted_dog_entry(&self, name: &str) -> Option<&Item> {
         self.doc
             .get("daemon")?
             .as_table()?
             .get("adopted_dogs")?
             .as_table()?
-            .get(name)?
-            .as_str()
-            .map(PathBuf::from)
+            .get(name)
     }
 
     /// Every name `[daemon] adopted_dogs` records, in TOML document order.
@@ -704,6 +832,17 @@ pub enum ShepTomlError {
         /// What TOML found there ([`Item::type_name`]).
         found: &'static str,
     },
+    /// `[daemon] adopted_dogs` has no entry for `dog`, or its entry is neither
+    /// a path string nor a table, so there is nowhere to put an `env` key. A
+    /// built-in dog is the ordinary case: it has no entry at all.
+    NoDogEntry {
+        /// The file that holds the map.
+        path: PathBuf,
+        /// The dog the entry was wanted for.
+        dog: String,
+        /// What TOML found there ([`Item::type_name`]), or `nothing`.
+        found: &'static str,
+    },
     /// `[daemon.dog_grants.<dog>]` is there but the shepherd could not read
     /// it at boot: a permission name shep does not know, or a `granted` that
     /// is not a list of names.
@@ -747,6 +886,12 @@ impl std::fmt::Debug for ShepTomlError {
                 .field("expected", expected)
                 .field("found", found)
                 .finish(),
+            Self::NoDogEntry { path, dog, found } => f
+                .debug_struct("NoDogEntry")
+                .field("path", path)
+                .field("dog", dog)
+                .field("found", found)
+                .finish(),
             Self::BadGrants { path, dog, reason } => f
                 .debug_struct("BadGrants")
                 .field("path", path)
@@ -772,6 +917,11 @@ impl std::fmt::Display for ShepTomlError {
                 "{}: [{key}] must be {expected}, found a {found}",
                 path.display()
             ),
+            Self::NoDogEntry { path, dog, found } => write!(
+                f,
+                "{}: [daemon.adopted_dogs.{dog}] must be a path or a table, found {found}",
+                path.display()
+            ),
             Self::BadGrants { path, dog, reason } => write!(
                 f,
                 "{}: [daemon.dog_grants.{dog}] granted: {reason}",
@@ -786,9 +936,19 @@ impl core::error::Error for ShepTomlError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Parse { source, .. } => Some(source),
-            Self::WrongShape { .. } | Self::BadGrants { .. } => None,
+            Self::WrongShape { .. } | Self::NoDogEntry { .. } | Self::BadGrants { .. } => None,
         }
     }
+}
+
+/// `env` as an inline table, in key order: the shape a dog's `env` is written
+/// as inside its `[daemon] adopted_dogs` entry.
+fn inline_table(env: &BTreeMap<String, String>) -> InlineTable {
+    let mut table = InlineTable::new();
+    for (key, value) in env {
+        table.insert(key.as_str(), Value::from(value.clone()));
+    }
+    table
 }
 
 mod grants;

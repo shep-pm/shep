@@ -206,6 +206,7 @@ pub fn open_dog_row(app: &mut App, name: &str) {
     app.update(Msg::DogPane {
         name: name.to_owned(),
         adopted_path: None,
+        env_keys: Vec::new(),
         result: Ok(crate::dog::builtin_schema(name).expect("the fixture's dog is a built-in")),
     });
     app.update(Msg::Replied {

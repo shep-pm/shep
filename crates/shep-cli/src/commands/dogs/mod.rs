@@ -9,12 +9,13 @@
 //! is touched, so a failed RPC still leaves a config the next boot honours.
 //! `adopt` puts [`vet::vet_binary`] ahead of both.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use shep_client::{Client, ConnectError};
 use shep_core::paths::ShepPaths;
 use shep_core::permissions::Grants;
-use shep_core::protocol::DogSource;
+use shep_core::protocol::{DogSource, EnvValue};
 
 use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
@@ -140,6 +141,7 @@ pub(crate) fn fail_config(streams: &mut Streams<'_>, err: &ShepTomlError) -> Exi
         ShepTomlError::Io { .. } => ExitCode::Failure,
         ShepTomlError::Parse { .. }
         | ShepTomlError::WrongShape { .. }
+        | ShepTomlError::NoDogEntry { .. }
         | ShepTomlError::BadGrants { .. } => ExitCode::InvalidConfig,
     };
     streams.fail(code, &err.to_string())
@@ -174,6 +176,37 @@ pub(crate) fn boot_first_in_config(
 /// them; the ones that only report it pass `None`.
 fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
     adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn { grants })
+}
+
+/// What `shep.toml` says about `name`, as the CLI hands it to the shepherd:
+/// where its binary comes from, and the `env` the operator set for it.
+///
+/// The source is the half every flock row carries. The env is the half one
+/// spawn gets: `shep.toml` is this binary's own file and the shepherd never
+/// reads it, so the request that starts a dog is the only way its
+/// operator-set environment reaches it.
+///
+/// `Debug` is derived, and safe because [`EnvValue`]'s own prints a byte
+/// count (IR-41).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DogEntry {
+    /// Where its binary comes from, and what it was granted.
+    pub source: DogSource,
+    /// The entry's `env`, as written. Empty for a built-in dog.
+    pub env: BTreeMap<String, EnvValue>,
+}
+
+/// [`dog_source`] and `name`'s recorded `env` together: what an `EnableDog`
+/// carries.
+fn dog_entry(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogEntry {
+    DogEntry {
+        source: dog_source(cfg, name, grants),
+        env: cfg
+            .adopted_dog_env(name)
+            .into_iter()
+            .map(|(key, value)| (key, value.into()))
+            .collect(),
+    }
 }
 
 /// [`dog_source`] for an adopted `name`, carrying its recorded channel ask

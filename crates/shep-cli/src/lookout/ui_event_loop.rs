@@ -3,6 +3,7 @@ use super::app::{App, Body, Effect, InputMode, Msg, Pasted, RevealedValue, RowKe
 use super::batch_dispatch::{enable_refusal_message, send_batch};
 use super::pane::SheepDogEntry;
 use super::wiring::HEARTBEAT;
+use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{Stream, StreamExt};
@@ -10,6 +11,7 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::layout::Rect;
 use shep_core::paths::ShepPaths;
+use shep_core::protocol::EnvValue;
 use std::path::Path;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -360,7 +362,14 @@ where
             // and `Unreadable` both mean no pane here.
             Effect::LoadDogPane { name, adopted_path } => {
                 let home = paths.home.clone();
+                let config = paths.daemon_config.clone();
                 let handle = tokio::task::spawn_blocking(move || {
+                    // Read under the same blocking half as the probe: the
+                    // pane's env rows name the keys `shep.toml` sets, and a
+                    // value never comes here at all.
+                    let env_keys = crate::commands::shep_toml::ShepToml::read_only(&config)
+                        .map(|cfg| cfg.adopted_dog_env(&name).keys().cloned().collect())
+                        .unwrap_or_default();
                     let schema = match (crate::dog::builtin_schema(&name), adopted_path.as_deref())
                     {
                         (Some(schema), _) => Some(schema),
@@ -384,6 +393,7 @@ where
                     Msg::DogPane {
                         name,
                         adopted_path,
+                        env_keys,
                         result,
                     }
                 });
@@ -395,6 +405,7 @@ where
                     handle.await.unwrap_or_else(|err| Msg::DogPane {
                         name: String::new(),
                         adopted_path: None,
+                        env_keys: Vec::new(),
                         result: Err(format!("the schema probe failed: {err}")),
                     })
                 }));
@@ -468,6 +479,36 @@ where
                     }
                 }));
             }
+            // One dog pane's `env` edits, through the same writer
+            // `shep enable` uses, so the entry keeps its path and the two
+            // doors cannot write it differently. `_authority` is dropped as
+            // in `Effect::WriteSetting`.
+            Effect::WriteDogEnv { write, then } => {
+                let path = paths.daemon_config.clone();
+                let for_msg = write.name.clone();
+                let ticket = write.ticket;
+                let handle = tokio::task::spawn_blocking(move || {
+                    ShepToml::try_edit::<(), ShepTomlError>(&path, |cfg| {
+                        for (key, value) in &write.edits {
+                            cfg.set_adopted_dog_env(
+                                &write.name,
+                                key,
+                                value.as_ref().map(EnvValue::as_str),
+                            )?;
+                        }
+                        Ok(())
+                    })
+                });
+                inflight.push(Box::pin(async move {
+                    let result = join_blocking(handle).await;
+                    Msg::DogEnvWritten {
+                        name: for_msg,
+                        ticket,
+                        then,
+                        result,
+                    }
+                }));
+            }
             // One of a dog's other `[daemon] keys, off the settings screen.
             // `spawn_blocking` for `Effect::WriteSetting`'s reason: both halves
             // take `shep.toml`'s lock, and a grant reads the dog's manifest,
@@ -501,7 +542,7 @@ where
                         };
                         crate::commands::dogs::record_change(&paths, change, name, permission)
                             .map(|applied| super::app::DogTuneLanded::Grants {
-                                source: applied.source,
+                                entry: applied.entry,
                                 enabled: applied.enabled,
                             })
                             .map_err(|refusal| match refusal {

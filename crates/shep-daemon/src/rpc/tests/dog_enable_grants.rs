@@ -10,6 +10,7 @@ use crate::rpc::ConnId;
 fn adopted_with(grants: Grants) -> Request {
     Request::EnableDog {
         name: "otel".to_string(),
+        env: BTreeMap::default(),
         source: DogSource::Adopted {
             grants: Some(grants),
             path: "/usr/local/bin/shep-otel".to_string(),
@@ -45,6 +46,7 @@ async fn an_enable_refused_for_a_sheeps_name_remembers_no_dog() {
     start_web(&h).await;
     let request = Request::EnableDog {
         name: "web".to_string(),
+        env: BTreeMap::default(),
         source: DogSource::Adopted {
             grants: Some(Grants::default()),
             path: "/usr/local/bin/shep-web".to_string(),
@@ -71,6 +73,7 @@ async fn a_refused_enable_leaves_the_grants_the_name_already_held() {
     h.ctx.known_dogs.insert("web", Some(before.clone()));
     let request = Request::EnableDog {
         name: "web".to_string(),
+        env: BTreeMap::default(),
         source: DogSource::Adopted {
             grants: Some(Grants::default()),
             path: "/usr/local/bin/shep-web".to_string(),
@@ -91,6 +94,7 @@ async fn as_dog(h: &crate::testing::Harness, dog: &str, request: Request) -> Rep
 fn enabling(name: &str, grants: Option<Grants>) -> Request {
     Request::EnableDog {
         name: name.to_string(),
+        env: BTreeMap::default(),
         source: DogSource::Adopted {
             grants,
             path: format!("/usr/local/bin/shep-{name}"),

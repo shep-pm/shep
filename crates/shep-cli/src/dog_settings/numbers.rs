@@ -251,11 +251,17 @@ mod tests {
     /// rather than ones the test wrote by hand.
     fn dog_field(key: &str, property: serde_json::Value) -> Field {
         let schema = serde_json::json!({ "properties": { key: property } });
-        crate::lookout::pane::ConfigPane::dog("kelpie".to_owned(), None, schema, String::new())
-            .fields()
-            .by_key(key)
-            .expect("the schema declares the key")
-            .clone()
+        crate::lookout::pane::ConfigPane::dog(
+            "kelpie".to_owned(),
+            None,
+            schema,
+            String::new(),
+            Vec::new(),
+        )
+        .fields()
+        .by_key(key)
+        .expect("the schema declares the key")
+        .clone()
     }
 
     /// `shep-kelpie`'s `budget.per_item_usd`: a decimal money cap with a floor

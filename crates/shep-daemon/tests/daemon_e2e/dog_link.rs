@@ -4,6 +4,7 @@
 
 use shep_core::protocol::DogSource;
 use shep_daemon::dogs::DogSpec;
+use std::collections::BTreeMap;
 
 use super::*;
 
@@ -75,6 +76,7 @@ async fn a_boot_first_dog_handshakes_while_the_socket_is_not_served() {
             path: script.display().to_string(),
             channel: false,
         },
+        env: BTreeMap::new(),
     };
 
     let daemon = tokio::time::timeout(
