@@ -6,6 +6,10 @@ name: web
 # https://shep-pm.com. A page that failed to build, or one that built clean
 # and rendered wrong, reached production first and was found there.
 #
+# The build also fetches each first-party dog's README, and here a failed fetch
+# only warns: pages.yml sets `SHEP_DOGS_STRICT` and stops the deploy instead,
+# so a dog repo's breakage never lands in this pull request queue.
+#
 # Found while bumping svgo for two removeScripts advisories (#221). That pull
 # request changed web/package-lock.json and nothing else, went green on 15
 # checks, and every one of them was a Rust job that never opens `web/`.
@@ -115,6 +119,16 @@ jobs:
       # `!cancelled()` rather than the implicit `success()`: a type error in
       # the step above should not hide a broken build, so one run reports both
       # verdicts instead of costing two round trips.
+      #
+      # The build also fetches each first-party dog's README from GitHub.
+      # `SHEP_DOGS_STRICT` is deliberately unset here, so a failed fetch is a
+      # warning and a dog repo's breakage stays out of this queue; pages.yml
+      # sets it, and there a failed fetch stops the deploy. `GITHUB_TOKEN`
+      # only lifts the unauthenticated rate limit, which runners share. A pull
+      # request from a fork gets a read-only token and no secrets, and still
+      # passes: the fetch runs unauthenticated and a failure is a warning.
       - if: ${{ !cancelled() }}
         run: npm run build
         working-directory: web
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

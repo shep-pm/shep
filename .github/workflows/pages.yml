@@ -11,6 +11,14 @@ name: pages
 # and Cargo.toml: the site parses each at build time (`web/src/data/*.ts`),
 # and Cargo.toml is the only one of the three a release commit touches, for
 # the workspace version the CLI reference page prints.
+#
+# Each first-party dog repo dispatches this workflow on `release: published`;
+# `workflow_dispatch` below is already enabled for that. The build fetches each
+# dog's README from its latest release (`web/src/data/dog-readme-fetch.ts`),
+# so a deploy can now fail with no change in shep: a dog's release, or a
+# GitHub outage, is enough. That is intended. `SHEP_DOGS_STRICT` on the build
+# step makes a failed fetch stop the deploy, which leaves the last good site
+# up. web.yml leaves it unset, so a pull request only warns.
 on:
   push:
     branches: [main]
@@ -52,8 +60,14 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      # `GITHUB_TOKEN` only lifts the unauthenticated GitHub API rate limit,
+      # which runners share. It grants nothing beyond the `contents: read`
+      # above.
       - run: npm run build
         working-directory: web
+        env:
+          SHEP_DOGS_STRICT: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: web/dist
