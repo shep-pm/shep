@@ -60,8 +60,7 @@ pub(super) fn editor_label(editor: &KeyValues, noun: &str) -> String {
     format!("{noun} {key} {field}")
 }
 
-/// The pane's own editor slot: the list sub-screen's, the key/value editor's,
-/// or the field editor's.
+/// The pane's own editor slot: list sub-screen, key/value editor or field editor.
 ///
 /// Three editors, one slot: a list edit is labelled with the field and the
 /// element's position, a key/value edit with [`editor_label`], a field edit

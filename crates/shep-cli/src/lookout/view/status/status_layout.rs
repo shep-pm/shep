@@ -108,12 +108,8 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     } else if let Some(editor) = app.config_pane().and_then(pane_editor) {
         // The pane's own free-text editor, and the key/value editor the env
         // rows open, ahead of the filter branch: all three share
-        // `InputMode::Text`, and a bar that fell through would render the
-        // dashboard's untouched query under the label `filter` instead.
-        //
-        // The keys come from the slot, not from here: the key/value editor
-        // names the field under the cursor, and the secrets pane's branch
-        // below reads the same words for the same field.
+        // `InputMode::Text`, and a bar that fell through would label this the
+        // dashboard's own query. The keys come from the slot, not from here.
         (
             editor.buffer.line(
                 &format!("{}  ", editor.label),
@@ -142,8 +138,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // The config pane's one armed thing, ranked with the secrets pane's
         // own below for the same reason: it is a question awaiting an answer,
         // and it must outrank `pane_hint`, which still reads `e edit` while an
-        // arm is live. The same sentence the secrets pane raises, because it is
-        // the same promise.
+        // arm is live.
         (
             format!("delete {key}? enter confirms, any other key cancels"),
             palette.attention(),

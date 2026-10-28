@@ -372,10 +372,8 @@ mod tests {
     }
 
     /// The row `+ add a key` is drawn on, found while it still says so.
-    ///
-    /// Read off the frame rather than through
-    /// [`fixtures::config_pane_env_rows_for_tests`], which finds the add row by
-    /// its caption and so cannot name a row that is busy being typed.
+    /// [`fixtures::config_pane_env_rows_for_tests`] finds the add row by its
+    /// caption, so it cannot name one busy being typed.
     ///
     /// # Panics
     ///
