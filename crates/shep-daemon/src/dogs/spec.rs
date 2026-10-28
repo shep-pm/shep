@@ -38,7 +38,7 @@ pub struct DogSpec {
     pub source: DogSource,
     /// Environment the operator set for this dog, as `shep.toml` wrote it.
     ///
-    /// A `{{secret:...}}` is still a reference here: [`super::assemble`]
+    /// A `{{secret:...}}` is still a reference here: [`crate::assemble::assemble`]
     /// resolves it at spawn, the way a sheep's `env` is. Empty for a
     /// built-in dog, which has no `[daemon.adopted_dogs]` entry to read one
     /// from.
@@ -167,12 +167,9 @@ fn builtin_program() -> Result<PathBuf, DogError> {
 /// A built-in dog is `<this binary> dog <name>`; an adopted one is the
 /// operator's binary with no arguments. The environment carries the
 /// operator's `env`, then `SHEP_HOME` and `SHEP_DOG_NAME` over it: those two
-/// are what a dog needs to ask for its own section at all, so an `env` entry
-/// naming one is written back by the shepherd. A `[<name>]` value never
-/// travels here: a dog asks for its section over the socket. An adopted dog
-/// that asked for the shepherd channel gets `channel` and
-/// `shutdown_with_message`, and so the channel's own variables too; every
-/// other dog gets neither.
+/// are what a dog needs to ask for its own section at all. A `[<name>]`
+/// value never travels here, and an adopted dog that asked for the shepherd
+/// channel gets the channel's own variables too.
 ///
 /// # Errors
 /// - [`DogError::NoBinary`] if a built-in dog has no program to run.
