@@ -40,24 +40,38 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
     // Not a substring test: `[ dog.metrics ]` is the same section spelled
     // differently. `None` means this parser could not read the source, which
     // `ShepToml` below reports with file and line.
-    let declared = existing_source
-        .parse::<toml::Table>()
-        .ok()
-        .map(|table| declared_dog_names(&table));
+    let table = existing_source.parse::<toml::Table>().ok();
+    let declared = table.as_ref().map(declared_dog_names);
     // Skipping the open is load-bearing: `ShepToml::save` renames a staged
     // temp file over the original, so opening an untouched `shep.toml` would
-    // give it a fresh inode and mode on every boot after the first.
-    if declared.as_ref().is_some_and(BTreeSet::is_empty) {
+    // give it a fresh inode and mode on every boot after the first. A `[dog]`
+    // holding only empty headers is not untouched: it is struck.
+    let has_dog_table = table
+        .as_ref()
+        .is_some_and(|table| matches!(table.get("dog"), Some(toml::Value::Table(_))));
+    if declared.as_ref().is_some_and(BTreeSet::is_empty) && !has_dog_table {
         return Ok(Vec::new());
     }
+    move_sections(paths, declared.as_ref())
+}
 
+/// The locked half of [`migrate_dog_sections`], given the names its unlocked
+/// read of `shep.toml` declared.
+///
+/// A separate function so a test can hand it a `declared` another writer has
+/// since made stale.
+fn move_sections(
+    paths: &ShepPaths,
+    declared: Option<&BTreeSet<String>>,
+) -> Result<Vec<String>, DogMigrationError> {
     // `try_edit`, never `edit`: `edit` calls `save` unconditionally, so
     // refusing from inside it would strike the sections from `shep.toml` and
     // only then fail, leaving them in neither file.
     ShepToml::try_edit(&paths.daemon_config, |doc| {
         // Empty sections dropped here, matching what `declared_dog_names`
         // left out, so the two agree on what there was to move. They still
-        // leave `shep.toml`: `take_dog_sections` removes the whole `[dog]`.
+        // leave `shep.toml`: `take_dog_sections` removes the whole `[dog]`,
+        // even when every section is empty.
         let incoming: BTreeMap<String, Item> = doc
             .take_dog_sections()
             .into_iter()
@@ -66,7 +80,7 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         // `take_dog_sections` removes the whole `[dog]` table before deciding
         // what to hand back, so a count cannot see what it dropped: compare
         // names. With no readable source, fall back to whether any came back.
-        let missing: Vec<String> = match &declared {
+        let missing: Vec<String> = match declared {
             Some(names) => names
                 .iter()
                 .filter(|name| !incoming.contains_key(*name))
@@ -74,6 +88,13 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
                 .collect(),
             None => Vec::new(),
         };
+        // Nothing declared and nothing taken: only empty headers were there,
+        // and they are struck. Judged on `incoming` as well, since `declared`
+        // was read before the lock and another writer may have added a
+        // section since.
+        if incoming.is_empty() && declared.is_some_and(BTreeSet::is_empty) {
+            return Ok(Vec::new());
+        }
         if !missing.is_empty() || incoming.is_empty() {
             return Err(DogMigrationError::SectionsUnreadable { names: missing });
         }
