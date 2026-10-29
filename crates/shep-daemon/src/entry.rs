@@ -94,6 +94,9 @@ pub struct ProcessEntry {
     ///
     /// Survives a respawn: `Actor::respawn` never touches this field.
     pub last_exit: Option<ExitInfo>,
+    /// The last spawn refusal, including the name, without environment values.
+    /// Cleared on a successful spawn.
+    pub spawn_failure: Option<String>,
 }
 
 /// Restart budget and consecutive-unstable-exit tracking

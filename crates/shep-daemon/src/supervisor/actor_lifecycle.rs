@@ -187,6 +187,7 @@ impl<R: ProcessRunner> Actor<R> {
                     ProcStatus::Online
                 };
                 slot.entry.pid = Some(pid);
+                slot.entry.spawn_failure = None;
                 slot.entry.started_at = Some(tokio::time::Instant::now());
                 slot.entry.restarts += 1;
                 // `out_file`/`err_file` are `ApplyGroup::NeedsRespawn`: this
@@ -241,6 +242,7 @@ impl<R: ProcessRunner> Actor<R> {
             .get_mut(&id)
             .expect("respawn: entry vanished mid-respawn");
         slot.clear_lifecycle(ProcStatus::Errored);
+        slot.entry.spawn_failure = Some(format!("{}: {reason}", slot.entry.spec.config().name));
         let info = to_info(&slot.entry, &self.smits);
         self.emit(ProcessEventKind::Errored, info.clone(), manually);
         // The same terminal status `Decision::Errored` reaches, and it needs

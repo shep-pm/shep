@@ -154,6 +154,10 @@ pub struct ProcessInfo {
     /// Sticky across a respawn: it answers why the sheep last stopped, not
     /// whether it is stopped now, and updates only on the next exit.
     pub last_exit: Option<ExitInfo>,
+    /// The last spawn refusal, including the process name, without environment values.
+    /// Cleared when a spawn succeeds. Absent on older shepherds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_failure: Option<String>,
     /// The marker a dog has asked to have painted beside this sheep, or
     /// `None` when no dog has painted one, which also covers a peer daemon
     /// that predates the field.
@@ -302,6 +306,7 @@ impl ProcessInfo {
                 dog: None,
                 lambs: None,
                 last_exit: None,
+                spawn_failure: None,
                 smit: None,
                 instance: None,
                 handshook: None,
@@ -410,6 +415,12 @@ impl ProcessInfoBuilder {
     /// has never exited under this daemon.
     pub fn last_exit(mut self, last_exit: Option<ExitInfo>) -> Self {
         self.info.last_exit = last_exit;
+        self
+    }
+
+    /// Sets the last spawn refusal; `None` after a successful spawn.
+    pub fn spawn_failure(mut self, spawn_failure: Option<String>) -> Self {
+        self.info.spawn_failure = spawn_failure;
         self
     }
 
@@ -533,6 +544,7 @@ pub(super) fn sample_info() -> ProcessInfo {
             code: Some(1),
             signal: None,
         }),
+        spawn_failure: None,
         smit: None,
         instance: None,
         handshook: None,

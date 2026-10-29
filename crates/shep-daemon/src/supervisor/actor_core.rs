@@ -481,11 +481,17 @@ impl<R: ProcessRunner> Actor<R> {
                             failures.push(format!("{name}: {err}"));
                             // `Fresh` only: the emit announces a transition,
                             // and a repeat restore transitions nothing.
-                            if let Registration::Fresh(info) = self.register_without_spawning(
+                            if let Registration::Fresh(mut info) = self.register_without_spawning(
                                 &app,
                                 ProcStatus::Errored,
                                 dog.clone(),
                             ) {
+                                info.spawn_failure = Some(format!("{name}: {err}"));
+                                self.sheep
+                                    .get_mut(&info.id)
+                                    .expect("just registered")
+                                    .entry
+                                    .spawn_failure = info.spawn_failure.clone();
                                 self.emit(ProcessEventKind::Errored, info, true);
                             }
                         }
