@@ -272,6 +272,7 @@ nix = { workspace = true, features = ["fs"] }
 # `kill`.
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true
+vt100.workspace = true
 
 [lints]
 workspace = true

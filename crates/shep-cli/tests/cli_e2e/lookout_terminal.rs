@@ -6,25 +6,59 @@ use super::*;
 use std::io::Write as _;
 use std::sync::mpsc::{self, Receiver};
 
+const TERMINAL_ROWS: u16 = 40;
+const TERMINAL_COLS: u16 = 120;
+
+struct TerminalScreen {
+    parser: vt100::Parser,
+}
+
+impl std::fmt::Debug for TerminalScreen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalScreen")
+            .field("contents", &self.contents())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for TerminalScreen {
+    fn default() -> Self {
+        Self {
+            parser: vt100::Parser::new(TERMINAL_ROWS, TERMINAL_COLS, 0),
+        }
+    }
+}
+
+impl TerminalScreen {
+    fn process(&mut self, bytes: &[u8]) {
+        self.parser.process(bytes);
+    }
+
+    fn contents(&self) -> String {
+        self.parser.screen().contents()
+    }
+}
+
 /// `script` supplies the controlling terminal that crossterm reads.
 #[derive(Debug)]
 struct LookoutTerminal {
     child: Child,
     output: Receiver<std::io::Result<Vec<u8>>>,
-    received: Vec<u8>,
+    screen: TerminalScreen,
 }
 
 impl LookoutTerminal {
     fn open(home: &Path) -> Self {
         let binary = shep(home).get_program().to_owned();
-        let shell =
-            "stty cols 120 rows 40; exec \"$LOOKOUT_TEST_BINARY\" --home \"$SHEP_HOME\" lookout";
+        let shell = format!(
+            "stty cols {TERMINAL_COLS} rows {TERMINAL_ROWS}; exec \"$LOOKOUT_TEST_BINARY\" --home \"$SHEP_HOME\" lookout"
+        );
         let mut command = std::process::Command::new("script");
         command.arg("-q");
         #[cfg(target_os = "linux")]
-        command.args(["-e", "-c", shell, "/dev/null"]);
+        command.args(["-e", "-c", shell.as_str(), "/dev/null"]);
         #[cfg(not(target_os = "linux"))]
-        command.args(["/dev/null", "/bin/sh", "-c", shell]);
+        command.args(["/dev/null", "/bin/sh", "-c", shell.as_str()]);
         let mut child = command
             .env("LOOKOUT_TEST_BINARY", binary)
             .env("SHEP_HOME", home)
@@ -57,24 +91,24 @@ impl LookoutTerminal {
         Self {
             child,
             output,
-            received: Vec::new(),
+            screen: TerminalScreen::default(),
         }
     }
 
     fn read_until(&mut self, text: &str) {
         let deadline = Instant::now() + CMD_TIMEOUT;
-        while !String::from_utf8_lossy(&self.received).contains(text) {
+        while !self.screen.contents().contains(text) {
             let bytes = self
                 .output
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                 .unwrap_or_else(|error| {
                     panic!(
                         "lookout did not draw {text:?}: {error}; output: {}",
-                        String::from_utf8_lossy(&self.received)
+                        self.screen.contents()
                     )
                 })
                 .expect("read lookout's terminal");
-            self.received.extend(bytes);
+            self.screen.process(&bytes);
         }
     }
 
@@ -96,14 +130,36 @@ pub(super) fn assert_adopted_dog_pane_draws_env(home: &Path) {
     let mut terminal = LookoutTerminal::open(home);
     terminal.read_until("control enabled");
     terminal.read_until("kelpie");
-    terminal.received.clear();
     terminal.press(b"/kelpie\re");
     terminal.read_until("+ add a key");
     assert!(
-        String::from_utf8_lossy(&terminal.received).contains("(dog config)"),
+        terminal.screen.contents().contains("(dog config)"),
         "the env row must be drawn in the dog's pane"
     );
     terminal.press(b"q");
     let status = common::wait_bounded(&mut terminal.child, CMD_TIMEOUT, "lookout's terminal");
     assert!(status.success(), "{status:?}");
+}
+
+#[test]
+fn terminal_output_recognizes_a_label_whose_spaces_are_unchanged_cells() {
+    use ratatui::backend::{Backend as _, CrosstermBackend};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Style;
+
+    let before = Buffer::empty(Rect::new(0, 0, TERMINAL_COLS, TERMINAL_ROWS));
+    let mut after = before.clone();
+    after.set_string(100, 39, "control enabled", Style::default());
+    let mut bytes = Vec::new();
+    CrosstermBackend::new(&mut bytes)
+        .draw(before.diff(&after).into_iter())
+        .unwrap();
+    let mut screen = TerminalScreen::default();
+    screen.process(&bytes);
+    assert!(
+        screen.contents().contains("control enabled"),
+        "the visible label must match despite cursor movements: {:?}",
+        screen.contents()
+    );
 }
