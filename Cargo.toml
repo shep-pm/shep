@@ -44,6 +44,8 @@ shep-handover = { path = "crates/shep-handover", version = "0.19.0" }
 shep-tree = { path = "crates/shep-tree", version = "0.19.0" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
+# Held at 0.8: toml 1.x was assessed and refused in #1313 (e2c8165).
+# The 1.x migration is planned separately; .github/dependabot.yml ignores major bumps.
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
 # The read-modify-write behind `shep.toml` and `dogs.toml`: `shep-cli`'s
 # `ShepToml` and `shep-daemon`'s `dogs::set_dog_section` both edit the
