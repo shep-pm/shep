@@ -13,6 +13,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-28
+
+### Added
+
+- Read a range header and the validators a served file carries
+- Answer a range or conditional request with 206, 304 or 416
+- Read shep.toml's schema into a field tree
+- Draw every shep.toml key in the settings tree
+- Carry a host on whistle's flock listing
+- Let whistle's list_flock ask a listed host
+- Shep lookout <sheep> [tab] [dog] opens straight to that screen
+- Draw each dog's settings as a collapsed tree on the settings screen
+- One key/value editor for env rows and secrets
+- An adopted dog's entry carries an operator-set env **(BREAKING)**
+- Fill a sheep's vcs on Describe from its checkout, behind the vcs feature
+- Print a sheep's revision under describe's table
+- Every shep.toml field in the settings tree
+- Let whistle's read tools answer from a listed host
+- One key and value editor for env rows and secrets
+- Put a sheep's revision on its row
+- Give an adopted dog an operator-set env **(BREAKING)**
+
+### Changed
+
+- Draw lookout's scroll markers through one function
+- Build each lookout scroll marker line in one place
+- Clear the linter on the shared key/value editor
+
+### Fixed
+
+- Drop Content-Length from a 304 head
+- Box the config pane so the body enum stays small
+- Keep the confirm's truncation off a typos hit and trim the settings prose
+- Pass a host dial's own words through whistle
+- Edit inline tables, cycle style from the default, cost a map entry like its map
+- Report a failed directory flush as Unsynced, not as a failed write
+- Spell entries right in a test name
+- Keep whistle's test-only ssh seam out of other builds
+- Say which half of a host dial failed
+- Retire the lookout ask when another sheep's read replaces it
+- A dog row's editor seed, unsent write, and enabled bit
+- Refuse a secrets rename whose old key lives in the all slot
+- Ask the cursor before the gate when D arms an env delete
+- Say what a refused certificate means to an operator
+- Say a refused chain may be one missing its intermediate
+- Refuse a version skew before a dog verb sends a dog's env
+- Say what a dog env write reaches, and what a refused section drops
+- Keep a dog's env rows out of the settings tree
+- Edit an adopted dog entry written as an inline table
+
+
 ## [0.18.2] - 2026-10-26
 
 ### Fixed
