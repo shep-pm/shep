@@ -269,7 +269,7 @@ pub fn boot_options(
 
 /// The dog `name` is: adopted from the entry `shep.toml` records, or built
 /// in, with the grants and the `env` `shep.toml` records for it.
-fn dog_spec(config: &DaemonConfig, name: &str) -> DogSpec {
+pub(crate) fn dog_spec(config: &DaemonConfig, name: &str) -> DogSpec {
     let grants = config
         .daemon
         .dog_grants

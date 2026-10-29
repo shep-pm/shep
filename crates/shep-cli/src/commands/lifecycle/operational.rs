@@ -99,6 +99,9 @@ pub async fn restart_within(
         },
     )
     .await;
+    if let Some(paths) = paths {
+        note_entries_a_restart_kept(client, streams, paths, &procs).await;
+    }
     // Named before `procs` is moved into the table below. The `Restart`
     // reply has no per-id error slot, so a failed respawn reaches here as an
     // ordinary `errored` row inside an `Ok`, and not as a refusal: the sheep
@@ -138,6 +141,22 @@ pub async fn restart_within(
     }
 
     finish_walk(streams, "restart", &refused, carried, failure)
+}
+
+/// Says which restarted adopted dogs came back on an entry `shep.toml` has
+/// since changed.
+///
+/// A restart respawns from the spec the dog already holds, and the shepherd
+/// never reads `shep.toml`. A notice, not a refusal: the restart happened.
+async fn note_entries_a_restart_kept(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    restarted: &[ProcessInfo],
+) {
+    for kept in dogs::kept_entries_among(client, paths, restarted).await {
+        streams.aside(dogs::DOG_ENTRY_KEPT_NOTICE, &dogs::kept_entry_report(&kept));
+    }
 }
 
 /// Reloads the sheep matching `args.selector`, replacing each instance with
