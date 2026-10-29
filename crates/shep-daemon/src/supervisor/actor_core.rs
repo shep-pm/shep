@@ -365,8 +365,8 @@ impl<R: ProcessRunner> Actor<R> {
     /// that name.
     ///
     /// The name lookup reads names rather than markers: what it rules out is
-    /// two live processes under one name, dog or not. A dog entry at rest is
-    /// the exception, since no process stands behind it: it spawns in place
+    /// two live processes under one name, dog or not. An errored or at-rest dog
+    /// has no process behind it: it spawns in place
     /// from `app` and `source`, which win over what it was registered with.
     pub(super) fn do_start_dog(
         &mut self,

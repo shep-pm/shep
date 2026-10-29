@@ -97,6 +97,12 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
         Takes a built-in name or one <code>shep adopt</code> has recorded.
         Any other name exits 3 and lists the dogs, or 5 with no shepherd.
       </p>
+      <p>
+        An <code>errored</code> dog retries from its current entry. A failed
+        spawn exits 7 and says why. <code>shep describe &lt;name&gt;</code>{" "}
+        shows that reason without secret values, also in JSON's{" "}
+        <code>spawn_failure</code>. An online dog keeps running.
+      </p>
     </VerbSignature>
     <VerbSignature verb="disable" usage="shep disable <name>">
       <p>

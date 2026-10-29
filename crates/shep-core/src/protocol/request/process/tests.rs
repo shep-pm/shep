@@ -8,6 +8,31 @@
 use super::*;
 
 #[test]
+fn a_spawn_failure_is_additive_and_round_trips_verbatim() {
+    let plain = ProcessInfo::builder(1, "kelpie", ProcStatus::Errored).build();
+    let json = serde_json::to_value(&plain).unwrap();
+    assert!(json.get("spawn_failure").is_none());
+    assert_eq!(
+        serde_json::from_value::<ProcessInfo>(json)
+            .unwrap()
+            .spawn_failure,
+        None
+    );
+
+    let info = ProcessInfo::builder(1, "kelpie", ProcStatus::Errored)
+        .spawn_failure(Some(
+            "kelpie: process spawn failed: permission denied".to_string(),
+        ))
+        .build();
+    let json = serde_json::to_value(&info).unwrap();
+    assert_eq!(
+        json["spawn_failure"],
+        "kelpie: process spawn failed: permission denied"
+    );
+    assert_eq!(serde_json::from_value::<ProcessInfo>(json).unwrap(), info);
+}
+
+#[test]
 fn a_builder_with_nothing_set_is_a_sheep_that_has_not_run() {
     let info = ProcessInfo::builder(3, "web", ProcStatus::Stopped).build();
 

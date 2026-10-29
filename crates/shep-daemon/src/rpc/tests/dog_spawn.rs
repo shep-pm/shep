@@ -6,6 +6,13 @@ use super::*;
 async fn describe_reports_the_refused_spawn_without_env_values() {
     tokio::time::timeout(Duration::from_secs(5), async {
         let h = harness(Vec::new());
+        shep_core::secrets::set(
+            &h.ctx.paths.secrets,
+            "PRESENT",
+            "production",
+            "never-print-this-value",
+        )
+        .unwrap();
         let refused = reply_of(
             dispatch(
                 envelope(
@@ -20,8 +27,8 @@ async fn describe_reports_the_refused_spawn_without_env_values() {
                         env: BTreeMap::from([
                             ("TOKEN".to_string(), "{{secret:MISSING}}".to_string().into()),
                             (
-                                "PRIVATE".to_string(),
-                                "never-print-this-value".to_string().into(),
+                                "A_PRIVATE".to_string(),
+                                "{{secret:PRESENT}}".to_string().into(),
                             ),
                         ]),
                     },
@@ -98,6 +105,7 @@ async fn enable_retries_an_errored_dog_from_the_current_entry() {
         };
         assert_eq!(info.id, before[0].id);
         assert_eq!(info.status, ProcStatus::Online);
+        assert_eq!(info.spawn_failure, None);
         assert!(info.pid.is_some());
 
         let unchanged = reply_of(

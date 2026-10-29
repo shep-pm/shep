@@ -344,7 +344,8 @@ mod tests {
         }
     }
 
-    #[tokio::test(start_paused = true)]
+    // The fake shepherd's socket needs wall-clock I/O deadlines.
+    #[tokio::test]
     async fn enable_that_leaves_a_dog_errored_reports_failure() {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             for fmt in [Format::Table, Format::Json] {

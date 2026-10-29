@@ -126,6 +126,7 @@ impl Render for FlockRows {
         "lambs",
         // Describe only, like `lambs`.
         "vcs",
+        // Describe prints the refusal beneath its table.
         "spawn_failure",
         // A handshake is a fact about a dog, and every row here is a sheep.
         "handshook",

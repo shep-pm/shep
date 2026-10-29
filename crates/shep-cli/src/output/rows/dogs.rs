@@ -123,6 +123,7 @@ impl Render for DogRows {
     }
 
     const JSON_ONLY: &'static [&'static str] = &[
+        // Describe prints the refusal beneath its table.
         "spawn_failure",
         // A sheep concept: a dog is supervised, never grouped by fold.
         "fold",
@@ -310,11 +311,10 @@ pub(crate) mod tests {
     /// nested too.
     #[test]
     fn dog_rows_do_not_drift() {
+        let mut dog = dog_info("metrics", DogSource::BuiltIn { grants: None });
+        dog.spawn_failure = Some("metrics: spawn refused".to_string());
         assert_no_drift(
-            &DogRows(vec![dog_info(
-                "metrics",
-                DogSource::BuiltIn { grants: None },
-            )]),
+            &DogRows(vec![dog]),
             |j| &j[0],
             &["UPTIME", "CPU", "MEM", "SOURCE", "EXIT", "ACCESS"],
         );
