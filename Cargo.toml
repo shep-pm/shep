@@ -189,7 +189,10 @@ predicates = { version = "3", default-features = false }
 vt100 = { version = "0.16.2", default-features = false }
 # The cron_restart dialect (spec §4). `serde` is croner's only feature; we do
 # not serialize a parsed Cron, the Flockfile carries the pattern string.
-croner = { version = "3.0.1", default-features = false }
+# Held below 4: croner 4 changes the parser API and the accepted patterns that
+# shep-core's config::cron tests pin, and cron_restart is a Flockfile contract.
+# Drop the ceiling once config/cron.rs is migrated to croner 4.
+croner = { version = ">=3.0.1, <4", default-features = false }
 # croner is generic over chrono::TimeZone; `clock` provides Utc::now(), which
 # the daemon's cron worker reads to derive the next occurrence.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
