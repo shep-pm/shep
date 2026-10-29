@@ -38,6 +38,7 @@ pub(super) fn entry_fixture(mutate: impl FnOnce(&mut AppConfig)) -> ProcessEntry
         err_file: PathBuf::from("/tmp/shep-handover-test-err.log"),
         dog: None,
         last_exit: None,
+        spawn_failure: None,
     }
 }
 

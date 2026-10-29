@@ -593,6 +593,7 @@ pub(crate) fn plain_entry(id: u32, spec: ResolvedApp) -> ProcessEntry {
         err_file: PathBuf::new(),
         dog: None,
         last_exit: None,
+        spawn_failure: None,
     }
 }
 

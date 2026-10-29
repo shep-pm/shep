@@ -79,6 +79,9 @@ pub struct CarriedSheep {
     pub(super) status: ProcStatus,
     /// How this instance most recently stopped existing, if it has.
     pub(super) last_exit: Option<ExitInfo>,
+    /// The last spawn refusal, carried even when no process exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) spawn_failure: Option<String>,
     /// The identity this instance's next spawn runs under.
     ///
     /// Carried resolved, never re-derived: the value is pinned at the first
@@ -190,6 +193,7 @@ impl CarriedSheep {
             epoch,
             status: entry.status,
             last_exit: entry.last_exit,
+            spawn_failure: entry.spawn_failure.clone(),
             credentials: entry.credentials,
             fds,
             dog_topics: None,
@@ -364,6 +368,11 @@ impl CarriedSheep {
     #[must_use]
     pub const fn last_exit(&self) -> Option<ExitInfo> {
         self.last_exit
+    }
+
+    /// The last spawn refusal, without environment values.
+    pub fn spawn_failure(&self) -> Option<&str> {
+        self.spawn_failure.as_deref()
     }
 
     /// The identity this instance's next spawn runs under, resolved once by

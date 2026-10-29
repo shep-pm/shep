@@ -51,6 +51,7 @@ pub(super) fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         .memory_bytes(None)
         .dog(entry.dog.clone())
         .last_exit(entry.last_exit)
+        .spawn_failure(entry.spawn_failure.clone())
         // By name: every instance shows the same mark, including one spawned
         // after it was painted.
         .smit(

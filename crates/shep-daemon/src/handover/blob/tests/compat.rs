@@ -22,6 +22,28 @@ use crate::supervisor::{
 use crate::testing::app_with;
 
 #[test]
+fn a_spawn_refusal_survives_a_handover_and_old_blobs_omit_it() {
+    let mut entry = entry_fixture(|_| {});
+    entry.status = ProcStatus::Errored;
+    entry.pid = None;
+    entry.spawn_failure = Some("kelpie: spawn refused".to_string());
+    let mut value = serde_json::to_value(handover_over(&entry)).unwrap();
+    assert_eq!(value["sheep"][0]["spawn_failure"], "kelpie: spawn refused");
+    let loaded = Handover::load_value(value.clone()).unwrap();
+    assert_eq!(
+        loaded.sheep()[0].spawn_failure(),
+        Some("kelpie: spawn refused")
+    );
+
+    value["sheep"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("spawn_failure");
+    let older = Handover::load_value(value).unwrap();
+    assert_eq!(older.sheep()[0].spawn_failure(), None);
+}
+
+#[test]
 fn a_blob_written_before_stdin_was_carried_still_loads() {
     let mut value = serde_json::to_value(sample_handover()).unwrap();
     let fds = value["sheep"][0]["fds"]

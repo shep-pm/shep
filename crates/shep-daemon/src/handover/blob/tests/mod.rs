@@ -124,7 +124,7 @@ fn debug_redacts_a_carried_sheeps_environment() {
     assert_eq!(
         format!("{:?}", carried(&entry)),
         "CarriedSheep { id: 1, name: \"web\", instance: 0, pid: Some(100), restarts: 0, \
-         epoch: 7, status: Online, last_exit: None, credentials: Resolved(None), fds: \
+         epoch: 7, status: Online, last_exit: None, spawn_failure: None, credentials: Resolved(None), fds: \
          CarriedFds { out_pipe: Some(11), err_pipe: Some(12), out_log: Some(13), err_log: \
          Some(14), stdin: Some(15), channel: Some(16), dog_link: None }, dog_topics: None, \
          pending_delete: Some(false), \
@@ -152,7 +152,7 @@ fn debug_redacts_the_environment_on_a_process_entry() {
          false, overridden: [], instance: 0, status: Online, pid: Some(100), restarts: 0, \
          started_at: None, budget: RestartBudget { unstable_count: 0 }, reload: None, \
          credentials: Resolved(None), out_file: \"/tmp/shep-handover-test-out.log\", \
-         err_file: \"/tmp/shep-handover-test-err.log\", dog: None, last_exit: None }"
+         err_file: \"/tmp/shep-handover-test-err.log\", dog: None, last_exit: None, spawn_failure: None }"
     );
 }
 
