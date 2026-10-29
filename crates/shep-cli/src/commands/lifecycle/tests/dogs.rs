@@ -338,3 +338,83 @@ mod slow {
         }
     }
 }
+
+/// Runs `shep restart kelpie` against a shepherd whose `kelpie` dog was spawned
+/// with `spawned_env` while `shep.toml` now holds `entry_env`, handing back
+/// the stderr and the requests the shepherd saw.
+async fn restart_kelpie(entry_env: &str, spawned_env: &[(&str, &str)]) -> (String, Vec<Request>) {
+    use crate::commands::dogs::entry_drift_support::{home_and_spawned, shepherd_running};
+
+    let dir = tempfile::tempdir().unwrap();
+    let (paths, spawned) = home_and_spawned(dir.path(), entry_env, spawned_env);
+    let base = shepherd_running(spawned, shep_core::status::ProcStatus::Online);
+    let sock = shep_client::testing::control_address(dir.path());
+    let (client, mut envelopes) = fake_client_answering(&sock, move |req| match req {
+        Request::Restart { .. } => Response::Restarted {
+            accepted: Vec::new(),
+            refused: Vec::new(),
+        },
+        other => base(other),
+    })
+    .await;
+
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+        let args = SelectorArgs {
+            selectors: vec!["kelpie".into()],
+        };
+        let _ = restart_within(
+            &client,
+            &mut streams,
+            Some(&paths),
+            &args,
+            Duration::from_millis(1),
+        )
+        .await;
+    }
+    let sent = std::iter::from_fn(|| envelopes.try_recv().ok())
+        .map(|envelope| envelope.body)
+        .collect();
+    (String::from_utf8(err).unwrap(), sent)
+}
+
+/// The restart warns and then restarts: the shepherd respawns from the spec it
+/// holds, so the warning is the only thing standing between the operator and
+/// a dog that came back without the key.
+#[tokio::test]
+async fn a_restart_of_a_dog_whose_entry_changed_says_it_keeps_the_old_one_and_still_restarts() {
+    let (text, sent) = restart_kelpie("PADDOCK_KEY = \"{{secret:paddock-key}}\"", &[]).await;
+
+    assert!(
+        text.contains("`kelpie`")
+            && text.contains("shep disable kelpie")
+            && text.contains("shep enable kelpie"),
+        "the dog and the way to apply its entry must be named: {text}"
+    );
+    assert!(
+        !text.contains("paddock-key"),
+        "a value, or a reference standing for one, must never be printed: {text}"
+    );
+    assert!(
+        sent.iter()
+            .any(|req| matches!(req, Request::Restart { .. })),
+        "a warning is not a refusal: {sent:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_restart_of_a_dog_whose_entry_is_unchanged_says_nothing_about_it() {
+    let (text, sent) = restart_kelpie(
+        "PADDOCK_KEY = \"{{secret:paddock-key}}\"",
+        &[("PADDOCK_KEY", "{{secret:paddock-key}}")],
+    )
+    .await;
+
+    assert_eq!(text, "");
+    assert!(
+        sent.iter()
+            .any(|req| matches!(req, Request::Restart { .. }))
+    );
+}
