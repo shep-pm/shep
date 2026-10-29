@@ -391,25 +391,6 @@ mod mem_size_tests {
     }
 
     #[test]
-    fn a_day_parses_as_a_day_of_milliseconds() {
-        assert_eq!("1d".parse::<UpDuration>().unwrap().as_millis(), 86_400_000);
-        assert_eq!("7d".parse::<UpDuration>().unwrap().as_millis(), 604_800_000);
-        assert_eq!("0d".parse::<UpDuration>().unwrap().as_millis(), 0);
-    }
-
-    #[test]
-    fn display_never_prints_a_day() {
-        assert_eq!(UpDuration::from_millis(86_400_000).to_string(), "24h");
-        assert_eq!(UpDuration::from_millis(604_800_000).to_string(), "168h");
-    }
-
-    #[test]
-    fn a_day_round_trips_through_display() {
-        let parsed: UpDuration = "7d".parse().unwrap();
-        assert_eq!(parsed.to_string().parse::<UpDuration>().unwrap(), parsed);
-    }
-
-    #[test]
     fn rejects_spec_violations() {
         use ParseMemSizeError::*;
         assert_eq!("".parse::<MemSize>(), Err(Empty));
@@ -502,6 +483,25 @@ mod up_duration_tests {
         assert_eq!("5m".parse::<UpDuration>().unwrap().as_millis(), 300_000);
         // A bare trailing `m` at end of input is still minutes.
         assert_eq!("1m".parse::<UpDuration>().unwrap().as_millis(), 60_000);
+    }
+
+    #[test]
+    fn a_day_parses_as_a_day_of_milliseconds() {
+        assert_eq!("1d".parse::<UpDuration>().unwrap().as_millis(), 86_400_000);
+        assert_eq!("7d".parse::<UpDuration>().unwrap().as_millis(), 604_800_000);
+        assert_eq!("0d".parse::<UpDuration>().unwrap().as_millis(), 0);
+    }
+
+    #[test]
+    fn display_never_prints_a_day() {
+        assert_eq!(UpDuration::from_millis(86_400_000).to_string(), "24h");
+        assert_eq!(UpDuration::from_millis(604_800_000).to_string(), "168h");
+    }
+
+    #[test]
+    fn a_day_round_trips_through_display() {
+        let parsed: UpDuration = "7d".parse().unwrap();
+        assert_eq!(parsed.to_string().parse::<UpDuration>().unwrap(), parsed);
     }
 
     #[test]
