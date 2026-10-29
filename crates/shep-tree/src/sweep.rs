@@ -3,26 +3,9 @@
 //! A stop signals a process group, which misses a lamb that left it, and a
 //! natural exit signals nothing at all. [`Sweeper`] closes both: it signals
 //! the pids a [`LambSnapshot`] saw, and what those start while it waits.
-//! [`LambSweep`] is the seam over a process table, [`ProcessTable`] the real
-//! one.
-//!
-//! # Example
-//!
-//! ```no_run
-//! use std::process::Command;
-//! use std::time::Duration;
-//!
-//! use shep_tree::sweep::{LambSweep, ProcessTable, Sweeper};
-//! use shep_tree::{Signal, Tree};
-//!
-//! let (tree, mut child) = Tree::spawn(Command::new("sleep").arg("600")).unwrap();
-//! let table = ProcessTable::new();
-//! // Read the lambs while their root is still alive to walk from.
-//! let snapshot = table.snapshot(child.id());
-//! tree.stop(&mut child, Signal::Term, Duration::from_secs(5)).unwrap();
-//! let report = Sweeper::new(snapshot, Duration::from_secs(5)).run_blocking(&table);
-//! println!("termed {} lambs, killed {}", report.termed.len(), report.killed.len());
-//! ```
+//! [`LambSweep`] is the seam over a process table, and `ProcessTable` the
+//! real one behind it, under the `sysinfo` feature, which carries the worked
+//! example.
 
 use core::fmt;
 use core::time::Duration;

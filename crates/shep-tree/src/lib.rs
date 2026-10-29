@@ -11,7 +11,7 @@
 //!   [`sweep`] ends what a group signal missed: the lambs a process left
 //!   running once it is gone. A future `shep signal` over lambs uses both.
 //! - [`sweep::Sweeper`] steps a [`sweep::LambSweep`] through a sweep, and
-//!   [`sweep::ProcessTable`] is the real table behind it.
+//!   `sweep::ProcessTable` is the real table behind it, under `sysinfo`.
 //! - `job::Job` (Windows) is the job object [`Tree`] uses, public for a
 //!   caller that spawns by other means.
 //!

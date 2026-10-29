@@ -17,6 +17,24 @@ use crate::instant::ProcInstant;
 ///
 /// [`Self::snapshot`] answers only for a `root_pid` that descends from this
 /// process, so a sweep never signals a tree it did not start.
+///
+/// # Example
+///
+/// ```no_run
+/// use std::process::Command;
+/// use std::time::Duration;
+///
+/// use shep_tree::sweep::{LambSweep, ProcessTable, Sweeper};
+/// use shep_tree::{Signal, Tree};
+///
+/// let (tree, mut child) = Tree::spawn(Command::new("sleep").arg("600")).unwrap();
+/// let table = ProcessTable::new();
+/// // Read the lambs while their root is still alive to walk from.
+/// let snapshot = table.snapshot(child.id());
+/// tree.stop(&mut child, Signal::Term, Duration::from_secs(5)).unwrap();
+/// let report = Sweeper::new(snapshot, Duration::from_secs(5)).run_blocking(&table);
+/// println!("termed {} lambs, killed {}", report.termed.len(), report.killed.len());
+/// ```
 #[derive(Debug)]
 pub struct ProcessTable {
     // `std::sync::Mutex`, not a runtime's: the critical section is one

@@ -2,10 +2,10 @@
 //!
 //! A sweep dates the pids it saw with a [`ProcInstant`], and later asks
 //! whether each is still the same live process: alive, not a zombie, and
-//! started no later than the instant it was seen. [`read_pids`] answers for
-//! the pids it names and no others, so the cost scales with the question
-//! rather than with the machine's process count. It is unix only;
-//! [`ProcInstant`] exists everywhere.
+//! started no later than the instant it was seen. `read_pids` answers for the
+//! pids it names and no others, so the cost scales with the question rather
+//! than with the machine's process count. It needs unix and the `sysinfo`
+//! feature; [`ProcInstant`] exists everywhere.
 
 #[cfg(all(unix, feature = "sysinfo"))]
 use std::collections::HashMap;
