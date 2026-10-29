@@ -370,7 +370,7 @@ impl ConfigPane {
 
     /// The field filed under `key`: one of [`Self::fields`], or a field
     /// inside an entry.
-    pub(super) fn field_of(&self, key: &str) -> Option<&Field> {
+    pub(in crate::lookout) fn field_of(&self, key: &str) -> Option<&Field> {
         self.fields
             .by_key(key)
             .or_else(|| self.entries.leaf(key).map(|leaf| leaf.field))
