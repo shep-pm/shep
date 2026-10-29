@@ -75,6 +75,7 @@ mod init_verb;
 mod kv_store;
 mod lifecycle;
 mod logs;
+mod lookout_terminal;
 mod lookout_whistle;
 mod polling;
 mod real_clock;

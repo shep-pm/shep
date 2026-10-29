@@ -375,6 +375,24 @@ mod tests {
         app
     }
 
+    /// The row is the only door an adopted dog's pane has to its own binary,
+    /// and `shows_env` is keyed on it: a row reporting a built-in, or none,
+    /// opens a pane with no env rows at all.
+    #[test]
+    fn e_on_an_adopted_dogs_row_carries_its_path_into_the_pane() {
+        let app = fixtures::app_in_adopted_channel_dog_pane_from_row();
+        let pane = app.config_pane().expect("the pane is open");
+        assert_eq!(
+            pane.target(),
+            &PaneTarget::Dog {
+                name: "kelpie".to_string(),
+                adopted_path: Some(std::path::PathBuf::from("/usr/local/bin/shep-kelpie")),
+            },
+            "the pane is a dog pane over the binary the row names"
+        );
+        assert!(pane.shows_env(), "{:?}", pane.target());
+    }
+
     #[test]
     fn a_dog_with_no_schema_gets_no_pane_and_is_told_where_to_edit() {
         let mut app = flock_on_dog("otel");

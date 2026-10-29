@@ -1,0 +1,16 @@
+---
+source: crates/shep-cli/src/lookout/view/pane/draw.rs
+expression: "text.join(\"\\n\")"
+---
+  kelpie  (dog config)                                                                                                  
+>  ratio                      1.5                                  FOCUSED  ratio  number
+                                                                    ratio
+  env                                                             
+   + add a key                                                      now     1.5
+                                                                    default (none)
+                                                                    example (none)
+                                                                  
+                                                                    ────────────────────────────────────────────────────
+                                                                    VALIDATION
+                                                                    █ a number
+  shep publishes the change; kelpie decides what to reload

@@ -226,6 +226,19 @@ fn a_secret_key_in_an_entry_reads_set_opens_empty_and_never_labels_its_entry() {
 }
 
 #[test]
+fn pending_entry_edits_mask_the_old_and_new_credentials() {
+    let mut app = fixtures::app_in_dog_pane_with_entries();
+    open_every_client(&mut app);
+    type_into(&mut app, "clients[0].key", "hunter9");
+    let text = rows_of(&render(&app, 160, 80)).join("\n");
+    assert!(text.contains("pending edits"), "{text}");
+    assert!(text.contains("<set> -> <set>"), "{text}");
+    for secret in ["hunter2", "hunter3", "hunter4", "hunter9"] {
+        assert!(!text.contains(secret), "a credential reached the frame");
+    }
+}
+
+#[test]
 fn a_refresh_with_an_entry_open_keeps_the_filed_edits_the_open_set_and_the_cursor() {
     let mut app = fixtures::app_in_dog_pane_with_entries();
     open_every_client(&mut app);
