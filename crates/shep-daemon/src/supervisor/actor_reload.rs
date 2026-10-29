@@ -339,6 +339,7 @@ impl<R: ProcessRunner> Actor<R> {
                     err_file,
                     dog,
                     last_exit,
+                    spawn_failure: None,
                 };
                 let info = to_info(&entry, &self.smits);
                 let log_ctl = io.log_ctl.clone();

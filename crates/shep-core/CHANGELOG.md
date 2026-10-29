@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Additions
+
+- Add optional `ProcessInfo::spawn_failure`, absent until a spawn fails, without a protocol or schema bump. ([#1294])
+
 ## [0.19.0] - 2026-10-28
 
 ### Added

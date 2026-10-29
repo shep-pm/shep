@@ -168,6 +168,7 @@ impl<R: ProcessRunner> Actor<R> {
             err_file: described.err_file,
             dog,
             last_exit: None,
+            spawn_failure: None,
         };
         let info = to_info(&entry, &self.smits);
         self.sheep.insert(id, SheepSlot::new(entry));
@@ -247,6 +248,7 @@ impl<R: ProcessRunner> Actor<R> {
                     err_file: described.err_file,
                     dog,
                     last_exit: None,
+                    spawn_failure: None,
                 };
                 self.sheep.insert(id, SheepSlot::new(entry));
                 let info = self.refuse_spawn(id, true, &err);
@@ -301,6 +303,7 @@ impl<R: ProcessRunner> Actor<R> {
                     err_file,
                     dog,
                     last_exit: None,
+                    spawn_failure: None,
                 };
                 let info = to_info(&entry, &self.smits);
                 let log_ctl = io.log_ctl.clone();
@@ -351,6 +354,14 @@ impl<R: ProcessRunner> Actor<R> {
                 Ok(info)
             }
             Err(error) => {
+                let attempted = match self.runner.preflight(&spec) {
+                    Preflight::Doubtful(reason) => reason,
+                    _ => match &spec.cwd {
+                        Some(cwd) => format!("tried `{}` in {}", spec.program, cwd.display()),
+                        None => format!("tried `{}`", spec.program),
+                    },
+                };
+                let message = format!("{error}; {attempted}");
                 let entry = ProcessEntry {
                     id,
                     spec: app.clone(),
@@ -369,22 +380,12 @@ impl<R: ProcessRunner> Actor<R> {
                     err_file,
                     dog,
                     last_exit: None,
+                    spawn_failure: Some(format!("{}: {message}", app.config().name)),
                 };
                 let info = to_info(&entry, &self.smits);
                 self.sheep.insert(id, SheepSlot::new(entry));
                 self.emit(ProcessEventKind::Errored, info, true);
-                // `error` names neither the app nor the path, and the caller
-                // adds the name. `spec.program` and `spec.cwd` verbatim: they
-                // are what the Flockfile said. A `Doubtful` verdict replaces
-                // the clause, being its only channel to an operator.
-                let attempted = match self.runner.preflight(&spec) {
-                    Preflight::Doubtful(reason) => reason,
-                    _ => match &spec.cwd {
-                        Some(cwd) => format!("tried `{}` in {}", spec.program, cwd.display()),
-                        None => format!("tried `{}`", spec.program),
-                    },
-                };
-                Err(format!("{error}; {attempted}"))
+                Err(message)
             }
         }
     }
@@ -504,6 +505,7 @@ impl<R: ProcessRunner> Actor<R> {
             // `None` for a blob written before this daemon carried a dog.
             dog: carried.dog().cloned(),
             last_exit: carried.last_exit(),
+            spawn_failure: carried.spawn_failure().map(str::to_string),
             // Not carried by `CarriedSheep`: a handover installs one sheep at a
             // time with no live sibling to ask, so this is one store read.
             overridden: self.overridden_for(&app.config().name),

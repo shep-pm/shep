@@ -76,6 +76,11 @@ pub fn emit_described(
             // table directly above it and a lamb table would put a second
             // table between the two.
             for sheep in &flock.0 {
+                if sheep.status == shep_core::status::ProcStatus::Errored
+                    && let Some(reason) = &sheep.spawn_failure
+                {
+                    writeln!(out, "\nSpawn failure: {reason}")?;
+                }
                 if let Some(note) = rows::silence_note(sheep) {
                     writeln!(out, "\n{note}")?;
                 }
@@ -180,6 +185,32 @@ mod tests {
 
     use super::super::tests::{sheep_info, silent_dog};
     use super::*;
+
+    #[test]
+    fn describe_shows_an_errored_dogs_spawn_refusal() {
+        let reason =
+            "kelpie: `TOKEN`: `{{secret:MISSING}}` has no value in the `production` environment";
+        let info = ProcessInfo::builder(7, "kelpie", ProcStatus::Errored)
+            .dog(Some(DogSource::Adopted {
+                grants: None,
+                path: "/dogs/kelpie".to_string(),
+                channel: false,
+            }))
+            .spawn_failure(Some(reason.to_string()))
+            .build();
+        let mut out = Vec::new();
+        emit_described(
+            &mut out,
+            Format::Table,
+            "describe",
+            vec![info],
+            Presentation::BARE,
+            &[],
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains(reason), "{rendered}");
+    }
 
     /// Both rows read `silent` everywhere else; only `dog_stale` says
     /// whether anything further is going to happen. The give-up arm must

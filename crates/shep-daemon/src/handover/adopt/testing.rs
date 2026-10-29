@@ -43,6 +43,7 @@ pub(super) fn carried_slot(instance: u32, fds: CarriedFds) -> CarriedSheep {
         epoch: 7,
         status: ProcStatus::Online,
         last_exit: None,
+        spawn_failure: None,
         credentials: SpawnIdentity::Resolved(None),
         fds,
         dog_topics: None,

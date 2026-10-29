@@ -126,6 +126,8 @@ impl Render for FlockRows {
         "lambs",
         // Describe only, like `lambs`.
         "vcs",
+        // Describe prints the refusal beneath its table.
+        "spawn_failure",
         // A handshake is a fact about a dog, and every row here is a sheep.
         "handshook",
         // A dog fact too: a shepherd gives up only on dogs.
@@ -264,6 +266,7 @@ pub(crate) mod tests {
         for row in &mut rows {
             row.reload_deadline_ms = Some(15_000);
             row.disabled = Some(true);
+            row.spawn_failure = Some("web: spawn refused".to_string());
             row.vcs =
                 Some(Vcs::new("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0").with_branch("main"));
         }

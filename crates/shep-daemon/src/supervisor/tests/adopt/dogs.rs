@@ -8,6 +8,36 @@
 use super::*;
 use std::collections::BTreeMap;
 
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_successor_reports_a_carried_dogs_spawn_refusal() {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let dir = tempfile::tempdir().unwrap();
+        let (events, _rx) = crate::bus::test_bus(64);
+        let sup = SupervisorBuilder::new(AdoptingRunner, test_paths(&dir), events)
+            .spawn_adopted(
+                vec![without_handles(carried("kelpie", 7, None, |entry| {
+                    entry.dog = Some(DogSource::BuiltIn { grants: None });
+                    entry.status = ProcStatus::Errored;
+                    entry.spawn_failure = Some("kelpie: spawn refused".to_string());
+                }))],
+                counters(8),
+                Vec::new(),
+            )
+            .unwrap();
+
+        let rows = sup.list().await;
+        assert_eq!(rows[0].status, ProcStatus::Errored);
+        assert_eq!(
+            rows[0].spawn_failure.as_deref(),
+            Some("kelpie: spawn refused")
+        );
+        sup.shutdown().await;
+    })
+    .await
+    .expect("a successor must report a carried spawn refusal");
+}
+
 /// One dog as the boot hands it over: built-in, and named as `shep.toml`
 /// would name it.
 fn dog(name: &str) -> crate::dogs::DogSpec {
