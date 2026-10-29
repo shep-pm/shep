@@ -181,12 +181,9 @@ impl schemars::JsonSchema for MemSize {
 /// A duration from the Flockfile grammar `^\d+(ms|d|h|m|s)?$`
 ///
 /// Plain digits are milliseconds; `ms`/`s`/`m`/`h`/`d` are
-/// milliseconds/seconds/minutes/hours/days. `ms` is checked before the
-/// single-letter suffixes. So `5m` and `5ms` differ by a factor of sixty
-/// thousand.
-///
-/// `d` is parsed but never printed: [`fmt::Display`] stops at hours, so `7d`
-/// reads back as `168h`. The spelling is lossy, the value is not.
+/// milliseconds/seconds/minutes/hours/days. `ms` is checked first, so `5m`
+/// and `5ms` differ by a factor of sixty thousand. [`fmt::Display`] stops at
+/// hours: `7d` reads back as `168h`, the same value.
 ///
 /// # Example
 /// ```
