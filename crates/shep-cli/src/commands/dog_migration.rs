@@ -439,8 +439,9 @@ impl fmt::Display for DogMigrationError {
             } => write!(
                 f,
                 "dog '{name}' is configured in both shep.toml and dogs.toml; a dog's env goes \
-                 beside its path in [daemon.adopted_dogs], as {entry}, so delete the \
-                 [dog.{name}] section from shep.toml and start the daemon again",
+                 beside its path in [daemon.adopted_dogs], as {entry}; move env there, \
+                 choose the remaining settings to keep in [{name}] in dogs.toml, then delete \
+                 [dog.{name}] from shep.toml and start the daemon again",
                 entry = adopted_dogs_entry(name),
             ),
             Self::SectionsUnreadable { names } if names.is_empty() => write!(

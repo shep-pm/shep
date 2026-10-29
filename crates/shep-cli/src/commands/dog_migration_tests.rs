@@ -407,8 +407,10 @@ fn an_existing_dogs_file_makes_the_migration_refuse() {
 /// `env`: the message names a place, never a credential.
 #[test]
 fn a_section_holding_env_is_told_where_the_env_goes() {
-    let (_dir, paths) = home_with("[dog.kelpie]\nenv = { PADDOCK_KEY = \"hunter2\" }\n");
-    std::fs::write(&paths.dogs_config, "[kelpie]\nworker = \"3\"\n").expect("write");
+    let shep_toml = "[dog.kelpie]\nworker = \"5\"\nenv = { PADDOCK_KEY = \"hunter2\" }\n";
+    let dogs_toml = "[kelpie]\nworker = \"3\"\n";
+    let (_dir, paths) = home_with(shep_toml);
+    std::fs::write(&paths.dogs_config, dogs_toml).expect("write");
 
     let err = migrate_dog_sections(&paths).expect_err("both files hold kelpie");
 
@@ -421,18 +423,23 @@ fn a_section_holding_env_is_told_where_the_env_goes() {
         err.to_string(),
         "dog 'kelpie' is configured in both shep.toml and dogs.toml; \
          a dog's env goes beside its path in [daemon.adopted_dogs], as \
-         kelpie = { path = \"...\", env = { KEY = \"{{secret:name}}\" } }, so delete the \
-         [dog.kelpie] section from shep.toml and start the daemon again"
+         kelpie = { path = \"...\", env = { KEY = \"{{secret:name}}\" } }; move env there, \
+         choose the remaining settings to keep in [kelpie] in dogs.toml, then delete \
+         [dog.kelpie] from shep.toml and start the daemon again"
     );
     assert!(
         !err.to_string().contains("hunter2") && !err.to_string().contains("PADDOCK_KEY"),
         "the refusal names a place, never the value it was written for: {err}"
     );
-    assert!(
-        std::fs::read_to_string(&paths.daemon_config)
-            .expect("read")
-            .contains("hunter2"),
-        "the env stays where it was written"
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        shep_toml,
+        "a refused migration preserves env and the other settings"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&paths.dogs_config).expect("read"),
+        dogs_toml,
+        "the operator chooses which settings to keep"
     );
 }
 
