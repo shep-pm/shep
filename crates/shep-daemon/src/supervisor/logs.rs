@@ -116,7 +116,7 @@ pub(super) async fn flush_logs(log_ctl: &mpsc::Sender<LogCtl>) -> Result<(), Flu
 /// Exactly the path the Flockfile named, with no check on where it points: a
 /// flush empties whatever an `out_file` names, under the daemon's own
 /// privileges. The open goes through [`open_log_path`], which refuses a
-/// symlink at the path. Not `create(true)`, so a missing path is a no-op.
+/// symlink in the path. It creates nothing, so a missing path is a no-op.
 ///
 /// # Errors
 ///
@@ -131,9 +131,7 @@ pub(super) async fn truncate_log(path: &Path) -> Result<(), FlushError> {
         return Err(refused(&error));
     }
 
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).truncate(true);
-    match open_log_path(&mut options, path).await {
+    match open_log_path(LogOpen::TruncateExisting, path).await {
         Ok(_) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(refused(&error)),

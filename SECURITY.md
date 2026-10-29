@@ -133,13 +133,17 @@ What shep does guarantee about a log path, wherever it points:
 
 What that does not cover:
 
-- `O_NOFOLLOW` guards only the final path component. A symlinked parent
-  directory still resolves. The ancestry check above is what covers that
-  case, and only for a privileged daemon.
-- The ancestry check is a check, not an atomic resolve, so a TOCTOU window
-  remains between it and the open. Closing it needs
-  `openat2(RESOLVE_NO_SYMLINKS)`, which is Linux-only, and macOS is a tier-1
-  platform here.
+- **On macOS, `O_NOFOLLOW` guards only the final path component.** A
+  symlinked parent directory still resolves there. The ancestry check above
+  is what covers that case, and only for a privileged daemon. On Linux 5.6
+  and later the open is `openat2(RESOLVE_NO_SYMLINKS)`, which refuses a
+  symlink at any component at the moment of the open, so nobody can swap a
+  parent for a link between the check and the open. A kernel below 5.6, or a
+  seccomp filter that blocks the syscall, falls back to the `O_NOFOLLOW` open
+  and its one-component guard.
+- The ancestry check is a check, not an atomic resolve, so on macOS a TOCTOU
+  window remains between it and the open. It also stays the only guard on
+  ownership and mode, which `openat2` does not look at.
 - **An unprivileged daemon warns rather than refuses.** A loose ancestry is
   an escalation only when the daemon is privileged; a shepherd running as an
   ordinary user that logs into a shared directory has handed nobody anything

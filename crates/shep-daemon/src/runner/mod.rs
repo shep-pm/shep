@@ -28,7 +28,7 @@ pub use dog_link::DogLink;
 /// and both of those modules are unix-gated.
 #[cfg(all(test, unix))]
 pub(crate) use log_path_security::SYMLINK_REFUSED;
-pub(crate) use log_path_security::{check_log_ancestry, open_log_path};
+pub(crate) use log_path_security::{LogOpen, check_log_ancestry, open_log_path};
 pub use log_protocol::{ExitOutcome, FlushError, LogCtl, LogLine, ReopenError};
 pub(crate) use path_advisories::{cwd_advisory, log_path_advisory};
 /// Gated with the type: `AdoptSpec` is the handover's, and Windows has no

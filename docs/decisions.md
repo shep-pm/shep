@@ -1033,11 +1033,13 @@ a_daemon_that_closes_without_answering_is_not_a_silent_success asserted ConnectE
 
 `docs/writing-plans/plans/2026-08-13-shep-phase10-audit-debt.md:2300`
 
-### check_log_ancestry's TOCTOU window: openat2 fix designed but deliberately not built - *unverified*
+### check_log_ancestry's TOCTOU window: openat2 fix designed but deliberately not built - **superseded**
 
 A documented but unimplemented design for closing a check-then-open race in check_log_ancestry: nix::fcntl::openat2 with RESOLVE_NO_SYMLINKS on Linux, wrapped in unsafe FromRawFd inside shep-daemon/src/sys.rs with a fallback ladder for ENOSYS/EPERM (old kernels, seccomp) back to today's check-then-O_NOFOLLOW-open path (which remains the only path on macOS).
 
 **Why:** Deferred because it is new unsafe on a Linux-only path the project cannot locally test from a macOS dev machine - exactly the debt shape a platform audit finding had already complained about. Trigger to build it: a Linux box in the regular test loop, or a threat model including an attacker with write access to a log directory's parent.
+
+SUPERSEDED (#353): the first trigger fired. `.github/workflows/test.yml` runs `ubuntu-latest` and `ubuntu-24.04-arm` on every pull request, and its `privileged` job already runs the root-only `log_path_security` cases in a container. `open_log_path` now opens through `openat2(RESOLVE_NO_SYMLINKS)` on Linux 5.6 and later, adopted into a `File` in `sys.rs`, with the `ENOSYS`/`EPERM` fallback as designed. The open resolves the path from the daemon's working directory as the Flockfile gave it, not relative to a directory fd: opening the parent first would be a check-then-open race of its own. macOS still has the window.
 
 `docs/writing-plans/plans/2026-08-13-shep-phase10-audit-debt.md:3645-3664`
 

@@ -63,9 +63,9 @@ use crate::probes::ready::{Readiness, ReadinessSource, await_ready};
 #[cfg(unix)]
 use crate::runner::AdoptSpec;
 use crate::runner::{
-    ExitOutcome, FlushError, LogCtl, Preflight, ProcIo, ProcessRunner, ReopenError, RunnerError,
-    RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, cwd_advisory, log_path_advisory,
-    open_log_path,
+    ExitOutcome, FlushError, LogCtl, LogOpen, Preflight, ProcIo, ProcessRunner, ReopenError,
+    RunnerError, RunningProcess, SpawnSpec, StdinWrite, check_log_ancestry, cwd_advisory,
+    log_path_advisory, open_log_path,
 };
 use crate::secrets::ProviderSecrets;
 
