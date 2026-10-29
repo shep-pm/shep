@@ -1,6 +1,6 @@
 [package]
 name = "shep-tree"
-description = "Signal a process group, own a Windows job and stop a child and everything it started, for any process"
+description = "Signal a process group, own a Windows job, stop a child and sweep what a process left running, for any process"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,14 +14,30 @@ categories = ["os"]
 [package.metadata.docs.rs]
 all-features = true
 
+[features]
+# Option (enabled by default): `sweep::ProcessTable`, the `LambSweep` that
+# walks the machine's process table, and the process-table reads in `instant`
+# it builds on. Off drops `sysinfo` from the tree, for a caller that scripts
+# its own `LambSweep` or only uses `Tree`.
+default = ["sysinfo"]
+# Option: the process-table walk itself, named for the dependency it gates.
+sysinfo = ["dep:sysinfo"]
+
+[dependencies]
+# `sweep::ProcessTable`'s full-table walk and `instant::read_pids`'s targeted
+# read of named pids. The workspace's own feature set (`system`): nothing here
+# reads a disk or network rate.
+sysinfo = { workspace = true, optional = true }
+
 # Depends on no other shep crate, and on no async runtime: a dog or a sheep
 # can use it from a plain thread.
 #
 # `signal` is `kill(2)`; nix's `process` feature, which `signal` enables,
-# supplies `Pid`. `rustix` is `waitid`, which sees a child exit without reaping
-# it (`stop.rs`).
+# supplies `Pid`. `time` is `instant.rs`'s `CLOCK_BOOTTIME` read, the clock
+# Linux dates a process start on. `rustix` is `waitid`, which sees a child exit
+# without reaping it (`stop.rs`).
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["signal"] }
+nix = { workspace = true, features = ["signal", "time"] }
 rustix.workspace = true
 
 # `Win32_Foundation` is `HANDLE` and `CloseHandle`, `Win32_System_JobObjects`
