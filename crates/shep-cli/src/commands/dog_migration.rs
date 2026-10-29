@@ -40,14 +40,16 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
     // Not a substring test: `[ dog.metrics ]` is the same section spelled
     // differently. `None` means this parser could not read the source, which
     // `ShepToml` below reports with file and line.
-    let declared = existing_source
-        .parse::<toml::Table>()
-        .ok()
-        .map(|table| declared_dog_names(&table));
+    let table = existing_source.parse::<toml::Table>().ok();
+    let declared = table.as_ref().map(declared_dog_names);
     // Skipping the open is load-bearing: `ShepToml::save` renames a staged
     // temp file over the original, so opening an untouched `shep.toml` would
-    // give it a fresh inode and mode on every boot after the first.
-    if declared.as_ref().is_some_and(BTreeSet::is_empty) {
+    // give it a fresh inode and mode on every boot after the first. A `[dog]`
+    // holding only empty headers is not untouched: it is struck.
+    let has_dog_table = table
+        .as_ref()
+        .is_some_and(|table| matches!(table.get("dog"), Some(toml::Value::Table(_))));
+    if declared.as_ref().is_some_and(BTreeSet::is_empty) && !has_dog_table {
         return Ok(Vec::new());
     }
 
@@ -57,7 +59,8 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
     ShepToml::try_edit(&paths.daemon_config, |doc| {
         // Empty sections dropped here, matching what `declared_dog_names`
         // left out, so the two agree on what there was to move. They still
-        // leave `shep.toml`: `take_dog_sections` removes the whole `[dog]`.
+        // leave `shep.toml`: `take_dog_sections` removes the whole `[dog]`,
+        // even when every section is empty.
         let incoming: BTreeMap<String, Item> = doc
             .take_dog_sections()
             .into_iter()
@@ -74,6 +77,10 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
                 .collect(),
             None => Vec::new(),
         };
+        // Nothing declared: only empty headers were there, and they are struck.
+        if declared.as_ref().is_some_and(BTreeSet::is_empty) {
+            return Ok(Vec::new());
+        }
         if !missing.is_empty() || incoming.is_empty() {
             return Err(DogMigrationError::SectionsUnreadable { names: missing });
         }

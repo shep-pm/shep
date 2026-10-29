@@ -88,18 +88,17 @@ fn entries_under_dog_that_come_back_as_nothing_make_the_migration_refuse() {
 }
 
 // A `[dog]` header with nothing under it has no section to move or
-// lose, so it is left alone rather than refused.
+// lose, so it is struck rather than refused.
 #[test]
-fn an_empty_dog_table_is_left_exactly_as_it_was() {
-    let before = "[daemon]\nlog_level = \"info\"\n\n[dog]\n";
-    let (_dir, paths) = home_with(before);
+fn an_empty_dog_table_is_struck_without_a_refusal() {
+    let (_dir, paths) = home_with("[daemon]\nlog_level = \"info\"\n\n[dog]\n");
 
     let moved = migrate_dog_sections(&paths).expect("migrate");
 
     assert!(moved.is_empty());
     assert_eq!(
         std::fs::read_to_string(&paths.daemon_config).expect("read"),
-        before
+        "[daemon]\nlog_level = \"info\"\n"
     );
     assert!(!paths.dogs_config.exists(), "no sections means no file");
 }
@@ -227,12 +226,11 @@ fn a_moved_dog_lands_after_a_destination_of_nested_and_array_tables() {
 /// An older `shep enable` scaffolds an empty `[dog.metrics]`, and a
 /// mixed-version host is ordinary.
 ///
-/// Nothing is written on either side: the configured `dogs.toml` wins
-/// untouched, and `shep.toml` keeps its stray header.
+/// The configured `dogs.toml` wins untouched, and `shep.toml` loses its
+/// stray header.
 #[test]
 fn an_empty_section_colliding_with_a_configured_one_is_not_a_refusal() {
-    let before = "[daemon]\nenabled_dogs = [\"metrics\"]\n\n[dog.metrics]\n";
-    let (_dir, paths) = home_with(before);
+    let (_dir, paths) = home_with("[daemon]\nenabled_dogs = [\"metrics\"]\n\n[dog.metrics]\n");
     let dogs = "[metrics]\nbind = \"127.0.0.1:19616\"\n";
     std::fs::write(&paths.dogs_config, dogs).expect("write");
 
@@ -241,7 +239,7 @@ fn an_empty_section_colliding_with_a_configured_one_is_not_a_refusal() {
     assert!(moved.is_empty());
     assert_eq!(
         std::fs::read_to_string(&paths.daemon_config).expect("read"),
-        before
+        "[daemon]\nenabled_dogs = [\"metrics\"]\n"
     );
     assert_eq!(
         std::fs::read_to_string(&paths.dogs_config).expect("read"),
@@ -254,15 +252,14 @@ fn an_empty_section_colliding_with_a_configured_one_is_not_a_refusal() {
 /// `SectionsUnreadable`, or a header holding nothing refuses the boot.
 #[test]
 fn an_empty_array_of_tables_under_dog_is_skipped_rather_than_refused() {
-    let before = "[[dog.metrics]]\n";
-    let (_dir, paths) = home_with(before);
+    let (_dir, paths) = home_with("[[dog.metrics]]\n");
 
     let moved = migrate_dog_sections(&paths).expect("nothing declared, nothing to lose");
 
     assert!(moved.is_empty());
     assert_eq!(
         std::fs::read_to_string(&paths.daemon_config).expect("read"),
-        before
+        ""
     );
 }
 
@@ -368,7 +365,7 @@ fn a_header_spelled_with_whitespace_still_migrates() {
 fn a_boot_with_nothing_to_move_never_reopens_the_file() {
     use std::os::unix::fs::MetadataExt as _;
 
-    let (_dir, paths) = home_with("[daemon]\nlog_level = \"info\"\n\n[dog]\n");
+    let (_dir, paths) = home_with("[daemon]\nlog_level = \"info\"\n");
     let before = std::fs::metadata(&paths.daemon_config).expect("stat").ino();
 
     assert!(migrate_dog_sections(&paths).expect("migrate").is_empty());
@@ -524,4 +521,83 @@ fn a_boot_migration_and_a_dog_config_write_at_once_both_land() {
             "round {round}: the config-pane write must survive, got {written:?}"
         );
     }
+}
+
+/// Fails if a header is left behind once its values are in `dogs.toml`:
+/// an empty `[dog.metrics]` reads as the place a dog's settings go.
+#[test]
+fn a_migrated_section_leaves_no_header_in_shep_toml() {
+    let (_dir, paths) = home_with("[dog.metrics]\nbind = \"127.0.0.1:9615\"\n");
+
+    let moved = migrate_dog_sections(&paths).expect("migrate");
+
+    assert_eq!(moved, vec!["metrics".to_string()]);
+    let left = std::fs::read_to_string(&paths.daemon_config).expect("read");
+    assert!(!left.contains("dog"), "no [dog] or [dog.metrics]: {left}");
+    let written = std::fs::read_to_string(&paths.dogs_config).expect("read");
+    assert!(written.contains("bind = \"127.0.0.1:9615\""), "{written}");
+}
+
+/// A file an older shep migrated holds only empty headers: they go at the
+/// next boot, and nothing else in the file moves.
+#[test]
+fn empty_dog_headers_are_removed_and_the_rest_of_the_file_stays() {
+    let (_dir, paths) = home_with(
+        "# mine\n[daemon]\nlog_level = \"info\" # loud\n\n[dog]\n\n[dog.whistle]\n\n[style]\n# keep\nlevel = \"full\"\n",
+    );
+
+    let moved = migrate_dog_sections(&paths).expect("migrate");
+
+    assert!(moved.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        "# mine\n[daemon]\nlog_level = \"info\" # loud\n\n[style]\n# keep\nlevel = \"full\"\n"
+    );
+    assert!(!paths.dogs_config.exists(), "nothing to move, no file");
+}
+
+/// Fails if a comment written above an empty header goes with it.
+#[test]
+fn a_comment_above_an_empty_header_stays_above_where_it_was() {
+    let (_dir, paths) = home_with(
+        "[daemon]\nlog_level = \"info\"\n\n# whistle settings\n[dog.whistle]\n\n[style]\nlevel = \"full\"\n",
+    );
+
+    migrate_dog_sections(&paths).expect("migrate");
+
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        "[daemon]\nlog_level = \"info\"\n\n# whistle settings\n\n[style]\nlevel = \"full\"\n"
+    );
+}
+
+/// With nothing after the header, the comment ends the file.
+#[test]
+fn a_comment_above_a_last_empty_header_ends_the_file() {
+    let (_dir, paths) =
+        home_with("[daemon]\nlog_level = \"info\"\n\n# whistle settings\n[dog.whistle]\n");
+
+    migrate_dog_sections(&paths).expect("migrate");
+
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        "[daemon]\nlog_level = \"info\"\n\n# whistle settings\n"
+    );
+}
+
+/// The cleaned file has no `[dog]` left, so a second boot returns before
+/// opening it.
+#[test]
+fn a_second_boot_over_cleaned_headers_changes_nothing() {
+    let (_dir, paths) = home_with("# note\n[dog]\n[dog.whistle]\n\n[style]\nlevel = \"full\"\n");
+    migrate_dog_sections(&paths).expect("first");
+    let after_first = std::fs::read_to_string(&paths.daemon_config).expect("read");
+
+    let moved = migrate_dog_sections(&paths).expect("second");
+
+    assert!(moved.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        after_first
+    );
 }
