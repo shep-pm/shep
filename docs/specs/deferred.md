@@ -476,6 +476,13 @@ at the moment of the open and the race is closed. The `RawFd` it returns is
 adopted into a `File` in `shep-daemon/src/sys.rs`, the one place that
 touches it.
 
+One consequence for operators: on Linux 5.6 and later a symlink anywhere in
+the path is refused, including one the daemon's own user or root owns, which
+`loose_ancestor` trusts. A log path below `current -> releases/<sha>` or a
+symlinked home opened before and is refused now. The refusal text still says
+"point out_file/err_file at the real file". Relaxing it for trusted links
+needs a design choice, since a trusted-link allowance would reopen the race.
+
 Still open:
 
 - macOS and other unix: the open is check-then-`O_NOFOLLOW`, and

@@ -140,7 +140,10 @@ What that does not cover:
   symlink at any component at the moment of the open, so nobody can swap a
   parent for a link between the check and the open. A kernel below 5.6, or a
   seccomp filter that blocks the syscall, falls back to the `O_NOFOLLOW` open
-  and its one-component guard.
+  and its one-component guard. The Linux refusal covers links the daemon
+  trusts too, its own user's or root's, such as `current -> releases/<sha>`
+  or a symlinked home: such a log path opened before and is refused now, and
+  an operator writes the real path instead.
 - The ancestry check is a check, not an atomic resolve, so on macOS a TOCTOU
   window remains between it and the open. It also stays the only guard on
   ownership and mode, which `openat2` does not look at.
