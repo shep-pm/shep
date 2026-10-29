@@ -266,7 +266,12 @@ export const BUDGETS: Record<string, number> = {
   // Raised again for an adopted dog's `env`: a key an operator writes in
   // `shep.toml`, the one setting shep sends through a dog's environment, and
   // the shape a file written before it existed still reads as (#1250).
-  dogs: 4260,
+  //
+  // Raised from 4260 on #1288 for "Two files, two kinds of setting": which of
+  // the two files holds a key, and why the split is the trust boundary rather
+  // than tidiness. An operator who guesses wrong gets a refused boot, so this
+  // is required content, not prose.
+  dogs: 4460,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
