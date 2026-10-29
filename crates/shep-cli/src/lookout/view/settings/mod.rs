@@ -21,6 +21,7 @@ use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
 use super::scroll::Attempt;
 use super::status::key_hint::{editor_hint, editor_label, focused_field};
+use super::status::status_layout::TEXT_ENTRY_HINT;
 
 use dogs::{DOGS_CAPTION, dog_header_line};
 use tree::tree_line;
@@ -260,7 +261,7 @@ fn body_from(
                     fit(
                         &buffer.line(
                             &format!("editing {label}: "),
-                            "   enter applies   esc cancels",
+                            &format!("   {TEXT_ENTRY_HINT}"),
                             table_width,
                         ),
                         table_width,
