@@ -436,10 +436,13 @@ impl ShepToml {
     /// Sets, or with `None` removes, one `env` key of `name`'s `[daemon]
     /// adopted_dogs` entry, keeping its path.
     ///
-    /// An entry written as a bare path string is rewritten as the table shape
-    /// first, so the dog keeps its binary and gains the `env` half. One
-    /// written inline stays inline. Removing the last key leaves `env` out of
-    /// the entry entirely rather than an empty table behind it.
+    /// The entry is edited where it sits, so the comments around it, the
+    /// entries beside it and the keys already in its `env` keep their places.
+    /// An entry written as a bare path string is rewritten as an inline table
+    /// first, so the dog keeps its binary and gains the `env` half. One written
+    /// as a table stays a table, and one written inline stays inline. Removing
+    /// the last key leaves `env` out of the entry entirely rather than an empty
+    /// table behind it.
     ///
     /// # Errors
     /// [`ShepTomlError::NoDogEntry`] when `name` has no entry, or its entry is
@@ -467,55 +470,50 @@ impl ShepToml {
         else {
             return Err(refusal("nothing"));
         };
-        let (path_text, mut env) = match entry.as_table_like() {
-            Some(table) => (
-                table
-                    .get("path")
-                    .and_then(Item::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                table
-                    .get("env")
-                    .and_then(Item::as_table_like)
-                    .map(|env| {
-                        env.iter()
-                            .filter_map(|(key, value)| {
-                                value.as_str().map(|text| (key.to_owned(), text.to_owned()))
-                            })
-                            .collect::<BTreeMap<String, String>>()
-                    })
-                    .unwrap_or_default(),
-            ),
-            None => match entry.as_str() {
-                Some(text) => (text.to_owned(), BTreeMap::new()),
-                None => return Err(refusal(entry.type_name())),
-            },
-        };
-        match value {
-            Some(value) => {
-                env.insert(key.to_owned(), value.to_owned());
+        if let Some(bare) = entry.as_str().map(str::to_owned) {
+            // Only a value without an `env` to remove has a reason to grow one.
+            if value.is_none() {
+                return Ok(());
             }
-            None => {
-                env.remove(key);
-            }
-        }
-        // The entry's own shape is the operator's, not this writer's: an
-        // inline entry edited here stays inline.
-        if entry.is_inline_table() {
             let mut table = InlineTable::new();
-            table.insert("path", Value::from(path_text));
-            if !env.is_empty() {
-                table.insert("env", Value::from(inline_table(&env)));
+            table.insert("path", Value::from(bare));
+            // The entry's own spacing and trailing comment ride over.
+            if let Some(old) = entry.as_value() {
+                *table.decor_mut() = old.decor().clone();
             }
             *entry = Item::Value(Value::InlineTable(table));
-            return Ok(());
         }
-        let mut table = Table::new();
-        table["path"] = Item::Value(path_text.into());
-        if !env.is_empty() {
-            table["env"] = Item::Value(Value::InlineTable(inline_table(&env)));
+        let Some(table) = entry.as_table_like_mut() else {
+            return Err(refusal(entry.type_name()));
+        };
+        match value {
+            Some(value) => match table.get_mut("env").and_then(Item::as_table_like_mut) {
+                Some(env) => {
+                    env.insert(key, Item::Value(Value::from(value)));
+                    // The last key's trailing space would otherwise land
+                    // before the comma of the one after it.
+                    if let Some(inline) = table.get_mut("env").and_then(Item::as_inline_table_mut) {
+                        inline.fmt();
+                    }
+                }
+                None => {
+                    let env = BTreeMap::from([(key.to_owned(), value.to_owned())]);
+                    table.insert("env", Item::Value(Value::InlineTable(inline_table(&env))));
+                }
+            },
+            None => {
+                let emptied = table
+                    .get_mut("env")
+                    .and_then(Item::as_table_like_mut)
+                    .is_some_and(|env| {
+                        env.remove(key);
+                        env.is_empty()
+                    });
+                if emptied {
+                    table.remove("env");
+                }
+            }
         }
-        *entry = Item::Table(table);
         Ok(())
     }
 
