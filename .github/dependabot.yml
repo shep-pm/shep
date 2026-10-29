@@ -44,6 +44,10 @@ updates:
     ignore:
       - dependency-name: fsevent-sys
         update-types: [version-update:semver-major]
+      # croner 4 breaks shep-core's cron parsing; the ceiling in the root
+      # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
+      - dependency-name: croner
+        update-types: [version-update:semver-major]
 
   # benches/ is its own workspace with its own lockfile, excluded from the
   # root one so a bench-only dependency can never reach a shipped binary,
@@ -66,6 +70,10 @@ updates:
     # deliberate. Drop this once a notify release declares fsevent-sys 5.
     ignore:
       - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
+      # croner 4 breaks shep-core's cron parsing; the ceiling in the root
+      # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
+      - dependency-name: croner
         update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
