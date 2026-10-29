@@ -44,10 +44,14 @@ impl Settings {
                 let (name, key, seed) = self.dog_field_editor(dog, row)?;
                 Some((Target::DogValue { name, key, row }, seed))
             }
+            // A dog's env is typed into the key/value editor, not this one.
             SettingsRow::Table(_)
             | SettingsRow::Dog(_)
             | SettingsRow::DogKey { .. }
-            | SettingsRow::DogGrant { .. } => None,
+            | SettingsRow::DogGrant { .. }
+            | SettingsRow::DogEnv(_)
+            | SettingsRow::DogEnvKey { .. }
+            | SettingsRow::DogEnvNew(_) => None,
         }
     }
 
@@ -105,6 +109,9 @@ impl Settings {
             | SettingsRow::Dog(_)
             | SettingsRow::DogKey { .. }
             | SettingsRow::DogGrant { .. }
+            | SettingsRow::DogEnv(_)
+            | SettingsRow::DogEnvKey { .. }
+            | SettingsRow::DogEnvNew(_)
             | SettingsRow::DogField { .. } => None,
         }
     }

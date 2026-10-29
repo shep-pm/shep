@@ -77,6 +77,9 @@ mod settings_confirm;
 #[cfg(test)]
 mod settings_dog_tree_tests;
 mod settings_dogs;
+mod settings_env;
+#[cfg(test)]
+mod settings_env_tests;
 mod settings_keys;
 mod sheep_pane;
 #[cfg(test)]

@@ -164,7 +164,8 @@ impl App {
                     Pending::Armed { at, .. }
                     | Pending::DogArmed { at, .. }
                     | Pending::DogTuneArmed { at, .. }
-                    | Pending::DogSectionArmed { at, .. },
+                    | Pending::DogSectionArmed { at, .. }
+                    | Pending::DogEnvArmed { at, .. },
                 ) if now.saturating_duration_since(at) >= CONFIRM_EXPIRY
             );
             if expired {

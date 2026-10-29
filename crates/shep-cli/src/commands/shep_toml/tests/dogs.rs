@@ -554,3 +554,85 @@ fn setting_an_env_key_on_an_inline_dog_entry_keeps_it_inline() {
         "the reference is stored as written, as a sheep's `env` stores one"
     );
 }
+
+/// A bare path entry gains the `env` half and becomes `{ path, env }`, and
+/// everything the operator wrote around it stays where they put it: a comment
+/// above the entry, one trailing it, and the entries either side in their order.
+#[test]
+fn adding_an_env_key_to_a_bare_path_entry_keeps_the_comments_and_the_order_around_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "# which dogs run\n[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs]\n\
+         # first, as the fleet's collector\nalpha = \"/opt/alpha\"\n\
+         # the exporter\notel = \"/usr/local/bin/shep-otel\" # built from main\n\
+         zulu = \"/opt/zulu\"\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "PADDOCK_KEY", Some("x"))
+            .unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        written,
+        "# which dogs run\n[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs]\n\
+         # first, as the fleet's collector\nalpha = \"/opt/alpha\"\n\
+         # the exporter\notel = { path = \"/usr/local/bin/shep-otel\", env = { PADDOCK_KEY = \"x\" } } # built from main\n\
+         zulu = \"/opt/zulu\"\n"
+    );
+    DaemonConfig::load(Some(&written), &|_| None)
+        .expect("the file the writer produced is one the daemon reads");
+}
+
+/// The same entry written as a table keeps the comments inside it.
+#[test]
+fn removing_the_last_env_key_keeps_the_comments_inside_the_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "# the exporter\n[daemon.adopted_dogs.otel]\n# its binary\npath = \"/usr/local/bin/shep-otel\"\n\
+         env = { RUST_LOG = \"warn\" }\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "RUST_LOG", None).unwrap();
+    })
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "# the exporter\n[daemon.adopted_dogs.otel]\n# its binary\npath = \"/usr/local/bin/shep-otel\"\n"
+    );
+}
+
+/// Keys already in an entry's `env` keep the order the operator wrote them in,
+/// and a changed one changes where it is.
+#[test]
+fn an_env_edit_keeps_the_order_of_the_keys_already_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon.adopted_dogs]\notel = { path = \"/opt/otel\", env = { ZED = \"1\", ALPHA = \"2\" } }\n",
+    )
+    .unwrap();
+
+    ShepToml::edit(&path, |cfg| {
+        cfg.set_adopted_dog_env("otel", "MID", Some("3")).unwrap();
+        cfg.set_adopted_dog_env("otel", "ZED", Some("9")).unwrap();
+    })
+    .unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("env = { ZED = \"9\", ALPHA = \"2\", MID = \"3\" }"),
+        "{written}"
+    );
+}

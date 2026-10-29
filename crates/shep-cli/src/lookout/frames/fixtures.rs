@@ -506,7 +506,10 @@ pub(super) fn settings_snapshot_with_dog_drift() -> SettingsSnapshot {
             // Both carry a real path: a non-built-in dog with
             // `adopted_path: None` is not a row `load_settings` can
             // produce from a document shep wrote.
-            DogView::adopted("otel", false, Path::new("/usr/local/bin/shep-otel")),
+            DogView {
+                env_keys: vec!["PADDOCK_KEY".to_owned(), "RUST_LOG".to_owned()],
+                ..DogView::adopted("otel", false, Path::new("/usr/local/bin/shep-otel"))
+            },
             DogView::adopted("ledger", true, Path::new("/opt/ledger/bin/dog")),
             DogView::built_in("bark", true),
         ],

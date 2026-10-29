@@ -13,7 +13,7 @@ use super::*;
 /// the form a reader sees.
 #[test]
 fn the_gallery_preamble_counts_the_scenes_it_has() {
-    const NUMBERS: [(usize, &str); 34] = [
+    const NUMBERS: [(usize, &str); 36] = [
         (34, "thirty-four"),
         (35, "thirty-five"),
         (36, "thirty-six"),
@@ -48,6 +48,8 @@ fn the_gallery_preamble_counts_the_scenes_it_has() {
         (65, "sixty-five"),
         (66, "sixty-six"),
         (67, "sixty-seven"),
+        (68, "sixty-eight"),
+        (69, "sixty-nine"),
     ];
     let spelled = NUMBERS
         .iter()
@@ -134,7 +136,9 @@ fn scene_after(scene: Scene) -> Option<Scene> {
         Scene::SettingsConfirm => Some(Scene::SettingsTyping),
         Scene::SettingsTyping => Some(Scene::SettingsDogs),
         Scene::SettingsDogs => Some(Scene::SettingsNarrow),
-        Scene::SettingsNarrow => Some(Scene::SettingsShort),
+        Scene::SettingsNarrow => Some(Scene::SettingsDogEnv),
+        Scene::SettingsDogEnv => Some(Scene::SettingsDogEnvNarrow),
+        Scene::SettingsDogEnvNarrow => Some(Scene::SettingsShort),
         Scene::SettingsShort => Some(Scene::Bleats),
         Scene::Bleats => Some(Scene::Secrets),
         Scene::Secrets => Some(Scene::SheepPane),

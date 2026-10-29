@@ -3,6 +3,11 @@
 
 use super::*;
 
+/// The key `Settings::folded` holds for the dog `name`'s `env` table.
+fn env_fold_key(name: &str) -> String {
+    format!("dogs.{name}.env")
+}
+
 impl Settings {
     /// What the screen reads off disk, and renders every row's value and source
     /// from.
@@ -53,12 +58,21 @@ impl Settings {
                 index: item,
             }));
         }
+        if dog.adopted_path.is_some() {
+            rows.push(SettingsRow::DogEnv(index));
+            if !self.folded.contains(&env_fold_key(&dog.name)) {
+                rows.extend((0..dog.env_keys.len()).map(|key| SettingsRow::DogEnvKey {
+                    dog: index,
+                    index: key,
+                }));
+                rows.push(SettingsRow::DogEnvNew(index));
+            }
+        }
         let Some(pane) = tree.pane() else {
             return;
         };
-        // Only the rows this screen can draw and edit. A dog's pane also
-        // carries its `env` keys, and this tree has neither a cell for one nor
-        // a write path for one: they are edited in the dog's own pane.
+        // The pane's `env` rows are left to the `DogEnv` rows above, which
+        // read the keys off the snapshot and so follow a landed write.
         rows.extend(
             pane.rows()
                 .iter()
@@ -121,6 +135,10 @@ impl Settings {
             {
                 shape.fields.fields()[index].key.clone()
             }
+            Some(SettingsRow::DogEnv(dog)) => match self.snapshot.dogs.get(dog) {
+                Some(dog) => env_fold_key(&dog.name),
+                None => return false,
+            },
             _ => return false,
         };
         if !self.folded.remove(&key) {
@@ -133,6 +151,12 @@ impl Settings {
     #[must_use]
     pub fn is_open(&self, key: &str) -> bool {
         !self.folded.contains(key)
+    }
+
+    /// Whether the `env` table under the dog named `name` shows its keys.
+    #[must_use]
+    pub fn is_env_open(&self, name: &str) -> bool {
+        self.is_open(&env_fold_key(name))
     }
 
     /// Moves the cursor by `delta` rows, clamped to [`Self::rows`], never

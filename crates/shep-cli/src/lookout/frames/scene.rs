@@ -127,6 +127,11 @@ pub enum Scene {
     /// The settings screen on a narrow terminal, where both of its tables
     /// have dropped a column.
     SettingsNarrow,
+    /// The settings screen with an adopted dog open and the cursor on its
+    /// `env` row: each key reads `<set>`, then `+ new`.
+    SettingsDogEnv,
+    /// [`Self::SettingsDogEnv`] on a narrow terminal.
+    SettingsDogEnvNarrow,
     /// The settings screen on a terminal too short to hold every row, with
     /// the cursor on the last one, so the view has scrolled.
     SettingsShort,
@@ -274,6 +279,8 @@ impl Scene {
             Self::SettingsTyping => "settings_typing",
             Self::SettingsDogs => "settings_dogs",
             Self::SettingsNarrow => "settings_narrow",
+            Self::SettingsDogEnv => "settings_dog_env",
+            Self::SettingsDogEnvNarrow => "settings_dog_env_narrow",
             Self::SettingsShort => "settings_short",
             Self::Bleats => "bleats",
             Self::Secrets => "secrets",
@@ -421,6 +428,12 @@ impl Scene {
             }
             Self::SettingsNarrow => {
                 "The same screen at 45 columns. Both kinds of row have dropped a column rather than clipping: the tree rows have lost the apply cost and kept SOURCE, and the dog header rows have lost SOURCE and kept RUNNING. Each keeps whichever half is not said anywhere else."
+            }
+            Self::SettingsDogEnv => {
+                "An adopted dog open, with the cursor on its env row. Each key reads <set> and never its value, and + new asks for the next key. A built-in dog has no env row, since it has no entry in shep.toml to hold one."
+            }
+            Self::SettingsDogEnvNarrow => {
+                "The same rows at 45 columns. The env keys keep their <set> marker and lose the apply cost and SOURCE, as the dog's other rows do."
             }
             Self::SettingsShort => {
                 "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does."
@@ -578,7 +591,7 @@ impl Scene {
             Self::SettingsConfirm => (180, 30),
             // 45: the middle tier of both the tree's row columns and `DOG_TIERS`,
             // so both tables have dropped one column without losing a row.
-            Self::SettingsNarrow => (45, 30),
+            Self::SettingsNarrow | Self::SettingsDogEnvNarrow => (45, 30),
             // 14 rows: twelve of body, against a screen that wants
             // eighteen lines. Short enough that the cursor cannot be
             // reached without scrolling, tall enough that what survives is
@@ -721,6 +734,8 @@ impl Scene {
             | Self::SettingsTyping
             | Self::SettingsDogs
             | Self::SettingsNarrow
+            | Self::SettingsDogEnv
+            | Self::SettingsDogEnvNarrow
             | Self::SettingsShort
             | Self::Bleats
             | Self::Secrets

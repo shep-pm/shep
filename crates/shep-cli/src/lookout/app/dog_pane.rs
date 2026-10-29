@@ -116,8 +116,8 @@ impl App {
         };
         match result {
             Ok(Response::DogSection { toml }) => {
-                // No `env` keys here: this tree has no cell for one and no
-                // write path for one. A dog's `env` is edited in its own pane.
+                // No `env` keys here: the `env` rows above the pane's own
+                // read them off the settings snapshot instead.
                 let pane = ConfigPane::dog(
                     name.to_owned(),
                     adopted_path,

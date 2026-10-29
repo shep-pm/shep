@@ -20,6 +20,7 @@ use super::super::app::{App, Settings, SettingsRow};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
 use super::scroll::Attempt;
+use super::status::key_hint::{editor_hint, editor_label, focused_field};
 
 use dogs::{DOGS_CAPTION, dog_header_line};
 use tree::tree_line;
@@ -235,6 +236,20 @@ fn body_from(
                 format!("  {}", fit(&text, table_width)),
                 palette.attention(),
             )));
+        } else if let Some((dog, editor)) = settings.env_typing() {
+            lines.push(Line::default());
+            let label = editor_label(editor, &format!("{dog} env"));
+            let keys = format!("   {}", editor_hint(editor.focus()));
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {}",
+                    fit(
+                        &focused_field(editor).line(&format!("{label}: "), &keys, table_width),
+                        table_width,
+                    )
+                ),
+                palette.attention(),
+            )));
         } else if let Some((label, buffer)) = settings.typing() {
             // The cursor is a character, not a style: the ANSI gallery
             // renders foregrounds only.
@@ -318,6 +333,82 @@ mod tests {
             .draw(|frame| super::super::draw(&app, frame))
             .unwrap();
         insta::assert_snapshot!(render_text(terminal.backend().buffer()));
+    }
+
+    /// An adopted dog's `env` is a table under its header, one row per key
+    /// reading `<set>`, then `+ new`. The value the file holds is on no row.
+    #[test]
+    fn an_adopted_dogs_env_draws_each_key_as_set_and_never_its_value() {
+        let (_dir, _paths, mut app) = fixtures::settings_over(fixtures::OTEL_WITH_ENV);
+        fixtures::open_adopted_dog_row(
+            &mut app,
+            "otel",
+            std::path::Path::new("/usr/local/bin/shep-otel"),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal
+            .draw(|frame| super::super::draw(&app, frame))
+            .unwrap();
+        let screen = render_text(terminal.backend().buffer());
+        let lines: Vec<&str> = screen.lines().collect();
+        let table = lines
+            .iter()
+            .position(|line| line.contains("▾ env"))
+            .unwrap_or_else(|| panic!("the dog has an env table:\n{screen}"));
+        assert!(
+            lines[table + 1].contains("PADDOCK_KEY") && lines[table + 1].contains("<set>"),
+            "{:?}",
+            lines[table + 1]
+        );
+        assert!(lines[table + 2].contains("+ new"), "{:?}", lines[table + 2]);
+        assert!(
+            !screen.contains("hunter2"),
+            "a value reached the screen:\n{screen}"
+        );
+    }
+
+    /// The editor draws under the table, labelled with the field the cursor is
+    /// in, then the question draws in its place once the write is armed. The
+    /// question names the key and never the value.
+    #[test]
+    fn an_env_edit_draws_its_editor_then_a_question_that_names_no_value() {
+        let (_dir, _paths, mut app) = fixtures::settings_over(fixtures::OTEL_WITH_ENV);
+        fixtures::open_adopted_dog_row(
+            &mut app,
+            "otel",
+            std::path::Path::new("/usr/local/bin/shep-otel"),
+        );
+        let draw = |app: &App| {
+            let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+            terminal
+                .draw(|frame| super::super::draw(app, frame))
+                .unwrap();
+            render_text(terminal.backend().buffer())
+        };
+        fixtures::select_setting(&mut app, "dog.otel.env+");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(draw(&app).contains("new otel env KEY: "), "{}", draw(&app));
+
+        for typed in "TOKEN".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        assert!(
+            draw(&app).contains("otel env TOKEN VALUE: "),
+            "{}",
+            draw(&app)
+        );
+
+        for typed in "hunter2".chars() {
+            let _ = app.update(Msg::Key(KeyPress::TextChar(typed)));
+        }
+        let _ = app.update(Msg::Key(KeyPress::TextApply));
+        let armed = draw(&app);
+        assert!(
+            armed.contains("set TOKEN in otel's env in shep.toml?"),
+            "{armed}"
+        );
+        assert!(!armed.contains("hunter2"), "{armed}");
     }
 
     #[test]

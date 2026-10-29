@@ -286,10 +286,10 @@ fn render_value(value: &Value) -> String {
 /// One dog's row on the settings screen: the file joined against the flock,
 /// and the four `[daemon]` keys that belong to that one dog.
 ///
-/// `Debug` is derived, not redacted: a name, three bools, a binary's path and
-/// what `[daemon] dog_grants` records, which is permission names and never a
-/// value. The dog's own config, which can hold a secret, lives in `dogs.toml`
-/// and is not here.
+/// `Debug` is derived, not redacted: a name, three bools, a binary's path, the
+/// names of its `env` keys and what `[daemon] dog_grants` records, which is
+/// permission names and never a value. The dog's own config, which can hold a
+/// secret, lives in `dogs.toml` and is not here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DogView {
     /// The dog's name.
@@ -313,6 +313,12 @@ pub struct DogView {
     /// Read off the file rather than off the dog's binary: an adopted dog's
     /// record was written out of its manifest when `shep enable` asked.
     pub offered: Vec<String>,
+    /// The names of the `env` keys the dog's `[daemon] adopted_dogs` entry
+    /// sets, in key order. Empty for a built-in dog, which has no entry to
+    /// hold one.
+    ///
+    /// Names only: a value never leaves `shep.toml` for a screen to hold.
+    pub env_keys: Vec<String>,
 }
 
 impl DogView {
@@ -339,6 +345,7 @@ impl DogView {
             channel: false,
             grants: DogGrants::Undeclared,
             offered: Vec::new(),
+            env_keys: Vec::new(),
         }
     }
 
@@ -509,6 +516,7 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
                 Err(err) => DogGrants::Unreadable(err.to_string()),
             };
             let offered = offered(&name, adopted_path.is_none(), &grants);
+            let env_keys = doc.adopted_dog_env(&name).into_keys().collect();
             DogView {
                 name,
                 enabled: is_enabled,
@@ -517,6 +525,7 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
                 channel,
                 grants,
                 offered,
+                env_keys,
             }
         })
         .collect()
