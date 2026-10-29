@@ -86,12 +86,10 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
         . What follows is the dog half.
       </p>
       <p>
-        Writes <code>shep.toml</code> first, then starts the dog now if a
-        shepherd is listening. Run it with nothing listening and it still
-        exits 0: the config says the dog belongs, and the next shepherd
-        that boots brings it up. Nothing here autostarts a shepherd on your
-        behalf. Two verbs do, and neither is a dog verb:{" "}
-        <code>shep start</code> and <code>shep muster</code>.
+        Writes <code>shep.toml</code>, then starts the dog if a shepherd is
+        listening. Otherwise exits 0; the next shepherd starts it. To boot
+        a shepherd, use{" "}
+        <code>shep start</code> or <code>shep muster</code>.
       </p>
       <p>
         Takes a built-in name or one <code>shep adopt</code> has recorded.
