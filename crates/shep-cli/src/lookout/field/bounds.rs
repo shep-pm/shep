@@ -815,7 +815,7 @@ mod tests {
                 .bounds
                 .pattern
                 .as_deref(),
-            Some(r"^\d+(ms|h|m|s)?$")
+            Some(r"^\d+(ms|d|h|m|s)?$")
         );
         assert_eq!(set.by_key("max_restarts").unwrap().bounds.minimum, Some(0));
         assert_eq!(
