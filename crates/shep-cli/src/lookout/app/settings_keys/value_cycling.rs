@@ -36,6 +36,9 @@ impl App {
             // A dog's own field is typed, not cycled: `Enter` opens its editor,
             // which is the same door a typed key of `shep.toml` opens.
             SettingsRow::DogField { .. }
+            | SettingsRow::DogEnv(_)
+            | SettingsRow::DogEnvKey { .. }
+            | SettingsRow::DogEnvNew(_)
             | SettingsRow::Table(_)
             | SettingsRow::Entry { .. }
             | SettingsRow::AddEntry(_) => Effect::None,

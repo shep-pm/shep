@@ -55,6 +55,19 @@ pub enum SettingsRow {
         /// Which permission.
         index: usize,
     },
+    /// The `env` table under an adopted dog's header, beside its keys. It
+    /// folds.
+    DogEnv(usize),
+    /// One key of the dog at `dog`'s `env`, by its place in
+    /// [`DogView::env_keys`]. Its value is never held here.
+    DogEnvKey {
+        /// Which dog.
+        dog: usize,
+        /// Which key, in key order.
+        index: usize,
+    },
+    /// The row under a dog's `env` keys that adds one.
+    DogEnvNew(usize),
     /// One row of the dog at `dog`'s own config tree, by its place in that
     /// tree's [`ConfigPane::rows`].
     DogField {

@@ -6,6 +6,8 @@
 //! costs, what a failed probe leaves behind, and that the two surfaces cannot
 //! leave `dogs.toml` and `shep.toml` in two different shapes.
 
+use std::path::Path;
+
 use shep_core::protocol::Response;
 
 use super::testing::{close_bark, wire_batch};
@@ -71,6 +73,12 @@ fn rows_under(app: &App, name: &str) -> Vec<String> {
                 let permission = settings.dog(dog)?.offered.get(index)?;
                 Some(format!("{}.grant.{permission}", settings.dog(dog)?.name))
             }
+            SettingsRow::DogEnv(dog) => Some(format!("{}.env", settings.dog(dog)?.name)),
+            SettingsRow::DogEnvKey { dog, index } => {
+                let dog = settings.dog(dog)?;
+                Some(format!("{}.env.{}", dog.name, dog.env_keys.get(index)?))
+            }
+            SettingsRow::DogEnvNew(dog) => Some(format!("{}.env.+ new", settings.dog(dog)?.name)),
             SettingsRow::DogField { dog, row } => {
                 let pane = settings.dog_tree(dog)?.pane()?;
                 let node = pane.tree_row(pane.rows().get(row)?.to_owned())?;
@@ -201,44 +209,40 @@ fn an_opened_dog_draws_the_same_tree_the_dog_pane_draws() {
     assert_eq!(rows_under(&app, "bark"), expected);
 }
 
-/// An adopted dog's pane carries its `env` keys, and this tree has neither a
-/// cell for one nor a write path for one: they are edited in the dog's own
-/// pane. Listing them as rows here would draw a blank line the cursor could
-/// sit on.
+/// An adopted dog's `env` sits under its header beside the four keys: a table
+/// row, one row per key the entry holds, then the row that adds one. The
+/// pane's own tree follows, and carries none of them.
 #[test]
-fn the_settings_tree_lists_no_dog_row_it_cannot_draw() {
-    let app = fixtures::app_in_settings_with_an_adopted_dog_open();
-    let settings = app.settings().expect("the settings screen is open");
-    let pane = settings
-        .dog_tree_named("otel")
-        .and_then(|tree| tree.pane())
-        .expect("the fixture opens the dog's row");
-    assert!(
-        pane.rows().iter().any(|row| matches!(row, PaneRow::AddEnv)),
-        "an adopted dog's pane does carry its env rows: {:?}",
-        pane.rows()
+fn an_adopted_dogs_env_keys_sit_under_its_header_with_a_row_to_add_one() {
+    let (_dir, _paths, mut app) = fixtures::settings_over(fixtures::OTEL_WITH_ENV);
+    fixtures::open_adopted_dog_row(&mut app, "otel", Path::new("/usr/local/bin/shep-otel"));
+    assert_eq!(
+        rows_under(&app, "otel"),
+        [
+            "otel.boot first",
+            "otel.grants",
+            "otel.source",
+            "otel.channel",
+            "otel.env",
+            "otel.env.PADDOCK_KEY",
+            "otel.env.+ new",
+            "otel.ratio",
+        ]
     );
-    let listed: Vec<PaneRow> = settings
-        .rows()
-        .into_iter()
-        .filter_map(|row| match row {
-            SettingsRow::DogField { dog, row } => Some((dog, row)),
-            _ => None,
-        })
-        .map(|(dog, row)| {
-            settings
-                .dog_tree(dog)
-                .and_then(|tree| tree.pane())
-                .expect("every listed row sits under an open dog")
-                .rows()[row]
-                .to_owned()
-        })
-        .collect();
+}
+
+/// A built-in dog has no `adopted_dogs` entry to hold an `env`, so its open
+/// row has no `env` row.
+#[test]
+fn a_built_in_dogs_open_row_has_no_env_row() {
+    let (_dir, _paths, mut app) = fixtures::settings_over(BARK_PLAIN);
+    fixtures::open_dog_row(&mut app, "bark");
     assert!(
-        !listed
+        !rows_under(&app, "bark")
             .iter()
-            .any(|row| matches!(row, PaneRow::Env(_) | PaneRow::AddEnv)),
-        "the tree lists {listed:?}"
+            .any(|row| row.starts_with("bark.env")),
+        "{:?}",
+        rows_under(&app, "bark")
     );
 }
 

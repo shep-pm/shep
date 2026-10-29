@@ -320,6 +320,35 @@ mod tests {
         insta::assert_snapshot!(render_text(terminal.backend().buffer()));
     }
 
+    /// An adopted dog's `env` is a table under its header, one row per key
+    /// reading `<set>`, then `+ new`. The value the file holds is on no row.
+    #[test]
+    fn an_adopted_dogs_env_draws_each_key_as_set_and_never_its_value() {
+        let (_dir, _paths, mut app) = fixtures::settings_over(fixtures::OTEL_WITH_ENV);
+        fixtures::open_adopted_dog_row(
+            &mut app,
+            "otel",
+            std::path::Path::new("/usr/local/bin/shep-otel"),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal
+            .draw(|frame| super::super::draw(&app, frame))
+            .unwrap();
+        let screen = render_text(terminal.backend().buffer());
+        let lines: Vec<&str> = screen.lines().collect();
+        let table = lines
+            .iter()
+            .position(|line| line.contains("▾ env"))
+            .unwrap_or_else(|| panic!("the dog has an env table:\n{screen}"));
+        assert!(
+            lines[table + 1].contains("PADDOCK_KEY") && lines[table + 1].contains("<set>"),
+            "{:?}",
+            lines[table + 1]
+        );
+        assert!(lines[table + 2].contains("+ new"), "{:?}", lines[table + 2]);
+        assert!(!screen.contains("hunter2"), "a value reached the screen:\n{screen}");
+    }
+
     #[test]
     fn every_settings_line_fits_the_terminal_it_was_drawn_for() {
         let app = fixtures::app_in_settings_with_dog_drift();
