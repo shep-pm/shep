@@ -172,7 +172,7 @@ pub(super) fn pending_edit_line(
 ) -> Line<'static> {
     let text = match edit {
         PaneEdit::Set { key, .. } => {
-            let secret = pane.fields().by_key(key).is_some_and(|field| field.secret);
+            let secret = pane.field_of(key).is_some_and(|field| field.secret);
             let old = pane.display_value(key);
             let new = pane.edited_value(key).unwrap_or_default();
             let old = mask_secret(secret, old);
