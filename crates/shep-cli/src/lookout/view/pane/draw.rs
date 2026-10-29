@@ -15,8 +15,7 @@ use super::super::super::pane::{ConfigPane, PaneTarget};
 use super::super::super::theme::Palette;
 use super::super::flock::fit;
 use super::super::overlay;
-use super::super::scroll;
-use super::body::{body_from, cursor_only, grouped_body_lines};
+use super::body::body_lines;
 use super::chrome::{
     column_header_line, hairline_line, has_groups, legend_line, tab_row_line, title_band_line,
     title_line,
@@ -115,7 +114,7 @@ pub(super) fn grouped_pane_lines_with_panel(
     };
     let body_budget = remaining - footer_lines;
     if body_budget > 0 {
-        let body = grouped_body_lines(pane, palette, left_width, body_budget, show_lands);
+        let body = body_lines(pane, palette, left_width, body_budget, show_lands);
         lines.extend(match panel {
             Some((panel, _)) => merge_beside_panel(body, panel, left_width, body_budget),
             None => body,
@@ -136,7 +135,7 @@ pub(super) fn grouped_pane_lines_with_panel(
 ///
 /// Either side short of the other draws blank rather than dropping the
 /// longer side's rows, up to `budget`, the ceiling
-/// [`grouped_body_lines`] was already laid out against.
+/// [`body_lines`] was already laid out against.
 pub(super) fn merge_beside_panel(
     left: Vec<Line<'static>>,
     panel: Vec<Line<'static>>,
@@ -144,7 +143,7 @@ pub(super) fn merge_beside_panel(
     budget: usize,
 ) -> Vec<Line<'static>> {
     let left_width = usize::from(left_width);
-    // `left` never exceeds `budget` on its own, since `grouped_body_lines`
+    // `left` never exceeds `budget` on its own, since `body_lines`
     // already laid it out against the same ceiling; the `min` only ever
     // trims `panel`'s own overrun.
     let rows = left.len().max(panel.len()).min(budget);
@@ -269,33 +268,7 @@ pub(super) fn ungrouped_pane_lines_with_panel(
     // own doc on markers. See `top_lines`.
     push_wrapped_blurb(&mut lines, &mut body_budget, pane, palette, width);
     if !pane.rows().is_empty() && body_budget > 0 {
-        let total = pane.rows().len();
-        let cursor_row = pane.view().cursor().min(total - 1);
-        let body = scroll::to_cursor(
-            cursor_row,
-            pane.view().offset(),
-            |offset| {
-                body_from(
-                    pane,
-                    palette,
-                    left_width,
-                    body_budget,
-                    offset,
-                    true,
-                    show_lands,
-                )
-            },
-            || {
-                cursor_only(
-                    pane,
-                    palette,
-                    left_width,
-                    body_budget,
-                    cursor_row,
-                    show_lands,
-                )
-            },
-        );
+        let body = body_lines(pane, palette, left_width, body_budget, show_lands);
         lines.extend(match panel {
             Some((panel, _)) => merge_beside_panel(body, panel, left_width, body_budget),
             None => body,
@@ -332,6 +305,7 @@ mod tests {
     use super::super::layout::{FULL_WIDTH, LANDS_WITH_PANEL_MIN};
     use super::*;
     use crate::lookout::app::{Effect, KeyPress, Msg};
+    use crate::lookout::pane::PaneRow;
     use crate::lookout::textbox::TextEdit;
     use crate::lookout::view::MIN_TERM_WIDTH;
     use crate::lookout::view::fixtures;
@@ -468,6 +442,39 @@ mod tests {
             "{text:?}"
         );
         insta::assert_snapshot!("dog_pane_wide", text.join("\n"));
+    }
+
+    /// An adopted dog's pane draws the `env` section a sheep's `process` tab
+    /// draws: the keys its `shep.toml` entry sets, then the row that adds
+    /// one. The pane's rows have carried those rows since an adopted dog
+    /// gained an `env`, but the dog-pane layout walked `field_rows` alone,
+    /// which drops every env row, so the cursor could stand on `+ add a key`
+    /// while the screen still drew the field above it.
+    #[test]
+    fn an_adopted_dogs_pane_draws_its_env_rows_and_the_row_that_adds_one() {
+        let app = fixtures::app_in_adopted_channel_dog_pane_from_row();
+        let text = text_of(&config_pane_lines_for_tests(&app, 120, 0));
+        assert!(
+            text.iter().any(|line| line.contains("+ add a key")),
+            "the row that adds the dog's first env key: {text:?}"
+        );
+        insta::assert_snapshot!("adopted_dog_pane_env_rows", text.join("\n"));
+    }
+
+    /// The row is not merely in the walk: `End` lands on it and the screen
+    /// shows it selected, which is what an operator needs to file a key.
+    #[test]
+    fn an_adopted_dogs_env_rows_are_the_last_rows_of_its_walk() {
+        let mut app = fixtures::app_in_adopted_channel_dog_pane_from_row();
+        app.update(Msg::Key(KeyPress::SelectLast));
+        let pane = app.config_pane().expect("the pane is open");
+        assert_eq!(pane.cursor(), Some(PaneRow::AddEnv), "{:?}", pane.rows());
+        let text = text_of(&config_pane_lines_for_tests(&app, 120, 0));
+        assert!(
+            text.iter()
+                .any(|line| line.starts_with('>') && line.contains("+ add a key")),
+            "the selected row is the one drawn: {text:?}"
+        );
     }
 
     /// The same pane over a dog whose schema nests a table: a tree with the

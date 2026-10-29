@@ -106,6 +106,112 @@ fn a_disabled_dog_comes_back_at_rest_under_a_new_id_after_a_daemon_reload() {
     graceful_kill(home);
 }
 
+/// A `/bin/sh` dog that answers `--version` asking for the shepherd channel,
+/// so `shep adopt` records it in `channel_dogs` and its row carries
+/// `DogSource::Adopted { channel: true }`.
+#[cfg(unix)]
+fn write_channel_dog(dir: &TempDir) -> PathBuf {
+    write_script(
+        dir,
+        "shep-kelpie.sh",
+        &format!(
+            "#!/bin/sh\ncase \"$1\" in\n  --version) printf 'shep-fixture 0.1.0\\nshep-channel: true\\n'; exit 0 ;;\n  --*) exit 0 ;;\nesac\n{}while :; do sleep 1 & wait $!; done\n",
+            record_pid_line(dir)
+        ),
+    )
+}
+
+/// An adopted dog whose `shep.toml` entry is the bare path string `shep adopt`
+/// writes, named in `channel_dogs`: the row a `shep daemon reload` hands on
+/// still names the binary it adopted, and still says it asked for the channel.
+///
+/// The row is what lookout's dog pane reads. `ConfigPane::shows_env` is keyed
+/// on `DogSource::Adopted`'s path, so a successor that reported this dog as a
+/// built-in, or as no dog at all, would open a pane with no env rows to walk
+/// onto. The carried pid is what makes this a handover and not a re-register:
+/// the stop arm would have rebuilt the row from `shep.toml` and proved nothing
+/// about the blob.
+///
+/// Unix only, as the whole handover is: Windows has no `execve`.
+#[cfg(unix)]
+#[test]
+fn an_adopted_channel_dog_crosses_a_reload_with_its_path_and_its_channel_ask() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let dog = write_channel_dog(&dir);
+    write_shep_toml(
+        &dir,
+        &format!(
+            "[daemon]\nenabled_dogs = [\"kelpie\"]\nchannel_dogs = [\"kelpie\"]\n\n[daemon.adopted_dogs]\nkelpie = \"{}\"\n",
+            dog.display()
+        ),
+    );
+    let mut guard = DaemonGuard::default();
+
+    let mustered = shep(home).arg("muster").output().unwrap();
+    guard.adopt_home(home);
+    assert_success(&mustered);
+
+    let before = poll_flock_listing(home, FLOCK_DEADLINE, |data| {
+        data.as_array().is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row["name"] == "kelpie" && !row["pid"].is_null())
+        })
+    });
+    let kelpie = row(&before, "kelpie");
+    let pid = kelpie["pid"].as_u64().expect("an online dog reports a pid");
+    guard.adopt_dog_pid(nix::unistd::Pid::from_raw(
+        i32::try_from(pid).expect("a real OS pid fits i32"),
+    ));
+    assert_eq!(
+        (
+            kelpie["dog"]["kind"].as_str(),
+            kelpie["dog"]["path"].as_str(),
+            kelpie["dog"]["channel"].as_bool(),
+        ),
+        (
+            Some("adopted"),
+            Some(dog.display().to_string().as_str()),
+            Some(true)
+        ),
+        "a bare `[daemon.adopted_dogs]` path and a name in `channel_dogs` is an adopted \
+         channel dog: {kelpie}"
+    );
+
+    let reloaded = shep(home).arg("daemon").arg("reload").output().unwrap();
+    assert_success(&reloaded);
+
+    let after = poll_flock_listing(home, HANDOVER_DEADLINE, |data| {
+        data.as_array().is_some_and(|rows| {
+            rows.iter().any(|row| {
+                row["name"] == "kelpie" && row["dog"]["kind"].as_str() == Some("adopted")
+            })
+        })
+    });
+    let carried = row(&after, "kelpie");
+    assert_eq!(
+        carried["pid"].as_u64(),
+        Some(pid),
+        "`kelpie` was respawned, so this reload fell back to a stop-and-start and never \
+         handed the dog over: {after}"
+    );
+    assert_eq!(
+        (
+            carried["dog"]["kind"].as_str(),
+            carried["dog"]["path"].as_str(),
+            carried["dog"]["channel"].as_bool(),
+        ),
+        (
+            Some("adopted"),
+            Some(dog.display().to_string().as_str()),
+            Some(true)
+        ),
+        "the successor supervises the carried dog as the same adopted dog: {carried}"
+    );
+
+    graceful_kill(home);
+}
+
 /// The other way a dog ends up unenabled: `shep.toml` edited by hand while the
 /// dog runs. The predecessor booted while the name was there and carried the
 /// dog across the `execve`, so the successor has a running dog its own config

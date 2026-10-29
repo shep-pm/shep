@@ -15,11 +15,14 @@ use super::entry_row::{arm_line, choice_line, entry_line};
 use super::env::pending_and_env_lines;
 use super::field_row::{field_line, section_header, table_line};
 
-/// The active group's fields, laid out through [`scroll::to_cursor`]
-/// exactly as [`body_from`] already does for the groupless fallback, then
-/// [`pending_and_env_lines`] appended after. A sheep's `dogs` tab draws its
-/// own body instead: see [`dogs_body_lines`].
-pub(super) fn grouped_body_lines(
+/// The body every pane layout draws: the field rows [`body_from`] lays out
+/// through [`scroll::to_cursor`], then [`pending_and_env_lines`] appended
+/// after. Named for what it is rather than for the layout that first used
+/// it, since a dog's pane, which has no groups at all, needs the same body
+/// for the same reason: its env rows are rows of [`ConfigPane::rows`] that
+/// no field row can stand in for. A sheep's `dogs` tab draws its own body
+/// instead: see [`dogs_body_lines`].
+pub(super) fn body_lines(
     pane: &ConfigPane,
     palette: Palette,
     width: u16,
@@ -86,7 +89,7 @@ pub(super) fn body_from(
     // The cursor may be on an env row rather than a field: nothing in
     // this body is selected then, and row 0 stands in so the first
     // attempt (offset 0) always finds it and never scrolls hunting for a
-    // row that is not here. See `grouped_body_lines`'s own doc.
+    // row that is not here. See [`body_lines`]'s own doc.
     let cursor_row = rows
         .iter()
         .position(|row| Some(*row) == pane.cursor())

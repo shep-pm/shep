@@ -3,7 +3,7 @@
 use shep_core::protocol::{DogSource, ProcessInfo, Response};
 use shep_core::status::ProcStatus;
 
-use crate::lookout::app::{App, Control, KeyPress, Msg, Sent};
+use crate::lookout::app::{App, Control, Effect, KeyPress, Msg, Sent};
 use crate::lookout::pane::{EntryBody, PaneRow};
 
 use super::flock::{app_with, flock_of};
@@ -45,6 +45,54 @@ pub fn app_in_dog_pane() -> App {
         },
         result: Ok(Response::DogSection {
             toml: dog_section().into(),
+        }),
+    });
+    app
+}
+
+/// A dashboard with an adopted channel dog's pane open, opened the way an
+/// operator opens it: `e` on the flock row the shepherd reports for a dog
+/// `shep.toml` adopted with a bare `[daemon.adopted_dogs]` path and named in
+/// `channel_dogs`.
+///
+/// The row is the whole point of this fixture. `DogSource::Adopted`'s path is
+/// the only thing that carries the pane's probe to the dog's own binary, and
+/// [`crate::lookout::pane::ConfigPane::shows_env`] is keyed on it, so a row
+/// reporting any other source opens a pane with no env rows to walk onto.
+/// `env_keys` is empty because a bare path entry sets no `env`: the pane's
+/// job here is to offer the row that adds the first one.
+pub fn app_in_adopted_channel_dog_pane_from_row() -> App {
+    let kelpie = ProcessInfo::builder(91, "kelpie", ProcStatus::Online)
+        .pid(Some(91_000))
+        .dog(Some(DogSource::Adopted {
+            grants: None,
+            path: "/usr/local/bin/shep-kelpie".to_string(),
+            channel: true,
+        }))
+        .build();
+    let mut app = app_with(vec![kelpie], plain());
+    app.set_control_for_tests(Control::Allowed);
+    let effect = app.update(Msg::Key(KeyPress::Edit));
+    let Effect::LoadDogPane { name, adopted_path } = effect else {
+        panic!("`e` on a dog row opens a dog pane, got {effect:?}");
+    };
+    assert_eq!(
+        adopted_path.as_deref(),
+        Some(std::path::Path::new("/usr/local/bin/shep-kelpie")),
+        "the pane probes the binary the row names"
+    );
+    app.update(Msg::DogPane {
+        name,
+        adopted_path,
+        env_keys: Vec::new(),
+        result: Ok(env_dog_schema()),
+    });
+    app.update(Msg::Replied {
+        sent: Sent::DogSection {
+            name: "kelpie".to_string(),
+        },
+        result: Ok(Response::DogSection {
+            toml: "ratio = 1.5\n".to_owned().into(),
         }),
     });
     app
