@@ -29,11 +29,16 @@ fn enable_recovers_a_refused_spawn_after_the_entry_is_fixed_and_reloaded() {
 
     for _ in 0..2 {
         let enabled = shep(home)
-            .args(["--format", "json", "enable", "kelpie"])
+            .args(["--format", "json", "enable", "--yes", "kelpie"])
             .output()
             .unwrap();
-        assert_json_error(&enabled, 7, "spawn_failed");
-        let error: serde_json::Value = serde_json::from_slice(&enabled.stderr).unwrap();
+        assert_eq!(enabled.status.code(), Some(7));
+        assert!(enabled.stdout.is_empty());
+        // `--yes` prints the permissions notice first; the error is the last line.
+        let stderr = String::from_utf8_lossy(&enabled.stderr);
+        let error: serde_json::Value =
+            serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+        assert_eq!(error["error"]["code"], "spawn_failed", "{error}");
         let described = shep(home)
             .args(["--format", "json", "describe", "kelpie"])
             .output()
@@ -60,7 +65,7 @@ fn enable_recovers_a_refused_spawn_after_the_entry_is_fixed_and_reloaded() {
     let reloaded = shep(home).args(["daemon", "reload"]).output().unwrap();
     assert_success(&reloaded);
     let enabled = shep(home)
-        .args(["--format", "json", "enable", "kelpie"])
+        .args(["--format", "json", "enable", "--yes", "kelpie"])
         .output()
         .unwrap();
     assert_success(&enabled);
@@ -80,7 +85,12 @@ fn enable_recovers_a_refused_spawn_after_the_entry_is_fixed_and_reloaded() {
     guard.adopt_dog_pid(pid);
     assert!(dog.get("spawn_failure").is_none(), "{dog}");
 
-    assert_success(&shep(home).args(["enable", "kelpie"]).output().unwrap());
+    assert_success(
+        &shep(home)
+            .args(["enable", "--yes", "kelpie"])
+            .output()
+            .unwrap(),
+    );
     assert_eq!(wait_for_dog_pid(home, "kelpie"), pid);
     graceful_kill(home);
 }
