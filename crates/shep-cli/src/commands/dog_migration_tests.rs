@@ -601,3 +601,36 @@ fn a_second_boot_over_cleaned_headers_changes_nothing() {
         after_first
     );
 }
+
+/// Fails if a section added after the unlocked read is struck from
+/// `shep.toml` without reaching `dogs.toml`.
+///
+/// `declared` is read before the lock, so another writer can add a section
+/// between that read and the edit. The locked document decides.
+#[test]
+fn a_section_added_after_the_unlocked_read_is_moved_not_lost() {
+    let (_dir, paths) = home_with("[dog.metrics]\nbind = \"127.0.0.1:9615\"\n");
+    let stale = BTreeSet::new();
+
+    let moved = move_sections(&paths, Some(&stale)).expect("migrate");
+
+    assert_eq!(moved, vec!["metrics".to_string()]);
+    let written = std::fs::read_to_string(&paths.dogs_config).expect("read");
+    assert!(written.contains("bind = \"127.0.0.1:9615\""), "{written}");
+}
+
+/// Each comment stays with the table that followed its header, not with the
+/// first table after the first header.
+#[test]
+fn comments_above_separate_empty_headers_land_on_their_own_followers() {
+    let (_dir, paths) = home_with(
+        "# a\n[dog.whistle]\n[daemon]\nlog_level = \"info\"\n# b\n[dog.bark]\n[style]\nlevel = \"full\"\n",
+    );
+
+    migrate_dog_sections(&paths).expect("migrate");
+
+    assert_eq!(
+        std::fs::read_to_string(&paths.daemon_config).expect("read"),
+        "# a\n[daemon]\nlog_level = \"info\"\n# b\n[style]\nlevel = \"full\"\n"
+    );
+}

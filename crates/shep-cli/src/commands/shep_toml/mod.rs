@@ -393,9 +393,7 @@ impl ShepToml {
         let Some(dog) = item.as_table_like() else {
             return BTreeMap::new();
         };
-        if let Some(rescued) = dog_headers::rescue(&item) {
-            dog_headers::restore(&mut self.doc, rescued);
-        }
+        dog_headers::restore(&mut self.doc, dog_headers::rescue(&item));
         dog.iter()
             .filter(|(_, value)| value.as_table_like().is_some())
             .map(|(name, value)| (name.to_owned(), value.clone()))

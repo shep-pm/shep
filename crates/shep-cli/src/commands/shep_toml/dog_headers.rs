@@ -6,19 +6,19 @@
 
 use toml_edit::{DocumentMut, Item, RawString, Table};
 
-/// Comments that sat above the headers about to be struck, and the render
-/// position of the first of those headers.
+/// A comment that sat above a header about to be struck, and the render
+/// position of that header.
 pub(super) struct Rescued {
     at: usize,
     text: String,
 }
 
-/// The comments above `[dog]` and above every header under it that holds
-/// nothing, or `None` when there are none.
+/// The comment above `[dog]` and above every header under it that holds
+/// nothing, one per header, in document order.
 ///
 /// A header with a comment carries its whole prefix, blank lines included. A
 /// header without one carries nothing, so a bare header leaves no blank line.
-pub(super) fn rescue(dog: &Item) -> Option<Rescued> {
+pub(super) fn rescue(dog: &Item) -> Vec<Rescued> {
     let mut tables: Vec<&Table> = Vec::new();
     if let Item::Table(table) = dog {
         tables.push(table);
@@ -30,30 +30,34 @@ pub(super) fn rescue(dog: &Item) -> Option<Rescued> {
             }
         }
     }
-    let mut found: Vec<(usize, &str)> = tables
+    let mut found: Vec<Rescued> = tables
         .into_iter()
         .filter_map(|table| {
             let prefix = table.decor().prefix().and_then(RawString::as_str)?;
             prefix.contains('#').then_some(())?;
-            Some((table.position()?, prefix))
+            Some(Rescued {
+                at: table.position()?,
+                text: prefix.to_owned(),
+            })
         })
         .collect();
-    found.sort_by_key(|(position, _)| *position);
-    let at = found.first()?.0;
-    let text = found.iter().map(|(_, prefix)| *prefix).collect();
-    Some(Rescued { at, text })
+    found.sort_by_key(|rescued| rescued.at);
+    found
 }
 
-/// Puts the rescued comments above the first table that renders after the
-/// struck headers, or at the end of the file when none does.
-pub(super) fn restore(doc: &mut DocumentMut, rescued: Rescued) {
-    let Rescued { at, text } = rescued;
-    let next = next_position(doc.as_table(), at);
-    let placed = next.is_some_and(|position| prepend(doc.as_table_mut(), position, &text));
-    if !placed {
-        let trailing = doc.trailing().as_str().unwrap_or("");
-        let joined = format!("{trailing}{text}");
-        doc.set_trailing(joined);
+/// Puts each rescued comment above the first table that renders after its
+/// header, or at the end of the file when none does.
+///
+/// Last first, so two comments landing on one table keep their order.
+pub(super) fn restore(doc: &mut DocumentMut, rescued: Vec<Rescued>) {
+    for Rescued { at, text } in rescued.into_iter().rev() {
+        let next = next_position(doc.as_table(), at);
+        let placed = next.is_some_and(|position| prepend(doc.as_table_mut(), position, &text));
+        if !placed {
+            let trailing = doc.trailing().as_str().unwrap_or("");
+            let joined = format!("{text}{trailing}");
+            doc.set_trailing(joined);
+        }
     }
 }
 

@@ -52,7 +52,18 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
     if declared.as_ref().is_some_and(BTreeSet::is_empty) && !has_dog_table {
         return Ok(Vec::new());
     }
+    move_sections(paths, declared.as_ref())
+}
 
+/// The locked half of [`migrate_dog_sections`], given the names its unlocked
+/// read of `shep.toml` declared.
+///
+/// A separate function so a test can hand it a `declared` another writer has
+/// since made stale.
+fn move_sections(
+    paths: &ShepPaths,
+    declared: Option<&BTreeSet<String>>,
+) -> Result<Vec<String>, DogMigrationError> {
     // `try_edit`, never `edit`: `edit` calls `save` unconditionally, so
     // refusing from inside it would strike the sections from `shep.toml` and
     // only then fail, leaving them in neither file.
@@ -69,7 +80,7 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
         // `take_dog_sections` removes the whole `[dog]` table before deciding
         // what to hand back, so a count cannot see what it dropped: compare
         // names. With no readable source, fall back to whether any came back.
-        let missing: Vec<String> = match &declared {
+        let missing: Vec<String> = match declared {
             Some(names) => names
                 .iter()
                 .filter(|name| !incoming.contains_key(*name))
@@ -77,8 +88,11 @@ pub(crate) fn migrate_dog_sections(paths: &ShepPaths) -> Result<Vec<String>, Dog
                 .collect(),
             None => Vec::new(),
         };
-        // Nothing declared: only empty headers were there, and they are struck.
-        if declared.as_ref().is_some_and(BTreeSet::is_empty) {
+        // Nothing declared and nothing taken: only empty headers were there,
+        // and they are struck. Judged on `incoming` as well, since `declared`
+        // was read before the lock and another writer may have added a
+        // section since.
+        if incoming.is_empty() && declared.is_some_and(BTreeSet::is_empty) {
             return Ok(Vec::new());
         }
         if !missing.is_empty() || incoming.is_empty() {
