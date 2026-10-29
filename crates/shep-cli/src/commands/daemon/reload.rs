@@ -284,7 +284,7 @@ async fn hand_over(
     }
     match await_successor(paths, &witness, wait).await {
         // The successor carried the flock; nothing to restore.
-        Some(client) => report_reload(&client, streams, false).await,
+        Some(client) => report_reload(&client, streams, paths, false).await,
         None => {
             // The flock is about to be started rather than carried, so the
             // pids change and the operator is told.
@@ -295,7 +295,7 @@ async fn hand_over(
                 Ok(client) => client,
                 Err(code) => return code,
             };
-            report_reload(&client, streams, true).await
+            report_reload(&client, streams, paths, true).await
         }
     }
 }
@@ -467,7 +467,7 @@ async fn stop_and_start(
         Ok(client) => client,
         Err(code) => return code,
     };
-    report_reload(&client, streams, true).await
+    report_reload(&client, streams, paths, true).await
 }
 
 #[cfg(test)]
@@ -547,7 +547,13 @@ mod tests {
         let mut err = Vec::new();
         let code = {
             let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
-            report_reload(&client, &mut streams, true).await
+            report_reload(
+                &client,
+                &mut streams,
+                &ShepPaths::resolve(&|_| None, dir.path()),
+                true,
+            )
+            .await
         };
 
         assert_eq!(code, ExitCode::Success);
