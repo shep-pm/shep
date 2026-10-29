@@ -33,7 +33,7 @@ pub(super) struct Editor<'a> {
 /// One function, read by both panes, so the env rows and the secrets pane
 /// cannot drift apart in what they tell an operator to press.
 #[must_use]
-pub(super) const fn editor_hint(field: Field) -> &'static str {
+pub(in crate::lookout::view) const fn editor_hint(field: Field) -> &'static str {
     match field {
         Field::Key => "tab value   enter next   esc cancels",
         Field::Value => "tab key   enter writes   esc cancels",
@@ -48,7 +48,7 @@ pub(super) const fn editor_hint(field: Field) -> &'static str {
 /// shape over their own words. A key nothing has been typed into yet is named
 /// `new`, the way both panes already name the row it will land on.
 #[must_use]
-pub(super) fn editor_label(editor: &KeyValues, noun: &str) -> String {
+pub(in crate::lookout::view) fn editor_label(editor: &KeyValues, noun: &str) -> String {
     let field = match editor.focus() {
         Field::Key => "KEY",
         Field::Value => "VALUE",
@@ -120,7 +120,7 @@ pub(super) fn secrets_typing(app: &App) -> Option<Editor<'_>> {
 }
 
 /// The field of `editor` that holds the cursor, which is the one the bar draws.
-fn focused_field(editor: &KeyValues) -> &TextBox {
+pub(in crate::lookout::view) fn focused_field(editor: &KeyValues) -> &TextBox {
     match editor.focus() {
         Field::Key => editor.key(),
         Field::Value => editor.value(),
