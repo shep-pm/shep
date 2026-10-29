@@ -18,7 +18,7 @@ use shep_core::logstamp::LOG_STAMP_BYTES;
 
 use super::super::log_file::{LogSink, PipeFds};
 use super::super::pump::spawn_log_pump;
-use super::super::{CHANNEL_CAPACITY, FINAL_DRAIN, READ_BUFFER};
+use super::super::{CHANNEL_CAPACITY, READ_BUFFER};
 use super::*;
 
 /// Fails if a descriptor report answers with anything but the four
@@ -87,7 +87,7 @@ async fn both_pipes_filled_to_capacity_drain_inside_the_budget() {
         .await;
         assert!(
             settled.is_ok(),
-            "a full {stream} pipe did not drain inside {FINAL_DRAIN:?}: {want} lines \
+            "a full {stream} pipe did not land inside {PUMP_DEADLINE:?}: {want} lines \
              written, {} landed",
             fs::read_to_string(path).unwrap_or_default().lines().count()
         );
