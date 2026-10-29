@@ -186,7 +186,7 @@ getrandom = { version = "0.4", default-features = false }
 assert_cmd = { version = "2", default-features = false }
 predicates = { version = "3", default-features = false }
 # Reconstructs lookout's screen from cursor movements in Unix terminal tests.
-vt100 = { version = "0.16.2", default-features = false }
+vt100 = { version = "0.18.1", default-features = false }
 # The cron_restart dialect (spec §4). `serde` is croner's only feature; we do
 # not serialize a parsed Cron, the Flockfile carries the pattern string.
 # Held below 4: croner 4 changes the parser API and the accepted patterns that
