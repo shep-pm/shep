@@ -2,8 +2,9 @@
 //! the sentences that tell an operator which dogs did not come back.
 
 use shep_client::Client;
+use shep_core::paths::ShepPaths;
 
-use crate::commands::muster;
+use crate::commands::{dogs, muster};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
@@ -17,15 +18,17 @@ use crate::output::Streams;
 pub(super) async fn report_reload(
     client: &Client,
     streams: &mut Streams<'_>,
+    paths: &ShepPaths,
     restored: bool,
 ) -> ExitCode {
-    report_reload_waiting(client, streams, restored, DOG_SETTLE_WAIT).await
+    report_reload_waiting(client, streams, paths, restored, DOG_SETTLE_WAIT).await
 }
 
 /// As [`report_reload`], but with a caller-chosen dog wait.
 async fn report_reload_waiting(
     client: &Client,
     streams: &mut Streams<'_>,
+    paths: &ShepPaths,
     restored: bool,
     dog_wait: std::time::Duration,
 ) -> ExitCode {
@@ -36,6 +39,12 @@ async fn report_reload_waiting(
     );
     streams.aside("reload", &message);
     report_dog_staleness(client, streams, &shepherd.daemon_version, dog_wait).await;
+    // After the settle wait, so the dogs are registered to be asked about. Not
+    // under the stop arm: every dog it runs was spawned a moment ago from the
+    // entry `shep.toml` holds now.
+    if !restored {
+        report_kept_dog_entries(client, streams, paths).await;
+    }
     if restored {
         return muster::muster(client, streams).await;
     }
@@ -85,6 +94,17 @@ async fn report_dog_staleness(
             return;
         }
         tokio::time::sleep(DOG_POLL_INTERVAL).await;
+    }
+}
+
+/// Names each running adopted dog that was carried across the handover with an
+/// entry other than the one `shep.toml` now holds.
+///
+/// The handover restarts no dog, so a changed `path` or `env` waits for a
+/// disable then an enable. Silent unless something differs.
+async fn report_kept_dog_entries(client: &Client, streams: &mut Streams<'_>, paths: &ShepPaths) {
+    for kept in dogs::kept_entries(client, paths).await {
+        streams.aside("reload", &dogs::kept_entry_report(&kept));
     }
 }
 
@@ -188,6 +208,7 @@ mod tests {
             report_reload_waiting(
                 &client,
                 &mut streams,
+                &ShepPaths::resolve(&|_| None, dir.path()),
                 true,
                 std::time::Duration::from_secs(3),
             )
@@ -228,6 +249,7 @@ mod tests {
             report_reload_waiting(
                 &client,
                 &mut streams,
+                &ShepPaths::resolve(&|_| None, dir.path()),
                 true,
                 std::time::Duration::from_secs(3),
             )
@@ -272,6 +294,7 @@ mod tests {
                 report_reload_waiting(
                     &client,
                     &mut streams,
+                    &ShepPaths::resolve(&|_| None, dir.path()),
                     true,
                     std::time::Duration::from_millis(150),
                 ),
@@ -284,6 +307,68 @@ mod tests {
         assert!(
             text.contains("metrics") && text.contains("shep bleats metrics"),
             "an unanswered dog is reported as unanswered, not as healthy: {text}"
+        );
+    }
+
+    /// Runs the handover arm's report against a shepherd that carried `kelpie`
+    /// across, spawned with `spawned_env` while `shep.toml` now holds
+    /// `entry_env`, and hands back stderr.
+    async fn handover_report(entry_env: &str, spawned_env: &[(&str, &str)]) -> String {
+        use crate::commands::dogs::entry_drift_support::{home_and_spawned, shepherd_running};
+
+        let dir = tempfile::tempdir().unwrap();
+        let (paths, spawned) = home_and_spawned(dir.path(), entry_env, spawned_env);
+        let addr = shep_client::testing::control_address(dir.path());
+        let (client, _envelopes) = shep_client::testing::fake_client_answering(
+            &addr,
+            shepherd_running(spawned, shep_core::status::ProcStatus::Online),
+        )
+        .await;
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        {
+            let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
+            report_reload_waiting(
+                &client,
+                &mut streams,
+                &paths,
+                false,
+                std::time::Duration::from_millis(50),
+            )
+            .await;
+        }
+        String::from_utf8(err).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_reload_names_a_running_adopted_dog_whose_env_gained_a_key() {
+        let text = handover_report("PADDOCK_KEY = \"{{secret:paddock-key}}\"", &[]).await;
+
+        assert!(
+            text.contains("`kelpie`")
+                && text.contains("`env`")
+                && text.contains("shep disable kelpie")
+                && text.contains("shep enable kelpie"),
+            "the dog, the field and the way to apply it must be named: {text}"
+        );
+        assert!(
+            !text.contains("paddock-key"),
+            "a value, or a reference standing for one, must never be printed: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reload_with_an_adopted_dogs_entry_unchanged_says_nothing_about_it() {
+        let text = handover_report(
+            "PADDOCK_KEY = \"{{secret:paddock-key}}\"",
+            &[("PADDOCK_KEY", "{{secret:paddock-key}}")],
+        )
+        .await;
+
+        assert!(
+            !text.contains("kelpie"),
+            "a dog already running its entry has nothing to be told: {text}"
         );
     }
 
