@@ -641,6 +641,7 @@ otel = "/usr/local/bin/shep-otel"
             daemon_exit_code(&DaemonRunError::DogMigration(
                 DogMigrationError::WouldOverwrite {
                     name: "metrics".to_string(),
+                    holds_env: false,
                 }
             )),
             ExitCode::InvalidConfig

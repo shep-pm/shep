@@ -222,6 +222,37 @@ boot_first_dogs = ["log-rotate"]`}</CodeBlock>
       way back.
     </p>
 
+    <h2 id="two-files-two-kinds-of-setting">Two files, two kinds of setting</h2>
+    <p>
+      A dog's settings are split across two files, and the split is the
+      security model rather than tidiness. <code>dogs.toml</code> holds how
+      the dog behaves: its own <code>[&lt;name&gt;]</code> table, in the
+      schema the dog publishes. <code>shep.toml</code> holds what you trust it
+      with: <code>enabled_dogs</code>, <code>adopted_dogs</code> with its
+      <code>env</code>, <code>dog_grants</code>, <code>boot_first_dogs</code>
+      and <code>channel_dogs</code>.
+    </p>
+    <p>
+      A dog's own settings never carry the trust it holds. Nothing that edits
+      <code>dogs.toml</code> can grant a dog a permission, hand it a secret,
+      or swap the binary the shepherd spawns, because none of those live
+      there. Writing <code>env</code> into a <code>[dog.&lt;name&gt;]</code>{" "}
+      section in <code>shep.toml</code> is the mistake this split is most
+      likely to produce. A boot moves that section to <code>dogs.toml</code>,
+      where the dog can read it back over the socket and its environment never
+      carries it. Where the dog already has a <code>dogs.toml</code> section
+      the shepherd refuses the boot rather than pick between the two, and
+      names <code>[daemon.adopted_dogs]</code> as where that <code>env</code>{" "}
+      goes.
+    </p>
+    <p class="fine">
+      Lookout edits both halves from one place, so you rarely open either
+      file: <code>e</code> on a dog's row writes its field edits to{" "}
+      <code>dogs.toml</code> and its <code>env</code> to <code>shep.toml</code>.
+      See <a href="/docs/lookout-config#the-dog-config-pane">the dog config
+      pane</a>.
+    </p>
+
     <h2 id="configuration-lives-on-the-socket-not-the-environment">Configuration lives on the socket, not the environment</h2>
     <p>
       A dog's settings live under <code>[&lt;name&gt;]</code> in{" "}
