@@ -980,7 +980,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1028,14 +1028,14 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "shep-core"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "shep-handover"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "nix 0.29.0",
  "serde",
@@ -1104,10 +1104,11 @@ dependencies = [
 
 [[package]]
 name = "shep-tree"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "nix 0.29.0",
  "rustix",
+ "sysinfo",
  "windows-sys 0.61.2",
 ]
 
@@ -1218,9 +1219,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.3"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
@@ -1270,7 +1271,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1307,7 +1308,7 @@ checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
 dependencies = [
  "proc-macro2",
  "quote 1.0.47",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
