@@ -154,7 +154,7 @@ mod tests {
         // `min_uptime: UpDuration` (not `Option`) is a bare `$ref`.
         let min_uptime = resolved(&schema, &app["min_uptime"]);
         assert_eq!(min_uptime["type"], "string", "{min_uptime}");
-        assert_eq!(min_uptime["pattern"], r"^\d+(ms|h|m|s)?$", "{min_uptime}");
+        assert_eq!(min_uptime["pattern"], r"^\d+(ms|d|h|m|s)?$", "{min_uptime}");
 
         // `max_memory: Option<MemSize>` is a `$ref` under `anyOf` beside `"null"`.
         let any_of = app["max_memory"]["anyOf"]

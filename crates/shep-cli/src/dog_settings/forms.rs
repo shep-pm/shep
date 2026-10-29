@@ -27,8 +27,8 @@ pub struct Form {
 /// The forms an [`ValueKind::UpDuration`] field accepts.
 pub const DURATION_FORMS: &[Form] = &[
     Form {
-        text: "500ms, 2s, 5m, 1h",
-        examples: &["500ms", "2s", "5m", "1h"],
+        text: "500ms, 2s, 5m, 1h, 7d",
+        examples: &["500ms", "2s", "5m", "1h", "7d"],
     },
     Form {
         text: "a bare number is milliseconds",

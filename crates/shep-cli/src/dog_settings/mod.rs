@@ -267,10 +267,10 @@ mod tests {
     /// `shep-log-rotate` spells `max_age` as `Option<UpDuration>`, so the
     /// grammar sits two hops from the property.
     ///
-    /// `1d` is the natural spelling of a retention window and shep's
-    /// grammar tops out at hours (`docs/specs/deferred.md`).
+    /// `1w` is a spelling of a retention window that shep's grammar, which
+    /// stops at days, still refuses.
     #[test]
-    fn a_dogs_nullable_duration_refuses_a_day() {
+    fn a_dogs_nullable_duration_refuses_a_week() {
         let field = duration_field();
         assert_eq!(
             field.value_kind,
@@ -278,14 +278,14 @@ mod tests {
             "the $ref must resolve through the anyOf or this test proves nothing"
         );
         assert!(
-            "1d".parse::<UpDuration>().is_err(),
-            "1d must be outside the grammar or there is nothing to refuse"
+            "1w".parse::<UpDuration>().is_err(),
+            "1w must be outside the grammar or there is nothing to refuse"
         );
-        let refused = refusal(&field, "1d").expect("1d is not a duration shep parses");
+        let refused = refusal(&field, "1w").expect("1w is not a duration shep parses");
         assert_eq!(
             refused.text,
-            "max_age is \"1d\", which is not a duration shep accepts; \
-             try 500ms, 2s, 5m, 1h, a bare number is milliseconds"
+            "max_age is \"1w\", which is not a duration shep accepts; \
+             try 500ms, 2s, 5m, 1h, 7d, a bare number is milliseconds"
         );
     }
 

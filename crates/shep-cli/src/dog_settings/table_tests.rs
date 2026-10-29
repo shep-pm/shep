@@ -262,17 +262,17 @@ fn an_entry_of_an_array_of_tables_is_refused_at_its_index() {
 }
 
 /// shep's own grammar, reached through a `$ref` behind an `anyOf`, which is
-/// how a dog spells `Option<UpDuration>`. `1d` is the natural spelling of a
-/// retention window and shep's grammar tops out at hours.
+/// how a dog spells `Option<UpDuration>`. `1w` is a spelling of a retention
+/// window that shep's grammar, which stops at days, still refuses.
 #[test]
 fn a_nullable_grammar_refuses_a_spelling_shep_does_not_take() {
-    let refused = table_refusal(&schema(), &table(json!({ "max_age": "1d" })))
-        .expect("1d is outside the grammar");
+    let refused = table_refusal(&schema(), &table(json!({ "max_age": "1w" })))
+        .expect("1w is outside the grammar");
     assert_eq!(refused.path, ["max_age"]);
     assert_eq!(
         refused.text,
-        "max_age is \"1d\", which is not a duration shep accepts; \
-         try 500ms, 2s, 5m, 1h, a bare number is milliseconds"
+        "max_age is \"1w\", which is not a duration shep accepts; \
+         try 500ms, 2s, 5m, 1h, 7d, a bare number is milliseconds"
     );
 }
 
