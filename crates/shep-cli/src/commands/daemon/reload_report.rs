@@ -15,9 +15,6 @@ use crate::output::Streams;
 ///
 /// `restored` says which arm ran. Under the handover arm `ListFlock` asks for
 /// nothing: a successor answers its socket before its rehydrate has finished.
-///
-/// `paths` is where `shep.toml` is read from, to tell an adopted dog its entry
-/// changed. See [`report_kept_dog_entries`].
 pub(super) async fn report_reload(
     client: &Client,
     streams: &mut Streams<'_>,
@@ -103,10 +100,10 @@ async fn report_dog_staleness(
 /// Names each running adopted dog that was carried across the handover with an
 /// entry other than the one `shep.toml` now holds.
 ///
-/// The handover restarts no dog, so a changed `path` or `env` stays unapplied
-/// until the dog is disabled and enabled. Silent unless something differs.
+/// The handover restarts no dog, so a changed `path` or `env` waits for a
+/// disable then an enable. Silent unless something differs.
 async fn report_kept_dog_entries(client: &Client, streams: &mut Streams<'_>, paths: &ShepPaths) {
-    for kept in dogs::kept_entries(client, paths, None).await {
+    for kept in dogs::kept_entries(client, paths).await {
         streams.aside("reload", &dogs::kept_entry_report(&kept));
     }
 }

@@ -3,12 +3,11 @@
 //! `stop`, `restart`, `reload`, `delete` and `stock`, plus the refusal
 //! rendering they share for a staged walk over a fold.
 
-use std::collections::BTreeSet;
 use std::time::Duration;
 
 use shep_client::{Client, RELOAD_DEADLINE, START_DEADLINE};
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::{ProcessInfo, Request, Response, SelectorSpec, SheepRefusal};
+use shep_core::protocol::{ProcessInfo, Request, Response, SheepRefusal};
 
 use crate::cli::{Format, SelectorArgs, StockArgs};
 use crate::commands::dogs;
@@ -80,7 +79,6 @@ pub async fn restart_within(
     // description of a state the operator is already in.
     if let Some(paths) = paths {
         dogs::warn_of_a_dog_a_restart_would_break(streams, paths, &selectors, probe);
-        warn_of_a_dog_a_restart_would_not_change(client, streams, paths, &selectors).await;
     }
     let mut refused: Vec<SheepRefusal> = Vec::new();
     let (procs, failure) = request_each(
@@ -101,6 +99,9 @@ pub async fn restart_within(
         },
     )
     .await;
+    if let Some(paths) = paths {
+        note_entries_a_restart_kept(client, streams, paths, &procs).await;
+    }
     // Named before `procs` is moved into the table below. The `Restart`
     // reply has no per-id error slot, so a failed respawn reaches here as an
     // ordinary `errored` row inside an `Ok`, and not as a refusal: the sheep
@@ -142,32 +143,18 @@ pub async fn restart_within(
     finish_walk(streams, "restart", &refused, carried, failure)
 }
 
-/// Warns, before `restart` sends anything, about an adopted dog whose entry
-/// in `shep.toml` differs from the one it was spawned with.
+/// Says which restarted adopted dogs came back on an entry `shep.toml` has
+/// since changed.
 ///
-/// A restart respawns a dog from the spec it already holds, and the shepherd
-/// never reads `shep.toml`, so the changed `path` or `env` does not apply.
-/// `shep disable` then `shep enable` does. A warning, never a refusal: the
-/// restart still happens.
-///
-/// Only a `Name` selector is checked, as for the probe above.
-async fn warn_of_a_dog_a_restart_would_not_change(
+/// A restart respawns from the spec the dog already holds, and the shepherd
+/// never reads `shep.toml`. A notice, not a refusal: the restart happened.
+async fn note_entries_a_restart_kept(
     client: &Client,
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
-    selectors: &[SelectorSpec],
+    restarted: &[ProcessInfo],
 ) {
-    let named: BTreeSet<String> = selectors
-        .iter()
-        .filter_map(|selector| match selector {
-            SelectorSpec::Name(name) => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
-    if named.is_empty() {
-        return;
-    }
-    for kept in dogs::kept_entries(client, paths, Some(&named)).await {
+    for kept in dogs::kept_entries_among(client, paths, restarted).await {
         streams.aside(dogs::DOG_ENTRY_KEPT_NOTICE, &dogs::kept_entry_report(&kept));
     }
 }

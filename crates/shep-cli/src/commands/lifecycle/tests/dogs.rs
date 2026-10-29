@@ -347,11 +347,22 @@ async fn restart_kelpie(entry_env: &str, spawned_env: &[(&str, &str)]) -> (Strin
 
     let dir = tempfile::tempdir().unwrap();
     let (paths, spawned) = home_and_spawned(dir.path(), entry_env, spawned_env);
+    let restarted = shep_core::protocol::ProcessInfo::builder(
+        1,
+        "kelpie",
+        shep_core::status::ProcStatus::Online,
+    )
+    .dog(Some(shep_core::protocol::DogSource::Adopted {
+        path: spawned.script.clone(),
+        channel: false,
+        grants: None,
+    }))
+    .build();
     let base = shepherd_running(spawned, shep_core::status::ProcStatus::Online);
     let sock = shep_client::testing::control_address(dir.path());
     let (client, mut envelopes) = fake_client_answering(&sock, move |req| match req {
         Request::Restart { .. } => Response::Restarted {
-            accepted: Vec::new(),
+            accepted: vec![restarted.clone()],
             refused: Vec::new(),
         },
         other => base(other),
@@ -380,11 +391,11 @@ async fn restart_kelpie(entry_env: &str, spawned_env: &[(&str, &str)]) -> (Strin
     (String::from_utf8(err).unwrap(), sent)
 }
 
-/// The restart warns and then restarts: the shepherd respawns from the spec it
-/// holds, so the warning is the only thing standing between the operator and
-/// a dog that came back without the key.
+/// The restart goes ahead and then says so: the shepherd respawns from the
+/// spec it holds, so the notice is the only word the operator gets that the
+/// dog came back without the key.
 #[tokio::test]
-async fn a_restart_of_a_dog_whose_entry_changed_says_it_keeps_the_old_one_and_still_restarts() {
+async fn a_restart_of_a_dog_whose_entry_changed_restarts_and_says_it_kept_the_old_one() {
     let (text, sent) = restart_kelpie("PADDOCK_KEY = \"{{secret:paddock-key}}\"", &[]).await;
 
     assert!(
@@ -400,7 +411,7 @@ async fn a_restart_of_a_dog_whose_entry_changed_says_it_keeps_the_old_one_and_st
     assert!(
         sent.iter()
             .any(|req| matches!(req, Request::Restart { .. })),
-        "a warning is not a refusal: {sent:?}"
+        "a notice is not a refusal: {sent:?}"
     );
 }
 
