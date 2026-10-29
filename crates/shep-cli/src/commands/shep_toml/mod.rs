@@ -436,13 +436,11 @@ impl ShepToml {
     /// Sets, or with `None` removes, one `env` key of `name`'s `[daemon]
     /// adopted_dogs` entry, keeping its path.
     ///
-    /// The entry is edited where it sits, so the comments around it, the
-    /// entries beside it and the keys already in its `env` keep their places.
-    /// An entry written as a bare path string is rewritten as an inline table
-    /// first, so the dog keeps its binary and gains the `env` half. One written
-    /// as a table stays a table, and one written inline stays inline. Removing
-    /// the last key leaves `env` out of the entry entirely rather than an empty
-    /// table behind it.
+    /// The entry is edited where it sits, so the comments around it and the
+    /// order of its keys stay. A bare path string is rewritten as an inline
+    /// table first, so the dog keeps its binary and gains the `env` half; a
+    /// table stays a table and an inline table stays inline. Removing the last
+    /// key leaves `env` out of the entry rather than an empty table behind it.
     ///
     /// # Errors
     /// [`ShepTomlError::NoDogEntry`] when `name` has no entry, or its entry is
