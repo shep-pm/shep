@@ -6,24 +6,26 @@
 //! shep crate and on no async runtime.
 //!
 //! - [`Tree`] spawns a child in a group of its own (unix) or a job (Windows)
-//!   and [`Tree::stop`] ends it in a ladder: a signal, a grace to exit, then a
-//!   kill of the whole tree.
-//! - `group::signal_group` (unix) sends one [`Signal`] to a whole process
-//!   group. It and the sweep are what a future `shep signal` over lambs would
-//!   use.
+//!   and [`Tree::stop`] ends it in a ladder: a signal, a grace, then a kill.
+//! - `group::signal_group` (unix) sends one [`Signal`] to a whole group, and
+//!   [`sweep`] ends what a group signal missed: the lambs a process left
+//!   running once it is gone. A future `shep signal` over lambs uses both.
+//! - [`sweep::Sweeper`] steps a [`sweep::LambSweep`] through a sweep, and
+//!   `sweep::ProcessTable` is the real table behind it, under `sysinfo`.
 //! - `job::Job` (Windows) is the job object [`Tree`] uses, public for a
 //!   caller that spawns by other means.
 //!
 //! Unix reaches a group by its leader's pid, and a descendant that calls
-//! `setsid` leaves it. A Windows job cannot be left, so the kill there reaches
-//! more of the tree.
+//! `setsid` leaves it. A Windows job cannot be left.
 
 #![deny(unsafe_code)]
 
 pub mod group;
+pub mod instant;
 #[cfg(windows)]
 pub mod job;
 mod stop;
+pub mod sweep;
 
 pub use group::Signal;
 pub use stop::Tree;

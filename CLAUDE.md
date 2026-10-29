@@ -80,7 +80,7 @@ Workspace crates under `crates/`. Each Cargo.toml `description` states its role.
 | shep-macros | shep-macros | `#[dog_config]` attribute, re-exported as `shep_client::dogs::dog_config` |
 | shep-channel | shep-channel | Client an app links to speak the shepherd channel |
 | shep-handover | shep-handover | `execve` in place for any process: carries named descriptors and a state blob, depends on no other shep crate |
-| shep-tree | shep-tree | Signal a process group, own a Windows job, stop a child and its tree in a sync ladder; depends on no other shep crate |
+| shep-tree | shep-tree | Signal a process group, own a Windows job, stop a child and its tree in a sync ladder, and sweep what a process left running; depends on no other shep crate |
 | shep-cli-redirect | shep-cli | Empty placeholder holding the `shep-cli` name on crates.io |
 
 Also at the top level:
