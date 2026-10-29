@@ -138,7 +138,14 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 # The ceiling is written out instead of left implicit: `0.29` already means
 # `<0.30` to cargo, but Dependabot rewrites the requirement string itself and
 # reads 0.29 -> 0.31 as a minor (see .github/dependabot.yml), so only a bound
-# it can read keeps the bump out.
+# it can read keeps the bump out. #1265 is the proof: it is filed against
+# `/benches` yet its diff edits this line, because benches/ inherits the
+# workspace entry through its path dependencies.
+# This caps shep's requirement, not every nix in the tree. command-fds 0.3.3
+# declares `nix = "0.31.2"` and pulls nix 0.31.3 beside ours in both lockfiles,
+# and no command-fds release asks for 0.29: 0.3.0 wants `^0.27.0`, 0.3.1 and
+# 0.3.2 want `^0.30.1`. Capping command-fds would add a nix line, not remove
+# one. Both lockfiles keep 0.31.3 only while command-fds does.
 nix = { version = ">=0.29, <0.30", default-features = false, features = ["signal", "process", "user"] }
 # Only shep-tree: `waitid` with `WNOWAIT`, which sees a child exit without
 # reaping it, so the final group kill still holds the child's pid. nix 0.29
