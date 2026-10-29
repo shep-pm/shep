@@ -382,7 +382,8 @@ impl ShepToml {
     ///
     /// Handed back as live [`Item`]s: a comment an operator wrote around
     /// `[dog.metrics]` travels with the section. Takes everything: a partial
-    /// move would leave one key readable from two files.
+    /// move would leave one key readable from two files. A comment above a
+    /// header that holds nothing moves to the table that now follows it.
     pub fn take_dog_sections(&mut self) -> BTreeMap<String, Item> {
         let Some(item) = self.doc.remove("dog") else {
             return BTreeMap::new();
@@ -392,6 +393,7 @@ impl ShepToml {
         let Some(dog) = item.as_table_like() else {
             return BTreeMap::new();
         };
+        dog_headers::restore(&mut self.doc, dog_headers::rescue(&item));
         dog.iter()
             .filter(|(_, value)| value.as_table_like().is_some())
             .map(|(name, value)| (name.to_owned(), value.clone()))
@@ -958,6 +960,7 @@ fn inline_table(env: &BTreeMap<String, String>) -> InlineTable {
     table
 }
 
+mod dog_headers;
 mod grants;
 mod path;
 
