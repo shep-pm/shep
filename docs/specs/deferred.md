@@ -513,7 +513,11 @@ has not come up here yet.
 
 Tracked as https://github.com/shep-pm/shep/issues/354.
 
-### `UpDuration`'s grammar tops out at hours, which only bites outside shep
+### ~~`UpDuration`'s grammar tops out at hours, which only bites outside shep~~ -- done, 2026-10-28
+
+Built as the parse-only half (#355): `UpDuration` takes a trailing `d`, and
+`Display` still stops at hours, so `7d` reads back as `168h`. The text below
+is the original entry.
 
 Found 2026-08-20 while building `shep-log-rotate`. Its `max_age` setting is a
 log-retention window, so the natural spelling is `7d`. The grammar is

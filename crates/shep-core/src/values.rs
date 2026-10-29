@@ -11,12 +11,13 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 const GIB: u64 = 1024 * MIB;
 
-// Milliseconds per unit of the Flockfile grammar `^\d+(ms|h|m|s)?$`, the
+// Milliseconds per unit of the Flockfile grammar `^\d+(ms|d|h|m|s)?$`, the
 // same way the binary units above are written: a definition each, so the
 // parser and the formatter cannot drift apart on one of them.
 const MS_PER_S: u64 = 1_000;
 const MS_PER_MIN: u64 = 60 * MS_PER_S;
 const MS_PER_H: u64 = 60 * MS_PER_MIN;
+const MS_PER_D: u64 = 24 * MS_PER_H;
 
 /// A memory quantity in bytes, used for memory-limit thresholds
 ///
@@ -177,12 +178,15 @@ impl schemars::JsonSchema for MemSize {
     }
 }
 
-/// A duration from the Flockfile grammar `^\d+(ms|h|m|s)?$`
+/// A duration from the Flockfile grammar `^\d+(ms|d|h|m|s)?$`
 ///
-/// Plain digits are milliseconds; `ms`/`s`/`m`/`h` are
-/// milliseconds/seconds/minutes/hours. `ms` is checked before the
+/// Plain digits are milliseconds; `ms`/`s`/`m`/`h`/`d` are
+/// milliseconds/seconds/minutes/hours/days. `ms` is checked before the
 /// single-letter suffixes. So `5m` and `5ms` differ by a factor of sixty
 /// thousand.
+///
+/// `d` is parsed but never printed: [`fmt::Display`] stops at hours, so `7d`
+/// reads back as `168h`. The spelling is lossy, the value is not.
 ///
 /// # Example
 /// ```
@@ -191,6 +195,7 @@ impl schemars::JsonSchema for MemSize {
 /// assert_eq!("30s".parse::<UpDuration>()?.as_millis(), 30_000);
 /// assert_eq!("500ms".parse::<UpDuration>()?.as_millis(), 500);
 /// assert_eq!("5m".parse::<UpDuration>()?.as_millis(), 300_000);
+/// assert_eq!("7d".parse::<UpDuration>()?.to_string(), "168h");
 /// assert!("30S".parse::<UpDuration>().is_err()); // lowercase units only
 /// # Ok::<(), shep_core::values::ParseUpDurationError>(())
 /// ```
@@ -228,7 +233,7 @@ impl UpDuration {
 impl FromStr for UpDuration {
     type Err = ParseUpDurationError;
 
-    /// Parses `^\d+(ms|h|m|s)?$`: plain digits are milliseconds
+    /// Parses `^\d+(ms|d|h|m|s)?$`: plain digits are milliseconds
     ///
     /// `ms` is matched before the single-letter suffixes below, so a
     /// trailing `m` alone still means minutes.
@@ -238,7 +243,7 @@ impl FromStr for UpDuration {
     /// - [`ParseUpDurationError::Empty`]: empty input.
     /// - [`ParseUpDurationError::MissingDigits`]: unit with no digits.
     /// - [`ParseUpDurationError::InvalidCharacter`]: anything outside ASCII
-    ///   digits plus one trailing lowercase `h`/`m`/`s`/`ms`.
+    ///   digits plus one trailing lowercase `d`/`h`/`m`/`s`/`ms`.
     /// - [`ParseUpDurationError::Overflow`]: milliseconds overflow `u64`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
@@ -252,6 +257,7 @@ impl FromStr for UpDuration {
             (rest, 1)
         } else {
             match s.as_bytes()[s.len() - 1] {
+                b'd' => (&s[..s.len() - 1], MS_PER_D),
                 b'h' => (&s[..s.len() - 1], MS_PER_H),
                 b'm' => (&s[..s.len() - 1], MS_PER_MIN),
                 b's' => (&s[..s.len() - 1], MS_PER_S),
@@ -300,11 +306,11 @@ impl<'de> Deserialize<'de> for UpDuration {
     }
 }
 
-/// Failure to parse an [`UpDuration`] from the grammar `^\d+(ms|h|m|s)?$`
+/// Failure to parse an [`UpDuration`] from the grammar `^\d+(ms|d|h|m|s)?$`
 ///
 /// `#[non_exhaustive]`, for the same reason as [`ParseMemSizeError`]: a
-/// future grammar revision, such as fractional durations or a `d`/`w`
-/// unit, would want its own variant rather than folding into
+/// future grammar revision, such as fractional durations or a `w` unit,
+/// would want its own variant rather than folding into
 /// [`Self::InvalidCharacter`]'s catch-all.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,7 +320,7 @@ pub enum ParseUpDurationError {
     /// A unit suffix with no digits before it (`"s"`)
     MissingDigits,
     /// A character outside ASCII digits plus one optional trailing
-    /// lowercase `h`/`m`/`s`/`ms`
+    /// lowercase `d`/`h`/`m`/`s`/`ms`
     InvalidCharacter,
     /// The duration in milliseconds does not fit in `u64`
     Overflow,
@@ -326,7 +332,7 @@ impl fmt::Display for ParseUpDurationError {
             Self::Empty => "duration is empty",
             Self::MissingDigits => "duration has a unit suffix but no digits",
             Self::InvalidCharacter => {
-                "duration must be ASCII digits with an optional trailing h, m, s, or ms"
+                "duration must be ASCII digits with an optional trailing h, m, s, ms, or d"
             }
             Self::Overflow => "duration in milliseconds overflows u64",
         })
@@ -347,8 +353,8 @@ impl schemars::JsonSchema for UpDuration {
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
             "type": "string",
-            "pattern": r"^\d+(ms|h|m|s)?$",
-            "description": "A duration: digits, optionally suffixed ms, h, m or s. Plain digits are milliseconds.",
+            "pattern": r"^\d+(ms|d|h|m|s)?$",
+            "description": "A duration: digits, optionally suffixed ms, d, h, m or s. Plain digits are milliseconds.",
         })
     }
 }
@@ -385,6 +391,25 @@ mod mem_size_tests {
         assert_eq!("7K".parse::<MemSize>().unwrap().bytes(), 7 * 1024);
         assert_eq!("512M".parse::<MemSize>().unwrap().bytes(), 512 << 20);
         assert_eq!("3G".parse::<MemSize>().unwrap().bytes(), 3 << 30);
+    }
+
+    #[test]
+    fn a_day_parses_as_a_day_of_milliseconds() {
+        assert_eq!("1d".parse::<UpDuration>().unwrap().as_millis(), 86_400_000);
+        assert_eq!("7d".parse::<UpDuration>().unwrap().as_millis(), 604_800_000);
+        assert_eq!("0d".parse::<UpDuration>().unwrap().as_millis(), 0);
+    }
+
+    #[test]
+    fn display_never_prints_a_day() {
+        assert_eq!(UpDuration::from_millis(86_400_000).to_string(), "24h");
+        assert_eq!(UpDuration::from_millis(604_800_000).to_string(), "168h");
+    }
+
+    #[test]
+    fn a_day_round_trips_through_display() {
+        let parsed: UpDuration = "7d".parse().unwrap();
+        assert_eq!(parsed.to_string().parse::<UpDuration>().unwrap(), parsed);
     }
 
     #[test]
@@ -488,6 +513,8 @@ mod up_duration_tests {
         assert_eq!("".parse::<UpDuration>(), Err(Empty));
         assert_eq!("s".parse::<UpDuration>(), Err(MissingDigits));
         assert_eq!("ms".parse::<UpDuration>(), Err(MissingDigits));
+        assert_eq!("d".parse::<UpDuration>(), Err(MissingDigits));
+        assert_eq!("7D".parse::<UpDuration>(), Err(InvalidCharacter)); // uppercase
         assert_eq!("30S".parse::<UpDuration>(), Err(InvalidCharacter)); // uppercase
         assert_eq!("1.5s".parse::<UpDuration>(), Err(InvalidCharacter));
         assert_eq!("30 s".parse::<UpDuration>(), Err(InvalidCharacter));
@@ -497,6 +524,8 @@ mod up_duration_tests {
         // Digit string fits u64 on its own, but overflows on the ×3_600_000
         // (hours-to-ms) multiplication.
         assert_eq!("9999999999999999h".parse::<UpDuration>(), Err(Overflow));
+        // The digits fit u64 (it is `u64::MAX`); the ×86_400_000 does not.
+        assert_eq!("18446744073709551615d".parse::<UpDuration>(), Err(Overflow));
     }
 
     #[test]
@@ -527,14 +556,14 @@ mod up_duration_tests {
         let schema = serde_json::to_value(schemars::schema_for!(UpDuration)).unwrap();
         let pattern = schema["pattern"].as_str().unwrap();
         let re = regex::Regex::new(pattern).unwrap();
-        for accepted in ["1600", "30s", "5m", "2h", "500ms"] {
+        for accepted in ["1600", "30s", "5m", "2h", "500ms", "7d", "30d"] {
             assert!(re.is_match(accepted), "pattern rejects {accepted}");
             assert!(
                 accepted.parse::<UpDuration>().is_ok(),
                 "FromStr rejects {accepted}"
             );
         }
-        for rejected in ["30S", "1.5s", "30 s", "", "s", "30d", "30w", "30MS"] {
+        for rejected in ["30S", "1.5s", "30 s", "", "s", "30w", "30MS"] {
             assert!(!re.is_match(rejected), "pattern accepts {rejected}");
             assert!(
                 rejected.parse::<UpDuration>().is_err(),
