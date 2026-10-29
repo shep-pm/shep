@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all sixty-seven scenes through the same coloured
+frames.ansi renders all sixty-nine scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same sixty-seven scenes through the flattened NO_COLOR palette
+renders the same sixty-nine scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1093,6 +1093,76 @@ The same screen at 45 columns. Both kinds of row have dropped a column rather th
                                              [0m
                                              [0m
                                              [0m
+[0m[38;5;221m[48;5;235mesc/s close   j/k select   g…[0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== settings_dog_env  (120x30) ===
+An adopted dog open, with the cursor on its env row. Each key reads <set> and never its value, and + new asks for the next key. A built-in dog has no env row, since it has no entry in shep.toml to hold one.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
+                                                                                                                        [0m
+[0m[38;5;245m  ... 4 above[0m                                                                                                           [0m
+    log_level         warn                            shep.toml    needs shep daemon reload                             [0m
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             [0m
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               [0m
+[0m[38;5;245m  ▾ whistle                                                                                                             [0m
+    allow_control     false                           the default  needs shep whistle restarted                         [0m
+[0m[38;5;245m  ▾ secrets                                                                                                             [0m
+    allow_read        false                           the default  the next command reads it                            [0m
+[0m[38;5;245m  ▾ style                                                                                                               [0m
+    level             full                            shep.toml    the next command reads it                            [0m
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
+    py                python3                         shep.toml    the next command reads it                            [0m
+[0m[38;5;245m    + add an entry                                                                                                      [0m
+  hosts               none                            the default  the next command reads it                            [0m
+                                                                                                                        [0m
+[0m[38;5;245m  [dogs][0m                                                                                                                [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
+  ▾ otel                                                            no       /usr/local/bin/shep-otel  online           [0m
+    boot first        no                                           the next boot reads it                               [0m
+    grants            nothing recorded                             its next start reads it                              [0m
+    source            /usr/local/bin/shep-otel                     shep adopt writes it                                 [0m
+    channel           no                                           the dog's own answer                                 [0m
+[0m[38;5;245m    ▾ env                                                                                                               [0m
+      PADDOCK_KEY     <set>                                        needs shep daemon reload                             [0m
+      RUST_LOG        <set>                                        needs shep daemon reload                             [0m
+>     + new                                                                                                             [0m
+[0m[38;5;245m  ... 3 below[0m                                                                                                           [0m
+[0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== settings_dog_env_narrow  (45x30) ===
+The same rows at 45 columns. The env keys keep their <set> marker and lose the apply cost and SOURCE, as the dog's other rows do.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep 2 in the flock[0m
+                                             [0m
+[0m[38;5;245m  ... 4 above[0m                                [0m
+    log_level         warn        shep.toml  [0m
+    max_cron_sleep    30s         shep.toml  [0m
+    socket            /home/ada…  shep.toml  [0m
+[0m[38;5;245m  ▾ whistle                                  [0m
+    allow_control     false       the default[0m
+[0m[38;5;245m  ▾ secrets                                  [0m
+    allow_read        false       the default[0m
+[0m[38;5;245m  ▾ style                                    [0m
+    level             full        shep.toml  [0m
+  ▾ interpreters      1 entry     shep.toml  [0m
+    py                python3     shep.toml  [0m
+[0m[38;5;245m    + add an entry                           [0m
+  hosts               none        the default[0m
+                                             [0m
+[0m[38;5;245m  [dogs][0m                                     [0m
+[0m[38;5;245m  space arms, Enter applies; e opens a dog; …[0m
+  ▾ otel           no       online           [0m
+    boot first        no                     [0m
+    grants            nothing r…             [0m
+    source            /usr/loca…             [0m
+    channel           no                     [0m
+[0m[38;5;245m    ▾ env                                    [0m
+      PADDOCK_KEY     <set>                  [0m
+      RUST_LOG        <set>                  [0m
+>     + new                                  [0m
+[0m[38;5;245m  ... 3 below[0m                                [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g…[0m[38;5;245m[48;5;235m control enabled[0m
 
 

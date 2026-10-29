@@ -19,8 +19,8 @@ use ratatui::text::{Line, Span};
 use super::super::app::{App, Settings, SettingsRow};
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
-use super::status::key_hint::{editor_hint, editor_label, focused_field};
 use super::scroll::Attempt;
+use super::status::key_hint::{editor_hint, editor_label, focused_field};
 
 use dogs::{DOGS_CAPTION, dog_header_line};
 use tree::tree_line;
@@ -361,7 +361,10 @@ mod tests {
             lines[table + 1]
         );
         assert!(lines[table + 2].contains("+ new"), "{:?}", lines[table + 2]);
-        assert!(!screen.contains("hunter2"), "a value reached the screen:\n{screen}");
+        assert!(
+            !screen.contains("hunter2"),
+            "a value reached the screen:\n{screen}"
+        );
     }
 
     /// The editor draws under the table, labelled with the field the cursor is

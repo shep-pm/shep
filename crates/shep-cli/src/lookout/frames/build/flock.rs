@@ -196,7 +196,11 @@ pub(super) fn build_flock(app: &mut App, which: Scene, t0: Instant) -> Vec<Proce
         // Two dog processes: `otel` up and healthy, `bark` up but never
         // handshook. `ledger` has no row here, which is what "enabled and
         // absent" means in the settings snapshot `super::armed` applies.
-        Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort => vec![
+        Scene::SettingsDogs
+        | Scene::SettingsNarrow
+        | Scene::SettingsDogEnv
+        | Scene::SettingsDogEnvNarrow
+        | Scene::SettingsShort => vec![
             dog_sheep(90, "otel", DogSource::BuiltIn { grants: None }, None),
             dog_sheep(91, "bark", DogSource::BuiltIn { grants: None }, Some(false)),
         ],
@@ -467,7 +471,12 @@ pub(super) fn initialize_flock(app: &mut App, which: Scene, flock: Vec<ProcessIn
     // `poll_twice`, and resending at `t0` would corrupt that last sample.
     if matches!(
         which,
-        Scene::Empty | Scene::SettingsDogs | Scene::SettingsNarrow | Scene::SettingsShort
+        Scene::Empty
+            | Scene::SettingsDogs
+            | Scene::SettingsNarrow
+            | Scene::SettingsDogEnv
+            | Scene::SettingsDogEnvNarrow
+            | Scene::SettingsShort
     ) {
         app.update(Msg::Snapshot {
             rows: flock,

@@ -130,11 +130,12 @@ impl App {
                 editor.handle(key);
                 None
             }
-            KeyPress::NextField | KeyPress::PrevField => match editor.step(key == KeyPress::PrevField)
-            {
-                Outcome::Refused(refusal) => Some(refusal.sentence(editor.key().as_str())),
-                Outcome::Moved | Outcome::Submitted => None,
-            },
+            KeyPress::NextField | KeyPress::PrevField => {
+                match editor.step(key == KeyPress::PrevField) {
+                    Outcome::Refused(refusal) => Some(refusal.sentence(editor.key().as_str())),
+                    Outcome::Moved | Outcome::Submitted => None,
+                }
+            }
             KeyPress::TextApply => match editor.submit() {
                 Outcome::Refused(refusal) => Some(refusal.sentence(editor.key().as_str())),
                 Outcome::Moved => None,

@@ -5,6 +5,7 @@
 //! before the tick would already read as expired by the time the frame is
 //! drawn. State with no expiry of its own goes in [`super::prepare`].
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use shep_client::RequestError;
@@ -22,7 +23,8 @@ use crate::lookout::frames::scene::Scene;
 use crate::lookout::pane::ListedDog;
 use crate::lookout::secrets::{SecretRow, SecretsModel, Source};
 use crate::lookout::view::fixtures::{
-    entries_dog_schema, entries_dog_section, select_field, select_node,
+    entries_dog_schema, entries_dog_section, open_adopted_dog_row, select_field, select_node,
+    select_setting,
 };
 use crate::secret_readers::Reader;
 use crate::style::{StyleLevel, StyleSource};
@@ -202,6 +204,16 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
             app.update(Msg::Settings {
                 result: Ok(settings_snapshot_with_dog_drift()),
             });
+        }
+        Scene::SettingsDogEnv | Scene::SettingsDogEnvNarrow => {
+            app.update(Msg::Key(KeyPress::Settings));
+            app.update(Msg::Settings {
+                result: Ok(settings_snapshot_with_dog_drift()),
+            });
+            open_adopted_dog_row(app, "otel", Path::new("/usr/local/bin/shep-otel"));
+            // On `+ new`, the last row under `env`, so the keys above it are
+            // inside the view.
+            select_setting(app, "dog.otel.env+");
         }
         Scene::SettingsShort => {
             app.update(Msg::Key(KeyPress::Settings));

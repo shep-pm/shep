@@ -61,10 +61,10 @@ impl Settings {
         if dog.adopted_path.is_some() {
             rows.push(SettingsRow::DogEnv(index));
             if !self.folded.contains(&env_fold_key(&dog.name)) {
-                rows.extend(
-                    (0..dog.env_keys.len())
-                        .map(|key| SettingsRow::DogEnvKey { dog: index, index: key }),
-                );
+                rows.extend((0..dog.env_keys.len()).map(|key| SettingsRow::DogEnvKey {
+                    dog: index,
+                    index: key,
+                }));
                 rows.push(SettingsRow::DogEnvNew(index));
             }
         }

@@ -78,7 +78,10 @@ fn removing_the_last_key_leaves_env_out_of_the_entry() {
     fixtures::select_setting(&mut app, "dog.otel.env.PADDOCK_KEY");
     assert_eq!(app.update(Msg::Key(KeyPress::Remove)), Effect::None);
     let text = app.settings().unwrap().pending().unwrap().text.to_string();
-    assert!(text.contains("remove PADDOCK_KEY from otel's env"), "{text}");
+    assert!(
+        text.contains("remove PADDOCK_KEY from otel's env"),
+        "{text}"
+    );
     assert!(!text.contains("hunter2"), "{text}");
     let (write, then) = confirm(&mut app);
     let _ = land(&mut app, &paths.daemon_config, write, then);
@@ -118,7 +121,10 @@ fn a_key_the_file_already_holds_is_refused_by_name_with_the_editor_open() {
 
     assert_eq!(effect, Effect::None);
     let notice = app.notice().expect("the refusal is said").to_string();
-    assert!(notice.contains("PADDOCK_KEY is already in otel's env"), "{notice}");
+    assert!(
+        notice.contains("PADDOCK_KEY is already in otel's env"),
+        "{notice}"
+    );
     assert!(
         app.settings().unwrap().env_typing().is_some(),
         "the editor stays open for the operator to fix the key"
@@ -132,12 +138,19 @@ fn e_on_a_key_opens_an_empty_editor_and_an_empty_value_removes_the_key() {
 
     fixtures::select_setting(&mut app, "dog.otel.env.PADDOCK_KEY");
     let _ = app.update(Msg::Key(KeyPress::Edit));
-    let (dog, editor) = app.settings().unwrap().env_typing().expect("the editor opens");
+    let (dog, editor) = app
+        .settings()
+        .unwrap()
+        .env_typing()
+        .expect("the editor opens");
     assert_eq!(dog, "otel");
     assert_eq!(editor.value().as_str(), "", "no value is ever read back");
     let _ = app.update(Msg::Key(KeyPress::TextApply));
     let text = app.settings().unwrap().pending().unwrap().text.to_string();
-    assert!(text.contains("remove PADDOCK_KEY from otel's env"), "{text}");
+    assert!(
+        text.contains("remove PADDOCK_KEY from otel's env"),
+        "{text}"
+    );
     let (write, then) = confirm(&mut app);
     let _ = land(&mut app, &paths.daemon_config, write, then);
 
@@ -267,6 +280,9 @@ fn the_pending_env_edit_prints_lengths_and_never_the_text() {
 
     let _ = app.update(Msg::Key(KeyPress::TextApply));
     let armed = format!("{:?}", app.settings().unwrap().pending.as_ref().unwrap());
-    assert!(armed.contains("[(\"PADDOCK_KEY\", Some(EnvValue(<7 bytes>)))]"), "{armed}");
+    assert!(
+        armed.contains("[(\"PADDOCK_KEY\", Some(EnvValue(<7 bytes>)))]"),
+        "{armed}"
+    );
     assert!(!armed.contains("hunter2"), "{armed}");
 }

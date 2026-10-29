@@ -40,6 +40,8 @@ pub(super) fn prepare_scene(app: &mut App, which: Scene) {
             | Scene::CfgDrift
             | Scene::SettingsDogs
             | Scene::SettingsNarrow
+            | Scene::SettingsDogEnv
+            | Scene::SettingsDogEnvNarrow
             | Scene::SettingsShort
             | Scene::SheepPane
             | Scene::SheepPaneCpuOnly

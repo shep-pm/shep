@@ -65,12 +65,12 @@ pub use self::secrets::{
     secrets_model,
 };
 pub use self::settings::{
-    BARK_RECORDED, OTEL_BARE, OTEL_WITH_ENV, app_in_settings, app_in_settings_at, app_in_settings_on, app_in_settings_on_dog,
-    app_in_settings_on_enabled_dog, app_in_settings_with_a_dog_open,
-    app_in_settings_with_control,
-    app_in_settings_with_dog_drift, app_in_settings_with_shadowed_style,
-    app_in_settings_with_silent_dog, app_in_settings_with_silent_style, home_with, open_adopted_dog_row,
-    open_dog_row, select_setting, setting_set, setting_unset, settings_over, settings_snapshot,
+    BARK_RECORDED, OTEL_BARE, OTEL_WITH_ENV, app_in_settings, app_in_settings_at,
+    app_in_settings_on, app_in_settings_on_dog, app_in_settings_on_enabled_dog,
+    app_in_settings_with_a_dog_open, app_in_settings_with_control, app_in_settings_with_dog_drift,
+    app_in_settings_with_shadowed_style, app_in_settings_with_silent_dog,
+    app_in_settings_with_silent_style, home_with, open_adopted_dog_row, open_dog_row,
+    select_setting, setting_set, setting_unset, settings_over, settings_snapshot,
 };
 pub use self::sheep_pane::{
     app_in_sheep_pane, app_in_sheep_pane_on_a_draining_sheep, app_in_sheep_pane_on_a_stopped_sheep,
