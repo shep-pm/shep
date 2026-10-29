@@ -384,7 +384,9 @@ impl<R: ProcessRunner> Actor<R> {
             .map(|(id, slot)| {
                 (
                     *id,
-                    is_at_rest(&slot.entry) || self.is_parked_dog(&slot.entry),
+                    is_at_rest(&slot.entry)
+                        || self.is_parked_dog(&slot.entry)
+                        || (slot.entry.dog.is_some() && slot.entry.status == ProcStatus::Errored),
                     to_info(&slot.entry, &self.smits),
                 )
             });
