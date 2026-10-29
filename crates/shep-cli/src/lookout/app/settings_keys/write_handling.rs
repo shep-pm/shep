@@ -15,6 +15,10 @@ impl App {
         if settings.pending.is_none() && settings.toggle_fold() {
             return Effect::None;
         }
+        if settings.pending.is_none() && settings.env_editor_at_cursor().is_some() {
+            self.open_env_editor();
+            return Effect::None;
+        }
         let opens_editor = settings.pending.is_none() && settings.editor_at_cursor().is_some();
         if !opens_editor && !settings.is_armed() {
             return Effect::None;
@@ -78,6 +82,22 @@ impl App {
                     toml,
                     authority,
                 })
+            }
+            // Not a socket request: the entry lives in `shep.toml`, which the
+            // event loop writes, as it does for a dog pane's close.
+            Some(Pending::DogEnvArmed {
+                name, edits, text, ..
+            }) => {
+                settings.pending = Some(Pending::Sent { text, ticket });
+                Effect::WriteDogEnv {
+                    write: DogEnvWrite {
+                        name,
+                        edits,
+                        ticket,
+                        authority,
+                    },
+                    then: Vec::new(),
+                }
             }
             other => {
                 settings.pending = other;

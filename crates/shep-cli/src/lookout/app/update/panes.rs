@@ -173,12 +173,16 @@ impl App {
             Ok(()) => {
                 self.notice = Some(Notice::info(format!(
                     "{name}: its env is written. A dog already up keeps the one it started with; \
-                     `shep disable {name}` then `shep enable {name}` gives it this one"
+                     `shep daemon reload`, or `shep disable {name}` then `shep enable {name}`, \
+                     gives it this one"
                 )));
-                if then.is_empty() {
-                    Effect::None
-                } else {
+                if !then.is_empty() {
                     Effect::SendAll(then)
+                } else if self.settings().is_some() {
+                    // The key list on the settings screen reads the file.
+                    self.reread_settings()
+                } else {
+                    Effect::None
                 }
             }
             Err(message) => {

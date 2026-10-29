@@ -67,6 +67,9 @@ impl App {
                     if self.disarm_settings_candidate() {
                         return Effect::None;
                     }
+                    if self.open_env_editor() {
+                        return Effect::None;
+                    }
                     return self.fold_dog_row();
                 }
                 // An armed candidate eats this too, on the same terms as

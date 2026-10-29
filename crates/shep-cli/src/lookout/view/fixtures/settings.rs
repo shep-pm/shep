@@ -262,9 +262,12 @@ pub fn open_dog_row(app: &mut App, name: &str) {
 /// waiting. The one `shep.toml` state that has a grants checklist to draw.
 pub const BARK_RECORDED: &str = "[daemon]\nenabled_dogs = [\"bark\"]\n\n[daemon.dog_grants.bark]\ngranted = [\"flock.read\"]\nwaiting = [\"events:log.\"]\nreviewed = true\n";
 
-/// `otel` adopted and enabled, its entry a bare path with one `env` key set, and
-/// a comment above it that a write has to keep.
+/// `otel` adopted and enabled, its entry a table with one `env` key set.
 pub const OTEL_WITH_ENV: &str = "[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs.otel]\npath = \"/usr/local/bin/shep-otel\"\nenv = { PADDOCK_KEY = \"hunter2\" }\n";
+
+/// `otel` adopted and enabled as a bare path, with comments around its entry
+/// that a write has to keep and a second dog beside it.
+pub const OTEL_BARE: &str = "# which dogs run\n[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs]\n# the exporter\notel = \"/usr/local/bin/shep-otel\" # built from main\nzulu = \"/opt/zulu\"\n";
 
 /// A shep home whose `shep.toml` is `text`, and the paths under it. The tempdir
 /// is returned so a test that writes through those paths keeps its home alive.

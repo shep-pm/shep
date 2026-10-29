@@ -65,7 +65,7 @@ pub use self::secrets::{
     secrets_model,
 };
 pub use self::settings::{
-    BARK_RECORDED, OTEL_WITH_ENV, app_in_settings, app_in_settings_at, app_in_settings_on, app_in_settings_on_dog,
+    BARK_RECORDED, OTEL_BARE, OTEL_WITH_ENV, app_in_settings, app_in_settings_at, app_in_settings_on, app_in_settings_on_dog,
     app_in_settings_on_enabled_dog, app_in_settings_with_a_dog_open,
     app_in_settings_with_control,
     app_in_settings_with_dog_drift, app_in_settings_with_shadowed_style,
