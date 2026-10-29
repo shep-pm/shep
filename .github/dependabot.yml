@@ -39,6 +39,11 @@ updates:
     labels: [dependencies]
     cooldown:
       default-days: 7
+    # notify 8.2.0 declares fsevent-sys "4.0.0"; the 4.1.0 floor pin is
+    # deliberate. Drop this once a notify release declares fsevent-sys 5.
+    ignore:
+      - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
 
   # benches/ is its own workspace with its own lockfile, excluded from the
   # root one so a bench-only dependency can never reach a shipped binary,
@@ -57,6 +62,11 @@ updates:
     labels: [dependencies]
     cooldown:
       default-days: 7
+    # notify 8.2.0 declares fsevent-sys "4.0.0"; the 4.1.0 floor pin is
+    # deliberate. Drop this once a notify release declares fsevent-sys 5.
+    ignore:
+      - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /web
