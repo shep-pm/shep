@@ -219,6 +219,7 @@ mod tests {
                 dog: None,
                 lambs: None,
                 last_exit: None,
+                spawn_failure: None,
                 smit: None,
                 instance: None,
                 handshook: None,

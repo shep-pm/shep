@@ -365,8 +365,8 @@ impl<R: ProcessRunner> Actor<R> {
     /// that name.
     ///
     /// The name lookup reads names rather than markers: what it rules out is
-    /// two live processes under one name, dog or not. A dog entry at rest is
-    /// the exception, since no process stands behind it: it spawns in place
+    /// two live processes under one name, dog or not. An errored or at-rest dog
+    /// has no process behind it: it spawns in place
     /// from `app` and `source`, which win over what it was registered with.
     pub(super) fn do_start_dog(
         &mut self,
@@ -384,7 +384,9 @@ impl<R: ProcessRunner> Actor<R> {
             .map(|(id, slot)| {
                 (
                     *id,
-                    is_at_rest(&slot.entry) || self.is_parked_dog(&slot.entry),
+                    is_at_rest(&slot.entry)
+                        || self.is_parked_dog(&slot.entry)
+                        || (slot.entry.dog.is_some() && slot.entry.status == ProcStatus::Errored),
                     to_info(&slot.entry, &self.smits),
                 )
             });
@@ -479,11 +481,17 @@ impl<R: ProcessRunner> Actor<R> {
                             failures.push(format!("{name}: {err}"));
                             // `Fresh` only: the emit announces a transition,
                             // and a repeat restore transitions nothing.
-                            if let Registration::Fresh(info) = self.register_without_spawning(
+                            if let Registration::Fresh(mut info) = self.register_without_spawning(
                                 &app,
                                 ProcStatus::Errored,
                                 dog.clone(),
                             ) {
+                                info.spawn_failure = Some(format!("{name}: {err}"));
+                                self.sheep
+                                    .get_mut(&info.id)
+                                    .expect("just registered")
+                                    .entry
+                                    .spawn_failure = info.spawn_failure.clone();
                                 self.emit(ProcessEventKind::Errored, info, true);
                             }
                         }

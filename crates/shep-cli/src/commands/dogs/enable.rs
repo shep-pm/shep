@@ -301,6 +301,12 @@ pub(super) async fn enable_after_config(
     };
     match client.request(request).await {
         Ok(Response::DogStarted(info)) => {
+            if info.status == shep_core::status::ProcStatus::Errored {
+                let message = info.spawn_failure.unwrap_or_else(|| {
+                    format!("{name} could not be started; see `shep bleats {name}` or its log files for why")
+                });
+                return streams.fail(ExitCode::SpawnFailed, &message);
+            }
             warn_if_unenforced(streams, name, source, client.daemon().protocol);
             emit_dog_action(
                 streams,
@@ -336,6 +342,53 @@ mod tests {
             source: DogSource::BuiltIn { grants: None },
             env: BTreeMap::default(),
         }
+    }
+
+    // The fake shepherd's socket needs wall-clock I/O deadlines.
+    #[tokio::test]
+    async fn enable_that_leaves_a_dog_errored_reports_failure() {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            for fmt in [Format::Table, Format::Json] {
+                for reason in [Some("bark: spawn refused".to_string()), None] {
+                    let has_reason = reason.is_some();
+                    let dir = tempfile::tempdir().unwrap();
+                    let path = shep_client::testing::control_address(dir.path());
+                    let (client, _requests) =
+                        shep_client::testing::fake_client_answering(&path, move |_| {
+                            let info = shep_core::protocol::ProcessInfo::builder(
+                                3,
+                                "bark",
+                                shep_core::status::ProcStatus::Errored,
+                            )
+                            .spawn_failure(reason.clone())
+                            .build();
+                            Response::DogStarted(info)
+                        })
+                        .await;
+                    let mut out = Vec::new();
+                    let mut err = Vec::new();
+                    let mut streams = streams(&mut out, &mut err);
+                    streams.fmt = fmt;
+
+                    let code =
+                        enable_after_config(&mut streams, "bark", &built_in(), Some(&client)).await;
+
+                    assert_eq!(code, ExitCode::SpawnFailed);
+                    assert!(out.is_empty(), "a failed enable prints no success row");
+                    let error = String::from_utf8(err).unwrap();
+                    assert!(error.contains("bark"), "{error}");
+                    if has_reason {
+                        assert!(error.contains("bark: spawn refused"), "{error}");
+                    }
+                    if fmt == Format::Json {
+                        let json: serde_json::Value = serde_json::from_str(&error).unwrap();
+                        assert_eq!(json["error"]["code"], "spawn_failed");
+                    }
+                }
+            }
+        })
+        .await
+        .expect("enable must report an errored reply");
     }
 
     /// Exact strings, not a "contains no secret" probe: the output is half

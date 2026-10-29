@@ -274,6 +274,7 @@ mod tests {
                         code: Some(1),
                         signal: None,
                     }),
+                    spawn_failure: None,
                     // A non-ASCII marker on purpose: this snapshot is what
                     // pins the encoding a subscriber reads, and a smit is
                     // the one field on this row a third party writes.
