@@ -121,18 +121,10 @@ fn write_channel_dog(dir: &TempDir) -> PathBuf {
     )
 }
 
-/// An adopted dog whose `shep.toml` entry is the bare path string `shep adopt`
-/// writes, named in `channel_dogs`: the row a `shep daemon reload` hands on
-/// still names the binary it adopted, and still says it asked for the channel.
+/// The carried PID distinguishes handover from registration after a stop-and-start.
 ///
-/// The row is what lookout's dog pane reads. `ConfigPane::shows_env` is keyed
-/// on `DogSource::Adopted`'s path, so a successor that reported this dog as a
-/// built-in, or as no dog at all, would open a pane with no env rows to walk
-/// onto. The carried pid is what makes this a handover and not a re-register:
-/// the stop arm would have rebuilt the row from `shep.toml` and proved nothing
-/// about the blob.
-///
-/// Unix only, as the whole handover is: Windows has no `execve`.
+/// Lookout uses the row's adopted path to enable env rows.
+/// Unix only: Windows has no `execve`.
 #[cfg(unix)]
 #[test]
 fn an_adopted_channel_dog_crosses_a_reload_with_its_path_and_its_channel_ask() {

@@ -50,17 +50,10 @@ pub fn app_in_dog_pane() -> App {
     app
 }
 
-/// A dashboard with an adopted channel dog's pane open, opened the way an
-/// operator opens it: `e` on the flock row the shepherd reports for a dog
-/// `shep.toml` adopted with a bare `[daemon.adopted_dogs]` path and named in
-/// `channel_dogs`.
+/// An adopted channel dog's pane opened through its flock row.
 ///
-/// The row is the whole point of this fixture. `DogSource::Adopted`'s path is
-/// the only thing that carries the pane's probe to the dog's own binary, and
-/// [`crate::lookout::pane::ConfigPane::shows_env`] is keyed on it, so a row
-/// reporting any other source opens a pane with no env rows to walk onto.
-/// `env_keys` is empty because a bare path entry sets no `env`: the pane's
-/// job here is to offer the row that adds the first one.
+/// The adopted path enables env rows. A bare path entry supplies no env keys,
+/// so the pane must offer the row that adds the first key.
 pub fn app_in_adopted_channel_dog_pane_from_row() -> App {
     let kelpie = ProcessInfo::builder(91, "kelpie", ProcStatus::Online)
         .pid(Some(91_000))
