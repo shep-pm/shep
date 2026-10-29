@@ -36,7 +36,7 @@ go for the full argument. The commit that removed them names itself.
 - [Output and first run](#output-and-first-run) (9)
 - [Config overrides](#config-overrides) (9)
 - [Dog config store](#dog-config-store) (1)
-- [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (5)
+- [CI flakes, and the log line a stop could lose](#ci-flakes-and-the-log-line-a-stop-could-lose) (6)
 - [CI and releases](#ci-and-releases) (3)
 - [Config pane writes](#config-pane-writes) (1)
 - [Boot ordering](#boot-ordering) (8)
@@ -2102,6 +2102,16 @@ The test itself was then run on the maintainer's 14-core Mac, `test(two_concurre
 The fix is a second rendezvous rather than a wider margin. Each racer sends its verdict into its sibling's `mpsc` inbox and blocks on its own with `RACER_VERDICT_BOUND` (10s), and the winner holds its `RunningDaemon` across that wait, so the loser's `PidfileLock::acquire` always lands while the winner still holds. std's `Barrier` has no timed wait, which is why the rendezvous is a channel pair rather than a second barrier. The sender table is dropped once the racers are spawned, so every sender belongs to a racer and one that panics before reporting closes its sibling's inbox at once: measured at 155us to failure rather than 10s of deadline. The iteration count stays at 25, because a real lock regression reaches the clobber on some attempts only, and the rendezvous does not make that rarer.
 
 `verified crates/shep-daemon/src/boot/socket.rs (two_concurrent_boots_on_a_stale_socket_exactly_one_wins, swap_verdicts, RACER_VERDICT_BOUND), crates/shep-daemon/src/boot/mod.rs (PidfileLock::acquire before bind_socket), crates/shep-daemon/src/boot/pidfile.rs (the_adopted_pidfile_arm_does_not_release_the_lock), crates/shep-core/src/transport.rs (Listener::bind)`
+
+### A completeness case that waits on a pump's own time bound is a claim about the machine, so it runs in the serial tier
+
+`both_pipes_filled_to_capacity_drain_inside_the_budget` failed on a CI leg with 747 of 1024 lines landed in one log file, and its message blamed `FINAL_DRAIN` while the case waits `PUMP_DEADLINE`. The message now names `PUMP_DEADLINE`, and the case runs only in the serial `slow` job, named in the workflow's skip list and in the `slow` filter the way `two_concurrent_boots` is. `FINAL_DRAIN` stays at 100ms, `final_drain` is untouched, and the fill and the wait are not relaxed.
+
+**Why:** the case drops the harness's `logs` receiver, so the pump takes its `logs_tx.closed()` exit and drains the two full pipes inside `FINAL_DRAIN`. When that expires `final_drain` gives up and logs at `debug!`, so the missing bytes are gone and no wait in the test can see them. Widening `PUMP_DEADLINE` therefore cannot help: the pump has stopped reading before the test starts to poll. The case's doc comment says it asserts completeness rather than scheduling speed, but because the pump stops at `FINAL_DRAIN`, "did every line land" is a claim about how fast the machine drains 64 KiB per pipe in 100ms. That is the `slow` tier's own criterion, and its quiet serial Linux leg is where the fill is worth checking.
+
+Widening `FINAL_DRAIN` and serving `ctl_rx` from inside the drain are both ruled out above: 500ms is a quarter of `REPORT_DEADLINE`, and a `ReportFds` answered mid-drain would name descriptors the pump is about to close. Making the budget a parameter that the test sets generously would pass the case without testing the 100ms production bound, and was not built. The CI leg that failed is assumed to be Linux, from the 64 KiB per pipe in the payload; macOS pipes hold 16 KiB.
+
+`verified crates/shep-daemon/src/tokio_runner/tests/handover.rs (both_pipes_filled_to_capacity_drain_inside_the_budget), crates/shep-daemon/src/tokio_runner/pump.rs (final_drain), .github/workflows/test.yml (the slow job's -E filter)`
 
 ## CI and releases
 
