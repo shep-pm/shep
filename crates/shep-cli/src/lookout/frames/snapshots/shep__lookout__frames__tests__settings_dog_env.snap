@@ -27,8 +27,8 @@ shep lookout   /home/ada/.shep                                                  
     source            /usr/local/bin/shep-otel                     shep adopt writes it                                 
     channel           no                                           the dog's own answer                                 
     ▾ env                                                                                                               
-      PADDOCK_KEY     <set>                                        needs shep daemon reload                             
-      RUST_LOG        <set>                                        needs shep daemon reload                             
+      PADDOCK_KEY     <set>                                        its next start reads it                              
+      RUST_LOG        <set>                                        its next start reads it                              
 >     + new                                                                                                             
   ... 3 below                                                                                                           
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled

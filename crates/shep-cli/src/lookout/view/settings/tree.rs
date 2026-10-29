@@ -306,8 +306,9 @@ const DOG_SECTION_COST: &str = "dogs.toml, it is told";
 const ENV_VALUE: &str = "<set>";
 
 /// What changing a dog's env key costs. A dog already up keeps the env it
-/// started with, so the shepherd has to build its app again.
-const DOG_ENV_COST: &str = "needs shep daemon reload";
+/// started with, and a reload does not restart it, so only its next start
+/// reads the change.
+const DOG_ENV_COST: &str = "its next start reads it";
 
 /// A secret's cell: whether there is one, never the value. The same rule
 /// `view::pane::layout::mask_secret` applies to a dog pane's row.

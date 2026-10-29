@@ -327,9 +327,9 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       <code>e</code> on a key opens an empty editor, <code>d</code> removes
       it, and <code>+ new</code> asks for the key, then the value; a key the
       file holds is refused by name. A built-in dog shows no <code>env</code>.
-      A dog already up keeps the <code>env</code> it started with:{" "}
-      <code>shep daemon reload</code>, or <code>shep disable</code> then{" "}
-      <code>shep enable</code>, gives it the new one.
+      A dog already up keeps the <code>env</code> it started with, and a
+      reload leaves it running: <code>shep disable</code> then{" "}
+      <code>shep enable</code> gives it the new one.
     </p>
     <Callout variant="careful">
       A <code>[daemon]</code> edit only ever changes <code>shep.toml</code>.

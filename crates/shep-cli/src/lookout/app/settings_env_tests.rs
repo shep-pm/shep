@@ -190,7 +190,10 @@ fn a_landed_write_says_a_running_dog_keeps_its_env_and_how_to_give_it_the_new_on
     assert_eq!(effect, Effect::LoadSettings, "the key list reads the file");
     let notice = app.notice().unwrap().to_string();
     assert!(notice.contains("keeps the one it started with"), "{notice}");
-    assert!(notice.contains("`shep daemon reload`"), "{notice}");
+    assert!(
+        !notice.contains("daemon reload"),
+        "a reload leaves a running dog on its old env: {notice}"
+    );
     assert!(
         notice.contains("`shep disable otel` then `shep enable otel`"),
         "{notice}"

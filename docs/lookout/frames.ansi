@@ -1124,8 +1124,8 @@ An adopted dog open, with the cursor on its env row. Each key reads <set> and ne
     source            /usr/local/bin/shep-otel                     shep adopt writes it                                 [0m
     channel           no                                           the dog's own answer                                 [0m
 [0m[38;5;245m    ▾ env                                                                                                               [0m
-      PADDOCK_KEY     <set>                                        needs shep daemon reload                             [0m
-      RUST_LOG        <set>                                        needs shep daemon reload                             [0m
+      PADDOCK_KEY     <set>                                        its next start reads it                              [0m
+      RUST_LOG        <set>                                        its next start reads it                              [0m
 >     + new                                                                                                             [0m
 [0m[38;5;245m  ... 3 below[0m                                                                                                           [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
