@@ -5,7 +5,7 @@
 
 mod action_gate;
 pub(super) mod key_hint;
-mod status_layout;
+pub(super) mod status_layout;
 #[cfg(test)]
 mod testing;
 pub(super) use action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL};

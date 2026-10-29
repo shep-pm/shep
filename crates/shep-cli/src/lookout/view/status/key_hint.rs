@@ -2,6 +2,7 @@ use super::super::super::app::{App, Body, Control, Grouping};
 use super::super::super::keyvalue::{Field, KeyValues};
 use super::super::super::pane::ConfigPane;
 use super::super::super::textbox::TextBox;
+use super::status_layout::TEXT_ENTRY_HINT;
 
 /// The key hint once the link is [`Link::Lost`](crate::lookout::app::Link::Lost).
 ///
@@ -68,18 +69,17 @@ pub(in crate::lookout::view) fn editor_label(editor: &KeyValues, noun: &str) -> 
 /// editor names keys of its own; the other two are one-field boxes and keep
 /// the bar's standing sentence.
 pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
-    const ONE_FIELD: &str = "enter applies   esc cancels";
     if let Some(list) = pane.list() {
         return match list.typing()? {
             (Some(index), buffer) => Some(Editor {
                 label: format!("{} {index} =", list.key()),
                 buffer,
-                keys: ONE_FIELD,
+                keys: TEXT_ENTRY_HINT,
             }),
             (None, buffer) => Some(Editor {
                 label: format!("new {} element", list.key()),
                 buffer,
-                keys: ONE_FIELD,
+                keys: TEXT_ENTRY_HINT,
             }),
         };
     }
@@ -95,13 +95,13 @@ pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
         return Some(Editor {
             label: format!("new {entries} key"),
             buffer: &typing.buffer,
-            keys: ONE_FIELD,
+            keys: TEXT_ENTRY_HINT,
         });
     }
     Some(Editor {
         label: format!("editing {}", typing.key),
         buffer: &typing.buffer,
-        keys: ONE_FIELD,
+        keys: TEXT_ENTRY_HINT,
     })
 }
 

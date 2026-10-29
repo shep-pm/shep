@@ -1,5 +1,6 @@
 use super::super::super::app::{App, Body, Control, InputMode, Link, Settings, retrying_sentence};
 use super::super::super::pane_bleats::BleatsPane;
+use super::super::super::textbox::TextBox;
 use super::super::cell;
 use super::super::flock::fit;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
@@ -9,6 +10,16 @@ use super::key_hint::{
 };
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+
+/// What a text-entry bar names beside its buffer: the one-field editors that
+/// apply on enter and cancel on escape. Each bar adds its own gap before it.
+pub(in crate::lookout::view) const TEXT_ENTRY_HINT: &str = "enter applies   esc cancels";
+
+/// A text-entry bar: `label`, two columns of gap, the buffer, then `keys`
+/// three columns after it.
+fn entry_line(buffer: &TextBox, label: &str, keys: &str, width: u16) -> String {
+    buffer.line(&format!("{label}  "), &format!("   {keys}"), width)
+}
 
 /// The banner, when there is one. `None` while the link is live.
 ///
@@ -90,7 +101,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // dashboard's name filter, and falling through would label the
         // dashboard's own untouched query as this pane's match.
         (
-            buffer.line("match  ", "   enter applies   esc cancels", left_width),
+            entry_line(buffer, "match", TEXT_ENTRY_HINT, left_width),
             palette.attention(),
         )
     } else if let Some(buffer) = app
@@ -102,7 +113,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // here would label the dashboard's untouched query as this feed's
         // match.
         (
-            buffer.line("match  ", "   enter applies   esc cancels", left_width),
+            entry_line(buffer, "match", TEXT_ENTRY_HINT, left_width),
             palette.attention(),
         )
     } else if let Some(editor) = app.config_pane().and_then(pane_editor) {
@@ -111,11 +122,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // `InputMode::Text`, and a bar that fell through would label this the
         // dashboard's own query. The keys come from the slot, not from here.
         (
-            editor.buffer.line(
-                &format!("{}  ", editor.label),
-                &format!("   {}", editor.keys),
-                left_width,
-            ),
+            entry_line(editor.buffer, &editor.label, editor.keys, left_width),
             palette.attention(),
         )
     } else if let Some(action) = app.action().filter(|a| !a.sent) {
@@ -127,9 +134,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // `InputMode::Text`, but this types into a `shep.toml` key, not
         // `App::filter`.
         (
-            buffer.line(
-                &format!("editing {label}  "),
-                "   enter applies   esc cancels",
+            entry_line(
+                buffer,
+                &format!("editing {label}"),
+                TEXT_ENTRY_HINT,
                 left_width,
             ),
             palette.attention(),
@@ -148,11 +156,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // pane's own free-text branch above gives: this shares
         // `InputMode::Text` with `App::filter` too.
         (
-            editor.buffer.line(
-                &format!("{}  ", editor.label),
-                &format!("   {}", editor.keys),
-                left_width,
-            ),
+            entry_line(editor.buffer, &editor.label, editor.keys, left_width),
             palette.attention(),
         )
     } else if let Some(key) = secrets_armed(app) {
@@ -170,9 +174,10 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // would erase a half-typed query. The cursor is a character, not
         // a style: the ANSI gallery renders foregrounds only.
         (
-            app.filter_box().line(
-                "filter  ",
-                "   enter applies   esc cancels   ctrl-c quits",
+            entry_line(
+                app.filter_box(),
+                "filter",
+                &format!("{TEXT_ENTRY_HINT}   ctrl-c quits"),
                 left_width,
             ),
             palette.attention(),
