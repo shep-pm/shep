@@ -49,7 +49,7 @@ struct LookoutTerminal {
 
 impl LookoutTerminal {
     fn open(home: &Path) -> Self {
-        let binary = shep(home).get_program().to_owned();
+        let binary = env!("CARGO_BIN_EXE_shep");
         let shell = format!(
             "stty cols {TERMINAL_COLS} rows {TERMINAL_ROWS}; exec \"$LOOKOUT_TEST_BINARY\" --home \"$SHEP_HOME\" lookout"
         );
