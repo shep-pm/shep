@@ -64,8 +64,13 @@ updates:
       default-days: 7
     # notify 8.2.0 declares fsevent-sys "4.0.0"; the 4.1.0 floor pin is
     # deliberate. Drop this once a notify release declares fsevent-sys 5.
+    #
+    # json5 1.x does not build here (#1311); shep-core is written against the
+    # 0.4 line. Drop this once 1.x is adopted deliberately.
     ignore:
       - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
+      - dependency-name: json5
         update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
