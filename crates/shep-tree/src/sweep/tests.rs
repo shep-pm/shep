@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 
 use super::*;
@@ -13,8 +13,8 @@ fn snapshot_of(pids: &[u32]) -> LambSnapshot {
     LambSnapshot::new(pids.iter().copied(), at(1_700_000_000))
 }
 
-/// A [`LambSweep`] that touches no process: one survivor list per look, one
-/// born list per walk, and a ledger of every signal.
+/// A [`LambSweep`] that touches no process: canned snapshots per root, one
+/// survivor list per look, one born list per walk, and a ledger of signals.
 ///
 /// [`LambSweep::survivors`] and [`LambSweep::descendants`] replay their
 /// scripts and repeat the last entry once one runs out. A delivered `Kill`
@@ -22,6 +22,8 @@ fn snapshot_of(pids: &[u32]) -> LambSnapshot {
 /// unless the pid is [`Scripted::unkillable`].
 #[derive(Debug, Default)]
 struct Scripted {
+    fresh: HashMap<u32, LambSnapshot>,
+    last: HashMap<u32, LambSnapshot>,
     survivors: Vec<Vec<u32>>,
     born: Vec<Vec<u32>>,
     refusing: HashSet<u32>,
@@ -33,6 +35,18 @@ struct Scripted {
 }
 
 impl Scripted {
+    /// The snapshot [`LambSweep::snapshot`] answers for `root_pid`.
+    fn with_fresh(mut self, root_pid: u32, snapshot: LambSnapshot) -> Self {
+        self.fresh.insert(root_pid, snapshot);
+        self
+    }
+
+    /// The snapshot [`LambSweep::last_snapshot`] answers for `root_pid`.
+    fn with_last(mut self, root_pid: u32, snapshot: LambSnapshot) -> Self {
+        self.last.insert(root_pid, snapshot);
+        self
+    }
+
     /// One survivor list per [`LambSweep::survivors`] call, in order.
     fn with_survivors(mut self, script: Vec<Vec<u32>>) -> Self {
         self.survivors = script;
@@ -85,8 +99,8 @@ impl Scripted {
 }
 
 impl LambSweep for Scripted {
-    fn snapshot(&self, _root_pid: u32) -> LambSnapshot {
-        LambSnapshot::default()
+    fn snapshot(&self, root_pid: u32) -> LambSnapshot {
+        self.fresh.get(&root_pid).cloned().unwrap_or_default()
     }
 
     fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32> {
@@ -126,6 +140,32 @@ impl LambSweep for Scripted {
                 .unwrap_or_else(PoisonError::into_inner)
                 .insert(pid);
         }
+        Ok(())
+    }
+
+    fn last_snapshot(&self, root_pid: u32) -> Option<LambSnapshot> {
+        self.last.get(&root_pid).cloned()
+    }
+}
+
+/// A [`LambSweep`] that overrides only the required methods, so a test can
+/// read the trait's own answers.
+struct Bare;
+
+impl LambSweep for Bare {
+    fn snapshot(&self, _root_pid: u32) -> LambSnapshot {
+        LambSnapshot::default()
+    }
+
+    fn survivors(&self, _snapshot: &LambSnapshot) -> Vec<u32> {
+        Vec::new()
+    }
+
+    fn descendants(&self, _roots: &[u32]) -> LambSnapshot {
+        LambSnapshot::default()
+    }
+
+    fn signal(&self, _pid: u32, _signal: LambSignal) -> Result<(), SignalError> {
         Ok(())
     }
 }
@@ -431,12 +471,28 @@ fn a_snapshot_keeps_each_pid_once() {
 }
 
 // A table with no stats tick answers `last_snapshot` with `None`, so a sweep
-// over it fakes nothing.
+// over it fakes nothing. `Scripted` overrides it, so this one overrides
+// nothing at all.
 #[test]
 fn a_table_with_no_tick_of_its_own_answers_last_snapshot_with_none() {
-    let table = Scripted::default();
-    let sweep: &dyn LambSweep = &table;
+    let sweep: &dyn LambSweep = &Bare;
     assert_eq!(sweep.last_snapshot(7), None);
+    assert_eq!(sweep.snapshot(7), LambSnapshot::default());
+}
+
+#[test]
+fn the_scripted_sweep_answers_with_its_canned_snapshots_behind_dyn() {
+    let fresh = LambSnapshot::new([7], at(200));
+    let last = LambSnapshot::new([8], at(100));
+    let scripted = Scripted::default()
+        .with_fresh(1, fresh.clone())
+        .with_last(1, last.clone());
+    let sweep: &dyn LambSweep = &scripted;
+
+    assert_eq!(sweep.snapshot(1), fresh);
+    assert_eq!(sweep.last_snapshot(1), Some(last));
+    assert!(sweep.snapshot(2).is_empty());
+    assert_eq!(sweep.last_snapshot(2), None);
 }
 
 // Real sleeps, because `run_blocking` is the real-clock driver of the same

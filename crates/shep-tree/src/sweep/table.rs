@@ -233,10 +233,11 @@ mod tests {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use std::os::unix::process::ExitStatusExt as _;
-    use std::process::Command;
+    use std::io::{BufRead as _, BufReader};
+    use std::os::unix::process::{CommandExt as _, ExitStatusExt as _};
+    use std::process::{Command, Stdio};
 
-    use nix::sys::signal::Signal;
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     use super::unix::{lamb_pid, survivors_in};
@@ -258,25 +259,64 @@ mod tests {
         }
     }
 
-    /// A `sh` child of this test process, killed and reaped on drop.
-    struct Child(std::process::Child);
+    /// A `sh` child of this test process, in a group of its own, killed and
+    /// reaped on drop.
+    ///
+    /// Its own group is what makes the drop enough: a lamb `sh` backgrounded
+    /// outlives `sh`, and killing the group ends it instead of leaving it.
+    struct Child {
+        child: std::process::Child,
+        pid: u32,
+    }
 
     impl Child {
         /// A child running `script`, which keeps it alive.
         fn running(script: &str) -> Self {
-            let child = Command::new("/bin/sh")
+            Self::wrapped(Self::spawn(script, false))
+        }
+
+        /// A child backgrounding `lamb`, returned once `lamb` is running.
+        ///
+        /// `sh` prints `ready` only after it has forked `lamb`, so reading
+        /// that line is what makes a walk that expects `lamb` deterministic.
+        fn with_lamb(lamb: &str) -> Self {
+            let mut child = Self::spawn(&format!("{lamb} & echo ready; wait"), true);
+            let stdout = child.stdout.take().expect("spawned with stdout piped");
+            let line = BufReader::new(stdout)
+                .lines()
+                .next()
+                .expect("the child prints one line")
+                .expect("the pipe stays open");
+            assert_eq!(line, "ready", "the readiness handshake");
+            Self::wrapped(child)
+        }
+
+        fn spawn(script: &str, piped: bool) -> std::process::Child {
+            Command::new("/bin/sh")
                 .arg("-c")
                 .arg(script)
+                .stdin(Stdio::null())
+                .stdout(if piped {
+                    Stdio::piped()
+                } else {
+                    Stdio::inherit()
+                })
+                .process_group(0)
                 .spawn()
-                .expect("/bin/sh is present on every platform this module compiles for");
-            Self(child)
+                .expect("/bin/sh is present on every platform this module compiles for")
+        }
+
+        fn wrapped(child: std::process::Child) -> Self {
+            let pid = child.id();
+            Self { child, pid }
         }
     }
 
     impl Drop for Child {
         fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
+            let group = Pid::from_raw(-i32::try_from(self.pid).expect("a pid `kill` can name"));
+            let _ = kill(group, Signal::SIGKILL);
+            let _ = self.child.wait();
         }
     }
 
@@ -373,8 +413,8 @@ mod tests {
 
     #[test]
     fn a_walk_names_the_child_and_the_generation_below_it() {
-        let child = Child::running("sleep 30 & wait");
-        let child_pid = child.0.id();
+        let child = Child::with_lamb("sleep 30");
+        let child_pid = child.pid;
         let table = ProcessTable::new();
 
         let below_us = table.descendants(&[std::process::id()]);
@@ -410,7 +450,7 @@ mod tests {
     #[test]
     fn the_real_table_refuses_init_our_own_pid_and_a_child_younger_than_the_snapshot() {
         let child = Child::running("sleep 30");
-        let child_pid = child.0.id();
+        let child_pid = child.pid;
         let started = read_pids(&[child_pid])
             .get(&child_pid)
             .and_then(|reading| reading.started)
@@ -436,10 +476,10 @@ mod tests {
     #[test]
     fn a_reaped_child_is_no_longer_a_survivor() {
         let mut child = Child::running("sleep 30");
-        let child_pid = child.0.id();
+        let child_pid = child.pid;
         let snapshot = LambSnapshot::new([child_pid], ProcInstant::now());
-        let _ = child.0.kill();
-        let _ = child.0.wait();
+        let _ = child.child.kill();
+        let _ = child.child.wait();
 
         assert!(ProcessTable::new().survivors(&snapshot).is_empty());
     }
@@ -448,11 +488,11 @@ mod tests {
     fn term_reaches_the_one_pid_it_names() {
         let mut child = Child::running("sleep 30");
 
-        let delivered = ProcessTable::new().signal(child.0.id(), LambSignal::Term);
+        let delivered = ProcessTable::new().signal(child.pid, LambSignal::Term);
         if delivered.is_err() {
-            let _ = child.0.kill();
+            let _ = child.child.kill();
         }
-        let status = child.0.wait().expect("the child is ours to reap");
+        let status = child.child.wait().expect("the child is ours to reap");
 
         assert_eq!(delivered, Ok(()));
         assert_eq!(status.signal(), Some(Signal::SIGTERM as i32));
