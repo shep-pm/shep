@@ -163,3 +163,35 @@ fn terminal_output_recognizes_a_label_whose_spaces_are_unchanged_cells() {
         screen.contents()
     );
 }
+
+#[test]
+fn terminal_output_tracks_redraws_across_fragmented_escape_and_utf8_sequences() {
+    use ratatui::backend::{Backend as _, CrosstermBackend};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Style;
+
+    let blank = Buffer::empty(Rect::new(0, 0, TERMINAL_COLS, TERMINAL_ROWS));
+    let mut flock = blank.clone();
+    flock.set_string(0, 0, "kelpie", Style::default());
+    let mut bytes = Vec::new();
+    CrosstermBackend::new(&mut bytes)
+        .draw(blank.diff(&flock).into_iter())
+        .unwrap();
+    let mut screen = TerminalScreen::default();
+    screen.process(&bytes);
+    assert!(screen.contents().contains("kelpie"));
+
+    let mut pane = blank;
+    pane.set_string(0, 0, "🐕 env", Style::default());
+    bytes.clear();
+    CrosstermBackend::new(&mut bytes)
+        .draw(flock.diff(&pane).into_iter())
+        .unwrap();
+    for byte in bytes {
+        screen.process(&[byte]);
+    }
+    let contents = screen.contents();
+    assert!(contents.contains("🐕 env"), "{contents:?}");
+    assert!(!contents.contains("kelpie"), "{contents:?}");
+}
