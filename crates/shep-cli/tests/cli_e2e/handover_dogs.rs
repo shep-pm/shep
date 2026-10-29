@@ -115,7 +115,7 @@ fn write_channel_dog(dir: &TempDir) -> PathBuf {
         dir,
         "shep-kelpie.sh",
         &format!(
-            "#!/bin/sh\ncase \"$1\" in\n  --version) printf 'shep-fixture 0.1.0\\nshep-channel: true\\n'; exit 0 ;;\n  --*) exit 0 ;;\nesac\n{}while :; do sleep 1 & wait $!; done\n",
+            "#!/bin/sh\ncase \"$1\" in\n  --version) printf 'shep-fixture 0.1.0\\nshep-channel: true\\n'; exit 0 ;;\n  --schema) printf '%s\\n' '{{\"type\":\"object\",\"properties\":{{\"ratio\":{{\"type\":\"number\"}}}}}}'; exit 0 ;;\n  --*) exit 0 ;;\nesac\n{}while :; do sleep 1 & wait $!; done\n",
             record_pid_line(dir)
         ),
     )
@@ -127,7 +127,7 @@ fn write_channel_dog(dir: &TempDir) -> PathBuf {
 /// Unix only: Windows has no `execve`.
 #[cfg(unix)]
 #[test]
-fn an_adopted_channel_dog_crosses_a_reload_with_its_path_and_its_channel_ask() {
+fn an_adopted_channel_dogs_pane_draws_env_before_and_after_handover() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let dog = write_channel_dog(&dir);
@@ -169,6 +169,7 @@ fn an_adopted_channel_dog_crosses_a_reload_with_its_path_and_its_channel_ask() {
         "a bare `[daemon.adopted_dogs]` path and a name in `channel_dogs` is an adopted \
          channel dog: {kelpie}"
     );
+    super::lookout_terminal::assert_adopted_dog_pane_draws_env(home);
 
     let reloaded = shep(home).arg("daemon").arg("reload").output().unwrap();
     assert_success(&reloaded);
@@ -200,6 +201,7 @@ fn an_adopted_channel_dog_crosses_a_reload_with_its_path_and_its_channel_ask() {
         ),
         "the successor supervises the carried dog as the same adopted dog: {carried}"
     );
+    super::lookout_terminal::assert_adopted_dog_pane_draws_env(home);
 
     graceful_kill(home);
 }
