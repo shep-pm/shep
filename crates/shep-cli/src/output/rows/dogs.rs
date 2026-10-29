@@ -123,6 +123,7 @@ impl Render for DogRows {
     }
 
     const JSON_ONLY: &'static [&'static str] = &[
+        "spawn_failure",
         // A sheep concept: a dog is supervised, never grouped by fold.
         "fold",
         // Absolute paths, wider than the rest of the table together.
