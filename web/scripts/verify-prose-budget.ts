@@ -197,7 +197,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised again from 4160 for the env rows an adopted dog's pane carries:
   // which file closing the pane writes them to, that they read `<set>`, and
   // that a built-in dog has no entry to hold one (#1250).
-  "lookout-config": 4250,
+  //
+  // Raised again from 4250 for the same env rows on the settings screen: the
+  // keys, the two edit keys, the refused duplicate and the reload a running
+  // dog needs (#1286). The dog pane's paragraph shrank to point at them.
+  "lookout-config": 4300,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line

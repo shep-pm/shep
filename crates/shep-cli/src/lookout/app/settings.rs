@@ -55,6 +55,19 @@ pub enum SettingsRow {
         /// Which permission.
         index: usize,
     },
+    /// The `env` table under an adopted dog's header, beside its keys. It
+    /// folds.
+    DogEnv(usize),
+    /// One key of the dog at `dog`'s `env`, by its place in
+    /// [`DogView::env_keys`]. Its value is never held here.
+    DogEnvKey {
+        /// Which dog.
+        dog: usize,
+        /// Which key, in key order.
+        index: usize,
+    },
+    /// The row under a dog's `env` keys that adds one.
+    DogEnvNew(usize),
     /// One row of the dog at `dog`'s own config tree, by its place in that
     /// tree's [`ConfigPane::rows`].
     DogField {
@@ -359,6 +372,28 @@ pub(super) enum Pending {
         name: String,
         /// The section, edit applied. Redacted in every `{:?}`.
         toml: DogSectionToml,
+        /// The question this candidate reads as, rendered once at arm time.
+        text: String,
+        /// When it was armed. Only an armed edit expires.
+        at: Instant,
+    },
+    /// The key/value editor a dog's `env` row opens, in force while it owns
+    /// [`InputMode::Text`]. `Debug` prints two character counts and no text
+    /// (IR-41).
+    TypingEnv {
+        /// Which dog's `env` the editor writes to.
+        dog: String,
+        /// The two fields and which holds the cursor.
+        editor: KeyValues,
+    },
+    /// [`App::confirm_setting`]'s `Enter` for a dog's `env`: one or more keys
+    /// set or removed, sent through [`Effect::WriteDogEnv`]. The values are
+    /// [`EnvValue`]s, which print a byte count, and leave with the effect.
+    DogEnvArmed {
+        /// Which dog.
+        name: String,
+        /// Each key with its value, or [`None`] to remove it.
+        edits: Vec<(String, Option<EnvValue>)>,
         /// The question this candidate reads as, rendered once at arm time.
         text: String,
         /// When it was armed. Only an armed edit expires.

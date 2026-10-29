@@ -36,6 +36,9 @@ impl App {
             // A dog's own field is typed, not cycled: `Enter` opens its editor,
             // which is the same door a typed key of `shep.toml` opens.
             SettingsRow::DogField { .. }
+            | SettingsRow::DogEnv(_)
+            | SettingsRow::DogEnvKey { .. }
+            | SettingsRow::DogEnvNew(_)
             | SettingsRow::Table(_)
             | SettingsRow::Entry { .. }
             | SettingsRow::AddEntry(_) => Effect::None,
@@ -80,7 +83,13 @@ impl App {
     /// entry from `shep.toml`. An armed candidate eats the key first, like
     /// every other key here.
     pub(super) fn remove_setting(&mut self) -> Effect {
-        if self.disarm_settings_candidate() || self.authorize_write().is_none() {
+        if self.disarm_settings_candidate() {
+            return Effect::None;
+        }
+        if self.arm_env_removal() {
+            return Effect::None;
+        }
+        if self.authorize_write().is_none() {
             return Effect::None;
         }
         let now = self.now;

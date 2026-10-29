@@ -83,6 +83,12 @@ fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
         SettingsRow::DogGrant { dog, index } => {
             format!("dog.{}.grant.{}", settings.dog(dog)?.name, index)
         }
+        SettingsRow::DogEnv(dog) => format!("dog.{}.env", settings.dog(dog)?.name),
+        SettingsRow::DogEnvKey { dog, index } => {
+            let dog = settings.dog(dog)?;
+            format!("dog.{}.env.{}", dog.name, dog.env_keys.get(index)?)
+        }
+        SettingsRow::DogEnvNew(dog) => format!("dog.{}.env+", settings.dog(dog)?.name),
         SettingsRow::DogField { dog, row } => {
             let pane = settings.dog_tree(dog)?.pane()?;
             let PaneRow::Field(field) = pane.rows().get(row)?.to_owned() else {
@@ -189,29 +195,23 @@ pub fn app_in_settings_with_a_dog_open() -> App {
     app
 }
 
-/// [`app_in_settings_with_control`] with an adopted dog's row opened: the same
-/// two reads [`open_dog_row`] feeds, with the schema a probe of its binary
-/// would answer with. An adopted dog is the one whose `shep.toml` entry can
-/// set an `env`, so it is the one whose pane carries `env` rows.
-pub fn app_in_settings_with_an_adopted_dog_open() -> App {
-    let mut app = app_with(flock_of(3, 0), plain());
-    app.set_control_for_tests(Control::Allowed);
-    app.update(Msg::Key(KeyPress::Settings));
-    app.update(Msg::Settings {
-        result: Ok(settings_snapshot_with_dogs(vec![DogView::adopted(
-            "otel",
-            true,
-            Path::new("/usr/local/bin/shep-otel"),
-        )])),
-    });
-    select_setting(&mut app, "dog.otel");
+/// [`open_dog_row`] for an adopted dog whose binary is `path`: the schema its
+/// probe would answer with is one `ratio` number, and its section says
+/// `ratio = 1.5`.
+///
+/// # Panics
+///
+/// If `name` is not a row of the open settings screen.
+#[track_caller]
+pub fn open_adopted_dog_row(app: &mut App, name: &str, path: &Path) {
+    select_setting(app, &format!("dog.{name}"));
     let effect = app.update(Msg::Key(KeyPress::Edit));
     if !matches!(effect, Effect::LoadDogPane { .. }) {
         panic!("opening a dog row asks for its schema, got {effect:?}");
     }
     app.update(Msg::DogPane {
-        name: "otel".to_owned(),
-        adopted_path: Some(PathBuf::from("/usr/local/bin/shep-otel")),
+        name: name.to_owned(),
+        adopted_path: Some(path.to_path_buf()),
         env_keys: Vec::new(),
         result: Ok(serde_json::json!({
             "type": "object",
@@ -220,13 +220,12 @@ pub fn app_in_settings_with_an_adopted_dog_open() -> App {
     });
     app.update(Msg::Replied {
         sent: Sent::DogSection {
-            name: "otel".to_owned(),
+            name: name.to_owned(),
         },
         result: Ok(Response::DogSection {
             toml: "ratio = 1.5\n".to_owned().into(),
         }),
     });
-    app
 }
 
 /// `e` on the row of the dog named `name`, then the two reads that opening
@@ -262,6 +261,13 @@ pub fn open_dog_row(app: &mut App, name: &str) {
 /// `bark` enabled with a grants record: `flock.read` held, `events:log.` left
 /// waiting. The one `shep.toml` state that has a grants checklist to draw.
 pub const BARK_RECORDED: &str = "[daemon]\nenabled_dogs = [\"bark\"]\n\n[daemon.dog_grants.bark]\ngranted = [\"flock.read\"]\nwaiting = [\"events:log.\"]\nreviewed = true\n";
+
+/// `otel` adopted and enabled, its entry a table with one `env` key set.
+pub const OTEL_WITH_ENV: &str = "[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs.otel]\npath = \"/usr/local/bin/shep-otel\"\nenv = { PADDOCK_KEY = \"hunter2\" }\n";
+
+/// `otel` adopted and enabled as a bare path, with comments around its entry
+/// that a write has to keep and a second dog beside it.
+pub const OTEL_BARE: &str = "# which dogs run\n[daemon]\nenabled_dogs = [\"otel\"]\n\n[daemon.adopted_dogs]\n# the exporter\notel = \"/usr/local/bin/shep-otel\" # built from main\nzulu = \"/opt/zulu\"\n";
 
 /// A shep home whose `shep.toml` is `text`, and the paths under it. The tempdir
 /// is returned so a test that writes through those paths keeps its home alive.

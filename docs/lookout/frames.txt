@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all sixty-seven scenes through the same coloured
+frames.ansi renders all sixty-nine scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same sixty-seven scenes through the flattened NO_COLOR palette
+renders the same sixty-nine scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -1059,6 +1059,74 @@ shep lookout   /home/ada/.shep 2 in the flock
                                              
                                              
                                              
+esc/s close   j/k select   g… control enabled
+
+=== settings_dog_env  (120x30) ===
+An adopted dog open, with the cursor on its env row. Each key reads <set> and never its value, and + new asks for the next key. A built-in dog has no env row, since it has no entry in shep.toml to hold one.
+
+shep lookout   /home/ada/.shep                                                                            2 in the flock
+                                                                                                                        
+  ... 4 above                                                                                                           
+    log_level         warn                            shep.toml    needs shep daemon reload                             
+    max_cron_sleep    30s                             shep.toml    needs shep daemon reload                             
+    socket            /home/ada/.shep/run/shep.sock   shep.toml    needs the shepherd stopped and started               
+  ▾ whistle                                                                                                             
+    allow_control     false                           the default  needs shep whistle restarted                         
+  ▾ secrets                                                                                                             
+    allow_read        false                           the default  the next command reads it                            
+  ▾ style                                                                                                               
+    level             full                            shep.toml    the next command reads it                            
+  ▾ interpreters      1 entry                         shep.toml    the next command reads it                            
+    py                python3                         shep.toml    the next command reads it                            
+    + add an entry                                                                                                      
+  hosts               none                            the default  the next command reads it                            
+                                                                                                                        
+  [dogs]                                                                                                                
+  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
+  ▾ otel                                                            no       /usr/local/bin/shep-otel  online           
+    boot first        no                                           the next boot reads it                               
+    grants            nothing recorded                             its next start reads it                              
+    source            /usr/local/bin/shep-otel                     shep adopt writes it                                 
+    channel           no                                           the dog's own answer                                 
+    ▾ env                                                                                                               
+      PADDOCK_KEY     <set>                                        its next start reads it                              
+      RUST_LOG        <set>                                        its next start reads it                              
+>     + new                                                                                                             
+  ... 3 below                                                                                                           
+esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled
+
+=== settings_dog_env_narrow  (45x30) ===
+The same rows at 45 columns. The env keys keep their <set> marker and lose the apply cost and SOURCE, as the dog's other rows do.
+
+shep lookout   /home/ada/.shep 2 in the flock
+                                             
+  ... 4 above                                
+    log_level         warn        shep.toml  
+    max_cron_sleep    30s         shep.toml  
+    socket            /home/ada…  shep.toml  
+  ▾ whistle                                  
+    allow_control     false       the default
+  ▾ secrets                                  
+    allow_read        false       the default
+  ▾ style                                    
+    level             full        shep.toml  
+  ▾ interpreters      1 entry     shep.toml  
+    py                python3     shep.toml  
+    + add an entry                           
+  hosts               none        the default
+                                             
+  [dogs]                                     
+  space arms, Enter applies; e opens a dog; …
+  ▾ otel           no       online           
+    boot first        no                     
+    grants            nothing r…             
+    source            /usr/loca…             
+    channel           no                     
+    ▾ env                                    
+      PADDOCK_KEY     <set>                  
+      RUST_LOG        <set>                  
+>     + new                                  
+  ... 3 below                                
 esc/s close   j/k select   g… control enabled
 
 === settings_short  (120x14) ===

@@ -320,6 +320,17 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
       keeps its row closed and says so on it, naming <code>dogs.toml</code>.
     </p>
     <CodeBlock label="120×40, bark opened on its own row">{settingsDogOpen}</CodeBlock>
+    <p>
+      An adopted dog's row also carries an <code>env</code> table with a row
+      per key of the <code>env</code> beside its path in{" "}
+      <code>shep.toml</code>, each reading <code>&lt;set&gt;</code>.{" "}
+      <code>e</code> on a key opens an empty editor, <code>d</code> removes
+      it, and <code>+ new</code> asks for the key, then the value; a key the
+      file holds is refused by name. A built-in dog shows no <code>env</code>.
+      A dog already up keeps the <code>env</code> it started with, and a
+      reload leaves it running: <code>shep disable</code> then{" "}
+      <code>shep enable</code> gives it the new one.
+    </p>
     <Callout variant="careful">
       A <code>[daemon]</code> edit only ever changes <code>shep.toml</code>.
       The shepherd can be started with <code>SHEP_LOG_LEVEL</code>,{" "}
@@ -847,15 +858,10 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     </p>
     <p>
       Under the fields, an adopted dog's pane carries the <code>env</code> an
-      operator set beside its path in <code>shep.toml</code>: the same rows a
-      sheep's <code>process</code> tab has, <code>e</code> editing one and{" "}
-      <code>+</code> adding one, each value reading <code>&lt;set&gt;</code>{" "}
-      and its editor opening empty. <code>Esc</code> writes that half to{" "}
+      operator set beside its path in <code>shep.toml</code>, edited as on the
+      settings screen. <code>Esc</code> writes that half to{" "}
       <code>shep.toml</code> first, then sends the field edits to{" "}
-      <code>dogs.toml</code>. A built-in dog has no entry to hold an{" "}
-      <code>env</code>, so its pane shows none. A dog already up keeps the{" "}
-      <code>env</code> it started with; <code>shep disable</code> and{" "}
-      <code>shep enable</code> give it this one.
+      <code>dogs.toml</code>.
     </p>
     <p class="fine">
       <code>r</code> re-reads the section and not the schema, so a keystroke

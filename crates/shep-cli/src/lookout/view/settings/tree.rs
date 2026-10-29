@@ -243,6 +243,32 @@ fn cells(settings: &Settings, row: SettingsRow) -> Option<Cells> {
                 cost: String::new(),
             })
         }
+        SettingsRow::DogEnv(dog) => {
+            let dog = settings.dog(dog)?;
+            Some(Cells {
+                name: name_cell(1, Some(settings.is_env_open(&dog.name)), "env"),
+                value: String::new(),
+                source: String::new(),
+                cost: String::new(),
+            })
+        }
+        // A value is never held here, so a key reads `<set>` the way a secret
+        // does and the cell has nothing else it could say.
+        SettingsRow::DogEnvKey { dog, index } => {
+            let key = settings.dog(dog)?.env_keys.get(index)?;
+            Some(Cells {
+                name: name_cell(2, None, key),
+                value: ENV_VALUE.to_owned(),
+                source: String::new(),
+                cost: DOG_ENV_COST.to_owned(),
+            })
+        }
+        SettingsRow::DogEnvNew(_) => Some(Cells {
+            name: name_cell(2, None, "+ new"),
+            value: String::new(),
+            source: String::new(),
+            cost: String::new(),
+        }),
         SettingsRow::DogField { dog, row } => {
             let pane = settings.dog_tree(dog)?.pane()?;
             let pane_row = pane.rows().get(row)?.to_owned();
@@ -276,11 +302,19 @@ fn cells(settings: &Settings, row: SettingsRow) -> Option<Cells> {
 /// reload, which is what the tree's own cost column is usually deciding.
 const DOG_SECTION_COST: &str = "dogs.toml, it is told";
 
+/// What an env key's cell says: that it is set, as a secret's does.
+const ENV_VALUE: &str = "<set>";
+
+/// What changing a dog's env key costs. A dog already up keeps the env it
+/// started with, and a reload does not restart it, so only its next start
+/// reads the change.
+const DOG_ENV_COST: &str = "its next start reads it";
+
 /// A secret's cell: whether there is one, never the value. The same rule
 /// `view::pane::layout::mask_secret` applies to a dog pane's row.
 fn masked(secret: bool, raw: String) -> String {
     if secret && raw != UNSET {
-        "<set>".to_owned()
+        ENV_VALUE.to_owned()
     } else {
         raw
     }

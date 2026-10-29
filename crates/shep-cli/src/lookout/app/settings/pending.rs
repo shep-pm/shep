@@ -24,10 +24,11 @@ impl Settings {
                 Pending::Armed { text, .. }
                 | Pending::DogArmed { text, .. }
                 | Pending::DogTuneArmed { text, .. }
-                | Pending::DogSectionArmed { text, .. },
+                | Pending::DogSectionArmed { text, .. }
+                | Pending::DogEnvArmed { text, .. },
             ) => Some(SettingsPrompt { text, sent: false }),
             Some(Pending::Sent { text, .. }) => Some(SettingsPrompt { text, sent: true }),
-            Some(Pending::Typing { .. }) | None => None,
+            Some(Pending::Typing { .. } | Pending::TypingEnv { .. }) | None => None,
         }
     }
 
@@ -59,8 +60,18 @@ impl Settings {
                     | Pending::DogArmed { .. }
                     | Pending::DogTuneArmed { .. }
                     | Pending::DogSectionArmed { .. }
+                    | Pending::DogEnvArmed { .. }
             )
         )
+    }
+
+    /// The dog and the editor of an in-flight `env` edit, or `None`.
+    #[must_use]
+    pub fn env_typing(&self) -> Option<(&str, &KeyValues)> {
+        match &self.pending {
+            Some(Pending::TypingEnv { dog, editor }) => Some((dog.as_str(), editor)),
+            _ => None,
+        }
     }
 
     /// The label and buffer of an in-flight free-text edit, or `None`.

@@ -9,6 +9,12 @@ impl App {
     /// [`SettingEdit::Unset`], anything else [`SettingEdit::Set`], and the
     /// next `Enter` sends it. `TextAbandon` leaves the screen open.
     pub(in crate::lookout::app) fn on_settings_text_key(&mut self, key: KeyPress) -> Effect {
+        if self
+            .settings()
+            .is_some_and(|settings| settings.env_typing().is_some())
+        {
+            return self.on_settings_env_key(key);
+        }
         let now = self.now;
         let Some(settings) = self.settings_mut() else {
             return Effect::None;

@@ -4,7 +4,7 @@
 //! frozen banner, the drop notice and the refusal all live here.
 
 mod action_gate;
-mod key_hint;
+pub(super) mod key_hint;
 mod status_layout;
 #[cfg(test)]
 mod testing;

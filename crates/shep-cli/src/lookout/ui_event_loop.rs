@@ -3,7 +3,6 @@ use super::app::{App, Body, Effect, InputMode, Msg, Pasted, RevealedValue, RowKe
 use super::batch_dispatch::{enable_refusal_message, send_batch};
 use super::pane::SheepDogEntry;
 use super::wiring::HEARTBEAT;
-use crate::commands::shep_toml::{ShepToml, ShepTomlError};
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{Stream, StreamExt};
@@ -11,7 +10,6 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::layout::Rect;
 use shep_core::paths::ShepPaths;
-use shep_core::protocol::EnvValue;
 use std::path::Path;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -487,18 +485,7 @@ where
                 let path = paths.daemon_config.clone();
                 let for_msg = write.name.clone();
                 let ticket = write.ticket;
-                let handle = tokio::task::spawn_blocking(move || {
-                    ShepToml::try_edit::<(), ShepTomlError>(&path, |cfg| {
-                        for (key, value) in &write.edits {
-                            cfg.set_adopted_dog_env(
-                                &write.name,
-                                key,
-                                value.as_ref().map(EnvValue::as_str),
-                            )?;
-                        }
-                        Ok(())
-                    })
-                });
+                let handle = tokio::task::spawn_blocking(move || write.apply(&path));
                 inflight.push(Box::pin(async move {
                     let result = join_blocking(handle).await;
                     Msg::DogEnvWritten {
