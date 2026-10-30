@@ -85,15 +85,14 @@ pub(crate) struct DefaultsAddress {
 /// The dog is the longest name in `dogs` that `segments` starts with and
 /// that `defaults` follows, so the address names no sheep and no dog beyond
 /// the one it opens with.
-pub(crate) fn defaults_of(
-    segments: &[String],
-    dogs: &BTreeSet<String>,
-) -> Option<DefaultsAddress> {
+pub(crate) fn defaults_of(segments: &[String], dogs: &BTreeSet<String>) -> Option<DefaultsAddress> {
     let dog = dogs
         .iter()
         .filter(|name| {
             let parts: Vec<&str> = name.split('.').collect();
-            segments.get(parts.len()).is_some_and(|next| next == DEFAULTS)
+            segments
+                .get(parts.len())
+                .is_some_and(|next| next == DEFAULTS)
                 && parts == segments[..parts.len()]
         })
         .max_by_key(|name| name.split('.').count())?;

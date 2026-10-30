@@ -8,6 +8,7 @@ use shep_client::Client;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{DogSectionToml, Request, Response};
 
+use super::defaults;
 use super::plan::schema_refusal;
 use super::{Flags, Plan, Verb, Write, WriteRefusal};
 use crate::cli::Format;
@@ -236,6 +237,10 @@ async fn send(
             name: name.to_string(),
             key: key.clone(),
         },
+        Write::DogDefaults { dog, table, .. } => Request::SetDogDefaults {
+            dog: dog.clone(),
+            table: Some(table.clone()),
+        },
         Write::DogSection { toml, .. } => Request::SetDogConfig {
             name: name.to_string(),
             toml: DogSectionToml::from(toml.clone()),
@@ -271,9 +276,9 @@ async fn send(
             );
             Ok(pending.then_some(pending_key).into_iter().collect())
         }
-        Ok(Response::SheepDogSettingsSet { .. }) | Ok(Response::DogConfigSet { .. }) => {
-            Ok(Vec::new())
-        }
+        Ok(Response::SheepDogSettingsSet { .. })
+        | Ok(Response::DogConfigSet { .. })
+        | Ok(Response::DogDefaultsSet { .. }) => Ok(Vec::new()),
         Ok(_other) => Err(unexpected_response(streams)),
         Err(err) => Err(client_error(streams, &err)),
     }
@@ -331,6 +336,10 @@ pub(super) async fn holder_unchanged(
                 Err(code) => return Err(code),
             }
         }
+        Write::DogDefaults { dog, before, .. } => {
+            let now = defaults::read_default(client, streams, dog).await?;
+            !table_moved(before, &now)
+        }
         Write::SheepDogTable { dog, before, .. } | Write::DropSheepDogTable { dog, before } => {
             let config = match copy::read_config(client, streams, name).await {
                 Ok(config) => config,
@@ -385,7 +394,7 @@ pub(super) fn holder_moved(verb: Verb, name: &str, path: &str, write: &Write) ->
 /// write stands in for is what decides whether `name` is a dog or a sheep.
 fn holder_of(write: &Write) -> Holder {
     match write {
-        Write::DogSection { .. } => Holder::Dog,
+        Write::DogSection { .. } | Write::DogDefaults { .. } => Holder::Dog,
         _other => Holder::Sheep,
     }
 }
@@ -394,14 +403,16 @@ fn holder_of(write: &Write) -> Holder {
 /// it is a per-sheep table.
 ///
 /// `None` is a sheep's own field, which is no dog's settings and so no dog's
-/// to validate.
+/// to validate, and a dog's defaults, which are no table the dog reads whole.
 fn dog_in<'a>(write: &'a Write, name: &'a str) -> Option<(&'a str, Option<&'a str>)> {
     match write {
         Write::SheepDogTable { dog, .. } | Write::DropSheepDogTable { dog, .. } => {
             Some((dog.as_str(), Some(name)))
         }
         Write::DogSection { .. } => Some((name, None)),
-        Write::SheepField { .. } | Write::ResetSheepField { .. } => None,
+        Write::SheepField { .. } | Write::ResetSheepField { .. } | Write::DogDefaults { .. } => {
+            None
+        }
     }
 }
 
@@ -409,6 +420,7 @@ fn dog_in<'a>(write: &'a Write, name: &'a str) -> Option<(&'a str, Option<&'a st
 fn holder_phrase(name: &str, write: &Write) -> String {
     match write {
         Write::DogSection { .. } => format!("`{name}`'s section"),
+        Write::DogDefaults { dog, .. } => format!("`{dog}`'s defaults"),
         Write::SheepDogTable { dog, .. } | Write::DropSheepDogTable { dog, .. } => {
             format!("`{name}`'s table for `{dog}`")
         }
