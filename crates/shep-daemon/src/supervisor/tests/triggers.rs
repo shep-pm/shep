@@ -4,7 +4,32 @@
 //! its own row: delivered, refused for want of a channel, or skipped as a
 //! reload drainee.
 
+use super::action_fixtures::{
+    ACTION_WINDOW, actor_with_an_open_channel, sent_action, settle_action, trigger_action,
+};
 use super::*;
+
+// --- Custom actions: one selector in, one row per matched sheep out ---
+
+/// Reads one trigger's whole answer, failing rather than hanging if it
+/// never comes. A request that armed a wait nothing resolves never answers.
+async fn triggered(
+    answer: oneshot::Receiver<Result<Vec<ActionReply>, SupervisorError>>,
+) -> Result<Vec<ActionReply>, SupervisorError> {
+    tokio::time::timeout(ACTION_WINDOW, answer)
+        .await
+        .expect("a trigger reported nothing within the window")
+        .expect("the trigger's reply channel was dropped")
+}
+
+/// One expected row, spelled out at the call site.
+fn row(id: u32, name: &str, outcome: ActionOutcome) -> ActionReply {
+    ActionReply {
+        id,
+        name: name.to_string(),
+        outcome,
+    }
+}
 
 /// Registers one more `Online` sheep under `name`, holding `to_child` as
 /// its shepherd-channel sender, and hands back its id. Direct because the

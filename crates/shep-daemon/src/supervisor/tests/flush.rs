@@ -4,6 +4,7 @@
 //! still holding would land in the truncated file. Instances sharing one path
 //! have to be flushed together even when the selector names only one of them.
 
+use super::action_fixtures::{FailingPumpRunner, PUMP_REFUSAL, REFUSING_SHEEP, SilentPumpRunner};
 use super::*;
 
 /// Fails if a flush skips a matched sheep's pump, reaches a sheep the

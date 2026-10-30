@@ -4,6 +4,9 @@
 //! cannot take effect underneath a running process parks as pending rather than
 //! being applied.
 
+use super::config_fixtures::{
+    APPLY_FIRST_PID, actor_over, apply_config, declared_app, established,
+};
 use super::*;
 
 /// Additive is the default because a Flockfile arrives from the app's own

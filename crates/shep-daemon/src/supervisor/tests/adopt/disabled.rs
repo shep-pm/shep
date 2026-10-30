@@ -1,6 +1,9 @@
 //! The disabled mark across a handover: the snapshot writes it and an
 //! adopting successor reads it back.
 
+use super::super::adopt_fixtures::{
+    AdoptingRunner, STAND_IN_SPAWN_PID, carried, counters, daemon_fds, without_handles,
+};
 use super::*;
 
 /// Fails if the snapshot stops reading the mark off the actor, so a

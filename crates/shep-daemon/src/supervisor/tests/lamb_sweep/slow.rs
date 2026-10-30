@@ -11,6 +11,7 @@ use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 
+use super::super::adopt_fixtures::flock_until;
 use super::*;
 use crate::extras::{Extras, LivenessReport};
 use crate::limits::sample::{MemorySampler as _, SysinfoSampler, TreeIndex};
