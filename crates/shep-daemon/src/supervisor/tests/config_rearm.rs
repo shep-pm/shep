@@ -5,7 +5,7 @@
 //! must not be reported as parked.
 
 use super::config_fixtures::{
-    APPLY_FIRST_PID, actor_over, apply_config, declared_app, established,
+    APPLY_FIRST_PID, actor_over, apply_config, blue_env_file, declared_app, established,
 };
 use super::*;
 
@@ -117,16 +117,11 @@ async fn a_breach_measured_under_a_since_raised_ceiling_does_not_restart() {
 async fn a_second_load_of_the_same_file_keeps_the_first_loads_parked_config() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
-    let file = || {
-        let mut file = AppConfig::minimal("web", "./srv");
-        file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-        declared_app(file, &["name", "script", "env"])
-    };
 
-    let first = apply_config(&mut actor, vec![file()], ResetDepth::None).await;
+    let first = apply_config(&mut actor, vec![blue_env_file()], ResetDepth::None).await;
     assert_eq!(first[0].pending, vec!["env".to_string()]);
 
-    let second = apply_config(&mut actor, vec![file()], ResetDepth::None).await;
+    let second = apply_config(&mut actor, vec![blue_env_file()], ResetDepth::None).await;
 
     assert_eq!(
         actor.sheep[&0]

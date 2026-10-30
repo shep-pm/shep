@@ -8,7 +8,9 @@ use super::*;
 
 #[cfg(unix)]
 use super::adopt_fixtures::without_handles;
-use super::config_fixtures::{actor_over, apply_config, declared_app, established};
+use super::config_fixtures::{
+    actor_over, apply_config, declared_app, established, park_env_mode_blue,
+};
 
 /// The identity this test process already runs under, the credential pair
 /// `own_user_name()` resolves to.
@@ -33,14 +35,7 @@ async fn to_info_reports_the_pending_fields_names_only() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-    apply_config(
-        &mut actor,
-        vec![declared_app(file, &["name", "script", "env"])],
-        ResetDepth::None,
-    )
-    .await;
+    park_env_mode_blue(&mut actor).await;
 
     let entry = &actor.sheep[&0].entry;
     assert!(
@@ -454,14 +449,7 @@ async fn an_abandoned_reload_leaves_the_parked_config_where_it_was() {
     let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
     actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-    apply_config(
-        &mut actor,
-        vec![declared_app(file, &["name", "script", "env"])],
-        ResetDepth::None,
-    )
-    .await;
+    park_env_mode_blue(&mut actor).await;
 
     actor.advance_reload("web", VecDeque::from([0]));
     actor.handle_reload_deadline("web", actor.reloads["web"].deadline);

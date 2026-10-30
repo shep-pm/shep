@@ -4,7 +4,9 @@
 //! restart. Until then the listing has to keep reporting the spec that is
 //! actually running.
 
-use super::config_fixtures::{APPLY_FIRST_PID, actor_over, apply_config, declared_app};
+use super::config_fixtures::{
+    APPLY_FIRST_PID, actor_over, manual_restart_web, park_env_mode_blue, park_log_paths,
+};
 use super::*;
 
 /// `spawn_replacement` carries `restarts`, `dog` and `last_exit` off the
@@ -36,14 +38,7 @@ async fn reload_promotes_pending_config() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-    apply_config(
-        &mut actor,
-        vec![declared_app(file, &["name", "script", "env"])],
-        ResetDepth::None,
-    )
-    .await;
+    park_env_mode_blue(&mut actor).await;
     assert!(
         actor.sheep[&0].entry.pending.is_some(),
         "the fixture must really park the change, or this case proves nothing"
@@ -88,36 +83,13 @@ async fn restart_promotes_pending_config() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-    apply_config(
-        &mut actor,
-        vec![declared_app(file, &["name", "script", "env"])],
-        ResetDepth::None,
-    )
-    .await;
+    park_env_mode_blue(&mut actor).await;
     assert!(
         actor.sheep[&0].entry.pending.is_some(),
         "the fixture must really park the change, or this case proves nothing"
     );
 
-    // The door `shep restart` takes on a running sheep: `begin_manual`
-    // claims the next exit and `handle_exited` respawns. The other door is
-    // `apply_immediate`'s `Restart` arm; both end in `respawn`.
-    let (reply, _answer) = oneshot::channel();
-    actor.begin_manual(
-        ProcessSelector::Name("web".to_string()),
-        ManualKind::Restart,
-        CommandOrigin::Operator,
-        ReplyKind::Info(reply),
-    );
-    actor.handle_exited(
-        0,
-        ExitOutcome {
-            code: Some(0),
-            signal: None,
-        },
-    );
+    manual_restart_web(&mut actor);
 
     let entry = &actor.sheep[&0].entry;
     assert_eq!(
@@ -145,37 +117,13 @@ async fn restart_refreshes_the_reported_log_paths_from_the_new_spec() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.out_file = Some("/var/log/moved-out.log".to_string());
-    file.err_file = Some("/var/log/moved-err.log".to_string());
-    apply_config(
-        &mut actor,
-        vec![declared_app(
-            file,
-            &["name", "script", "out_file", "err_file"],
-        )],
-        ResetDepth::None,
-    )
-    .await;
+    park_log_paths(&mut actor).await;
     assert!(
         actor.sheep[&0].entry.pending.is_some(),
         "the fixture must really park the change, or this case proves nothing"
     );
 
-    let (reply, _answer) = oneshot::channel();
-    actor.begin_manual(
-        ProcessSelector::Name("web".to_string()),
-        ManualKind::Restart,
-        CommandOrigin::Operator,
-        ReplyKind::Info(reply),
-    );
-    actor.handle_exited(
-        0,
-        ExitOutcome {
-            code: Some(0),
-            signal: None,
-        },
-    );
+    manual_restart_web(&mut actor);
 
     let after = to_info(&actor.sheep[&0].entry, &actor.smits);
     assert_eq!(
@@ -200,18 +148,7 @@ async fn a_parked_log_path_change_does_not_reach_the_listing_before_a_restart() 
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
     let logs = actor.paths.logs.clone();
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.out_file = Some("/var/log/moved-out.log".to_string());
-    file.err_file = Some("/var/log/moved-err.log".to_string());
-    apply_config(
-        &mut actor,
-        vec![declared_app(
-            file,
-            &["name", "script", "out_file", "err_file"],
-        )],
-        ResetDepth::None,
-    )
-    .await;
+    park_log_paths(&mut actor).await;
     assert!(
         actor.sheep[&0].entry.pending.is_some(),
         "the fixture must really park the change, or this case proves nothing"

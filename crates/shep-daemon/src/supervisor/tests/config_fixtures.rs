@@ -114,3 +114,53 @@ pub(super) async fn apply_config(
         .expect("the actor answers an apply before it returns")
         .expect("the fixture flock is registered")
 }
+
+/// The file the parked-config cases load: `env` set to `MODE=blue`, a key
+/// that needs a respawn to take effect.
+pub(super) fn blue_env_file() -> DeclaredApp {
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
+    declared_app(file, &["name", "script", "env"])
+}
+
+/// Load [`blue_env_file`] onto the flock, parking `env` on `web`.
+pub(super) async fn park_env_mode_blue(actor: &mut Actor<ScriptedRunner>) -> Vec<Applied> {
+    apply_config(actor, vec![blue_env_file()], ResetDepth::None).await
+}
+
+/// Load a moved `out_file` and `err_file` onto the flock, parking both on
+/// `web`.
+pub(super) async fn park_log_paths(actor: &mut Actor<ScriptedRunner>) {
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.out_file = Some("/var/log/moved-out.log".to_string());
+    file.err_file = Some("/var/log/moved-err.log".to_string());
+    apply_config(
+        actor,
+        vec![declared_app(
+            file,
+            &["name", "script", "out_file", "err_file"],
+        )],
+        ResetDepth::None,
+    )
+    .await;
+}
+
+/// Restart `web` the way `shep restart` does on a running sheep:
+/// `begin_manual` claims the next exit and `handle_exited` respawns. The
+/// other door is `apply_immediate`'s `Restart` arm; both end in `respawn`.
+pub(super) fn manual_restart_web(actor: &mut Actor<ScriptedRunner>) {
+    let (reply, _answer) = oneshot::channel();
+    actor.begin_manual(
+        ProcessSelector::Name("web".to_string()),
+        ManualKind::Restart,
+        CommandOrigin::Operator,
+        ReplyKind::Info(reply),
+    );
+    actor.handle_exited(
+        0,
+        ExitOutcome {
+            code: Some(0),
+            signal: None,
+        },
+    );
+}
