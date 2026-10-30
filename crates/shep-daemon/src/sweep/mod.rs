@@ -25,8 +25,13 @@ pub(crate) async fn sweep_lambs(
 ) -> SweepReport {
     let mut sweeper = Sweeper::new(snapshot.clone(), grace);
     loop {
-        match sweeper.step(sweep, Instant::now().into_std()) {
-            Step::Wait(duration) => tokio::time::sleep(duration).await,
+        let looked_at = Instant::now();
+        match sweeper.step(sweep, looked_at.into_std()) {
+            // The sweeper timed this wait from `looked_at`, so the look's own
+            // blocking time comes out of the sleep and the grace ends on time.
+            Step::Wait(duration) => {
+                tokio::time::sleep(duration.saturating_sub(looked_at.elapsed())).await;
+            }
             Step::Done(report) => {
                 for (pid, signal, error) in &report.refused {
                     tracing::warn!(pid, ?signal, %error, "lamb signal delivery failed");
