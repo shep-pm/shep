@@ -304,10 +304,8 @@ fn ask(
         command.process_group(0);
     }
 
-    match command.spawn() {
-        Err(err) => Err(AdoptRefusal::WillNotExec {
-            reason: err.to_string(),
-        }),
+    match spawn_probe(|| command.spawn(), std::thread::sleep) {
+        Err(refusal) => Err(refusal),
         Ok(mut child) => {
             // Started before any wait: a candidate that writes more than a
             // pipe buffer holds would otherwise block on its own `write`,
@@ -321,6 +319,37 @@ fn ask(
             kill_probe_tree(&mut child);
             let _ = child.wait();
             Ok(answer)
+        }
+    }
+}
+
+/// A writer's inherited descriptor may stay open until a concurrent fork execs.
+/// The three waits total 70ms, below the normal one-second probe budget.
+const BUSY_RETRY_DELAYS: [Duration; 3] = [
+    Duration::from_millis(10),
+    Duration::from_millis(20),
+    Duration::from_millis(40),
+];
+
+fn spawn_probe<T>(
+    mut spawn: impl FnMut() -> std::io::Result<T>,
+    mut sleep: impl FnMut(Duration),
+) -> Result<T, AdoptRefusal> {
+    let mut delays = BUSY_RETRY_DELAYS.into_iter();
+    loop {
+        match spawn() {
+            Ok(child) => return Ok(child),
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && let Some(delay) = delays.next()
+                {
+                    sleep(delay);
+                    continue;
+                }
+                return Err(AdoptRefusal::WillNotExec {
+                    reason: err.to_string(),
+                });
+            }
         }
     }
 }
