@@ -144,9 +144,7 @@ pub struct BootOptions {
 /// - [`BootError::Io`] if a boot filesystem or signal-handler step failed.
 /// - [`BootError::AlreadyRunning`] if another daemon holds the lock or answered.
 /// - [`BootError::ReadyWrite`] if the readiness line could not be written.
-/// - [`BootError::Snapshot`] if a roll exists and could not be read or parsed.
-/// - [`BootError::DogDefaults`] if `dog-defaults.json` exists and could not be
-///   read or parsed.
+/// - [`BootError::Snapshot`], [`BootError::DogDefaults`] if a store is unreadable.
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,

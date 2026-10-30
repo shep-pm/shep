@@ -3331,10 +3331,10 @@ Options:
 Change one setting of a sheep or a dog: `shep set <address> <value>`.
 
 The address is `shep get`'s and `shep copy`'s: a sheep's own field, a dog's table on that sheep, or
-the dog's own section of `dogs.toml`. Only `shep set` also takes `<dog>.defaults[.<key>]`, the
-default under every sheep's table for the dog; `shep copy` refuses it. The value is TOML, and text
-that is not TOML is the string as typed: `5` is a number, `true` is a toggle and `3s` stays `3s`.
-TOML's `nan` and `inf` are refused, because the JSON the flock carries has no cell for them.
+the dog's own section of `dogs.toml`. Only `shep set` takes `<dog>.defaults[.<key>]`, the default
+under every sheep's table for the dog. The value is TOML, and text that is not TOML is the string as
+typed: `5` is a number, `true` a toggle, `3s` stays `3s`. TOML's `nan` and `inf` are refused: the
+flock's JSON has no cell.
 
 A write that carries a dog's table is checked against the schema that dog published, and a value it
 turns down is refused with the key path it sits at. `env`, secrets, `name`, `instances` and the
