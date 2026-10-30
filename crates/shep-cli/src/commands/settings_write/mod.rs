@@ -406,10 +406,7 @@ async fn set_dog(
     segments: &[String],
     ask: &Ask<'_>,
 ) -> ExitCode {
-    let dogs = known_dogs(ask.paths)
-        .into_iter()
-        .chain(ask.flock.dogs.iter().cloned());
-    if let Some(defaults) = address::defaults_of(segments, &dogs.collect()) {
+    if let Some(defaults) = defaults_in(segments, ask.flock, ask.paths) {
         return defaults::set_defaults(client, streams, &defaults, ask).await;
     }
     let target = match resolve_dog(client, streams, segments, ask.flock, ask.paths).await {
@@ -441,6 +438,20 @@ async fn set_dog(
         }
         Err(refusal) => refusal.report(streams),
     }
+}
+
+/// The defaults address `segments` spell, if they spell one.
+///
+/// Read off the dogs the flock runs and the ones the shepherd knows, before
+/// any dog's own section is walked.
+fn defaults_in(
+    segments: &[String],
+    flock: &FlockNames,
+    paths: &ShepPaths,
+) -> Option<address::DefaultsAddress> {
+    let mut dogs = known_dogs(paths);
+    dogs.extend(flock.dogs.iter().cloned());
+    address::defaults_of(segments, &dogs)
 }
 
 /// The dog an address names.
