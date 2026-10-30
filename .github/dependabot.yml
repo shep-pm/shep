@@ -44,6 +44,10 @@ updates:
     ignore:
       - dependency-name: fsevent-sys
         update-types: [version-update:semver-major]
+      # #1313's toml 1.1.6 bump broke every Rust-compiling test.yml leg at e2c8165.
+      # Drop this once shep's planned toml 1.x migration passes those legs.
+      - dependency-name: toml
+        update-types: [version-update:semver-major]
       # croner 4 breaks shep-core's cron parsing; the ceiling in the root
       # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
       - dependency-name: croner
