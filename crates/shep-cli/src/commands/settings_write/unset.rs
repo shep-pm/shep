@@ -56,6 +56,16 @@ pub(crate) async fn unset(
         yes: args.yes,
         dry_run: args.dry_run,
     };
+    // Before any sheep name: a sheep named like a dog does not take the dog's
+    // defaults address.
+    if let Some(defaults) = defaults_in(&segments, &flock, paths) {
+        return WriteRefusal::Refused(format!(
+            "`shep unset` does not remove a key of `{dog}`'s defaults: `shep set {dog}.{DEFAULTS} \
+             <table>` writes the whole default, and `shep set {dog}.{DEFAULTS} {{}}` removes it",
+            dog = defaults.dog
+        ))
+        .report(streams);
+    }
     if let Some(name) = address::longest_in(&segments, &flock.sheep) {
         return unset_sheep(client, streams, paths, &name, &segments, &flock, flags).await;
     }
@@ -100,14 +110,6 @@ async fn unset_dog(
     flock: &FlockNames,
     flags: Flags,
 ) -> ExitCode {
-    if let Some(defaults) = defaults_in(segments, flock, paths) {
-        return WriteRefusal::Refused(format!(
-            "`shep unset` does not remove a key of `{dog}`'s defaults: `shep set {dog}.{DEFAULTS} \
-             <table>` writes the whole default, and `shep set {dog}.{DEFAULTS} {{}}` removes it",
-            dog = defaults.dog
-        ))
-        .report(streams);
-    }
     let target = match resolve_dog(client, streams, segments, flock, paths).await {
         Ok(target) => target,
         Err(code) => return code,
