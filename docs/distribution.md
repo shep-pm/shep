@@ -150,8 +150,9 @@ seven targets; `vcs` makes `shep describe` print the revision line. The
 rather than rebuilding. Scoop, Chocolatey and WinGet all install the Windows
 archive, so they ship both too. `cargo install shep` and the Homebrew
 formula are the two paths that still build without them: both compile from
-the crates.io tarball with plain cargo defaults, and `--features otel` and
-`--features vcs` are the way to have each there.
+the crates.io tarball with plain cargo defaults. `cargo install shep
+--features otel,vcs` is the way to have them; the formula takes no feature
+flag, so a Homebrew install has neither.
 
 The measured cost of `otel` is 97,216 bytes per binary (macOS, Apple
 silicon, release profile, re-measured 2026-10-14 after the channel samples

@@ -95,8 +95,8 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
       Each link redirects to the newest release. Checksums are in{" "}
       <a href="https://github.com/shep-pm/shep/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
       All seven include <code>otel</code> and <code>vcs</code>;{" "}
-      <code>cargo install shep</code> and Homebrew do not, and take{" "}
-      <code>--features otel,vcs</code>.
+      <code>cargo install shep</code> and Homebrew do not.{" "}
+      <code>cargo install shep --features otel,vcs</code> adds them.
     </p>
     <p>Or build it yourself:</p>
     <div class="terminal">
