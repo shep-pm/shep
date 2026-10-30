@@ -46,6 +46,12 @@ pub mod channel {
 /// it does not know, so it runs a config the operator did not write.
 pub const PROTOCOL_VERSION: u32 = 13;
 
+/// The first protocol version whose shepherd reads `lamb` on `Request::Signal`.
+///
+/// An older shepherd drops the key and signals the sheep itself, so a client
+/// must not send one to it.
+pub const LAMB_SIGNAL_SINCE: u32 = 13;
+
 /// The oldest protocol this build accepts from a peer.
 ///
 /// The handshake compares against this rather than [`PROTOCOL_VERSION`],
