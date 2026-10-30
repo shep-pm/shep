@@ -14,7 +14,7 @@ use serde::Serialize;
 use shep_core::barks::{Bark, SinkOutcome};
 use shep_core::protocol::{DogSource, ExitInfo, Lamb, ProcessInfo};
 
-use crate::dog::metrics::HostReading;
+use crate::host_sample::HostReading;
 
 /// Every list-shaped tool's payload: rows under a named field.
 ///
