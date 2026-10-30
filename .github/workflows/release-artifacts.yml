@@ -175,13 +175,15 @@ jobs:
           # just built, which the cross-compiled Intel macOS leg cannot do.
           # Homebrew and the .deb generate their own.
           include: LICENSE-MIT,LICENSE-APACHE,README.md
-          # `otel`, the metrics dog's OTLP exporter, ships on in every
-          # prebuilt archive (#737). `cargo install shep` and the Homebrew
-          # formula still build without it; docs/distribution.md and the web
-          # install page carry that split. It adds no dependency, and the
-          # measured delta is about 77 KiB per binary, well under the 0.25
-          # MiB ceiling #737 set.
-          features: otel
+          # `otel`, the metrics dog's OTLP exporter (#737), and `vcs`, the
+          # revision line `shep describe` prints (#345), ship on in every
+          # prebuilt archive. `cargo install shep` and the Homebrew formula
+          # still build without them; docs/distribution.md and the web
+          # install page carry that split. `vcs` adds no dependency, and the
+          # measured delta is 77,744 bytes per binary (macOS, Apple silicon,
+          # release profile, over `otel` alone), well under the 0.25 MiB
+          # ceiling #737 set for a feature.
+          features: otel,vcs
           checksum: sha256
           locked: true
           ref: refs/tags/${{ needs.resolve.outputs.tag }}
@@ -467,9 +469,9 @@ jobs:
   #
   # Unpacks the musl archives the matrix already uploaded and hands them to
   # `cargo deb --no-build`, a thirty-second repack rather than a rebuild.
-  # Because it repacks, the `otel` feature the matrix builds with is in the
-  # .deb without this job naming it: there is no second build here to pass
-  # the feature to.
+  # Because it repacks, the `otel` and `vcs` features the matrix builds with
+  # are in the .deb without this job naming them: there is no second build
+  # here to pass a feature to.
   # musl, not gnu: `depends = "$auto"` would otherwise record the builder's
   # glibc (ubuntu-latest is 24.04), refusing to install on Debian 12 or
   # Ubuntu 22.04.
