@@ -758,3 +758,25 @@ test("no dog-readme module imports anything from astro, and none reads the envir
   assert.ok(fetchSource.includes('const TOKEN_ENV_VAR = "GITHUB_TOKEN"'), fetchSource);
   assert.ok(!linksSource.includes("process.env"), "the link rewriter needs no environment at all");
 });
+
+test("the build reads SHEP_DOGS_STRICT and passes it to fetchDogPages as strict", async () => {
+  // The fetcher never reads the environment, so the deploy gate in `pages.yml`
+  // holds only while the content config compares the variable to exactly `1` and
+  // hands the result to the fourth argument of `fetchDogPages`.
+  const configSource = await readFile(new URL("../src/content.config.ts", import.meta.url), "utf8");
+  assert.equal(
+    (configSource.match(/process\.env\.SHEP_DOGS_STRICT/g) ?? []).length,
+    1,
+    "the content config reads SHEP_DOGS_STRICT once",
+  );
+  assert.match(
+    configSource,
+    /const\s+strict\s*=\s*process\.env\.SHEP_DOGS_STRICT\s*===\s*"1"\s*;/,
+    "strict is true only for exactly `1`",
+  );
+  assert.match(
+    configSource,
+    /fetchDogPages\(\s*dog\s*,\s*render\s*,\s*globalThis\.fetch\s*,\s*strict\s*\)/,
+    "strict is the fourth argument of fetchDogPages",
+  );
+});
