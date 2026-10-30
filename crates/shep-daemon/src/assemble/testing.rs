@@ -20,6 +20,7 @@ pub(super) fn test_paths() -> ShepPaths {
         overrides: PathBuf::from("/home/ada/.shep/overrides.json"),
         secrets: PathBuf::from("/home/ada/.shep/secrets.json"),
         secrets_cache: PathBuf::from("/home/ada/.shep/secrets-cache.json"),
+        dog_defaults: PathBuf::from("/home/ada/.shep/dog-defaults.json"),
     }
 }
 

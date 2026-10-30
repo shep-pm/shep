@@ -34,6 +34,7 @@ pub mod config_lock;
 pub mod destination;
 // The probe contract both sides of a dog's `--version`/`--schema` answer
 // parse: flag names, the answer grammar, the schema's secret marker key.
+pub mod dog_defaults;
 pub mod dogs;
 // The exit codes a dog shares with the CLI, so an operator reads one
 // taxonomy in `shep dogs` whichever binary exited.
