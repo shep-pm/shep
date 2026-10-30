@@ -1,11 +1,11 @@
 //! The env rows, and the pending section above them.
 //!
 //! A value never reaches the screen. A key is listed and its value renders
-//! as `<set>`, whether it is stored, filed or being typed, so a shoulder
-//! looking at the dashboard learns which keys exist and nothing else. While
-//! the shared key/value editor is open on a row, its two fields draw side by
-//! side in those same two columns, and only the field holding the cursor
-//! draws a cursor.
+//! as `<set>` once it is stored or filed, so a shoulder looking at the
+//! dashboard learns which keys exist and nothing else. While the shared
+//! key/value editor is open on a row, its two fields draw side by side in
+//! those same two columns, and only the field holding the cursor draws a
+//! cursor. The value draws as one `█` per character until `Ctrl-r`.
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -154,12 +154,13 @@ fn editor_on<'a>(pane: &'a ConfigPane, under: &str) -> Option<&'a KeyValues> {
 /// The cursor is drawn only in the field that holds it, which is how the row
 /// says which of the two the operator is typing into: the pane has no box, no
 /// highlight and no colour to spend on the difference, and the ANSI gallery
-/// renders foregrounds only.
-fn field_cell(buffer: &TextBox, focused: bool, width: u16) -> String {
+/// renders foregrounds only. An env value is a secret being typed, so
+/// `secret` draws it as blocks until the operator reveals it.
+fn field_cell(buffer: &TextBox, focused: bool, secret: bool, width: u16) -> String {
     if focused {
-        buffer.drawn(width.saturating_sub(1))
+        buffer.drawn_for(secret, width.saturating_sub(1))
     } else {
-        buffer.as_str().to_owned()
+        buffer.shown(secret)
     }
 }
 
@@ -182,8 +183,13 @@ pub(super) fn env_row_line(
     let (key_cell, value_cell) = match editor {
         None => (name.to_owned(), "(set)".to_owned()),
         Some(editor) => (
-            field_cell(editor.key(), editor.focus() == Field::Key, key_w),
-            field_cell(editor.value(), editor.focus() == Field::Value, value_w),
+            field_cell(editor.key(), editor.focus() == Field::Key, false, key_w),
+            field_cell(
+                editor.value(),
+                editor.focus() == Field::Value,
+                true,
+                value_w,
+            ),
         ),
     };
     let ground = if selected {
@@ -236,9 +242,14 @@ pub(super) fn add_env_row_line(
     let (caption, muted, value) = match editor {
         None => ("+ add a key".to_owned(), true, String::new()),
         Some(editor) => (
-            field_cell(editor.key(), editor.focus() == Field::Key, key_w),
+            field_cell(editor.key(), editor.focus() == Field::Key, false, key_w),
             false,
-            field_cell(editor.value(), editor.focus() == Field::Value, value_w),
+            field_cell(
+                editor.value(),
+                editor.focus() == Field::Value,
+                true,
+                value_w,
+            ),
         ),
     };
     // Same key-cell reservation as [`env_row_line`]: a leading space stands in
@@ -411,15 +422,46 @@ mod tests {
         let rows = rows_of(&pane);
         let row = &rows[at];
         assert!(row.contains("NEW_KEY"), "KEY is still drawn: {row:?}");
-        assert!(row.contains("hunter2"), "VALUE draws beside it: {row:?}");
+        let blocks = "\u{2588}".repeat(7);
+        assert!(!row.contains("hunter2"), "VALUE leaked: {row:?}");
+        assert!(row.contains(&blocks), "VALUE draws beside it: {row:?}");
         assert!(
-            row.find("hunter2").expect("value") > row.find("NEW_KEY").expect("key"),
+            row.find(&blocks).expect("value") > row.find("NEW_KEY").expect("key"),
             "VALUE draws in its own column, after the key column: {row:?}"
         );
         assert!(
-            row.find('\u{258f}').expect("cursor") > row.find("hunter2").expect("value"),
+            row.find('\u{258f}').expect("cursor") > row.find(&blocks).expect("value"),
             "and the cursor moved with the field: {row:?}"
         );
+    }
+
+    #[test]
+    fn an_env_value_being_typed_is_masked() {
+        let mut pane = web_pane();
+        pane.move_to_last();
+        let at = add_row_at(&pane);
+        pane.begin_env_typing();
+        type_into(&mut pane, "NEW_KEY");
+        pane.step_env_field(false);
+        type_into(&mut pane, "hunter2");
+        let row = |pane: &ConfigPane| rows_of(pane)[at].clone();
+        assert!(!row(&pane).contains("hunter2"), "{:?}", row(&pane));
+        assert!(row(&pane).contains("NEW_KEY"), "the key is not a secret");
+
+        // Back on KEY, the unfocused value is still masked.
+        pane.step_env_field(true);
+        assert!(!row(&pane).contains("hunter2"), "{:?}", row(&pane));
+        assert!(
+            row(&pane).contains(&"\u{2588}".repeat(7)),
+            "{:?}",
+            row(&pane)
+        );
+
+        pane.step_env_field(false);
+        pane.type_env_text(KeyPress::TextEdit(
+            crate::lookout::textbox::TextEdit::Reveal,
+        ));
+        assert!(row(&pane).contains("hunter2\u{258f}"), "{:?}", row(&pane));
     }
 
     /// A row the editor is open on keeps drawing where it is while the KEY

@@ -147,6 +147,40 @@ pub(super) fn secret_dog_pane_with_an_edit() -> ConfigPane {
     pane
 }
 
+/// A dog with a `token` string field, `x-shep-secret` when `secret`, holding
+/// `ab12cd34`, with `ef56gh78` typed into its editor and not applied.
+fn dog_pane_typing(secret: bool) -> ConfigPane {
+    let mut token = serde_json::json!({ "type": "string" });
+    if secret {
+        token["x-shep-secret"] = serde_json::json!(true);
+    }
+    let schema = serde_json::json!({ "properties": { "token": token } });
+    let mut pane = ConfigPane::dog(
+        "watch".into(),
+        None,
+        schema,
+        "token = \"ab12cd34\"\n".into(),
+        Vec::new(),
+    );
+    pane.move_to_key("token");
+    pane.begin_typing();
+    for c in "ef56gh78".chars() {
+        pane.type_char(c);
+    }
+    pane
+}
+
+/// [`secret_dog_pane_with_an_edit`]'s dog, with the new value still in the
+/// editor.
+pub(super) fn secret_dog_pane_typing() -> ConfigPane {
+    dog_pane_typing(true)
+}
+
+/// The same dog and keystrokes with `token` carrying no `x-shep-secret`.
+pub(super) fn plain_dog_pane_typing() -> ConfigPane {
+    dog_pane_typing(false)
+}
+
 /// A sheep whose `args` are `args`, for the list sub-screen's own
 /// tests.
 pub(super) fn web_with_args(args: &[&str]) -> shep_core::protocol::SheepConfigView {

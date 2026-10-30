@@ -20,9 +20,10 @@ pub(super) fn byte_count(len: usize) -> String {
 
 /// A buffer being typed, with its cursor drawn where it is, in a cell one
 /// column short of `width` so the cursor never touches the next column's
-/// own text. The box scrolls to keep the cursor in view.
-pub(super) fn typed_cell(buffer: &TextBox, width: u16) -> String {
-    buffer.drawn(width.saturating_sub(1))
+/// own text. The box scrolls to keep the cursor in view. `secret` draws it
+/// as blocks until the operator reveals it.
+pub(super) fn typed_cell(buffer: &TextBox, secret: bool, width: u16) -> String {
+    buffer.drawn_for(secret, width.saturating_sub(1))
 }
 
 /// One field of the open editor, drawn for a cell `width` wide.
@@ -30,16 +31,18 @@ pub(super) fn typed_cell(buffer: &TextBox, width: u16) -> String {
 /// The cursor is drawn only in the field that holds it, which is how the row
 /// says which of the two the operator is typing into. The unfocused field
 /// still draws what has been typed in it: a rename is unreadable if the key
-/// being renamed disappears the moment `Tab` moves off it.
+/// being renamed disappears the moment `Tab` moves off it. The value is a
+/// secret, so it draws as blocks in either state.
 fn field_cell(editor: &KeyValues, field: Field, width: u16) -> String {
     let buffer = match field {
         Field::Key => editor.key(),
         Field::Value => editor.value(),
     };
+    let secret = field == Field::Value;
     if editor.focus() == field {
-        typed_cell(buffer, width)
+        typed_cell(buffer, secret, width)
     } else {
-        buffer.as_str().to_owned()
+        buffer.shown(secret)
     }
 }
 
@@ -48,7 +51,8 @@ fn field_cell(editor: &KeyValues, field: Field, width: u16) -> String {
 /// A run proportional to the value's length rather than equal to it: the
 /// column is 30 cells against `MAX_VALUE_BYTES`'s 4096. It stops one cell
 /// short of `width` so it never touches `IN FORCE`'s text. `typing` wins
-/// over a reveal: the operator is looking at what they are about to send.
+/// over a reveal: the operator is looking at what they are about to send,
+/// masked unless they asked for it.
 pub(super) fn value_cell(
     row: &SecretRow,
     revealed: Option<&Reveal>,
@@ -251,7 +255,44 @@ mod tests {
     use super::*;
 
     use super::super::testing::*;
+    use crate::lookout::app::{KeyPress, Msg};
     use crate::lookout::view::fixtures;
+
+    /// The VALUE cell of `DB_PASSWORD` with `hunter2` typed into its editor
+    /// and then `then` pressed.
+    fn typed_value_cell(then: &[KeyPress]) -> String {
+        let mut app = app_typing("hunter2");
+        for press in then {
+            app.update(Msg::Key(*press));
+        }
+        let buffer = fixtures::render(&app, 160, 48);
+        cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Value)
+    }
+
+    #[test]
+    fn the_secrets_pane_masks_a_value_being_typed() {
+        let focused = typed_value_cell(&[]);
+        assert!(!focused.contains("hunter2"), "{focused:?}");
+        assert!(
+            focused.contains(&format!("{}\u{258f}", "\u{2588}".repeat(7))),
+            "{focused:?}"
+        );
+
+        let unfocused = typed_value_cell(&[KeyPress::PrevField]);
+        assert!(!unfocused.contains("hunter2"), "{unfocused:?}");
+        assert!(
+            unfocused.contains(&"\u{2588}".repeat(7)) && !unfocused.contains('\u{258f}'),
+            "the value stays masked with the cursor on KEY: {unfocused:?}"
+        );
+    }
+
+    #[test]
+    fn a_revealed_value_in_the_secrets_pane_draws_as_typed() {
+        let reveal = KeyPress::TextEdit(crate::lookout::textbox::TextEdit::Reveal);
+
+        assert!(typed_value_cell(&[reveal]).contains("hunter2\u{258f}"));
+        assert!(typed_value_cell(&[reveal, KeyPress::PrevField]).contains("hunter2"));
+    }
 
     /// The marker says which side the hidden tabs are on, so a row showing
     /// the last tab does not look like a row showing every tab.

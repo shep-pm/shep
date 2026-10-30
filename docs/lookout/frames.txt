@@ -2316,7 +2316,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
-                ▐esc          back one level     y            copy the value                                                                   ▌                
+                ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
                 ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
@@ -2368,7 +2368,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
  ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌ 
  ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌ 
  ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌ 
- ▐esc          back one level     y            copy the value                                                                   ▌ 
+ ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌ 
  ▐                                                                                                                              ▌ 
  ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                    ▌ 
  ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌ 
@@ -2405,7 +2405,7 @@ tab/S-tab    next / prev group  w            wrap long lines    S            sec
 1-9          jump to a group    /            filter, or match   D            delete a key                                        
 n/N          next / prev match  r            refresh now        c            leave it running                                    
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                   
-esc          back one level     y            copy the value                                                                      
+esc          back one level     y            copy the value     ctrl-r       unmask a secret                                     
                                                                                                                                  
  the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                       
  colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.             
@@ -2457,7 +2457,7 @@ tab/S-tab    next / prev group  w            wrap long lines    S            sec
 1-9          jump to a group    /            filter, or match   D            delete a key           
 n/N          next / prev match  r            refresh now        c            leave it running       
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends      
-esc          back one level     y            copy the value                                         
+esc          back one level     y            copy the value     ctrl-r       unmask a secret        
                                                                                                     
 DOING                                                                                               
 x            stop                                                                                   
@@ -2523,7 +2523,7 @@ S            secrets
 D            delete a key                                             
 c            leave it running                                         
 ctrl-w/u/k   cut word, to ends                                        
-                                                                      
+ctrl-r       unmask a secret                                          
                                                                       
  the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
  colour is decoration only: every coloured cell says the same thing i…
@@ -2576,7 +2576,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
-                ▐esc          back one level     y            copy the value                                                                   ▌                
+                ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
                 ▐ the three above are refused  ·  █ the link is down  ·  nothing acts                                                          ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
@@ -2628,7 +2628,7 @@ host  load  ██░░░░░░░░ 2.31 4.10 3.88 / 10 cores     host me
                 ▐1-9          jump to a group    /            filter, or match   D            delete a key                                     ▌                
                 ▐n/N          next / prev match  r            refresh now        c            leave it running                                 ▌                
                 ▐↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                ▌                
-                ▐esc          back one level     y            copy the value                                                                   ▌                
+                ▐esc          back one level     y            copy the value     ctrl-r       unmask a secret                                  ▌                
                 ▐                                                                                                                              ▌                
                 ▐ the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ read-only                                          ▌                
                 ▐ colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothing but the colour.          ▌                
@@ -2665,7 +2665,7 @@ tab/S-tab    next / prev group  w            wrap long lines    S            sec
 1-9          jump to a group    /            filter, or match   D            delete a key                                                                       
 n/N          next / prev match  r            refresh now        c            leave it running                                                                   
 ↵            open selection     v            reveal for 10s     ctrl-w/u/k   cut word, to ends                                                                  
-esc          back one level     y            copy the value                                                                                                     
+esc          back one level     y            copy the value     ctrl-r       unmask a secret                                                                    
                                                                                                                                                                 
  the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                                                                      
  h or ?  closes this  ·  q  ctrl-c  quits lookout                                                                                                               

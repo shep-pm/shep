@@ -41,8 +41,16 @@ impl Settings {
                 String::new(),
             )),
             SettingsRow::DogField { dog, row } => {
-                let (name, key, seed) = self.dog_field_editor(dog, row)?;
-                Some((Target::DogValue { name, key, row }, seed))
+                let (name, key, seed, secret) = self.dog_field_editor(dog, row)?;
+                Some((
+                    Target::DogValue {
+                        name,
+                        key,
+                        row,
+                        secret,
+                    },
+                    seed,
+                ))
             }
             // A dog's env is typed into the key/value editor, not this one.
             SettingsRow::Table(_)
@@ -59,8 +67,9 @@ impl Settings {
     /// it opens with. `None` for a row that folds, cycles, is locked, or is a
     /// secret, which is seeded empty rather than with a value the screen is
     /// not allowed to show. A key the section does not set is seeded empty too,
-    /// not with the `(unset)` its row shows.
-    fn dog_field_editor(&self, dog: usize, row: usize) -> Option<(String, String, String)> {
+    /// not with the `(unset)` its row shows. The last of the four is whether
+    /// the field is a secret, which the editor draws masked.
+    fn dog_field_editor(&self, dog: usize, row: usize) -> Option<(String, String, String, bool)> {
         let name = self.snapshot.dogs.get(dog)?.name.clone();
         let pane = self.dog_tree(dog)?.pane()?;
         let PaneRow::Field(index) = pane.rows().get(row)?.to_owned() else {
@@ -80,7 +89,7 @@ impl Settings {
         } else {
             shown
         };
-        Some((name, field.key.clone(), seed))
+        Some((name, field.key.clone(), seed, field.secret))
     }
 
     /// The edit that removes the cursor's row from `shep.toml`, or `None`
