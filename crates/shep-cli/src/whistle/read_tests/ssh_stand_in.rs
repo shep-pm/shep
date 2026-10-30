@@ -47,6 +47,13 @@ pub(super) fn ssh_stand_in_answering(
     ssh_stand_in_replying(dir, handshake, vec![response])
 }
 
+/// `path` as one single-quoted shell word, whatever characters the temporary
+/// directory's name holds.
+#[cfg(unix)]
+fn sh_quote(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
+}
+
 /// A stand-in that answers one request per entry of `responses`, in order.
 ///
 /// It records its arguments and writes each request to `request-N.bin`, N
@@ -66,11 +73,11 @@ pub(super) fn ssh_stand_in_replying(
         "#!/bin/sh\n\
          read_frame() {{ set -- $(dd bs=1 count=4 2>/dev/null | od -An -tu1); \
          dd bs=1 count=$(( $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 )) 2>/dev/null; }}\n\
-         printf '%s\\n' \"$@\" > '{}'\n\
+         printf '%s\\n' \"$@\" > {}\n\
          read_frame > /dev/null\n\
-         cat '{}'\n",
-        stand_in_file(dir, "args.txt").display(),
-        stand_in_file(dir, "ack.bin").display(),
+         cat {}\n",
+        sh_quote(&stand_in_file(dir, "args.txt")),
+        sh_quote(&stand_in_file(dir, "ack.bin")),
     );
     // `shep_client::actor`'s `next_id` starts at 1 and counts up by one.
     for (index, response) in responses.into_iter().enumerate() {
@@ -82,9 +89,9 @@ pub(super) fn ssh_stand_in_replying(
         let reply_file = stand_in_file(dir, &format!("reply-{id}.bin"));
         std::fs::write(&reply_file, framed(&reply)).unwrap();
         script.push_str(&format!(
-            "read_frame > '{}'\ncat '{}'\n",
-            stand_in_file(dir, &format!("request-{id}.bin")).display(),
-            reply_file.display(),
+            "read_frame > {}\ncat {}\n",
+            sh_quote(&stand_in_file(dir, &format!("request-{id}.bin"))),
+            sh_quote(&reply_file),
         ));
     }
     let program = dir.join("ssh");

@@ -168,7 +168,7 @@ impl Shepherd {
     /// [`Self::list_flock_with_ack`], plus the shepherd's own [`HostUsage`] over
     /// the same connection.
     ///
-    /// `None` is a shepherd that has not measured itself yet. A shepherd that
+    /// `None` is a shepherd whose platform cannot be read at all. A shepherd that
     /// predates `Request::HostUsage` answers `Unsupported`, which is a refusal.
     ///
     /// # Errors

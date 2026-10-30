@@ -330,8 +330,8 @@ pub struct MetricsReading {
     pub daemon_pid: u32,
     /// Every registered entry, sheep and dogs alike.
     pub flock: Vec<SheepRow>,
-    /// Host totals, absent on a platform `sysinfo` does not support, and
-    /// absent from a host's shepherd that has not yet measured itself.
+    /// Host totals, absent on a platform `sysinfo` does not support. Over a
+    /// host, that is the platform its shepherd runs on.
     pub host: Option<HostRow>,
     /// The host this reading came from, spelled as the caller asked for it;
     /// absent when the call named no host and the answer is this machine's.
