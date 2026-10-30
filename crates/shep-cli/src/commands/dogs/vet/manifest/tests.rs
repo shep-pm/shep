@@ -2,8 +2,114 @@ use std::time::Duration;
 
 use shep_core::dogs::manifest::Manifest;
 
-use super::super::{DogSchema, VettedBinary, vet_binary_within};
+use super::super::{AdoptRefusal, DogSchema, VettedBinary, spawn_probe, vet_binary_within};
 use super::{ManifestRead, read_manifest};
+
+#[test]
+fn a_probe_retries_a_busy_executable_until_it_can_run() {
+    let mut results = [
+        Err(std::io::ErrorKind::ExecutableFileBusy.into()),
+        Err(std::io::ErrorKind::ExecutableFileBusy.into()),
+        Ok("spawned"),
+    ]
+    .into_iter();
+    let mut delays = Vec::new();
+
+    let result = spawn_probe(|| results.next().unwrap(), |delay| delays.push(delay));
+
+    assert_eq!(result, Ok("spawned"));
+    assert_eq!(
+        delays,
+        [Duration::from_millis(10), Duration::from_millis(20)]
+    );
+    assert!(results.next().is_none());
+}
+
+#[test]
+fn a_probe_refuses_an_executable_still_busy_after_four_attempts() {
+    let mut attempts = 0;
+    let mut delays = Vec::new();
+
+    let result = spawn_probe(
+        || {
+            attempts += 1;
+            assert!(attempts <= 4, "the retry bound was exceeded");
+            Err::<(), _>(std::io::Error::new(
+                std::io::ErrorKind::ExecutableFileBusy,
+                format!("busy on attempt {attempts}"),
+            ))
+        },
+        |delay| delays.push(delay),
+    );
+
+    assert_eq!(
+        result,
+        Err(AdoptRefusal::WillNotExec {
+            reason: "busy on attempt 4".to_string(),
+        })
+    );
+    assert_eq!(attempts, 4);
+    assert_eq!(
+        delays,
+        [
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+            Duration::from_millis(40),
+        ]
+    );
+}
+
+#[test]
+fn a_probe_refuses_other_spawn_errors_without_retrying() {
+    for kind in [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied,
+        std::io::ErrorKind::InvalidInput,
+    ] {
+        let mut attempts = 0;
+
+        let result = spawn_probe(
+            || {
+                attempts += 1;
+                Err::<(), _>(std::io::Error::new(kind, "spawn refused"))
+            },
+            |_| panic!("a {kind:?} spawn error must not sleep"),
+        );
+
+        assert_eq!(
+            result,
+            Err(AdoptRefusal::WillNotExec {
+                reason: "spawn refused".to_string(),
+            })
+        );
+        assert_eq!(attempts, 1);
+    }
+}
+
+#[test]
+fn a_probe_stops_retrying_when_a_busy_error_becomes_another_spawn_error() {
+    let mut results = [
+        Err(std::io::ErrorKind::ExecutableFileBusy.into()),
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "binary removed",
+        )),
+        Ok("must not run"),
+    ]
+    .into_iter();
+    let mut delays = Vec::new();
+
+    let result = spawn_probe(|| results.next().unwrap(), |delay| delays.push(delay));
+
+    assert_eq!(
+        result,
+        Err(AdoptRefusal::WillNotExec {
+            reason: "binary removed".to_string(),
+        })
+    );
+    assert_eq!(delays, [Duration::from_millis(10)]);
+    assert_eq!(results.next().unwrap().unwrap(), "must not run");
+}
 
 /// Generous: the question is the answer, not the clock.
 const BUDGET: Duration = Duration::from_secs(10);
