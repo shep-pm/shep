@@ -249,12 +249,21 @@ mod tests {
     #[test]
     fn a_secret_list_masks_the_value_being_typed() {
         let item = secret_list_row(0, "ef56gh78", true);
-        assert!(!item.contains("ab12cd34") && !item.contains("ef56gh78"), "{item:?}");
-        assert!(item.contains(&format!("{}\u{258f}", "\u{2588}".repeat(16))), "{item:?}");
+        assert!(
+            !item.contains("ab12cd34") && !item.contains("ef56gh78"),
+            "{item:?}"
+        );
+        assert!(
+            item.contains(&format!("{}\u{258f}", "\u{2588}".repeat(16))),
+            "{item:?}"
+        );
 
         let new = secret_list_row(1, "ef56gh78", true);
         assert!(!new.contains("ef56gh78"), "{new:?}");
-        assert!(new.contains(&format!("{}\u{258f}", "\u{2588}".repeat(8))), "{new:?}");
+        assert!(
+            new.contains(&format!("{}\u{258f}", "\u{2588}".repeat(8))),
+            "{new:?}"
+        );
     }
 
     #[test]

@@ -184,7 +184,12 @@ pub(super) fn env_row_line(
         None => (name.to_owned(), "(set)".to_owned()),
         Some(editor) => (
             field_cell(editor.key(), editor.focus() == Field::Key, false, key_w),
-            field_cell(editor.value(), editor.focus() == Field::Value, true, value_w),
+            field_cell(
+                editor.value(),
+                editor.focus() == Field::Value,
+                true,
+                value_w,
+            ),
         ),
     };
     let ground = if selected {
@@ -239,7 +244,12 @@ pub(super) fn add_env_row_line(
         Some(editor) => (
             field_cell(editor.key(), editor.focus() == Field::Key, false, key_w),
             false,
-            field_cell(editor.value(), editor.focus() == Field::Value, true, value_w),
+            field_cell(
+                editor.value(),
+                editor.focus() == Field::Value,
+                true,
+                value_w,
+            ),
         ),
     };
     // Same key-cell reservation as [`env_row_line`]: a leading space stands in
@@ -441,7 +451,11 @@ mod tests {
         // Back on KEY, the unfocused value is still masked.
         pane.step_env_field(true);
         assert!(!row(&pane).contains("hunter2"), "{:?}", row(&pane));
-        assert!(row(&pane).contains(&"\u{2588}".repeat(7)), "{:?}", row(&pane));
+        assert!(
+            row(&pane).contains(&"\u{2588}".repeat(7)),
+            "{:?}",
+            row(&pane)
+        );
 
         pane.step_env_field(false);
         pane.type_env_text(KeyPress::TextEdit(

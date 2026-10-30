@@ -602,9 +602,14 @@ mod tests {
         let row = token_row(&secret_dog_pane_typing());
 
         assert!(!row.contains("ef56gh78"), "the typed value leaked: {row:?}");
-        assert!(!row.contains("ab12cd34"), "the stored value leaked: {row:?}");
         assert!(
-            row.contains("\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"),
+            !row.contains("ab12cd34"),
+            "the stored value leaked: {row:?}"
+        );
+        assert!(
+            row.contains(
+                "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"
+            ),
             "eight blocks then the cursor: {row:?}"
         );
     }

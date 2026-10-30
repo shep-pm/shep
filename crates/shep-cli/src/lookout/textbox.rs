@@ -55,12 +55,12 @@ pub enum TextEdit {
 /// `Debug` is manual and redacted (IR-41), exact-string-tested below:
 /// editors hold env values and secrets, and `Input`'s own `Debug` prints the
 /// text and the last cut. `PartialEq` compares the text and the cursor and
-/// nothing else, so the panes that hold one keep their derives. Whether the
-/// box is revealed is a view of the text, not part of it, so it is left out
-/// of both.
+/// nothing else, so the panes that hold one keep their derives.
 #[derive(Clone, Default)]
 pub struct TextBox {
     input: Input,
+    /// Whether `Ctrl-r` has unmasked a secret's text: a view of it, so
+    /// `Debug` and `PartialEq` leave it out.
     revealed: bool,
 }
 
@@ -426,7 +426,10 @@ mod tests {
 
     #[test]
     fn a_masked_cell_keeps_the_cursor_and_its_scroll() {
-        assert_eq!(boxed("hunter2", 3).drawn_masked(80), "\u{2588}\u{2588}\u{2588}\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}");
+        assert_eq!(
+            boxed("hunter2", 3).drawn_masked(80),
+            "\u{2588}\u{2588}\u{2588}\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}"
+        );
         assert_eq!(TextBox::new().drawn_masked(80), "\u{258f}");
         assert_eq!(
             boxed("hello world", 11).drawn_masked(6),
