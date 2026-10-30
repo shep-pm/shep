@@ -403,7 +403,7 @@ pub enum Request {
         params: Option<String>,
     },
     /// Deliver one signal to every matched sheep's own process, never its
-    /// process group (see `shep signal`).
+    /// process group, or to one of its lambs (see `shep signal`).
     Signal {
         /// Which sheep. No default, matching every other verb that reaches
         /// a running process.
@@ -413,6 +413,15 @@ pub enum Request {
         /// `SIG` prefix and the case are both optional; a name outside the
         /// grammar answers [`RpcErrorCode::InvalidConfig`].
         signal: String,
+        /// Signal this lamb of the matched sheep instead of the sheep itself.
+        ///
+        /// The selector must then match exactly one sheep, and the pid must be
+        /// one the shepherd finds in that sheep's lamb walk when the request
+        /// arrives. Absent on the wire when `None`. A shepherd below protocol
+        /// 13 drops the key and signals the sheep, so a client checks the
+        /// peer's protocol first.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lamb: Option<u32>,
     },
     /// Write one line to every matched sheep's stdin (see `shep whisper`).
     SendLine {

@@ -252,7 +252,11 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             action,
             params,
         } => trigger(id, selector, action, params, ctx).await,
-        Request::Signal { selector, signal } => signal_request(id, selector, signal, ctx).await,
+        Request::Signal {
+            selector,
+            signal,
+            lamb: _,
+        } => signal_request(id, selector, signal, ctx).await,
         Request::SendLine { selector, line } => {
             // Refused here, not silently split by the writer: a line
             // carrying a newline would be delivered as two commands where the

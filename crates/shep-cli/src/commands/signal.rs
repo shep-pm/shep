@@ -39,6 +39,7 @@ pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArg
         // Canonical spelling: the wire carries `SIGHUP` whether the operator
         // typed `hup`, `Hup` or `SIGHUP`.
         signal: sig.as_str().to_string(),
+        lamb: None,
     };
 
     request_and_render(
@@ -162,6 +163,7 @@ mod tests {
             Request::Signal {
                 selector: SelectorSpec::Name("web".to_string()),
                 signal: "SIGHUP".to_string(),
+                lamb: None,
             }
         );
     }

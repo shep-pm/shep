@@ -69,6 +69,7 @@ fn flock_control_holds_every_request_that_moves_a_sheep() {
         Request::Signal {
             selector: sheep("web"),
             signal: "HUP".into(),
+            lamb: None,
         },
         Request::SendLine {
             selector: sheep("web"),

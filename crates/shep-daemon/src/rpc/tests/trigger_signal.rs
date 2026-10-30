@@ -79,6 +79,7 @@ async fn a_signal_name_outside_the_grammar_is_refused_with_the_accepted_list() {
                 Request::Signal {
                     selector: SelectorSpec::All,
                     signal: "SIGHUPP".to_string(),
+                    lamb: None,
                 },
             ),
             &h.ctx,
