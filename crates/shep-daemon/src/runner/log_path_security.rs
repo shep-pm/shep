@@ -524,4 +524,21 @@ mod tests {
         assert!(rendered.contains(&link.display().to_string()), "{rendered}");
         assert_eq!(std::fs::read_dir(&real).unwrap().count(), 0);
     }
+
+    /// Fails if the resolved path loses its trailing separator: `logs/out/`
+    /// would then be created as a file where the open has always failed.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_log_path_with_a_trailing_separator_fails_and_creates_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut path = dir.path().join("out").into_os_string();
+        path.push("/");
+
+        let error = open_log_path_as(LogOpen::AppendCreating, Path::new(&path), me())
+            .await
+            .expect_err("a path naming a directory must not open as a file");
+
+        assert_ne!(error.kind(), io::ErrorKind::NotFound, "{error}");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
 }

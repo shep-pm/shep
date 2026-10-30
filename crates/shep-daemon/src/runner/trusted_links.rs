@@ -22,7 +22,7 @@ const MAX_LINKS: usize = 40;
 /// points at, each one owned by the daemon's user or by root.
 ///
 /// The last component is not followed: a link there stays for the open to
-/// refuse. A relative `path` is read from the working directory, as the open
+/// refuse, and a trailing separator on `path` is kept. A relative `path` is read from the working directory, as the open
 /// reads it, and comes back absolute.
 ///
 /// # Errors
@@ -80,7 +80,13 @@ pub(super) fn resolve_parent(path: &Path, daemon_uid: u32) -> io::Result<PathBuf
             pending.push_front(component.as_os_str().to_owned());
         }
     }
-    Ok(resolved.join(name))
+    let mut resolved = resolved.join(name);
+    // `Path` equality and `components` both drop a trailing separator, so it
+    // is read from the text: with it the open fails on a directory.
+    if absolute.as_os_str().as_encoded_bytes().ends_with(b"/") {
+        resolved.push("");
+    }
+    Ok(resolved)
 }
 
 #[cfg(test)]
@@ -176,6 +182,21 @@ mod tests {
         let resolved = resolve_parent(&root.join("web-out.log"), me()).unwrap();
 
         assert_eq!(resolved, root.join("web-out.log"));
+    }
+
+    /// Fails if the separator is dropped: `logs/out` would then be created as
+    /// a file where `logs/out/` has always failed.
+    #[test]
+    fn a_trailing_separator_survives_the_resolution() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = real_dir(&dir);
+        std::fs::create_dir(root.join("releases")).unwrap();
+        symlink("releases", root.join("current")).unwrap();
+
+        let resolved = resolve_parent(&root.join("current/out/"), me()).unwrap();
+
+        assert_eq!(resolved, root.join("releases/out/"));
+        assert!(resolved.as_os_str().as_encoded_bytes().ends_with(b"/"));
     }
 
     /// `truncate_log` turns this into a successful no-op, so it must stay
