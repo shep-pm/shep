@@ -20,10 +20,10 @@ use toml_edit::{Item, TableLike};
 
 use super::plan::name_the_path;
 use super::value::table_json;
-use super::{Flags, Plan, Verb, Write, WriteRefusal, path_in, resolve_dog, run};
+use super::{Flags, Plan, Verb, Write, WriteRefusal, defaults_in, path_in, resolve_dog, run};
 use crate::cli::UnsetArgs;
 use crate::commands::copy;
-use crate::commands::copy::address::{self, ConfigPath, FlockNames};
+use crate::commands::copy::address::{self, ConfigPath, DEFAULTS, FlockNames};
 use crate::commands::copy::plan::{Change, ChangeKind, collect_changes, walk};
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::settings_read;
@@ -100,6 +100,14 @@ async fn unset_dog(
     flock: &FlockNames,
     flags: Flags,
 ) -> ExitCode {
+    if let Some(defaults) = defaults_in(segments, flock, paths) {
+        return WriteRefusal::Refused(format!(
+            "`shep unset` does not remove a key of `{dog}`'s defaults: `shep set {dog}.{DEFAULTS} \
+             <table>` writes the whole default, and `shep set {dog}.{DEFAULTS} {{}}` removes it",
+            dog = defaults.dog
+        ))
+        .report(streams);
+    }
     let target = match resolve_dog(client, streams, segments, flock, paths).await {
         Ok(target) => target,
         Err(code) => return code,

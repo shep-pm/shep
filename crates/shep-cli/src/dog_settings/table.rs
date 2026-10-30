@@ -9,9 +9,11 @@
 //! schema names before any rule on it is read. It refuses nothing a schema
 //! says nothing about, and nothing for a key the table does not carry.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
+use shep_core::config::DogTable;
+use shep_core::dog_defaults::layered;
 
 use crate::lookout::field::{
     Entries, Field, FieldKind, Flattened, ListItem, Union, flattened, segment,
@@ -101,6 +103,33 @@ pub fn touched_refusal(
     touched: &BTreeSet<Vec<String>>,
 ) -> Option<TableRefusal> {
     flattened_refusal(&flattened(schema), table, &[], "", Scope::Touched(touched))
+}
+
+/// Why each sheep a default reaches would hold a table the schema refuses,
+/// by sheep name.
+///
+/// Each of `sheep`'s tables is checked as the dog reads it, layered over
+/// `default`, at the paths in `touched`. A path a sheep holds itself reads its
+/// own value. Nothing touched, as when a default is cleared, checks nothing.
+/// One refusal per sheep, the first in row order.
+#[must_use]
+pub fn default_refusals(
+    schema: &Value,
+    default: &DogTable,
+    sheep: &BTreeMap<String, DogTable>,
+    touched: &BTreeSet<Vec<String>>,
+) -> Vec<(String, TableRefusal)> {
+    if touched.is_empty() {
+        return Vec::new();
+    }
+    sheep
+        .iter()
+        .filter_map(|(name, own)| {
+            let layered = layered(&[default, own]);
+            let refused = touched_refusal(schema, layered.as_map(), touched);
+            Some((name.clone(), refused?))
+        })
+        .collect()
 }
 
 /// Every leaf of `flat`, read out of `table`, in row order.

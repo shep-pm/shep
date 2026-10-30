@@ -9,7 +9,9 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value, json};
 
-use super::table::{table_refusal, touched_refusal};
+use shep_core::config::DogTable;
+
+use super::table::{default_refusals, table_refusal, touched_refusal};
 
 /// A dog's own section schema: a bounded integer, a list whose item schema
 /// publishes `minLength`, a closed set, a nested table with a `pattern`, an
@@ -788,5 +790,44 @@ fn a_touched_union_missing_a_required_field_is_refused_and_an_untouched_one_is_n
         touched_refusal(&schema(), &proposed, &touched(&[&["keep"]])),
         None,
         "an untouched union keeps its own business"
+    );
+}
+
+/// A default's value reaches a sheep only where the sheep holds none of its
+/// own: `a` and `c` read the bad `keep`, `b` reads its own good one, and each
+/// failing sheep is named, in name order.
+#[test]
+fn a_default_is_checked_against_the_layered_table_of_every_sheep_it_reaches() {
+    let default = DogTable::from(table(json!({ "keep": 100, "merge": "ask" })));
+    let sheep = std::collections::BTreeMap::from([
+        ("a".to_string(), DogTable::from(table(json!({})))),
+        ("b".to_string(), DogTable::from(table(json!({ "keep": 4 })))),
+        (
+            "c".to_string(),
+            DogTable::from(table(json!({ "merge": "auto" }))),
+        ),
+    ]);
+
+    let refused = default_refusals(&schema(), &default, &sheep, &touched(&[&["keep"]]));
+    assert_eq!(
+        refused
+            .iter()
+            .map(|(name, refusal)| (name.as_str(), refusal.path.clone()))
+            .collect::<Vec<_>>(),
+        [
+            ("a", vec!["keep".to_string()]),
+            ("c", vec!["keep".to_string()])
+        ]
+    );
+    assert!(refused[0].1.text.contains("keep"), "{}", refused[0].1.text);
+
+    assert!(
+        default_refusals(&schema(), &default, &sheep, &BTreeSet::new()).is_empty(),
+        "a default that puts no value anywhere is checked against nothing"
+    );
+
+    let reaches_nobody = std::collections::BTreeMap::new();
+    assert!(
+        default_refusals(&schema(), &default, &reaches_nobody, &touched(&[&["keep"]])).is_empty()
     );
 }

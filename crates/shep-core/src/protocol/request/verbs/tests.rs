@@ -724,3 +724,38 @@ fn sheep_dog_settings_resolved_serializes_as_its_own_kind() {
         r#"{"kind":"dog_sheep_settings","dog":"deploy"}"#
     );
 }
+
+/// Tags no older shepherd knows: it answers `Unsupported`, as for `reset`.
+#[test]
+fn the_dog_defaults_verbs_and_replies_have_their_own_tags() {
+    let table = DogTable::from(serde_json::Map::from_iter([(
+        "model".to_string(),
+        serde_json::json!("opus"),
+    )]));
+    let read = Request::DogDefaults {
+        dog: "jobs".to_string(),
+    };
+    let wire = r#"{"kind":"dog_defaults","dog":"jobs"}"#;
+    assert_eq!(serde_json::to_string(&read).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Request>(wire).unwrap(), read);
+
+    let write = Request::SetDogDefaults {
+        dog: "jobs".to_string(),
+        table: Some(table.clone()),
+    };
+    let wire = r#"{"kind":"set_dog_defaults","dog":"jobs","table":{"model":"opus"}}"#;
+    assert_eq!(serde_json::to_string(&write).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Request>(wire).unwrap(), write);
+
+    let reply = Response::DogDefaults { table: Some(table) };
+    let wire = r#"{"kind":"dog_defaults","data":{"table":{"model":"opus"}}}"#;
+    assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
+
+    let reply = Response::DogDefaultsSet {
+        dog: "jobs".to_string(),
+    };
+    let wire = r#"{"kind":"dog_defaults_set","data":{"dog":"jobs"}}"#;
+    assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
+    assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
+}

@@ -1,6 +1,8 @@
 //! A dog's per-sheep tables: `DogSheepSettings` reads one dog's tables,
 //! `SetSheepDogSettings` writes one, and a load merges `dogs` as one field.
 
+use super::dog_defaults::set_default;
+use super::dog_table_events::{heard, on};
 use super::*;
 use shep_core::config::DogTable;
 
@@ -391,5 +393,60 @@ async fn a_plain_load_leaves_an_established_table_and_reset_file_applies_it() {
             "web".to_string(),
             table(serde_json::json!({ "concurrency": 4 }))
         )])
+    );
+}
+
+/// `web` and `api` carry `jobs`, `worker` carries only `deploy`, and
+/// `batch` carries `jobs` with its own value for the one key the default
+/// moves: a default write announces the two sheep whose layered table
+/// moved, the same write again announces none, and removing it announces
+/// the two again.
+#[tokio::test(start_paused = true)]
+async fn a_default_change_announces_every_sheep_whose_layered_table_moved() {
+    let h = harness(vec![ProcScript::never_exits(); 4]);
+    let mut rx = h.ctx.events.subscribe();
+    let jobs = |model: &str| table(serde_json::json!({ "model": model }));
+    start(
+        &h.ctx,
+        1,
+        vec![
+            carrying("web", vec![("jobs", table(serde_json::json!({})))]),
+            carrying(
+                "api",
+                vec![("jobs", table(serde_json::json!({ "hours": 1 })))],
+            ),
+            carrying("worker", vec![("deploy", table(serde_json::json!({})))]),
+            carrying("batch", vec![("jobs", jobs("sonnet"))]),
+        ],
+    )
+    .await;
+    heard(&h.ctx, &mut rx).await;
+
+    set_default(&h.ctx, 2, "jobs", Some(jobs("opus"))).await;
+    let events = heard(&h.ctx, &mut rx).await;
+    assert_eq!(
+        on("config.sheep.jobs", &events),
+        [
+            ("jobs".to_string(), "api".to_string()),
+            ("jobs".to_string(), "web".to_string()),
+        ],
+        "batch holds its own model and worker has no jobs table"
+    );
+    assert_eq!(on("config.sheep.*", &events).len(), 2, "{events:?}");
+
+    set_default(&h.ctx, 3, "jobs", Some(jobs("opus"))).await;
+    assert_eq!(
+        heard(&h.ctx, &mut rx).await,
+        [],
+        "the same default moved nothing"
+    );
+
+    set_default(&h.ctx, 4, "jobs", None).await;
+    assert_eq!(
+        on("config.sheep.jobs", &heard(&h.ctx, &mut rx).await),
+        [
+            ("jobs".to_string(), "api".to_string()),
+            ("jobs".to_string(), "web".to_string()),
+        ]
     );
 }

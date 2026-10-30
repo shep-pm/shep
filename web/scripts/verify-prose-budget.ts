@@ -145,7 +145,11 @@ export const BUDGETS: Record<string, number> = {
   // <to>.dogs.<dog>` is a write to that dog's settings and a dog that declared
   // `validate` is asked about it. An operator reading the copy section needs to
   // know the dog can refuse it.
-  overrides: 3447,
+  //
+  // Raised on #1079, to 3555, for "One default for a dog's tables": `shep set
+  // <dog>.defaults.<key>` is a new address an operator types, and the page
+  // that says how a sheep's tuning is written is where they look for it.
+  overrides: 3555,
   // Raised from 3240 on 2026-09-27 for "A sheep's dogs row": the sub-screen
   // and the per-sheep table pane are new operator-facing surface, not
   // prose to trim back out.

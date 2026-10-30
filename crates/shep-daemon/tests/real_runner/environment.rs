@@ -76,6 +76,7 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         overrides: dir.path().join("overrides.json"),
         secrets: dir.path().join("secrets.json"),
         secrets_cache: dir.path().join("secrets-cache.json"),
+        dog_defaults: dir.path().join("dog-defaults.json"),
     };
     let app_config = AppConfig {
         name: "bare".to_string(),

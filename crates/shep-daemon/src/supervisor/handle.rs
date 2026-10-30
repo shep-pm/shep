@@ -393,6 +393,34 @@ impl SupervisorHandle {
         .await?
     }
 
+    /// `dog`'s default table as stored. See [`Actor::handle_dog_defaults`].
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::EngineStopped`] - the actor is gone.
+    pub(crate) async fn dog_defaults(
+        &self,
+        dog: String,
+    ) -> Result<Option<DogTable>, SupervisorError> {
+        self.call(|reply| Command::DogDefaults { dog, reply }).await
+    }
+
+    /// Sets `dog`'s default table, or removes it with `None`. See
+    /// [`Actor::handle_set_dog_defaults`].
+    ///
+    /// # Errors
+    /// - [`SupervisorError::InvalidField`] - the dog's name is empty.
+    /// - [`SupervisorError::DogDefaults`] - the store could not be read or written.
+    /// - [`SupervisorError::EngineStopped`] - the actor is gone.
+    pub(crate) async fn set_dog_defaults(
+        &self,
+        dog: String,
+        table: Option<DogTable>,
+    ) -> Result<(), SupervisorError> {
+        self.call(|reply| Command::SetDogDefaults { dog, table, reply })
+            .await?
+    }
+
     /// Registers and starts one dog, marked as coming from `source`.
     ///
     /// Idempotent by name: a dog already running under `app`'s name is

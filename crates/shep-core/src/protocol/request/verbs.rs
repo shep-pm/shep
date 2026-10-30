@@ -231,6 +231,27 @@ pub enum Request {
         /// The new table, or `None` to remove it.
         table: Option<DogTable>,
     },
+    /// One dog's operator-set default table, the one every sheep carrying
+    /// a table for `dog` layers its own over.
+    ///
+    /// Answers [`Response::DogDefaults`]; `None` when the dog has no default.
+    /// Additive: an older shepherd answers `Unsupported`.
+    DogDefaults {
+        /// The dog's own name, the config key.
+        dog: String,
+    },
+    /// Sets, replaces, or with `None` removes one dog's default table, and
+    /// publishes `config.sheep.<dog>` for each sheep whose layered table
+    /// moved.
+    ///
+    /// Held in `$SHEP_HOME/dog-defaults.json`, not in any sheep's `dogs`
+    /// field. Answers [`Response::DogDefaultsSet`].
+    SetDogDefaults {
+        /// Which dog's default to write.
+        dog: String,
+        /// The new default, or `None` to remove it.
+        table: Option<DogTable>,
+    },
     /// Replaces one dog's `[<name>]` section in `dogs.toml` and publishes
     /// `config.dog.<name>` so a running dog re-reads it.
     ///

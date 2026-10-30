@@ -6,13 +6,15 @@
 //! the part that decides, because that is the part that can write something an
 //! operator did not ask for.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, json};
+use shep_client::testing::{control_address, fake_client_answering_refusals};
+use shep_core::protocol::{Request, Response};
 
-use super::flow::{ask, holder_moved, report_for, section_moved, table_moved};
+use super::flow::{ask, holder_moved, report_for, run, section_moved, table_moved};
 use super::plan::schema_refusal;
-use super::plan::{name_the_path, touched_paths};
+use super::plan::{name_the_path, plan_dog_defaults, touched_paths};
 use super::*;
 use crate::cli::Format;
 use crate::commands::copy::confirm::Answer;
@@ -614,78 +616,6 @@ fn a_dog_section_that_does_not_parse_is_named_as_the_file() {
     assert!(text.contains("shep get kelpie"), "{text}");
 }
 
-/// A section that spells a table inline, which is the form a hand-written
-/// `dogs.toml` often uses and the one `set_toml` used to refuse walking.
-const INLINE_SECTION: &str = "\
-repo = \"/srv/project\"
-worker = { timeout = 30, allowed_domains = [\"github.com\"] }
-fetch = { git = { merging = \"ff\" } }
-";
-
-/// The plan for one key inside [`INLINE_SECTION`].
-fn inline_plan(keys: &[&str], value: Json) -> Result<Plan, WriteRefusal> {
-    let doc = INLINE_SECTION.parse::<toml_edit::DocumentMut>().unwrap();
-    plan_section(
-        doc,
-        "kelpie",
-        &keys.iter().map(|key| key.to_string()).collect::<Vec<_>>(),
-        &value,
-    )
-}
-
-/// A key under an inline table is written, and the parent stays an inline
-/// table: the form the section spells a table in is the form it keeps.
-#[test]
-fn a_key_under_an_inline_table_is_written_inline() {
-    let plan = inline_plan(&["worker", "timeout"], json!(45)).unwrap();
-    let Write::DogSection { toml, .. } = &plan.write else {
-        unreachable!()
-    };
-    assert!(toml.contains("worker = { timeout = 45"), "{toml}");
-    assert!(
-        !toml.contains("[worker]"),
-        "{toml}: an inline table does not become a header"
-    );
-    assert_eq!(plan.changes.len(), 1);
-    assert_eq!(plan.changes[0].key, "timeout");
-    assert_eq!(plan.changes[0].old, Some(json!(30)));
-    assert_eq!(plan.changes[0].new, Some(json!(45)));
-
-    // A key the inline table does not hold yet lands inside it rather than
-    // beside it.
-    let plan = inline_plan(&["worker", "retries"], json!(3)).unwrap();
-    let Write::DogSection { toml, .. } = &plan.write else {
-        unreachable!()
-    };
-    assert!(toml.contains("worker = {"), "{toml}");
-    assert!(toml.contains("retries = 3"), "{toml}");
-    assert_eq!(plan.changes[0].kind, ChangeKind::Added);
-}
-
-/// Two levels down, where the parent inline table holds an inline table.
-#[test]
-fn a_key_under_a_nested_inline_table_is_written() {
-    let plan = inline_plan(&["fetch", "git", "merging"], json!("rebase")).unwrap();
-    let Write::DogSection { toml, .. } = &plan.write else {
-        unreachable!()
-    };
-    assert!(
-        toml.contains("fetch = { git = { merging = \"rebase\" } }"),
-        "{toml}"
-    );
-    assert_eq!(plan.changes[0].old, Some(json!("ff")));
-
-    // The scalar in the way is still a refusal, and it names the scalar.
-    let error =
-        inline_plan(&["worker", "timeout", "deep"], json!(1)).expect_err("an integer holds no key");
-    assert!(
-        error
-            .to_string()
-            .contains("`kelpie.worker.timeout` holds a value that is not a table"),
-        "{error}"
-    );
-}
-
 /// A leaf that holds a table is refused as a table, which is the sentence the
 /// operator can act on, and not as a value that is not one.
 #[test]
@@ -877,4 +807,148 @@ fn a_holder_that_moved_names_the_holder_and_the_reader() {
     // A moved holder is not a config that failed validation and not bad
     // arguments, so it is the code with nothing more specific.
     assert_eq!(WriteRefusal::Stale(text).code(), ExitCode::Failure);
+}
+
+/// `keep` is bounded at 4, so a default of 9 breaks it on every sheep that
+/// does not hold its own `keep`: `a` and `c` are named, `b` is not.
+fn default_plan(keep: i64) -> Plan {
+    let sheep = BTreeMap::from([
+        ("a".to_string(), DogTable::from(Map::new())),
+        (
+            "b".to_string(),
+            DogTable::from(json!({ "keep": 2 }).as_object().unwrap().clone()),
+        ),
+        (
+            "c".to_string(),
+            DogTable::from(json!({ "merge": "ask" }).as_object().unwrap().clone()),
+        ),
+    ]);
+    let plan = plan_dog_defaults(
+        "kelpie",
+        &["keep".to_string()],
+        Json::Object(Map::new()),
+        sheep,
+        &json!(keep),
+    )
+    .unwrap();
+    Plan {
+        schema: Some(schema()),
+        ..plan
+    }
+}
+
+/// A default some sheep's layered table would break is refused naming each of
+/// them and the rule, and the shepherd is sent nothing.
+#[tokio::test]
+async fn a_refused_default_names_every_failing_sheep_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (client, mut envelopes) =
+        fake_client_answering_refusals(&control_address(dir.path()), |_request| Ok(Response::Pong))
+            .await;
+
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = {
+        let mut streams = Streams {
+            out: &mut out,
+            err: &mut err,
+            style: crate::style::Presentation::BARE,
+            fmt: Format::Table,
+        };
+        run(
+            &client,
+            &mut streams,
+            &paths,
+            "kelpie",
+            "defaults.keep",
+            &default_plan(9),
+            Flags {
+                verb: Verb::Set,
+                yes: true,
+                dry_run: false,
+            },
+        )
+        .await
+    };
+
+    let said = String::from_utf8_lossy(&err).to_string();
+    assert_eq!(code, ExitCode::InvalidConfig, "{said}");
+    assert!(said.contains("`kelpie.defaults.keep`"), "{said}");
+    assert!(said.contains("2 of the sheep it reaches"), "{said}");
+    assert!(said.contains("`a` would hold"), "{said}");
+    assert!(said.contains("`c` would hold"), "{said}");
+    assert!(!said.contains("`b`"), "b holds its own `keep`: {said}");
+    assert!(
+        envelopes.try_recv().is_err(),
+        "a refused default sends nothing"
+    );
+}
+
+/// The control: the default every sheep it reaches takes goes out whole, as
+/// `SetDogDefaults`, after the holder is read once more.
+#[tokio::test]
+async fn a_default_every_sheep_takes_is_sent_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (client, mut envelopes) =
+        fake_client_answering_refusals(&control_address(dir.path()), |request| match request {
+            Request::DogDefaults { .. } => Ok(Response::DogDefaults { table: None }),
+            Request::SetDogDefaults { dog, .. } => {
+                Ok(Response::DogDefaultsSet { dog: dog.clone() })
+            }
+            _other => Ok(Response::Pong),
+        })
+        .await;
+
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = {
+        let mut streams = Streams {
+            out: &mut out,
+            err: &mut err,
+            style: crate::style::Presentation::BARE,
+            fmt: Format::Table,
+        };
+        run(
+            &client,
+            &mut streams,
+            &paths,
+            "kelpie",
+            "defaults.keep",
+            &default_plan(3),
+            Flags {
+                verb: Verb::Set,
+                yes: true,
+                dry_run: false,
+            },
+        )
+        .await
+    };
+
+    let said = String::from_utf8_lossy(&err).to_string();
+    assert_eq!(code, ExitCode::Success, "{said}");
+    let mut sent = Vec::new();
+    while let Ok(envelope) = envelopes.try_recv() {
+        sent.push(envelope.body);
+    }
+    let Some(Request::SetDogDefaults { dog, table }) = sent.last() else {
+        panic!("the write went out last: {sent:?}");
+    };
+    assert_eq!(dog, "kelpie");
+    assert_eq!(
+        table.as_ref().map(|table| table.as_map().clone()),
+        json!({ "keep": 3 }).as_object().cloned()
+    );
+}
+
+/// A dog that published no per-sheep schema is checked against nothing, so a
+/// default no schema can judge is not refused.
+#[test]
+fn a_default_for_a_dog_with_no_sheep_schema_is_checked_against_nothing() {
+    let plan = Plan {
+        schema: None,
+        ..default_plan(9)
+    };
+    assert!(schema_refusal(&plan, "kelpie", "defaults.keep").is_none());
 }

@@ -219,6 +219,21 @@ pub enum Response {
         /// The dog whose table moved.
         dog: String,
     },
+    /// Answer to `DogDefaults`: the dog's default table, as stored.
+    ///
+    /// `None` when the dog has none. [`DogTable`]'s manual `Debug` keeps the
+    /// values out of a `{:?}` (IR-41).
+    DogDefaults {
+        /// The default, or `None` when the dog has none.
+        table: Option<DogTable>,
+    },
+    /// Answer to `SetDogDefaults`: which dog's default moved.
+    ///
+    /// Name only, for [`Self::SheepDogSettingsSet`]'s reason.
+    DogDefaultsSet {
+        /// The dog.
+        dog: String,
+    },
     /// Answer to `SetDogConfig`: the section was written and the topic
     /// published.
     DogConfigSet {

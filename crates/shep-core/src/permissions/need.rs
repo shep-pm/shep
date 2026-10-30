@@ -97,6 +97,8 @@ pub fn need<'r>(request: &'r Request, caller: &str) -> Need<'r> {
         | Request::SetDogConfig { name, .. } => own_or(name, P::DogsControl),
         Request::DogSheepSettings { dog } => own_or(dog, P::FlockRead),
         Request::SetSheepDogSettings { dog, .. } => own_or(dog, P::FlockEdit),
+        Request::DogDefaults { dog } => own_or(dog, P::FlockRead),
+        Request::SetDogDefaults { .. } => one(P::FlockEdit),
         Request::Trigger { selector, .. } => Need::Selector {
             selector,
             sheep: P::FlockControl,

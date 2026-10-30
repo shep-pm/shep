@@ -19,6 +19,10 @@ use super::CopyRefusal;
 /// The one path root that is not an `AppConfig` field name.
 const DOGS: &str = "dogs";
 
+/// The segment after a dog's name that addresses the dog's defaults, not
+/// a key of its own section.
+pub(crate) const DEFAULTS: &str = "defaults";
+
 /// The `AppConfig` field a copy takes through the shepherd, not through the
 /// config a client reads.
 const ENV: &str = "env";
@@ -60,6 +64,39 @@ pub(crate) enum ConfigPath {
         /// The dotted key path inside that dog's table.
         keys: Vec<String>,
     },
+}
+
+/// A dog's defaults, or a key inside them: `<dog>.defaults[.<key>]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DefaultsAddress {
+    /// The dog's name, dotted where the dog is.
+    pub(crate) dog: String,
+    /// The segments after `defaults`, not yet joined into the keys a table
+    /// holds: [`resolve_keys`] does that against the defaults themselves.
+    pub(crate) keys: Vec<String>,
+}
+
+/// Reads `segments` as a dog's defaults address, `None` when they are not one.
+///
+/// The dog is the longest name in `dogs` that `segments` starts with and
+/// that `defaults` follows, so the address names no sheep and no dog beyond
+/// the one it opens with.
+pub(crate) fn defaults_of(segments: &[String], dogs: &BTreeSet<String>) -> Option<DefaultsAddress> {
+    let dog = dogs
+        .iter()
+        .filter(|name| {
+            let parts: Vec<&str> = name.split('.').collect();
+            segments
+                .get(parts.len())
+                .is_some_and(|next| next == DEFAULTS)
+                && parts == segments[..parts.len()]
+        })
+        .max_by_key(|name| name.split('.').count())?;
+    let depth = dog.split('.').count() + 1;
+    Some(DefaultsAddress {
+        dog: dog.clone(),
+        keys: segments[depth..].to_vec(),
+    })
 }
 
 /// The refusal for a verb that writes one key at a time and has no way to
@@ -340,6 +377,16 @@ fn longest_sheep<'a>(segments: &[&'a str], flock: &'a FlockNames) -> Option<&'a 
 /// is refused as `we.c`.
 fn unknown_sheep(segments: &[&str], flock: &FlockNames) -> CopyRefusal {
     let head = segments[0];
+    let owned: Vec<String> = segments.iter().map(|part| (*part).to_string()).collect();
+    if let Some(defaults) = defaults_of(&owned, &flock.dogs) {
+        return CopyRefusal::Refused(format!(
+            "`{}` is a dog's defaults, not a sheep's setting: a copy moves what a sheep holds, \
+             and copying the layered result would pin inherited values into the target. `shep \
+             set {}.{DEFAULTS}.<key> <value>` writes one",
+            segments.join("."),
+            defaults.dog
+        ));
+    }
     if flock.dogs.contains(head) {
         return CopyRefusal::UnknownSheep(format!(
             "no sheep named `{}`: `{head}` is a dog, and a copy writes a sheep's config",
@@ -760,5 +807,46 @@ mod tests {
                 keys: vec![]
             }
         );
+    }
+
+    /// A defaults address names a dog and its defaults, never a sheep: the
+    /// flock's dogs decide it, and a copy refuses it with the verb that
+    /// writes it.
+    #[test]
+    fn a_defaults_address_names_a_dog_and_never_a_sheep() {
+        let flock = flock();
+        let strings = |raw: &str| -> Vec<String> { raw.split('.').map(str::to_string).collect() };
+
+        let whole = defaults_of(&strings("metrics.defaults"), &flock.dogs).unwrap();
+        assert_eq!((whole.dog.as_str(), whole.keys.len()), ("metrics", 0));
+        let one = defaults_of(&strings("metrics.defaults.model.name"), &flock.dogs).unwrap();
+        assert_eq!(one.dog, "metrics");
+        assert_eq!(one.keys, ["model", "name"]);
+
+        assert_eq!(
+            defaults_of(&strings("web.defaults"), &flock.dogs),
+            None,
+            "a sheep has no defaults address"
+        );
+        assert_eq!(
+            defaults_of(&strings("metrics.dogs.kelpie"), &flock.dogs),
+            None,
+            "a dog's name alone is not one"
+        );
+        let dotted = BTreeSet::from(["foo".to_string(), "foo.bar".to_string()]);
+        assert_eq!(
+            defaults_of(&strings("foo.bar.defaults.x"), &dotted)
+                .unwrap()
+                .dog,
+            "foo.bar",
+            "the longest dog name the address starts with"
+        );
+
+        let err = parse("metrics.defaults.model", &flock).unwrap_err();
+        let CopyRefusal::Refused(message) = err else {
+            panic!("expected a refusal, got {err:?}");
+        };
+        assert!(message.contains("`metrics.defaults.model`"), "{message}");
+        assert!(message.contains("shep set metrics.defaults"), "{message}");
     }
 }

@@ -135,6 +135,7 @@ fn test_actor(
         paths,
         events,
         host_environment: DEFAULT_ENVIRONMENT.to_string(),
+        dog_defaults: DogDefaults::default(),
         provider_secrets,
         tx,
         sheep,

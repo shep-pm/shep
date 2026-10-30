@@ -120,11 +120,16 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
         let provider_secrets = self
             .provider_secrets
             .unwrap_or_else(|| Arc::new(ProviderSecrets::load(&self.paths.secrets_cache)));
+        let dog_defaults = dog_defaults::read(&self.paths.dog_defaults).unwrap_or_else(|err| {
+            tracing::warn!("{err}: sheep tables are served without dog defaults");
+            DogDefaults::default()
+        });
         Actor {
             runner: self.runner,
             paths: self.paths,
             events: self.events,
             host_environment: self.environment,
+            dog_defaults,
             provider_secrets,
             tx,
             sheep: HashMap::new(),

@@ -522,3 +522,127 @@ fn shep_set_writes_a_section_that_ends_in_a_blank_line() {
 
     graceful_kill(home);
 }
+
+/// A dog's defaults are one table the shepherd holds under `$SHEP_HOME`, a
+/// sheep's own value is its own and leaves the default alone, and the verbs
+/// that cannot move a default say which one can.
+#[test]
+fn shep_set_writes_a_dogs_default_and_a_sheep_overrides_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let script = write_test_script(&dir);
+    let flockfile = write_flockfile(
+        &dir,
+        &format!(
+            "[[app]]\nname = \"api\"\nscript = '{0}'\n\n[app.dogs.metrics]\notlp_timeout = \"3s\"\n\n\
+             [[app]]\nname = \"worker\"\nscript = '{0}'\n\n[app.dogs.metrics]\n",
+            script.display()
+        ),
+    );
+
+    let mut guard = DaemonGuard::default();
+    let boot = shep(home).arg("start").arg(&flockfile).output().unwrap();
+    guard.adopt_home(home);
+    assert_success(&boot);
+    poll_flock(home, |info| info["status"] == "online");
+
+    let defaults = || -> serde_json::Value {
+        let text = std::fs::read_to_string(home.join("dog-defaults.json")).unwrap();
+        serde_json::from_str(&text).unwrap()
+    };
+
+    // The default is written once, as one key under the dog's name.
+    let written = shep(home)
+        .arg("set")
+        .arg("metrics.defaults.otlp_timeout")
+        .arg("\"12s\"")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert_success(&written);
+    let text = String::from_utf8_lossy(&written.stdout);
+    assert!(text.contains("otlp_timeout"), "{text}");
+    assert!(text.contains("added"), "{text}");
+    assert!(text.contains("wrote 1 change onto `metrics`"), "{text}");
+    assert_eq!(
+        defaults()["dogs"]["metrics"],
+        serde_json::json!({ "otlp_timeout": "12s" })
+    );
+
+    // Neither sheep's own table was written: a default is layered at read
+    // time, and `api`'s own value is still the one it holds.
+    let own = shep(home)
+        .arg("get")
+        .arg("api.dogs.metrics")
+        .output()
+        .unwrap();
+    assert_success(&own);
+    assert_eq!(
+        String::from_utf8_lossy(&own.stdout),
+        "[dogs.metrics]\notlp_timeout = \"3s\"\n"
+    );
+
+    // A sheep overrides by holding a value, and the default stays as it was.
+    let sheep = shep(home)
+        .arg("set")
+        .arg("worker.dogs.metrics.otlp_timeout")
+        .arg("\"30s\"")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert_success(&sheep);
+    assert_eq!(
+        defaults()["dogs"]["metrics"],
+        serde_json::json!({ "otlp_timeout": "12s" })
+    );
+
+    // The same value again is no write.
+    let same = shep(home)
+        .arg("set")
+        .arg("metrics.defaults.otlp_timeout")
+        .arg("\"12s\"")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert_success(&same);
+    assert!(
+        String::from_utf8_lossy(&same.stdout).contains("nothing to write"),
+        "{}",
+        String::from_utf8_lossy(&same.stdout)
+    );
+
+    // The default belongs to no sheep, so a copy refuses it and names the verb
+    // that writes it, and a name no dog answers is not a defaults address.
+    let copied = shep(home)
+        .arg("copy")
+        .arg("metrics.defaults.otlp_timeout")
+        .arg("api.dogs.metrics.otlp_timeout")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert!(!copied.status.success(), "{copied:?}");
+    let stderr = String::from_utf8_lossy(&copied.stderr);
+    assert!(stderr.contains("shep set metrics.defaults"), "{stderr}");
+
+    let unknown = shep(home)
+        .arg("set")
+        .arg("nosuchdog.defaults.x")
+        .arg("1")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert_eq!(unknown.status.code(), Some(3), "NotFound; {unknown:?}");
+
+    // Removing the whole default is a write of an empty table.
+    let cleared = shep(home)
+        .arg("set")
+        .arg("metrics.defaults")
+        .arg("{}")
+        .arg("--yes")
+        .output()
+        .unwrap();
+    assert_success(&cleared);
+    assert_eq!(defaults()["dogs"], serde_json::json!({}));
+
+    graceful_kill(home);
+}

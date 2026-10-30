@@ -235,6 +235,7 @@ fn a_dogs_own_section_and_tables_need_nothing_and_another_dogs_need_a_group() {
             toml: toml(),
         },
         Request::DogSheepSettings { dog: CALLER.into() },
+        Request::DogDefaults { dog: CALLER.into() },
         Request::SetSheepDogSettings {
             name: "web".into(),
             dog: CALLER.into(),
@@ -275,6 +276,18 @@ fn a_dogs_own_section_and_tables_need_nothing_and_another_dogs_need_a_group() {
         Request::SetSheepDogSettings {
             name: "web".into(),
             dog: "bark".into(),
+            table: None,
+        },
+        Permission::FlockEdit,
+    );
+    other(
+        Request::DogDefaults { dog: "bark".into() },
+        Permission::FlockRead,
+    );
+    // Operator-set: a dog cannot write its own default.
+    other(
+        Request::SetDogDefaults {
+            dog: CALLER.into(),
             table: None,
         },
         Permission::FlockEdit,

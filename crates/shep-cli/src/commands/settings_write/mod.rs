@@ -3,13 +3,13 @@
 //!
 //! The address is `copy`'s and `get`'s, and each kind is written through the
 //! request the shepherd already answers: [`Request::SetSheepField`],
-//! [`Request::SetSheepDogSettings`] or [`Request::SetDogConfig`], so
-//! everything those refuse this refuses.
+//! [`Request::SetSheepDogSettings`], [`Request::SetDogConfig`] or
+//! [`Request::SetDogDefaults`], so everything those refuse this refuses.
 //!
 //! The order is `copy`'s: resolve, read, plan, print the change list, ask,
 //! write. Nothing is sent until the operator has seen every key it touches.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde_json::{Map, Value as Json};
@@ -33,10 +33,15 @@ use crate::exit::ExitCode;
 use crate::lookout::probe_sheep_dogs::sheep_schema;
 use crate::output::Streams;
 
+#[cfg(test)]
+mod default_dog_tests;
+mod defaults;
 mod edit;
 mod flow;
 #[cfg(test)]
 mod flow_stale_tests;
+#[cfg(test)]
+mod inline_section_tests;
 mod plan;
 mod schema;
 mod unset;
@@ -180,6 +185,22 @@ pub(super) enum Write {
         /// The table the sheep held when this plan was built, which is what
         /// [`flow::holder_unchanged`] checks the sheep still holds.
         before: Json,
+    },
+    /// One dog's whole default table, through [`Request::SetDogDefaults`].
+    ///
+    /// The whole table, as with a sheep's: the request replaces it.
+    DogDefaults {
+        /// The dog's name.
+        dog: String,
+        /// The default the dog holds afterwards.
+        table: DogTable,
+        /// The default the shepherd answered when this plan was built, which
+        /// is what [`flow::holder_unchanged`] checks it still answers.
+        before: Json,
+        /// Each sheep carrying a table for the dog, by that sheep's own
+        /// table: what the schema check layers `table` under. Empty when the
+        /// dog publishes no per-sheep schema, which asks nothing.
+        sheep: BTreeMap<String, DogTable>,
     },
     /// One `AppConfig` field's override, dropped through
     /// [`Request::ResetSheepField`].
@@ -388,6 +409,9 @@ async fn set_dog(
     segments: &[String],
     ask: &Ask<'_>,
 ) -> ExitCode {
+    if let Some(defaults) = defaults_in(segments, ask.flock, ask.paths) {
+        return defaults::set_defaults(client, streams, &defaults, ask).await;
+    }
     let target = match resolve_dog(client, streams, segments, ask.flock, ask.paths).await {
         Ok(target) => target,
         Err(code) => return code,
@@ -417,6 +441,20 @@ async fn set_dog(
         }
         Err(refusal) => refusal.report(streams),
     }
+}
+
+/// The defaults address `segments` spell, if they spell one.
+///
+/// Read off the dogs the flock runs and the ones the shepherd knows, before
+/// any dog's own section is walked.
+fn defaults_in(
+    segments: &[String],
+    flock: &FlockNames,
+    paths: &ShepPaths,
+) -> Option<address::DefaultsAddress> {
+    let mut dogs = known_dogs(paths);
+    dogs.extend(flock.dogs.iter().cloned());
+    address::defaults_of(segments, &dogs)
 }
 
 /// The dog an address names.
