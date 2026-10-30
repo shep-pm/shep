@@ -165,12 +165,10 @@ tools: describe_sheep, get_metrics, list_barks, list_flock, reload_sheep,
       <code>host</code>: a name from{" "}
       <code>shep.toml</code>'s <code>hosts</code> array, and nothing else. A name{" "}
       outside it comes back as <code>unknown_host</code> with nothing dialled.
-      Over a host, <code>tail_bleats</code> asks that host's shepherd for the
-      log tail, and the text is as untrusted as a local log.
     </p>
     <p class="fine">
       The reply names the host it came from, and a local reply keeps the JSON it{" "}
-      always had. The list is read once at startup, so a host added later needs{" "}
+      always had. The list is read once at startup, so a later host needs{" "}
       whistle restarted. The other five tools stay on this machine, and a{" "}
       control tool handed a <code>host</code> refuses. See{" "}
       <a href={repoFile("docs/whistle/README.md")}>docs/whistle/README.md</a> for{" "}
