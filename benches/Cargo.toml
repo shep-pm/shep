@@ -14,6 +14,10 @@ rust-version = "1.88"
 # shipped binary's tree.
 [workspace]
 
+# toml_edit is not listed here. It arrives through the `shep-daemon` path
+# dependency, which inherits the root Cargo.toml's `toml_edit = "0.22.7"`; that
+# requirement caps this lockfile at 0.22.x. .github/dependabot.yml holds the
+# 0.25 bump out of the cargo-benches group.
 [dependencies]
 shep-daemon = { path = "../crates/shep-daemon" }
 shep-core = { path = "../crates/shep-core" }
