@@ -44,6 +44,8 @@ shep-handover = { path = "crates/shep-handover", version = "0.19.0" }
 shep-tree = { path = "crates/shep-tree", version = "0.19.0" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
+# Held at 0.8: toml 1.x was assessed and refused in #1313 (e2c8165).
+# The 1.x migration is planned separately; .github/dependabot.yml ignores major bumps.
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
 # The read-modify-write behind `shep.toml` and `dogs.toml`: `shep-cli`'s
 # `ShepToml` and `shep-daemon`'s `dogs::set_dog_section` both edit the
@@ -86,7 +88,9 @@ syn = { version = "3.0", default-features = false }
 # Floor 0.4.1: `json5::Deserializer` is what `serde_ignored` wraps to report
 # unknown Flockfile keys. 0.4.0 exposes `from_str` but not the `Deserializer`
 # type itself, so -Z minimal-versions fails to compile shep-core without this.
-json5 = { version = "0.4.1", default-features = false }
+# Held below 1.0: Flockfile parsing and its nesting guard depend on the
+# json5 0.4 deserializer API and recursive-descent parser.
+json5 = { version = ">=0.4.1, <1.0", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.
@@ -189,7 +193,10 @@ predicates = { version = "3", default-features = false }
 vt100 = { version = "0.16.2", default-features = false }
 # The cron_restart dialect (spec §4). `serde` is croner's only feature; we do
 # not serialize a parsed Cron, the Flockfile carries the pattern string.
-croner = { version = "3.0.1", default-features = false }
+# Held below 4: croner 4 changes the parser API and the accepted patterns that
+# shep-core's config::cron tests pin, and cron_restart is a Flockfile contract.
+# Drop the ceiling once config/cron.rs is migrated to croner 4.
+croner = { version = ">=3.0.1, <4", default-features = false }
 # croner is generic over chrono::TimeZone; `clock` provides Utc::now(), which
 # the daemon's cron worker reads to derive the next occurrence.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

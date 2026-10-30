@@ -33,6 +33,46 @@ fn main() -> std::io::Result<()> {
 - A unix group is left by a descendant that calls `setsid`. A Windows job
   cannot be left.
 
+## Sweeping what a process left running
+
+A group signal misses a child that left the group, and a process that exited
+by itself signals nothing at all. `sweep::Sweeper` ends what is left: it
+signals the pids a `sweep::LambSnapshot` saw, and whatever those start while
+it waits. `sweep::ProcessTable` is the real process table behind it, and it
+answers only for a root that descends from the calling process, so a sweep
+never signals a tree it did not start.
+
+```rust,no_run
+use std::process::Command;
+use std::time::Duration;
+
+use shep_tree::sweep::{LambSweep, ProcessTable, Sweeper};
+use shep_tree::{Signal, Tree};
+
+fn main() -> std::io::Result<()> {
+    let (tree, mut child) = Tree::spawn(Command::new("sleep").arg("600"))?;
+    let table = ProcessTable::new();
+    // Read the lambs while their root is still alive to walk from.
+    let snapshot = table.snapshot(child.id());
+    tree.stop(&mut child, Signal::Term, Duration::from_secs(5))?;
+    let report = Sweeper::new(snapshot, Duration::from_secs(5)).run_blocking(&table);
+    println!("termed {:?}, killed {:?}", report.termed, report.killed);
+    Ok(())
+}
+```
+
+- `Sweeper::run_blocking` drives the sweep on a plain thread, sleeping between
+  looks.
+- `Sweeper::step` is the same sweep a look at a time: it answers with the
+  `Duration` to sleep before the next look, or with the finished
+  `SweepReport`, so a caller on an async runtime sleeps with its own timer.
+- `SweepReport` names every pid it termed and killed, every signal the OS
+  refused with its reason, and every lamb still running after `SIGKILL`.
+- `instant::ProcInstant` dates a snapshot, and `instant::read_pids` answers
+  whether a pid is still the process a snapshot saw.
+- The `sysinfo` feature is on by default and carries `ProcessTable` and the
+  process-table reads. Off, the crate pulls no process-table dependency at all.
+
 shep is pre-release. Anything public here can change before 1.0.
 
 ## License

@@ -40,7 +40,8 @@ if (lt(nvmrc, floor)) {
 if (lt(running, floor)) {
   fail(
     `running Node ${running.join(".")}, but this build needs ${engines}. ` +
-      `Below 22.18 Node will not strip types from a .ts file, and scripts/verify-dogs-index.ts ` +
-      `fails with ERR_UNKNOWN_FILE_EXTENSION rather than anything that names the reason.`,
+      `Astro refuses to run below its own floor, and below 22.18 Node will not strip types ` +
+      `from a .ts file, so scripts/verify-dogs-index.ts fails with ERR_UNKNOWN_FILE_EXTENSION ` +
+      `rather than anything that names the reason.`,
   );
 }
