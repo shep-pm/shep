@@ -44,6 +44,8 @@ shep-handover = { path = "crates/shep-handover", version = "0.19.0" }
 shep-tree = { path = "crates/shep-tree", version = "0.19.0" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
+# Held at 0.8: toml 1.x was assessed and refused in #1313 (e2c8165).
+# The 1.x migration is planned separately; .github/dependabot.yml ignores major bumps.
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
 # The read-modify-write behind `shep.toml` and `dogs.toml`: `shep-cli`'s
 # `ShepToml` and `shep-daemon`'s `dogs::set_dog_section` both edit the
@@ -86,8 +88,9 @@ syn = { version = "3.0", default-features = false }
 # Floor 0.4.1: `json5::Deserializer` is what `serde_ignored` wraps to report
 # unknown Flockfile keys. 0.4.0 exposes `from_str` but not the `Deserializer`
 # type itself, so -Z minimal-versions fails to compile shep-core without this.
-# Held below 1.0: the 1.x line does not build against shep-core (#1311).
-json5 = { version = "0.4.1", default-features = false }
+# Held below 1.0: Flockfile parsing and its nesting guard depend on the
+# json5 0.4 deserializer API and recursive-descent parser.
+json5 = { version = ">=0.4.1, <1.0", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.

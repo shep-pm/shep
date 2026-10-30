@@ -207,7 +207,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
       # `--all-features` mirrors the task gate (CLAUDE.md).
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: nextest }
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
       - run: "cargo +${{ matrix.toolchain }} nextest run --profile ci --workspace --locked --all-features -E 'not (test(::slow::) or test(two_concurrent_boots) or test(signal_ignored_then_kill_tree_reaps) or test(a_reload_costs_a) or test(both_pipes_filled_to_capacity))'"
@@ -234,7 +234,7 @@ jobs:
       - run: rustup toolchain install nightly stable --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo +nightly generate-lockfile -Z minimal-versions
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: nextest }
       - run: "cargo +stable nextest run --profile ci --workspace -E 'not (test(::slow::) or test(two_concurrent_boots) or test(signal_ignored_then_kill_tree_reaps) or test(a_reload_costs_a) or test(both_pipes_filled_to_capacity))'"
       - run: 'cargo +stable test --workspace --doc'
@@ -259,7 +259,7 @@ jobs:
       # parallelism reports scheduling delay as a product failure. Two, not
       # one: this is contention, not a wall-clock tier like `slow`, and the
       # job has headroom against its twenty-minute timeout.
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: nextest }
       - run: "cargo nextest run --profile ci --workspace --locked --target x86_64-unknown-linux-musl --test-threads 2 -E 'not (test(::slow::) or test(two_concurrent_boots) or test(signal_ignored_then_kill_tree_reaps) or test(a_reload_costs_a) or test(both_pipes_filled_to_capacity))'"
       - run: 'cargo test --workspace --locked --target x86_64-unknown-linux-musl --doc'
@@ -354,7 +354,7 @@ jobs:
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: nextest }
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch' }}
       - run: "cargo nextest run --profile ci -p shep-daemon --locked --no-default-features -E 'not (test(::slow::) or test(two_concurrent_boots) or test(signal_ignored_then_kill_tree_reaps) or test(a_reload_costs_a) or test(both_pipes_filled_to_capacity))'"
@@ -435,7 +435,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: nextest }
       - run: "cargo nextest run --profile ci-slow --workspace --locked --all-features -E 'test(::slow::) or test(two_concurrent_boots) or test(signal_ignored_then_kill_tree_reaps) or test(a_reload_costs_a) or test(both_pipes_filled_to_capacity)'"
       - uses: ./.github/actions/nextest-report
@@ -463,7 +463,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --component llvm-tools
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         # Block style: in a flow mapping the comma is YAML's separator, so
         # `{ tool: a,b }` installs `a` and passes a stray `b` key.
         with:
@@ -500,7 +500,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with: { tool: cargo-deny }
       # `[graph] all-features = true` in deny.toml already covers the
       # feature set; `--all-features` is stated so it cannot drift from the
