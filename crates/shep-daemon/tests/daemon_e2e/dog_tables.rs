@@ -128,3 +128,89 @@ async fn a_dog_hears_its_per_sheep_table_change_end_to_end() {
 
     fixture.shutdown().await;
 }
+
+/// A default written by the operator reaches the dog that reads `jobs`
+/// tables, layered under what each sheep holds, and announces itself once per
+/// sheep carrying a table.
+#[tokio::test]
+async fn a_dog_reads_the_layered_table_after_the_operator_writes_a_default() {
+    let fixture = Fixture::boot(tempfile::tempdir().unwrap(), false).await;
+    let mut dog = fixture.connect().await;
+    let mut operator = fixture.connect().await;
+
+    let mut shop = forever_app("shop-api");
+    shop.dogs.insert(
+        "jobs".to_string(),
+        table(serde_json::json!({ "concurrency": 2, "hours": { "start": "09:00:00" } })),
+    );
+    let mut bare = forever_app("bare");
+    bare.dogs
+        .insert("jobs".to_string(), table(serde_json::json!({})));
+    // No table for the dog: a default does not reach this sheep.
+    let plain = forever_app("plain");
+    let started = operator
+        .request(Request::Start {
+            apps: vec![shop, bare, plain],
+        })
+        .await;
+    assert!(started.result.is_ok(), "{:?}", started.result);
+    dog.subscribe("config.sheep.jobs").await;
+
+    let default = table(serde_json::json!({
+        "concurrency": 8,
+        "merge": "ask",
+        "hours": { "start": "08:00:00", "end": "17:00:00" },
+    }));
+    let set = operator
+        .request(Request::SetDogDefaults {
+            dog: "jobs".to_string(),
+            table: Some(default),
+        })
+        .await;
+    assert_eq!(
+        set.result.unwrap(),
+        Response::DogDefaultsSet {
+            dog: "jobs".to_string()
+        }
+    );
+
+    let mut heard = vec![
+        next_table_change(&mut dog).await,
+        next_table_change(&mut dog).await,
+    ];
+    heard.sort();
+    assert_eq!(
+        heard,
+        [
+            ("jobs".to_string(), "bare".to_string()),
+            ("jobs".to_string(), "shop-api".to_string()),
+        ],
+        "one announcement per sheep whose layered table moved, and none for `plain`"
+    );
+
+    let tables = jobs_tables(&mut dog).await;
+    assert_eq!(
+        tables.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["bare", "shop-api"]
+    );
+    assert_eq!(
+        tables["bare"],
+        table(serde_json::json!({
+            "concurrency": 8,
+            "merge": "ask",
+            "hours": { "start": "08:00:00", "end": "17:00:00" },
+        })),
+        "an empty table takes every default"
+    );
+    assert_eq!(
+        tables["shop-api"],
+        table(serde_json::json!({
+            "concurrency": 2,
+            "merge": "ask",
+            "hours": { "start": "09:00:00", "end": "17:00:00" },
+        })),
+        "the sheep's own values win and a nested table merges key by key"
+    );
+
+    fixture.shutdown().await;
+}
