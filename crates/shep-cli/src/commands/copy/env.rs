@@ -127,7 +127,7 @@ fn change_of(change: EnvCopyChange) -> Change {
 mod tests {
     use super::*;
     use crate::commands::copy::address::{Address, ConfigPath};
-    use crate::commands::copy::report::report_for;
+    use crate::commands::copy::report::{ReportState, report_for};
     use crate::output::Render as _;
 
     fn listed(key: &str, kind: EnvCopyKind, old: Option<&str>, new: Option<&str>) -> EnvCopyChange {
@@ -225,7 +225,7 @@ mod tests {
             ],
         );
 
-        let report = report_for(&side("web"), &side("api"), &plan, true, false);
+        let report = report_for(&side("web"), &side("api"), &plan, ReportState::Written);
 
         let envelope = serde_json::to_value(&report).unwrap();
         assert_eq!(envelope["path"], "env");

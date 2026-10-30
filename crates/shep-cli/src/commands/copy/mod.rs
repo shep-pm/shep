@@ -32,7 +32,7 @@ use crate::output::Streams;
 use address::{Address, ConfigPath, FlockNames};
 use confirm::{Answer, Context, Go, confirm, decide};
 use plan::{Plan, Write};
-use report::{finish, print_changes, report_for, shows_changes_first};
+use report::{ReportState, finish, print_changes, report_for, shows_changes_first};
 
 /// Why a copy stopped before it wrote anything.
 ///
@@ -191,7 +191,7 @@ pub(crate) async fn copy(
     };
 
     let path = from.path.dotted();
-    let mut report = report_for(&from, &to, &plan, false, args.dry_run);
+    let mut report = report_for(&from, &to, &plan, ReportState::preview(args.dry_run));
 
     if plan.changes.is_empty() {
         let message = format!(
@@ -264,7 +264,7 @@ pub(crate) async fn copy(
         Err(code) => return code,
     };
 
-    report = report_for(&from, &to, &plan, true, args.dry_run);
+    report = report_for(&from, &to, &plan, ReportState::Written);
     if !pending.is_empty() {
         let message = format!(
             "{} waiting on the next spawn (`shep reload {}` promotes them)",
@@ -833,8 +833,7 @@ mod tests {
             &address("web.dogs.kelpie"),
             &address("api.dogs.kelpie"),
             &plan,
-            false,
-            true,
+            ReportState::DryRun,
         );
         assert!(dry.dry_run);
         assert!(

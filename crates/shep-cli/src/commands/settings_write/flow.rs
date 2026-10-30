@@ -16,7 +16,7 @@ use crate::cli::Format;
 use crate::commands::copy;
 use crate::commands::copy::address;
 use crate::commands::copy::confirm::{self, Answer, Context, Go};
-use crate::commands::copy::report::shows_changes_first;
+use crate::commands::copy::report::{ReportState, shows_changes_first};
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::settings_read::{self, Holder};
 use crate::dog_settings::{AskFailure, ask_dog};
@@ -39,7 +39,13 @@ pub(super) async fn run(
     if let Some(refusal) = schema_refusal(plan, name, path) {
         return refusal.report(streams);
     }
-    let mut report = report_for(holder, name, path, plan, false, flags.dry_run);
+    let mut report = report_for(
+        holder,
+        name,
+        path,
+        plan,
+        ReportState::preview(flags.dry_run),
+    );
     if plan.changes.is_empty() {
         let reason = match verb {
             Verb::Set => "already holds that value",
@@ -156,7 +162,7 @@ pub(super) async fn run(
         Ok(pending) => pending,
         Err(code) => return code,
     };
-    report = report_for(holder, name, path, plan, true, flags.dry_run);
+    report = report_for(holder, name, path, plan, ReportState::Written);
     report.pending = pending;
     if !report.pending.is_empty() {
         announce(
@@ -485,15 +491,14 @@ pub(super) fn report_for(
     name: &str,
     path: &str,
     plan: &Plan,
-    written: bool,
-    dry_run: bool,
+    state: ReportState,
 ) -> SetReport {
     SetReport {
         kind: holder.as_str(),
         name: name.to_string(),
         path: path.to_string(),
-        written,
-        dry_run,
+        written: state == ReportState::Written,
+        dry_run: state == ReportState::DryRun,
         pending: Vec::new(),
         changes: plan
             .changes

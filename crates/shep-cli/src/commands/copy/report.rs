@@ -14,20 +14,37 @@ use super::address::Address;
 use super::confirm::Go;
 use super::plan::Plan;
 
+/// The stage whose verdict a report describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReportState {
+    /// Changes are planned but have not been written.
+    Preview,
+    /// The operator requested a preview without a write.
+    DryRun,
+    /// The write succeeded.
+    Written,
+}
+
+impl ReportState {
+    /// The initial report, before any write.
+    pub(crate) fn preview(dry_run: bool) -> Self {
+        if dry_run { Self::DryRun } else { Self::Preview }
+    }
+}
+
 /// The report a plan renders, before or after the write.
 pub(crate) fn report_for(
     from: &Address,
     to: &Address,
     plan: &Plan,
-    written: bool,
-    dry_run: bool,
+    state: ReportState,
 ) -> CopyReport {
     CopyReport {
         from: from.sheep.clone(),
         to: to.sheep.clone(),
         path: from.path.dotted(),
-        written,
-        dry_run,
+        written: state == ReportState::Written,
+        dry_run: state == ReportState::DryRun,
         pending: Vec::new(),
         changes: plan
             .changes
@@ -132,7 +149,7 @@ mod tests {
             }],
             write: None,
         };
-        let report = report_for(&from, &to, &plan, true, false);
+        let report = report_for(&from, &to, &plan, ReportState::Written);
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["from"], "web");
         assert_eq!(json["to"], "api");
@@ -193,7 +210,7 @@ mod tests {
             write: None,
         };
         let (from, to) = sides("kelpie");
-        let report = report_for(&from, &to, &plan, false, false);
+        let report = report_for(&from, &to, &plan, ReportState::Preview);
 
         print_changes(&mut streams, &report).expect("the preview writes");
         let mut reader = std::io::Cursor::new(b"n\n".as_slice());
@@ -249,7 +266,7 @@ mod tests {
                 },
             },
         );
-        let report = report_for(&from, &to, &plan, false, false);
+        let report = report_for(&from, &to, &plan, ReportState::Preview);
         print_changes(&mut streams, &report).expect("the table writes");
         let shown = String::from_utf8(out).unwrap();
         assert!(
