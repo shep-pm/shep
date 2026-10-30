@@ -143,18 +143,24 @@ What that does not cover:
   check applies. A link owned by anyone else is refused, naming the link. It
   then opens the resolved path with `openat2(RESOLVE_NO_SYMLINKS)`, so a link
   planted after the walk is refused too, and nobody can swap a parent for a
-  link between the check and the open. A kernel below 5.6, or a seccomp
-  filter that blocks the syscall, falls back to the `O_NOFOLLOW` open and its
+  link between the check and the open. On a kernel below 5.6, or under a
+  seccomp filter that blocks the syscall, the walk still runs and still
+  refuses a link owned by anyone else. Only the guard against a link planted
+  after the walk is lost: the open falls back to `O_NOFOLLOW` and its
   one-component guard.
 - The ancestry check is a check, not an atomic resolve, so on macOS a TOCTOU
   window remains between it and the open. It also stays the only guard on
   ownership and mode, which `openat2` does not look at.
-- **An unprivileged daemon warns rather than refuses.** A loose ancestry is
-  an escalation only when the daemon is privileged; a shepherd running as an
-  ordinary user that logs into a shared directory has handed nobody anything
-  they could not already do as that user. It is a footgun, and shep says so
-  once per path at the default log level, but it is not blocked. Refusing
-  would break logging to `/tmp` as yourself, which is legitimate.
+- **An unprivileged daemon warns rather than refuses a loose ancestry.** A
+  directory owned by someone else, or a world-writable one, is an escalation
+  only when the daemon is privileged; a shepherd running as an ordinary user
+  that logs into a shared directory has handed nobody anything they could not
+  already do as that user. It is a footgun, and shep says so once per path at
+  the default log level, but it is not blocked. Refusing would break logging
+  to `/tmp` as yourself, which is legitimate. This warning rule covers
+  ownership and mode only. On Linux, a parent link owned by anyone other than
+  the shepherd's user or root is refused for every shepherd, privileged or
+  not.
 - **Dropping privileges does not move any of this.** An app's `user`/`group`
   changes what the child runs as, and the child never sees its log file. Log
   I/O is the daemon's, on the far side of a pipe, and happens with the

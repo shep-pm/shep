@@ -115,8 +115,9 @@ pub(super) async fn flush_logs(log_ctl: &mpsc::Sender<LogCtl>) -> Result<(), Flu
 ///
 /// Exactly the path the Flockfile named, with no check on where it points: a
 /// flush empties whatever an `out_file` names, under the daemon's own
-/// privileges. The open goes through [`open_log_path`], which refuses a
-/// symlink in the path. It creates nothing, so a missing path is a no-op.
+/// privileges. On Unix [`open_log_path`] refuses a symlink at the final
+/// component and, on Linux, a parent link owned by anyone but the shepherd's
+/// user or root; Windows refuses neither. A missing path is a no-op.
 ///
 /// # Errors
 ///
