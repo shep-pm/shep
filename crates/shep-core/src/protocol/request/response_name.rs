@@ -29,6 +29,8 @@ impl Response {
             Self::DogSheepSettings { .. } => "DogSheepSettings",
             Self::SheepDogTable { .. } => "SheepDogTable",
             Self::SheepDogSettingsSet { .. } => "SheepDogSettingsSet",
+            Self::DogDefaults { .. } => "DogDefaults",
+            Self::DogDefaultsSet { .. } => "DogDefaultsSet",
             Self::DogConfigSet { .. } => "DogConfigSet",
             Self::SecretsPut { .. } => "SecretsPut",
             Self::Stopped(_) => "Stopped",
