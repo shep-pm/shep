@@ -409,7 +409,10 @@ mod tests {
     #[test]
     fn a_value_outgrowing_its_column_is_shown_from_the_end_being_typed() {
         let typed = "abcdefghijklmnopqrstuvwxyz0123456789-THE-TAIL";
-        let app = app_typing(typed);
+        let mut app = app_typing(typed);
+        app.update(Msg::Key(KeyPress::TextEdit(
+            crate::lookout::textbox::TextEdit::Reveal,
+        )));
         let buffer = fixtures::render(&app, 160, 48);
         let drawn = cell(&buffer, row_of(&buffer, "DB_PASSWORD"), Column::Value);
 

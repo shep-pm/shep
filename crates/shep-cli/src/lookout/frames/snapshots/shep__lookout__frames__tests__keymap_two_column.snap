@@ -28,7 +28,7 @@ S            secrets
 D            delete a key                                             
 c            leave it running                                         
 ctrl-w/u/k   cut word, to ends                                        
-                                                                      
+ctrl-r       unmask a secret                                          
                                                                       
  the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
  colour is decoration only: every coloured cell says the same thing i…

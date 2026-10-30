@@ -438,6 +438,8 @@ pub(super) enum Target {
         /// Which row of the dog's tree it sits on, which is what the pane copy
         /// is pointed at before the text is handed to it.
         row: usize,
+        /// Whether the field is `x-shep-secret`, which the editor masks.
+        secret: bool,
     },
 }
 
@@ -484,7 +486,7 @@ impl Target {
                     value: value.to_owned(),
                 }))
             }
-            Self::DogValue { name, key, row } => {
+            Self::DogValue { name, key, row, .. } => {
                 match settings.dog_section_edit(name, *row, text) {
                     Ok(Some(toml)) => Ok(TargetEdit::DogSection {
                         name: name.clone(),

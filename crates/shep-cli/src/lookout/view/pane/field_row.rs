@@ -74,7 +74,7 @@ pub(super) fn leaf_line(
         .filter(|typing| typing.key == field.key)
         .map(|typing| &typing.buffer);
     let value = match typing {
-        Some(buffer) => buffer.drawn(value_w),
+        Some(buffer) => buffer.drawn_for(field.secret, value_w),
         // An entries row reads as a count, which holds nothing to mask.
         None => mask_secret(
             field.secret && !matches!(field.kind, FieldKind::Entries(_)),
@@ -349,8 +349,8 @@ pub(super) fn impact_tag(group: ApplyGroup) -> (char, &'static str, &'static str
 #[cfg(test)]
 mod tests {
     use super::super::fixtures::{
-        nested_secret_dog_pane, opaque_secret_dog_pane, secret_dog_pane_with_an_edit, text_of,
-        web_pane,
+        nested_secret_dog_pane, opaque_secret_dog_pane, plain_dog_pane_typing,
+        secret_dog_pane_typing, secret_dog_pane_with_an_edit, text_of, web_pane,
     };
     use super::super::pane_lines;
     use super::*;
@@ -587,6 +587,50 @@ mod tests {
             !text.join("\n").contains("ef56gh78"),
             "the new value leaked: {text:?}"
         );
+    }
+
+    /// The value cell of the `token` row, found by its key.
+    fn token_row(pane: &ConfigPane) -> String {
+        text_of(&pane_lines(pane, fixtures::plain(), 120, 0))
+            .into_iter()
+            .find(|line| line.contains(" token"))
+            .expect("token is drawn at 120 columns")
+    }
+
+    #[test]
+    fn a_secret_fields_editor_masks_what_is_being_typed() {
+        let row = token_row(&secret_dog_pane_typing());
+
+        assert!(!row.contains("ef56gh78"), "the typed value leaked: {row:?}");
+        assert!(
+            !row.contains("ab12cd34"),
+            "the stored value leaked: {row:?}"
+        );
+        assert!(
+            row.contains(
+                "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"
+            ),
+            "eight blocks then the cursor: {row:?}"
+        );
+    }
+
+    #[test]
+    fn a_revealed_secret_editor_draws_what_is_being_typed() {
+        let mut pane = secret_dog_pane_typing();
+        pane.edit_text(crate::lookout::textbox::TextEdit::Reveal);
+
+        assert!(token_row(&pane).contains("ef56gh78\u{258f}"));
+
+        pane.edit_text(crate::lookout::textbox::TextEdit::Reveal);
+        assert!(!token_row(&pane).contains("ef56gh78"));
+    }
+
+    #[test]
+    fn a_non_secret_fields_editor_still_draws_what_is_being_typed() {
+        let row = token_row(&plain_dog_pane_typing());
+
+        assert!(row.contains("ef56gh78\u{258f}"), "{row:?}");
+        assert!(!row.contains('\u{2588}'), "{row:?}");
     }
 
     /// An array of tables that holds a secret draws as a count and never as

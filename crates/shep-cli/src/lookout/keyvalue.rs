@@ -10,7 +10,7 @@
 //! through a reveal.
 
 use super::app::KeyPress;
-use super::textbox::TextBox;
+use super::textbox::{TextBox, TextEdit};
 
 /// The sentence a rename with nothing typed in VALUE raises, in both panes.
 ///
@@ -240,7 +240,14 @@ impl KeyValues {
 
     /// A typed character, a backspace or a cursor move, into whichever field
     /// holds the cursor. Any other key is not the box's and is ignored.
+    ///
+    /// `Ctrl-r` goes to VALUE from either field: KEY is never masked, so a
+    /// press that only flipped KEY's flag would change nothing on screen.
     pub fn handle(&mut self, key: KeyPress) {
+        if key == KeyPress::TextEdit(TextEdit::Reveal) {
+            self.value.edit(TextEdit::Reveal);
+            return;
+        }
         match self.focus {
             Field::Key => self.key.handle(key),
             Field::Value => self.value.handle(key),
@@ -306,6 +313,29 @@ mod tests {
         for c in text.chars() {
             editor.handle(KeyPress::TextChar(c));
         }
+    }
+
+    /// KEY is never masked, so a press there that flipped only KEY's flag
+    /// would change nothing on screen and leave a stale flag behind.
+    #[test]
+    fn ctrl_r_unmasks_the_value_from_either_field() {
+        let mut editor = KeyValues::add(Grammar::Env);
+        typed(&mut editor, "WEB");
+        editor.step(false);
+        typed(&mut editor, "hunter2");
+        editor.step(true);
+
+        editor.handle(KeyPress::TextEdit(TextEdit::Reveal));
+
+        assert_eq!(editor.focus(), Field::Key);
+        assert_eq!(editor.value().shown(true), "hunter2");
+        assert_eq!(
+            editor.key().shown(true),
+            "\u{2588}".repeat(3),
+            "KEY's own flag was left alone"
+        );
+        assert_eq!(editor.key().as_str(), "WEB");
+        assert_eq!(editor.value().as_str(), "hunter2");
     }
 
     #[test]

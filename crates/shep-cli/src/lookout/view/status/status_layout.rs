@@ -16,9 +16,9 @@ use ratatui::text::{Line, Span};
 pub(in crate::lookout::view) const TEXT_ENTRY_HINT: &str = "enter applies   esc cancels";
 
 /// A text-entry bar: `label`, two columns of gap, the buffer, then `keys`
-/// three columns after it.
-fn entry_line(buffer: &TextBox, label: &str, keys: &str, width: u16) -> String {
-    buffer.line(&format!("{label}  "), &format!("   {keys}"), width)
+/// three columns after it. `secret` masks the buffer the way its own row does.
+fn entry_line(buffer: &TextBox, secret: bool, label: &str, keys: &str, width: u16) -> String {
+    buffer.line(secret, &format!("{label}  "), &format!("   {keys}"), width)
 }
 
 /// The banner, when there is one. `None` while the link is live.
@@ -101,7 +101,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // dashboard's name filter, and falling through would label the
         // dashboard's own untouched query as this pane's match.
         (
-            entry_line(buffer, "match", TEXT_ENTRY_HINT, left_width),
+            entry_line(buffer, false, "match", TEXT_ENTRY_HINT, left_width),
             palette.attention(),
         )
     } else if let Some(buffer) = app
@@ -113,7 +113,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // here would label the dashboard's untouched query as this feed's
         // match.
         (
-            entry_line(buffer, "match", TEXT_ENTRY_HINT, left_width),
+            entry_line(buffer, false, "match", TEXT_ENTRY_HINT, left_width),
             palette.attention(),
         )
     } else if let Some(editor) = app.config_pane().and_then(pane_editor) {
@@ -122,20 +122,31 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // `InputMode::Text`, and a bar that fell through would label this the
         // dashboard's own query. The keys come from the slot, not from here.
         (
-            entry_line(editor.buffer, &editor.label, editor.keys, left_width),
+            entry_line(
+                editor.buffer,
+                editor.secret,
+                &editor.label,
+                editor.keys,
+                left_width,
+            ),
             palette.attention(),
         )
     } else if let Some(action) = app.action().filter(|a| !a.sent) {
         // A question awaiting an answer outranks everything, including the
         // filter box: `/` cancels a confirm before it opens the box.
         (confirm_prompt(&action), palette.attention())
-    } else if let Some((label, buffer)) = app.settings().and_then(Settings::typing) {
+    } else if let Some((settings, label, buffer)) = app.settings().and_then(|settings| {
+        settings
+            .typing()
+            .map(|(label, buffer)| (settings, label, buffer))
+    }) {
         // Checked ahead of the filter-box branch below: both share
         // `InputMode::Text`, but this types into a `shep.toml` key, not
         // `App::filter`.
         (
             entry_line(
                 buffer,
+                settings.typing_is_secret(),
                 &format!("editing {label}"),
                 TEXT_ENTRY_HINT,
                 left_width,
@@ -156,7 +167,13 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // pane's own free-text branch above gives: this shares
         // `InputMode::Text` with `App::filter` too.
         (
-            entry_line(editor.buffer, &editor.label, editor.keys, left_width),
+            entry_line(
+                editor.buffer,
+                editor.secret,
+                &editor.label,
+                editor.keys,
+                left_width,
+            ),
             palette.attention(),
         )
     } else if let Some(key) = secrets_armed(app) {
@@ -176,6 +193,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         (
             entry_line(
                 app.filter_box(),
+                false,
                 "filter",
                 &format!("{TEXT_ENTRY_HINT}   ctrl-c quits"),
                 left_width,
@@ -676,8 +694,59 @@ mod tests {
         app.update(Msg::Key(KeyPress::TextChar('y')));
         let env = rendered(&status_line(&app, 200));
         assert!(env.contains("env DB_HOST VALUE"), "got {env:?}");
-        assert!(env.contains('y'), "got {env:?}");
+        assert!(env.contains("\u{2588}\u{258f}"), "got {env:?}");
+        assert!(!env.contains("  y"), "the typed value is drawn: {env:?}");
         assert!(!env.contains("filter"), "got {env:?}");
+    }
+
+    /// The bar echoes the open editor, so it masks what its row masks and
+    /// `ctrl-r` shows both.
+    #[test]
+    fn a_secrets_value_is_masked_on_the_bar_while_it_is_typed() {
+        use crate::lookout::textbox::TextEdit;
+
+        let mut app = super::super::super::fixtures::app_with_secrets_and_control();
+        app.update(Msg::Key(KeyPress::SelectLast));
+        app.update(Msg::Key(KeyPress::Confirm));
+        for c in "DB_NEW".chars() {
+            app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let key = rendered(&status_line(&app, 200));
+        assert!(
+            key.contains("DB_NEW\u{258f}"),
+            "KEY is not a secret: {key:?}"
+        );
+
+        app.update(Msg::Key(KeyPress::NextField));
+        for c in "hunter2".chars() {
+            app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let masked = rendered(&status_line(&app, 200));
+        assert!(!masked.contains("hunter2"), "got {masked:?}");
+        assert!(
+            masked.contains("\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"),
+            "got {masked:?}"
+        );
+
+        app.update(Msg::Key(KeyPress::TextEdit(TextEdit::Reveal)));
+        let shown = rendered(&status_line(&app, 200));
+        assert!(shown.contains("hunter2\u{258f}"), "got {shown:?}");
+    }
+
+    /// A sheep's env VALUE, through the same slot.
+    #[test]
+    fn an_env_value_is_masked_on_the_bar_while_it_is_typed() {
+        let mut app = super::super::super::fixtures::app_in_sheep_pane_with_control();
+        app.update(Msg::Key(KeyPress::SelectLast));
+        app.update(Msg::Key(KeyPress::Confirm));
+        app.update(Msg::Key(KeyPress::TextChar('K')));
+        app.update(Msg::Key(KeyPress::NextField));
+        for c in "hunter2".chars() {
+            app.update(Msg::Key(KeyPress::TextChar(c)));
+        }
+        let bar = rendered(&status_line(&app, 200));
+        assert!(!bar.contains("hunter2"), "got {bar:?}");
+        assert!(bar.contains("\u{2588}\u{258f}"), "got {bar:?}");
     }
 
     /// The whole point of one editor: the keys the bar names for a focused

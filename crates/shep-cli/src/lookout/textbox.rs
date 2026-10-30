@@ -14,6 +14,10 @@ use super::app::KeyPress;
 /// ANSI gallery renders foregrounds only.
 const CURSOR: char = '\u{258f}';
 
+/// What a secret's typed character is drawn as, the glyph the secrets pane
+/// already uses for a value that is set.
+const MASK: char = '\u{2588}';
+
 /// The fewest columns [`TextBox::line`] keeps for the box before the text
 /// after it gives way.
 const MIN_BOX: u16 = 12;
@@ -42,6 +46,8 @@ pub enum TextEdit {
     DeleteToStart,
     /// `Ctrl-k`: everything from the cursor on.
     DeleteToEnd,
+    /// `Ctrl-r`: draws a secret's box as typed, or masks it again.
+    Reveal,
 }
 
 /// A line of text and a cursor in it.
@@ -53,6 +59,9 @@ pub enum TextEdit {
 #[derive(Clone, Default)]
 pub struct TextBox {
     input: Input,
+    /// Whether `Ctrl-r` has unmasked a secret's text: a view of it, so
+    /// `Debug` and `PartialEq` leave it out.
+    revealed: bool,
 }
 
 impl core::fmt::Debug for TextBox {
@@ -86,6 +95,7 @@ impl From<String> for TextBox {
     fn from(text: String) -> Self {
         Self {
             input: Input::new(text),
+            revealed: false,
         }
     }
 }
@@ -134,6 +144,10 @@ impl TextBox {
     /// Applies one cursor move or deletion.
     pub fn edit(&mut self, edit: TextEdit) {
         let request = match edit {
+            TextEdit::Reveal => {
+                self.revealed = !self.revealed;
+                return;
+            }
             TextEdit::Left => InputRequest::GoToPrevChar,
             TextEdit::Right => InputRequest::GoToNextChar,
             TextEdit::WordLeft => InputRequest::GoToPrevWord,
@@ -171,9 +185,45 @@ impl TextBox {
     /// cursor on the last column, so what is being typed is always in view.
     #[must_use]
     pub fn drawn(&self, width: u16) -> String {
+        self.scrolled(self.as_str().chars().collect(), width)
+    }
+
+    /// [`Self::drawn`] with each typed character drawn as one `█`.
+    ///
+    /// The cursor and the scroll are the same, so a secret being typed is
+    /// as easy to edit as any text and shows nothing of what it holds.
+    #[must_use]
+    pub fn drawn_masked(&self, width: u16) -> String {
+        self.scrolled(vec![MASK; self.char_count()], width)
+    }
+
+    /// [`Self::drawn_masked`] when `secret` and the box is not revealed,
+    /// [`Self::drawn`] otherwise.
+    #[must_use]
+    pub fn drawn_for(&self, secret: bool, width: u16) -> String {
+        if secret && !self.revealed {
+            self.drawn_masked(width)
+        } else {
+            self.drawn(width)
+        }
+    }
+
+    /// The text with no cursor: as typed, or one `█` per character when
+    /// `secret` and the box is not revealed.
+    #[must_use]
+    pub fn shown(&self, secret: bool) -> String {
+        if secret && !self.revealed {
+            MASK.to_string().repeat(self.char_count())
+        } else {
+            self.as_str().to_owned()
+        }
+    }
+
+    /// `cells` with the cursor put in at [`Self::cursor`], cut to `width`
+    /// columns.
+    fn scrolled(&self, mut cells: Vec<char>, width: u16) -> String {
         let width = usize::from(width);
         let at = self.cursor();
-        let mut cells: Vec<char> = self.as_str().chars().collect();
         cells.insert(at, CURSOR);
         let cursor_column: usize = cells[..at].iter().map(|c| c.width().unwrap_or(0)).sum();
         let scroll = (cursor_column + 1).saturating_sub(width);
@@ -198,18 +248,18 @@ impl TextBox {
 
 impl TextBox {
     /// `before`, the box drawn with its cursor, then `after`, in `width`
-    /// columns.
+    /// columns. `secret` draws the box through [`Self::drawn_for`].
     ///
     /// The box gets what the two ends leave, so it scrolls to keep the
     /// cursor on screen instead of being cut with the line. When that is
     /// under [`MIN_BOX`] columns, `after` gives way first.
     #[must_use]
-    pub fn line(&self, before: &str, after: &str, width: u16) -> String {
+    pub fn line(&self, secret: bool, before: &str, after: &str, width: u16) -> String {
         let columns = |text: &str| u16::try_from(text.width()).unwrap_or(u16::MAX);
         let room = width.saturating_sub(columns(before));
         let beside = room.saturating_sub(columns(after));
         let budget = if beside >= MIN_BOX { beside } else { room };
-        format!("{before}{}{after}", self.drawn(budget))
+        format!("{before}{}{after}", self.drawn_for(secret, budget))
     }
 }
 
@@ -375,6 +425,60 @@ mod tests {
     }
 
     #[test]
+    fn a_masked_cell_keeps_the_cursor_and_its_scroll() {
+        assert_eq!(
+            boxed("hunter2", 3).drawn_masked(80),
+            "\u{2588}\u{2588}\u{2588}\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}"
+        );
+        assert_eq!(TextBox::new().drawn_masked(80), "\u{258f}");
+        assert_eq!(
+            boxed("hello world", 11).drawn_masked(6),
+            "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"
+        );
+        assert_eq!(
+            boxed("hello world", 0).drawn_masked(6),
+            "\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}"
+        );
+        assert_eq!(
+            boxed("hello world", 8).drawn_masked(6),
+            "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{258f}"
+        );
+        assert_eq!(TextBox::from("abc").drawn_masked(0), "");
+    }
+
+    #[test]
+    fn a_masked_wide_character_is_one_block_and_nothing_else_survives() {
+        let masked = TextBox::from("\u{65e5}\u{672c}\u{8a9e}").drawn_masked(5);
+
+        assert_eq!(masked, "\u{2588}\u{2588}\u{2588}\u{258f}");
+        assert!(!masked.contains('\u{65e5}'));
+    }
+
+    #[test]
+    fn revealing_toggles_what_a_secret_draws_and_leaves_the_text_alone() {
+        let mut text_box = boxed("ab", 1);
+
+        assert_eq!(text_box.drawn_for(true, 80), "\u{2588}\u{258f}\u{2588}");
+        text_box.edit(TextEdit::Reveal);
+        assert_eq!(text_box.drawn_for(true, 80), "a\u{258f}b");
+        assert_eq!(text_box.drawn_for(false, 80), "a\u{258f}b");
+        text_box.edit(TextEdit::Reveal);
+        assert_eq!(text_box.drawn_for(true, 80), "\u{2588}\u{258f}\u{2588}");
+        assert_eq!(text_box.as_str(), "ab");
+        assert_eq!(text_box.cursor(), 1);
+    }
+
+    #[test]
+    fn a_secret_box_shown_without_a_cursor_is_a_run_of_blocks() {
+        let mut text_box = TextBox::from("hunter2");
+
+        assert_eq!(text_box.shown(true), "\u{2588}".repeat(7));
+        assert_eq!(text_box.shown(false), "hunter2");
+        text_box.edit(TextEdit::Reveal);
+        assert_eq!(text_box.shown(true), "hunter2");
+    }
+
+    #[test]
     fn a_wide_character_is_never_split_by_the_scroll() {
         let drawn = TextBox::from("\u{65e5}\u{672c}\u{8a9e}").drawn(5);
 
@@ -386,7 +490,7 @@ mod tests {
         let text_box = boxed("hello", 2);
 
         assert_eq!(
-            text_box.line("filter  ", "   enter applies", 40),
+            text_box.line(false, "filter  ", "   enter applies", 40),
             "filter  he\u{258f}llo   enter applies"
         );
     }
@@ -395,7 +499,7 @@ mod tests {
     fn a_line_scrolls_the_box_rather_than_cutting_it() {
         let text_box = TextBox::from("0123456789abcdefghij");
 
-        let line = text_box.line("f  ", "   enter applies", 33);
+        let line = text_box.line(false, "f  ", "   enter applies", 33);
 
         assert_eq!(line, "f  789abcdefghij\u{258f}   enter applies");
     }
@@ -404,12 +508,24 @@ mod tests {
     fn a_line_drops_the_text_after_the_box_before_squeezing_it() {
         let text_box = TextBox::from("0123456789abcdefghij");
 
-        let line = text_box.line("f  ", "   enter applies   esc cancels", 20);
+        let line = text_box.line(false, "f  ", "   enter applies   esc cancels", 20);
 
         assert_eq!(
             line,
             "f  456789abcdefghij\u{258f}   enter applies   esc cancels"
         );
+    }
+
+    #[test]
+    fn a_secret_line_masks_the_box_and_leaves_both_ends_alone() {
+        let mut text_box = boxed("hunter2", 3);
+
+        assert_eq!(
+            text_box.line(true, "env  ", "   enter writes", 40),
+            "env  \u{2588}\u{2588}\u{2588}\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}   enter writes"
+        );
+        text_box.edit(TextEdit::Reveal);
+        assert_eq!(text_box.line(true, "env  ", "", 40), "env  hun\u{258f}ter2");
     }
 
     #[test]
