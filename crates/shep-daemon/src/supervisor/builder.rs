@@ -1,6 +1,7 @@
 //! Starting the actor task.
 //!
-//! [`spawn_supervisor`] is the ordinary entry point and takes the defaults.
+//! [`spawn_supervisor`] is the ordinary entry point and starts with no dog
+//! defaults: `boot` reads them.
 //! `SupervisorBuilder` is the long form the daemon's boot path uses when it
 //! has to override the clock, the runner or the paths, as the tests do.
 
@@ -157,8 +158,8 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     }
 }
 
-/// Spawns the actor with no lifecycle extras: shorthand for
-/// `SupervisorBuilder::new(runner, paths, events).spawn()`.
+/// Spawns the actor with no lifecycle extras and no dog defaults, which `boot`
+/// reads: shorthand for `SupervisorBuilder::new(runner, paths, events).spawn()`.
 ///
 /// Must be called from within a Tokio runtime context: it spawns the actor
 /// task immediately.
