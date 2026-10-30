@@ -131,15 +131,15 @@ impl ProcessRunner for SilentPumpRunner {
     }
 }
 
-/// What [`FailingPumpRunner`]'s pump answers every reopen with. One owner
-/// for the string: the case below asserts the whole error it ends up in.
+/// What [`FailingPumpRunner`]'s pump answers every reopen and flush with.
+/// One owner for the string: the case below asserts the whole error it ends up in.
 pub(super) const PUMP_REFUSAL: &str = "/gone/web-out.log: No such file or directory";
 
 /// The sheep [`FailingPumpRunner`] gives a failing pump to.
 pub(super) const REFUSING_SHEEP: &str = "web";
 
 /// A [`ScriptedRunner`] whose spawn of [`REFUSING_SHEEP`] gets a pump that
-/// answers every reopen with a failure. Every other sheep keeps the
+/// answers every reopen and flush with a failure. Every other sheep keeps the
 /// scripted fake's own answering pump. By name rather than by spawn order,
 /// so one case can hold a failed reopen and a healthy sheep beside it.
 #[derive(Debug)]
