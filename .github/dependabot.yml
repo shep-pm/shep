@@ -39,6 +39,19 @@ updates:
     labels: [dependencies]
     cooldown:
       default-days: 7
+    # notify 8.2.0 declares fsevent-sys "4.0.0"; the 4.1.0 floor pin is
+    # deliberate. Drop this once a notify release declares fsevent-sys 5.
+    ignore:
+      - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
+      # #1313's toml 1.1.6 bump broke every Rust-compiling test.yml leg at e2c8165.
+      # Drop this once shep's planned toml 1.x migration passes those legs.
+      - dependency-name: toml
+        update-types: [version-update:semver-major]
+      # croner 4 breaks shep-core's cron parsing; the ceiling in the root
+      # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
+      - dependency-name: croner
+        update-types: [version-update:semver-major]
 
   # benches/ is its own workspace with its own lockfile, excluded from the
   # root one so a bench-only dependency can never reach a shipped binary,
@@ -57,14 +70,33 @@ updates:
     labels: [dependencies]
     cooldown:
       default-days: 7
+    # notify 8.2.0 declares fsevent-sys "4.0.0"; the 4.1.0 floor pin is
+    # deliberate. Drop this once a notify release declares fsevent-sys 5.
+    #
+    # json5 1.x does not build here (#1311); shep-core is written against the
+    # 0.4 line. Drop this once 1.x is adopted deliberately.
+    ignore:
+      - dependency-name: fsevent-sys
+        update-types: [version-update:semver-major]
+      - dependency-name: json5
+        update-types: [version-update:semver-major]
+      # croner 4 breaks shep-core's cron parsing; the ceiling in the root
+      # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
+      - dependency-name: croner
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: monthly
+    # Minor and patch only, like the cargo groups above: a semver major comes
+    # as its own PR instead of sinking the rest of the group. A Node floor
+    # raised in a patch (astro 7.4.2 needs 22.23.4, #1337) is not caught by
+    # this; the fix there is `web/.nvmrc`, not a hold.
     groups:
       npm:
         patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
