@@ -29,7 +29,7 @@ use crate::limits::sample::{MemorySampler, ProcessIdentity, ProcessRss};
 use crate::limits::stats::StatsState;
 use crate::privilege::SpawnIdentity;
 use crate::rpc::RpcContext;
-use crate::runner::{ProcIo, ProcessRunner, RunnerError, SpawnSpec};
+use crate::runner::{Preflight, ProcIo, ProcessRunner, RunnerError, SpawnSpec};
 use crate::snapshot::{FlockRegistry, FlockSnapshot, SavedApp};
 use crate::supervisor::{SupervisorBuilder, SupervisorHandle};
 
@@ -194,6 +194,10 @@ impl ProcessRunner for SharedRunner {
 
     fn spawn(&self, spec: &SpawnSpec) -> Result<(Self::Proc, ProcIo), RunnerError> {
         self.0.spawn(spec)
+    }
+
+    fn preflight(&self, spec: &SpawnSpec) -> Preflight {
+        self.0.preflight(spec)
     }
 }
 
