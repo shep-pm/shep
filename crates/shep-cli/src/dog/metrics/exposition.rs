@@ -368,9 +368,10 @@ pub(super) mod tests {
     use shep_core::protocol::{DogSource, MetricType, ProcessInfo};
     use shep_core::status::ProcStatus;
 
+    use super::super::Reading;
     use super::super::samples::{SampleFamily, SamplePoint};
-    use super::super::{HostReading, Reading};
     use super::render;
+    use crate::host_sample::HostReading;
 
     /// The exposition of [`golden_reading`], byte for byte, as the code
     /// before the shared-prefix change rendered it. That change moves the

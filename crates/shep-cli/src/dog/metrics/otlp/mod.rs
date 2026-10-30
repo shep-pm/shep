@@ -327,9 +327,9 @@ mod tests {
     use crate::dog::metrics::accept_forever;
     use crate::dog::metrics::samples::SampleStore;
 
-    use super::super::HostReading;
     use super::super::{Reading, tests as metrics_tests};
     use super::*;
+    use crate::host_sample::HostReading;
 
     /// A listener that answers every request it accepts with `responses`,
     /// cycling, and records each request's full bytes. Aborted on drop, so a

@@ -384,9 +384,9 @@ pub(crate) fn sender_labels(info: &ProcessInfo) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dog::metrics::HostReading;
     use crate::dog::metrics::exposition;
     use crate::dog::metrics::grammar;
+    use crate::host_sample::HostReading;
     use shep_core::protocol::DogSource;
 
     /// An online sheep the snapshot can label, with an uptime long enough that

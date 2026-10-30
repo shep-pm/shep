@@ -285,7 +285,7 @@ async fn subscribed(
 
 /// One reading of the machine this lookout is running on.
 ///
-/// Not `dog::metrics::HostReading`: that one walks the process table for a
+/// Not `host_sample::HostReading`: that one walks the process table for a
 /// process count and carries no load average. This is read every second.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HostSample {
