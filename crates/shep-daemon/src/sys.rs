@@ -290,4 +290,32 @@ mod tests {
             "a fd this process never owned must be refused as BadFd: {err:?}"
         );
     }
+
+    /// The property that closes the race: whatever resolved the path before,
+    /// a link in it when the syscall runs is refused. A caller's own walk
+    /// cannot stand in for this, since a link can appear after it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_symlink_in_the_path_is_refused_by_the_syscall_itself() {
+        use nix::fcntl::OFlag;
+        use nix::sys::stat::Mode;
+
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("logs")).unwrap();
+        let flags = OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_CLOEXEC;
+        let mode = Mode::from_bits_truncate(0o600);
+
+        let refused = open_resolving_no_symlinks(&dir.path().join("logs/web-out.log"), flags, mode);
+
+        assert_eq!(
+            refused.unwrap_err().raw_os_error(),
+            Some(nix::libc::ELOOP),
+            "a link met mid-path must be ELOOP"
+        );
+        assert!(!real.join("web-out.log").exists());
+        open_resolving_no_symlinks(&real.join("web-out.log"), flags, mode)
+            .expect("the same file by its real path opens");
+    }
 }

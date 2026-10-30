@@ -542,32 +542,24 @@ async fn opening_a_symlinked_log_path_is_refused_rather_than_followed() {
     );
 }
 
-/// Fails if [`open_append`] goes back to guarding only the last component:
-/// `loose_ancestor` waves through a link the daemon's own user planted, and
-/// `O_NOFOLLOW` never looks above the file, so only a resolving open that
-/// refuses a symlink anywhere in the path catches this.
-///
-/// The directory the link points at must gain no file. Linux-only: elsewhere
-/// the check-then-`O_NOFOLLOW` open is the only one, and follows this link.
+/// Fails if the resolving open refuses every symlinked parent again: a link
+/// the daemon's own user made (`current -> releases/<sha>`, a symlinked home)
+/// is trusted by `loose_ancestor`, and a Linux sheep below one must keep its
+/// log. The file lands in the directory the link points at.
 #[cfg(target_os = "linux")]
 #[tokio::test]
-async fn a_log_path_whose_parent_is_a_symlink_is_refused_on_linux() {
+async fn a_log_path_below_a_symlinked_parent_the_daemon_owns_opens_on_linux() {
     let dir = tempfile::tempdir().unwrap();
     let real = dir.path().join("real");
     let link = dir.path().join("logs");
     fs::create_dir(&real).unwrap();
     std::os::unix::fs::symlink(&real, &link).unwrap();
 
-    let error = open_append(&link.join("web-out.log"))
+    open_append(&link.join("web-out.log"))
         .await
-        .expect_err("a log path below a symlinked parent must not be opened");
+        .expect("a link the daemon's own user owns is trusted");
 
-    assert_eq!(error.to_string(), crate::runner::SYMLINK_REFUSED);
-    assert_eq!(
-        fs::read_dir(&real).unwrap().count(),
-        0,
-        "the directory the link points at must not have gained a file"
-    );
+    assert!(real.join("web-out.log").exists());
 }
 
 /// Fails if the resolving open drops `O_APPEND`: the handle would carry its

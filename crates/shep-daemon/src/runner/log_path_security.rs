@@ -24,14 +24,14 @@ pub(crate) enum LogOpen {
 #[cfg(target_os = "linux")]
 const CREATE_MODE: u32 = 0o666;
 
-/// Opens `path` as `open` asks, refusing a symlink in the path
+/// Opens `path` as `open` asks, refusing a symlink the daemon cannot trust
 ///
 /// The one opener of a log file in this crate. [`check_log_ancestry`] runs
-/// before it at both call sites, ahead of `open_append`'s `mkdir`, and covers
-/// ownership and mode. On Linux 5.6 and later the open is `openat2` with
-/// `RESOLVE_NO_SYMLINKS`, which refuses a symlink at any component at the
-/// moment of the open. Elsewhere, and where the kernel or a seccomp filter
-/// refuses the syscall, it is `O_NOFOLLOW`, which guards the last one only.
+/// before it at both call sites and covers ownership and mode. On Linux 5.6
+/// and later the parent is resolved through links owned by the daemon's user
+/// or root, refusing any other, and the open is `openat2` with
+/// `RESOLVE_NO_SYMLINKS` on the result. Elsewhere, and where the kernel or a
+/// seccomp filter refuses the syscall, it is `O_NOFOLLOW`: the last component.
 ///
 /// # Errors
 ///
@@ -40,7 +40,7 @@ const CREATE_MODE: u32 = 0o666;
 pub(crate) async fn open_log_path(open: LogOpen, path: &Path) -> io::Result<tokio::fs::File> {
     #[cfg(target_os = "linux")]
     {
-        settle(open, path, open_resolving(open, path).await).await
+        open_log_path_as(open, path, crate::server::daemon_uid()).await
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -48,9 +48,21 @@ pub(crate) async fn open_log_path(open: LogOpen, path: &Path) -> io::Result<toki
     }
 }
 
-/// The resolving open, on a blocking thread: the syscall waits on the disk.
+/// [`open_log_path`] with the daemon's effective uid supplied, so a link
+/// owned by someone else is reachable from a test that cannot chown.
 #[cfg(target_os = "linux")]
-async fn open_resolving(open: LogOpen, path: &Path) -> io::Result<std::fs::File> {
+async fn open_log_path_as(
+    open: LogOpen,
+    path: &Path,
+    daemon_uid: u32,
+) -> io::Result<tokio::fs::File> {
+    settle(open, path, open_resolving(open, path, daemon_uid).await).await
+}
+
+/// The resolving open, on a blocking thread: the walk and the syscall wait on
+/// the disk.
+#[cfg(target_os = "linux")]
+async fn open_resolving(open: LogOpen, path: &Path, daemon_uid: u32) -> io::Result<std::fs::File> {
     use nix::fcntl::OFlag;
     use nix::sys::stat::Mode;
 
@@ -64,9 +76,12 @@ async fn open_resolving(open: LogOpen, path: &Path) -> io::Result<std::fs::File>
     };
     let flags = flags | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC;
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || crate::sys::open_resolving_no_symlinks(&path, flags, mode))
-        .await
-        .map_err(io::Error::other)?
+    tokio::task::spawn_blocking(move || {
+        let resolved = super::trusted_links::resolve_parent(&path, daemon_uid)?;
+        crate::sys::open_resolving_no_symlinks(&resolved, flags, mode)
+    })
+    .await
+    .map_err(io::Error::other)?
 }
 
 /// Turns what the resolving open reported into the handle, falling back to
@@ -159,7 +174,14 @@ pub(crate) fn check_log_ancestry(path: &Path) -> io::Result<()> {
 /// The effective uid a shepherd has to be running as for a loose ancestor to
 /// be an escalation rather than a footgun.
 #[cfg(unix)]
-const ROOT_UID: u32 = 0;
+pub(super) const ROOT_UID: u32 = 0;
+
+/// Whether a link or directory owned by `owner` is one the daemon can trust
+/// not to redirect it: its own user's, or root's.
+#[cfg(unix)]
+pub(super) fn is_trusted_owner(owner: u32, daemon_uid: u32) -> bool {
+    owner == daemon_uid || owner == ROOT_UID
+}
 
 /// The permission bit that lets every local user create entries in a
 /// directory. Narrower than `boot`'s socket-directory check (`0o022`, group
@@ -267,7 +289,7 @@ fn loose_ancestor(path: &Path, daemon_uid: u32) -> Option<LooseAncestor> {
         .ancestors()
         .filter_map(|ancestor| Some((ancestor, std::fs::symlink_metadata(ancestor).ok()?)))
         .find_map(|(ancestor, meta)| {
-            let reason = if meta.uid() != daemon_uid && meta.uid() != ROOT_UID {
+            let reason = if !is_trusted_owner(meta.uid(), daemon_uid) {
                 LooseReason::ForeignOwner(meta.uid())
             } else if meta.is_dir() && meta.mode() & WORLD_WRITABLE != 0 {
                 LooseReason::WorldWritable
@@ -468,5 +490,38 @@ mod tests {
         let error = opened.expect_err("an ELOOP must be reported, not retried");
         assert_eq!(error.to_string(), SYMLINK_REFUSED);
         assert!(!created, "no file may land below the link");
+    }
+
+    /// Fails if the walk's refusal is lost: a link owned by neither the
+    /// daemon nor root can be retargeted by its owner, so the open must stop
+    /// at it and leave the directory it points at without a file.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_symlinked_parent_owned_by_another_user_is_refused_on_linux() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        let link = dir.path().join("logs");
+        std::fs::create_dir(&real).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        // As in the ownership cases above: a root runner hands the link away.
+        let daemon_uid = if me() == ROOT_UID {
+            std::os::unix::fs::lchown(&link, Some(FOREIGN_UID), None).unwrap();
+            ROOT_UID
+        } else {
+            me() + 1
+        };
+
+        let error = open_log_path_as(
+            LogOpen::AppendCreating,
+            &link.join("web-out.log"),
+            daemon_uid,
+        )
+        .await
+        .expect_err("a link owned by another user must not be followed");
+
+        let rendered = error.to_string();
+        assert!(rendered.starts_with(SYMLINK_REFUSED), "{rendered}");
+        assert!(rendered.contains(&link.display().to_string()), "{rendered}");
+        assert_eq!(std::fs::read_dir(&real).unwrap().count(), 0);
     }
 }

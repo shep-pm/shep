@@ -18,6 +18,10 @@ mod log_path_security;
 mod log_protocol;
 mod path_advisories;
 mod process_runner;
+// Read only by the Linux resolving open, but its cases run on every unix.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(unix)]
+mod trusted_links;
 // Every fixture here reads a unix mode or a unix uid, as does every case
 // that calls one.
 #[cfg(all(test, unix))]

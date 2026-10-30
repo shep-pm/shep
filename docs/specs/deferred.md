@@ -470,18 +470,15 @@ Tracked as https://github.com/shep-pm/shep/issues/352.
 ### `check_log_ancestry`'s TOCTOU window: closed on Linux 5.6 and later, open elsewhere
 
 `check_log_ancestry` verifies a log path's ancestry and `open_log_path` then
-opens it. On Linux 5.6 and later the open is `nix::fcntl::openat2` with
-`ResolveFlag::RESOLVE_NO_SYMLINKS`, so a symlink at any component is refused
-at the moment of the open and the race is closed. The `RawFd` it returns is
-adopted into a `File` in `shep-daemon/src/sys.rs`, the one place that
-touches it.
-
-One consequence for operators: on Linux 5.6 and later a symlink anywhere in
-the path is refused, including one the daemon's own user or root owns, which
-`loose_ancestor` trusts. A log path below `current -> releases/<sha>` or a
-symlinked home opened before and is refused now. The refusal text still says
-"point out_file/err_file at the real file". Relaxing it for trusted links
-needs a design choice, since a trusted-link allowance would reopen the race.
+opens it. On Linux 5.6 and later the open first resolves the parent through
+the symlinks the daemon trusts, each owned by its own user or by root (the
+`loose_ancestor` rule), and refuses any other, naming the link. It then opens
+the resolved path with `nix::fcntl::openat2` and
+`ResolveFlag::RESOLVE_NO_SYMLINKS`, so a link planted after the walk is
+refused at the moment of the open and the race is closed. A layout like
+`current -> releases/<sha>` or a symlinked home keeps working. The `RawFd` the
+syscall returns is adopted into a `File` in `shep-daemon/src/sys.rs`, the one
+place that touches it.
 
 Still open:
 
@@ -492,7 +489,7 @@ Still open:
   syscall (`EPERM`): both fall back to that same open.
 
 The trigger fired when `.github/workflows/test.yml` put `ubuntu-latest` and
-`ubuntu-24.04-arm` in the regular test loop. The resolving open takes the
+`ubuntu-24.04-arm` in the regular test loop. The walk and the open take the
 path as the Flockfile gave it, from the daemon's working directory, rather
 than relative to a directory fd for the log directory.
 
