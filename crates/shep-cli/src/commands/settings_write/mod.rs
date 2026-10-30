@@ -36,6 +36,8 @@ use crate::output::Streams;
 #[cfg(test)]
 mod default_dog_tests;
 mod defaults;
+#[cfg(test)]
+mod defaults_routing_tests;
 mod edit;
 mod flow;
 #[cfg(test)]
@@ -288,6 +290,11 @@ pub(crate) async fn set(
         flock: &flock,
         paths,
     };
+    // Before any sheep name: a sheep named like a dog does not take the dog's
+    // defaults address.
+    if let Some(defaults) = defaults_in(&segments, &flock, paths) {
+        return defaults::set_defaults(client, streams, &defaults, &ask).await;
+    }
     if let Some(name) = address::longest_in(&segments, &flock.sheep) {
         return set_sheep(client, streams, &name, &segments, &ask).await;
     }
@@ -409,9 +416,6 @@ async fn set_dog(
     segments: &[String],
     ask: &Ask<'_>,
 ) -> ExitCode {
-    if let Some(defaults) = defaults_in(segments, ask.flock, ask.paths) {
-        return defaults::set_defaults(client, streams, &defaults, ask).await;
-    }
     let target = match resolve_dog(client, streams, segments, ask.flock, ask.paths).await {
         Ok(target) => target,
         Err(code) => return code,
@@ -446,12 +450,17 @@ async fn set_dog(
 /// The defaults address `segments` spell, if they spell one.
 ///
 /// Read off the dogs the flock runs and the ones the shepherd knows, before
-/// any dog's own section is walked.
-fn defaults_in(
+/// any sheep name or dog's own section is walked. `pub(crate)`: `shep copy`
+/// refuses the same addresses `shep set` writes. An address with an empty
+/// segment spells none, so each verb reports it as the malformed address it is.
+pub(crate) fn defaults_in(
     segments: &[String],
     flock: &FlockNames,
     paths: &ShepPaths,
 ) -> Option<address::DefaultsAddress> {
+    if segments.iter().any(String::is_empty) {
+        return None;
+    }
     let mut dogs = known_dogs(paths);
     dogs.extend(flock.dogs.iter().cloned());
     address::defaults_of(segments, &dogs)

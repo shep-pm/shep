@@ -371,22 +371,23 @@ fn longest_sheep<'a>(segments: &[&'a str], flock: &'a FlockNames) -> Option<&'a 
         .max_by_key(|name| name.split('.').count())
 }
 
+/// The refusal for a defaults address given to a verb that copies what a sheep
+/// holds.
+pub(crate) fn defaults_refusal(raw: &str, defaults: &DefaultsAddress) -> CopyRefusal {
+    CopyRefusal::Refused(format!(
+        "`{raw}` is a dog's defaults, not a sheep's setting: a copy moves what a sheep holds, \
+         and copying the layered result would pin inherited values into the target. `shep set \
+         {}.{DEFAULTS}.<key> <value>` writes one",
+        defaults.dog
+    ))
+}
+
 /// The refusal for a name no sheep in the flock answers, naming it.
 ///
 /// The candidate is the address up to its first path root, so `we.c.dogs.kelpie`
 /// is refused as `we.c`.
 fn unknown_sheep(segments: &[&str], flock: &FlockNames) -> CopyRefusal {
     let head = segments[0];
-    let owned: Vec<String> = segments.iter().map(|part| (*part).to_string()).collect();
-    if let Some(defaults) = defaults_of(&owned, &flock.dogs) {
-        return CopyRefusal::Refused(format!(
-            "`{}` is a dog's defaults, not a sheep's setting: a copy moves what a sheep holds, \
-             and copying the layered result would pin inherited values into the target. `shep \
-             set {}.{DEFAULTS}.<key> <value>` writes one",
-            segments.join("."),
-            defaults.dog
-        ));
-    }
     if flock.dogs.contains(head) {
         return CopyRefusal::UnknownSheep(format!(
             "no sheep named `{}`: `{head}` is a dog, and a copy writes a sheep's config",
@@ -842,9 +843,10 @@ mod tests {
             "the longest dog name the address starts with"
         );
 
-        let err = parse("metrics.defaults.model", &flock).unwrap_err();
-        let CopyRefusal::Refused(message) = err else {
-            panic!("expected a refusal, got {err:?}");
+        let whole = defaults_of(&strings("metrics.defaults.model"), &flock.dogs).unwrap();
+        let CopyRefusal::Refused(message) = defaults_refusal("metrics.defaults.model", &whole)
+        else {
+            panic!("expected a refusal");
         };
         assert!(message.contains("`metrics.defaults.model`"), "{message}");
         assert!(message.contains("shep set metrics.defaults"), "{message}");

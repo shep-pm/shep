@@ -24,6 +24,7 @@ use shep_core::protocol::{Request, Response};
 
 use crate::cli::{CopyArgs, Format};
 use crate::commands::rpc::{client_error, typed_request_error, unexpected_response};
+use crate::commands::settings_write;
 use crate::dog_settings::{AskFailure, ask_dog};
 use crate::exit::ExitCode;
 use crate::output::Streams;
@@ -118,6 +119,14 @@ pub(crate) async fn copy(
         Ok(names) => names,
         Err(code) => return code,
     };
+    // Before any sheep name, and against every dog the shepherd knows: a
+    // defaults address belongs to a dog whether or not a sheep runs it.
+    for raw in [&args.from, &args.to] {
+        let segments: Vec<String> = raw.split('.').map(str::to_string).collect();
+        if let Some(defaults) = settings_write::defaults_in(&segments, &flock, paths) {
+            return address::defaults_refusal(raw, &defaults).report(streams);
+        }
+    }
     let from = match address::written(&args.from, &flock) {
         Ok(written) => written,
         Err(refusal) => return refusal.report(streams),
