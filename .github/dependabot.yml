@@ -84,6 +84,12 @@ updates:
       # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
       - dependency-name: croner
         update-types: [version-update:semver-major]
+      # toml_edit reaches this lockfile through shep-daemon, capped at 0.22 by
+      # the root Cargo.toml and backing toml 0.8. Dependabot reads 0.22 -> 0.25
+      # as minor, so a major-only hold misses it (#1310 went red). Patch bumps
+      # stay allowed. Drop this once the root Cargo.toml moves to toml 1.x.
+      - dependency-name: toml_edit
+        update-types: [version-update:semver-minor]
 
   - package-ecosystem: npm
     directory: /web
