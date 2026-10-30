@@ -8,6 +8,8 @@
 use core::fmt;
 use std::path::{Path, PathBuf};
 
+use shep_core::dog_defaults::DogDefaultsError;
+
 use crate::snapshot::SnapshotError;
 
 /// Error type returned from this module's boot steps
@@ -63,6 +65,17 @@ pub enum BootError {
     /// [`BootOptions::ready_fd`](super::BootOptions::ready_fd)), so `boot` has no
     /// variant for a failed one.
     ReadyWrite(std::io::Error),
+    /// `dog-defaults.json` exists and could not be read or parsed
+    ///
+    /// Refused rather than booted past: a shepherd with no defaults would
+    /// serve every dog an unlayered table and drop the file's contents on the
+    /// next write.
+    DogDefaults {
+        /// The store that could not be read
+        path: PathBuf,
+        /// Why
+        source: DogDefaultsError,
+    },
 }
 
 impl BootError {
@@ -100,6 +113,13 @@ impl fmt::Display for BootError {
                 path.display()
             ),
             Self::ReadyWrite(err) => write!(f, "writing the readiness line failed: {err}"),
+            Self::DogDefaults { path, source } => write!(
+                f,
+                "`{}` could not be read: {source}. Nothing was started: fix or remove the file, \
+                 because a shepherd without it would serve every dog its tables with no defaults \
+                 layered in",
+                path.display()
+            ),
             Self::Adopt(source) => write!(
                 f,
                 "this shepherd was handed a flock it could not take over: {source}. The flock is \
@@ -122,6 +142,7 @@ impl core::error::Error for BootError {
             Self::SocketPathTooLong { .. } => None,
             Self::Snapshot(err) => Some(err),
             Self::ReadyWrite(err) => Some(err),
+            Self::DogDefaults { source, .. } => Some(source),
             Self::Adopt(source) => Some(source.as_ref()),
         }
     }

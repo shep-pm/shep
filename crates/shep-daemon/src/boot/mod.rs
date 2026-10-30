@@ -145,6 +145,8 @@ pub struct BootOptions {
 /// - [`BootError::AlreadyRunning`] if another daemon holds the lock or answered.
 /// - [`BootError::ReadyWrite`] if the readiness line could not be written.
 /// - [`BootError::Snapshot`] if a roll exists and could not be read or parsed.
+/// - [`BootError::DogDefaults`] if `dog-defaults.json` exists and could not be
+///   read or parsed.
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,
@@ -184,6 +186,14 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     //    what closes the concurrent-boot race a bare probe-then-recover
     //    sequence cannot. Held for the rest of this daemon's life.
     init_dirs(&paths)?;
+    // Before the bind and the readiness line: a boot refused over this store
+    // must not have told its parent the shepherd is up.
+    let dog_defaults = shep_core::dog_defaults::read(&paths.dog_defaults).map_err(|source| {
+        BootError::DogDefaults {
+            path: paths.dog_defaults.clone(),
+            source,
+        }
+    })?;
     let socket = socket_path(&paths, options.socket.as_deref());
     // A successor takes neither the lock nor the address: it inherited both,
     // still held. Rebinding would race the predecessor's own socket file, and
@@ -266,7 +276,8 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     let dog_link_table = crate::server::DogLinks::default();
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
-        .provider_secrets(Arc::clone(&provider_secrets));
+        .provider_secrets(Arc::clone(&provider_secrets))
+        .dog_defaults(dog_defaults);
     // Cloned before the `take` below feeds the supervisor, and defaulted the
     // way the builder defaults it, so a dog and a sheep that name no
     // environment resolve in the same one.
