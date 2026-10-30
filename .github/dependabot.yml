@@ -52,6 +52,13 @@ updates:
       # Cargo.toml is deliberate. Drop this once config/cron.rs moves to croner 4.
       - dependency-name: croner
         update-types: [version-update:semver-major]
+      # #1331's vt100 0.18.1 bump broke every Unix leg that builds shep-cli's
+      # test tier: 0.18 changes the Parser::new signature. Dependabot reads a
+      # 0.x jump (0.16 -> 0.18) as minor, so a major-only hold misses it; hold
+      # both and let 0.16.x patch bumps through. Drop this with the ceiling in
+      # the root Cargo.toml once lookout_terminal.rs is ported to vt100 0.18.
+      - dependency-name: vt100
+        update-types: [version-update:semver-major, version-update:semver-minor]
 
   # benches/ is its own workspace with its own lockfile, excluded from the
   # root one so a bench-only dependency can never reach a shipped binary,
