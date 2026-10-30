@@ -8,10 +8,6 @@
 //! Each step past the sheep name takes the longest name the copy's tables
 //! hold. `web.dogs.foo.bar` is the dog `foo.bar` when a side holds a table
 //! under that name, and the dog `foo` with the key `bar` when it does not.
-//!
-//! A dog's defaults are addressed `<dog>.defaults[.<key>]`, which a sheep
-//! name never starts: [`defaults_of`] reads it off the dogs alone, and a copy
-//! refuses it.
 
 use std::collections::BTreeSet;
 

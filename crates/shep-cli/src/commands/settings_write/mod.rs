@@ -3,9 +3,8 @@
 //!
 //! The address is `copy`'s and `get`'s, and each kind is written through the
 //! request the shepherd already answers: [`Request::SetSheepField`],
-//! [`Request::SetSheepDogSettings`], [`Request::SetDogConfig`] or, for a dog's
-//! `<dog>.defaults`, [`Request::SetDogDefaults`], so everything those refuse
-//! this refuses.
+//! [`Request::SetSheepDogSettings`], [`Request::SetDogConfig`] or
+//! [`Request::SetDogDefaults`], so everything those refuse this refuses.
 //!
 //! The order is `copy`'s: resolve, read, plan, print the change list, ask,
 //! write. Nothing is sent until the operator has seen every key it touches.
@@ -39,6 +38,8 @@ mod edit;
 mod flow;
 #[cfg(test)]
 mod flow_stale_tests;
+#[cfg(test)]
+mod inline_section_tests;
 mod plan;
 mod schema;
 mod unset;

@@ -108,12 +108,9 @@ pub fn touched_refusal(
 /// Why each sheep a default reaches would hold a table the schema refuses,
 /// by sheep name.
 ///
-/// `sheep` is each reached sheep's own table, and each is checked as the dog
-/// reads it: layered over `default`, so a sheep holding its own value never
-/// reads the default's. `touched` is the paths the write chose, empty for a
-/// write that replaces the default whole. One refusal per sheep, the first
-/// in row order. A default no sheep carries a table for is checked against
-/// nothing.
+/// Each of `sheep`'s tables is checked as the dog reads it, layered over
+/// `default`. `touched` is the paths the write chose, empty for a write that
+/// replaces the default whole. One refusal per sheep, the first in row order.
 #[must_use]
 pub fn default_refusals(
     schema: &Value,
