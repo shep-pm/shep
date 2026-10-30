@@ -4,7 +4,23 @@
 //! if it was verifying, drained if it was draining, committed if its
 //! replacement is ready, and abandoned on time if it cannot finish.
 
+use super::adopt_fixtures::{
+    AdoptingRunner, adoptable_child, carried, carried_marked, counters, daemon_fds, flock_until,
+    without_handles,
+};
 use super::*;
+
+/// [`carried`], for an instance an earlier reload's readiness
+/// verification failed against.
+#[cfg(unix)]
+fn carried_ready_failed(
+    name: &str,
+    id: u32,
+    pid: Option<u32>,
+    mutate: impl FnOnce(&mut ProcessEntry),
+) -> CarriedSheep {
+    carried_marked(name, id, pid, false, None, true, mutate)
+}
 
 /// A serial drain is what holds still long enough to be snapshotted: a
 /// `readiness_probe` with no `reuse_port` is the one arrangement

@@ -4,6 +4,7 @@
 //! pumps. A pump that never reports must not hang it, and a sweep of six wedged
 //! pumps has to cost one deadline rather than six.
 
+use super::adopt_fixtures::daemon_fds;
 use super::*;
 
 /// Whether `fd` names something open in this process.

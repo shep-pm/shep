@@ -4,6 +4,7 @@
 //! restart. Until then the listing has to keep reporting the spec that is
 //! actually running.
 
+use super::config_fixtures::{APPLY_FIRST_PID, actor_over, apply_config, declared_app};
 use super::*;
 
 /// `spawn_replacement` carries `restarts`, `dog` and `last_exit` off the

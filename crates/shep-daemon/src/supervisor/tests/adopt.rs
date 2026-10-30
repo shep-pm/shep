@@ -3,8 +3,11 @@
 //! An adopted sheep keeps its pid, its id, its counters and its last exit, and
 //! a dog stays a dog. From the first exit onwards it travels the ordinary path.
 
+use super::adopt_fixtures::{
+    AdoptingRunner, adoptable_child, carried, carried_marked, counters, flock_until, respawnable,
+    without_handles,
+};
 use super::*;
-
 mod disabled;
 mod dogs;
 

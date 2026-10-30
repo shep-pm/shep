@@ -4,6 +4,7 @@
 //! reaches a sheep that asked for stdin, and a flock of wedged sheep is bounded
 //! once rather than once each.
 
+use super::action_fixtures::ACTION_WINDOW;
 use super::*;
 
 /// fails if `signal` reaches the group instead of the process. A supervisor
