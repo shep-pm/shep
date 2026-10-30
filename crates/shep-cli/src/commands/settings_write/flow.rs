@@ -15,7 +15,7 @@ use super::{Flags, Plan, Verb, Write, WriteRefusal};
 use crate::cli::Format;
 use crate::commands::copy;
 use crate::commands::copy::address;
-use crate::commands::copy::confirm::{self, Answer, Go};
+use crate::commands::copy::confirm::{self, Answer, Context, Go};
 use crate::commands::copy::report::shows_changes_first;
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::settings_read::{self, Holder};
@@ -52,12 +52,12 @@ pub(super) async fn run(
         );
         return finish(streams, verb, &report);
     }
-    let go = confirm::decide(
-        flags.dry_run,
-        flags.yes,
-        std::io::stdin().is_terminal(),
-        !plan.changes.is_empty(),
-    );
+    let go = confirm::decide(Context {
+        dry_run: flags.dry_run,
+        yes: flags.yes,
+        stdin_is_terminal: std::io::stdin().is_terminal(),
+        has_changes: !plan.changes.is_empty(),
+    });
 
     // The change list prints before anything is asked about it, in every
     // form. Where it prints depends on what that form's stdout carries: the

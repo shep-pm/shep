@@ -30,7 +30,7 @@ use crate::exit::ExitCode;
 use crate::output::Streams;
 
 use address::{Address, ConfigPath, FlockNames};
-use confirm::{Answer, Go, confirm, decide};
+use confirm::{Answer, Context, Go, confirm, decide};
 use plan::{Plan, Write};
 use report::{finish, print_changes, report_for, shows_changes_first};
 
@@ -202,12 +202,12 @@ pub(crate) async fn copy(
         return finish(streams, &report);
     }
 
-    let go = decide(
-        args.dry_run,
-        args.yes,
-        std::io::stdin().is_terminal(),
-        !plan.changes.is_empty(),
-    );
+    let go = decide(Context {
+        dry_run: args.dry_run,
+        yes: args.yes,
+        stdin_is_terminal: std::io::stdin().is_terminal(),
+        has_changes: !plan.changes.is_empty(),
+    });
 
     // The change list prints before anything is asked about it, in every
     // form. Where it prints depends on what that form's stdout carries: the
@@ -762,12 +762,60 @@ mod tests {
 
     #[test]
     fn dry_run_writes_nothing_and_a_pipe_needs_yes() {
-        assert_eq!(decide(true, false, false, true), Go::DryRun);
-        assert_eq!(decide(true, true, true, true), Go::DryRun);
-        assert_eq!(decide(false, false, false, true), Go::Refuse);
-        assert_eq!(decide(false, true, false, true), Go::Write);
-        assert_eq!(decide(false, false, true, true), Go::Ask);
-        assert_eq!(decide(false, false, true, false), Go::Nothing);
+        assert_eq!(
+            decide(Context {
+                dry_run: true,
+                yes: false,
+                stdin_is_terminal: false,
+                has_changes: true
+            }),
+            Go::DryRun
+        );
+        assert_eq!(
+            decide(Context {
+                dry_run: true,
+                yes: true,
+                stdin_is_terminal: true,
+                has_changes: true
+            }),
+            Go::DryRun
+        );
+        assert_eq!(
+            decide(Context {
+                dry_run: false,
+                yes: false,
+                stdin_is_terminal: false,
+                has_changes: true
+            }),
+            Go::Refuse
+        );
+        assert_eq!(
+            decide(Context {
+                dry_run: false,
+                yes: true,
+                stdin_is_terminal: false,
+                has_changes: true
+            }),
+            Go::Write
+        );
+        assert_eq!(
+            decide(Context {
+                dry_run: false,
+                yes: false,
+                stdin_is_terminal: true,
+                has_changes: true
+            }),
+            Go::Ask
+        );
+        assert_eq!(
+            decide(Context {
+                dry_run: false,
+                yes: false,
+                stdin_is_terminal: true,
+                has_changes: false
+            }),
+            Go::Nothing
+        );
 
         let source = config_with_dog("kelpie", json!({ "rulings": { "decide": "panel" } }));
         let target = config_with_dog("kelpie", json!({ "rulings": { "decide": "issue" } }));
@@ -794,8 +842,24 @@ mod tests {
             "a dry run reports no write, whatever the plan holds"
         );
         assert_eq!(dry.changes.len(), 1);
-        assert_ne!(decide(true, false, false, true), Go::Write);
-        assert_ne!(decide(false, false, false, true), Go::Write);
+        assert_ne!(
+            decide(Context {
+                dry_run: true,
+                yes: false,
+                stdin_is_terminal: false,
+                has_changes: true
+            }),
+            Go::Write
+        );
+        assert_ne!(
+            decide(Context {
+                dry_run: false,
+                yes: false,
+                stdin_is_terminal: false,
+                has_changes: true
+            }),
+            Go::Write
+        );
     }
 
     #[test]
