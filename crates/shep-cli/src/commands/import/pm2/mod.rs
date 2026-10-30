@@ -208,12 +208,15 @@ mod tests {
     use super::*;
     use crate::cli::Format;
 
-    fn args(dump: &Path, out: &Path, dry_run: bool, force: bool) -> ImportPm2Args {
+    struct DryRun(bool);
+    struct Force(bool);
+
+    fn args(dump: &Path, out: &Path, dry_run: DryRun, force: Force) -> ImportPm2Args {
         ImportPm2Args {
             from: Some(dump.to_path_buf()),
             out: Some(out.to_path_buf()),
-            dry_run,
-            force,
+            dry_run: dry_run.0,
+            force: force.0,
         }
     }
 
@@ -237,7 +240,8 @@ mod tests {
         let dump = dir.path().join("dump.pm2");
         std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
 
-        let (code, _out_buf, _err_buf) = run_import(&args(&dump, &out, false, false));
+        let (code, _out_buf, _err_buf) =
+            run_import(&args(&dump, &out, DryRun(false), Force(false)));
         assert_eq!(code, ExitCode::Usage);
         assert!(std::fs::read_to_string(&out).unwrap().contains("mine"));
     }
@@ -249,7 +253,7 @@ mod tests {
         std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let (code, out_buf, _err_buf) = run_import(&args(&dump, &out, true, false));
+        let (code, out_buf, _err_buf) = run_import(&args(&dump, &out, DryRun(true), Force(false)));
         assert_eq!(code, ExitCode::Success);
         assert!(!out.exists(), "--dry-run writes nothing");
         let printed = String::from_utf8(out_buf).unwrap();
@@ -271,7 +275,7 @@ mod tests {
         std::fs::write(&dump, include_str!("testdata/dump.pm2.json")).unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let (_code, _out_buf, err_buf) = run_import(&args(&dump, &out, true, false));
+        let (_code, _out_buf, err_buf) = run_import(&args(&dump, &out, DryRun(true), Force(false)));
         let report = String::from_utf8(err_buf).unwrap();
         assert!(report.contains("api"), "{report}");
         assert!(report.contains("SO_REUSEPORT"), "{report}");
@@ -286,7 +290,7 @@ mod tests {
         let dump = dir.path().join("nope.pm2");
         let out = dir.path().join("Flockfile.toml");
 
-        let (code, _out_buf, err_buf) = run_import(&args(&dump, &out, false, false));
+        let (code, _out_buf, err_buf) = run_import(&args(&dump, &out, DryRun(false), Force(false)));
         assert_eq!(code, ExitCode::Usage);
         let report = String::from_utf8(err_buf).unwrap();
         assert!(report.contains(&dump.display().to_string()), "{report}");
@@ -300,7 +304,8 @@ mod tests {
         std::fs::write(&dump, "not json").unwrap();
         let out = dir.path().join("Flockfile.toml");
 
-        let (code, _out_buf, _err_buf) = run_import(&args(&dump, &out, false, false));
+        let (code, _out_buf, _err_buf) =
+            run_import(&args(&dump, &out, DryRun(false), Force(false)));
         assert_eq!(code, ExitCode::InvalidConfig);
     }
 }

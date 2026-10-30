@@ -19,6 +19,7 @@ use super::*;
 use crate::cli::Format;
 use crate::commands::copy::confirm::Answer;
 use crate::commands::copy::plan::ChangeKind;
+use crate::commands::copy::report::ReportState;
 use crate::commands::settings_read::Holder;
 use crate::output::Streams;
 
@@ -547,7 +548,13 @@ fn a_report_names_the_holder_the_path_and_every_key() {
         &json!("rebase"),
     )
     .unwrap();
-    let report = report_for(Holder::Sheep, "api", "dogs.kelpie.git", &plan, true, false);
+    let report = report_for(
+        Holder::Sheep,
+        "api",
+        "dogs.kelpie.git",
+        &plan,
+        ReportState::Written,
+    );
     assert_eq!(report.kind, "sheep");
     assert_eq!(report.name, "api");
     assert_eq!(report.path, "dogs.kelpie.git");
@@ -558,7 +565,13 @@ fn a_report_names_the_holder_the_path_and_every_key() {
     assert_eq!(report.changes[0].change, "changed");
 
     let plan = section_plan(&["worker", "timeout"], json!(60)).unwrap();
-    let report = report_for(Holder::Dog, "kelpie", "worker.timeout", &plan, false, true);
+    let report = report_for(
+        Holder::Dog,
+        "kelpie",
+        "worker.timeout",
+        &plan,
+        ReportState::DryRun,
+    );
     assert_eq!(report.kind, "dog");
     assert_eq!(report.name, "kelpie");
     assert_eq!(report.path, "worker.timeout");

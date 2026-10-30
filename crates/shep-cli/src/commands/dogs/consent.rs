@@ -13,7 +13,7 @@ use std::str::FromStr as _;
 use shep_core::dogs::manifest::Manifest;
 use shep_core::permissions::{Grants, Permission};
 
-use crate::commands::copy::confirm::{Answer, Go, decide, read_answer};
+use crate::commands::copy::confirm::{Answer, Context, Go, decide, read_answer};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
@@ -189,7 +189,12 @@ pub(super) fn consent(
             )
         }
     };
-    let go = decide(false, mode.yes, mode.stdin_is_terminal, true);
+    let go = decide(Context {
+        dry_run: false,
+        yes: mode.yes,
+        stdin_is_terminal: mode.stdin_is_terminal,
+        has_changes: true,
+    });
     if go == Go::Refuse {
         return Err(streams.fail(
             ExitCode::Usage,

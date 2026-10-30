@@ -661,7 +661,7 @@ pub enum ReloadKind {
 /// `readiness_probe`. The pane holds the kind alone: it never parses a
 /// probe's target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ConfiguredReadiness {
+pub(in crate::lookout) enum ConfiguredReadiness {
     /// `wait_ready = true`: the shepherd channel's `{"kind":"ready"}`.
     Channel,
     /// `readiness_probe` is set, and `wait_ready` did not answer first.

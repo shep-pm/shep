@@ -91,7 +91,14 @@ pub(crate) enum Child {
 /// [`FieldKind::Map`] leaf and a secret list show as [`FieldKind::Opaque`].
 #[must_use]
 pub(crate) fn flattened(schema: &Value) -> Flattened {
-    flatten_schema(schema, true, false, false)
+    flatten_schema(
+        schema,
+        FlattenOptions {
+            with_shapes: true,
+            secret_above: false,
+            keep_maps: false,
+        },
+    )
 }
 
 /// [`flattened`], with a map of scalars left as an editable
@@ -101,18 +108,23 @@ pub(crate) fn flattened(schema: &Value) -> Flattened {
 /// where an entry of a map has a path of its own: `[interpreters]`.
 #[must_use]
 pub(crate) fn flattened_with_maps(schema: &Value) -> Flattened {
-    flatten_schema(schema, true, false, true)
+    flatten_schema(
+        schema,
+        FlattenOptions {
+            with_shapes: true,
+            secret_above: false,
+            keep_maps: true,
+        },
+    )
 }
 
-/// [`flattened`], with `shapes` filled in only when `with_shapes` is set.
-/// `secret_above` marks every leaf, for an entry shape whose field sits
-/// under a secret. `keep_maps` leaves a [`FieldKind::Map`] leaf alone.
-fn flatten_schema(
-    schema: &Value,
+struct FlattenOptions {
     with_shapes: bool,
     secret_above: bool,
     keep_maps: bool,
-) -> Flattened {
+}
+
+fn flatten_schema(schema: &Value, options: FlattenOptions) -> Flattened {
     let defs = schema
         .get("$defs")
         .and_then(Value::as_object)
@@ -132,14 +144,14 @@ fn flatten_schema(
         paths: BTreeMap::new(),
         tables: Vec::new(),
         shapes: BTreeMap::new(),
-        with_shapes,
-        keep_maps,
+        with_shapes: options.with_shapes,
+        keep_maps: options.keep_maps,
     };
     let mut roots = walker.walk(
         &properties,
         &[],
         None,
-        secret_above || marked(schema) || marked(root),
+        options.secret_above || marked(schema) || marked(root),
     );
     let Walker {
         fields,
@@ -299,8 +311,13 @@ impl<'a> Walker<'a> {
                     || marked(property_schema)
                     || marked(resolved)
                     || super::schema::entry_slot_marked(property_schema, self.defs);
+                let options = FlattenOptions {
+                    with_shapes: false,
+                    secret_above: above,
+                    keep_maps: false,
+                };
                 self.shapes
-                    .insert(dotted.clone(), flatten_schema(&item, false, above, false));
+                    .insert(dotted.clone(), flatten_schema(&item, options));
             }
             children.push(Child::Leaf(self.fields.len()));
             self.fields.push(field);

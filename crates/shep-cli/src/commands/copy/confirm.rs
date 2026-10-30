@@ -25,9 +25,28 @@ pub(crate) enum Go {
     Refuse,
 }
 
+/// Independent inputs to the confirmation gate.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Context {
+    /// Preview without writing.
+    pub(crate) dry_run: bool,
+    /// Write without asking.
+    pub(crate) yes: bool,
+    /// Whether stdin can carry the question.
+    pub(crate) stdin_is_terminal: bool,
+    /// Whether the plan has anything to write.
+    pub(crate) has_changes: bool,
+}
+
 /// What `--dry-run`, `--yes` and a terminal add up to.
 #[must_use]
-pub(crate) fn decide(dry_run: bool, yes: bool, stdin_is_terminal: bool, has_changes: bool) -> Go {
+pub(crate) fn decide(context: Context) -> Go {
+    let Context {
+        dry_run,
+        yes,
+        stdin_is_terminal,
+        has_changes,
+    } = context;
     if !has_changes {
         return Go::Nothing;
     }
