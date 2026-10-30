@@ -83,11 +83,11 @@ pub(super) fn list_line(
                         .unwrap_or_else(|| UNSET.to_owned());
                     mask_secret(secret, raw)
                 },
-                |buffer| buffer.drawn(value_w),
+                |buffer| buffer.drawn_for(secret, value_w),
             ),
         ),
         Some(ListRow::New) => match typed {
-            Some(buffer) => (String::new(), buffer.drawn(value_w)),
+            Some(buffer) => (String::new(), buffer.drawn_for(secret, value_w)),
             None => (String::new(), "+ new".to_owned()),
         },
         None => return Line::default(),
@@ -225,6 +225,53 @@ mod tests {
             text.iter().any(|line| line.contains("<set>")),
             "the row says there is one: {text:?}"
         );
+    }
+
+    /// A secret list holding `ab12cd34`, drawn at `selected` with `typed`
+    /// typed into the editor `begin_typing` opens on the cursor's row.
+    fn secret_list_row(cursor: usize, typed: &str, secret: bool) -> String {
+        let mut list = ListPane::new(
+            "tokens".into(),
+            crate::lookout::field::ListItem::Text,
+            crate::lookout::field::Bounds::default(),
+            secret,
+            vec!["ab12cd34".into()],
+        );
+        list.move_to(cursor);
+        list.begin_typing();
+        for c in typed.chars() {
+            list.type_char(c);
+        }
+        let line = list_line(&list, cursor, true, 120, fixtures::plain(), secret);
+        text_of(&[line]).remove(0)
+    }
+
+    #[test]
+    fn a_secret_list_masks_the_value_being_typed() {
+        let item = secret_list_row(0, "ef56gh78", true);
+        assert!(
+            !item.contains("ab12cd34") && !item.contains("ef56gh78"),
+            "{item:?}"
+        );
+        assert!(
+            item.contains(&format!("{}\u{258f}", "\u{2588}".repeat(16))),
+            "{item:?}"
+        );
+
+        let new = secret_list_row(1, "ef56gh78", true);
+        assert!(!new.contains("ef56gh78"), "{new:?}");
+        assert!(
+            new.contains(&format!("{}\u{258f}", "\u{2588}".repeat(8))),
+            "{new:?}"
+        );
+    }
+
+    #[test]
+    fn a_plain_list_still_draws_the_value_being_typed() {
+        let new = secret_list_row(1, "ef56gh78", false);
+        assert!(new.contains("ef56gh78\u{258f}"), "{new:?}");
+        let item = secret_list_row(0, "x", false);
+        assert!(item.contains("ab12cd34x\u{258f}"), "{item:?}");
     }
 
     #[test]

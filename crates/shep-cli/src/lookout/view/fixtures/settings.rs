@@ -204,6 +204,32 @@ pub fn app_in_settings_with_a_dog_open() -> App {
 /// If `name` is not a row of the open settings screen.
 #[track_caller]
 pub fn open_adopted_dog_row(app: &mut App, name: &str, path: &Path) {
+    open_adopted_dog_row_with(
+        app,
+        name,
+        path,
+        serde_json::json!({
+            "type": "object",
+            "properties": { "ratio": { "type": "number" } },
+        }),
+        "ratio = 1.5\n",
+    );
+}
+
+/// [`open_adopted_dog_row`] for a dog whose probe answers `schema` and whose
+/// section says `toml`.
+///
+/// # Panics
+///
+/// If `name` is not a row of the open settings screen.
+#[track_caller]
+pub fn open_adopted_dog_row_with(
+    app: &mut App,
+    name: &str,
+    path: &Path,
+    schema: serde_json::Value,
+    toml: &str,
+) {
     select_setting(app, &format!("dog.{name}"));
     let effect = app.update(Msg::Key(KeyPress::Edit));
     if !matches!(effect, Effect::LoadDogPane { .. }) {
@@ -213,17 +239,14 @@ pub fn open_adopted_dog_row(app: &mut App, name: &str, path: &Path) {
         name: name.to_owned(),
         adopted_path: Some(path.to_path_buf()),
         env_keys: Vec::new(),
-        result: Ok(serde_json::json!({
-            "type": "object",
-            "properties": { "ratio": { "type": "number" } },
-        })),
+        result: Ok(schema),
     });
     app.update(Msg::Replied {
         sent: Sent::DogSection {
             name: name.to_owned(),
         },
         result: Ok(Response::DogSection {
-            toml: "ratio = 1.5\n".to_owned().into(),
+            toml: toml.to_owned().into(),
         }),
     });
 }

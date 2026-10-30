@@ -216,9 +216,10 @@ mod tests {
     /// the same column by the same helper.
     #[test]
     fn a_new_key_name_outgrowing_its_column_scrolls_to_keep_the_cursor_in_view() {
-        let short = typed_cell(&TextBox::from("SHORT"), Column::Value.width());
+        let short = typed_cell(&TextBox::from("SHORT"), false, Column::Value.width());
         let long = typed_cell(
             &TextBox::from("A_VERY_LONG_KEY_NAME_THAT_RUNS_PAST_THE_COLUMN"),
+            false,
             Column::Value.width(),
         );
 
