@@ -10,6 +10,23 @@ use super::action_fixtures::{
 };
 use super::*;
 
+/// The first channel event on the bus, or a panic once `ACTION_WINDOW` passes:
+/// a bus that never receives would otherwise park the case.
+async fn next_channel_event(
+    events: &mut tokio::sync::broadcast::Receiver<SharedEvent>,
+) -> BusEvent {
+    tokio::time::timeout(ACTION_WINDOW, async {
+        loop {
+            let event = events.recv().await.unwrap().to_event();
+            if matches!(event, BusEvent::Channel { .. }) {
+                break event;
+            }
+        }
+    })
+    .await
+    .expect("no channel event within the window")
+}
+
 /// Fails if a reply stops reaching the wait that asked for it: the whole
 /// path, from `SupervisorHandle::trigger` through the actor, the writer's
 /// end of the channel, `run_sheep`'s relay of a `ChildMessage` and back.
@@ -82,18 +99,11 @@ async fn a_ready_on_the_channel_reaches_both_the_bus_and_the_readiness_wait() {
 
     io.from_child_tx.send(ChildMessage::Ready).await.unwrap();
 
-    // Bounded: a bus that never receives would park this case.
-    let seen = tokio::time::timeout(ACTION_WINDOW, async {
-        loop {
-            if let BusEvent::Channel { id, message } = events.recv().await.unwrap().to_event() {
-                break (id, message);
-            }
-        }
-    })
-    .await
-    .expect("no channel event within the window");
+    let BusEvent::Channel { id, message } = next_channel_event(&mut events).await else {
+        unreachable!("`next_channel_event` returns only channel events");
+    };
 
-    assert_eq!(seen, (0, ChildMessage::Ready));
+    assert_eq!((id, message), (0, ChildMessage::Ready));
 
     // The readiness half still works: the sheep goes Online off this message.
     let listed = handle.list().await;
@@ -121,18 +131,12 @@ async fn a_metric_on_the_channel_reaches_the_bus_with_its_name_and_value() {
         .await
         .unwrap();
 
-    let seen = tokio::time::timeout(ACTION_WINDOW, async {
-        loop {
-            if let BusEvent::Channel { id, message } = events.recv().await.unwrap().to_event() {
-                break (id, message);
-            }
-        }
-    })
-    .await
-    .expect("no channel event within the window");
+    let BusEvent::Channel { id, message } = next_channel_event(&mut events).await else {
+        unreachable!("`next_channel_event` returns only channel events");
+    };
 
     assert_eq!(
-        seen,
+        (id, message),
         (
             0,
             ChildMessage::Metric {
@@ -161,18 +165,15 @@ async fn a_note_on_the_channel_reaches_the_bus_as_it_was_sent() {
 
     io.from_child_tx.send(note.clone()).await.unwrap();
 
-    let seen = tokio::time::timeout(ACTION_WINDOW, async {
-        loop {
-            let event = events.recv().await.unwrap().to_event();
-            if let BusEvent::Channel { id, message } = &event {
-                break (*id, message.clone(), event.topic().into_owned());
-            }
-        }
-    })
-    .await
-    .expect("no channel event within the window");
+    let event = next_channel_event(&mut events).await;
+    let BusEvent::Channel { id, message } = &event else {
+        unreachable!("`next_channel_event` returns only channel events");
+    };
 
-    assert_eq!(seen, (0, note, "channel.note".to_string()));
+    assert_eq!(
+        (*id, message.clone(), event.topic().into_owned()),
+        (0, note, "channel.note".to_string())
+    );
 }
 
 /// fails if an `action-reply` nobody is waiting for is dropped before the
@@ -194,15 +195,9 @@ async fn an_action_reply_no_trigger_is_waiting_for_still_reaches_the_bus() {
         .await
         .unwrap();
 
-    let seen = tokio::time::timeout(ACTION_WINDOW, async {
-        loop {
-            if let BusEvent::Channel { message, .. } = events.recv().await.unwrap().to_event() {
-                break message;
-            }
-        }
-    })
-    .await
-    .expect("no channel event within the window");
+    let BusEvent::Channel { message: seen, .. } = next_channel_event(&mut events).await else {
+        unreachable!("`next_channel_event` returns only channel events");
+    };
 
     let ChildMessage::ActionReply { body, .. } = seen else {
         panic!("expected an action reply, got {seen:?}");
