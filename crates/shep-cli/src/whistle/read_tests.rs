@@ -7,151 +7,25 @@
 
 use std::time::Duration;
 
-use shep_core::paths::ShepPaths;
 use shep_core::protocol::{DogSource, ProcessInfo};
 use shep_core::status::ProcStatus;
 
 use super::*;
-use crate::whistle::gate;
 use crate::whistle::matching_ack;
+
+#[cfg(unix)]
+#[path = "read_tests/ssh_stand_in.rs"]
+mod ssh_stand_in;
+#[cfg(unix)]
+use ssh_stand_in::{ssh_stand_in, ssh_stand_in_answering, ssh_stand_in_replying, stand_in_file};
+#[path = "read_tests/whistles.rs"]
+mod whistles;
+use whistles::whistle_at;
+#[cfg(unix)]
+use whistles::whistle_with_hosts;
 
 /// How long a test waits for a tool call before treating it as hung.
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// A [`shep_core::protocol::HelloAck`] whose version matches this
-/// binary, since `sample_ack`'s fixed `"9.9.9"` would be refused by
-/// the guard in `Shepherd::call_with_ack`.
-/// A `ShepPaths` naming only the three fields any test here reads: the
-/// socket, the barks file and the `shep.toml` the hosts list is read from.
-/// The rest carry an empty placeholder.
-fn test_paths(
-    socket: std::path::PathBuf,
-    barks: std::path::PathBuf,
-    daemon_config: std::path::PathBuf,
-) -> ShepPaths {
-    ShepPaths {
-        home: std::path::PathBuf::new(),
-        daemon_config,
-        dogs_config: std::path::PathBuf::new(),
-        snapshot: std::path::PathBuf::new(),
-        logs: std::path::PathBuf::new(),
-        pids: std::path::PathBuf::new(),
-        run: std::path::PathBuf::new(),
-        socket,
-        barks,
-        kv: std::path::PathBuf::new(),
-        overrides: std::path::PathBuf::new(),
-        secrets: std::path::PathBuf::new(),
-        secrets_cache: std::path::PathBuf::new(),
-        dog_defaults: std::path::PathBuf::new(),
-    }
-}
-
-fn whistle_at(socket: std::path::PathBuf, barks_path: std::path::PathBuf) -> Whistle {
-    Whistle::new(
-        test_paths(socket, barks_path, dir_placeholder("no-shep.toml")),
-        gate::Control::ReadOnly,
-    )
-}
-
-/// A path nothing is ever written to, for the `daemon_config` of a
-/// `Whistle` whose test wants no hosts listed at all.
-fn dir_placeholder(name: &str) -> std::path::PathBuf {
-    std::path::Path::new("/nonexistent").join(name)
-}
-
-/// Writes a `shep.toml` into `dir` listing `hosts`, and a `Whistle` at it
-/// whose host calls run `program` in place of `ssh`.
-///
-/// The list is written to the file rather than handed to the `Whistle`, so
-/// these tests read the same `hosts` array `shep host add` writes.
-#[cfg(unix)]
-fn whistle_with_hosts(dir: &Path, hosts: &[&str], program: &Path) -> Whistle {
-    let quoted: Vec<String> = hosts.iter().map(|host| format!("\"{host}\"")).collect();
-    let config = dir.join("shep.toml");
-    std::fs::write(&config, format!("hosts = [{}]\n", quoted.join(", "))).unwrap();
-    Whistle::for_test_with_ssh_program(
-        test_paths(
-            shep_client::testing::control_address(dir),
-            dir.join("barks.jsonl"),
-            config,
-        ),
-        gate::Control::ReadOnly,
-        program,
-    )
-}
-
-/// One value as the length-prefixed frame a shepherd would put on the wire.
-#[cfg(unix)]
-fn framed<T: serde::Serialize>(value: &T) -> Vec<u8> {
-    let payload = shep_core::protocol::encode_frame(value).unwrap();
-    let mut bytes = u32::try_from(payload.len()).unwrap().to_be_bytes().to_vec();
-    bytes.extend_from_slice(&payload);
-    bytes
-}
-
-/// The three files a stand-in ssh writes, named the way the script names
-/// them.
-#[cfg(unix)]
-fn stand_in_file(dir: &Path, name: &str) -> std::path::PathBuf {
-    dir.join(format!("ssh-{name}"))
-}
-
-/// Writes an executable stand-in for `ssh` into `dir` and returns its path,
-/// answering the handshake with this binary's own version.
-///
-/// `Shepherd::connect` refuses a skew, and `matching_ack`'s version is the one
-/// a host link is held to as well, so every test that wants a flock back
-/// starts here.
-#[cfg(unix)]
-fn ssh_stand_in(dir: &Path, response: Response) -> std::path::PathBuf {
-    ssh_stand_in_answering(dir, Ok(matching_ack()), response)
-}
-
-/// [`ssh_stand_in`], with the handshake it answers.
-///
-/// It records its arguments, writes the one request to disk, and answers with
-/// `response` only once the request has arrived: an earlier reply is dropped.
-///
-/// The ack goes out between the `Hello` and the request, so a refusal there
-/// reaches whistle as [`ConnectError::ProtocolMismatch`].
-#[cfg(unix)]
-fn ssh_stand_in_answering(
-    dir: &Path,
-    handshake: shep_core::protocol::HelloReply,
-    response: Response,
-) -> std::path::PathBuf {
-    use shep_core::protocol::Reply;
-    use std::os::unix::fs::PermissionsExt as _;
-
-    // `shep_client::actor`'s `next_id` starts at 1, and every test here
-    // sends one request.
-    let reply = Reply {
-        id: 1,
-        result: Ok(response),
-    };
-    std::fs::write(stand_in_file(dir, "ack.bin"), framed(&handshake)).unwrap();
-    std::fs::write(stand_in_file(dir, "reply.bin"), framed(&reply)).unwrap();
-
-    let script = format!(
-        "#!/bin/sh\n\
-         read_frame() {{ set -- $(dd bs=1 count=4 2>/dev/null | od -An -tu1); \
-         dd bs=1 count=$(( $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 )) 2>/dev/null; }}\n\
-         printf '%s\\n' \"$@\" > '{}'\n\
-         read_frame > /dev/null\n\
-         cat '{}'\n\
-         read_frame > '{}'\n\
-         cat '{}'\n",
-        stand_in_file(dir, "args.txt").display(),
-        stand_in_file(dir, "ack.bin").display(),
-        stand_in_file(dir, "request.bin").display(),
-        stand_in_file(dir, "reply.bin").display(),
-    );
-    let program = dir.join("ssh");
-    std::fs::write(&program, script).unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
-    program
-}
 
 /// `shep flock` prints dogs in the same table; a model asking what is
 /// running must see the same population.
@@ -519,7 +393,7 @@ async fn describe_sheep_takes_a_host_and_still_only_ever_builds_a_name_selector(
     assert_eq!(result.0.flock.len(), 1);
     assert_eq!(result.0.host.as_deref(), Some("amp2"));
 
-    let bytes = written_within(TEST_TIMEOUT, &stand_in_file(dir.path(), "request.bin")).await;
+    let bytes = written_within(TEST_TIMEOUT, &stand_in_file(dir.path(), "request-1.bin")).await;
     let envelope: shep_core::protocol::Envelope =
         shep_core::protocol::decode_frame(&bytes).unwrap();
     match envelope.body {
@@ -771,10 +645,13 @@ async fn get_metrics_carries_the_host_sample() {
     .await;
 
     let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
-    let result = tokio::time::timeout(TEST_TIMEOUT, whistle.get_metrics())
-        .await
-        .expect("get_metrics must return within the test timeout")
-        .expect("a scripted daemon must not produce a tool error");
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.get_metrics(Parameters(MetricsParams { host: None })),
+    )
+    .await
+    .expect("get_metrics must return within the test timeout")
+    .expect("a scripted daemon must not produce a tool error");
 
     assert!(
         result.0.host.is_some(),
@@ -805,10 +682,13 @@ async fn get_metrics_reports_the_version_and_pid_from_the_handshake() {
     .await;
 
     let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
-    let result = tokio::time::timeout(TEST_TIMEOUT, whistle.get_metrics())
-        .await
-        .expect("get_metrics must return within the test timeout")
-        .expect("a scripted daemon must not produce a tool error");
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.get_metrics(Parameters(MetricsParams { host: None })),
+    )
+    .await
+    .expect("get_metrics must return within the test timeout")
+    .expect("a scripted daemon must not produce a tool error");
 
     assert_eq!(
         result.0.flock.first().and_then(|row| row.pid),
@@ -828,6 +708,125 @@ async fn get_metrics_reports_the_version_and_pid_from_the_handshake() {
         "filled from the handshake, not left at a placeholder: {}",
         result.0.daemon_version
     );
+
+    served.await.expect("the fake daemon task must not panic");
+}
+
+/// What a remote shepherd reports for itself. The totals are values no real
+/// machine running these tests has, so a reply that sampled this one instead
+/// reads as the wrong number.
+#[cfg(unix)]
+fn remote_usage() -> shep_core::protocol::HostUsage {
+    shep_core::protocol::HostUsage {
+        cpu_percent: Some(12.5),
+        memory_used_bytes: 1_000,
+        memory_total_bytes: 2_000,
+        disk_bytes_per_second: None,
+        network_bytes_per_second: None,
+    }
+}
+
+/// A `host` makes `get_metrics` ask that host's shepherd for the flock and for
+/// its own `HostUsage`, over the one connection, and never sysinfo-sample the
+/// machine the model is running on: the totals in the reply are the stand-in's.
+#[cfg(unix)]
+#[tokio::test]
+async fn get_metrics_over_a_host_reads_host_usage_and_never_samples_this_machine() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = ssh_stand_in_replying(
+        dir.path(),
+        Ok(matching_ack()),
+        vec![
+            Response::Flock(vec![shep_client::testing::sample_info()]),
+            Response::HostUsage(Some(remote_usage())),
+        ],
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.get_metrics(Parameters(MetricsParams {
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("get_metrics must return within the test timeout")
+    .expect("a stand-in shepherd must not produce a tool error");
+
+    assert_eq!(result.0.host_name.as_deref(), Some("amp2"));
+    assert_eq!(result.0.flock.len(), 1);
+    let host = result.0.host.expect("the host's usage must be reported");
+    assert_eq!(
+        (host.memory_total_bytes, host.memory_used_bytes),
+        (2_000, 1_000),
+        "the stand-in's numbers, not this machine's: {host:?}"
+    );
+
+    let bytes = written_within(TEST_TIMEOUT, &stand_in_file(dir.path(), "request-2.bin")).await;
+    let envelope: shep_core::protocol::Envelope =
+        shep_core::protocol::decode_frame(&bytes).unwrap();
+    assert_eq!(envelope.body, Request::HostUsage);
+}
+
+/// `HostUsage` carries neither a process count nor an uptime, so a remote
+/// reply leaves both keys out instead of reporting this machine's.
+#[cfg(unix)]
+#[tokio::test]
+async fn get_metrics_over_a_host_leaves_processes_and_uptime_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = ssh_stand_in_replying(
+        dir.path(),
+        Ok(matching_ack()),
+        vec![
+            Response::Flock(vec![shep_client::testing::sample_info()]),
+            Response::HostUsage(Some(remote_usage())),
+        ],
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.get_metrics(Parameters(MetricsParams {
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("get_metrics must return within the test timeout")
+    .expect("a stand-in shepherd must not produce a tool error");
+
+    assert_eq!(
+        serde_json::to_value(&result.0).unwrap()["host"],
+        serde_json::json!({"memory_total_bytes": 2000, "memory_used_bytes": 1000}),
+    );
+}
+
+/// A call that names no host answers with the keys it always had: both
+/// machine-wide counts present, and no `host_name`.
+#[tokio::test]
+async fn get_metrics_without_a_host_keeps_its_local_shape() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = shep_client::testing::control_address(dir.path());
+    let served = shep_client::testing::serve_one_request(
+        &socket,
+        matching_ack(),
+        Response::Flock(vec![shep_client::testing::sample_info()]),
+    )
+    .await;
+
+    let whistle = whistle_at(socket, dir.path().join("barks.jsonl"));
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.get_metrics(Parameters(MetricsParams { host: None })),
+    )
+    .await
+    .expect("get_metrics must return within the test timeout")
+    .expect("a scripted daemon must not produce a tool error");
+
+    let reading = serde_json::to_value(&result.0).unwrap();
+    assert!(reading.get("host_name").is_none(), "{reading}");
+    let host = &reading["host"];
+    assert!(host["processes"].is_u64(), "{host}");
+    assert!(host["uptime_seconds"].is_u64(), "{host}");
 
     served.await.expect("the fake daemon task must not panic");
 }

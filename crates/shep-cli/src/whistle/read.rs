@@ -5,8 +5,8 @@
 //! the shepherd answers. `tail_bleats` also reads up to two log files by path,
 //! and `list_barks` reads its file with no shepherd contact at all.
 //!
-//! `list_flock` and `describe_sheep` also take an optional `host`, which sends
-//! the same frame to that host's own shepherd over ssh.
+//! `list_flock`, `describe_sheep` and `get_metrics` also take an optional
+//! `host`, which sends the same frames to that host's own shepherd over ssh.
 
 use std::io;
 use std::path::Path;
@@ -66,6 +66,17 @@ pub struct FlockParams {
     ///
     /// Only a host in `shep.toml`'s `hosts` list is accepted: see
     /// [`Whistle::shepherd_for`].
+    pub host: Option<String>,
+}
+
+/// `get_metrics`' arguments.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MetricsParams {
+    /// A host to ask, named the way `shep host add` listed it. Absent asks
+    /// this machine.
+    ///
+    /// A host's reading carries memory only: its process count and uptime
+    /// are left out. Only a host in `shep.toml`'s `hosts` list is accepted.
     pub host: Option<String>,
 }
 
@@ -141,19 +152,36 @@ impl Whistle {
     /// The flock's numbers plus the machine's.
     #[tool(
         name = "get_metrics",
-        description = "Resource usage for the whole flock plus host totals: per-process CPU and memory, and the machine's memory, process count and uptime. Read-only.",
+        description = "Resource usage for the whole flock plus host totals: per-process CPU and memory, and the machine's memory, process count and uptime. Read-only. Pass `host` to ask a host listed in shep.toml's hosts list instead of this machine; its reading has memory only, with no process count or uptime.",
         annotations(read_only_hint = true)
     )]
-    pub async fn get_metrics(&self) -> Result<Json<MetricsReading>, CallToolResult> {
-        let (ack, flock) = self.shepherd.list_flock_with_ack().await?;
+    pub async fn get_metrics(
+        &self,
+        Parameters(params): Parameters<MetricsParams>,
+    ) -> Result<Json<MetricsReading>, CallToolResult> {
+        let Some(name) = params.host else {
+            let (ack, flock) = self.shepherd.list_flock_with_ack().await?;
+            return Ok(Json(MetricsReading {
+                daemon_version: ack.daemon_version,
+                daemon_pid: ack.pid,
+                flock: flock.iter().map(SheepRow::from).collect(),
+                // The host sample is this tool's one blocking step between
+                // two awaits: the blocking pool, for the same reason as the
+                // metrics dog's scrape path.
+                host: sample_host_off_worker().await.as_ref().map(HostRow::from),
+                host_name: None,
+            }));
+        };
+        let (ack, flock, usage) = self
+            .shepherd_for(Some(&name))?
+            .flock_and_host_usage_with_ack()
+            .await?;
         Ok(Json(MetricsReading {
             daemon_version: ack.daemon_version,
             daemon_pid: ack.pid,
             flock: flock.iter().map(SheepRow::from).collect(),
-            // The host sample is this tool's one blocking step between
-            // two awaits: the blocking pool, for the same reason as the
-            // metrics dog's scrape path.
-            host: sample_host_off_worker().await.as_ref().map(HostRow::from),
+            host: usage.as_ref().map(HostRow::from),
+            host_name: Some(name),
         }))
     }
 

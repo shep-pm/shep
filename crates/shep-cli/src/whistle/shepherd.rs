@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use rmcp::model::CallToolResult;
 use shep_client::{Client, ConnectError, RequestError, SshOptions};
-use shep_core::protocol::{HelloAck, ProcessInfo, Request, Response};
+use shep_core::protocol::{HelloAck, HostUsage, ProcessInfo, Request, Response};
 
 use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
@@ -163,6 +163,33 @@ impl Shepherd {
         });
         let _ = client.close().await;
         flock.map(|flock| (ack, flock))
+    }
+
+    /// [`Self::list_flock_with_ack`], plus the shepherd's own [`HostUsage`] over
+    /// the same connection.
+    ///
+    /// `None` is a shepherd whose platform cannot be read at all. A shepherd that
+    /// predates `Request::HostUsage` answers `Unsupported`, which is a refusal.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::list_flock_with_ack`], for either request.
+    pub async fn flock_and_host_usage_with_ack(
+        &self,
+    ) -> Result<(HelloAck, Vec<ProcessInfo>, Option<HostUsage>), CallToolResult> {
+        let (client, ack) = self.connect().await?;
+        let read = async {
+            let flock = client.list_flock().await?;
+            let usage = client.host_usage().await?;
+            Ok((flock, usage))
+        }
+        .await
+        .map_err(|err| match err {
+            RequestError::UnexpectedReply { .. } => unexpected_response(),
+            other => refusal(&other),
+        });
+        let _ = client.close().await;
+        read.map(|(flock, usage)| (ack, flock, usage))
     }
 
     /// Opens the connection one call uses and refuses a skewed shepherd.
