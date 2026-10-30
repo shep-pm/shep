@@ -135,16 +135,16 @@ pub struct BootOptions {
 /// Brings the daemon up: layout, lock, socket, dogs, restore, dogs, readiness
 ///
 /// The order is load-bearing: handlers before the socket (SIGUSR2 otherwise
-/// terminates), the pidfile lock before the bind it makes race-free,
-/// `ready_fd` on the bind not the restore, `[daemon] boot_first_dogs` before
-/// the restore and every other dog after it so a metrics dog does not answer
-/// for an empty flock, [`BootOptions::notify_socket`] last.
+/// terminates), the pidfile lock before the bind it makes race-free, `ready_fd`
+/// on the bind not the restore, `[daemon] boot_first_dogs` before the restore
+/// and the rest after it, [`BootOptions::notify_socket`] last.
 ///
 /// # Errors
 /// - [`BootError::Io`] if a boot filesystem or signal-handler step failed.
 /// - [`BootError::AlreadyRunning`] if another daemon holds the lock or answered.
 /// - [`BootError::ReadyWrite`] if the readiness line could not be written.
 /// - [`BootError::Snapshot`] if a roll exists and could not be read or parsed.
+/// - [`BootError::DogDefaults`] if `dog-defaults.json` could not be read.
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,
@@ -211,6 +211,15 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         (PidfileLock::acquire(&paths)?, bind_socket(&paths, &socket)?);
     let pid = std::process::id();
     pidfile_lock.record(&paths, pid)?;
+    // After the lock, so a second boot reports `AlreadyRunning` rather than
+    // this store, and before the readiness line, so a boot refused over it
+    // never told its parent the shepherd is up.
+    let dog_defaults = shep_core::dog_defaults::read(&paths.dog_defaults).map_err(|source| {
+        BootError::DogDefaults {
+            path: paths.dog_defaults.clone(),
+            source,
+        }
+    })?;
 
     // 3. Readiness, now that the socket is bound. Taken rather than moved out:
     //    a partial move leaves `options` unborrowable, and step 4 hands it
@@ -266,7 +275,8 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     let dog_link_table = crate::server::DogLinks::default();
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
-        .provider_secrets(Arc::clone(&provider_secrets));
+        .provider_secrets(Arc::clone(&provider_secrets))
+        .dog_defaults(dog_defaults);
     // Cloned before the `take` below feeds the supervisor, and defaulted the
     // way the builder defaults it, so a dog and a sheep that name no
     // environment resolve in the same one.

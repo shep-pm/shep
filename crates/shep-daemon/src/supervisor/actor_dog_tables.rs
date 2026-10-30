@@ -158,8 +158,10 @@ impl<R: ProcessRunner> Actor<R> {
     /// Publishes one `DogSheepSettingsChanged` per table that moved since
     /// `announced`, then records what it announced.
     ///
-    /// Compared before anything is cloned: a message that moved no table
-    /// costs a pass over the flock and no copy.
+    /// A flock with no dog tables and nothing announced costs one pass over
+    /// the flock and no copy. Otherwise the view is built on every call, and
+    /// a sheep whose dog has a default pays a copy of its layered tables
+    /// there; the announced index is cloned only when a table moved.
     pub(super) fn announce_dog_tables(&self, announced: &mut DogIndex) {
         let no_tables = || {
             self.sheep

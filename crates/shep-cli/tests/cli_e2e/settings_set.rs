@@ -595,6 +595,16 @@ fn shep_set_writes_a_dogs_default_and_a_sheep_overrides_it() {
         defaults()["dogs"]["metrics"],
         serde_json::json!({ "otlp_timeout": "12s" })
     );
+    let wins = shep(home)
+        .arg("get")
+        .arg("worker.dogs.metrics")
+        .output()
+        .unwrap();
+    assert_success(&wins);
+    assert_eq!(
+        String::from_utf8_lossy(&wins.stdout),
+        "[dogs.metrics]\notlp_timeout = \"30s\"\n"
+    );
 
     // The same value again is no write.
     let same = shep(home)

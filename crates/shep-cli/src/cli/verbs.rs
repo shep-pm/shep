@@ -388,11 +388,11 @@ pub enum Commands {
     /// Change one setting of a sheep or a dog: `shep set <address> <value>`.
     ///
     /// The address is `shep get`'s and `shep copy`'s: a sheep's own field, a
-    /// dog's table on that sheep, the dog's own section of `dogs.toml`, or
-    /// `<dog>.defaults[.<key>]`, under every sheep's table for the dog. The
-    /// value is TOML, and text that is not TOML is the string as typed: `5` is
-    /// a number, `true` is a toggle and `3s` stays `3s`. TOML's `nan` and `inf`
-    /// are refused, because the JSON the flock carries has no cell for them.
+    /// dog's table on that sheep, or the dog's own section of `dogs.toml`.
+    /// Only `shep set` takes `<dog>.defaults[.<key>]`, the default under every
+    /// sheep's table for the dog. The value is TOML, and text that is not TOML
+    /// is the string as typed: `5` is a number, `true` a toggle, `3s` stays
+    /// `3s`. TOML's `nan` and `inf` are refused: the flock's JSON has no cell.
     ///
     /// A write that carries a dog's table is checked against the schema that
     /// dog published, and a value it turns down is refused with the key path it
@@ -411,14 +411,14 @@ pub enum Commands {
     Set(SetArgs),
     /// Drop an override, or remove a dog's key, so what was there before applies.
     ///
-    /// The address is `shep set`'s. On a sheep's field it drops the override
-    /// you set, so the Flockfile's value returns, in `shep get` and in the
-    /// running config. A field with no override is refused: it already holds
-    /// the Flockfile's value. On a key of a dog's settings, whether the dog's
-    /// table on a sheep or its section of `dogs.toml`, it removes the key, so
-    /// the dog's own default applies. A sheep's whole `dogs.<dog>` table can be
-    /// removed too; a whole `dogs.toml` section, `env`, `name`, `instances` and
-    /// the whole `dogs` map are refused.
+    /// The address is `shep set`'s, but `<dog>.defaults[.<key>]` is refused: `shep
+    /// set` writes it. On a sheep's field it drops the override you set, so the
+    /// Flockfile's value returns in `shep get` and the running config. A field with
+    /// no override is refused: it already holds the Flockfile's value. On a key of
+    /// a dog's settings, whether its table on a sheep or its section of
+    /// `dogs.toml`, it removes the key, so the dog's own default applies. A sheep's
+    /// whole `dogs.<dog>` table can be removed too; a whole `dogs.toml` section,
+    /// `env`, `name`, `instances` and the whole `dogs` map are refused.
     ///
     /// The flow and the flags are `shep set`'s: the change list prints first,
     /// `--yes` skips the question, `--dry-run` writes nothing, and
