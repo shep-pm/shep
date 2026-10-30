@@ -4,6 +4,9 @@
 //! plain load never scales and a reset does, and a change that cannot be parked
 //! must not be reported as parked.
 
+use super::config_fixtures::{
+    APPLY_FIRST_PID, actor_over, apply_config, declared_app, established,
+};
 use super::*;
 
 /// Park `parked` on every instance of `name`, so a case parks the flock it

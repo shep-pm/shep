@@ -4,6 +4,7 @@
 //! a different set of overrides. The grid here pins every combination, because
 //! the difference between them is easy to state and easy to get wrong.
 
+use super::config_fixtures::{actor_over, apply_config, declared_app, established};
 use super::*;
 
 /// The four-mode fixture: a template declaring `max_restarts` and `env`,

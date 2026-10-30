@@ -5,6 +5,9 @@
 //! owed by an action that already gave up, and a second reply to an answered
 //! one.
 
+use super::action_fixtures::{
+    ACTION_WINDOW, actor_with_an_open_channel, sent_action, settle_action, trigger_action,
+};
 use super::*;
 
 /// Fails if a reply stops reaching the wait that asked for it: the whole

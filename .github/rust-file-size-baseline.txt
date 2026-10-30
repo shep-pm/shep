@@ -5,4 +5,3 @@
 # Format: <lines> <path>. Read #301 before splitting any of these.
 
 # #301
-1104 crates/shep-daemon/src/supervisor/tests/mod.rs

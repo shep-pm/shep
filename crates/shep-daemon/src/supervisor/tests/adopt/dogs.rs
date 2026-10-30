@@ -5,6 +5,9 @@
 //! from the enabled list the caller handed it. That list is the successor's to
 //! read, which is why a parked dog is left behind rather than carried.
 
+use super::super::adopt_fixtures::{
+    AdoptingRunner, adoptable_child, carried, counters, daemon_fds, flock_until, without_handles,
+};
 use super::*;
 use std::collections::BTreeMap;
 

@@ -6,6 +6,10 @@
 
 use super::*;
 
+#[cfg(unix)]
+use super::adopt_fixtures::without_handles;
+use super::config_fixtures::{actor_over, apply_config, declared_app, established};
+
 /// The identity this test process already runs under, the credential pair
 /// `own_user_name()` resolves to.
 #[cfg(unix)]

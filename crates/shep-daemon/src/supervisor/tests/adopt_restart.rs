@@ -4,7 +4,32 @@
 //! a crash: the stop still escalates to sigkill, and a sheep owed a respawn
 //! waits out only what is left of its delay.
 
+use super::adopt_fixtures::{
+    AdoptingRunner, STAND_IN_SPAWN_PID, adoptable_child, carried, carried_marked, counters,
+    daemon_fds, flock_until, respawnable, without_handles,
+};
 use super::*;
+
+/// One sheep as a blob describes it, owed a respawn at a named moment.
+///
+/// Needs a `restart_delay` on the app, since a deadline means nothing
+/// without a configured delay to be shorter than. `autorestart` is left
+/// on, unlike [`carried_marked`]'s: these cases want the respawn.
+#[cfg(unix)]
+fn carried_owed_a_restart(
+    name: &str,
+    id: u32,
+    delay: shep_core::values::UpDuration,
+    due: Option<SystemTime>,
+) -> CarriedSheep {
+    let spec = app_with(name, |app| app.restart_delay = Some(delay));
+    let entry = ProcessEntry {
+        status: ProcStatus::WaitingRestart,
+        restarts: 1,
+        ..plain_entry(id, spec)
+    };
+    CarriedSheep::from_entry(&entry, 0, CarriedFds::none(), false, None, false, due)
+}
 
 /// The escalation is a `tokio::time::timeout` inside `kill_process`, which
 /// runs on the sheep task the `execve` takes. A successor that re-sends

@@ -4,6 +4,7 @@
 //! replaced, and must not stall the actor when a pump has stopped reading or
 //! has already gone.
 
+use super::action_fixtures::{FailingPumpRunner, PUMP_REFUSAL, SilentPumpRunner};
 use super::*;
 
 /// Fails if the actor awaits a reopen's acknowledgement inside its own
