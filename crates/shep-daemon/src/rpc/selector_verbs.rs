@@ -12,6 +12,7 @@ use crate::supervisor::SupervisorError;
 
 use super::context::{Outcome, RpcContext};
 use super::error::{invalid_config, rpc_error};
+use super::lamb_signal::signal_lamb;
 
 pub(super) fn not_found() -> RpcError {
     RpcError {
@@ -19,6 +20,23 @@ pub(super) fn not_found() -> RpcError {
         message: "selector matched no registered sheep".to_string(),
         daemon_version: None,
     }
+}
+
+/// The rows of `infos` that `selector` reaches.
+///
+/// The rule `Actor::matching_ids` applies to every lifecycle verb, repeated
+/// here because this filter is over `ProcessInfo`s: a dog is not a flock
+/// member, so a sweep passes it by and an exact selector reaches it.
+pub(super) fn matching_rows(
+    infos: Vec<ProcessInfo>,
+    selector: &ProcessSelector,
+) -> Vec<ProcessInfo> {
+    let exact = selector.is_exact();
+    infos
+        .into_iter()
+        .filter(|i| exact || i.dog.is_none())
+        .filter(|i| selector.matches(&i.name, i.id, i.fold.as_deref(), i.instance))
+        .collect()
 }
 
 pub(super) fn selector_of(spec: SelectorSpec) -> Result<ProcessSelector, RpcError> {
@@ -77,10 +95,14 @@ pub(super) async fn trigger(
 /// `Signal`'s own resolve-then-map path, mirroring [`trigger`]. The signal
 /// name is re-validated here even though the CLI validated it too: peer input
 /// is untrusted, the rule `Request::Start` follows a few arms up.
+///
+/// With a `lamb`, the signal goes to that lamb of the one sheep the selector
+/// names instead: see [`signal_lamb`].
 pub(super) async fn signal_request(
     id: u64,
     spec: SelectorSpec,
     signal: String,
+    lamb: Option<u32>,
     ctx: &RpcContext,
 ) -> Outcome {
     let result = match OperatorSignal::parse(&signal) {
@@ -88,14 +110,17 @@ pub(super) async fn signal_request(
             "`{signal}` is not a signal shep will send; accepted: {}",
             OperatorSignal::ACCEPTED.join(", ")
         ))),
-        Some(sig) => match selector_of(spec) {
-            Err(err) => Err(err),
-            Ok(selector) => ctx
-                .supervisor
-                .signal(selector, sig)
-                .await
-                .map(Response::Signalled)
-                .map_err(|err| rpc_error(&err)),
+        Some(sig) => match lamb {
+            Some(lamb) => signal_lamb(spec, sig, lamb, ctx).await,
+            None => match selector_of(spec) {
+                Err(err) => Err(err),
+                Ok(selector) => ctx
+                    .supervisor
+                    .signal(selector, sig)
+                    .await
+                    .map(Response::Signalled)
+                    .map_err(|err| rpc_error(&err)),
+            },
         },
     };
     Outcome::Reply(Reply { id, result })

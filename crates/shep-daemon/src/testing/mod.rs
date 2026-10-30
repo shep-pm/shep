@@ -14,8 +14,8 @@ use shep_core::status::ProcStatus;
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub(crate) use doubles::{
-    ArmCall, RecordingEnforcer, ScriptedProber, ScriptedSampler, TestClock, probe_config, rss,
-    rss_cpu,
+    ArmCall, RecordingEnforcer, RecordingPidSignals, ScriptedProber, ScriptedSampler, TestClock,
+    probe_config, rss, rss_cpu,
 };
 
 use crate::assemble::assemble;
@@ -301,6 +301,11 @@ pub(crate) struct Harness {
     /// against instead of waiting a poll interval for the enforcer's own
     /// tick to plant one.
     pub(crate) stats: Arc<StatsState>,
+    /// The runner the engine spawns through, so a test can read a sheep's
+    /// channel with [`ScriptedRunner::io_handles`].
+    pub(crate) runner: Arc<ScriptedRunner>,
+    /// Every signal a lamb path sent, in place of the operating system.
+    pub(crate) pid_signals: Arc<RecordingPidSignals>,
 }
 
 /// Capacity of the harness's two report channels. A test needing more unread
@@ -506,12 +511,18 @@ fn build_harness(
     // Shared for `boot`'s reason: a `PutSecrets` through the harness has to
     // reach the same registry a spawn resolves against.
     let provider_secrets = Arc::new(crate::secrets::ProviderSecrets::load(&paths.secrets_cache));
-    let supervisor = SupervisorBuilder::new(runner, paths.clone(), events.clone())
-        .extras(extras)
-        .provider_secrets(Arc::clone(&provider_secrets))
-        .environment(environment.to_string())
-        .spawn();
+    let runner = Arc::new(runner);
+    let supervisor = SupervisorBuilder::new(
+        SharedRunner(Arc::clone(&runner)),
+        paths.clone(),
+        events.clone(),
+    )
+    .extras(extras)
+    .provider_secrets(Arc::clone(&provider_secrets))
+    .environment(environment.to_string())
+    .spawn();
     let (shutdown, shutdown_rx) = watch::channel(false);
+    let pid_signals = Arc::new(RecordingPidSignals::default());
     Harness {
         ctx: RpcContext {
             supervisor,
@@ -541,6 +552,7 @@ fn build_harness(
             host: crate::host::HostState::fixed(None),
             provider_secrets,
             host_environment: environment.to_string(),
+            pid_signals: Arc::clone(&pid_signals) as Arc<dyn crate::rpc::PidSignals>,
         },
         _dir: dir,
         _events_rx: events_rx,
@@ -548,6 +560,8 @@ fn build_harness(
         breaches,
         liveness,
         stats,
+        runner,
+        pid_signals,
     }
 }
 

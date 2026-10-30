@@ -28,7 +28,9 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::System::Console::{
     GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
 };
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_TERMINATE, TerminateProcess,
+};
 
 /// Marks this process's own stdio handles non-inheritable.
 ///
@@ -145,6 +147,29 @@ impl Drop for UserOnly {
             let _ = LocalFree(self.descriptor);
         }
     }
+}
+
+/// Ends the process `pid` with `exit_code`, the Windows `SIGKILL`.
+///
+/// # Errors
+///
+/// The OS error if the process cannot be opened for termination (it exited,
+/// or belongs to another user) or refuses to end.
+pub(crate) fn terminate_process(pid: u32, exit_code: u32) -> io::Result<()> {
+    // SAFETY: the arguments are plain integers. A null return is the failure
+    // value and a non-null one is a handle this call now owns.
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
+    if handle.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `handle` is one `OpenProcess` just returned and nothing else
+    // owns, so `OwnedHandle` closes it exactly once.
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    // SAFETY: `handle` is live and was opened with `PROCESS_TERMINATE`.
+    if unsafe { TerminateProcess(handle.as_raw_handle(), exit_code) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// The string form of the SID of the user this process runs as, as UTF-16

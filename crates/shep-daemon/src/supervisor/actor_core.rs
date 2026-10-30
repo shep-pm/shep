@@ -298,6 +298,15 @@ impl<R: ProcessRunner> Actor<R> {
                 self.begin_signal(&selector, sig, reply);
                 false
             }
+            Command::LambSignalled {
+                id,
+                pid,
+                sig,
+                reply,
+            } => {
+                let _ = reply.send(self.tell_lamb_signalled(id, pid, sig));
+                false
+            }
             Command::SendLine {
                 selector,
                 line,

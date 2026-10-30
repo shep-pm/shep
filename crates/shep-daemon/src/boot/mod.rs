@@ -402,6 +402,7 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         host: crate::host::HostState::real(),
         provider_secrets,
         host_environment: host_environment.clone(),
+        pid_signals: Arc::new(crate::rpc::OsPidSignals),
     };
     if let Some(links) = dog_links {
         tokio::spawn(crate::server::serve_dog_links(

@@ -28,7 +28,9 @@ use super::enrichment::{
 };
 use super::error::{invalid_config, no_sheep, rpc_error};
 use super::gate::{check, pin_grants};
-use super::selector_verbs::{not_found, selector_call, selector_of, signal_request, trigger};
+use super::selector_verbs::{
+    matching_rows, not_found, selector_call, selector_of, signal_request, trigger,
+};
 use super::walk::{reload_request, restart_request};
 
 /// Dispatches one request envelope against `ctx`, returning what the
@@ -109,16 +111,7 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             Ok(selector) => match ctx.supervisor.list_checked().await {
                 Err(err) => reply(Err(rpc_error(&err))),
                 Ok(infos) => {
-                    // The rule `Actor::matching_ids` applies to every
-                    // lifecycle verb, repeated here because this filter is
-                    // over `ProcessInfo`s: a dog is not a flock member, so a
-                    // sweep passes it by and an exact selector reaches it.
-                    let exact = selector.is_exact();
-                    let hits: Vec<_> = infos
-                        .into_iter()
-                        .filter(|i| exact || i.dog.is_none())
-                        .filter(|i| selector.matches(&i.name, i.id, i.fold.as_deref(), i.instance))
-                        .collect();
+                    let hits = matching_rows(infos, &selector);
                     if hits.is_empty() {
                         reply(Err(not_found()))
                     } else {
@@ -255,8 +248,8 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         Request::Signal {
             selector,
             signal,
-            lamb: _,
-        } => signal_request(id, selector, signal, ctx).await,
+            lamb,
+        } => signal_request(id, selector, signal, lamb, ctx).await,
         Request::SendLine { selector, line } => {
             // Refused here, not silently split by the writer: a line
             // carrying a newline would be delivered as two commands where the

@@ -49,6 +49,9 @@ mod enrichment;
 
 mod error;
 
+mod lamb_signal;
+pub(crate) use lamb_signal::{OsPidSignals, PidSignals};
+
 mod log_tail;
 
 #[cfg(test)]

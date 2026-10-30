@@ -815,6 +815,30 @@ impl SupervisorHandle {
         .await?
     }
 
+    /// Tells sheep `id`, on its channel, that its lamb `pid` was sent `sig`,
+    /// and answers whether the message was queued.
+    ///
+    /// Not queued is not an error: the sheep has no channel, or is not
+    /// reading it.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    pub(crate) async fn tell_lamb_signalled(
+        &self,
+        id: u32,
+        pid: u32,
+        sig: OperatorSignal,
+    ) -> Result<bool, SupervisorError> {
+        self.call(|reply| Command::LambSignalled {
+            id,
+            pid,
+            sig,
+            reply,
+        })
+        .await
+    }
+
     /// Writes `line` to every matched sheep's stdin, and answers with one row
     /// per match, by name then by id (only partial parity with
     /// `shep_core::protocol::sort_flock`; see `spawn_trigger_task`).

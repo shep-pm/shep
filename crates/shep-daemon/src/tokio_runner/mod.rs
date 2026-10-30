@@ -60,3 +60,4 @@ pub use runner::{TokioProc, TokioRunner};
 pub(crate) use log_file::{open_append, record_lock};
 #[cfg(unix)]
 pub(crate) use runner::signal_group;
+pub(crate) use runner::signal_pid;
