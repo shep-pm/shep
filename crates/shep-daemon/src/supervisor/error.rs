@@ -88,6 +88,11 @@ pub enum SupervisorError {
     /// failure here that leaves the flock exactly as it was while telling the
     /// operator their change did not land.
     Overrides(String),
+    /// The dog defaults store at `$SHEP_HOME/dog-defaults.json` could not be
+    /// read or written, so a default was not recorded. Carries
+    /// [`DogDefaultsError`](shep_core::dog_defaults::DogDefaultsError)'s own
+    /// message.
+    DogDefaults(String),
     /// A spawn of an app an operator disabled; carries that app's name.
     ///
     /// Refused before anything is registered, for `Start`, `Scale` up and an
@@ -127,6 +132,7 @@ impl fmt::Display for SupervisorError {
             Self::InvalidEnv(msg) => write!(f, "cannot set that env key: {msg}"),
             Self::InvalidField(msg) => write!(f, "cannot set that field: {msg}"),
             Self::Overrides(msg) => write!(f, "overrides store unusable: {msg}"),
+            Self::DogDefaults(msg) => write!(f, "dog defaults store unusable: {msg}"),
             Self::Disabled(name) => write!(
                 f,
                 "{name} is disabled; `shep enable {name}` clears that and starts it"

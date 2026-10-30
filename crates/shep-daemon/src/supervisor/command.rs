@@ -304,6 +304,24 @@ pub(crate) enum Command {
         /// Answers as [`Self::SetSheepField`] does.
         reply: oneshot::Sender<Result<Option<FieldSet>, SupervisorError>>,
     },
+    /// Reads one dog's default table. See [`Actor::handle_dog_defaults`].
+    DogDefaults {
+        /// The dog's own name, the config key.
+        dog: String,
+        /// Answers the default, `None` when the dog has none.
+        reply: oneshot::Sender<Option<DogTable>>,
+    },
+    /// Sets or removes one dog's default table. See
+    /// [`Actor::handle_set_dog_defaults`].
+    SetDogDefaults {
+        /// Which dog's default to write.
+        dog: String,
+        /// The new default, or `None` to remove it. [`DogTable`]'s own
+        /// `Debug` keeps its values out of this enum's (IR-41).
+        table: Option<DogTable>,
+        /// Answers whether the store took the write.
+        reply: oneshot::Sender<Result<(), SupervisorError>>,
+    },
     /// Attaches a marker to one sheep by name, or clears it.
     ///
     /// Last writer wins: `Some` overwrites whatever is there, including

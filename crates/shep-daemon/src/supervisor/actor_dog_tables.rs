@@ -1,20 +1,24 @@
 //! A dog's per-sheep tables: the read, the write, and `config.sheep.<dog>`.
 //!
 //! Every answer comes off one view of the flock, [`Actor::dog_tables`], so
-//! the read and the announcement agree about which slot speaks for a name.
+//! the read and the announcement agree about which slot speaks for a name,
+//! and about the operator's default for a dog layered under each table.
 //! The write is [`Actor::write_sheep_field`] on the whole `dogs` map, built
 //! here from the one table that moved. `run` compares the view after every
 //! message against the last one it announced.
 
 use super::actor_config::speaker_rank;
 use super::*;
+use std::borrow::Cow;
 
-/// Sheep name to that sheep's `dogs` map, borrowed from the flock.
-type DogView<'a> = BTreeMap<&'a str, &'a BTreeMap<String, DogTable>>;
+/// Sheep name to that sheep's `dogs` map as a dog reads it: borrowed from
+/// the flock, or owned where a default was layered in.
+type DogView<'a> = BTreeMap<&'a str, Cow<'a, BTreeMap<String, DogTable>>>;
 
 impl<R: ProcessRunner> Actor<R> {
     /// Every non-dog name carrying a table, read off the stored spec of the
-    /// slot [`Self::representative_id`] would pick.
+    /// slot [`Self::representative_id`] would pick, each table under its
+    /// dog's default.
     ///
     /// One pass rather than `representative_id` per name, which would walk
     /// the flock once for every sheep in it.
@@ -34,12 +38,13 @@ impl<R: ProcessRunner> Actor<R> {
             .into_iter()
             .filter_map(|(name, (_, _, id))| {
                 let dogs = &self.sheep.get(&id)?.entry.spec.config().dogs;
-                (!dogs.is_empty()).then_some((name, dogs))
+                (!dogs.is_empty()).then(|| (name, self.dog_defaults.layer(dogs)))
             })
             .collect()
     }
 
-    /// `dog`'s table on every sheep carrying one, by sheep name.
+    /// `dog`'s table on every sheep carrying one, by sheep name, under
+    /// `dog`'s default.
     ///
     /// Empty when no sheep carries one, never a refusal: a dog asks on its
     /// own name, which cannot be missing the way a sheep's can.
@@ -50,8 +55,8 @@ impl<R: ProcessRunner> Actor<R> {
             .collect()
     }
 
-    /// `name`'s table for `dog`, and the environment a reference in it
-    /// resolves in: the stored spec's `environment`, or the shepherd's when
+    /// `name`'s table for `dog` under `dog`'s default, and the environment
+    /// a reference in it resolves in: the stored spec's `environment`, or the shepherd's when
     /// it sets none, as [`Self::secret_view`] reads it.
     ///
     /// The slot is the one [`Self::dog_tables`] picks, ranked by
@@ -66,7 +71,10 @@ impl<R: ProcessRunner> Actor<R> {
             .min_by_key(|(id, slot)| speaker_rank(**id, slot))?;
         let config = slot.entry.spec.config();
         Some(SheepDogRead {
-            table: config.dogs.get(dog).cloned(),
+            table: config
+                .dogs
+                .get(dog)
+                .map(|own| self.dog_defaults.layer_table(dog, own)),
             environment: config
                 .environment
                 .clone()
@@ -110,6 +118,37 @@ impl<R: ProcessRunner> Actor<R> {
         self.write_sheep_field(name, "dogs", &value)
     }
 
+    /// `dog`'s default table as stored, `None` when it has none.
+    pub(super) fn handle_dog_defaults(&self, dog: &str) -> Option<DogTable> {
+        self.dog_defaults.get(dog).cloned()
+    }
+
+    /// Sets `dog`'s default table, or removes it with `None`.
+    ///
+    /// The store is written before the view changes, so a refused write
+    /// leaves what every dog reads as it was. The announcement is `run`'s,
+    /// off the layered view, one per sheep whose table moved.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::InvalidField`]: `dog` is empty.
+    /// - [`SupervisorError::DogDefaults`]: the store could not be read or
+    ///   written.
+    pub(super) fn handle_set_dog_defaults(
+        &mut self,
+        dog: &str,
+        table: Option<DogTable>,
+    ) -> Result<(), SupervisorError> {
+        if dog.is_empty() {
+            return Err(SupervisorError::InvalidField(
+                "a dog's name cannot be empty".to_string(),
+            ));
+        }
+        self.dog_defaults = dog_defaults::put(&self.paths.dog_defaults, dog, table)
+            .map_err(|err| SupervisorError::DogDefaults(err.to_string()))?;
+        Ok(())
+    }
+
     /// The index `run` starts from, taken off whatever flock the builder
     /// installed, so a handover's carried tables are not news.
     pub(super) fn dog_index(&self) -> DogIndex {
@@ -151,7 +190,7 @@ type DogIndex = BTreeMap<String, BTreeMap<String, DogTable>>;
 /// `view` with every name and table cloned.
 fn owned(view: &DogView<'_>) -> DogIndex {
     view.iter()
-        .map(|(name, dogs)| ((*name).to_string(), (*dogs).clone()))
+        .map(|(name, dogs)| ((*name).to_string(), dogs.as_ref().clone()))
         .collect()
 }
 
@@ -162,7 +201,7 @@ fn changed_tables(before: &DogIndex, after: &DogView<'_>) -> Vec<(String, String
         && before
             .iter()
             .zip(after)
-            .all(|((name, dogs), (now, now_dogs))| name == now && dogs == *now_dogs);
+            .all(|((name, dogs), (now, now_dogs))| name == now && dogs == now_dogs.as_ref());
     if same {
         return Vec::new();
     }
@@ -175,7 +214,7 @@ fn changed_tables(before: &DogIndex, after: &DogView<'_>) -> Vec<(String, String
     let mut changed = Vec::new();
     for sheep in names {
         let was = before.get(sheep).unwrap_or(&none);
-        let is = after.get(sheep).copied().unwrap_or(&none);
+        let is = after.get(sheep).map_or(&none, Cow::as_ref);
         let dogs: BTreeSet<&String> = was.keys().chain(is.keys()).collect();
         changed.extend(
             dogs.into_iter()
@@ -213,7 +252,7 @@ mod tests {
     fn view(index: &DogIndex) -> DogView<'_> {
         index
             .iter()
-            .map(|(name, dogs)| (name.as_str(), dogs))
+            .map(|(name, dogs)| (name.as_str(), Cow::Borrowed(dogs)))
             .collect()
     }
 

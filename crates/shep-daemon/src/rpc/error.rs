@@ -96,7 +96,7 @@ pub(super) fn rpc_error(err: &SupervisorError) -> RpcError {
         // an override store that cannot be read or written is an unexpected
         // daemon-side failure, and there is no code for it that a client
         // predating this build could decode.
-        SupervisorError::Overrides(_) => RpcError {
+        SupervisorError::Overrides(_) | SupervisorError::DogDefaults(_) => RpcError {
             code: RpcErrorCode::Internal,
             message: err.to_string(),
             daemon_version: None,

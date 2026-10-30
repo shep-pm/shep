@@ -13,7 +13,10 @@ use tokio::sync::broadcast;
 /// A `ListFlock` goes through the actor first. It reads its mailbox in
 /// order and announces after each message, so once that reply is back
 /// every earlier request's announcement is queued.
-async fn heard(ctx: &RpcContext, rx: &mut broadcast::Receiver<SharedEvent>) -> Vec<BusEvent> {
+pub(super) async fn heard(
+    ctx: &RpcContext,
+    rx: &mut broadcast::Receiver<SharedEvent>,
+) -> Vec<BusEvent> {
     list_flock(ctx, 0).await;
     let mut heard = Vec::new();
     while let Ok(event) = rx.try_recv() {
@@ -26,7 +29,7 @@ async fn heard(ctx: &RpcContext, rx: &mut broadcast::Receiver<SharedEvent>) -> V
 }
 
 /// `(dog, sheep)` of each event in `events` a subscriber to `topic` gets.
-fn on(topic: &str, events: &[BusEvent]) -> Vec<(String, String)> {
+pub(super) fn on(topic: &str, events: &[BusEvent]) -> Vec<(String, String)> {
     let filter = TopicFilter::new(&[topic.to_string()]).expect("a valid topic pattern");
     events
         .iter()

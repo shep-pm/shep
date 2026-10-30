@@ -187,6 +187,7 @@ mod disabled_reload;
 mod disabled_restarts;
 mod disabled_wildcards;
 mod dog_at_rest;
+mod dog_defaults;
 mod dog_delete;
 mod dog_disable;
 mod dog_enable_grants;

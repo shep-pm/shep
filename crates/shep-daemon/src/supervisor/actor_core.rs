@@ -232,6 +232,14 @@ impl<R: ProcessRunner> Actor<R> {
                 let _ = reply.send(self.handle_set_sheep_dog_settings(&name, &dog, table));
                 false
             }
+            Command::DogDefaults { dog, reply } => {
+                let _ = reply.send(self.handle_dog_defaults(&dog));
+                false
+            }
+            Command::SetDogDefaults { dog, table, reply } => {
+                let _ = reply.send(self.handle_set_dog_defaults(&dog, table));
+                false
+            }
             Command::SetSmit {
                 conn,
                 sheep,

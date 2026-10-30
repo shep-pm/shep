@@ -657,6 +657,16 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
                 Err(err) => reply(Err(rpc_error(&err))),
             }
         }
+        Request::DogDefaults { dog } => match ctx.supervisor.dog_defaults(dog).await {
+            Ok(table) => reply(Ok(Response::DogDefaults { table })),
+            Err(err) => reply(Err(rpc_error(&err))),
+        },
+        Request::SetDogDefaults { dog, table } => {
+            match ctx.supervisor.set_dog_defaults(dog.clone(), table).await {
+                Ok(()) => reply(Ok(Response::DogDefaultsSet { dog })),
+                Err(err) => reply(Err(rpc_error(&err))),
+            }
+        }
         // The inverse of every other config door's guard: `dogs.toml` holds
         // dogs' sections and nothing else, so what this one refuses is a
         // sheep's name. Guarded on `known_dogs`, not on the running flock: a

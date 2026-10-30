@@ -55,6 +55,16 @@ impl DogDefaults {
         };
     }
 
+    /// `own`, a sheep's table for `dog`, with `dog`'s default layered under
+    /// it.
+    #[must_use]
+    pub fn layer_table(&self, dog: &str, own: &DogTable) -> DogTable {
+        match self.0.get(dog) {
+            Some(default) => layered(&[default, own]),
+            None => own.clone(),
+        }
+    }
+
     /// A sheep's `dogs` map with each default layered under the table the
     /// sheep carries for that dog.
     ///
@@ -71,13 +81,7 @@ impl DogDefaults {
         }
         Cow::Owned(
             dogs.iter()
-                .map(|(dog, own)| {
-                    let table = match self.0.get(dog) {
-                        Some(default) => layered(&[default, own]),
-                        None => own.clone(),
-                    };
-                    (dog.clone(), table)
-                })
+                .map(|(dog, own)| (dog.clone(), self.layer_table(dog, own)))
                 .collect(),
         )
     }
