@@ -91,7 +91,8 @@ ID  NAME    OUTCOME   DETAIL
     <ShortVersion>
       <p>
         <code>shep signal &lt;selector&gt; &lt;name&gt;</code> sends a real
-        unix signal to a sheep's own process, nothing else.{" "}
+        unix signal to a sheep's own process, or with <code>--lamb</code> to
+        one of its lambs.{" "}
         <code>shep whisper &lt;selector&gt; &lt;line&gt;</code> writes one
         line to its stdin, for an app that set <code>stdin = true</code>.{" "}
         <code>shep trigger &lt;selector&gt; &lt;action&gt;</code> sends a
@@ -103,16 +104,35 @@ ID  NAME    OUTCOME   DETAIL
     </ShortVersion>
 
     <h2 id="signals">Signals</h2>
-    <VerbSignature verb="signal" usage="shep signal <selector> <signal>">
+    <VerbSignature
+      verb="signal"
+      usage="shep signal <selector> [--lamb <pid>] <signal>"
+    >
       <p>
         Delivers one signal to each matched sheep's <strong>own</strong>{" "}
         process, never to its process group. The lambs it forked are not
-        signalled. That is the difference between this verb and the stop
-        ladder: <code>shep stop</code> signals the whole group and then
-        escalates, and this one is a nudge to a single process with nothing
-        behind it.
+        signalled, unless you name one with <code>--lamb</code>. That is the
+        difference between this verb and the stop ladder:{" "}
+        <code>shep stop</code> signals the whole group and then escalates, and
+        this one is a nudge to a single process with nothing behind it.
       </p>
     </VerbSignature>
+
+    <h2 id="one-lamb">One lamb</h2>
+    <p>
+      A sheep that supervises its own children may not forward signals to
+      them. <code>shep signal web --lamb 4242 HUP</code> sends{" "}
+      <code>SIGHUP</code> to pid 4242 only. The selector must match exactly
+      one sheep. The shepherd walks that sheep's lambs when the request
+      arrives and, for a pid not among them, sends nothing and answers{" "}
+      <code>not_a_lamb</code>, so this is not a general <code>kill</code>.
+    </p>
+    <p>
+      The sheep hears of a delivery on its channel as{" "}
+      <code>lamb-signalled</code>. A shepherd older than <code>--lamb</code>{" "}
+      would signal the sheep itself, so <code>shep</code> refuses to send it
+      one and says to restart the shepherd.
+    </p>
 
     <h2 id="a-config-change-is-not-a-binary-upgrade">A config change is not a binary upgrade</h2>
     <p>
@@ -230,9 +250,10 @@ ID  NAME    OUTCOME   DETAIL
       the delivery, and <code>DETAIL</code> carries its reason, such as{" "}
       <code>ESRCH</code> for a process reaped between the lookup and the
       syscall or <code>EPERM</code> for one this shepherd may not signal.
+      With <code>--lamb</code> there is a fourth, <code>not_a_lamb</code>.
     </p>
     <p>
-      None of the three fails the command. A selector like{" "}
+      None of these fails the command. A selector like{" "}
       <code>fold:backend</code> makes a mixed flock the normal case, so the
       per-sheep answer lives in the row and the exit code answers a different
       question: whether the <em>request</em> worked. Exit 2 for a malformed

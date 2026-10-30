@@ -1237,6 +1237,14 @@ shep scale web 4 sets the instance count to exactly 4; there is no relative delt
 
 `docs/writing-plans/plans/2026-08-13-shep-phase11-verbs.md:246-267`
 
+### shep signal --lamb reaches one lamb of one sheep, and nothing wider
+
+`shep signal <selector> --lamb <pid> <signal>` signals one child of a sheep. The selector must match exactly one sheep, and the shepherd walks that sheep's lambs when the request arrives and sends in the same blocking task. A pid the walk did not find answers `NotALamb` and nothing is sent. After a delivery the sheep gets `lamb-signalled` on its channel.
+
+**Why:** A sheep that supervises its own workers (a shep-kelpie project runner) needs one child ended without stopping the sheep. Checking against a fresh walk keeps the verb from becoming a general `kill`, and doing it in one blocking task keeps the window for pid reuse as small as it can be. An older shepherd drops the `lamb` field and would signal the sheep itself, so `PROTOCOL_VERSION` is 13 and the CLI refuses `--lamb` against a shepherd below it. `MIN_SUPPORTED` stays 8. `--group` is still not built, and neither is a lookout stop action.
+
+`https://github.com/shep-pm/shep/issues/354`
+
 ### shep signal has no --group flag to reach a sheep's whole lamb tree
 
 There is no way to send a signal to every process in a sheep's tree at once; shep signal always targets just the sheep's own pid.

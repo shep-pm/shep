@@ -1644,6 +1644,10 @@ Options:
           
           [default: table]
 
+      --lamb <PID>
+          Signal this lamb of the sheep instead of the sheep itself. The selector must match exactly
+          one sheep, and the pid one of its lambs
+
   -q, --quiet
           Suppress non-essential output
           

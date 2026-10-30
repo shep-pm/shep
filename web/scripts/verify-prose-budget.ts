@@ -354,10 +354,16 @@ export const BUDGETS: Record<string, number> = {
   // `validate` manifest field, the `shep.validate` ask, and what a refusal
   // prints. Surface a dog author and an operator both have to be able to
   // read, not prose to trim back out to fit.
-  "shepherd-channel": 2280,
+  //
+  // Raised from 2280 for `lamb-signalled` (#354): a message an app author
+  // receives and has to be told about. One table row.
+  "shepherd-channel": 2288,
   "from-pm2": 1720,
   "boot-order": 1670,
-  "talking-to-a-sheep": 1620,
+  // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep
+  // rule, the `not_a_lamb` refusal and the old-shepherd refusal are surface an
+  // operator has to be told about.
+  "talking-to-a-sheep": 1678,
   // Raised from 1330 on the same day and for the same feature. `host` is a
   // fourth key beside `data`, and its three spellings are three different
   // answers a script has to tell apart: an object, `null`, and no key at

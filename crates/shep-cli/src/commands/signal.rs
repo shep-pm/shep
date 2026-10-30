@@ -1,12 +1,10 @@
 //! `signal`: send a unix signal to matched sheep's own processes, never
-//! their process group.
+//! their process group, or with `--lamb` to one lamb of one sheep.
 //!
 //! The signal name is validated locally so a malformed one costs no round
-//! trip. The daemon re-validates it anyway: peer input is untrusted.
-//!
-//! `--lamb` aims the signal at one lamb of the one sheep the selector names.
-//! A shepherd below [`LAMB_SIGNAL_SINCE`] would drop the field and signal the
-//! sheep itself, so it is refused here before anything is sent.
+//! trip. The daemon re-validates it anyway: peer input is untrusted. A
+//! shepherd below [`LAMB_SIGNAL_SINCE`] would drop `--lamb` and signal the
+//! sheep itself, so that is refused here before anything is sent.
 //!
 //! A row's own outcome is never a request failure. `shep signal` exits
 //! non-`Success` only when the RPC itself failed.
