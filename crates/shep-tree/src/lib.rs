@@ -28,4 +28,8 @@ mod stop;
 pub mod sweep;
 
 pub use group::Signal;
+#[doc(inline)]
+pub use instant::ProcInstant;
 pub use stop::Tree;
+#[doc(inline)]
+pub use sweep::{LambSignal, LambSnapshot, LambSweep, SignalError, SweepReport};

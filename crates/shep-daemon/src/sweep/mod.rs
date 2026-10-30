@@ -1,284 +1,47 @@
 //! The lamb sweep: ending what a sheep left running once the sheep is gone
 //!
-//! A stop signals the sheep's process group, which misses a lamb that left
-//! it, and a natural exit signals nothing at all. [`sweep_lambs`] closes both
-//! by signalling the pids a [`LambSnapshot`] saw, and what those start while
-//! the sweep waits. [`LambSweep`] is the seam; [`StatsSweep`] reads the process table.
-//!
-//! A snapshot stores each pid with the [`ProcInstant`] it was seen. A pid is a
-//! survivor only if it is alive, not a zombie, and started no later than that
-//! instant, which on Linux is the kernel's tick: about 10 ms at the usual 100 Hz.
+//! [`shep_tree::sweep::Sweeper`] owns the sweep. [`sweep_lambs`] drives it
+//! with Tokio's clock and logs its report. [`StatsSweep`] supplies the
+//! process-table reads and the last stats tick's snapshot.
 
-use core::fmt;
 use core::time::Duration;
-use std::collections::{BTreeMap, BTreeSet};
 
+use shep_tree::sweep::{Step, Sweeper};
 use tokio::time::Instant;
-
-use crate::proc_table::ProcInstant;
 
 mod os;
 
 pub(crate) use os::StatsSweep;
+pub(crate) use shep_tree::{LambSignal, LambSnapshot, LambSweep, SignalError, SweepReport};
 
-/// How often [`sweep_lambs`] re-reads its survivors during the grace.
-///
-/// Each look is one targeted refresh of a few pids, well under a
-/// millisecond, so ten a second costs nothing and returns a sweep within
-/// 100 ms of the last lamb exiting.
-const SWEEP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+#[cfg(test)]
+pub(crate) use shep_tree::sweep::KILL_SETTLE_POLL;
 
-/// How long [`sweep_lambs`] waits for a `SIGKILL`ed lamb to stop running.
-///
-/// A killed process is gone within milliseconds unless it is stuck in
-/// uninterruptible sleep, which no signal ends; this only bounds that case.
-const KILL_SETTLE: Duration = Duration::from_secs(1);
-
-/// How often [`sweep_lambs`] looks while waiting out [`KILL_SETTLE`].
-pub(crate) const KILL_SETTLE_POLL: Duration = Duration::from_millis(10);
-
-/// The pids a sweep may signal, each with the instant it was seen.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct LambSnapshot {
-    seen_at: BTreeMap<u32, ProcInstant>,
-}
-
-impl LambSnapshot {
-    /// `pids` as seen at `taken_at`, read before the table was walked.
-    pub(crate) fn new(pids: impl IntoIterator<Item = u32>, taken_at: ProcInstant) -> Self {
-        Self {
-            seen_at: pids.into_iter().map(|pid| (pid, taken_at)).collect(),
-        }
-    }
-
-    /// The pids this snapshot saw, in pid order.
-    pub(crate) fn pids(&self) -> impl Iterator<Item = u32> + '_ {
-        self.seen_at.keys().copied()
-    }
-
-    /// The instant `pid` was seen, or `None` if this snapshot never saw it.
-    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
-    pub(crate) fn seen_at(&self, pid: u32) -> Option<ProcInstant> {
-        self.seen_at.get(&pid).copied()
-    }
-
-    /// The latest instant any of its pids was seen, `None` when empty.
-    pub(crate) fn latest(&self) -> Option<ProcInstant> {
-        self.seen_at.values().copied().max()
-    }
-
-    /// Whether this snapshot saw no lambs at all.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.seen_at.is_empty()
-    }
-
-    /// Both snapshots' pids, each dated by the later look that saw it.
-    ///
-    /// Either look proves the identity of a process that started no later
-    /// than it, so the later one refuses the fewest real lambs.
-    #[must_use]
-    pub(crate) fn merge(mut self, other: Self) -> Self {
-        for (pid, seen) in other.seen_at {
-            let at = self.seen_at.entry(pid).or_insert(seen);
-            *at = (*at).max(seen);
-        }
-        self
-    }
-}
-
-/// Which of the two signals a sweep sends a lamb.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LambSignal {
-    /// `SIGTERM`: the polite first rung.
-    Term,
-    /// `SIGKILL`: for a lamb still alive when the grace runs out.
-    Kill,
-}
-
-/// Why a sweep's signal never reached a lamb.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SignalError {
-    /// The pid is `0`, `1`, this daemon's own, or too large for the OS to
-    /// name: a `kill` there would hit a group, init or the shepherd.
-    // Only the unix `kill` path builds these two, plus the test fake.
-    #[cfg_attr(not(unix), expect(dead_code))]
-    NotALamb(u32),
-    /// The OS refused the `kill`, with its reason: the pid exited, or
-    /// belongs to another user.
-    #[cfg_attr(all(not(unix), not(test)), expect(dead_code))]
-    Refused(String),
-    /// This platform has no per-pid signal delivery for a sweep to use.
-    #[cfg(not(unix))]
-    Unsupported,
-}
-
-impl fmt::Display for SignalError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotALamb(pid) => write!(f, "pid {pid} is never a lamb to signal"),
-            Self::Refused(reason) => write!(f, "the OS refused the signal: {reason}"),
-            #[cfg(not(unix))]
-            Self::Unsupported => f.write_str("this platform cannot signal a single lamb"),
-        }
-    }
-}
-
-impl core::error::Error for SignalError {}
-
-/// The process-table half of a lamb sweep.
-///
-/// Synchronous and dyn-compatible, like [`MemorySampler`]: each call is a
-/// bounded syscall walk.
-///
-/// [`MemorySampler`]: crate::limits::sample::MemorySampler
-pub(crate) trait LambSweep: Send + Sync {
-    /// A fresh walk: every ppid descendant of `root_pid`, excluding it.
-    fn snapshot(&self, root_pid: u32) -> LambSnapshot;
-
-    /// What the last periodic tick recorded for `root_pid`, if anything.
-    fn last_snapshot(&self, root_pid: u32) -> Option<LambSnapshot>;
-
-    /// The pids in `snapshot` that are still the processes it saw.
-    ///
-    /// Alive, not a zombie, and started no later than the snapshot saw it.
-    /// An unknown start time, a pid `<= 1` and this daemon's own pid are
-    /// never survivors.
-    fn survivors(&self, snapshot: &LambSnapshot) -> Vec<u32>;
-
-    /// A fresh walk: every current ppid descendant of `roots`, the roots
-    /// excluded, dated by this walk's instant.
-    ///
-    /// Called with survivors only. A survivor's children still point at it,
-    /// so a walk from it finds what it started after the snapshot, and a
-    /// survivor already passed the shepherd-ancestry check its snapshot did.
-    /// The caller re-checks the survivors after, in case one exited mid-walk.
-    fn descendants(&self, roots: &[u32]) -> LambSnapshot;
-
-    /// Sends `signal` to `pid` alone, never to a group.
-    ///
-    /// # Errors
-    ///
-    /// [`SignalError`] when the signal was not delivered.
-    fn signal(&self, pid: u32, signal: LambSignal) -> Result<(), SignalError>;
-}
-
-/// What one [`sweep_lambs`] call signalled, in pid order.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct SweepReport {
-    /// Every lamb sent `SIGTERM`, delivered or not.
-    pub termed: Vec<u32>,
-    /// Every lamb still alive at the end of the grace, sent `SIGKILL`.
-    pub killed: Vec<u32>,
-}
-
-/// Ends every survivor of `snapshot`, and whatever they start meanwhile:
-/// `SIGTERM`, up to `grace` to exit, then `SIGKILL` for what is left.
-///
-/// Each look, every [`SWEEP_POLL_INTERVAL`], walks from the survivors and
-/// adds what they started since, so a child is held before its parent exits
-/// and orphans it. A walk counts only if its roots survive a re-check, see
-/// [`walk_from`]. A failed delivery is logged and never stops the sweep.
+/// Ends `snapshot`'s survivors with `grace` to exit before `SIGKILL`, then logs the report.
 pub(crate) async fn sweep_lambs(
     sweep: &dyn LambSweep,
     snapshot: &LambSnapshot,
     grace: Duration,
 ) -> SweepReport {
-    if snapshot.is_empty() {
-        return SweepReport::default();
-    }
-    let mut snapshot = snapshot.clone();
-    let mut termed = BTreeSet::new();
-    let deadline = Instant::now() + grace;
-    let killed = loop {
-        let roots = sweep.survivors(&snapshot);
-        if roots.is_empty() {
-            break roots;
-        }
-        let alive = walk_from(sweep, &mut snapshot, roots);
-        let first_seen: Vec<u32> = alive
-            .iter()
-            .copied()
-            .filter(|&pid| termed.insert(pid))
-            .collect();
-        deliver(sweep, &first_seen, LambSignal::Term);
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            break alive;
-        }
-        tokio::time::sleep(remaining.min(SWEEP_POLL_INTERVAL)).await;
-    };
-    if termed.is_empty() {
-        return SweepReport::default();
-    }
-    let termed: Vec<u32> = termed.into_iter().collect();
-
-    tracing::info!(lambs = ?termed, "swept lambs that outlived their sheep");
-    if !killed.is_empty() {
-        tracing::warn!(lambs = ?killed, "lambs ignored SIGTERM for the whole grace; sending SIGKILL");
-        deliver(sweep, &killed, LambSignal::Kill);
-        let stuck = poll_until_gone(sweep, &snapshot, KILL_SETTLE, KILL_SETTLE_POLL).await;
-        if !stuck.is_empty() {
-            tracing::warn!(lambs = ?stuck, "lambs still running after SIGKILL; leaving them");
-        }
-    }
-    SweepReport { termed, killed }
-}
-
-/// `roots`, the survivors of `snapshot`, plus what a walk from them found,
-/// which is merged into `snapshot`.
-///
-/// The walk has no ancestry check, so its finds count only if every root
-/// survives a re-read after it. A root alive at both reads was alive
-/// throughout, and a live pid is never reused. Otherwise only the roots that
-/// passed are kept, the finds are dropped, and the next look walks again.
-fn walk_from(sweep: &dyn LambSweep, snapshot: &mut LambSnapshot, roots: Vec<u32>) -> Vec<u32> {
-    let born = sweep.descendants(&roots);
-    if born.is_empty() {
-        return roots;
-    }
-    let still = sweep.survivors(snapshot);
-    if !roots.iter().all(|root| still.contains(root)) {
-        tracing::debug!(
-            ?roots,
-            "a lamb exited during the walk from it; walking again next look"
-        );
-        return roots
-            .into_iter()
-            .filter(|root| still.contains(root))
-            .collect();
-    }
-    let mut alive = roots;
-    alive.extend(born.pids());
-    alive.sort_unstable();
-    alive.dedup();
-    *snapshot = core::mem::take(snapshot).merge(born);
-    alive
-}
-
-/// Re-reads `snapshot`'s survivors every `every` until none are left or
-/// `bound` has passed, and returns the last reading.
-async fn poll_until_gone(
-    sweep: &dyn LambSweep,
-    snapshot: &LambSnapshot,
-    bound: Duration,
-    every: Duration,
-) -> Vec<u32> {
-    let deadline = Instant::now() + bound;
+    let mut sweeper = Sweeper::new(snapshot.clone(), grace);
     loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        tokio::time::sleep(remaining.min(every)).await;
-        let left = sweep.survivors(snapshot);
-        if left.is_empty() || Instant::now() >= deadline {
-            break left;
-        }
-    }
-}
-
-/// Sends `signal` to each of `pids`, logging every refusal.
-fn deliver(sweep: &dyn LambSweep, pids: &[u32], signal: LambSignal) {
-    for &pid in pids {
-        if let Err(error) = sweep.signal(pid, signal) {
-            tracing::warn!(pid, ?signal, %error, "lamb signal delivery failed");
+        match sweeper.step(sweep, Instant::now().into_std()) {
+            Step::Wait(duration) => tokio::time::sleep(duration).await,
+            Step::Done(report) => {
+                for (pid, signal, error) in &report.refused {
+                    tracing::warn!(pid, ?signal, %error, "lamb signal delivery failed");
+                }
+                if !report.termed.is_empty() {
+                    tracing::info!(lambs = ?report.termed, "swept lambs that outlived their sheep");
+                }
+                if !report.killed.is_empty() {
+                    tracing::warn!(lambs = ?report.killed, "lambs ignored SIGTERM for the whole grace; sending SIGKILL");
+                }
+                if !report.stuck.is_empty() {
+                    tracing::warn!(lambs = ?report.stuck, "lambs still running after SIGKILL; leaving them");
+                }
+                return report;
+            }
         }
     }
 }

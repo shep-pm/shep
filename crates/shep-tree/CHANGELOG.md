@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Re-export `ProcInstant` and the lamb sweep types at the crate root ([#1022])
+
 - Sweep what a process left running: `sweep::Sweeper` ends a `sweep::LambSnapshot`'s
   lambs a look at a time or in one blocking call, `sweep::ProcessTable` reads the
   real process table, and `instant` dates a snapshot and re-checks a pid against it
