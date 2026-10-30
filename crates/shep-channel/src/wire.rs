@@ -196,9 +196,13 @@ impl core::fmt::Display for LambLabelError {
 impl core::error::Error for LambLabelError {}
 
 /// Daemon -> child message
+///
+/// `#[non_exhaustive]`: the shepherd adds messages, and an app on an older
+/// library reads one it does not know as a malformed line and carries on.
 // wire format: changing these strings is a breaking change
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum ShepherdMessage {
     /// Graceful-stop request (`shutdown_with_message`)
     Shutdown,
@@ -227,6 +231,17 @@ pub enum ShepherdMessage {
         /// Always present, unlike `params`. Treat `u64` and increasing as
         /// implementation details, not a promise.
         id: u64,
+    },
+    /// The operator signalled one of the app's lambs with `shep signal --lamb`
+    ///
+    /// Sent after the kernel accepted the signal, so an app can record why
+    /// its child died. The library takes no action on it.
+    LambSignalled {
+        /// The lamb's pid
+        pid: u32,
+        /// The signal's canonical name, `SIG`-prefixed and uppercase, as in
+        /// `SIGHUP`
+        signal: String,
     },
 }
 
@@ -359,6 +374,16 @@ mod tests {
             id: 8,
         };
         assert_round_trip(with_params, &with_params_msg);
+    }
+
+    #[test]
+    fn a_lamb_signalled_round_trips() {
+        let fixture = r#"{"kind":"lamb-signalled","pid":4312,"signal":"SIGHUP"}"#;
+        let msg = ShepherdMessage::LambSignalled {
+            pid: 4312,
+            signal: "SIGHUP".to_string(),
+        };
+        assert_round_trip(fixture, &msg);
     }
 
     #[test]

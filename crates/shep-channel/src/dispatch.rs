@@ -43,6 +43,8 @@ pub(crate) enum Outcome {
     Handled,
     /// A shutdown, and no handler was registered.
     UnhandledShutdown,
+    /// A message the library takes no action on.
+    Ignored,
     /// A shutdown, and the registered handler panicked. Carries the panic
     /// text, the same way a panicking action handler's reply does.
     ShutdownFailed(String),
@@ -79,6 +81,8 @@ pub(crate) enum Resolved {
     Shutdown(Arc<ShutdownFn>),
     /// A shutdown with no handler registered.
     UnhandledShutdown,
+    /// A message the library takes no action on.
+    Ignored,
 }
 
 /// The registered handlers.
@@ -129,6 +133,7 @@ impl Dispatch {
                 },
                 None => Resolved::UnknownAction { name, id },
             },
+            ShepherdMessage::LambSignalled { .. } => Resolved::Ignored,
         }
     }
 
@@ -172,6 +177,7 @@ pub(crate) fn run(resolved: Resolved) -> Outcome {
             Err(payload) => Outcome::ShutdownFailed(panic_text(&*payload)),
         },
         Resolved::UnhandledShutdown => Outcome::UnhandledShutdown,
+        Resolved::Ignored => Outcome::Ignored,
     }
 }
 
@@ -271,6 +277,18 @@ mod tests {
 
     /// The library never stops the app, so this must be distinguishable
     /// before `kill_timeout`.
+    #[test]
+    fn a_lamb_signalled_is_ignored() {
+        let dispatch = Dispatch::default();
+        assert!(matches!(
+            dispatch.handle(ShepherdMessage::LambSignalled {
+                pid: 4312,
+                signal: "SIGHUP".to_string(),
+            }),
+            Outcome::Ignored
+        ));
+    }
+
     #[test]
     fn a_shutdown_with_no_handler_is_reported_rather_than_ignored() {
         let dispatch = Dispatch::default();

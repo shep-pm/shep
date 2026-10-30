@@ -142,7 +142,7 @@ fn spawn_handler(resolved: &Resolved, outbox: &Arc<Outbox>) -> Option<JoinHandle
 fn answer(resolved: Resolved, outbox: &Arc<Outbox>, warn: &dyn Fn(&str)) -> bool {
     match run(resolved) {
         Outcome::Reply(reply) => outbox.push_blocking(reply).is_ok(),
-        Outcome::Handled => true,
+        Outcome::Handled | Outcome::Ignored => true,
         Outcome::UnhandledShutdown => {
             warn(UNHANDLED_SHUTDOWN_ADVICE);
             true
