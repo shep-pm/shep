@@ -451,12 +451,16 @@ async fn set_dog(
 ///
 /// Read off the dogs the flock runs and the ones the shepherd knows, before
 /// any sheep name or dog's own section is walked. `pub(crate)`: `shep copy`
-/// refuses the same addresses `shep set` writes.
+/// refuses the same addresses `shep set` writes. An address with an empty
+/// segment spells none, so each verb reports it as the malformed address it is.
 pub(crate) fn defaults_in(
     segments: &[String],
     flock: &FlockNames,
     paths: &ShepPaths,
 ) -> Option<address::DefaultsAddress> {
+    if segments.iter().any(String::is_empty) {
+        return None;
+    }
     let mut dogs = known_dogs(paths);
     dogs.extend(flock.dogs.iter().cloned());
     address::defaults_of(segments, &dogs)

@@ -217,3 +217,28 @@ fn copy_args(from: &str, to: &str) -> CopyArgs {
         yes: true,
     }
 }
+
+/// A defaults address with an empty segment is a malformed address, and `copy`
+/// reports it as one rather than as a defaults address.
+#[tokio::test]
+async fn copy_reports_a_defaults_address_with_an_empty_key_as_malformed() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (client, envelopes) = shepherd(dir.path(), &["web"], &["metrics"]).await;
+    let args = copy_args("metrics.defaults.", "web.dogs.metrics.otlp_timeout");
+
+    let ran = outcome(
+        &paths,
+        &client,
+        envelopes,
+        async |client, streams, paths| copy::copy(client, streams, paths, &args).await,
+    )
+    .await;
+
+    assert_ne!(ran.code, ExitCode::Success);
+    assert!(
+        !ran.said.contains("shep set metrics.defaults"),
+        "{}",
+        ran.said
+    );
+}
