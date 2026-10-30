@@ -559,6 +559,20 @@ const store = `$ cat $SHEP_HOME/overrides.json
       href="/docs/cli#managing-a-sheep">CLI reference</a>.
     </p>
 
+    <h2 id="one-default-for-a-dogs-tables">One default for a dog's tables</h2>
+    <p>
+      A value that should match on every sheep a dog serves is written once:{" "}
+      <code>shep set kelpie.defaults.model opus</code>. Every sheep that
+      already carries <code>[app.dogs.kelpie]</code> reads its own table laid
+      over that default, so its own value wins, a nested table merges key by
+      key, and an array or a plain value replaces the default whole. A sheep
+      with no table for the dog gets none, and an empty{" "}
+      <code>[app.dogs.kelpie]</code> takes every default. The write is checked
+      against the result on each sheep it reaches. The default is kept in{" "}
+      <code>$SHEP_HOME/dog-defaults.json</code>, and{" "}
+      <code>shep copy</code> refuses its address.
+    </p>
+
     <details>
       <summary><h2 id="a-template-may-add-never-overwrite">A template may add, never overwrite</h2></summary>
     <p>

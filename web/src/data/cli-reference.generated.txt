@@ -3339,6 +3339,10 @@ A write that carries a dog's table is checked against the schema that dog publis
 turns down is refused with the key path it sits at. `env`, secrets, `name`, `instances` and the
 whole `dogs` map are refused for the same reason the shepherd refuses them.
 
+`<dog>.defaults[.<key>]` writes the one default table a dog keeps for the whole flock. Every sheep
+that already carries a table for that dog layers its own over it, and the write is checked against
+the result on each sheep it reaches. `shep copy` refuses that address.
+
 Nothing is written until you confirm, and the change list prints first, naming every key the write
 touches with its old and new value. Under `--format json` that list prints on stderr, so stdout
 stays the one envelope the run writes after the answer. `--yes` skips the question and `--dry-run`
