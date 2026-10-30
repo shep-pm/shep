@@ -132,7 +132,25 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 # process-group signal delivery and process-related syscalls for shep-daemon's
 # real ProcessRunner (kill ladder, SIGKILL tree); `user` adds geteuid for the same-uid
 # peer-cred check and passwd/group lookups for `user`/`group` spawn.
-nix = { version = "0.29", default-features = false, features = ["signal", "process", "user"] }
+# Held below 0.30: nix 0.30.0 moved `fcntl`, `unistd`, `fs`, `dir`, `sys::stat`
+# and `sys::signal` off `RawFd` arguments and onto `AsFd` and `IntoRawFd`
+# generics, and 0.31 is built on that. shep hands a raw `RawFd` or `c_int` to
+# `nix::fcntl::fcntl`, `nix::unistd::read` and `nix::unistd::close` in
+# `shep-daemon/src/sys.rs`, `shep-cli/src/launch.rs`, `shep-handover/src/sys.rs`
+# and `shep-tree`, so a 0.30 or 0.31 requirement resolves and then fails to
+# compile on every unix leg; moving the call sites is its own piece of work.
+# The ceiling is written out instead of left implicit: `0.29` already means
+# `<0.30` to cargo, but Dependabot rewrites the requirement string itself and
+# reads 0.29 -> 0.31 as a minor (see .github/dependabot.yml), so only a bound
+# it can read keeps the bump out. #1265 is the proof: it is filed against
+# `/benches` yet its diff edits this line, because benches/ inherits the
+# workspace entry through its path dependencies.
+# This caps shep's requirement, not every nix in the tree. command-fds 0.3.3
+# declares `nix = "0.31.2"` and pulls nix 0.31.3 beside ours in both lockfiles,
+# and no command-fds release asks for 0.29: 0.3.0 wants `^0.27.0`, 0.3.1 and
+# 0.3.2 want `^0.30.1`. Capping command-fds would add a nix line, not remove
+# one. Both lockfiles keep 0.31.3 only while command-fds does.
+nix = { version = ">=0.29, <0.30", default-features = false, features = ["signal", "process", "user"] }
 # Only shep-tree: `waitid` with `WNOWAIT`, which sees a child exit without
 # reaping it, so the final group kill still holds the child's pid. nix 0.29
 # has no `waitid` on macOS. Floor 1.1: `Pid::from_child`.
