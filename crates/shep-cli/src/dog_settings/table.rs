@@ -109,8 +109,9 @@ pub fn touched_refusal(
 /// by sheep name.
 ///
 /// Each of `sheep`'s tables is checked as the dog reads it, layered over
-/// `default`. `touched` is the paths the write chose, empty for a write that
-/// replaces the default whole. One refusal per sheep, the first in row order.
+/// `default`, at the paths in `touched`. A path a sheep holds itself reads its
+/// own value. Nothing touched, as when a default is cleared, checks nothing.
+/// One refusal per sheep, the first in row order.
 #[must_use]
 pub fn default_refusals(
     schema: &Value,
@@ -118,15 +119,14 @@ pub fn default_refusals(
     sheep: &BTreeMap<String, DogTable>,
     touched: &BTreeSet<Vec<String>>,
 ) -> Vec<(String, TableRefusal)> {
+    if touched.is_empty() {
+        return Vec::new();
+    }
     sheep
         .iter()
         .filter_map(|(name, own)| {
             let layered = layered(&[default, own]);
-            let refused = if touched.is_empty() {
-                table_refusal(schema, layered.as_map())
-            } else {
-                touched_refusal(schema, layered.as_map(), touched)
-            };
+            let refused = touched_refusal(schema, layered.as_map(), touched);
             Some((name.clone(), refused?))
         })
         .collect()

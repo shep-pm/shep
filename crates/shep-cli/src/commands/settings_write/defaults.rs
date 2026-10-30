@@ -41,17 +41,13 @@ pub(super) async fn set_defaults(
         Err(code) => return code,
     };
     let keys = address::resolve_keys(&defaults.keys, Some(&held), None);
-    // The per-sheep half of the dog's schema, the one that speaks for a
-    // table a sheep holds for the dog. No such schema asks nothing, so no
-    // sheep is read for it.
+    // The per-sheep half of the dog's schema speaks for a table a sheep holds
+    // for the dog, and the dog's own checks run on each of those tables, so
+    // every sheep the default reaches is read.
     let schema = dog_schema(dog, ask.paths).and_then(|root| sheep_schema(&root));
-    let sheep = if schema.is_some() {
-        match reached(client, streams, dog).await {
-            Ok(sheep) => sheep,
-            Err(code) => return code,
-        }
-    } else {
-        BTreeMap::new()
+    let sheep = match reached(client, streams, dog).await {
+        Ok(sheep) => sheep,
+        Err(code) => return code,
     };
     let plan = match plan_dog_defaults(dog, &keys, held, sheep, &ask.value) {
         Ok(plan) => Plan { schema, ..plan },

@@ -33,6 +33,8 @@ use crate::exit::ExitCode;
 use crate::lookout::probe_sheep_dogs::sheep_schema;
 use crate::output::Streams;
 
+#[cfg(test)]
+mod default_dog_tests;
 mod defaults;
 mod edit;
 mod flow;

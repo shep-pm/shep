@@ -821,8 +821,10 @@ fn a_default_is_checked_against_the_layered_table_of_every_sheep_it_reaches() {
     );
     assert!(refused[0].1.text.contains("keep"), "{}", refused[0].1.text);
 
-    let whole = default_refusals(&schema(), &default, &sheep, &BTreeSet::new());
-    assert_eq!(whole.len(), 2, "an empty touched set asks every key");
+    assert!(
+        default_refusals(&schema(), &default, &sheep, &BTreeSet::new()).is_empty(),
+        "a default that puts no value anywhere is checked against nothing"
+    );
 
     let reaches_nobody = std::collections::BTreeMap::new();
     assert!(

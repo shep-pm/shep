@@ -66,6 +66,13 @@ pub(super) fn plan_dog_defaults(
     value: &Json,
 ) -> Result<Plan, WriteRefusal> {
     let edit = plan_table(&format!("{dog}.{DEFAULTS}"), held, keys, value)?;
+    // A default replaced whole answers for the leaves the new default holds,
+    // not for what a sheep holds itself, and clearing it answers for none.
+    let touched = if keys.is_empty() {
+        default_leaves(&edit.table)
+    } else {
+        touched_paths(keys, value)
+    };
     Ok(Plan {
         changes: edit.changes,
         write: Write::DogDefaults {
@@ -76,8 +83,17 @@ pub(super) fn plan_dog_defaults(
         },
         table: edit.table,
         schema: None,
-        touched: touched_paths(keys, value),
+        touched,
     })
+}
+
+/// Every leaf path of a default table.
+fn default_leaves(table: &Map<String, Json>) -> BTreeSet<Vec<String>> {
+    let mut touched = BTreeSet::new();
+    for (key, value) in table {
+        leaves(vec![key.clone()], value, &mut touched);
+    }
+    touched
 }
 
 /// What writing `value` at `keys` does to one table.
