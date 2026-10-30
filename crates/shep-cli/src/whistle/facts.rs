@@ -12,7 +12,7 @@
 use schemars::JsonSchema;
 use serde::Serialize;
 use shep_core::barks::{Bark, SinkOutcome};
-use shep_core::protocol::{DogSource, ExitInfo, Lamb, ProcessInfo};
+use shep_core::protocol::{DogSource, ExitInfo, HostUsage, Lamb, ProcessInfo};
 
 use crate::host_sample::HostReading;
 
@@ -330,8 +330,13 @@ pub struct MetricsReading {
     pub daemon_pid: u32,
     /// Every registered entry, sheep and dogs alike.
     pub flock: Vec<SheepRow>,
-    /// Host totals, absent on a platform `sysinfo` does not support.
+    /// Host totals, absent on a platform `sysinfo` does not support, and
+    /// absent from a host's shepherd that has not yet measured itself.
     pub host: Option<HostRow>,
+    /// The host this reading came from, spelled as the caller asked for it;
+    /// absent when the call named no host and the answer is this machine's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_name: Option<String>,
 }
 
 /// The machine the flock runs on.
@@ -341,10 +346,13 @@ pub struct HostRow {
     pub memory_total_bytes: u64,
     /// Memory in use, as the platform reports it.
     pub memory_used_bytes: u64,
-    /// How many processes the host is running, the flock included.
-    pub processes: u64,
-    /// Seconds since the host booted.
-    pub uptime_seconds: u64,
+    /// How many processes the host is running, the flock included. Absent
+    /// from a remote host's reading: `HostUsage` does not carry it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processes: Option<u64>,
+    /// Seconds since the host booted. Absent as `processes` is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime_seconds: Option<u64>,
 }
 
 impl From<&HostReading> for HostRow {
@@ -354,8 +362,19 @@ impl From<&HostReading> for HostRow {
             memory_used_bytes: host.memory_used_bytes,
             // usize to u64 is infallible: every target this workspace
             // ships is 64-bit.
-            processes: host.processes as u64,
-            uptime_seconds: host.uptime_seconds,
+            processes: Some(host.processes as u64),
+            uptime_seconds: Some(host.uptime_seconds),
+        }
+    }
+}
+
+impl From<&HostUsage> for HostRow {
+    fn from(usage: &HostUsage) -> Self {
+        Self {
+            memory_total_bytes: usage.memory_total_bytes,
+            memory_used_bytes: usage.memory_used_bytes,
+            processes: None,
+            uptime_seconds: None,
         }
     }
 }
