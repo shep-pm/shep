@@ -329,7 +329,10 @@ export const BUDGETS: Record<string, number> = {
   // own colour, and what a table strips out of a line.
   // Raised from 1995 on 2026-10-21 for the sentence saying a `--host` follow
   // has no history. Required content for #949.
-  logs: 2010,
+  // Raised from 2010 for #1351: which parent links the Linux open follows,
+  // what the 5.6 and seccomp fallback loses, and that Windows refuses no
+  // symlink. Required content, not prose to trim back out.
+  logs: 2037,
   // Raised from 1690 on 2026-09-28 for "Naming your lambs": `lamb-label`
   // is a new message an app author has to be told about, not prose to trim
   // back out.
