@@ -15,8 +15,11 @@ use std::time::Duration;
 
 use rmcp::model::CallToolResult;
 use shep_client::{Client, ConnectError, RequestError, SshOptions};
-use shep_core::protocol::{HelloAck, HostUsage, ProcessInfo, Request, Response};
+use shep_core::protocol::{
+    HelloAck, HostUsage, LogStream, ProcessInfo, Request, Response, SelectorSpec,
+};
 
+use crate::commands::bleats::{FileTail, LogSource};
 use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 use crate::whistle::read::unexpected_response;
@@ -192,6 +195,59 @@ impl Shepherd {
         read.map(|(flock, usage)| (ack, flock, usage))
     }
 
+    /// Describes the sheep `selector` names and reads the last `lines` lines of
+    /// its out and err logs, over one connection.
+    ///
+    /// Over a host, the host's shepherd reads its own files through
+    /// `Request::TailLog`. The row is the first one the shepherd lists.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::call`], for either request. A sheep with no row is the
+    /// refusal `read`'s other tools give for a reply they did not ask for.
+    pub async fn describe_and_tail(
+        &self,
+        selector: SelectorSpec,
+        lines: usize,
+    ) -> Result<(ProcessInfo, [FileTail; 2]), CallToolResult> {
+        let (client, _ack) = self.connect().await?;
+        let source = match self.target.host() {
+            Some(name) => LogSource::Host {
+                client: &client,
+                name,
+            },
+            None => LogSource::Local,
+        };
+        let read = async {
+            let request = Request::Describe { selector };
+            let deadline = deadline_for(&request);
+            let Response::Described(flock) =
+                client.request_with_deadline(request, deadline).await?
+            else {
+                return Err(RequestError::UnexpectedReply {
+                    asked: "Describe",
+                    answered: "another response",
+                });
+            };
+            let Some(info) = flock.into_iter().next() else {
+                return Err(RequestError::UnexpectedReply {
+                    asked: "Describe",
+                    answered: "an empty listing",
+                });
+            };
+            let out = tail_of(&source, &info, LogStream::Out, lines).await?;
+            let err = tail_of(&source, &info, LogStream::Err, lines).await?;
+            Ok((info, [out, err]))
+        }
+        .await
+        .map_err(|err| match err {
+            RequestError::UnexpectedReply { .. } => unexpected_response(),
+            other => refusal(&other),
+        });
+        let _ = client.close().await;
+        read
+    }
+
     /// Opens the connection one call uses and refuses a skewed shepherd.
     ///
     /// The local socket and a host differ here and only here: one is a
@@ -208,6 +264,24 @@ impl Shepherd {
         refuse_if_skewed(&client)?;
         let ack = client.daemon().clone();
         Ok((client, ack))
+    }
+}
+
+/// One stream of `info`'s log, read through `source`; a stream with no
+/// recorded path is [`FileTail::NoPath`] without a request.
+async fn tail_of(
+    source: &LogSource<'_>,
+    info: &ProcessInfo,
+    stream: LogStream,
+    lines: usize,
+) -> Result<FileTail, RequestError> {
+    let path = match stream {
+        LogStream::Err => info.err_file.as_deref(),
+        _ => info.out_file.as_deref(),
+    };
+    match path {
+        Some(path) => source.read(info, stream, path, lines).await,
+        None => Ok(FileTail::NoPath),
     }
 }
 

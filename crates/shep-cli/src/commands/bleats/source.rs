@@ -16,7 +16,7 @@ use crate::remote::ssh_hint;
 
 /// Where a tail's lines are read from.
 #[derive(Clone, Copy)]
-pub(super) enum LogSource<'a> {
+pub(crate) enum LogSource<'a> {
     /// The files `out_file`/`err_file` name, opened by this process.
     Local,
     /// The shepherd of host `name`, which reads its own files: the paths in
@@ -30,9 +30,15 @@ pub(super) enum LogSource<'a> {
 }
 
 /// What reading one log file came to, whichever side read it.
-pub(super) enum FileTail {
+pub(crate) enum FileTail {
     /// The tail, oldest line first.
-    Lines(Vec<String>),
+    Lines {
+        /// The lines read.
+        lines: Vec<String>,
+        /// Whether the line count or the byte window left earlier content
+        /// behind.
+        truncated: bool,
+    },
     /// The sheep has no path recorded for the stream.
     NoPath,
     /// The file is not there. Holds the whole note, since only the source
@@ -48,7 +54,7 @@ impl LogSource<'_> {
     /// # Errors
     /// A host's shepherd did not give an answer: see [`Self::stop`]. A sheep
     /// the host no longer has is not one: it reads as [`FileTail::Missing`].
-    pub(super) async fn read(
+    pub(crate) async fn read(
         &self,
         info: &ProcessInfo,
         stream: LogStream,
@@ -63,7 +69,7 @@ impl LogSource<'_> {
                 // `log_timestamps`.
                 let stamped = info.log_timestamps.unwrap_or(true);
                 Ok(match read_tail(Path::new(path), lines, stamped) {
-                    Ok((lines, _truncated)) => FileTail::Lines(lines),
+                    Ok((lines, truncated)) => FileTail::Lines { lines, truncated },
                     Err(err) if err.kind() == io::ErrorKind::NotFound => {
                         FileTail::Missing(missing_log_note(label, Path::new(path)))
                     }
@@ -85,7 +91,7 @@ impl LogSource<'_> {
                     Err(err) => return Err(err),
                 };
                 Ok(match tail {
-                    LogTail::Lines { lines, .. } => FileTail::Lines(lines),
+                    LogTail::Lines { lines, truncated } => FileTail::Lines { lines, truncated },
                     LogTail::NoPath => FileTail::NoPath,
                     // The path as the host recorded it, never made absolute
                     // here: this machine's directory says nothing about it.

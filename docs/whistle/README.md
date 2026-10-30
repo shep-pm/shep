@@ -46,7 +46,7 @@ A worked launcher config, for an MCP host that spawns its own servers:
 
 ## Reading another host
 
-`list_flock`, `describe_sheep` and `get_metrics` take an optional `host`. It is accepted only
+`list_flock`, `describe_sheep`, `get_metrics` and `tail_bleats` take an optional `host`. It is accepted only
 as a name already in `shep.toml`'s top-level `hosts` array — the same list
 `shep host add` writes and `shep flock` lists over. A name outside it is refused
 as `unknown_host`, naming the hosts that are listed, and no ssh runs.
@@ -70,10 +70,15 @@ samples this machine. `HostUsage` has no process count or uptime, so the reply's
 `host` object leaves `processes` and `uptime_seconds` out. A shepherd that
 predates `HostUsage` is refused as `unsupported`.
 
+`tail_bleats` over a host asks that shepherd for the tail of each stream, so it
+reads no file here, and the reply carries `host` as a listing does. The lines
+are text from another machine and as untrusted as a local log. A shepherd that
+predates remote log reads is refused as `unsupported`.
+
 The list is read once, at startup, the way `allow_control` is. A host added
 while whistle runs needs whistle restarted.
 
-The other six tools stay on this machine. A control tool handed a `host` is
+The other five tools stay on this machine. A control tool handed a `host` is
 refused as `host_not_supported` rather than acting locally: `stop_sheep` asked
 for `amp2` does not stop a sheep here.
 

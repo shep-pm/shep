@@ -29,7 +29,8 @@ use crate::remote::interrupt_within_grace;
 use crate::shutdown::Interrupt;
 
 mod source;
-use source::{FileTail, LogSource, stream_label};
+use source::stream_label;
+pub(crate) use source::{FileTail, LogSource};
 
 pub(crate) use shep_core::logtail::read_tail;
 // Only the tests size a file against the window.
@@ -326,7 +327,7 @@ async fn tail_log_files(
                 None
             };
             match source.read(info, stream, path, args.lines).await {
-                Ok(FileTail::Lines(lines)) => {
+                Ok(FileTail::Lines { lines, .. }) => {
                     for line in lines {
                         if let Err(write_err) =
                             write_line(streams, info.id, name, label_instance, stream_name, &line)

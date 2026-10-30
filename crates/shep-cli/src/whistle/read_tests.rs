@@ -18,6 +18,8 @@ use crate::whistle::matching_ack;
 mod ssh_stand_in;
 #[cfg(unix)]
 use ssh_stand_in::{ssh_stand_in, ssh_stand_in_answering, ssh_stand_in_replying, stand_in_file};
+#[path = "read_tests/barks.rs"]
+mod barks;
 #[path = "read_tests/whistles.rs"]
 mod whistles;
 use whistles::whistle_at;
@@ -483,6 +485,7 @@ async fn tail_bleats_caps_its_lines_and_says_when_it_did() {
         whistle.tail_bleats(Parameters(TailParams {
             name: "web".to_string(),
             lines: Some(5000),
+            host: None,
         })),
     )
     .await
@@ -518,6 +521,111 @@ async fn tail_bleats_caps_its_lines_and_says_when_it_did() {
     served.await.expect("the fake daemon task must not panic");
 }
 
+/// The stand-in's rows and tails for a `tail_bleats` over a host: one row,
+/// then the out tail, then the err tail, in the order the tool asks.
+#[cfg(unix)]
+fn host_tail_replies(out: Vec<String>, out_truncated: bool) -> Vec<Response> {
+    use shep_core::protocol::LogTail;
+
+    vec![
+        Response::Described(vec![shep_client::testing::sample_info()]),
+        Response::LogTail(LogTail::Lines {
+            lines: out,
+            truncated: out_truncated,
+        }),
+        Response::LogTail(LogTail::NoPath),
+    ]
+}
+
+/// A host's files are not files here, so `tail_bleats` over a host asks that
+/// shepherd for each stream through `TailLog` and sends the 200 clamp as the
+/// line count, whatever the model asked for.
+#[cfg(unix)]
+#[tokio::test]
+async fn tail_bleats_over_a_host_reads_the_tail_through_the_shepherd_and_caps_it() {
+    use shep_core::protocol::LogStream;
+
+    let dir = tempfile::tempdir().unwrap();
+    // More than the clamp, as a shepherd that ignored the count would send.
+    let overlong: Vec<String> = (1..=300).map(|n| format!("line-{n}")).collect();
+    let program = ssh_stand_in_replying(
+        dir.path(),
+        Ok(matching_ack()),
+        host_tail_replies(overlong, false),
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.tail_bleats(Parameters(TailParams {
+            name: "web".to_string(),
+            lines: Some(5000),
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("tail_bleats must return within the test timeout")
+    .expect("a stand-in shepherd must not produce a tool error");
+
+    assert_eq!(result.0.out.len(), 200, "the clamp holds over a host too");
+    assert_eq!(
+        result.0.out.last().map(String::as_str),
+        Some("line-300"),
+        "the tail is the LAST lines"
+    );
+    assert!(
+        result.0.truncated,
+        "cutting a longer reply must be reported"
+    );
+    assert!(result.0.err.is_empty(), "no err path means an empty tail");
+    assert!(result.0.notes.is_empty(), "no path is not a missing file");
+
+    let id = shep_client::testing::sample_info().id;
+    for (request, stream) in [(2, LogStream::Out), (3, LogStream::Err)] {
+        let file = stand_in_file(dir.path(), &format!("request-{request}.bin"));
+        let envelope: shep_core::protocol::Envelope =
+            shep_core::protocol::decode_frame(&written_within(TEST_TIMEOUT, &file).await).unwrap();
+        assert_eq!(
+            envelope.body,
+            Request::TailLog {
+                id,
+                stream,
+                lines: 200
+            }
+        );
+    }
+}
+
+/// A reply that names its host is how a consumer tells a tail from that
+/// machine's logs from this machine's; a local reply keeps its old keys.
+#[cfg(unix)]
+#[tokio::test]
+async fn tail_bleats_over_a_host_names_the_host_in_the_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = ssh_stand_in_replying(
+        dir.path(),
+        Ok(matching_ack()),
+        host_tail_replies(vec!["ready".to_string()], false),
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.tail_bleats(Parameters(TailParams {
+            name: "web".to_string(),
+            lines: None,
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("tail_bleats must return within the test timeout")
+    .expect("a stand-in shepherd must not produce a tool error");
+
+    assert_eq!(result.0.host.as_deref(), Some("amp2"));
+    assert_eq!(result.0.out, ["ready"]);
+    assert_eq!(serde_json::to_value(&result.0).unwrap()["host"], "amp2");
+}
+
 /// A model reading `out: []` has to be able to tell a quiet sheep from
 /// a path that resolves elsewhere under the shepherd than it does here.
 #[tokio::test]
@@ -542,6 +650,7 @@ async fn tail_bleats_says_which_file_it_could_not_find() {
         whistle.tail_bleats(Parameters(TailParams {
             name: "web".to_string(),
             lines: None,
+            host: None,
         })),
     )
     .await
@@ -567,66 +676,6 @@ async fn tail_bleats_says_which_file_it_could_not_find() {
     );
 
     served.await.expect("the fake daemon task must not panic");
-}
-
-/// The alert history is on disk so it survives the shepherd; the case
-/// this tool exists for is a model reading it after a crash.
-///
-/// The `Shepherd` handed in points at nothing listening, so a tool that
-/// connected would fail rather than pass quietly.
-#[tokio::test]
-async fn list_barks_reads_the_file_with_no_shepherd_anywhere_in_reach() {
-    let dir = tempfile::tempdir().unwrap();
-    let barks_path = dir.path().join("barks.jsonl");
-    let bark = shep_core::barks::Bark {
-        at_ms: 1,
-        rule: "restart-loop".to_string(),
-        subject: "web".to_string(),
-        message: "web restarted 5 times in 60s".to_string(),
-        sinks: Vec::new(),
-    };
-    std::fs::write(
-        &barks_path,
-        format!("{}\n", serde_json::to_string(&bark).unwrap()),
-    )
-    .unwrap();
-
-    // Nothing ever binds this socket.
-    let unreachable_socket = shep_client::testing::control_address(dir.path());
-    let whistle = whistle_at(unreachable_socket, barks_path);
-
-    let result = tokio::time::timeout(
-        TEST_TIMEOUT,
-        whistle.list_barks(Parameters(BarksParams { tail: None })),
-    )
-    .await
-    .expect("list_barks must return within the test timeout")
-    .expect("reading straight off disk must not fail");
-
-    assert_eq!(result.0.barks.len(), 1);
-    assert_eq!(result.0.barks[0].subject, "web");
-}
-
-/// One bark record whose only distinguishing field is when it fired,
-/// so the `list_barks` tests below can read the order back off `at_ms`
-/// instead of off a message they had to invent.
-fn bark_at(at_ms: u64) -> shep_core::barks::Bark {
-    shep_core::barks::Bark {
-        at_ms,
-        rule: "restart-loop".to_string(),
-        subject: "web".to_string(),
-        message: format!("web restarted {at_ms} times in 60s"),
-        sinks: Vec::new(),
-    }
-}
-
-/// Writes `records` as the bark history file, oldest line first.
-fn write_barks(path: &Path, records: &[shep_core::barks::Bark]) {
-    let text: String = records
-        .iter()
-        .map(|bark| format!("{}\n", serde_json::to_string(bark).unwrap()))
-        .collect();
-    std::fs::write(path, text).unwrap();
 }
 
 /// `get_metrics` is the whistle's other caller of the host sample, and
@@ -831,77 +880,6 @@ async fn get_metrics_without_a_host_keeps_its_local_shape() {
     served.await.expect("the fake daemon task must not panic");
 }
 
-/// `list_barks` answers "what went wrong most recently". Returning the
-/// oldest records answers a different question, and returning them
-/// newest-first makes a model re-read the whole list to find the last.
-#[tokio::test]
-async fn list_barks_returns_the_newest_tail_asked_for_oldest_first() {
-    let dir = tempfile::tempdir().unwrap();
-    let barks_path = dir.path().join("barks.jsonl");
-    write_barks(&barks_path, &[bark_at(1), bark_at(2), bark_at(3)]);
-
-    // Nothing listens here: `list_barks` reads the file alone.
-    let whistle = whistle_at(
-        shep_client::testing::control_address(dir.path()),
-        barks_path,
-    );
-    let result = tokio::time::timeout(
-        TEST_TIMEOUT,
-        whistle.list_barks(Parameters(BarksParams { tail: Some(2) })),
-    )
-    .await
-    .expect("list_barks must return within the test timeout")
-    .expect("reading the tail of the history must not fail");
-
-    let stamps: Vec<u64> = result.0.barks.iter().map(|row| row.at_ms).collect();
-    assert_eq!(
-        stamps,
-        vec![2, 3],
-        "the newest two, still in file order: {stamps:?}"
-    );
-}
-
-/// `tail: 1000` is a model asking for more than a context window holds.
-/// The clamp is what keeps the reply bounded, and it has to clamp
-/// against the newest end: a cap that kept the oldest 200 alerts would
-/// answer this question with the least recent half of the history.
-#[tokio::test]
-async fn list_barks_caps_the_tail_at_the_maximum() {
-    let dir = tempfile::tempdir().unwrap();
-    let barks_path = dir.path().join("barks.jsonl");
-    let records: Vec<shep_core::barks::Bark> = (1..=205).map(bark_at).collect();
-    write_barks(&barks_path, &records);
-
-    let whistle = whistle_at(
-        shep_client::testing::control_address(dir.path()),
-        barks_path,
-    );
-    let result = tokio::time::timeout(
-        TEST_TIMEOUT,
-        whistle.list_barks(Parameters(BarksParams { tail: Some(1000) })),
-    )
-    .await
-    .expect("list_barks must return within the test timeout")
-    .expect("a request over the cap must be clamped, not refused");
-
-    assert_eq!(
-        result.0.barks.len(),
-        200,
-        "the 200 clamp must hold even against a request for 1000: {}",
-        result.0.barks.len()
-    );
-    assert_eq!(
-        result.0.barks.last().map(|row| row.at_ms),
-        Some(205),
-        "the clamped tail still ends on the newest alert"
-    );
-    assert_eq!(
-        result.0.barks.first().map(|row| row.at_ms),
-        Some(6),
-        "and drops the oldest 5, not the newest"
-    );
-}
-
 /// A log the shepherd reported but this process cannot read is a
 /// different fact from a log that is not there. A note saying "missing"
 /// sends a model off to look for a file that exists and is merely
@@ -933,6 +911,7 @@ async fn tail_bleats_refuses_a_log_it_cannot_read_instead_of_noting_it_missing()
         whistle.tail_bleats(Parameters(TailParams {
             name: "web".to_string(),
             lines: None,
+            host: None,
         })),
     )
     .await

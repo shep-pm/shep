@@ -160,15 +160,18 @@ tools: describe_sheep, get_metrics, list_barks, list_flock, reload_sheep,
 
     <h2 id="reading-another-host">Reading another host</h2>
     <p>
-      <code>list_flock</code>, <code>describe_sheep</code> and{" "}
-      <code>get_metrics</code> take an optional <code>host</code>: a name from{" "}
+      <code>list_flock</code>, <code>describe_sheep</code>,{" "}
+      <code>get_metrics</code> and <code>tail_bleats</code> take an optional{" "}
+      <code>host</code>: a name from{" "}
       <code>shep.toml</code>'s <code>hosts</code> array, and nothing else. A name{" "}
       outside it comes back as <code>unknown_host</code> with nothing dialled.
+      Over a host, <code>tail_bleats</code> asks that host's shepherd for the
+      log tail, and the text is as untrusted as a local log.
     </p>
     <p class="fine">
       The reply names the host it came from, and a local reply keeps the JSON it{" "}
       always had. The list is read once at startup, so a host added later needs{" "}
-      whistle restarted. The other six tools stay on this machine, and a{" "}
+      whistle restarted. The other five tools stay on this machine, and a{" "}
       control tool handed a <code>host</code> refuses. See{" "}
       <a href={repoFile("docs/whistle/README.md")}>docs/whistle/README.md</a> for{" "}
       the ssh command, the 10-second bound and the refusal codes.
