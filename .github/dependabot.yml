@@ -85,9 +85,14 @@ updates:
     directory: /web
     schedule:
       interval: monthly
+    # Minor and patch only, like the cargo groups above: a semver major comes
+    # as its own PR instead of sinking the rest of the group. A Node floor
+    # raised in a patch (astro 7.4.2 needs 22.23.4, #1337) is not caught by
+    # this; the fix there is `web/.nvmrc`, not a hold.
     groups:
       npm:
         patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
