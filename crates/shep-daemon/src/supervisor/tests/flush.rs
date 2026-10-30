@@ -342,6 +342,39 @@ fn assert_swap_shares_log_paths(mid: &[ProcessInfo]) {
     );
 }
 
+/// Fails if [`truncate_log`] refuses a symlinked parent the daemon's own user
+/// made: `loose_ancestor` trusts it, so `shep flush` below a
+/// `current -> releases/<sha>` layout must empty the real file.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn truncating_below_a_symlinked_parent_the_daemon_owns_empties_the_real_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    let link = dir.path().join("logs");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::write(real.join("web-out.log"), b"some old output\n").unwrap();
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    assert_eq!(truncate_log(&link.join("web-out.log")).await, Ok(()));
+    assert_eq!(
+        std::fs::metadata(real.join("web-out.log")).unwrap().len(),
+        0
+    );
+}
+
+/// Fails if the resolving open stops truncating: `O_TRUNC` dropped from its
+/// flags would leave every byte in place and answer `Ok`.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn truncating_a_plain_log_path_empties_it_after_the_resolving_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("web-out.log");
+    std::fs::write(&path, b"some old output\n").unwrap();
+
+    assert_eq!(truncate_log(&path).await, Ok(()));
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+}
+
 /// Fails if the set of pumps a flush drains is narrowed back to the sheep
 /// the selector matched, leaving a sibling sharing that file unflushed.
 ///

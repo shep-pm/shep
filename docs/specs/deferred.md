@@ -467,34 +467,31 @@ status dog that replaces #346: it wants a row with no paths and no env.
 
 Tracked as https://github.com/shep-pm/shep/issues/352.
 
-### `check_log_ancestry`'s TOCTOU window, and the Linux syscall that would close it
+### `check_log_ancestry`'s TOCTOU window: closed on Linux 5.6 and later, open elsewhere
 
 `check_log_ancestry` verifies a log path's ancestry and `open_log_path` then
-opens it, with no atomic tie between the two. The realistic local-multiuser
-attack is caught — a loose or wrong-owned ancestor is refused, and
-`O_NOFOLLOW` refuses a symlink standing at the final component — but an
-attacker who can rearrange a directory between the check and the open still
-wins that race.
+opens it. On Linux 5.6 and later the open first resolves the parent through
+the symlinks the daemon trusts, each owned by its own user or by root (the
+`loose_ancestor` rule), and refuses any other, naming the link. It then opens
+the resolved path with `nix::fcntl::openat2` and
+`ResolveFlag::RESOLVE_NO_SYMLINKS`, so a link planted after the walk is
+refused at the moment of the open and the race is closed. A layout like
+`current -> releases/<sha>` or a symlinked home keeps working. The `RawFd` the
+syscall returns is adopted into a `File` in `shep-daemon/src/sys.rs`, the one
+place that touches it.
 
-The design, written down so it does not have to be rediscovered:
+Still open:
 
-- Linux fast path: `nix::fcntl::openat2` (available under the `fs` feature this
-  crate already enables) with `ResolveFlag::RESOLVE_NO_SYMLINKS`, opening
-  relative to a directory fd for the log directory.
-- The `RawFd` it returns is adopted into a `File` with `FromRawFd`, which is
-  `unsafe`, so the wrapper lives in `shep-daemon/src/sys.rs` with a per-block
-  `// SAFETY:` (IR-22/23) and nothing else in the crate touches the raw fd.
-- Fallback ladder: `ENOSYS` (kernel < 5.6) and `EPERM` (seccomp filters that
-  do not allow the syscall) both fall through to today's
-  check-then-`O_NOFOLLOW`-open path, which stays as the portable
-  implementation and remains the only path on macOS.
+- macOS and other unix: the open is check-then-`O_NOFOLLOW`, and
+  `O_NOFOLLOW` guards only the final component, so an attacker who can
+  rearrange a directory between the check and the open still wins that race.
+- Linux below 5.6 (`ENOSYS`) and under a seccomp filter that blocks the
+  syscall (`EPERM`): both fall back to that same open.
 
-Not built in Phase 10 because it is new `unsafe` on a Linux-only path that this
-project cannot execute a test for from a macOS development machine — the exact
-shape of debt the platform audit's "never been compiled" finding exists to
-complain about. What would force it: a Linux box in the regular test loop, or a
-threat model that includes an attacker with write access to a log directory's
-parent.
+The trigger fired when `.github/workflows/test.yml` put `ubuntu-latest` and
+`ubuntu-24.04-arm` in the regular test loop. The walk and the open take the
+path as the Flockfile gave it, from the daemon's working directory, rather
+than relative to a directory fd for the log directory.
 
 Tracked as https://github.com/shep-pm/shep/issues/353.
 

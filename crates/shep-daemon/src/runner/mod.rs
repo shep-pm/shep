@@ -18,6 +18,10 @@ mod log_path_security;
 mod log_protocol;
 mod path_advisories;
 mod process_runner;
+// Read only by the Linux resolving open, but its cases run on every unix.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(unix)]
+mod trusted_links;
 // Every fixture here reads a unix mode or a unix uid, as does every case
 // that calls one.
 #[cfg(all(test, unix))]
@@ -28,7 +32,7 @@ pub use dog_link::DogLink;
 /// and both of those modules are unix-gated.
 #[cfg(all(test, unix))]
 pub(crate) use log_path_security::SYMLINK_REFUSED;
-pub(crate) use log_path_security::{check_log_ancestry, open_log_path};
+pub(crate) use log_path_security::{LogOpen, check_log_ancestry, open_log_path};
 pub use log_protocol::{ExitOutcome, FlushError, LogCtl, LogLine, ReopenError};
 pub(crate) use path_advisories::{cwd_advisory, log_path_advisory};
 /// Gated with the type: `AdoptSpec` is the handover's, and Windows has no

@@ -542,6 +542,50 @@ async fn opening_a_symlinked_log_path_is_refused_rather_than_followed() {
     );
 }
 
+/// Fails if the resolving open refuses every symlinked parent again: a link
+/// the daemon's own user made (`current -> releases/<sha>`, a symlinked home)
+/// is trusted by `loose_ancestor`, and a Linux sheep below one must keep its
+/// log. The file lands in the directory the link points at.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_log_path_below_a_symlinked_parent_the_daemon_owns_opens_on_linux() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    let link = dir.path().join("logs");
+    fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    open_append(&link.join("web-out.log"))
+        .await
+        .expect("a link the daemon's own user owns is trusted");
+
+    assert!(real.join("web-out.log").exists());
+}
+
+/// Fails if the resolving open drops `O_APPEND`: the handle would carry its
+/// own offset across an external truncation and write past a sparse hole.
+/// The same shape as [`a_reopened_handle_still_appends_so_a_truncation_leaves_no_hole`],
+/// for a path that took the resolving open rather than a pump's reopen.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_plain_log_path_still_appends_after_the_resolving_open() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("web-out.log");
+
+    let mut handle = open_append(&path).await.unwrap();
+    handle.write_all(b"first line\n").await.unwrap();
+    handle.flush().await.unwrap();
+
+    // The copytruncate rotator: truncates in place under the live handle.
+    fs::File::create(&path).unwrap();
+
+    handle.write_all(b"second\n").await.unwrap();
+    handle.flush().await.unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"second\n");
+}
+
 /// Fails if the control channel is only consulted after a line arrives
 /// (a sequential `next_line().await` and then a check, rather than a
 /// `select!`): a sheep that has gone quiet would never reopen at all,

@@ -16,7 +16,7 @@ use tokio::time::Instant;
 
 #[cfg(unix)]
 use crate::boot::DIR_MODE;
-use crate::runner::{FlushError, LogCtl, ReopenError, check_log_ancestry, open_log_path};
+use crate::runner::{FlushError, LogCtl, LogOpen, ReopenError, check_log_ancestry, open_log_path};
 
 use super::pump::Streams;
 #[cfg(unix)]
@@ -192,11 +192,11 @@ impl LogFile<tokio::fs::File> {
 /// Opens `path` for appending, creating its parent directory at
 /// [`DIR_MODE`], asked for at `mkdir` time so it is never wider.
 ///
-/// `.append(true)` is load-bearing: `O_APPEND` makes every write seek to end
-/// atomically, so a `copytruncate` rotator can truncate under a live handle
-/// and the next line still lands at offset 0. [`check_log_ancestry`] runs
-/// before the `mkdir`, since `create_dir_all` walks straight through a
-/// symlink to a directory, and [`open_log_path`] adds `O_NOFOLLOW`.
+/// `O_APPEND` is load-bearing: it makes every write seek to end atomically,
+/// so a `copytruncate` rotator can truncate under a live handle and the next
+/// line still lands at offset 0. [`check_log_ancestry`] runs before the
+/// `mkdir`, since `create_dir_all` walks straight through a symlink to a
+/// directory, and [`open_log_path`] refuses a symlink in the path.
 ///
 /// # Errors
 ///
@@ -220,9 +220,7 @@ pub(crate) async fn open_append(path: &Path) -> io::Result<tokio::fs::File> {
         }
     }
 
-    let mut options = tokio::fs::OpenOptions::new();
-    options.create(true).append(true);
-    open_log_path(&mut options, path)
+    open_log_path(LogOpen::AppendCreating, path)
         .await
         .inspect_err(|error| tracing::error!(?path, %error, "log file open failed"))
 }

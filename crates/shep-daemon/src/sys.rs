@@ -1,13 +1,13 @@
-//! Adopting an inherited descriptor: this crate's only `unsafe` on unix
+//! This crate's only `unsafe` on unix: adopting a descriptor into a [`File`]
 //!
 //! Daemonization re-execs the CLI detached, and the child reports
-//! `{pid, version}` on an inherited pipe. Building an owning [`File`] from a
-//! raw number is the one step std offers no safe path for.
+//! `{pid, version}` on an inherited pipe; `open_resolving_no_symlinks` gets
+//! its descriptor from `openat2`. Building an owning [`File`] from a raw
+//! number is the one step std offers no safe path for.
 //!
 //! [`adopt_fd`] is `unsafe fn` rather than a safe wrapper: its ordering
 //! precondition is a caller obligation it cannot check from inside.
-//! [`adopt_handover_fd`] is safe because inheritance across `execve`
-//! discharges that obligation.
+//! [`adopt_handover_fd`] is safe because inheritance discharges it.
 #![allow(unsafe_code)] // every unsafe site in this crate's unix build is in this file
 
 use core::fmt;
@@ -16,6 +16,8 @@ use std::fs::File;
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, IntoRawFd};
 use std::os::unix::io::{FromRawFd, RawFd};
+#[cfg(target_os = "linux")]
+use std::path::Path;
 
 /// Lowest fd number this daemon will ever adopt. 0/1/2 are stdio; adopting
 /// one into an owning [`File`] would steal it from whatever already holds it.
@@ -132,6 +134,35 @@ pub(crate) fn duplicate_fd(fd: RawFd) -> io::Result<RawFd> {
     // clone, which is a separate descriptor.
     let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
     Ok(borrowed.try_clone_to_owned()?.into_raw_fd())
+}
+
+/// Opens `path` through `openat2` with `RESOLVE_NO_SYMLINKS`, so no component
+/// of it may be a symlink at the moment of the open.
+///
+/// `path` is resolved from the working directory as given. Linux only: the
+/// syscall is, and so is the 5.6 kernel it arrived in.
+///
+/// # Errors
+/// What the syscall reported: `ELOOP` for a symlink in the path, `ENOSYS` on a
+/// kernel below 5.6, `EPERM` under a seccomp filter that blocks it, and the
+/// ordinary `open(2)` errors otherwise.
+#[cfg(target_os = "linux")]
+pub(crate) fn open_resolving_no_symlinks(
+    path: &Path,
+    flags: nix::fcntl::OFlag,
+    mode: nix::sys::stat::Mode,
+) -> io::Result<File> {
+    use nix::fcntl::{OpenHow, ResolveFlag, openat2};
+
+    let how = OpenHow::new()
+        .flags(flags)
+        .mode(mode)
+        .resolve(ResolveFlag::RESOLVE_NO_SYMLINKS);
+    let fd = openat2(nix::libc::AT_FDCWD, path, how)?;
+    // SAFETY: `openat2` returned `Ok`, so `fd` is a descriptor the kernel just
+    // opened for this call and nothing else holds; the returned `File`
+    // becomes its sole owner.
+    Ok(unsafe { File::from_raw_fd(fd) })
 }
 
 /// Errors adopting an inherited descriptor.
@@ -258,5 +289,33 @@ mod tests {
             matches!(err, SysError::BadFd { fd: 4096, .. }),
             "a fd this process never owned must be refused as BadFd: {err:?}"
         );
+    }
+
+    /// The property that closes the race: whatever resolved the path before,
+    /// a link in it when the syscall runs is refused. A caller's own walk
+    /// cannot stand in for this, since a link can appear after it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_symlink_in_the_path_is_refused_by_the_syscall_itself() {
+        use nix::fcntl::OFlag;
+        use nix::sys::stat::Mode;
+
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("logs")).unwrap();
+        let flags = OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_CLOEXEC;
+        let mode = Mode::from_bits_truncate(0o600);
+
+        let refused = open_resolving_no_symlinks(&dir.path().join("logs/web-out.log"), flags, mode);
+
+        assert_eq!(
+            refused.unwrap_err().raw_os_error(),
+            Some(nix::libc::ELOOP),
+            "a link met mid-path must be ELOOP"
+        );
+        assert!(!real.join("web-out.log").exists());
+        open_resolving_no_symlinks(&real.join("web-out.log"), flags, mode)
+            .expect("the same file by its real path opens");
     }
 }

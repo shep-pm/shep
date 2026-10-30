@@ -145,12 +145,12 @@ $ shep bleats <name> --no-follow  # tail only`}</CodeBlock>
       waiting.
     </p>
     <p class="fine">
-      Every handle is opened append-only, and a symlink sitting at the path
-      is refused rather than written through. Append matters more than it
-      looks: a handle that tracked its own offset would seek back to where it
-      had got to and write past the end of a file a rotator had just
-      replaced, leaving a sparse hole the size of everything rotated away,
-      after every rotation.
+      Every handle is opened append-only. A symlink at the path is refused
+      rather than written through. On Linux 5.6 and later a directory above it
+      may be a link only if you or root own it.
+      Append matters: a handle tracking its own offset would write past the
+      end of a rotated file, leaving a sparse hole the size of everything
+      rotated away.
     </p>
 
     <h2 id="reading-them">Reading them</h2>

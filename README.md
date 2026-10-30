@@ -260,9 +260,9 @@ cargo test --workspace --all-features
 
 MSRV 1.88, edition 2024. `shep-core`, `shep-client` and `shep` are
 `#![forbid(unsafe_code)]`. `shep-daemon` denies it crate-wide and permits it in
-two files: `sys.rs`, for adopting a descriptor the daemon inherited, and
-`sys_windows.rs`, for the job object that holds a sheep and its lambs. That
-is eight sites on unix and ten on Windows, each with its own
+two files: `sys.rs`, for adopting a descriptor the daemon inherited or that
+`openat2` returned, and `sys_windows.rs`, for the job object that holds a
+sheep and its lambs. That is eleven sites on unix and ten on Windows, each with its own
 `// SAFETY:` note. `shep-channel` also denies it crate-wide and permits two
 sites, both in `endpoint.rs`: taking the descriptor the shepherd names in
 `SHEP_CHANNEL_FD`, which a process-global guard makes reachable at most once
