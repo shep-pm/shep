@@ -10,7 +10,7 @@ use shep_core::status::ProcStatus;
 use shep_core::values::UpDuration;
 
 use crate::lookout::app::{App, CloseDialog, Control, KeyPress, Msg, Sent};
-use crate::lookout::pane::{ConfigPane, ReloadKind};
+use crate::lookout::pane::{ConfigPane, ConfiguredReadiness, ReloadKind};
 use crate::lookout::theme::Palette;
 
 use super::flock::with_selection_and_palette;
@@ -20,24 +20,25 @@ use super::sheep_pane::{
     app_in_sheep_pane_with_nothing_parked, file_edit, sheep_config_view_parking,
 };
 
+struct ReusePort(bool);
+
 /// A [`ConfigPane`] over `web`, with `kill_timeout` and `graceful_timeout`
 /// set to round numbers a close dialog's own copy names literally, `5s`
 /// and `10s`: the sheep's own values a test can assert on verbatim, rather
 /// than a millisecond count `resolved_display` would leave bare.
 fn close_dialog_pane(
-    wait_ready: bool,
-    has_probe: bool,
-    reuse_port: bool,
+    readiness: ConfiguredReadiness,
+    reuse_port: ReusePort,
     instances: u32,
 ) -> ConfigPane {
     let config = AppConfig {
         name: "web".to_string(),
         kill_timeout: UpDuration::from_millis(5_000),
         graceful_timeout: UpDuration::from_millis(10_000),
-        wait_ready,
-        reuse_port,
+        wait_ready: readiness == ConfiguredReadiness::Channel,
+        reuse_port: reuse_port.0,
         instances,
-        readiness_probe: has_probe.then(|| ProbeConfig {
+        readiness_probe: (readiness == ConfiguredReadiness::Probe).then(|| ProbeConfig {
             kind: ProbeKind::Tcp,
             target: "127.0.0.1:8080".into(),
             interval: UpDuration::from_millis(10_000),
@@ -60,7 +61,7 @@ const DIALOG_PID: u32 = 71_578;
 /// reads in its own heading and naming-sentence tests, without driving a
 /// real key sequence to raise one.
 pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
-    let pane = close_dialog_pane(true, false, false, 1);
+    let pane = close_dialog_pane(ConfiguredReadiness::Channel, ReusePort(false), 1);
     let unsent_fields = (0..unsent).map(|i| format!("field{i}")).collect();
     CloseDialog::new(
         unsent_fields,
@@ -76,7 +77,7 @@ pub fn close_dialog_with(unsent: usize, parked: usize) -> CloseDialog {
 /// shepherd runs several of: no one pid to name, so the heading's right
 /// clause carries none.
 pub fn close_dialog_without_a_pid() -> CloseDialog {
-    let pane = close_dialog_pane(true, false, false, 2);
+    let pane = close_dialog_pane(ConfiguredReadiness::Channel, ReusePort(false), 2);
     CloseDialog::new(
         vec!["cwd".to_string()],
         0,
@@ -92,13 +93,11 @@ pub fn close_dialog_without_a_pid() -> CloseDialog {
 /// field and nothing parked, since the reload row draws the same either
 /// way and a test on it should not have to explain the heading too.
 pub fn close_dialog_reloading(kind: ReloadKind, instances: u32) -> CloseDialog {
-    let (wait_ready, has_probe, reuse_port) = match kind {
-        // `reload_mode`'s own rule: `!wait_ready && has_probe && !reuse_port`
-        // is `Serial`, anything else is `Overlap`.
-        ReloadKind::Overlap => (true, false, false),
-        ReloadKind::Serial => (false, true, false),
+    let readiness = match kind {
+        ReloadKind::Overlap => ConfiguredReadiness::Channel,
+        ReloadKind::Serial => ConfiguredReadiness::Probe,
     };
-    let pane = close_dialog_pane(wait_ready, has_probe, reuse_port, instances);
+    let pane = close_dialog_pane(readiness, ReusePort(false), instances);
     CloseDialog::new(
         vec!["cwd".to_string()],
         0,
