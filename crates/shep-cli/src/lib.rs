@@ -25,6 +25,7 @@ mod fetch;
 mod flourish;
 mod home;
 mod host;
+mod host_sample;
 mod http;
 mod launch;
 mod lookout;

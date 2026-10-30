@@ -10,7 +10,8 @@ use shep_core::status::ProcStatus;
 
 use crate::dog::metrics::grammar::REFUSED_TOTAL;
 use crate::dog::metrics::samples::{SampleFamily, SamplePoint};
-use crate::dog::metrics::{HostReading, Reading, exposition};
+use crate::dog::metrics::{Reading, exposition};
+use crate::host_sample::HostReading;
 
 use super::*;
 

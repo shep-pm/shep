@@ -25,7 +25,7 @@ use super::facts::{
 };
 use super::shepherd;
 use crate::commands::bleats::{missing_log_note, read_tail};
-use crate::dog::metrics::sample_host_off_worker;
+use crate::host_sample::sample_host_off_worker;
 
 /// The argument every sheep-scoped tool takes.
 ///
