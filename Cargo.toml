@@ -208,7 +208,14 @@ getrandom = { version = "0.4", default-features = false }
 assert_cmd = { version = "2", default-features = false }
 predicates = { version = "3", default-features = false }
 # Reconstructs lookout's screen from cursor movements in Unix terminal tests.
-vt100 = { version = "0.16.2", default-features = false }
+# Held below 0.17 (#1334): vt100 0.18 makes `Parser::new` and `Screen::set_size`
+# take `NonZeroU16`s and makes `contents_formatted` and `contents_diff` return
+# strings rather than bytes, so the lookout_terminal helpers stop compiling and
+# every Unix leg that builds shep-cli's test tier goes red. Cargo reads a bare
+# 0.x requirement as a caret, so the range only spells out what a bump from
+# Dependabot would otherwise rewrite. Drop the ceiling once lookout_terminal.rs
+# is ported to the 0.18 API.
+vt100 = { version = ">=0.16.2, <0.17", default-features = false }
 # The cron_restart dialect (spec §4). `serde` is croner's only feature; we do
 # not serialize a parsed Cron, the Flockfile carries the pattern string.
 # Held below 4: croner 4 changes the parser API and the accepted patterns that
