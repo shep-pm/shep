@@ -1,5 +1,6 @@
 //! The verbs that reach a running daemon and change something: reload,
-//! trigger, signal, stock, describe, save and muster.
+//! trigger, signal, stock, describe, save and muster, and what a connecting
+//! verb does when none is running.
 
 use super::*;
 
@@ -482,4 +483,23 @@ fn saving_the_roll_then_mustering_reports_the_same_flock() {
     );
 
     graceful_kill(home);
+}
+
+// --- No shepherd -----------------------------------------------------------
+
+/// `stop` stands for the verbs that dial through the shared helper. The home
+/// is created, since an absent `--home` is its own usage refusal that never
+/// reaches the connect.
+#[test]
+fn a_connecting_verb_with_no_shepherd_exits_daemon_unreachable() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("no-shepherd-here");
+    std::fs::create_dir_all(&home).unwrap();
+
+    let stopped = shep(&home)
+        .args(["--format", "json", "stop", "sheep"])
+        .output()
+        .unwrap();
+
+    assert_json_error(&stopped, 5, "daemon_unreachable");
 }
