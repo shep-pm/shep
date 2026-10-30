@@ -88,10 +88,10 @@ pub(super) struct Binding {
 /// compile. That is the whole guard against a binding that dispatches and
 /// does not print.
 const fn binding(press: &KeyPress) -> Binding {
-    // `row` keeps each arm to one line, so a reader checks thirty-nine
-    // captions rather than thirty-nine struct literals. `the_rows_are_
+    // `row` keeps each arm to one line, so a reader checks forty
+    // captions rather than forty struct literals. `the_rows_are_
     // deduplicated` asserts the count; `rows`'s own doc gives the
-    // thirty-eight that land in a DRAWN column.
+    // thirty-nine that land in a DRAWN column.
     const fn row(keys: &'static str, group: Group, does: &'static str) -> Binding {
         Binding { keys, group, does }
     }
@@ -160,6 +160,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::TextEdit(
             TextEdit::DeleteWordBack | TextEdit::DeleteToStart | TextEdit::DeleteToEnd,
         ) => row("ctrl-w/u/k", Group::Changing, "cut word, to ends"),
+        KeyPress::TextEdit(TextEdit::Reveal) => row("ctrl-r", Group::Changing, "unmask a secret"),
 
         KeyPress::Action(ActionVerb::Stop) => row("x", Group::Doing, "stop"),
         KeyPress::Action(ActionVerb::Restart) => row("R", Group::Doing, "restart"),
@@ -218,6 +219,7 @@ const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Backspace, KeyModifiers::NONE),
     (KeyCode::Delete, KeyModifiers::NONE),
     (KeyCode::Char('w'), KeyModifiers::CONTROL),
+    (KeyCode::Char('r'), KeyModifiers::CONTROL),
     (KeyCode::Char('x'), KeyModifiers::NONE),
     (KeyCode::Char('R'), KeyModifiers::SHIFT),
     (KeyCode::Char('L'), KeyModifiers::SHIFT),
@@ -396,10 +398,10 @@ mod tests {
         }
     }
 
-    /// Thirty-nine rows, thirty-eight of them in a drawn column, and no two
+    /// Forty rows, thirty-nine of them in a drawn column, and no two
     /// share a key caption.
     ///
-    /// The thirty-ninth is `q  ctrl-c`, in `Group::Closing`: it has no row
+    /// The fortieth is `q  ctrl-c`, in `Group::Closing`: it has no row
     /// of its own in the box, which is what bought `Looking` its twelfth
     /// entry. Both counts are asserted, because one alone would pass if a
     /// row migrated between a column and the closing line.
@@ -407,12 +409,12 @@ mod tests {
     fn the_rows_are_deduplicated() {
         let rows = rows();
         let captions: Vec<&str> = rows.iter().map(|row| row.keys).collect();
-        assert_eq!(rows.len(), 39, "{captions:?}");
+        assert_eq!(rows.len(), 40, "{captions:?}");
         assert_eq!(
             rows.iter()
                 .filter(|row| Group::DRAWN.contains(&row.group))
                 .count(),
-            38,
+            39,
             "{captions:?}"
         );
         for (index, row) in rows.iter().enumerate() {

@@ -125,6 +125,7 @@ fn text_edit_ctrl(letter: char) -> Option<KeyPress> {
         'w' => edit(TextEdit::DeleteWordBack),
         'u' => edit(TextEdit::DeleteToStart),
         'k' => edit(TextEdit::DeleteToEnd),
+        'r' => edit(TextEdit::Reveal),
         _ => None,
     }
 }
@@ -452,6 +453,10 @@ mod tests {
         assert_eq!(
             text(modified(KeyCode::Char('k'), KeyModifiers::CONTROL)),
             edit(TextEdit::DeleteToEnd)
+        );
+        assert_eq!(
+            text(modified(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            edit(TextEdit::Reveal)
         );
     }
 
