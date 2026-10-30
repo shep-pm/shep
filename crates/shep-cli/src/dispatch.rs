@@ -31,6 +31,7 @@ use commands::trigger;
 use commands::whisper;
 use exit::ExitCode;
 use output::Streams;
+use shep_client::Client;
 
 use crate::client::{connect_or_spawn_client, load_command, run_daemon_command};
 use crate::commands::init;
@@ -267,10 +268,10 @@ pub(crate) async fn run(
             style,
             fmt,
         };
-        return match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => bleats::bleats(&client, &mut streams, cli.global.quiet, args).await,
-            Err(code) => code,
-        };
+        return with_client(&mut streams, &link, guard, async |client, streams| {
+            bleats::bleats(client, streams, cli.global.quiet, args).await
+        })
+        .await;
     }
 
     // Not in the locked block below: this runs until the operator quits, and
@@ -398,38 +399,50 @@ pub(crate) async fn run(
         }
         Commands::Add(ref args) => load_command(&mut streams, &link, guard, args, Load::Add).await,
         Commands::Stop(ref args) | Commands::Thatlldo(ref args) => {
-            match connect_client(&mut streams, &link, guard).await {
-                Ok(client) => lifecycle::stop(&client, &mut streams, args).await,
-                Err(code) => code,
-            }
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                lifecycle::stop(client, streams, args).await
+            })
+            .await
         }
-        Commands::Restart(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => lifecycle::restart(&client, &mut streams, Some(&paths), args).await,
-            Err(code) => code,
-        },
-        Commands::Reload(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => lifecycle::reload(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Restart(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                lifecycle::restart(client, streams, Some(&paths), args).await
+            })
+            .await
+        }
+        Commands::Reload(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                lifecycle::reload(client, streams, args).await
+            })
+            .await
+        }
         // Not `connect_client` at this arm: `delete` removes a dog from
         // `shep.toml` too, and that half works with no shepherd running.
         Commands::Delete(ref args) => lifecycle::delete(&mut streams, &link, guard, args).await,
-        Commands::Stock(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => lifecycle::stock(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
-        Commands::Trigger(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => trigger::trigger(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
-        Commands::Signal(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => signal::signal(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
-        Commands::Whisper(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => whisper::whisper(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Stock(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                lifecycle::stock(client, streams, args).await
+            })
+            .await
+        }
+        Commands::Trigger(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                trigger::trigger(client, streams, args).await
+            })
+            .await
+        }
+        Commands::Signal(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                signal::signal(client, streams, args).await
+            })
+            .await
+        }
+        Commands::Whisper(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                whisper::whisper(client, streams, args).await
+            })
+            .await
+        }
         // Falls back to the muster roll rather than refusing: looking at the
         // flock must not be a dead end on a machine that just rebooted.
         Commands::Flock(ref args) => flock_command(&mut streams, &link, guard, args).await,
@@ -459,10 +472,12 @@ pub(crate) async fn run(
                 .await
             }
             (None, true) => query::available_dogs(&mut streams, args).await,
-            (None, false) => match connect_client(&mut streams, &link, guard).await {
-                Ok(client) => query::dogs(&client, &mut streams, &paths, args).await,
-                Err(code) => code,
-            },
+            (None, false) => {
+                with_client(&mut streams, &link, guard, async |client, streams| {
+                    query::dogs(client, streams, &paths, args).await
+                })
+                .await
+            }
         },
         // None of the four goes through the connect helpers: all four must
         // write the config with no shepherd running, so each connects
@@ -488,14 +503,18 @@ pub(crate) async fn run(
         }
         Commands::Adopt(ref args) => dogs::adopt(&mut streams, &paths, args).await,
         Commands::Rehome(ref args) => dogs::rehome(&mut streams, &paths, &args.name).await,
-        Commands::Describe(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => query::describe(&client, &mut streams, &link, args).await,
-            Err(code) => code,
-        },
-        Commands::Fold(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => query::fold(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Describe(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                query::describe(client, streams, &link, args).await
+            })
+            .await
+        }
+        Commands::Fold(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                query::fold(client, streams, args).await
+            })
+            .await
+        }
         // Not `connect_client`: a verb reporting whether a shepherd answers
         // must not fail because the answer is "no". The exit code is still
         // `DaemonUnreachable`, so `shep ping && echo up` works.
@@ -505,26 +524,32 @@ pub(crate) async fn run(
         }
         // `connect_client`, not `connect_or_spawn_client`: autostarting a
         // daemon to save its empty flock would overwrite a good roll.
-        Commands::Save => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => muster::save(&client, &mut streams).await,
-            Err(code) => code,
-        },
+        Commands::Save => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                muster::save(client, streams).await
+            })
+            .await
+        }
         Commands::Muster => match connect_or_spawn_client(&mut streams, &paths, guard).await {
             Ok(client) => muster::muster(&client, &mut streams).await,
             Err(code) => code,
         },
-        Commands::Reopen(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => logs::reopen(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Reopen(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                logs::reopen(client, streams, args).await
+            })
+            .await
+        }
         // `--daemon` empties files this binary created and the daemon merely
         // inherited, so there is nothing to ask the socket. Not connecting is
         // the feature: a wedged shepherd is when this gets reached for.
         Commands::Flush(ref args) if args.daemon => logs::flush_daemon(&mut streams, &paths),
-        Commands::Flush(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => logs::flush(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Flush(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                logs::flush(client, streams, args).await
+            })
+            .await
+        }
         // Reads a file and starts nothing, so there is nothing to ask the
         // socket. The history is on disk so it survives the shepherd.
         Commands::Barks(ref args) => dogs::barks(&mut streams, &paths, args),
@@ -544,31 +569,37 @@ pub(crate) async fn run(
         Commands::Host(ref args) => hosts::host(&mut streams, &paths, args).await,
         // Reads two sheep's configs and writes one, so it needs the shepherd:
         // the copy is of what the running flock holds, not of a file.
-        Commands::Copy(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => commands::copy::copy(&client, &mut streams, &paths, args).await,
-            Err(code) => code,
-        },
+        Commands::Copy(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                commands::copy::copy(client, streams, &paths, args).await
+            })
+            .await
+        }
         // Reads the running flock's settings rather than a file, so it needs
         // the shepherd: a Flockfile on disk is not what a sheep is running.
-        Commands::Get(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => commands::settings_read::get(&client, &mut streams, args).await,
-            Err(code) => code,
-        },
+        Commands::Get(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                commands::settings_read::get(client, streams, args).await
+            })
+            .await
+        }
         // Writes the settings the same read reads, so the same rule: the write
         // lands on the running flock, and the old value it prints beside the
         // new one is what that flock holds, not what a file says.
-        Commands::Set(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => commands::settings_write::set(&client, &mut streams, &paths, args).await,
-            Err(code) => code,
-        },
+        Commands::Set(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                commands::settings_write::set(client, streams, &paths, args).await
+            })
+            .await
+        }
         // Drops what `set` wrote, from the same running flock and under the
         // same rule: the override it drops is the one that flock holds.
-        Commands::Unset(ref args) => match connect_client(&mut streams, &link, guard).await {
-            Ok(client) => {
-                commands::settings_write::unset(&client, &mut streams, &paths, args).await
-            }
-            Err(code) => code,
-        },
+        Commands::Unset(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                commands::settings_write::unset(client, streams, &paths, args).await
+            })
+            .await
+        }
         // Does its own connecting: `connect_client` reports and gives up,
         // which would leave an operator with a live daemon nothing can stop.
         Commands::Kill => admin::kill(&paths, &mut streams).await,
@@ -577,10 +608,12 @@ pub(crate) async fn run(
         // override, which is the daemon's own store.
         Commands::Import(ref args) => match &args.command {
             ImportCommand::Pm2(args) => import::pm2::import(&mut streams, args),
-            ImportCommand::Env(args) => match connect_client(&mut streams, &link, guard).await {
-                Ok(client) => import::dotenv::import_env(&client, &mut streams, &paths, args).await,
-                Err(code) => code,
-            },
+            ImportCommand::Env(args) => {
+                with_client(&mut streams, &link, guard, async |client, streams| {
+                    import::dotenv::import_env(client, streams, &paths, args).await
+                })
+                .await
+            }
         },
         Commands::Completions(_)
         | Commands::Daemon(_)
@@ -597,6 +630,20 @@ pub(crate) async fn run(
         | Commands::Dog(_) => {
             unreachable!("handled above: before the shared $SHEP_HOME gate, or on unlocked handles")
         }
+    }
+}
+
+/// Connects without autostarting, runs `step` on the client, and returns its
+/// code; a failed connect has already reported itself and returns its own.
+async fn with_client(
+    streams: &mut Streams<'_>,
+    link: &Link<'_>,
+    guard: VersionGuard,
+    step: impl AsyncFnOnce(&Client, &mut Streams<'_>) -> ExitCode,
+) -> ExitCode {
+    match connect_client(streams, link, guard).await {
+        Ok(client) => step(&client, streams).await,
+        Err(code) => code,
     }
 }
 
