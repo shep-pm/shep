@@ -27,6 +27,8 @@ pub(super) struct Editor<'a> {
     pub buffer: &'a TextBox,
     /// The keys to name beside it.
     pub keys: &'static str,
+    /// Whether the buffer holds a secret, which the bar masks as its row does.
+    pub secret: bool,
 }
 
 /// The keys a key/value editor names, for whichever field holds the cursor.
@@ -75,11 +77,13 @@ pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
                 label: format!("{} {index} =", list.key()),
                 buffer,
                 keys: TEXT_ENTRY_HINT,
+                secret: list.is_secret(),
             }),
             (None, buffer) => Some(Editor {
                 label: format!("new {} element", list.key()),
                 buffer,
                 keys: TEXT_ENTRY_HINT,
+                secret: list.is_secret(),
             }),
         };
     }
@@ -88,6 +92,7 @@ pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
             label: editor_label(editor, "env"),
             buffer: focused_field(editor),
             keys: editor_hint(editor.focus()),
+            secret: editor.focus() == Field::Value,
         });
     }
     let typing = pane.typing()?;
@@ -96,12 +101,14 @@ pub(super) fn pane_editor(pane: &ConfigPane) -> Option<Editor<'_>> {
             label: format!("new {entries} key"),
             buffer: &typing.buffer,
             keys: TEXT_ENTRY_HINT,
+            secret: false,
         });
     }
     Some(Editor {
         label: format!("editing {}", typing.key),
         buffer: &typing.buffer,
         keys: TEXT_ENTRY_HINT,
+        secret: pane.field_of(&typing.key).is_some_and(|field| field.secret),
     })
 }
 
@@ -116,6 +123,7 @@ pub(super) fn secrets_typing(app: &App) -> Option<Editor<'_>> {
         label: editor_label(editor, "secret"),
         buffer: focused_field(editor),
         keys: editor_hint(editor.focus()),
+        secret: editor.focus() == Field::Value,
     })
 }
 
@@ -297,6 +305,26 @@ mod tests {
     use super::*;
 
     use crate::lookout::app::{KeyPress, Msg};
+
+    /// A dog field's editor is a secret when the schema says so, which is
+    /// what the row it opened from masks too.
+    #[test]
+    fn a_pane_editor_is_secret_exactly_when_its_field_is() {
+        for secret in [true, false] {
+            let mut token = serde_json::json!({ "type": "string" });
+            token["x-shep-secret"] = serde_json::json!(secret);
+            let mut pane = ConfigPane::dog(
+                "watch".into(),
+                None,
+                serde_json::json!({ "properties": { "token": token } }),
+                "token = \"ab12cd34\"\n".into(),
+                Vec::new(),
+            );
+            pane.move_to_key("token");
+            pane.begin_typing();
+            assert_eq!(pane_editor(&pane).map(|e| e.secret), Some(secret));
+        }
+    }
 
     #[test]
     fn the_frozen_hint_clauses_are_separated_by_exactly_three_spaces() {

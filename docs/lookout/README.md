@@ -288,7 +288,9 @@ debt.
 - **A secret's editor draws `█` per typed character.** The value, the env
   value and a secret list's element are masked while they are typed, with
   the cursor and the scroll a plain box has; `ctrl-r` toggles showing what
-  was typed. The `<set>` marker and the `old -> new` row are unchanged.
+  was typed, from KEY or VALUE. The status bar and the settings screen echo
+  the open editor and mask it the same way. The `<set>` marker and the
+  `old -> new` row are unchanged.
 - **Read-only refuses the first keystroke that would file an edit**, not
   the close. The pane stays open and unchanged; nothing is left to refuse
   when `esc` writes.

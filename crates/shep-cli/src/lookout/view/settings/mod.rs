@@ -12,11 +12,15 @@
 pub(super) mod dogs;
 mod tree;
 
+#[cfg(test)]
+mod secret_editors;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 
 use super::super::app::{App, Settings, SettingsRow};
+use super::super::keyvalue::Field;
 use super::super::theme::Palette;
 use super::flock::{GUTTER, fit};
 use super::scroll::Attempt;
@@ -245,7 +249,12 @@ fn body_from(
                 format!(
                     "  {}",
                     fit(
-                        &focused_field(editor).line(&format!("{label}: "), &keys, table_width),
+                        &focused_field(editor).line(
+                            editor.focus() == Field::Value,
+                            &format!("{label}: "),
+                            &keys,
+                            table_width,
+                        ),
                         table_width,
                     )
                 ),
@@ -260,6 +269,7 @@ fn body_from(
                     "  {}",
                     fit(
                         &buffer.line(
+                            settings.typing_is_secret(),
                             &format!("editing {label}: "),
                             &format!("   {TEXT_ENTRY_HINT}"),
                             table_width,

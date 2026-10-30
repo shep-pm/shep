@@ -83,6 +83,19 @@ impl Settings {
         }
     }
 
+    /// Whether the free-text edit in flight is on a `x-shep-secret` field of a
+    /// dog, which every place that draws its buffer masks.
+    #[must_use]
+    pub fn typing_is_secret(&self) -> bool {
+        matches!(
+            &self.pending,
+            Some(Pending::Typing {
+                target: Target::DogValue { secret: true, .. },
+                ..
+            })
+        )
+    }
+
     /// The next candidate for `field`, or `None` for a key that is not a
     /// cycle: only a boolean and a closed set of names are.
     ///

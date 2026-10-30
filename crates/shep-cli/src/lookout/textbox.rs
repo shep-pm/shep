@@ -248,18 +248,18 @@ impl TextBox {
 
 impl TextBox {
     /// `before`, the box drawn with its cursor, then `after`, in `width`
-    /// columns.
+    /// columns. `secret` draws the box through [`Self::drawn_for`].
     ///
     /// The box gets what the two ends leave, so it scrolls to keep the
     /// cursor on screen instead of being cut with the line. When that is
     /// under [`MIN_BOX`] columns, `after` gives way first.
     #[must_use]
-    pub fn line(&self, before: &str, after: &str, width: u16) -> String {
+    pub fn line(&self, secret: bool, before: &str, after: &str, width: u16) -> String {
         let columns = |text: &str| u16::try_from(text.width()).unwrap_or(u16::MAX);
         let room = width.saturating_sub(columns(before));
         let beside = room.saturating_sub(columns(after));
         let budget = if beside >= MIN_BOX { beside } else { room };
-        format!("{before}{}{after}", self.drawn(budget))
+        format!("{before}{}{after}", self.drawn_for(secret, budget))
     }
 }
 
@@ -490,7 +490,7 @@ mod tests {
         let text_box = boxed("hello", 2);
 
         assert_eq!(
-            text_box.line("filter  ", "   enter applies", 40),
+            text_box.line(false, "filter  ", "   enter applies", 40),
             "filter  he\u{258f}llo   enter applies"
         );
     }
@@ -499,7 +499,7 @@ mod tests {
     fn a_line_scrolls_the_box_rather_than_cutting_it() {
         let text_box = TextBox::from("0123456789abcdefghij");
 
-        let line = text_box.line("f  ", "   enter applies", 33);
+        let line = text_box.line(false, "f  ", "   enter applies", 33);
 
         assert_eq!(line, "f  789abcdefghij\u{258f}   enter applies");
     }
@@ -508,12 +508,24 @@ mod tests {
     fn a_line_drops_the_text_after_the_box_before_squeezing_it() {
         let text_box = TextBox::from("0123456789abcdefghij");
 
-        let line = text_box.line("f  ", "   enter applies   esc cancels", 20);
+        let line = text_box.line(false, "f  ", "   enter applies   esc cancels", 20);
 
         assert_eq!(
             line,
             "f  456789abcdefghij\u{258f}   enter applies   esc cancels"
         );
+    }
+
+    #[test]
+    fn a_secret_line_masks_the_box_and_leaves_both_ends_alone() {
+        let mut text_box = boxed("hunter2", 3);
+
+        assert_eq!(
+            text_box.line(true, "env  ", "   enter writes", 40),
+            "env  \u{2588}\u{2588}\u{2588}\u{258f}\u{2588}\u{2588}\u{2588}\u{2588}   enter writes"
+        );
+        text_box.edit(TextEdit::Reveal);
+        assert_eq!(text_box.line(true, "env  ", "", 40), "env  hun\u{258f}ter2");
     }
 
     #[test]
