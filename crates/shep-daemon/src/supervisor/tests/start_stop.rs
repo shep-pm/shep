@@ -444,6 +444,8 @@ async fn restarting_a_stopped_sheep_resets_the_budget() {
     );
 }
 
+// `normalize` refuses `sandbox` on Windows.
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_sandboxed_sheep_exiting_125_errors_once_without_a_restart() {
     let (events, mut rx) = crate::bus::test_bus(256);
