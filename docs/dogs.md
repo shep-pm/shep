@@ -320,7 +320,7 @@ a process that died never keeps reporting a value it stopped updating.
 |---|---|
 | `shep_sheep_cpu_percent` | Tree CPU as a percentage of one core, over the last sampling window. |
 | `shep_sheep_memory_bytes` | Tree resident set size in bytes. |
-| `shep_sheep_restart_total` | Restart count since registration. |
+| `shep_sheep_restart_total` | Restart count since registration or the last `shep reset`. |
 | `shep_sheep_uptime_seconds` | Seconds since this sheep's last successful start. |
 | `shep_sheep_status` | 1 for the status this sheep is currently in, 0 for every other status. |
 | `shep_dog_up` | 1 when this dog is online, 0 otherwise. A disabled dog has no series, so disabling one never reads as it going down. |
@@ -419,8 +419,9 @@ moves it and a collector reads your counter dropping from 1000 to 3 as the
 reset it is. `shep_sheep_restart_total` and
 `shep_channel_samples_refused_total` carry the dog's own start: both are the
 dog's counters, and the dog restarting restarts the exporter with them. A
-sample's help text is its `description`, and a sample with none has no
-description either. `shep_channel_samples_refused_total` goes out as an
+`shep reset` does not move the start time of `shep_sheep_restart_total`, so a
+collector reads the drop as a restart of the series. A sample's help text is its `description`, and a sample with none
+has no description either. `shep_channel_samples_refused_total` goes out as an
 integer sum. Integers are decimal strings, rates and sample values are
 numbers, and every Prometheus label is a string attribute, so the two paths
 report the same series with the same labels. A value OTLP has no number for

@@ -275,7 +275,11 @@ export const BUDGETS: Record<string, number> = {
   // the two files holds a key, and why the split is the trust boundary rather
   // than tidiness. An operator who guesses wrong gets a refused boot, so this
   // is required content, not prose.
-  dogs: 4460,
+  //
+  // Raised from 4460 for #1018: a `shep reset` drops `shep_sheep_restart_total`
+  // without moving the OTLP start time, and a collector has to be told that
+  // is a restart of the series.
+  dogs: 4490,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.

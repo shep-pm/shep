@@ -446,7 +446,7 @@ shep_host_memory_total_bytes 51539607552`}</CodeBlock>
       </div>
       <div class="row"><span><code>shep_sheep_cpu_percent</code></span> <span data-label="Meaning">Tree CPU as a percentage of one core, over the last sampling window.</span></div>
       <div class="row"><span><code>shep_sheep_memory_bytes</code></span> <span data-label="Meaning">Tree resident set size in bytes.</span></div>
-      <div class="row"><span><code>shep_sheep_restart_total</code></span> <span data-label="Meaning">Restart count since registration.</span></div>
+      <div class="row"><span><code>shep_sheep_restart_total</code></span> <span data-label="Meaning">Restart count since registration or the last <code>shep reset</code>.</span></div>
       <div class="row"><span><code>shep_sheep_uptime_seconds</code></span> <span data-label="Meaning">Seconds since this sheep's last successful start.</span></div>
       <div class="row"><span><code>shep_sheep_status</code></span> <span data-label="Meaning">1 for the status this sheep is currently in, 0 for every other status.</span></div>
       <div class="row"><span><code>shep_dog_up</code></span> <span data-label="Meaning">1 when this dog is online, 0 otherwise. A disabled dog has no series.</span></div>
@@ -544,7 +544,9 @@ Authorization = "Bearer token-from-a-secret-manager"`}</CodeBlock>
       counters, monotonic cumulative <code>sum</code>s whose
       <code>startTimeUnixNano</code> is when their sender started, so a
       restart moves it and a collector reads the reset; the dog's own
-      counters keep its start. A sample's help text is its
+      counters keep its start, so a <code>shep reset</code> does not move the
+      start time of <code>shep_sheep_restart_total</code> and a collector reads
+      the drop as a restart of the series. A sample's help text is its
       <code>description</code>, and one with none
       has none. <code>shep_channel_samples_refused_total</code> goes out as
       an integer sum. Integers are decimal strings, rates and sample values
