@@ -36,6 +36,10 @@ flate = "flate"
 # stat(2). Not the English verb "sought".
 seeked = "seeked"
 
+# `schtasks /Query /FO CSV`, the real output-format flag
+# (crates/shep-cli/src/commands/logon_task). Not a typo of "of" or "for".
+fo = "fo"
+
 # Consistent spelling across 25 sites for "cannot be parsed"; an accepted
 # alternative to "unparsable", not a slip.
 unparseable = "unparseable"

@@ -4,24 +4,13 @@ use super::target_resolution::{StartupPlan, plan};
 use super::unit_layout::{remove_unit, secure_path_warning, unit_file_name, write_unit};
 use crate::cli::{Init, StartupArgs};
 use crate::exit::ExitCode;
-use crate::output::{StartupStep, StartupSteps, Streams, emit, write_outcome};
+use crate::output::{StartupStep, Streams};
 use shep_daemon::boot::Shepherd;
+
 use std::path::Path;
 
-/// A step that did what it was asked.
-pub(super) const OK: &str = "ok";
-
-/// A step that found nothing to do, and that being the state it was asked to
-/// produce. Only `unstartup` reaches it.
-pub(super) const ABSENT: &str = "absent";
-
-/// A refusal that never got as far as a step: the exit code to return, and
-/// the one line explaining it.
-#[derive(Debug)]
-pub(super) struct Refusal {
-    pub(super) code: ExitCode,
-    pub(super) message: String,
-}
+pub(super) use crate::commands::startup_shared::{ABSENT, OK, Refusal};
+use crate::commands::startup_shared::{failure_line, report};
 
 /// Installs the init unit that starts the shepherd at boot.
 ///
@@ -227,25 +216,6 @@ fn run_step(program: &str, args: &[&str]) -> StartupStep {
     }
 }
 
-/// Emits the steps and returns the code they earned.
-///
-/// A step that failed fails the verb, but only after every remaining step has
-/// run: a half-installed unit is worse than a fully-attempted one, and the
-/// operator needs every row to know which half.
-fn report(streams: &mut Streams<'_>, command: &str, steps: Vec<StartupStep>) -> ExitCode {
-    let failed = steps
-        .iter()
-        .any(|step| step.result != OK && step.result != ABSENT);
-    let written = write_outcome(emit(
-        &mut *streams.out,
-        streams.fmt,
-        command,
-        StartupSteps(steps),
-        streams.style,
-    ));
-    if failed { ExitCode::Failure } else { written }
-}
-
 /// Quotes one word of a printed command so the line can be pasted rather
 /// than read and repaired. A `$SHEP_HOME` with a space is a legal path;
 /// unquoted it becomes two arguments.
@@ -259,20 +229,6 @@ pub(crate) fn shell_quote(word: &str) -> String {
         return word.to_string();
     }
     format!("'{}'", word.replace('\'', r"'\''"))
-}
-
-/// The one line a failed command is reported by: the first non-blank line of
-/// its stderr, or its exit status when it failed without saying anything.
-///
-/// One line because a row is one line, and systemd answers a refusal with
-/// several of its own advice.
-fn failure_line(output: &std::process::Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    stderr
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map_or_else(|| format!("failed: {}", output.status), ToString::to_string)
 }
 
 #[cfg(test)]
