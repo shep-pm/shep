@@ -72,6 +72,11 @@ pub enum SignalOutcome {
         /// The refusal, as the OS worded it.
         reason: String,
     },
+    /// The request named a lamb pid that is not in the sheep's lamb list.
+    ///
+    /// Nothing was sent. A lamb that exited since the operator read the list
+    /// answers this too.
+    NotALamb,
 }
 
 /// One matched sheep's row in a `Signal` reply.

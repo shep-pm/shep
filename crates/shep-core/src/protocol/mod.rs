@@ -1,4 +1,4 @@
-//! The client<->daemon wire protocol (version 12).
+//! The client<->daemon wire protocol (version 13).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
@@ -6,7 +6,7 @@
 //! An additive change keeps the version: an older peer decodes
 //! [`Request::Unrecognized`] and refuses by name. `AppConfig` always bumps.
 //!
-//! A `*_wire_v12` test pins today's shape. A
+//! A `*_wire_v13` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload.
 
 pub mod events;
@@ -44,7 +44,13 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. `AppConfig` is the exception: an older peer ignores a key
 /// it does not know, so it runs a config the operator did not write.
-pub const PROTOCOL_VERSION: u32 = 12;
+pub const PROTOCOL_VERSION: u32 = 13;
+
+/// The first protocol version whose shepherd reads `lamb` on `Request::Signal`.
+///
+/// An older shepherd drops the key and signals the sheep itself, so a client
+/// must not send one to it.
+pub const LAMB_SIGNAL_SINCE: u32 = 13;
 
 /// The oldest protocol this build accepts from a peer.
 ///
@@ -61,11 +67,11 @@ mod tests {
 
     // Fails whenever `PROTOCOL_VERSION` moves, so a bump is a deliberate
     // edit. A shape change that forgot to bump shows up in the
-    // `*_wire_v12` snapshots instead. A bump moves the constant, this
+    // `*_wire_v13` snapshots instead. A bump moves the constant, this
     // literal, this test's name, the doc header and the snapshots.
     #[test]
-    fn an_added_app_config_field_forced_the_protocol_version_up() {
-        assert_eq!(PROTOCOL_VERSION, 12);
+    fn a_lamb_field_on_signal_forced_the_protocol_version_up() {
+        assert_eq!(PROTOCOL_VERSION, 13);
     }
 
     #[test]

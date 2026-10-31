@@ -194,6 +194,10 @@ pub struct RpcContext {
     /// has no environment of its own to override it with, so this is the
     /// only one `Request::DogConfigResolved` ever reads in.
     pub(crate) host_environment: String,
+    /// What delivers a signal to a lamb, which the supervisor does not own.
+    ///
+    /// The operating system's in a real shepherd, a recorder in a test.
+    pub(crate) pid_signals: Arc<dyn super::PidSignals>,
 }
 
 /// Where a muster roll landed and what it recorded.

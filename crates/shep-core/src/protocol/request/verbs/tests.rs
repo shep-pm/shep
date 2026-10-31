@@ -16,9 +16,11 @@ fn a_signal_request_and_its_reply_round_trip() {
     let request = Request::Signal {
         selector: SelectorSpec::Name("web".to_string()),
         signal: "SIGHUP".to_string(),
+        lamb: None,
     };
     let json = serde_json::to_string(&request).unwrap();
     assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+    assert!(!json.contains("lamb"), "{json}");
 
     let reply = Response::Signalled(vec![
         SignalReply {
@@ -200,7 +202,7 @@ fn set_sheep_env_batch_wire_v8() {
 /// The request names two sheep and carries no value: the shepherd reads the
 /// source's env itself.
 #[test]
-fn copy_sheep_env_wire_v12() {
+fn copy_sheep_env_wire_v13() {
     let request = Request::CopySheepEnv {
         from: "web".to_string(),
         to: "api".to_string(),
@@ -220,7 +222,7 @@ fn copy_sheep_env_wire_v12() {
 /// The reviewed change list rides along on a write, and its absence is what
 /// an earlier client's request looks like.
 #[test]
-fn copy_sheep_env_expect_wire_v12() {
+fn copy_sheep_env_expect_wire_v13() {
     let request = Request::CopySheepEnv {
         from: "web".to_string(),
         to: "api".to_string(),
@@ -367,6 +369,7 @@ fn request_wire_snapshots() {
             Request::Signal {
                 selector: SelectorSpec::Name("web".to_string()),
                 signal: "SIGHUP".to_string(),
+                lamb: None,
             },
         ),
         // The one verb here whose body has no `selector` key.
@@ -597,14 +600,24 @@ fn request_wire_snapshots() {
                 selector: SelectorSpec::Name("web".to_string()),
             },
         ),
+        // The only Signal frame carrying `lamb`: row 17 above is the same
+        // request without it, byte for byte what protocol 12 sent.
+        envelope(
+            42,
+            Request::Signal {
+                selector: SelectorSpec::Name("web".to_string()),
+                signal: "SIGHUP".to_string(),
+                lamb: Some(4312),
+            },
+        ),
     ];
-    insta::assert_json_snapshot!("request_wire_v12", requests);
+    insta::assert_json_snapshot!("request_wire_v13", requests);
 }
 
 /// The request names a sheep and a stream. A `path` key here would make the
 /// shepherd a reader of arbitrary files.
 #[test]
-fn tail_log_request_wire_v12() {
+fn tail_log_request_wire_v13() {
     assert_eq!(
         serde_json::to_string(&Request::TailLog {
             id: 3,

@@ -1614,9 +1614,9 @@ Options:
 @@VERB:signal@@
 Send a unix signal to matched sheep.
 
-Delivered to each sheep's own process, not to its process group — the lambs it forked are not
-signalled. This is a nudge to the application (SIGHUP to re-read config, SIGUSR1 to dump state);
-`shep stop` is what runs the stop ladder, and `shep reload` is what swaps instances.
+Delivered to each sheep's own process, not to its process group — its lambs are signalled only with
+`--lamb`. This nudges the application (SIGHUP to re-read config, SIGUSR1 to dump state); `shep stop`
+is what runs the stop ladder, and `shep reload` is what swaps instances.
 
 Accepted: SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2, SIGWINCH, SIGCONT, SIGKILL. The SIG
 prefix and the case are both optional. SIGSTOP is refused: a stopped sheep still reads online in
@@ -1643,6 +1643,10 @@ Options:
           - json:  A versioned JSON envelope, one object per invocation
           
           [default: table]
+
+      --lamb <PID>
+          Signal this lamb of the sheep instead of the sheep itself. The selector must match exactly
+          one sheep, and the pid one of its lambs
 
   -q, --quiet
           Suppress non-essential output

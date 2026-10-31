@@ -1237,9 +1237,17 @@ shep scale web 4 sets the instance count to exactly 4; there is no relative delt
 
 `docs/writing-plans/plans/2026-08-13-shep-phase11-verbs.md:246-267`
 
+### shep signal --lamb reaches one lamb of one sheep, and nothing wider
+
+`shep signal <selector> --lamb <pid> <signal>` signals one child of a sheep. The selector must match exactly one sheep, and the shepherd walks that sheep's lambs when the request arrives and sends in the same blocking task. A pid the walk did not find answers `NotALamb` and nothing is sent. A dog is refused, and a sweep passes a disabled app by, so one running sheep beside a parked one still matches exactly one. After a delivery the shepherd queues `lamb-signalled` on the sheep's channel, best effort: a sheep with no channel open, one not reading it, or one that has respawned since the walk is told nothing, and the reply stays `delivered`. The message means the kernel accepted the signal, not that the lamb stopped.
+
+**Why:** A sheep that supervises its own workers (a shep-kelpie project runner) needs one child ended without stopping the sheep. Checking against a fresh walk keeps the verb from becoming a general `kill`, and doing it in one blocking task keeps the window for pid reuse as small as it can be. An older shepherd drops the `lamb` field and would signal the sheep itself, so `PROTOCOL_VERSION` is 13 and the CLI refuses `--lamb` against a shepherd below it. `MIN_SUPPORTED` stays 8. `--group` is still not built, and neither is a lookout stop action.
+
+`https://github.com/shep-pm/shep/issues/354`
+
 ### shep signal has no --group flag to reach a sheep's whole lamb tree
 
-There is no way to send a signal to every process in a sheep's tree at once; shep signal always targets just the sheep's own pid.
+There is no way to send a signal to every process in a sheep's tree at once; shep signal targets just the sheep's own pid, or with `--lamb` one named lamb (see "shep signal --lamb reaches one lamb of one sheep, and nothing wider").
 
 **Why:** Deliberately deferred rather than built: a group-wide nudge and a single-process nudge are genuinely different asks, and one flag (--group) would flip the safe default (single-process) to be the non-default reading. Trigger to revisit: an app class where the sheep process is a supervisor that doesn't forward signals to its own workers - a real shape that just hasn't come up yet.
 
@@ -1247,7 +1255,7 @@ There is no way to send a signal to every process in a sheep's tree at once; she
 
 ### shep signal targets only the sheep's own pid, never its process group
 
-shep signal web SIGHUP delivers via kill to the sheep's own pid, not kill(-pgid, ...). The accepted signal set is nine names in a dedicated OperatorSignal grammar (SIGHUP/INT/QUIT/TERM/USR1/USR2/WINCH/CONT/KILL); SIGSTOP is refused, SIGKILL is accepted. No raw signal numbers cross into shep-core (they differ by platform - SIGUSR1 is 10 on Linux, 30 on macOS); the enum crosses the runner seam and tokio_runner.rs maps it to nix::sys::signal::Signal.
+shep signal web SIGHUP delivers via kill to the sheep's own pid, not kill(-pgid, ...); `--lamb` is the one exception, and it still sends to a single pid. The accepted signal set is nine names in a dedicated OperatorSignal grammar (SIGHUP/INT/QUIT/TERM/USR1/USR2/WINCH/CONT/KILL); SIGSTOP is refused, SIGKILL is accepted. No raw signal numbers cross into shep-core (they differ by platform - SIGUSR1 is 10 on Linux, 30 on macOS); the enum crosses the runner seam and tokio_runner.rs maps it to nix::sys::signal::Signal.
 
 **Why:** Group-wide delivery is already the stop ladder's job (needed because a `thing & wait` wrapper keeps its child in a separate process group during a graceful stop). shep signal exists for a different job - an operator's direct conversation with the one process they named (SIGHUP-to-reopen-config, SIGUSR1-to-dump-state). Broadcasting to the whole process group would hit unrelated lambs the operator never addressed. SIGSTOP is refused because a stopped sheep would still read 'online' in every listing - the shepherd has no way to observe or report the difference, so it must not be able to create that state. The narrow reading is also the recoverable one: an operator who wanted the group can signal each instance, but can't un-send a broadcast.
 
@@ -1255,7 +1263,7 @@ shep signal web SIGHUP delivers via kill to the sheep's own pid, not kill(-pgid,
 
 ### shep signal targets the sheep's own pid, never its whole process group
 
-Unlike the stop ladder (which is deliberately group-wide, to reach a `sh & wait` wrapper's children too), shep signal delivers only to the named sheep's own pid.
+Unlike the stop ladder (which is deliberately group-wide, to reach a `sh & wait` wrapper's children too), shep signal delivers only to the named sheep's own pid, except that `--lamb` names one lamb of it.
 
 **Why:** signal exists for a different job than the stop ladder: an operator having a conversation with the application itself (SIGHUP-to-reopen-config, SIGUSR1-to-dump-state), and broadcasting that to every lamb in the group would hit an unrelated shell wrapper or node child with a signal meant for the parent. The reading is also recoverable in the safer direction: an operator who wanted group-wide reach can signal each instance separately, but one who didn't want it can't un-send a broadcast.
 

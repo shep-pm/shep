@@ -547,5 +547,18 @@ expression: requests
         "value": "web"
       }
     }
+  },
+  {
+    "id": 42,
+    "deadline_ms": null,
+    "body": {
+      "kind": "signal",
+      "selector": {
+        "kind": "name",
+        "value": "web"
+      },
+      "signal": "SIGHUP",
+      "lamb": 4312
+    }
   }
 ]

@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::context::RpcContext;
 use super::error::rpc_error;
+use super::selector_verbs::matching_rows;
 use crate::bus::{TopicFilter, spawn_forwarder, spawn_guarded_forwarder};
 
 /// Whether the dog `dog` may send `request`.
@@ -49,13 +50,8 @@ pub(super) async fn check(ctx: &RpcContext, dog: &str, request: &Request) -> Res
                 .list_checked()
                 .await
                 .map_err(|err| rpc_error(&err))?;
-            // The rule every lifecycle verb applies: a sweep passes a dog
-            // by and an exact selector reaches it.
-            let exact = selector.is_exact();
-            let mut reached = infos
-                .iter()
-                .filter(|i| exact || i.dog.is_none())
-                .filter(|i| selector.matches(&i.name, i.id, i.fold.as_deref(), i.instance))
+            let mut reached = matching_rows(infos, &selector)
+                .into_iter()
                 .map(|i| {
                     if i.dog.is_some() {
                         for_dog(&i.name)

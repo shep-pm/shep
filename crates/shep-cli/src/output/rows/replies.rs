@@ -233,6 +233,10 @@ fn describe_signal_outcome(outcome: &SignalOutcome) -> (&'static str, String) {
         SignalOutcome::Delivered => ("delivered", String::new()),
         SignalOutcome::NotRunning => ("not_running", "no live process to signal".to_string()),
         SignalOutcome::Failed { reason } => ("failed", reason.clone()),
+        SignalOutcome::NotALamb => (
+            "not_a_lamb",
+            "not one of this sheep's lambs; nothing was sent".to_string(),
+        ),
         other => ("unknown", format!("{other:?}")),
     }
 }
@@ -571,6 +575,21 @@ mod tests {
         .rows();
         assert_eq!(rows[0][2], "failed");
         assert_eq!(rows[0][3], "No such process");
+    }
+
+    #[test]
+    fn a_refused_lamb_says_nothing_was_sent() {
+        let rows = SignalledRows(vec![SignalReply {
+            id: 1,
+            name: "web".to_string(),
+            outcome: SignalOutcome::NotALamb,
+        }])
+        .rows();
+        assert_eq!(rows[0][2], "not_a_lamb");
+        assert_eq!(
+            rows[0][3],
+            "not one of this sheep's lambs; nothing was sent"
+        );
     }
 
     fn sample_line_replies() -> SentLineRows {

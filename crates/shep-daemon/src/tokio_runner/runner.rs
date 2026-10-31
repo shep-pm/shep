@@ -227,10 +227,7 @@ impl RunningProcess for TokioProc {
             OperatorSignal::Kill => child
                 .start_kill()
                 .map_err(|error| RunnerError::SignalFailed(error.to_string())),
-            other => Err(RunnerError::SignalFailed(format!(
-                "Windows has no way to deliver {other:?} to another process; \
-                 only SIGKILL is available here"
-            ))),
+            other => Err(refused_on_windows(other)),
         }
     }
 
@@ -238,10 +235,44 @@ impl RunningProcess for TokioProc {
     fn signal_process(&mut self, sig: OperatorSignal) -> Result<(), RunnerError> {
         // Positive pid, unlike `signal_group`'s negative one: this reaches the
         // sheep alone, that one reaches its whole group.
-        let pid = signallable_pid(self.pid)?;
-        signal::kill(Pid::from_raw(pid), to_nix_operator_signal(sig))
-            .map_err(|error| RunnerError::SignalFailed(error.to_string()))
+        signal_pid(self.pid, sig)
     }
+}
+
+/// Sends `sig` to the one process `pid`, never its group.
+///
+/// # Errors
+///
+/// [`RunnerError::SignalFailed`] if `pid` is 0 or above `i32::MAX`, or the
+/// `kill(2)` failed (typically `ESRCH`, or `EPERM` for another user's process).
+#[cfg(unix)]
+pub(crate) fn signal_pid(pid: u32, sig: OperatorSignal) -> Result<(), RunnerError> {
+    let pid = signallable_pid(pid)?;
+    signal::kill(Pid::from_raw(pid), to_nix_operator_signal(sig))
+        .map_err(|error| RunnerError::SignalFailed(error.to_string()))
+}
+
+/// Sends `sig` to the one process `pid`: `SIGKILL` is delivered and the other
+/// eight names are refused, as [`TokioProc`]'s own `signal_process` does.
+///
+/// # Errors
+///
+/// [`RunnerError::SignalFailed`] for any signal but `SIGKILL`, or if the OS
+/// refused to end the process.
+#[cfg(windows)]
+pub(crate) fn signal_pid(pid: u32, sig: OperatorSignal) -> Result<(), RunnerError> {
+    match sig {
+        OperatorSignal::Kill => crate::sys_windows::terminate_process(pid, KILL_TREE_EXIT_CODE)
+            .map_err(|error| RunnerError::SignalFailed(error.to_string())),
+        other => Err(refused_on_windows(other)),
+    }
+}
+
+#[cfg(windows)]
+fn refused_on_windows(sig: OperatorSignal) -> RunnerError {
+    RunnerError::SignalFailed(format!(
+        "Windows has no way to deliver {sig:?} to another process; only SIGKILL is available here"
+    ))
 }
 
 /// Narrows a spawn's pid to the `i32` form `kill(2)` takes, refusing one it

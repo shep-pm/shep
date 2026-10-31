@@ -145,6 +145,13 @@ fn shepherd_messages_match_their_fixtures() {
                 id: 8,
             },
         ),
+        (
+            "shepherd-lamb-signalled",
+            ShepherdMessage::LambSignalled {
+                pid: 4312,
+                signal: "SIGHUP".into(),
+            },
+        ),
     ];
     for (name, value) in cases {
         check(name, &value);

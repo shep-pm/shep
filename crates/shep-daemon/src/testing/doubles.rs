@@ -16,6 +16,36 @@ use crate::cron::Clock;
 use crate::limits::LimitEnforcer;
 use crate::limits::sample::{MemorySampler, ProcessIdentity, ProcessRss};
 use crate::probes::{ProbeFailure, Prober};
+use crate::rpc::PidSignals;
+use crate::runner::RunnerError;
+use shep_core::signals::OperatorSignal;
+
+// Records rather than delivers: a test asserts that a refused lamb was sent
+// nothing, which a real `kill` on a scripted pid could not show.
+#[derive(Debug, Default)]
+pub(crate) struct RecordingPidSignals {
+    sent: Mutex<Vec<(u32, OperatorSignal)>>,
+}
+
+impl RecordingPidSignals {
+    /// Every [`PidSignals::send`] call so far, in order.
+    pub(crate) fn sent(&self) -> Vec<(u32, OperatorSignal)> {
+        self.sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl PidSignals for RecordingPidSignals {
+    fn send(&self, pid: u32, sig: OperatorSignal) -> Result<(), RunnerError> {
+        self.sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((pid, sig));
+        Ok(())
+    }
+}
 
 /// One [`LimitEnforcer::arm`] call, exactly as the registry made it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

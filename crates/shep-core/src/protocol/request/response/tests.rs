@@ -26,7 +26,7 @@ fn sheep_env_batch_response_wire_v8() {
 
 /// All three kinds, a reference shown as written and a value redacted.
 #[test]
-fn sheep_env_copied_response_wire_v12() {
+fn sheep_env_copied_response_wire_v13() {
     let response = Response::SheepEnvCopied {
         from: "web".to_string(),
         to: "api".to_string(),
@@ -216,6 +216,11 @@ fn reply_wire_snapshots() {
                     outcome: SignalOutcome::Failed {
                         reason: "no such process".to_string(),
                     },
+                },
+                SignalReply {
+                    id: 4,
+                    name: "web".to_string(),
+                    outcome: SignalOutcome::NotALamb,
                 },
             ])),
         },
@@ -567,7 +572,7 @@ fn reply_wire_snapshots() {
             result: Ok(Response::Reset(vec![sample_info()])),
         },
     ];
-    insta::assert_json_snapshot!("reply_wire_v12", replies);
+    insta::assert_json_snapshot!("reply_wire_v13", replies);
 }
 
 // `SheepFieldSet::warning` is additive in three parts. `None` stays off
