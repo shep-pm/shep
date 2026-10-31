@@ -83,9 +83,6 @@ fn stop_signal(app: &AppConfig) -> StopSignal {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::path::PathBuf;
-
     use tokio::time::{Duration, Instant};
 
     use super::*;
@@ -101,18 +98,8 @@ mod tests {
 
     fn spec() -> SpawnSpec {
         SpawnSpec {
-            name: "web".to_string(),
-            program: "/bin/true".to_string(),
-            args: vec![],
-            cwd: None,
-            env: BTreeMap::new(),
-            out_file: PathBuf::from("/tmp/shep-kill-test-out.log"),
-            err_file: PathBuf::from("/tmp/shep-kill-test-err.log"),
-            log_timestamps: true,
             channel: true,
-            stdin: false,
-            credentials: None,
-            dog_link: false,
+            ..Default::default()
         }
     }
 
