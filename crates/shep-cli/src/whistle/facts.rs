@@ -403,6 +403,12 @@ pub struct BleatTail {
     /// from a path that resolves to a different file here than it does
     /// under the shepherd.
     pub notes: Vec<String>,
+    /// The host this tail came from, spelled as the caller asked for it;
+    /// absent when the call named no host and the logs are this machine's.
+    ///
+    /// Skipped when absent for the reason [`FlockListing::host`] is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 #[cfg(test)]
