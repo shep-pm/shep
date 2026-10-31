@@ -9,7 +9,7 @@ Getting started
   shep bleats server      follow its output
   shep startup            bring it back after a reboot
 
-Run things       start add serve stop restart reload delete stock enable disable
+Run things       start add serve stop restart reset reload delete stock enable disable
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
@@ -586,6 +586,78 @@ does, so a restart that BOTH refused an app and brought one back errored prints 
 The refused names ride the stderr sentence in that case, which is the only place left for them.
 
 Usage: shep restart [OPTIONS] <SELECTORS>...
+
+Arguments:
+  <SELECTORS>...
+          One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
+          
+          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
+          still stops `a` and `c`, and the exit code is the first failure.
+          
+          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
+          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
+          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
+          is the sheep called `web.1`.
+
+Options:
+      --format <FORMAT>
+          Output format
+
+          Possible values:
+          - table: Human-readable columns (the default)
+          - json:  A versioned JSON envelope, one object per invocation
+          
+          [default: table]
+
+  -q, --quiet
+          Suppress non-essential output
+          
+          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
+          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
+          print regardless.
+
+      --style <STYLE>
+          How much this invocation dresses up its output: `full`, `plain`, or `bare`
+          
+          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
+          style` reports which one answered.
+
+          Possible values:
+          - full:  Sheep, boxes and colour
+          - plain: Boxes and colour, no sheep
+          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
+
+      --host <DEST>
+          Reach another host's shepherd over ssh
+          
+          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
+          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
+          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
+          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
+          no hidden `--exec` form over it. `--home` still names this machine's home, never the
+          host's.
+
+      --home <HOME>
+          Talk to a different shepherd
+          
+          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
+          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
+          flock from every directory.
+          
+          [env: SHEP_HOME=]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+@@VERB:reset@@
+Zero the restart counters of one or more sheep.
+
+Changes counters only: nothing is signalled, started or stopped, so a running process keeps running.
+`shep start --reset=<mode>` is about config, not counters.
+
+Usage: shep reset [OPTIONS] <SELECTORS>...
 
 Arguments:
   <SELECTORS>...

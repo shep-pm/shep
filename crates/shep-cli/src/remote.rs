@@ -78,6 +78,7 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Runtime(_)
         | Commands::Dev(_)
         | Commands::Import(_)
+        | Commands::Reset(_)
         | Commands::Startup(_)
         | Commands::Unstartup(_)
         | Commands::Completions(_)
@@ -213,6 +214,7 @@ mod tests {
         &["serve", "dist"],
         &["stop", "web"],
         &["restart", "web"],
+        &["reset", "web"],
         &["reload", "web"],
         &["delete", "web"],
         &["stock", "web", "2"],

@@ -562,7 +562,7 @@ mod tests {
     fn a_selector_taking_verb_refuses_to_run_without_one() {
         use clap::{CommandFactory, Parser};
         for verb in [
-            "stop", "restart", "reload", "delete", "describe", "thatlldo",
+            "stop", "restart", "reset", "reload", "delete", "describe", "thatlldo",
         ] {
             assert!(
                 Cli::try_parse_from(["shep", verb]).is_err(),

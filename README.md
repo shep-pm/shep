@@ -203,7 +203,7 @@ A dog is a plugin process the shepherd supervises alongside your flock.
 <summary>Every verb, grouped as <code>shep --help</code> groups them</summary>
 
 ```text
-Run things       start add serve stop restart reload delete stock enable disable
+Run things       start add serve stop restart reset reload delete stock enable disable
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
