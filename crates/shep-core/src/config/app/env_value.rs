@@ -183,7 +183,7 @@ mod tests {
             .iter()
             .filter_map(|claim| match claim.proof {
                 Proof::Elsewhere(place) => Some((claim.field, claim.refusal, place)),
-                Proof::Refused { .. } => None,
+                Proof::Refused { .. } | Proof::RefusedOnWindows { .. } => None,
             })
             .collect();
         assert_eq!(
@@ -208,11 +208,6 @@ mod tests {
                     "group",
                     "another group, unless the shepherd runs as root",
                     "shep-daemon's privilege::resolve, at spawn",
-                ),
-                (
-                    "sandbox",
-                    "any value on Windows",
-                    "normalize on a Windows build, as `validate_sandbox` with `windows = true` proves",
                 ),
                 (
                     "user",

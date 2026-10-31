@@ -826,8 +826,10 @@ mod tests {
     #[test]
     fn every_per_field_refusal_is_one_normalize_really_makes() {
         for claim in refusal_claims() {
-            let Proof::Refused { value, matches } = claim.proof else {
-                continue;
+            let (value, matches) = match claim.proof {
+                Proof::Refused { value, matches } => (value, matches),
+                Proof::RefusedOnWindows { value, matches } if cfg!(windows) => (value, matches),
+                Proof::RefusedOnWindows { .. } | Proof::Elsewhere(_) => continue,
             };
             let field = claim.field;
             let refusal = claim.refusal;

@@ -3,7 +3,9 @@
 //!
 //! A spawn puts the child in its own process group, so
 //! [`RunningProcess::signal`] and [`RunningProcess::kill_tree`] reach the
-//! whole group without touching the daemon's own. It optionally wires an
+//! whole group without touching the daemon's own. A sandboxed sheep's
+//! `signal` is the exception: it reaches the leader alone
+//! ([`SpawnSpec::leader_only_stop`]). It optionally wires an
 //! fd-3 socketpair as the shepherd channel and hands it to
 //! [`super::pump::spawn_channel_pumps`].
 
@@ -301,10 +303,10 @@ pub(super) fn signallable_pid(pid: u32) -> Result<i32, RunnerError> {
         })
 }
 
-// Group-wide for both stop rungs and for the exec prober's timeout path
-// (`probes/os.rs`, the reason this is `pub(crate)`): a wrapper script that
-// forks without exec'ing leaves its child in the sheep's group, and a
-// leader-only signal would leave that child running orphaned.
+// Group-wide for an unsandboxed sheep's stop rungs and the exec prober's
+// timeout path (`probes/os.rs`, why this is `pub(crate)`): a wrapper script
+// that forks leaves its child in the group, and a leader-only signal would
+// orphan it. A sandboxed sheep's first rung is `signal_leader`.
 /// Sends `sig` to the whole process group led by `pid`, through
 /// [`shep_tree::group::signal_group`].
 ///

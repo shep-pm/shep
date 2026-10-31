@@ -296,11 +296,12 @@ pub trait RunningProcess: Send + 'static {
 
     /// Sends a signal to the sheep's whole process group
     ///
-    /// Group-wide, not leader-only: a `thing & wait` wrapper's forked child
-    /// stays in its own group, and a leader-only signal would leave it
-    /// running and untracked. Implementors must spawn each child as the
-    /// leader of a fresh group; this and [`Self::kill_tree`] address it by
-    /// [`Self::pid`], so a child that escapes with `setsid` is beyond both.
+    /// Group-wide: a `thing & wait` wrapper's forked child stays in its own
+    /// group, and a leader-only signal would leave it running and untracked.
+    /// Implementors must spawn each child as the leader of a fresh group; this
+    /// and [`Self::kill_tree`] address it by [`Self::pid`], so a `setsid`
+    /// escapee is beyond both. A sandboxed sheep is the exception: see
+    /// [`SpawnSpec::leader_only_stop`].
     ///
     /// # Errors
     ///
