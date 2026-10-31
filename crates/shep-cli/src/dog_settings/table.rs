@@ -131,11 +131,9 @@ impl DefaultRefusals {
 /// Why a default is not one the schema takes, over the sheep it reaches.
 ///
 /// Each of `sheep`'s tables is checked as the dog reads it, layered over
-/// `default`, at the paths in `touched`; one refusal per sheep, the first in
-/// row order. The default's own table is checked at the same paths as well,
-/// since a sheep that holds its own value there is no cover once that value
-/// is reset. Nothing touched, as when a default is cleared, and no sheep to
-/// reach, check nothing.
+/// `default`, at the paths in `touched`: one refusal per sheep, the first in
+/// row order. The default's own table is checked there too, since resetting a
+/// sheep's own value exposes it. Nothing touched, or no sheep, checks nothing.
 #[must_use]
 pub fn default_refusals(
     schema: &Value,
