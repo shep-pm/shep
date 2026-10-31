@@ -5,7 +5,8 @@
 //! spawned, not its resident set alone. [`sample::MemorySampler`] reads the
 //! process table, [`sample::tree_rss`] sums one tree, and [`LimitEnforcer`]
 //! watches those sums. The ppid-based sum only approximates what a stop
-//! ends: the stop signals the process group, then sweeps the tree. A breach
+//! ends: the stop signals the process group (the leader alone, for a
+//! sandboxed sheep), then sweeps the tree. A breach
 //! is noticed at the next `MEMORY_POLL_INTERVAL`, and its restart does not
 //! count against `max_restarts`.
 

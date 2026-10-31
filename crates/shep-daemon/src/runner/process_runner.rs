@@ -294,13 +294,19 @@ pub trait RunningProcess: Send + 'static {
     /// [`tokio::process::Child::wait`] guarantees.
     fn wait(&mut self) -> impl core::future::Future<Output = ExitOutcome> + Send;
 
-    /// Sends a signal to the sheep's whole process group
+    /// Sends a signal to the sheep's whole process group, or to its leader
+    /// alone for a sandboxed sheep
     ///
     /// Group-wide, not leader-only: a `thing & wait` wrapper's forked child
     /// stays in its own group, and a leader-only signal would leave it
     /// running and untracked. Implementors must spawn each child as the
     /// leader of a fresh group; this and [`Self::kill_tree`] address it by
     /// [`Self::pid`], so a child that escapes with `setsid` is beyond both.
+    ///
+    /// The one exception is a sheep spawned with
+    /// [`SpawnSpec::leader_only_stop`], which is every sandboxed sheep: its
+    /// signal reaches the leader alone, because `crabpot` passes it on to
+    /// its command. [`Self::kill_tree`] stays group-wide for it.
     ///
     /// # Errors
     ///

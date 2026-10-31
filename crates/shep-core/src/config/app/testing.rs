@@ -25,6 +25,16 @@ pub(super) enum Proof {
         /// The variant the refusal must arrive as.
         matches: fn(&NormalizeError) -> bool,
     },
+    /// `normalize` refuses this config on a Windows build only, through
+    /// `cfg!(windows)`, so it is exercised only when the tests run there.
+    /// `validate_sandbox` takes the host as an argument and proves the same
+    /// refusal on any host.
+    RefusedOnWindows {
+        /// A sheep whose only fault is the one the claim names.
+        value: Box<AppConfig>,
+        /// The variant the refusal must arrive as.
+        matches: fn(&NormalizeError) -> bool,
+    },
     /// Enforced somewhere `normalize` cannot reach, named here so the
     /// gap stays a decision rather than an oversight.
     Elsewhere(&'static str),
@@ -51,6 +61,23 @@ pub(super) fn refused(
         field,
         refusal,
         proof: Proof::Refused {
+            value: Box::new(value),
+            matches,
+        },
+    }
+}
+
+/// A claim `normalize` proves on a Windows build alone.
+pub(super) fn refused_on_windows(
+    field: &'static str,
+    refusal: &'static str,
+    value: AppConfig,
+    matches: fn(&NormalizeError) -> bool,
+) -> RefusalClaim {
+    RefusalClaim {
+        field,
+        refusal,
+        proof: Proof::RefusedOnWindows {
             value: Box::new(value),
             matches,
         },
@@ -384,10 +411,11 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             sheep(|a| a.sandbox = Some(String::new())),
             |e| matches!(e, NormalizeError::EmptySandbox { .. }),
         ),
-        elsewhere(
+        refused_on_windows(
             "sandbox",
             "any value on Windows",
-            "normalize on a Windows build, as `validate_sandbox` with `windows = true` proves",
+            sheep(|a| a.sandbox = Some("sandbox.json".to_owned())),
+            |e| matches!(e, NormalizeError::SandboxOnWindows { .. }),
         ),
         elsewhere(
             "user",
