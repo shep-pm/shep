@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Drive lamb sweeps through shep-tree
+- Sweep lambs through shep-tree
 
 ### Fixed
 

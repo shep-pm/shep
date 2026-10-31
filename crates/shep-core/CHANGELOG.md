@@ -21,17 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a lamb to Request::Signal and move the protocol to 13 **(BREAKING)**
 - Signal one lamb of a sheep with `shep signal --lamb`
 - Add a sandbox key to AppConfig and move the protocol to 14 **(BREAKING)**
+- Layer a dog's operator-set default under each sheep's table
+- Signal a sheep's lamb with shep signal --lamb
+- Run a sheep with a sandbox key inside crabpot and stop its leader alone
 
 ### Fixed
 
 - Retain spawn refusals in process reports
 - Refuse a sandbox to a shepherd that would drop it
-
+- Retry errored dogs and describe spawn failures
 
 ### Additions
 
 - Add `AppConfig::sandbox`, a crabpot settings file the sheep runs inside, and move the protocol to 14. An older shepherd would ignore the key and run the sheep unsandboxed.
 - Add optional `ProcessInfo::spawn_failure`, absent until a spawn fails, without a protocol or schema bump. ([#1294])
+
 
 ## [0.19.0] - 2026-10-28
 

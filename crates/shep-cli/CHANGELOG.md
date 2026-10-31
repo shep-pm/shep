@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Register a logon task for shep startup on Windows
 - Add shep reset to zero a sheep's restart counters
 - Let `shep --host <dest> reset` zero that host's sheep
+- Show an adopted dog's env on the settings screen
+- Layer a dog's operator-set default under each sheep's table
+- Signal a sheep's lamb with shep signal --lamb
+- Add `shep reset` to zero a sheep's restart counters
+- Run a sheep with a sandbox key inside crabpot and stop its leader alone
 
 ### Changed
 
@@ -42,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Represent report stages as named modes
 - Name import and schema flattening flags
 - Build close dialogs from named readiness
+- Name boolean inputs in function types
 
 ### Fixed
 
@@ -71,11 +77,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scaffold a fresh home on Windows startup and say when no shepherd came up
 - Report a default's refusal at the first path no sheep names
 - Count the sandbox field in the lookout pane tests and frames
-
+- Explain dog env placement and settings files
+- Draw env rows in adopted dog panes
+- Retry errored dogs and describe spawn failures
+- Route, refuse and document a dog's defaults address the same way everywhere
 
 ### Fixes
 
 - Fail `enable` when a dog remains errored and show its spawn refusal in `describe`. ([#1294])
+
 
 ## [0.19.0] - 2026-10-28
 

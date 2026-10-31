@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Signal one lamb of a sheep with `shep signal --lamb`
+- Signal a sheep's lamb with shep signal --lamb
+- Run a sheep with a sandbox key inside crabpot and stop its leader alone
 
 ### Fixed
 

@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signal a lamb of one sheep when a Signal names one
 - Zero the restart count and budget of every sheep a Reset request selects
 - Run a sandboxed sheep under crabpot and stop its leader alone
+- Layer a dog's operator-set default under each sheep's table
+- Signal a sheep's lamb with shep signal --lamb
+- Run a sheep with a sandbox key inside crabpot and stop its leader alone
 
 ### Changed
 
@@ -30,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build the parked MODE=blue file through one helper in the config tests
 - Attach the sheep's control channel and park a failed readiness through helpers in the reload tests
 - Default unspecified test spawn fields
+- Sweep lambs through shep-tree
 
 ### Fixed
 
@@ -45,11 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skip parked apps on a lamb signal sweep and refuse a dog
 - Count the sandbox field in the lookout pane tests and frames
 - Refuse a sandbox to a shepherd that would drop it
-
+- Retry errored dogs and describe spawn failures
+- Name the pump deadline and run the full-pipe drain in the slow tier
+- Keep a log path's trailing separator and document the parent-link rule
+- Route, refuse and document a dog's defaults address the same way everywhere
 
 ### Fixes
 
 - Retry errored dogs from the current entry and carry spawn refusals across daemon reloads. ([#1294])
+
 
 ## [0.19.0] - 2026-10-28
 
