@@ -45,6 +45,9 @@ pub enum ProcessEventKind {
     Delete,
     /// Restart budget exhausted
     Errored,
+    /// A sandboxed sheep exited 125: its sandbox refused to start, so the
+    /// sheep is left `errored` and not restarted
+    SandboxRefused,
     /// An event kind this build has not been taught.
     ///
     /// Only ever produced by decoding: an unrecognized string falls through
@@ -165,6 +168,7 @@ impl BusEvent {
                 ProcessEventKind::Stop => "process.stop",
                 ProcessEventKind::Delete => "process.delete",
                 ProcessEventKind::Errored => "process.errored",
+                ProcessEventKind::SandboxRefused => "process.sandbox_refused",
                 // Decode-only, never emitted by this build. Given its own
                 // topic rather than acted on. A subscriber sees it pass
                 // through like any other kind. The daemon does not treat it
@@ -230,6 +234,7 @@ mod tests {
             ProcessEventKind::Stop,
             ProcessEventKind::Delete,
             ProcessEventKind::Errored,
+            ProcessEventKind::SandboxRefused,
         ] {
             let json = serde_json::to_string(&kind).unwrap();
             assert_eq!(
@@ -237,6 +242,43 @@ mod tests {
                 kind
             );
         }
+    }
+
+    #[test]
+    fn a_sandbox_refusal_reports_itself_under_its_own_topic() {
+        let event = BusEvent::Process {
+            event: ProcessEventKind::SandboxRefused,
+            info: ProcessInfo::builder(3, "web", ProcStatus::Errored).build(),
+            manually: false,
+            at_ms: 0,
+        };
+        assert_eq!(event.topic(), "process.sandbox_refused");
+        assert_eq!(
+            serde_json::to_string(&ProcessEventKind::SandboxRefused).unwrap(),
+            "\"sandbox_refused\""
+        );
+    }
+
+    /// A client built before `SandboxRefused` existed: the kinds it knew,
+    /// and the same fallback this crate gives every other unknown string.
+    #[test]
+    fn a_client_without_sandbox_refused_decodes_it_as_unrecognized() {
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum KindBeforeSandboxRefused {
+            Errored,
+            #[serde(other)]
+            Unrecognized,
+        }
+
+        assert_eq!(
+            serde_json::from_str::<KindBeforeSandboxRefused>(r#""sandbox_refused""#).unwrap(),
+            KindBeforeSandboxRefused::Unrecognized
+        );
+        assert_eq!(
+            serde_json::from_str::<KindBeforeSandboxRefused>(r#""errored""#).unwrap(),
+            KindBeforeSandboxRefused::Errored
+        );
     }
 
     #[test]

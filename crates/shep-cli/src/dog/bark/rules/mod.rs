@@ -151,6 +151,7 @@ fn wire_spelling(kind: ProcessEventKind) -> &'static str {
         ProcessEventKind::Stop => "stop",
         ProcessEventKind::Delete => "delete",
         ProcessEventKind::Errored => "errored",
+        ProcessEventKind::SandboxRefused => "sandbox_refused",
         _ => "unrecognized",
     }
 }
@@ -461,6 +462,9 @@ impl Rules {
                 }
                 Trigger::GaveUp {} if kind == ProcessEventKind::Errored => {
                     Some(gave_up_message(&info.name))
+                }
+                Trigger::GaveUp {} if kind == ProcessEventKind::SandboxRefused => {
+                    Some(format!("{} sandbox refused", info.name))
                 }
                 _ => None,
             };

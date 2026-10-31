@@ -416,6 +416,39 @@ fn memory_above_does_not_fire_when_usage_is_unknown() {
 }
 
 #[test]
+fn gave_up_fires_on_a_sandbox_refusal_and_says_so() {
+    let mut rules = gave_up_rules();
+    let fired = rules.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        1_000,
+    );
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.rule, "gave_up");
+    assert_eq!(fired[0].bark.message, "web sandbox refused");
+}
+
+#[test]
+fn an_event_rule_names_a_sandbox_refusal_by_its_wire_spelling() {
+    let sinks = one_sink("ops");
+    let mut rules = Rules::new(
+        vec![Rule {
+            when: Trigger::Event {
+                kinds: vec!["sandbox_refused".to_owned()],
+            },
+            sinks: vec!["ops".to_owned()],
+            debounce: default_debounce(),
+        }],
+        &sinks,
+    )
+    .unwrap();
+    let fired = rules.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        1_000,
+    );
+    assert_eq!(fired.len(), 1);
+}
+
+#[test]
 fn gave_up_does_not_fire_on_event_for_a_non_errored_kind() {
     let mut rules = gave_up_rules();
     let online = rules.on_event(&process_event("web", ProcessEventKind::Online), 1_000);
@@ -633,6 +666,7 @@ fn every_wire_spelling_matches_what_serde_emits() {
         ProcessEventKind::Stop,
         ProcessEventKind::Delete,
         ProcessEventKind::Errored,
+        ProcessEventKind::SandboxRefused,
         ProcessEventKind::Unrecognized,
     ];
     for kind in kinds {
