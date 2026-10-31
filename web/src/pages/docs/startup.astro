@@ -66,7 +66,8 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
     </p>
 
     <ShortVersion>
-      <CodeBlock>{`1. shep save                     # optional: see the roll on disk
+      <CodeBlock>{`Unix:
+1. shep save                     # optional: see the roll on disk
 2. sudo shep startup             # writes and enables the unit
 3. systemctl status shep-<you>   # active (running), and green
 4. reboot
@@ -74,8 +75,8 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
 6. shep flock                    # the same apps, new pids, uptime near zero`}</CodeBlock>
     </ShortVersion>
     <Callout variant="note">
-      Step 3 going <code>active (running)</code> means something specific:
-      the generated unit is <code>Type=notify</code>, so systemd doesn't
+      On systemd, step 3 going <code>active (running)</code> means something
+      specific: the generated unit is <code>Type=notify</code>, so systemd doesn't
       consider it started until the daemon itself says so: it only
       sends that signal once its muster restore has finished. A green
       status at step 3 is already evidence the restore path works, before
@@ -90,10 +91,10 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       Nothing runs at boot: for that, wrap <code>shep runtime</code> in NSSM
       or WinSW.
     </p>
-    <CodeBlock>{`> shep startup
-> schtasks /Query /TN shep-<you>
-> shep save      # before signing out
-> shep unstartup`}</CodeBlock>
+    <CodeBlock>{`shep startup
+schtasks /Query /TN shep-<you>
+shep save      # before signing out
+shep unstartup`}</CodeBlock>
     <ul>
       <li>A crashed shepherd stays down until the next shep call or sign-in.</li>
       <li>
@@ -113,10 +114,10 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
     <h2 id="rolling-back">Rolling back</h2>
     <p>
       <code>shep unstartup</code> disables and removes whatever unit{" "}
-      <code>startup</code> installed. Run unprivileged, it prints the same
-      kind of paste-able <code>sudo</code> command <code>startup</code> does.
-      A machine that never ran <code>startup</code> reports the unit{" "}
-      <code>absent</code> and exits successfully. Nothing left to guess at.
+      <code>startup</code> installed. On Unix, run unprivileged, it prints
+      a paste-able <code>sudo</code> command. On Windows it deletes the logon
+      task with no elevation. A machine that never ran <code>startup</code> reports the unit{" "}
+      <code>absent</code> and exits successfully.
     </p>
 
     <h2 id="already-running">Already running</h2>
@@ -220,7 +221,7 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
     <details>
       <summary><h2 id="never-escalates">Never escalates its own privilege</h2></summary>
       <p>
-        Installing a unit needs root. Without root it prints the exact
+        On Unix, installing a unit needs root. Without root it prints the exact
         command to run and exits non-zero, so a script notices instead of
         silently doing nothing:
       </p>
