@@ -82,6 +82,7 @@ mod actor_lifecycle;
 mod actor_pane;
 mod actor_reload;
 mod actor_reload_done;
+mod actor_reset;
 mod actor_scale;
 mod actor_spawn;
 mod builder;

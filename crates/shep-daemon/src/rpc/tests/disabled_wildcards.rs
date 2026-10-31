@@ -236,6 +236,46 @@ async fn disable_all_takes_every_enabled_sheep_and_no_dog() {
     assert_eq!(dog_row.disabled, None);
 }
 
+/// Fails if `reset`'s sweep skips a parked app, as the lifecycle verbs do,
+/// or reaches a dog it was not asked for by name.
+#[tokio::test(start_paused = true)]
+async fn reset_all_reaches_a_parked_app_and_passes_a_dog_by() {
+    let h = harness(vec![ProcScript::never_exits(); 4]);
+    flock_with_api_disabled(&h).await;
+    let dog = enable_dog(&h.ctx, 4, "metrics").await;
+
+    let Ok(Response::Reset(swept)) = send(
+        &h,
+        5,
+        Request::Reset {
+            selector: SelectorSpec::All,
+        },
+    )
+    .await
+    .result
+    else {
+        panic!("expected Reset")
+    };
+    assert_eq!(names(&swept), ["api", "web", "worker"]);
+
+    let Ok(Response::Reset(named)) = send(
+        &h,
+        6,
+        Request::Reset {
+            selector: by_name("metrics"),
+        },
+    )
+    .await
+    .result
+    else {
+        panic!("expected Reset")
+    };
+    assert_eq!(
+        named.iter().map(|info| info.id).collect::<Vec<_>>(),
+        [dog.id]
+    );
+}
+
 /// Fails if `enable`'s sweep uses the ordinary condition: it would find no
 /// disabled app at all.
 #[tokio::test(start_paused = true)]

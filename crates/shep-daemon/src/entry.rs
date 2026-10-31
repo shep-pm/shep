@@ -90,7 +90,7 @@ pub struct ProcessEntry {
     ///
     /// Set by `Actor::handle_exited` for every exit, including an operator's
     /// own `stop`/`delete`. `None` for an entry that has never exited under
-    /// this daemon.
+    /// this daemon, or that a `reset` cleared: a stopped dog keeps its record.
     ///
     /// Survives a respawn: `Actor::respawn` never touches this field.
     pub last_exit: Option<ExitInfo>,

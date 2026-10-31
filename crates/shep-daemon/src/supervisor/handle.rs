@@ -763,6 +763,26 @@ impl SupervisorHandle {
             .await?
     }
 
+    /// Zeroes the restart count and budget of every sheep matching `selector`,
+    /// answering with one row per match after the reset.
+    ///
+    /// A wildcard reaches a parked app and passes a dog by; an exact name
+    /// reaches either. Beyond the count, the budget and `last_exit` (kept on a
+    /// stopped dog), nothing about a sheep moves: it is not stopped,
+    /// respawned or told.
+    ///
+    /// # Errors
+    ///
+    /// - [`SupervisorError::NotFound`]: nothing matched.
+    /// - [`SupervisorError::EngineStopped`]: the actor is gone.
+    pub(crate) async fn reset(
+        &self,
+        selector: ProcessSelector,
+    ) -> Result<Vec<ProcessInfo>, SupervisorError> {
+        self.call(|reply| Command::Reset { selector, reply })
+            .await?
+    }
+
     /// Sends `action` over the shepherd channel of every sheep matching
     /// `selector`, answering with one row per match, by name then by id.
     ///

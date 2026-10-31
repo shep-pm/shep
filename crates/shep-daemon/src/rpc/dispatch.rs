@@ -235,6 +235,9 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
         Request::Flush { selector } => {
             selector_call(id, selector, |s| ctx.supervisor.flush(s), Response::Flushed).await
         }
+        Request::Reset { selector } => {
+            selector_call(id, selector, |s| ctx.supervisor.reset(s), Response::Reset).await
+        }
         Request::TailLog {
             id: sheep,
             stream,

@@ -350,7 +350,7 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// [`Self::matching_ids`] with the sweep's side of the disabled mark
     /// chosen: `enable` is the one verb whose wildcard wants the parked apps
-    /// and nothing else, and the log verbs want both kinds.
+    /// and nothing else, and the log verbs and `reset` want both kinds.
     pub(super) fn reached_ids(&self, selector: &ProcessSelector, sweep: Sweep) -> Vec<u32> {
         let exact = selector.is_exact();
         let mut ids: Vec<u32> = self
