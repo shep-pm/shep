@@ -323,7 +323,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 2260 for #952: `start` takes `--host` for a sheep name only,
   // and the page has to say what a path target does instead.
-  lifecycle: 2300,
+  //
+  // Raised from 2300 for #1016: `reset` is a lifecycle verb and the page
+  // has to say it leaves the process and the status alone.
+  lifecycle: 2350,
   // Cut from 1900 for the stamps-off tail sentence: the page has to say a
   // sheep with `log_timestamps = false` carries no stamp for `bleats` to
   // strip, and it paid for that line by tightening the sentences around it

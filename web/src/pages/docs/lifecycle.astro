@@ -390,15 +390,11 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
     <h2 id="reset-zero-the-counters">reset: zero the counters</h2>
     <VerbSignature verb="reset" usage="shep reset <selector>...">
       <p>
-        Zeroes the restart count and hands back the restart budget, so a
-        crash loop that ended days ago stops showing in{" "}
-        <code>RESTARTS</code>. Nothing is signalled, started or stopped: a
-        running process keeps its pid, and an <code>errored</code> sheep
-        stays errored until <code>shep restart</code>. The selector is
-        required, <code>all</code> included, and the listing is the one{" "}
-        <code>stop</code> prints. It runs on this machine only.{" "}
-        <code>shep start --reset=&lt;mode&gt;</code> is about config, not
-        counters.
+        Zeroes the restart count and hands back the restart budget. Nothing
+        is signalled, started or stopped: the pid stays, and an{" "}
+        <code>errored</code> sheep stays errored until{" "}
+        <code>shep restart</code>. The selector is required, <code>all</code>{" "}
+        included. Local only: <code>--host</code> is refused.
       </p>
     </VerbSignature>
 
