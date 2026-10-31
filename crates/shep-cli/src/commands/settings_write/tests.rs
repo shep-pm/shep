@@ -836,6 +836,11 @@ fn default_plan(keep: i64) -> Plan {
             DogTable::from(json!({ "merge": "ask" }).as_object().unwrap().clone()),
         ),
     ]);
+    default_plan_over(keep, sheep)
+}
+
+/// [`default_plan`] over the given sheep.
+fn default_plan_over(keep: i64, sheep: BTreeMap<String, DogTable>) -> Plan {
     let plan = plan_dog_defaults(
         "kelpie",
         &["keep".to_string()],
@@ -892,6 +897,59 @@ async fn a_refused_default_names_every_failing_sheep_and_writes_nothing() {
     assert!(said.contains("`a` would hold"), "{said}");
     assert!(said.contains("`c` would hold"), "{said}");
     assert!(!said.contains("`b`"), "b holds its own `keep`: {said}");
+    assert!(
+        envelopes.try_recv().is_err(),
+        "a refused default sends nothing"
+    );
+}
+
+/// A default is judged by its own value even where every sheep holds its own
+/// `keep`: a reset of one would expose it.
+#[tokio::test]
+async fn a_refused_default_every_sheep_shadows_is_reported_once_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (client, mut envelopes) =
+        fake_client_answering_refusals(&control_address(dir.path()), |_request| Ok(Response::Pong))
+            .await;
+    let own = |keep: i64| DogTable::from(json!({ "keep": keep }).as_object().unwrap().clone());
+    let plan = default_plan_over(
+        9,
+        BTreeMap::from([("a".to_string(), own(2)), ("b".to_string(), own(3))]),
+    );
+
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = {
+        let mut streams = Streams {
+            out: &mut out,
+            err: &mut err,
+            style: crate::style::Presentation::BARE,
+            fmt: Format::Table,
+        };
+        run(
+            &client,
+            &mut streams,
+            &paths,
+            "kelpie",
+            "defaults.keep",
+            &plan,
+            Flags {
+                verb: Verb::Set,
+                yes: true,
+                dry_run: false,
+            },
+        )
+        .await
+    };
+
+    let said = String::from_utf8_lossy(&err).to_string();
+    assert_eq!(code, ExitCode::InvalidConfig, "{said}");
+    assert!(said.contains("the default itself holds"), "{said}");
+    assert!(
+        !said.contains("would hold"),
+        "no sheep reads it today: {said}"
+    );
     assert!(
         envelopes.try_recv().is_err(),
         "a refused default sends nothing"

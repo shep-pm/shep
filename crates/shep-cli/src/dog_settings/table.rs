@@ -105,31 +105,58 @@ pub fn touched_refusal(
     flattened_refusal(&flattened(schema), table, &[], "", Scope::Touched(touched))
 }
 
-/// Why each sheep a default reaches would hold a table the schema refuses,
-/// by sheep name.
+/// Why a default is turned down: the sheep that would read a bad value, and
+/// the default's own value where no sheep names it.
+///
+/// `Debug` is derived (IR-41), safe for [`TableRefusal`]'s reason.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DefaultRefusals {
+    /// The default's own value at a touched path, set only when no entry of
+    /// `sheep` already names that path. A sheep that holds its own value
+    /// there hides the default's today, and a reset of it exposes the default
+    /// again.
+    pub default: Option<TableRefusal>,
+    /// One refusal per sheep that would read a bad value, by sheep name.
+    pub sheep: Vec<(String, TableRefusal)>,
+}
+
+impl DefaultRefusals {
+    /// Whether nothing is refused.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.default.is_none() && self.sheep.is_empty()
+    }
+}
+
+/// Why a default is not one the schema takes, over the sheep it reaches.
 ///
 /// Each of `sheep`'s tables is checked as the dog reads it, layered over
-/// `default`, at the paths in `touched`. A path a sheep holds itself reads its
-/// own value. Nothing touched, as when a default is cleared, checks nothing.
-/// One refusal per sheep, the first in row order.
+/// `default`, at the paths in `touched`; one refusal per sheep, the first in
+/// row order. The default's own table is checked at the same paths as well,
+/// since a sheep that holds its own value there is no cover once that value
+/// is reset. Nothing touched, as when a default is cleared, and no sheep to
+/// reach, check nothing.
 #[must_use]
 pub fn default_refusals(
     schema: &Value,
     default: &DogTable,
     sheep: &BTreeMap<String, DogTable>,
     touched: &BTreeSet<Vec<String>>,
-) -> Vec<(String, TableRefusal)> {
-    if touched.is_empty() {
-        return Vec::new();
+) -> DefaultRefusals {
+    if touched.is_empty() || sheep.is_empty() {
+        return DefaultRefusals::default();
     }
-    sheep
+    let sheep: Vec<(String, TableRefusal)> = sheep
         .iter()
         .filter_map(|(name, own)| {
             let layered = layered(&[default, own]);
             let refused = touched_refusal(schema, layered.as_map(), touched);
             Some((name.clone(), refused?))
         })
-        .collect()
+        .collect();
+    let default = touched_refusal(schema, default.as_map(), touched)
+        .filter(|refused| sheep.iter().all(|(_, named)| named.path != refused.path));
+    DefaultRefusals { default, sheep }
 }
 
 /// Every leaf of `flat`, read out of `table`, in row order.
