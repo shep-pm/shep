@@ -66,10 +66,8 @@ async fn arm(client: &ReconnectingClient) -> Result<EventStream, ExitCode> {
             Ok(stream) => return Ok(stream),
             // The generation this was issued on had already gone. The
             // supervisor reports a connection's death a moment after the
-            // socket does, so ask again rather than spin on this error. Until
-            // then the link still reads `Connected` and every retry fails at
-            // once, which on a current-thread runtime starves the supervisor
-            // for good. One rung of its own ladder outlasts that.
+            // socket does. A bare retry would spin and starve it on a
+            // current-thread runtime, so wait one rung of its ladder.
             Err(RequestError::Closed) => tokio::time::sleep(RECONNECT_MIN_DELAY).await,
             // The request reached a shepherd and did not succeed. Waiting
             // cannot change that, and a dog serving without its feed looks
