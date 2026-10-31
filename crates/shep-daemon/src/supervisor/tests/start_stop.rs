@@ -279,7 +279,10 @@ async fn delete_and_selectors_route() {
 ///
 /// Bounded: its callers set `exp_backoff_restart_delay = None`, and a delay
 /// reintroduced for that shape would spin here forever.
-async fn wait_for_restarts_online(handle: &SupervisorHandle, restarts: u32) -> ProcessInfo {
+pub(super) async fn wait_for_restarts_online(
+    handle: &SupervisorHandle,
+    restarts: u32,
+) -> ProcessInfo {
     let mut info = handle.list().await.remove(0);
     for _ in 0..200 {
         if info.restarts == restarts && info.status == ProcStatus::Online {
@@ -298,7 +301,7 @@ async fn wait_for_restarts_online(handle: &SupervisorHandle, restarts: u32) -> P
 /// makes the bound safe: a budget that was not reset reports itself instead
 /// of spinning. Same bound as [`wait_for_restarts_online`], for the same
 /// reason.
-async fn wait_for_settled(handle: &SupervisorHandle, restarts: u32) -> ProcessInfo {
+pub(super) async fn wait_for_settled(handle: &SupervisorHandle, restarts: u32) -> ProcessInfo {
     let mut info = handle.list().await.remove(0);
     for _ in 0..200 {
         if info.status == ProcStatus::Errored

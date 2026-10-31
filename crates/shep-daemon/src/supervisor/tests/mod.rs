@@ -57,6 +57,7 @@ mod reload_drain;
 mod reload_drainee;
 mod reload_swap;
 mod reopen;
+mod reset;
 mod restart_races;
 mod scale;
 mod secrets;

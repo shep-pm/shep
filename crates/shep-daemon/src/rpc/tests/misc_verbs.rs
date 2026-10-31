@@ -140,6 +140,40 @@ async fn reopen_routes_to_the_supervisor_and_leaves_the_sheep_running() {
     );
 }
 
+/// Fails if `Reset` is left to `run`'s catch-all arm, which answers
+/// `Internal`, or if it is routed to another verb's supervisor call: `Stop`
+/// would stop the sheep.
+#[tokio::test(start_paused = true)]
+async fn reset_routes_to_the_supervisor_and_answers_reset() {
+    let h = harness(vec![ProcScript::never_exits()]);
+    start_web(&h).await;
+
+    let reply = reply_of(
+        dispatch(
+            envelope(
+                2,
+                Request::Reset {
+                    selector: SelectorSpec::Name("web".to_string()),
+                },
+            ),
+            &h.ctx,
+        )
+        .await,
+    );
+    let Response::Reset(infos) = reply.result.unwrap() else {
+        panic!("expected reset")
+    };
+    assert_eq!(infos.len(), 1);
+    assert_eq!(infos[0].restarts, 0);
+
+    let flock = list_flock(&h.ctx, 3).await;
+    assert_eq!(
+        flock[0].status,
+        ProcStatus::Online,
+        "a reset must not disturb the sheep it resets"
+    );
+}
+
 /// Fails if the arm is routed to another verb's supervisor call while
 /// keeping `Response::Reloading`, which no assertion on the reply alone can
 /// see. What separates a reload is the flock it leaves behind: two entries

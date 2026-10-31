@@ -378,6 +378,14 @@ pub(crate) enum Command {
         /// (see [`Actor::handle_flush`]).
         reply: oneshot::Sender<Result<Vec<ProcessInfo>, SupervisorError>>,
     },
+    /// Gives every sheep matching `selector` its restart count and budget
+    /// back (see [`Actor::handle_reset`]).
+    Reset {
+        /// Which sheep.
+        selector: ProcessSelector,
+        /// Answers on the actor loop: the reset awaits nothing.
+        reply: oneshot::Sender<Result<Vec<ProcessInfo>, SupervisorError>>,
+    },
     /// Describes the whole flock for a daemon handover: what the fitness gate
     /// needs, and the blob the successor reads.
     #[cfg(unix)]
