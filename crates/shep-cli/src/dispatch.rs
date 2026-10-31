@@ -22,6 +22,8 @@ use commands::runtime;
 use commands::schema;
 use commands::secret;
 // aliased: `commands::serve` would collide with the crate-root `serve` module
+#[cfg(windows)]
+use commands::logon_task;
 use commands::serve::serve as serve_command;
 use commands::shep_toml::{ShepToml, ShepTomlError};
 use commands::signal;
@@ -130,8 +132,7 @@ pub(crate) async fn run(
         // user's `<passwd home>/.shep`; `ensure_home` would read this
         // process's `$HOME`, which `sudo` sets to root's.
         Commands::Startup(ref args) => {
-            #[cfg(windows)]
-            let _ = args;
+            #[cfg(unix)]
             let named_home = if cli.global.home.is_some() {
                 match ensure_home(&cli.global) {
                     Ok((paths, _)) => Some(paths.home),
@@ -140,8 +141,13 @@ pub(crate) async fn run(
             } else {
                 None
             };
+            // The task carries a home either way, so it is resolved and
+            // created like any other verb's.
             #[cfg(windows)]
-            let _ = named_home;
+            let home = match ensure_home(&cli.global) {
+                Ok((paths, _)) => paths.home,
+                Err(refusal) => return report_home_refusal(fmt, &refusal),
+            };
             let mut out = std::io::stdout().lock();
             let mut err = std::io::stderr().lock();
             let mut streams = Streams {
@@ -153,11 +159,9 @@ pub(crate) async fn run(
             #[cfg(unix)]
             return startup::startup(&mut streams, named_home.as_deref(), args);
             #[cfg(windows)]
-            return streams.fail(ExitCode::Failure, WINDOWS_NO_SERVICE);
+            return logon_task::install::startup(&mut streams, &home, args);
         }
         Commands::Unstartup(ref args) => {
-            #[cfg(windows)]
-            let _ = args;
             let mut out = std::io::stdout().lock();
             let mut err = std::io::stderr().lock();
             let mut streams = Streams {
@@ -169,7 +173,7 @@ pub(crate) async fn run(
             #[cfg(unix)]
             return startup::unstartup(&mut streams, args);
             #[cfg(windows)]
-            return streams.fail(ExitCode::Failure, WINDOWS_NO_SERVICE);
+            return logon_task::install::unstartup(&mut streams, args);
         }
         // Resolves the home but never creates it: a probe against a machine
         // with no shep home must leave nothing behind and print no welcome.
@@ -715,19 +719,6 @@ async fn run_on_host(
         other => unreachable!("`host_scope` refused {other:?} before it got here"),
     }
 }
-
-/// What `shep startup`/`shep unstartup` say on Windows.
-///
-/// The rest of shep works here, so the message names the boundary: boot-time
-/// supervision on Windows means a Service Control Manager service, a
-/// different program shape from a unit template.
-#[cfg(windows)]
-const WINDOWS_NO_SERVICE: &str = "\
-shep startup installs a boot-time service, and on Windows that means \
-registering with the Service Control Manager -- not yet built (Tier B in \
-docs/specs/windows-estimate.md).\n\
-the shepherd itself works here: run `shep start` in your own session, or wrap \
-`shep runtime` in a service manager such as NSSM or WinSW.";
 
 #[cfg(test)]
 mod tests {

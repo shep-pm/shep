@@ -23,6 +23,7 @@ pub mod import;
 pub(crate) mod init;
 pub mod kv;
 pub mod lifecycle;
+pub(crate) mod logon_task;
 pub mod logs;
 pub mod muster;
 pub mod query;
@@ -41,10 +42,11 @@ pub(crate) mod settings_read;
 pub(crate) mod settings_write;
 pub(crate) mod shep_toml;
 pub mod signal;
-// `shep startup` installs a boot-time unit: systemd, launchd, openrc, or a
-// BSD `rc.d` script. Windows' equivalent is a Service Control Manager
-// service, a different program shape; the verbs refuse there.
+// `shep startup` installs a boot-time unit on unix: systemd, launchd, openrc,
+// or a BSD `rc.d` script. On Windows it registers a logon task instead, in
+// `logon_task`, whose rendering compiles everywhere so its tests run there.
 #[cfg(unix)]
 pub(crate) mod startup;
+pub(crate) mod startup_shared;
 pub mod trigger;
 pub mod whisper;
