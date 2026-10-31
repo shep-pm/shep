@@ -65,6 +65,16 @@ pub(super) fn ssh_stand_in_replying(
     handshake: shep_core::protocol::HelloReply,
     responses: Vec<Response>,
 ) -> std::path::PathBuf {
+    ssh_stand_in_results(dir, handshake, responses.into_iter().map(Ok).collect())
+}
+
+/// [`ssh_stand_in_replying`], where an entry may be the shepherd's refusal.
+#[cfg(unix)]
+pub(super) fn ssh_stand_in_results(
+    dir: &Path,
+    handshake: shep_core::protocol::HelloReply,
+    responses: Vec<Result<Response, shep_core::protocol::RpcError>>,
+) -> std::path::PathBuf {
     use shep_core::protocol::Reply;
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -84,7 +94,7 @@ pub(super) fn ssh_stand_in_replying(
         let id = index as u64 + 1;
         let reply = Reply {
             id,
-            result: Ok(response),
+            result: response,
         };
         let reply_file = stand_in_file(dir, &format!("reply-{id}.bin"));
         std::fs::write(&reply_file, framed(&reply)).unwrap();
