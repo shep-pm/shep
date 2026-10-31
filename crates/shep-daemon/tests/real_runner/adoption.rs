@@ -31,6 +31,7 @@ fn adopt_spec(dir: &tempfile::TempDir, pid: u32, reaper: &Arc<AdoptedReaper>) ->
         out_log: None,
         err_log: None,
         log_timestamps: true,
+        leader_only_stop: false,
         stdin_pipe: None,
         channel: None,
         dog_link: None,

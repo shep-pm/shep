@@ -12,6 +12,7 @@ mod process;
 mod redacted;
 mod response;
 mod response_name;
+mod sandbox;
 mod selector_spec;
 mod smit;
 mod vcs;

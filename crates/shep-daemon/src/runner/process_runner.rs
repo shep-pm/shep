@@ -121,6 +121,9 @@ pub struct AdoptSpec {
     /// Whether each line written through `out_log` and `err_log` starts
     /// with a [`shep_core::logstamp`] stamp, as [`SpawnSpec::log_timestamps`].
     pub log_timestamps: bool,
+    /// Whether its stop signal goes to the leader alone, as
+    /// [`SpawnSpec::leader_only_stop`].
+    pub leader_only_stop: bool,
     /// The write end of its stdin pipe, still the one the child reads from,
     /// for a sheep whose app asked for one.
     ///
@@ -219,6 +222,13 @@ pub struct SpawnSpec {
     /// Set by the supervisor for a dog and never by `assemble`, so a sheep
     /// cannot ask for one.
     pub dog_link: bool,
+    /// Send the stop signal to the leader alone, not its process group.
+    ///
+    /// Set with `sandbox`: `crabpot` passes the signal on to its command,
+    /// so a group signal would reach that command twice on macOS.
+    /// [`RunningProcess::kill_tree`] stays group-wide, and `max_memory`
+    /// still counts the whole tree.
+    pub leader_only_stop: bool,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,

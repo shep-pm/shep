@@ -14,14 +14,14 @@ expression: "text_of(&lines).join(\"\\n\")"
    interpreter                (unset)                               default (none)
  = name                       web                                   example /srv/app
   *reuse_port                 false                               
-   script                     ./srv                                 ▲ respawn  the sheep must stop and start again
-   user                       (unset)                                            pick the timing when you close the pane
-                                                                  
-  env                                                               ────────────────────────────────────────────────────
-   DB_HOST                    (set)                                 VALIDATION
-   LOG_LEVEL                  (set)                                 █ an absolute or relative path, expanded from cwd
-   + add a key                                                      █ ~ expands, $VARS do not
-                                                                    █ a directory that does not exist yet: warned
+   sandbox                    (unset)                               ▲ respawn  the sheep must stop and start again
+   script                     ./srv                                              pick the timing when you close the pane
+   user                       (unset)                             
+                                                                    ────────────────────────────────────────────────────
+  env                                                               VALIDATION
+   DB_HOST                    (set)                                 █ an absolute or relative path, expanded from cwd
+   LOG_LEVEL                  (set)                                 █ ~ expands, $VARS do not
+   + add a key                                                      █ a directory that does not exist yet: warned
                                                                   
                                                                     NEIGHBOURS
                                                                     script  resolved against this cwd

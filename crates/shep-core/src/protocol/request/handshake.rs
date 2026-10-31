@@ -57,7 +57,7 @@ mod tests {
             dog_name: None,
         };
         let json = serde_json::to_string(&hello).unwrap();
-        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":13}"#);
+        assert_eq!(json, r#"{"client_version":"0.1.0","protocol":14}"#);
     }
 
     #[test]
@@ -70,7 +70,7 @@ mod tests {
         let json = serde_json::to_string(&dog).unwrap();
         assert_eq!(
             json,
-            r#"{"client_version":"0.1.0","protocol":13,"dog_name":"metrics"}"#
+            r#"{"client_version":"0.1.0","protocol":14,"dog_name":"metrics"}"#
         );
         assert_eq!(serde_json::from_str::<Hello>(&json).unwrap(), dog);
     }
@@ -104,7 +104,7 @@ mod tests {
         let json = serde_json::to_string(&ack).unwrap();
         assert_eq!(
             json,
-            r#"{"daemon_version":"0.5.0","protocol":13,"pid":1234,"min_supported":8}"#
+            r#"{"daemon_version":"0.5.0","protocol":14,"pid":1234,"min_supported":8}"#
         );
         assert_eq!(serde_json::from_str::<HelloAck>(&json).unwrap(), ack);
     }
@@ -123,7 +123,7 @@ mod tests {
         let json = serde_json::to_string(&ack).unwrap();
         assert_eq!(
             json,
-            r#"{"daemon_version":"0.5.0","protocol":13,"pid":1234}"#
+            r#"{"daemon_version":"0.5.0","protocol":14,"pid":1234}"#
         );
         assert!(!json.contains("min_supported"));
     }

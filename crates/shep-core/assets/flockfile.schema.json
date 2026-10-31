@@ -728,6 +728,33 @@
             "group": "process"
           }
         },
+        "sandbox": {
+          "description": "A crabpot settings file. The sheep runs inside crabpot's sandbox.\n\nThe shepherd spawns `crabpot -s <file> -- <command>`, finding\n`crabpot` on the sheep's `PATH`. A relative file is read from `cwd`.\nNot supported on Windows.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "init": {
+            "accepts": [
+              "an absolute or relative path, a relative one read from cwd",
+              "~ expands, $VARS do not"
+            ],
+            "blurb": "A crabpot settings file. The sheep runs inside crabpot's sandbox",
+            "example": "sandbox.json",
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "cwd",
+                "note": "a relative file is read from it"
+              }
+            ],
+            "refuses": [
+              "an empty value",
+              "any value on Windows"
+            ]
+          }
+        },
         "script": {
           "description": "Executable or script path (required)",
           "type": "string",

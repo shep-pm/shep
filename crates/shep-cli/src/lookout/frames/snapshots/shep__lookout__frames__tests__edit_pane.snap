@@ -16,14 +16,14 @@ shep lookout   /home/ada/.shep                                                  
    interpreter                (unset)                                         respawn     example /srv/app                                                      
  = name                       api                                             read-only                                                                         
    reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
-   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane
-   user                       (unset)                                         respawn                                                                           
-                                                                                          ──────────────────────────────────────────────────────────────────────
-  env                                                                                     VALIDATION                                                            
-   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     
-   NODE_ENV                   (set)                                                       █ ~ expands, $VARS do not                                             
-   + add a key                                                                            █ a directory that does not exist yet: warned                         
-                                                                                                                                                                
+   sandbox                    (unset)                                         respawn                                    pick the timing when you close the pane
+   script                     ./api/server.js                                 respawn                                                                           
+   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+  env                                                                                     █ an absolute or relative path, expanded from cwd                     
+   DATABASE_URL               (set)                                                       █ ~ expands, $VARS do not                                             
+   NODE_ENV                   (set)                                                       █ a directory that does not exist yet: warned                         
+   + add a key                                                                                                                                                  
                                                                                           NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     
                                                                                           out_file  relative paths follow it too                                

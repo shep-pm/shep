@@ -17,7 +17,7 @@ use std::path::PathBuf;
 /// runs the script directly; `Some(path)` runs `path` with the script.
 /// Explicit `out_file`/`err_file` win over the default log path and render
 /// `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` as `env` and `args` do.
-/// `SpawnSpec::stdin` carries `config.stdin` straight through.
+/// `SpawnSpec::stdin` is `config.stdin`; a set `sandbox` runs under `crabpot`.
 ///
 /// # Errors
 ///
@@ -130,6 +130,26 @@ pub(super) fn build<E>(
         }
     };
 
+    let cwd = config.cwd.as_ref().map(PathBuf::from);
+
+    // After the interpreter, so crabpot wraps whatever would have run. Bare
+    // `crabpot`: the sheep's own `PATH` finds it, there is no key for its path.
+    // A relative `cwd` is not joined in: crabpot starts inside it already.
+    let (program, args) = match &config.sandbox {
+        None => (program, args),
+        Some(file) => {
+            let file = anchor_log_path(file.clone(), cwd.as_deref().filter(|c| c.is_absolute()));
+            let mut wrapped = vec![
+                "-s".to_string(),
+                file.to_string_lossy().into_owned(),
+                "--".to_string(),
+                program,
+            ];
+            wrapped.extend(args);
+            ("crabpot".to_string(), wrapped)
+        }
+    };
+
     // Anything not seeded here is invisible to the child: tokio_runner.rs
     // calls env_clear() then envs(&spec.env). Each value renders through the
     // grammar as it is inserted.
@@ -144,8 +164,6 @@ pub(super) fn build<E>(
     env.insert("SHEP_INSTANCE".to_string(), instance.to_string());
     env.insert("SHEP_NAME".to_string(), name.clone());
     env.insert("SHEP_ENVIRONMENT".to_string(), environment.to_string());
-
-    let cwd = config.cwd.as_ref().map(PathBuf::from);
 
     let log_stem = if config.merge_logs {
         format!("{}-", name)
@@ -181,6 +199,7 @@ pub(super) fn build<E>(
         stdin: config.stdin,
         credentials,
         dog_link: false,
+        leader_only_stop: config.sandbox.is_some(),
     })
 }
 

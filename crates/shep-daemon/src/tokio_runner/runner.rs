@@ -98,6 +98,10 @@ pub struct TokioProc {
     /// whole of an adopted sheep's identity.
     pid: u32,
     proc: Supervised,
+    /// Stop signals go to `pid` alone, as [`SpawnSpec::leader_only_stop`]
+    /// says. Windows refuses every stop signal, so only unix reads this.
+    #[cfg(unix)]
+    leader_only_stop: bool,
     /// The job object this sheep and everything it spawns belong to: Windows'
     /// stand-in for the unix process group, and what
     /// [`RunningProcess::kill_tree`] terminates.
@@ -174,6 +178,9 @@ impl RunningProcess for TokioProc {
 
     #[cfg(unix)]
     fn signal(&mut self, sig: StopSignal) -> Result<(), RunnerError> {
+        if self.leader_only_stop {
+            return signal_leader(self.pid, to_nix_signal(sig));
+        }
         signal_group(self.pid, to_nix_signal(sig))
     }
 
@@ -317,6 +324,22 @@ pub(crate) fn signal_group(pid: u32, sig: Signal) -> Result<(), RunnerError> {
     // `kill(2)` is refused whatever it is asked to carry.
     signallable_pid(pid)?;
     shep_tree::group::signal_group(pid, to_tree_signal(sig)?)
+        .map_err(|error| RunnerError::SignalFailed(error.to_string()))
+}
+
+/// Sends `sig` to the process `pid` and not its group.
+///
+/// For a sandboxed sheep, whose leader passes the signal on: a group signal
+/// would reach the wrapped command twice on macOS.
+///
+/// # Errors
+///
+/// [`RunnerError::SignalFailed`] if `pid` is not a signallable process id, or
+/// the `kill(2)` failed (typically `ESRCH`).
+#[cfg(unix)]
+fn signal_leader(pid: u32, sig: Signal) -> Result<(), RunnerError> {
+    let pid = signallable_pid(pid)?;
+    signal::kill(Pid::from_raw(pid), sig)
         .map_err(|error| RunnerError::SignalFailed(error.to_string()))
 }
 
@@ -499,6 +522,7 @@ impl ProcessRunner for TokioRunner {
             out_log,
             err_log,
             log_timestamps,
+            leader_only_stop,
             stdin_pipe,
             channel,
             dog_link,
@@ -558,6 +582,7 @@ impl ProcessRunner for TokioRunner {
             TokioProc {
                 pid,
                 proc: Supervised::Adopted(reaper),
+                leader_only_stop,
             },
             ProcIo {
                 logs: logs_rx,
@@ -851,6 +876,8 @@ impl ProcessRunner for TokioRunner {
             TokioProc {
                 pid,
                 proc: Supervised::Spawned(child),
+                #[cfg(unix)]
+                leader_only_stop: spec.leader_only_stop,
                 #[cfg(windows)]
                 job,
             },

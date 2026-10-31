@@ -258,12 +258,12 @@ mod tests {
         pane.move_by(-5);
         assert_eq!(pane.cursor(), Some(PaneRow::Field(0)));
         pane.move_to_last();
-        // `process`, the group a fresh pane opens on, has ten fields, at
-        // indices `0..10` since it sorts first, then `web`'s own one env
+        // `process`, the group a fresh pane opens on, has eleven fields, at
+        // indices `0..11` since it sorts first, then `web`'s own one env
         // key and the row that adds another.
         assert_eq!(pane.cursor(), Some(PaneRow::AddEnv));
         assert_eq!(
-            pane.fields().fields()[9].key,
+            pane.fields().fields()[10].key,
             "user",
             "the last field is process's own last one"
         );

@@ -2,12 +2,11 @@
 //! real `/bin/sh` child processes.
 //!
 //! Runs on the real, unpaused clock, in a separate binary from the
-//! paused-clock unit tests.
-//!
-//! The cases live one module per what it proves: `logs` the log plane,
+//! paused-clock unit tests. The cases live one module per what it proves: `logs` the log plane,
 //! `signals` the signal paths, `channel` fd 3, `identity` the credentials a
 //! spawn asks the OS for, `environment` the `PATH` and stdin a child
-//! inherits, `adoption` the seam a successor reaches a running sheep through.
+//! inherits, `sandbox` the crabpot wrapping, `adoption` the seam a successor
+//! reaches a running sheep through.
 
 #![cfg(unix)]
 
@@ -33,6 +32,7 @@ mod dog_link;
 mod environment;
 mod identity;
 mod logs;
+mod sandbox;
 mod signals;
 
 pub(crate) use channel::*;

@@ -562,6 +562,7 @@ impl<R: ProcessRunner> Actor<R> {
                 out_log,
                 err_log,
                 log_timestamps: described.log_timestamps,
+                leader_only_stop: described.leader_only_stop,
                 stdin_pipe,
                 channel,
                 dog_link,

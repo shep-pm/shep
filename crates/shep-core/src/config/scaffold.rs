@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn the_all_depth_toml_scaffold_is_ninety_two_lines() {
+    fn the_all_depth_toml_scaffold_is_ninety_four_lines() {
         // Nothing else pins this number. A field added to AppConfig
         // without a matching scaffold line drifts silently, and no
         // other test here would notice. This count is what catches it.
@@ -574,9 +574,9 @@ mod tests {
             .expect("builds");
         assert_eq!(
             text.lines().count(),
-            92,
+            94,
             "the --all TOML scaffold's line count moved; update this and the \
-             92-line figure in web/src/pages/docs/first-flockfile.astro"
+             94-line figure in web/src/pages/docs/first-flockfile.astro"
         );
     }
 
