@@ -480,6 +480,66 @@ fn stop_restart_reload_and_delete_act_on_the_remote_flock_only() {
 }
 
 #[cfg(unix)]
+/// Starts a sheep named `web` on `home` that crashes once, so the shepherd
+/// restarts it and its `restarts` reads 1 from then on.
+fn start_once_crashed_sheep(guard: &mut DaemonGuard, home: &TempDir) {
+    let marker = home.path().join("crashed");
+    let script = write_script(
+        home,
+        "web.sh",
+        &format!(
+            "{}if [ ! -e '{marker}' ]; then touch '{marker}'; exit 1; fi\n{}",
+            script_header(),
+            sleep_line(SCRIPT_SLEEP_SECS),
+            marker = marker.display(),
+        ),
+    );
+    let started = shep(home.path())
+        .arg("start")
+        .arg(&script)
+        .output()
+        .unwrap();
+    guard.adopt_home(home.path());
+    assert_success(&started);
+}
+
+/// The same name runs on both machines and each has restarted once, so a
+/// `reset` that fell back to this machine would zero the local counter and
+/// leave the remote one at 1.
+#[cfg(unix)]
+#[test]
+fn reset_over_host_sends_one_reset_to_the_stand_in_shepherd() {
+    let local = tempfile::tempdir().unwrap();
+    let remote = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let mut guard = DaemonGuard::default();
+    start_once_crashed_sheep(&mut guard, &local);
+    start_once_crashed_sheep(&mut guard, &remote);
+    write_ssh_stand_in(bin.path(), remote.path());
+    let settled = |sheep: &serde_json::Value| sheep["status"] == "online" && sheep["restarts"] == 1;
+    poll_flock(local.path(), settled);
+    poll_flock(remote.path(), settled);
+
+    let reset = shep(local.path())
+        .args(["--host", "amp2", "reset", "web"])
+        .env("PATH", path_with_first(bin.path()))
+        .output()
+        .unwrap();
+    assert_success(&reset);
+
+    let remote_sheep = poll_flock(remote.path(), |sheep| sheep["restarts"] == 0);
+    assert_eq!(remote_sheep["restarts"], 0, "{remote_sheep}");
+    let local_sheep = poll_flock(local.path(), |_| true);
+    assert_eq!(
+        local_sheep["restarts"], 1,
+        "`reset` over a host zeroed the local sheep: {local_sheep}"
+    );
+
+    graceful_kill(local.path());
+    graceful_kill(remote.path());
+}
+
+#[cfg(unix)]
 /// Starts a sheep named `web` on `home` that writes down a `SIGUSR1` in
 /// `signalled` and every whispered line in `heard`, both inside `home`.
 fn start_listening_sheep(guard: &mut DaemonGuard, home: &TempDir) {
