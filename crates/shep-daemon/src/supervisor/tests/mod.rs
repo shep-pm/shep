@@ -292,6 +292,16 @@ fn actor_with_one_online_sheep_of(
     (actor, rx)
 }
 
+/// Hands the fixture's sheep a live `ctl` sender, as a running instance has.
+///
+/// The receiver comes back so the caller keeps the mailbox open: bind it,
+/// never `let _ =` it, or the drain's send lands on a closed channel.
+fn attach_ctl(actor: &mut Actor<ScriptedRunner>) -> mpsc::Receiver<SheepCtl> {
+    let (ctl_tx, ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
+    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    ctl_rx
+}
+
 /// [`ProcessEntry::id`] of the fixture's sheep, and of its dog.
 const SHEEP_ID: u32 = 0;
 const DOG_ID: u32 = 1;

@@ -197,8 +197,7 @@ async fn a_deadline_before_the_commit_puts_the_instance_being_replaced_back() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![ProcScript::never_exits()]);
     // A live control sender says this instance's task is still there.
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
 
     let new_id = actor
         .spawn_replacement(0, ReloadMode::Overlap)

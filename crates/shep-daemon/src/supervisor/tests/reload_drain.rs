@@ -14,6 +14,15 @@ fn probed_app(name: &str) -> AppConfig {
     app
 }
 
+/// Leaves the fixture's sheep the way `Actor::reload_ready_result` parks an
+/// instance whose readiness never answered: `Starting`, with `ready_failed`
+/// set so a reload can still replace it.
+fn park_ready_failed(actor: &mut Actor<ScriptedRunner>) {
+    let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
+    slot.entry.status = ProcStatus::Starting;
+    slot.ready_failed = true;
+}
+
 // The `wait_ready` row has a probe configured and no `reuse_port`, so a
 // rule reading the config's two fields directly would serialise it.
 // `ReadinessSource::of` prefers the channel, and a replacement's channel is
@@ -52,8 +61,7 @@ fn reload_mode_serialises_exactly_the_apps_whose_probe_can_lie() {
 async fn a_probed_reload_drains_before_it_spawns_anything() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![]);
-    let (ctl_tx, mut ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let mut ctl_rx = attach_ctl(&mut actor);
 
     actor.advance_reload("web", VecDeque::from([0]));
 
@@ -127,8 +135,7 @@ async fn a_serial_reload_spawns_into_the_slot_the_drain_emptied() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) =
         actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![ProcScript::never_exits()]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
     let instance = actor.sheep[&0].entry.instance;
     let restarts = actor.sheep[&0].entry.restarts;
 
@@ -168,13 +175,10 @@ async fn a_serial_reload_spawns_into_the_slot_the_drain_emptied() {
 async fn a_reload_can_still_replace_the_instance_a_failed_reload_parked() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
-    slot.ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
     // What `reload_ready_result` leaves behind when a replacement never
     // answers and there is no drainee to hand back to.
-    slot.entry.status = ProcStatus::Starting;
-    slot.ready_failed = true;
+    park_ready_failed(&mut actor);
 
     // Through `handle_reload`: the selector pass has its own eligibility
     // filter, and it is the one a rollback meets first.
@@ -194,9 +198,8 @@ async fn a_reload_can_still_replace_the_instance_a_failed_reload_parked() {
 async fn an_ordinarily_starting_sheep_is_still_skipped_by_a_reload() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
+    let _ctl_rx = attach_ctl(&mut actor);
     let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
-    slot.ctl = Some(ctl_tx);
     slot.entry.status = ProcStatus::Starting;
 
     let (reply, _rx) = oneshot::channel();
@@ -221,9 +224,7 @@ async fn undoing_a_swap_never_promotes_a_parked_drainee_to_online() {
     // No scripts, so `runner.spawn` fails and `spawn_replacement` takes
     // the `Err` arm that does the restoring.
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
-    let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
-    slot.entry.status = ProcStatus::Starting;
-    slot.ready_failed = true;
+    park_ready_failed(&mut actor);
 
     actor
         .spawn_replacement(0, ReloadMode::Overlap)
@@ -253,11 +254,8 @@ async fn abandoning_a_swap_never_promotes_a_parked_drainee_to_online() {
         actor_with_one_online_sheep_of(&dir, app, vec![ProcScript::never_exits()]);
     // A live control sender says this instance's task is still there to go
     // back to; the fixture leaves it `None`.
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
-    slot.ctl = Some(ctl_tx);
-    slot.entry.status = ProcStatus::Starting;
-    slot.ready_failed = true;
+    let _ctl_rx = attach_ctl(&mut actor);
+    park_ready_failed(&mut actor);
 
     let (reply, _rx) = oneshot::channel();
     actor.handle_reload(&ProcessSelector::Name("web".to_string()), reply);
@@ -419,8 +417,7 @@ async fn a_delete_during_a_serial_drain_spawns_no_replacement() {
     let dir = tempfile::tempdir().unwrap();
     // No scripts: a spawn here would panic, which is half the assertion.
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
 
     actor.advance_reload("web", VecDeque::from([0]));
     assert_eq!(actor.reloads["web"].swap.phase, ReloadPhase::DrainFirst);
@@ -450,11 +447,8 @@ async fn a_parked_instances_verdict_does_not_outlive_its_process() {
     // The arrangement that reaches `Stopped` rather than a respawn.
     app.autorestart = false;
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    let slot = actor.sheep.get_mut(&0).expect("the fixture's sheep");
-    slot.ctl = Some(ctl_tx);
-    slot.entry.status = ProcStatus::Starting;
-    slot.ready_failed = true;
+    let _ctl_rx = attach_ctl(&mut actor);
+    park_ready_failed(&mut actor);
 
     actor.handle_exited(
         0,
