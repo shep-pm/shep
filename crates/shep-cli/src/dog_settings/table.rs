@@ -132,8 +132,8 @@ impl DefaultRefusals {
 ///
 /// Each of `sheep`'s tables is checked as the dog reads it, layered over
 /// `default`, at the paths in `touched`: one refusal per sheep, the first in
-/// row order. The default's own table is checked there too, since resetting a
-/// sheep's own value exposes it. Nothing touched, or no sheep, checks nothing.
+/// row order. The default's own table is checked at the paths no sheep names,
+/// since resetting a sheep's own value exposes it. Nothing touched, or no sheep, checks nothing.
 #[must_use]
 pub fn default_refusals(
     schema: &Value,
@@ -152,8 +152,12 @@ pub fn default_refusals(
             Some((name.clone(), refused?))
         })
         .collect();
-    let default = touched_refusal(schema, default.as_map(), touched)
-        .filter(|refused| sheep.iter().all(|(_, named)| named.path != refused.path));
+    let unnamed: BTreeSet<Vec<String>> = touched
+        .iter()
+        .filter(|path| sheep.iter().all(|(_, named)| &named.path != *path))
+        .cloned()
+        .collect();
+    let default = touched_refusal(schema, default.as_map(), &unnamed);
     DefaultRefusals { default, sheep }
 }
 

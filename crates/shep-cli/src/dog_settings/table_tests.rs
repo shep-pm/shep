@@ -866,3 +866,37 @@ fn a_default_a_sheep_shadows_is_still_judged_by_its_own_value() {
         "a path the write did not touch is not asked about"
     );
 }
+
+/// A sheep naming the first bad path does not hide a later bad path no sheep
+/// names: `a` reads the bad `keep`, and both sheep hold their own `rate`, so
+/// only the default's `rate` is bad unnamed.
+#[test]
+fn a_default_refusal_a_sheep_does_not_name_is_kept_beside_one_it_does() {
+    let default = DogTable::from(table(json!({ "keep": 100, "rate": -1 })));
+    let sheep = std::collections::BTreeMap::from([
+        ("a".to_string(), DogTable::from(table(json!({ "rate": 2 })))),
+        (
+            "b".to_string(),
+            DogTable::from(table(json!({ "keep": 5, "rate": 3 }))),
+        ),
+    ]);
+
+    let refused = default_refusals(
+        &schema(),
+        &default,
+        &sheep,
+        &touched(&[&["keep"], &["rate"]]),
+    );
+    assert_eq!(
+        refused
+            .sheep
+            .iter()
+            .map(|(n, r)| (n.as_str(), r.path.clone()))
+            .collect::<Vec<_>>(),
+        [("a", vec!["keep".to_string()])]
+    );
+    assert_eq!(
+        refused.default.map(|r| r.path),
+        Some(vec!["rate".to_string()])
+    );
+}
