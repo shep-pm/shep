@@ -187,7 +187,7 @@ build a JSON object, append `\n`, write it.
 |---|---|
 | `{"kind":"shutdown"}` | Sent instead of a stop signal when `shutdown_with_message = true`. Treat it as your cue to shut down gracefully; the daemon still escalates to `SIGKILL` after `kill_timeout` if you take too long. |
 | `{"kind":"action","name":"<name>","id":<number>}`, optionally with `"params":"<text>"` | An operator ran `shep trigger <selector> <name> [params]` against you. `params` is present only when the operator supplied one; `id` is always present — echo it on your reply. |
-| `{"kind":"lamb-signalled","pid":<number>,"signal":"<name>"}` | An operator ran `shep signal <selector> --lamb <pid> <signal>` and the signal reached that child of yours. `signal` is the canonical name, such as `SIGHUP`. Sent after the delivery, so you can record why the child died. Nothing needs answering. |
+| `{"kind":"lamb-signalled","pid":<number>,"signal":"<name>"}` | An operator ran `shep signal <selector> --lamb <pid> <signal>` and the signal reached that child of yours. `signal` is the canonical name, such as `SIGHUP`. Sent after the kernel accepted the signal, so you can record which signal it was; the child may still be running. Queued best effort: you get nothing if you have no channel open or are not reading it, and the delivery still stands. Nothing needs answering. |
 
 The Go spelling of both shapes is generated from the Rust enums above and
 committed at `crates/shep-channel/wire/channel.go`. It is the same file
