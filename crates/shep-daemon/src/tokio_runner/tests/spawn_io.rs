@@ -385,6 +385,7 @@ fn adopt_spec(
         out_log: None,
         err_log: None,
         log_timestamps: true,
+        leader_only_stop: false,
         stdin_pipe,
         channel,
         dog_link: None,

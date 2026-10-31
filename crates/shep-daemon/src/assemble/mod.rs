@@ -12,6 +12,8 @@
 mod assembly_errors;
 mod environment_inheritance;
 mod log_path_resolution;
+#[cfg(test)]
+mod sandbox_tests;
 mod slots;
 mod spawn_spec;
 #[cfg(test)]
