@@ -310,6 +310,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         format reads <code>disabled</code> in STATUS instead.
       </li>
       <li>
+        <code>sandbox_refused</code> says why an <code>errored</code> sheep
+        stopped: <code>true</code> when its sandbox refused to start,{" "}
+        <code>false</code> when it ran out of restarts. Absent on other rows.
+      </li>
+      <li>
         <code>dog_stale</code> is the other half of that and is{" "}
         <code>null</code> for every sheep. <code>true</code> means the
         shepherd has given up: it restarted the dog once for never answering,

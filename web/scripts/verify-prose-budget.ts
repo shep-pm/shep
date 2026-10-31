@@ -386,7 +386,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1500 for `vcs`: a key that exists on one command and one
   // build, and is absent from every other, is a shape a script has to be
   // told about.
-  "json-output": 1580,
+  //
+  // Raised from 1580 for `sandbox_refused`: a key on `errored` rows only, and
+  // the one place a script learns why a sheep stopped, is a shape a script
+  // has to be told about.
+  "json-output": 1610,
   // Raised from 1250 for the Windows section: `shep startup` registers a
   // logon task there, and an operator has to be told it runs at sign-in, not
   // boot, and what logoff and a crash leave behind. The page had no headroom.
