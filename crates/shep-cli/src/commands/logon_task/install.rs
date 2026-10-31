@@ -15,13 +15,15 @@ use shep_daemon::boot::{self, Shepherd};
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output};
+use std::time::Duration;
 
 /// Registers the logon task for the signed-in user.
 ///
 /// `home` is the `$SHEP_HOME` the task carries, already through `ensure_home`.
 /// Refused before anything is written, in order: `--init` or another `--user`
 /// ([`ExitCode::Usage`]); a task that already exists ([`ExitCode::Usage`]).
-/// A shepherd already holding `home` stays, and the task is not run.
+/// A shepherd already holding `home` stays, and the task is not run. A shepherd
+/// that is not up a few seconds after the task ran is noted, not failed.
 pub(crate) fn startup(streams: &mut Streams<'_>, home: &Path, args: &StartupArgs) -> ExitCode {
     let (user, exec) = match signed_in_user().and_then(|user| {
         let exec = std::env::current_exe().map_err(|err| Refusal {
@@ -99,7 +101,16 @@ fn register(streams: &mut Streams<'_>, target: &TaskTarget, args: &StartupArgs) 
             result: schtasks(&run).map_or_else(|err| err, |()| OK.to_string()),
         });
     }
-    report(streams, "startup", steps)
+    let ran = steps.len() > 1;
+    let code = report(streams, "startup", steps);
+    if ran && !shepherd_came_up(&target.home) {
+        streams.aside(
+            "not_started",
+            "the task was queued but no shepherd is up yet; a session with no desktop, such as \
+             ssh, cannot start it. It starts at the next sign-in, or run shep muster",
+        );
+    }
+    code
 }
 
 fn remove(streams: &mut Streams<'_>, user: &str, args: &StartupArgs) -> ExitCode {
@@ -141,6 +152,23 @@ fn shepherd_on(home: &Path) -> Result<Shepherd, boot::BootError> {
         return Ok(Shepherd::Absent);
     }
     boot::daemon_liveness(&paths)
+}
+
+/// Whether a shepherd holds `home` within a few seconds.
+///
+/// `schtasks /Run` only queues the task and exits 0, and Task Scheduler
+/// starts no `InteractiveToken` action when nobody is signed in at a desktop.
+fn shepherd_came_up(home: &Path) -> bool {
+    const POLLS: u32 = 10;
+    for poll in 0..POLLS {
+        if !matches!(shepherd_on(home), Ok(Shepherd::Absent)) {
+            return true;
+        }
+        if poll + 1 < POLLS {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+    false
 }
 
 /// Runs `schtasks.exe`; `Err` is the one line a failure is reported by.

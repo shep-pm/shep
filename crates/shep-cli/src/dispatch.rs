@@ -142,10 +142,17 @@ pub(crate) async fn run(
                 None
             };
             // The task carries a home either way, so it is resolved and
-            // created like any other verb's.
+            // created like any other verb's, with the interpreter scaffold a
+            // fresh home is owed. No welcome banner, as `dial-stdio
+            // --autostart` has none.
             #[cfg(windows)]
             let home = match ensure_home(&cli.global) {
-                Ok((paths, _)) => paths.home,
+                Ok((paths, home_is_new)) => {
+                    if home_is_new {
+                        scaffold_first_run_interpreters(&paths);
+                    }
+                    paths.home
+                }
                 Err(refusal) => return report_home_refusal(fmt, &refusal),
             };
             let mut out = std::io::stdout().lock();
