@@ -602,11 +602,11 @@ pub enum Commands {
     ///
     /// If a shepherd already holds that $SHEP_HOME, the unit is enabled but
     /// not started, and a notice names the commands that hand the flock over.
-    ///
-    /// On Windows this registers a per-user Scheduled Task with a logon
-    /// trigger instead: the flock comes back at sign-in, not at boot. It runs
-    /// as you, stores no password and needs no elevation. `--user` naming
-    /// anyone else, and `--init`, are refused there.
+    #[command(
+        after_long_help = "On Windows this registers a per-user Scheduled Task with a \
+logon trigger instead: the flock comes back at sign-in, not at boot. It runs as you, stores no \
+password and needs no elevation. `--user` naming anyone else, and `--init`, are refused there."
+    )]
     Startup(StartupArgs),
     /// Disable and remove whichever unit `startup` installed — systemd,
     /// openrc, launchd, or a BSD `rc.d` script.
@@ -614,10 +614,10 @@ pub enum Commands {
     /// Needs root under the same rule: without it, prints the command to
     /// run and exits non-zero. A unit that is not there is reported absent
     /// rather than failing.
-    ///
-    /// On Windows this removes the logon task. A running shepherd keeps
-    /// running; `shep kill` stops it. `--user` naming anyone else, and
-    /// `--init`, are refused there.
+    #[command(
+        after_long_help = "On Windows this removes the logon task. A running shepherd keeps \
+running; `shep kill` stops it. `--user` naming anyone else, and `--init`, are refused there."
+    )]
     Unstartup(StartupArgs),
     /// Print a shell completion script.
     ///
