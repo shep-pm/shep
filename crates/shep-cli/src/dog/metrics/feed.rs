@@ -114,7 +114,8 @@ fn clears_samples(kind: ProcessEventKind) -> bool {
         | ProcessEventKind::Exit
         | ProcessEventKind::Stop
         | ProcessEventKind::Delete
-        | ProcessEventKind::Errored => true,
+        | ProcessEventKind::Errored
+        | ProcessEventKind::SandboxRefused => true,
         // Still the instance that is serving. `Online` follows a `Start`
         // this dog already cleared for, and `Reloaded` names the
         // replacement, not the drainee the shepherd already deregistered
@@ -279,6 +280,7 @@ mod tests {
             ProcessEventKind::Stop,
             ProcessEventKind::Delete,
             ProcessEventKind::Errored,
+            ProcessEventKind::SandboxRefused,
         ] {
             assert!(
                 clears_samples(kind),

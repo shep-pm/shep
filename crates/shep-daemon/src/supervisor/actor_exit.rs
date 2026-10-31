@@ -464,6 +464,12 @@ impl<R: ProcessRunner> Actor<R> {
                 self.disarm_extras(id, &info.name);
                 info
             }
+            Decision::SandboxRefused => {
+                let info = self.set_status(id, ProcStatus::Errored);
+                self.emit(ProcessEventKind::SandboxRefused, info.clone(), false);
+                self.disarm_extras(id, &info.name);
+                info
+            }
             Decision::CleanStop if kind == Some(ManualKind::Delete) || pending_delete => {
                 let mut removed = self.sheep.remove(&id).expect("checked above");
                 removed.entry.status = ProcStatus::Stopped;

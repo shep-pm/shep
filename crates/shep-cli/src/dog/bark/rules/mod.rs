@@ -119,6 +119,12 @@ fn gave_up_message(name: &str) -> String {
     format!("{name} gave up: restart budget exhausted")
 }
 
+/// What a [`Trigger::GaveUp`] firing says about `name` when its sandbox
+/// refused to start, on either route.
+fn sandbox_refused_message(name: &str) -> String {
+    format!("{name} sandbox refused")
+}
+
 /// The rule-kind name [`Bark::rule`] records for a firing: the same
 /// snake_case spelling a `[bark.rules]` entry's own `on = "..."` key
 /// uses, so an operator reading `barks.jsonl` sees no vocabulary mismatch
@@ -151,6 +157,7 @@ fn wire_spelling(kind: ProcessEventKind) -> &'static str {
         ProcessEventKind::Stop => "stop",
         ProcessEventKind::Delete => "delete",
         ProcessEventKind::Errored => "errored",
+        ProcessEventKind::SandboxRefused => "sandbox_refused",
         _ => "unrecognized",
     }
 }
@@ -462,6 +469,9 @@ impl Rules {
                 Trigger::GaveUp {} if kind == ProcessEventKind::Errored => {
                     Some(gave_up_message(&info.name))
                 }
+                Trigger::GaveUp {} if kind == ProcessEventKind::SandboxRefused => {
+                    Some(sandbox_refused_message(&info.name))
+                }
                 _ => None,
             };
             let Some(message) = message else { continue };
@@ -562,8 +572,13 @@ impl Rules {
                 let trigger = self.rules[idx].when.clone();
                 let message = match &trigger {
                     Trigger::Event { .. } | Trigger::LogMatch { .. } => None,
-                    Trigger::GaveUp {} => (info.status == ProcStatus::Errored)
-                        .then(|| gave_up_message(&info.name)),
+                    Trigger::GaveUp {} => (info.status == ProcStatus::Errored).then(|| {
+                        if info.sandbox_refused == Some(true) {
+                            sandbox_refused_message(&info.name)
+                        } else {
+                            gave_up_message(&info.name)
+                        }
+                    }),
                     Trigger::RestartRate { restarts, within } => self
                         .restart_window_crossed(
                             idx,

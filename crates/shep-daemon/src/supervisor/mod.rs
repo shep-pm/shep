@@ -42,7 +42,7 @@ use shep_core::values::MemSize;
 
 use crate::assemble::{AssembleError, assemble, describe, instance_slots};
 use crate::backoff::restart_delay;
-use crate::brain::{Decision, decide_on_exit};
+use crate::brain::{Decision, decide_on_exit, is_sandbox_refusal};
 use crate::bus::{Bus, SharedEvent};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::entry::{ProcessEntry, ReloadState, RestartBudget};

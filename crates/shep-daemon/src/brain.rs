@@ -10,6 +10,14 @@ use crate::backoff::restart_delay;
 use crate::entry::RestartBudget;
 use crate::runner::ExitOutcome;
 
+/// The exit code crabpot uses when its sandbox refuses to start
+pub const SANDBOX_REFUSED_EXIT: i32 = 125;
+
+/// Whether a sheep configured as `app` that exited with `code` was refused by its sandbox
+pub fn is_sandbox_refusal(app: &AppConfig, code: Option<i32>) -> bool {
+    app.sandbox.is_some() && code == Some(SANDBOX_REFUSED_EXIT)
+}
+
 /// Restart decision for a process exit
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -22,10 +30,12 @@ pub enum Decision {
     CleanStop,
     /// Budget exhausted; restart policy failed
     Errored,
+    /// A sandboxed sheep exited with [`SANDBOX_REFUSED_EXIT`]; a restart would only repeat it
+    SandboxRefused,
 }
 
-/// Decides whether to restart, checking in order: manual stop, a
-/// `stop_exit_codes` match, `autorestart`, then the restart budget.
+/// Decides whether to restart, checking in order: manual stop, a sandbox
+/// refusal, a `stop_exit_codes` match, `autorestart`, then the restart budget.
 pub fn decide_on_exit(
     app: &AppConfig,
     budget: &mut RestartBudget,
@@ -35,6 +45,10 @@ pub fn decide_on_exit(
 ) -> Decision {
     if manual_stop {
         return Decision::CleanStop;
+    }
+
+    if is_sandbox_refusal(app, exit.code) {
+        return Decision::SandboxRefused;
     }
 
     if let Some(code) = exit.code
@@ -96,6 +110,134 @@ mod tests {
         };
         let d = decide_on_exit(&app, &mut budget, Duration::from_millis(100), exit, false);
         assert!(matches!(d, Decision::Restart { .. }));
+    }
+
+    fn exit_with(code: i32) -> ExitOutcome {
+        ExitOutcome {
+            code: Some(code),
+            signal: None,
+        }
+    }
+
+    #[test]
+    fn sandboxed_exit_125_is_a_refusal() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_millis(100),
+            exit_with(125),
+            false,
+        );
+        assert_eq!(d, Decision::SandboxRefused);
+    }
+
+    #[test]
+    fn sandboxed_exit_125_is_a_refusal_even_with_autorestart_off() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        app.autorestart = false;
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(125),
+            false,
+        );
+        assert_eq!(d, Decision::SandboxRefused);
+    }
+
+    #[test]
+    fn sandboxed_exit_125_beats_stop_exit_codes() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        app.stop_exit_codes = vec![125];
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(125),
+            false,
+        );
+        assert_eq!(d, Decision::SandboxRefused);
+    }
+
+    #[test]
+    fn sandboxed_exit_125_leaves_the_budget_alone() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        let mut budget = RestartBudget::default();
+        decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_millis(100),
+            exit_with(125),
+            false,
+        );
+        assert_eq!(budget.unstable_count(), 0);
+    }
+
+    #[test]
+    fn sandboxed_other_exit_code_is_ordinary() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(1),
+            false,
+        );
+        assert!(matches!(d, Decision::Restart { .. }));
+    }
+
+    #[test]
+    fn sandboxed_manual_stop_is_not_a_refusal() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.sandbox = Some("sandbox.json".to_owned());
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(125),
+            true,
+        );
+        assert_eq!(d, Decision::CleanStop);
+    }
+
+    #[test]
+    fn unsandboxed_exit_125_is_an_ordinary_exit() {
+        let app = AppConfig::minimal("test", "./test");
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(125),
+            false,
+        );
+        assert!(matches!(d, Decision::Restart { .. }));
+    }
+
+    #[test]
+    fn unsandboxed_exit_125_in_stop_exit_codes_stops_cleanly() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.stop_exit_codes = vec![125];
+        let mut budget = RestartBudget::default();
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit_with(125),
+            false,
+        );
+        assert_eq!(d, Decision::CleanStop);
     }
 
     #[test]

@@ -416,6 +416,84 @@ fn memory_above_does_not_fire_when_usage_is_unknown() {
 }
 
 #[test]
+fn gave_up_fires_on_a_sandbox_refusal_and_says_so() {
+    let mut rules = gave_up_rules();
+    let fired = rules.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        1_000,
+    );
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.rule, "gave_up");
+    assert_eq!(fired[0].bark.message, "web sandbox refused");
+}
+
+fn errored_because(name: &str, sandbox_refused: Option<bool>) -> ProcessInfo {
+    ProcessInfo::builder(1, name, ProcStatus::Errored)
+        .sandbox_refused(sandbox_refused)
+        .build()
+}
+
+#[test]
+fn the_poll_says_sandbox_refused_for_a_row_that_reports_the_refusal() {
+    let mut rules = gave_up_rules();
+    let fired = rules.on_poll(&[errored_because("web", Some(true))], 1_000);
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.message, "web sandbox refused");
+}
+
+#[test]
+fn the_poll_says_budget_exhausted_for_a_row_that_reports_no_refusal() {
+    let mut rules = gave_up_rules();
+    let fired = rules.on_poll(&[errored_because("web", Some(false))], 1_000);
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.message, gave_up_message("web"));
+}
+
+/// A shepherd that predates the field says nothing about the cause.
+#[test]
+fn the_poll_keeps_the_budget_text_for_a_row_from_a_shepherd_without_the_field() {
+    let mut rules = gave_up_rules();
+    let fired = rules.on_poll(&[errored_because("web", None)], 1_000);
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.message, gave_up_message("web"));
+}
+
+/// The poll can win the race against the bus frame; the cause it names is
+/// still right, and the late frame is debounced.
+#[test]
+fn a_poll_ahead_of_the_refusal_frame_names_the_cause_and_the_frame_adds_no_second_alert() {
+    let mut rules = gave_up_rules();
+    let polled = rules.on_poll(&[errored_because("web", Some(true))], 1_000);
+    assert_eq!(polled[0].bark.message, "web sandbox refused");
+    let late = rules.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        2_000,
+    );
+    assert!(late.is_empty(), "{late:?}");
+}
+
+#[test]
+fn an_event_rule_names_a_sandbox_refusal_by_its_wire_spelling() {
+    let sinks = one_sink("ops");
+    let mut rules = Rules::new(
+        vec![Rule {
+            when: Trigger::Event {
+                kinds: vec!["sandbox_refused".to_owned()],
+            },
+            sinks: vec!["ops".to_owned()],
+            debounce: default_debounce(),
+        }],
+        &sinks,
+    )
+    .unwrap();
+    let fired = rules.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        1_000,
+    );
+    assert_eq!(fired.len(), 1);
+}
+
+#[test]
 fn gave_up_does_not_fire_on_event_for_a_non_errored_kind() {
     let mut rules = gave_up_rules();
     let online = rules.on_event(&process_event("web", ProcessEventKind::Online), 1_000);
@@ -633,6 +711,7 @@ fn every_wire_spelling_matches_what_serde_emits() {
         ProcessEventKind::Stop,
         ProcessEventKind::Delete,
         ProcessEventKind::Errored,
+        ProcessEventKind::SandboxRefused,
         ProcessEventKind::Unrecognized,
     ];
     for kind in kinds {

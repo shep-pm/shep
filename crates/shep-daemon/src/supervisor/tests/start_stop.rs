@@ -443,3 +443,62 @@ async fn restarting_a_stopped_sheep_resets_the_budget() {
          the books -- got {settled:?}"
     );
 }
+
+// `normalize` refuses `sandbox` on Windows.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_sandboxed_sheep_exiting_125_errors_once_without_a_restart() {
+    let (events, mut rx) = crate::bus::test_bus(256);
+    // The second script is a restart's, which must never be taken.
+    let runner = ScriptedRunner::new(vec![ProcScript::const_exit(125), ProcScript::never_exits()]);
+    let dir = tempfile::tempdir().unwrap();
+    let handle = spawn_supervisor(runner, test_paths(&dir), events);
+    let mut app = AppConfig::minimal("jailed", "./srv");
+    app.sandbox = Some("sandbox.json".to_owned());
+    handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+
+    let manually = await_event(&mut rx, 0, ProcessEventKind::SandboxRefused).await;
+    assert!(!manually, "the sandbox refused it, not an operator");
+
+    // Past any backoff a restart would have waited out.
+    tokio::time::sleep(Duration::from_secs(600)).await;
+    let list = handle.list().await;
+    assert_eq!(list[0].status, ProcStatus::Errored);
+    assert_eq!(list[0].restarts, 0);
+    assert_eq!(list[0].pid, None);
+    assert_eq!(
+        list[0].last_exit,
+        Some(ExitInfo {
+            code: Some(125),
+            signal: None,
+        })
+    );
+
+    let rest = drained_process_kinds(&mut rx);
+    assert!(
+        !rest.iter().any(|kind| matches!(
+            kind,
+            ProcessEventKind::SandboxRefused
+                | ProcessEventKind::Errored
+                | ProcessEventKind::Start
+                | ProcessEventKind::Restart
+        )),
+        "one refusal and nothing after it, got {rest:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_unsandboxed_sheep_exiting_125_is_restarted_like_any_exit() {
+    let (events, mut rx) = crate::bus::test_bus(256);
+    let runner = ScriptedRunner::new(vec![ProcScript::const_exit(125), ProcScript::never_exits()]);
+    let dir = tempfile::tempdir().unwrap();
+    let handle = spawn_supervisor(runner, test_paths(&dir), events);
+    let app = AppConfig::minimal("plain", "./srv");
+    handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+
+    await_event(&mut rx, 0, ProcessEventKind::Restart).await;
+    assert!(
+        !drained_process_kinds(&mut rx).contains(&ProcessEventKind::SandboxRefused),
+        "a sheep without `sandbox` has nothing to refuse"
+    );
+}

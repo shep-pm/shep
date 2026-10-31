@@ -79,7 +79,22 @@ pub(super) fn to_info(entry: &ProcessEntry, smits: &Smits) -> ProcessInfo {
         // `Some(false)` only for an app that turned the stamp off. A dog's
         // config always stamps, so its row is `None` the way `handshook`'s is.
         .log_timestamps((!entry.spec.config().log_timestamps).then_some(false))
+        .sandbox_refused(sandbox_refused(entry))
         .build()
+}
+
+/// Why an `errored` entry stopped, as [`ProcessInfo::sandbox_refused`] reports it.
+///
+/// `None` for any other status. A standing `spawn_failure` rules a refusal
+/// out: `last_exit` is sticky, so it can still hold the earlier 125.
+fn sandbox_refused(entry: &ProcessEntry) -> Option<bool> {
+    (entry.status == ProcStatus::Errored).then(|| {
+        entry.spawn_failure.is_none()
+            && is_sandbox_refusal(
+                entry.spec.config(),
+                entry.last_exit.and_then(|exit| exit.code),
+            )
+    })
 }
 
 /// Converts the spawn-runner's own exit observation into the wire-facing shape

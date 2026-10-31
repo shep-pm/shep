@@ -188,6 +188,16 @@ fn every_setter_writes_its_own_field_and_no_other() {
         "an empty `overridden` setter body is invisible to the comparison above"
     );
 
+    // `sandbox_refused`, on the same terms.
+    assert_eq!(
+        ProcessInfo::builder(1, "web", ProcStatus::Errored)
+            .sandbox_refused(Some(true))
+            .build()
+            .sandbox_refused,
+        Some(true),
+        "an empty `sandbox_refused` setter body is invisible to the comparison above"
+    );
+
     // `vcs`, on the same terms.
     assert_eq!(
         ProcessInfo::builder(1, "web", ProcStatus::Online)
@@ -353,6 +363,7 @@ fn an_older_daemons_process_info_still_decodes() {
     assert_eq!(info.reload_deadline_ms, None);
     assert_eq!(info.disabled, None);
     assert_eq!(info.log_timestamps, None);
+    assert_eq!(info.sandbox_refused, None);
     assert_eq!(info.vcs, None);
 }
 
