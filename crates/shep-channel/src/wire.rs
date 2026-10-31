@@ -196,13 +196,9 @@ impl core::fmt::Display for LambLabelError {
 impl core::error::Error for LambLabelError {}
 
 /// Daemon -> child message
-///
-/// `#[non_exhaustive]`: the shepherd adds messages, and an app on an older
-/// library reads one it does not know as a malformed line and carries on.
 // wire format: changing these strings is a breaking change
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-#[non_exhaustive]
 pub enum ShepherdMessage {
     /// Graceful-stop request (`shutdown_with_message`)
     Shutdown,
@@ -234,8 +230,9 @@ pub enum ShepherdMessage {
     },
     /// The operator signalled one of the app's lambs with `shep signal --lamb`
     ///
-    /// Sent after the kernel accepted the signal, so an app can record why
-    /// its child died. The library takes no action on it.
+    /// Sent after the kernel accepted the signal, so an app can record which
+    /// signal it was. The lamb may not have stopped: `SIGHUP` can leave it
+    /// running. The library takes no action on it.
     LambSignalled {
         /// The lamb's pid
         pid: u32,

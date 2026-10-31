@@ -275,8 +275,6 @@ mod tests {
         assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 
-    /// The library never stops the app, so this must be distinguishable
-    /// before `kill_timeout`.
     #[test]
     fn a_lamb_signalled_is_ignored() {
         let dispatch = Dispatch::default();
@@ -289,6 +287,8 @@ mod tests {
         ));
     }
 
+    /// The library never stops the app, so this must be distinguishable
+    /// before `kill_timeout`.
     #[test]
     fn a_shutdown_with_no_handler_is_reported_rather_than_ignored() {
         let dispatch = Dispatch::default();

@@ -1,10 +1,8 @@
 //! The Go spelling of this crate's two wire enums.
 //!
 //! `github.com/shep-pm/shep-go/channel` vendors these bytes as
-//! `channel/wire.go`. `child_kind` has no wildcard arm, so a new variant
-//! stops this file compiling until Go's spelling is decided.
-//! `ShepherdMessage` is `#[non_exhaustive]`, so `shepherd_kind` panics on a
-//! variant it does not know, and the const block test reaches it.
+//! `channel/wire.go`. `child_kind` and `shepherd_kind` have no wildcard arm,
+//! so a new variant stops this file compiling until Go's spelling is decided.
 //!
 //! Regenerate with
 //! `SHEP_CHANNEL_BLESS=1 cargo test -p shep-channel --test wire_export`.
@@ -69,9 +67,6 @@ fn child_kind(message: &ChildMessage) -> Kind {
 }
 
 /// The Go constant for a shepherd message's kind.
-///
-/// The wildcard arm is forced by `#[non_exhaustive]`: a new variant panics
-/// here the first time a sample carries it.
 fn shepherd_kind(message: &ShepherdMessage) -> Kind {
     match message {
         ShepherdMessage::Shutdown => Kind {
@@ -89,7 +84,6 @@ fn shepherd_kind(message: &ShepherdMessage) -> Kind {
             doc: "KindLambSignalled is the shepherd reporting a signal it sent one of the app's lambs.",
             wire: "lamb-signalled",
         },
-        other => panic!("no Go spelling is decided for {other:?}"),
     }
 }
 
