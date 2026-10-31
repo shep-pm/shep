@@ -35,6 +35,8 @@ use crate::output::Streams;
 
 #[cfg(test)]
 mod default_dog_tests;
+#[cfg(test)]
+mod default_refusal_tests;
 mod defaults;
 #[cfg(test)]
 mod defaults_routing_tests;
