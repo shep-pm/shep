@@ -22,7 +22,7 @@ pub mod catalogue;
 use std::io::Write;
 
 use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::model::{CallToolResult, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{CallToolResult, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, ServiceExt, tool_handler};
 use shep_client::SshOptions;
 use shep_core::paths::ShepPaths;
@@ -168,8 +168,8 @@ impl Whistle {
 impl ServerHandler for Whistle {
     /// Hand-written rather than macro-generated: the instructions depend on
     /// the gate, and the macro only fills this in when the impl does not.
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("shep", env!("CARGO_PKG_VERSION")))
             .with_instructions(self.instructions())
     }
