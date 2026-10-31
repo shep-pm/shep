@@ -119,7 +119,8 @@ struct Gauge<'a> {
 }
 
 /// `sum{dataPoints,aggregationTemporality,isMonotonic}`: a count that only
-/// ever grows, reset only when this dog restarts.
+/// ever grows, its start time moving only when its sender restarts. A
+/// `shep reset` drops `shep_sheep_restart_total` without moving it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Sum<'a> {

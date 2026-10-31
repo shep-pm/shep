@@ -147,7 +147,7 @@ pub fn encode(reading: &Reading, context: &ExportContext<'_>) -> String {
         ),
         cumulative_sum(
             "shep_sheep_restart_total",
-            Some("Restart count since registration."),
+            Some("Restart count since registration or the last `shep reset`."),
             restarts,
         ),
         gauge(

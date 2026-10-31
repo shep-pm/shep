@@ -230,7 +230,7 @@ pub fn render(reading: &Reading) -> String {
     );
     let mut restarts = MetricGroup::new(
         "shep_sheep_restart_total",
-        "Restart count since registration.",
+        "Restart count since registration or the last `shep reset`.",
         "counter",
     );
     let mut uptime = MetricGroup::new(
