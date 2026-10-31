@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+
+- Say when a running adopted dog keeps an entry it no longer has
+- Store one default table per dog and layer a sheep's table over it
+- Layer a dog's default under each sheep table at read time
+- Add a lamb to Request::Signal and move the protocol to 13 **(BREAKING)**
+- Signal a lamb of one sheep when a Signal names one
+- Zero the restart count and budget of every sheep a Reset request selects
+- Run a sandboxed sheep under crabpot and stop its leader alone
+
+### Changed
+
+- Drive lamb sweeps through shep-tree
+- Hand each supervisor test fixture family to its sibling
+- Read the next channel bus event through one helper in the actions tests
+- Build the parked MODE=blue file through one helper in the config tests
+- Attach the sheep's control channel and park a failed readiness through helpers in the reload tests
+- Default unspecified test spawn fields
+
+### Fixed
+
+- Retry errored dogs from the current entry
+- Retain spawn refusals in process reports
+- Close the log path TOCTOU window with openat2 on Linux
+- Follow symlinks the daemon trusts before the resolving open
+- Keep a log path's trailing separator through the parent walk
+- Take a sweep look's own time out of its sleep
+- Refuse a boot over an unreadable dog-defaults.json
+- Read dog-defaults.json after the daemon lock is held
+- Forward preflight through the test harness's shared runner
+- Skip parked apps on a lamb signal sweep and refuse a dog
+- Count the sandbox field in the lookout pane tests and frames
+- Refuse a sandbox to a shepherd that would drop it
+
+
 ### Fixes
 
 - Retry errored dogs from the current entry and carry spawn refusals across daemon reloads. ([#1294])

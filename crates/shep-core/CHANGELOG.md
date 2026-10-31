@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+
+- Parse a trailing d as a day in UpDuration
+- Store one default table per dog and layer a sheep's table over it
+- Add the dog defaults read and write requests
+- Layer a dog's default under each sheep table at read time
+- Add a lamb to Request::Signal and move the protocol to 13 **(BREAKING)**
+- Signal one lamb of a sheep with `shep signal --lamb`
+- Add a sandbox key to AppConfig and move the protocol to 14 **(BREAKING)**
+
+### Fixed
+
+- Retain spawn refusals in process reports
+- Refuse a sandbox to a shepherd that would drop it
+
+
 ### Additions
 
 - Add `AppConfig::sandbox`, a crabpot settings file the sheep runs inside, and move the protocol to 14. An older shepherd would ignore the key and run the sheep unsandboxed.

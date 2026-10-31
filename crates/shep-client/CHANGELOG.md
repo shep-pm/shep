@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+
+- Signal one lamb of a sheep with `shep signal --lamb`
+
+### Fixed
+
+- Refuse a sandbox to a shepherd that would drop it
+
+
 ## [0.19.0] - 2026-10-28
 
 
