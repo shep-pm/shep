@@ -13,6 +13,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use super::shell_quote;
+use crate::commands::startup_shared::xml_text;
 use crate::exit::ExitCode;
 
 /// Everything a generated init unit carries.
@@ -134,15 +135,6 @@ pub(crate) fn launchd_plist_path(user: &str) -> PathBuf {
 /// space needs nothing further here.
 fn systemd_environment_value(value: &str) -> String {
     value.replace('%', "%%")
-}
-
-/// Escapes plist string content: `&` first, so it cannot re-escape the
-/// entities this function just produced, then `<` and `>`.
-fn xml_text(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Renders the openrc init script.

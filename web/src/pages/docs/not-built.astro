@@ -30,9 +30,10 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
 
     <ShortVersion>
       <p>
-        Windows ships today with three named limits: no graceful stop
-        signal unless the app opts into the shepherd channel, no{" "}
-        <code>user</code>/<code>group</code>, and no <code>shep startup</code>.
+        Windows ships today with two named limits: no graceful stop
+        signal unless the app opts into the shepherd channel, and no{" "}
+        <code>user</code>/<code>group</code>. <code>shep startup</code>{" "}
+        starts the flock at sign-in, not at boot.
         Several smaller cuts are deferred past v1 on purpose (whistle's HTTP
         transport, cgroup v2 enforcement, the <code>@shep/io</code> shim, a
         JSON status endpoint).
@@ -65,11 +66,10 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
       <code>kill_timeout</code> and then terminates it — unless the app opts
       into the shepherd channel with <code>shutdown_with_message</code>,
       which is the supported graceful path there. And{" "}
-      <code>shep startup</code> is not built: boot-time supervision on
-      Windows means a Service Control Manager service, a different program
-      shape rather than a fifth unit template. Run <code>shep start</code> in
-      your own session, or wrap <code>shep runtime</code> in NSSM or WinSW,
-      tracked as <a href="https://github.com/shep-pm/shep/issues/348">issue 348</a>.
+      <code>shep startup</code> starts the flock at sign-in, not at boot: it
+      registers a per-user logon task, not a Service Control Manager
+      service, so nothing runs while nobody is signed in. To start at boot,
+      wrap <code>shep runtime</code> in NSSM or WinSW.
     </Callout>
     <p>
       The estimate's own shape predictions all held. The 145{" "}

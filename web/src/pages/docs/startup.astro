@@ -61,6 +61,8 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       systemd, launchd, openrc, or a BSD <code>rc.d</code> script, picked
       automatically for the running host or named explicitly with{" "}
       <code>--init</code>. <code>shep unstartup</code> takes it back out.
+      On Windows it registers a logon task instead, which brings the flock
+      back at sign-in rather than at boot.
     </p>
 
     <ShortVersion>
@@ -79,6 +81,34 @@ removed  /Library/LaunchDaemons/io.github.turtiesocks.shep.deploy.plist  absent`
       status at step 3 is already evidence the restore path works, before
       the reboot ever happens.
     </Callout>
+
+    <h2 id="windows">Windows: at sign-in, not boot</h2>
+    <p>
+      On Windows, <code>shep startup</code> registers a Scheduled Task,{" "}
+      <code>shep-&lt;you&gt;</code>, with a logon trigger that runs{" "}
+      <code>shep muster</code>. It runs as you and needs no elevation.
+      Nothing runs at boot: for that, wrap <code>shep runtime</code> in NSSM
+      or WinSW.
+    </p>
+    <CodeBlock>{`> shep startup
+> schtasks /Query /TN shep-<you>
+> shep save      # before signing out
+> shep unstartup`}</CodeBlock>
+    <ul>
+      <li>A crashed shepherd stays down until the next shep call or sign-in.</li>
+      <li>
+        Logoff and shutdown end the flock with no teardown, so run{" "}
+        <code>shep save</code> before signing out.
+      </li>
+      <li>
+        Restored sheep get the sign-in environment, not your shell's{" "}
+        <code>PATH</code>.
+      </li>
+      <li>
+        <code>shep unstartup</code> removes the task and leaves a running
+        shepherd for <code>shep kill</code>.
+      </li>
+    </ul>
 
     <h2 id="rolling-back">Rolling back</h2>
     <p>
