@@ -5,7 +5,7 @@
 //! being applied.
 
 use super::config_fixtures::{
-    APPLY_FIRST_PID, actor_over, apply_config, declared_app, established,
+    APPLY_FIRST_PID, actor_over, apply_config, declared_app, established, park_env_mode_blue,
 };
 use super::*;
 
@@ -140,14 +140,7 @@ async fn a_needs_respawn_field_parks_as_pending_and_leaves_the_child_alone() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _enforcer) = actor_over(&dir, &[app_with("web", |_| {})]);
 
-    let mut file = AppConfig::minimal("web", "./srv");
-    file.env = BTreeMap::from([("MODE".to_string(), "blue".to_string())]);
-    let reply = apply_config(
-        &mut actor,
-        vec![declared_app(file, &["name", "script", "env"])],
-        ResetDepth::None,
-    )
-    .await;
+    let reply = park_env_mode_blue(&mut actor).await;
 
     let entry = &actor.sheep[&0].entry;
     assert_eq!(
