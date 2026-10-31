@@ -96,8 +96,8 @@ impl CronSchedule {
     /// The first occurrence strictly after `after`, in UTC.
     ///
     /// Returns `None` when the pattern can never match again, like `0 0 30 2 *`
-    /// (30 February). A DST fall-back hour resolves to its earlier instant
-    /// only, never the repeated wall-clock hour twice, croner's own semantics.
+    /// (30 February). Across a DST fall-back, croner's semantics apply: `30 1 * * *`
+    /// fires once, at the earlier instant; `0 * * * *` fires in both passes.
     ///
     /// # Errors
     /// - [`CronScheduleError::Search`]: the search failed for a reason other than exhaustion.
@@ -110,13 +110,7 @@ impl CronSchedule {
         after: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, CronScheduleError> {
         let start = after.with_timezone(&self.zone);
-        match self.cron.find_next_occurrence(&start, false) {
-            Ok(dt) => Ok(Some(dt.with_timezone(&Utc))),
-            Err(CronError::TimeSearchLimitExceeded) => Ok(None),
-            Err(e) => Err(CronScheduleError::Search {
-                reason: e.to_string(),
-            }),
-        }
+        into_next_occurrence(self.cron.find_next_occurrence(&start, false))
     }
 
     /// The pattern as written in the Flockfile.
@@ -184,6 +178,19 @@ impl fmt::Display for CronScheduleError {
 }
 
 impl core::error::Error for CronScheduleError {}
+
+/// Maps croner's search result: exhaustion is `None`, any other failure is an error.
+fn into_next_occurrence(
+    found: Result<DateTime<Tz>, CronError>,
+) -> Result<Option<DateTime<Utc>>, CronScheduleError> {
+    match found {
+        Ok(dt) => Ok(Some(dt.with_timezone(&Utc))),
+        Err(CronError::TimeSearchLimitExceeded) => Ok(None),
+        Err(e) => Err(CronScheduleError::Search {
+            reason: e.to_string(),
+        }),
+    }
+}
 
 /// Builds the five-field-only parser. `Seconds::Disallowed` rejects a six-field
 /// pattern; no `.dom_and_dow(true)`, which would change what a pattern means.
@@ -553,6 +560,23 @@ mod tests {
     }
 
     #[test]
+    fn fall_back_repeated_hour_fires_in_both_passes_for_a_wildcard_pattern() {
+        // fails if a wildcard pattern skips the second pass of the repeated
+        // hour; croner 3 did, croner 4 fires in both
+        let schedule = CronSchedule::parse("0 * * * *", Some("America/New_York")).unwrap();
+        let seq = occurrence_sequence(&schedule, dt("2026-11-01T03:30:00Z"), 4);
+        assert_eq!(
+            seq,
+            vec![
+                dt("2026-11-01T04:00:00Z"),
+                dt("2026-11-01T05:00:00Z"), // 01:00 EDT
+                dt("2026-11-01T06:00:00Z"), // 01:00 EST, the repeated hour
+                dt("2026-11-01T07:00:00Z"),
+            ]
+        );
+    }
+
+    #[test]
     fn pattern_that_never_matches_returns_none() {
         // fails if every `CronError` variant is mapped to `Err`, losing the
         // `Ok(None)` that `TimeSearchLimitExceeded` alone must produce
@@ -563,10 +587,26 @@ mod tests {
     #[test]
     fn start_past_croner_year_limit_returns_none() {
         // croner 4 reports a start beyond its year limit as exhaustion where
-        // croner 3 reported `InvalidTime`, so the `Err` arm of `next_after`
-        // is no longer reachable through a public input
+        // croner 3 reported `InvalidTime`
         let schedule = CronSchedule::parse("0 3 * * *", None).unwrap();
         assert_eq!(schedule.next_after(DateTime::<Utc>::MAX_UTC), Ok(None));
+    }
+
+    #[test]
+    fn search_failure_other_than_exhaustion_surfaces_as_err() {
+        // Guards `Err(_) => Ok(None)` from collapsing both `CronError` arms
+        // into one. No public input reaches `InvalidTime` under croner 4, so
+        // the mapping is tested directly.
+        assert_eq!(
+            into_next_occurrence(Err(CronError::TimeSearchLimitExceeded)),
+            Ok(None)
+        );
+        assert_eq!(
+            into_next_occurrence(Err(CronError::InvalidTime)),
+            Err(CronScheduleError::Search {
+                reason: "CronScheduler encountered an invalid time.".to_string()
+            })
+        );
     }
 
     #[test]
