@@ -421,6 +421,12 @@ pub(crate) async fn run(
             })
             .await
         }
+        Commands::Reset(ref args) => {
+            with_client(&mut streams, &link, guard, async |client, streams| {
+                lifecycle::reset(client, streams, args).await
+            })
+            .await
+        }
         Commands::Reload(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {
                 lifecycle::reload(client, streams, args).await

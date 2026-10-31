@@ -90,6 +90,12 @@ pub enum Commands {
     /// no envelope at all. The refused names ride the stderr sentence in
     /// that case, which is the only place left for them.
     Restart(SelectorArgs),
+    /// Zero the restart counters of one or more sheep.
+    ///
+    /// Changes counters only: nothing is signalled, started or stopped, so a
+    /// running process keeps running. `shep start --reset=<mode>` is about
+    /// config, not counters.
+    Reset(SelectorArgs),
     /// Reload one or more sheep, one instance at a time.
     ///
     /// Each instance is replaced by a fresh one that has to become ready
