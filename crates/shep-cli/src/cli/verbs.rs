@@ -293,8 +293,8 @@ pub enum Commands {
     Trigger(TriggerArgs),
     /// Send a unix signal to matched sheep.
     ///
-    /// Delivered to each sheep's own process, not to its process group — the
-    /// lambs it forked are not signalled. This is a nudge to the application
+    /// Delivered to each sheep's own process, not to its process group — its
+    /// lambs are signalled only with `--lamb`. This nudges the application
     /// (SIGHUP to re-read config, SIGUSR1 to dump state); `shep stop` is what
     /// runs the stop ladder, and `shep reload` is what swaps instances.
     ///

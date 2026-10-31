@@ -18,6 +18,7 @@ use crate::commands::rpc::request_and_render;
 use crate::commands::selector::parse_selector_spec;
 use crate::exit::ExitCode;
 use crate::output::{SignalledRows, Streams};
+use crate::version_guard::version_skew_command;
 
 /// Sends `args.signal` to the sheep matching `args.selector`, and renders one
 /// row per match.
@@ -40,8 +41,9 @@ pub async fn signal(client: &Client, streams: &mut Streams<'_>, args: &SignalArg
         let message = format!(
             "this shepherd speaks protocol {} and signals a lamb from protocol \
              {LAMB_SIGNAL_SINCE}, so it would signal the sheep itself. Restart the shepherd \
-             with `shep daemon reload` and run this again; nothing was sent",
-            client.daemon().protocol
+             with `{}` and run this again; nothing was sent",
+            client.daemon().protocol,
+            version_skew_command(client.host())
         );
         return streams.fail(ExitCode::Unsupported, &message);
     }
@@ -78,6 +80,7 @@ mod tests {
 
     use super::*;
     use crate::cli::Format;
+    use crate::version_guard::VERSION_SKEW_REMEDY;
 
     fn args(selector: &str, signal: &str) -> SignalArgs {
         SignalArgs {
@@ -250,7 +253,10 @@ mod tests {
         );
         let err = String::from_utf8(err).unwrap();
         assert!(err.contains("protocol 12"), "{err}");
-        assert!(err.contains("Restart the shepherd"), "{err}");
+        assert!(
+            err.contains(&format!("`shep {VERSION_SKEW_REMEDY}`")),
+            "{err}"
+        );
     }
 
     /// The gate is for `--lamb` alone: an old shepherd still takes a plain
