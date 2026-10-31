@@ -306,8 +306,9 @@ pub(super) fn schema_refusal(plan: &Plan, name: &str, path: &str) -> Option<Writ
     )))
 }
 
-/// The refusal for a default some sheep's layered table would break, naming
-/// each sheep and the rule it breaks, or `None` when every one is taken.
+/// The refusal for a default some sheep's layered table would break, or the
+/// default's own value would, naming each sheep and the rule it breaks, or
+/// `None` when every one is taken.
 ///
 /// A default no sheep carries a table for has nothing to be checked against.
 fn default_refusal(
@@ -322,14 +323,21 @@ fn default_refusal(
     if refused.is_empty() {
         return None;
     }
-    let each: Vec<String> = refused
+    let mut each: Vec<String> = refused
+        .sheep
         .iter()
         .map(|(sheep, refusal)| format!("`{sheep}` would hold {}", refusal.text))
         .collect();
+    if let Some(own) = &refused.default {
+        each.push(format!("the default itself holds {}", own.text));
+    }
+    let reach = match refused.sheep.len() {
+        0 => "and a reset of a sheep's own value would expose it".to_string(),
+        count => format!("for {count} of the sheep it reaches"),
+    };
     Some(WriteRefusal::Invalid(format!(
-        "nothing was written: `{name}.{path}` is not a default the flock's schema takes, for \
-         {} of the sheep it reaches: {}",
-        refused.len(),
+        "nothing was written: `{name}.{path}` is not a default the flock's schema takes, \
+         {reach}: {}",
         each.join("; ")
     )))
 }
