@@ -591,9 +591,9 @@ pub enum Commands {
     /// The openrc and BSD scripts are rendered and pinned by exact-string
     /// tests; nobody on this project has run them on their own init system.
     ///
-    /// Needs root, and never asks for it: without it this prints the exact
-    /// command to run and exits non-zero, so a script notices. Under sudo
-    /// the unit is built for $SUDO_USER rather than root, so it supervises
+    /// On Unix this needs root, and never asks for it: without it this prints
+    /// the exact command to run and exits non-zero, so a script notices. Under
+    /// sudo the unit is built for $SUDO_USER rather than root, so it supervises
     /// the flock the operator actually has.
     ///
     /// Under sudo this also warns that PATH may have been replaced by
@@ -611,9 +611,9 @@ password and needs no elevation. `--user` naming anyone else, and `--init`, are 
     /// Disable and remove whichever unit `startup` installed — systemd,
     /// openrc, launchd, or a BSD `rc.d` script.
     ///
-    /// Needs root under the same rule: without it, prints the command to
-    /// run and exits non-zero. A unit that is not there is reported absent
-    /// rather than failing.
+    /// On Unix this needs root under the same rule: without it, prints the
+    /// command to run and exits non-zero. A unit that is not there is reported
+    /// absent rather than failing.
     #[command(
         after_long_help = "On Windows this removes the logon task. A running shepherd keeps \
 running; `shep kill` stops it. `--user` naming anyone else, and `--init`, are refused there."
