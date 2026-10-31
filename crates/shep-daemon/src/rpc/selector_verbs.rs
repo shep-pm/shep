@@ -24,9 +24,11 @@ pub(super) fn not_found() -> RpcError {
 
 /// The rows of `infos` that `selector` reaches.
 ///
-/// The rule `Actor::matching_ids` applies to every lifecycle verb, repeated
-/// here because this filter is over `ProcessInfo`s: a dog is not a flock
-/// member, so a sweep passes it by and an exact selector reaches it.
+/// The dog half of the rule `Actor::matching_ids` applies to every lifecycle
+/// verb, repeated here because this filter is over `ProcessInfo`s: a dog is
+/// not a flock member, so a sweep passes it by and an exact selector reaches
+/// it. A disabled app is not passed by: `describe all` lists parked apps, and
+/// a caller that must skip them filters on `ProcessInfo::disabled` itself.
 pub(super) fn matching_rows(
     infos: Vec<ProcessInfo>,
     selector: &ProcessSelector,

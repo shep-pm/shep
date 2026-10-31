@@ -818,8 +818,11 @@ impl SupervisorHandle {
     /// Tells sheep `id`, on its channel, that its lamb `pid` was sent `sig`,
     /// and answers whether the message was queued.
     ///
-    /// Not queued is not an error: the sheep has no channel, or is not
-    /// reading it.
+    /// `root` is the pid the lamb was found under. The message is queued only
+    /// while the sheep still runs as that process, so a respawn in between
+    /// does not hand the replacement news of its predecessor's lamb. Not
+    /// queued is not an error: the sheep has no channel, is not reading it,
+    /// or runs as another process now.
     ///
     /// # Errors
     ///
@@ -827,11 +830,13 @@ impl SupervisorHandle {
     pub(crate) async fn tell_lamb_signalled(
         &self,
         id: u32,
+        root: u32,
         pid: u32,
         sig: OperatorSignal,
     ) -> Result<bool, SupervisorError> {
         self.call(|reply| Command::LambSignalled {
             id,
+            root,
             pid,
             sig,
             reply,

@@ -60,7 +60,20 @@ pub(super) async fn signal_lamb(
         .list_checked()
         .await
         .map_err(|err| rpc_error(&err))?;
-    let row = one_sheep(matching_rows(infos, &selector))?;
+    let exact = selector.is_exact();
+    // A sweep passes a parked app by, as it does for every lifecycle verb, so
+    // one running sheep beside a disabled one is still exactly one.
+    let rows = matching_rows(infos, &selector)
+        .into_iter()
+        .filter(|row| exact || row.disabled != Some(true))
+        .collect();
+    let row = one_sheep(rows)?;
+    if row.dog.is_some() {
+        return Err(invalid_config(format!(
+            "{} is a dog, and a lamb signal reaches a sheep's lambs only",
+            row.name
+        )));
+    }
 
     let outcome = match row.pid {
         None => SignalOutcome::NotRunning,
@@ -76,11 +89,14 @@ pub(super) async fn signal_lamb(
                 })?
         }
     };
-    if outcome == SignalOutcome::Delivered {
+    if let (SignalOutcome::Delivered, Some(root)) = (&outcome, row.pid) {
         // The signal is already sent, so a sheep that cannot be told, because
-        // it has no channel or the engine is stopping, does not change the
-        // answer.
-        let _ = ctx.supervisor.tell_lamb_signalled(row.id, lamb, sig).await;
+        // it has no channel, a respawn has replaced the process the lamb
+        // belonged to, or the engine is stopping, does not change the answer.
+        let _ = ctx
+            .supervisor
+            .tell_lamb_signalled(row.id, root, lamb, sig)
+            .await;
     }
     Ok(Response::Signalled(vec![SignalReply {
         id: row.id,

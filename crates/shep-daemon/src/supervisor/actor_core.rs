@@ -300,11 +300,12 @@ impl<R: ProcessRunner> Actor<R> {
             }
             Command::LambSignalled {
                 id,
+                root,
                 pid,
                 sig,
                 reply,
             } => {
-                let _ = reply.send(self.tell_lamb_signalled(id, pid, sig));
+                let _ = reply.send(self.tell_lamb_signalled(id, root, pid, sig));
                 false
             }
             Command::SendLine {

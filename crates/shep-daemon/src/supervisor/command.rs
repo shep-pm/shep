@@ -430,6 +430,8 @@ pub(crate) enum Command {
     LambSignalled {
         /// Which sheep.
         id: u32,
+        /// The pid the sheep ran as when the lamb was found under it.
+        root: u32,
         /// The lamb's pid.
         pid: u32,
         /// The signal that was sent.

@@ -106,6 +106,62 @@ async fn a_selector_matching_two_sheep_is_refused_and_nothing_is_sent() {
     assert_eq!(h.pid_signals.sent(), Vec::new());
 }
 
+/// A parked app is passed by a sweep, so the one running sheep beside it is
+/// still exactly one, and the refusal never names the parked app.
+#[tokio::test(start_paused = true)]
+async fn a_sweep_passes_a_disabled_app_by() {
+    let h = harness_identifying(
+        vec![ProcScript::never_exits(), ProcScript::never_exits()],
+        process_table(),
+    );
+    start(&h, &["web", "worker"]).await;
+    let disabled = reply_of(
+        dispatch(
+            envelope(
+                3,
+                Request::Disable {
+                    selector: SelectorSpec::Name("worker".to_string()),
+                },
+            ),
+            &h.ctx,
+        )
+        .await,
+    );
+    assert!(disabled.result.is_ok(), "{:?}", disabled.result);
+
+    let rows = signal_lamb(&h, SelectorSpec::All, LAMB).await.unwrap();
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].name, "web");
+    assert_eq!(rows[0].outcome, SignalOutcome::Delivered);
+}
+
+/// An exact selector reaches a dog, but a dog's children are not the flock's
+/// to signal.
+#[tokio::test(start_paused = true)]
+async fn a_dog_named_exactly_is_refused_and_nothing_is_sent() {
+    let h = harness_identifying(vec![], process_table());
+    crate::dogs::register_dogs_at_rest(
+        &[crate::dogs::DogSpec {
+            name: "metrics".to_string(),
+            source: DogSource::BuiltIn { grants: None },
+            env: std::collections::BTreeMap::new(),
+        }],
+        &[],
+        &h.ctx.paths,
+        &h.ctx.supervisor,
+    )
+    .await;
+
+    let err = signal_lamb(&h, SelectorSpec::Name("metrics".to_string()), LAMB)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code, RpcErrorCode::InvalidConfig);
+    assert!(err.message.contains("is a dog"), "{}", err.message);
+    assert_eq!(h.pid_signals.sent(), Vec::new());
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_selector_matching_no_sheep_is_not_found() {
     let h = harness_identifying(vec![], process_table());
@@ -143,6 +199,35 @@ async fn the_sheep_hears_on_its_channel_which_lamb_was_signalled() {
             signal: "SIGHUP".to_string(),
         })
     );
+}
+
+/// A respawn between the walk and the tell leaves the sheep running as
+/// another process, and the replacement is not told about its predecessor's
+/// lamb.
+#[tokio::test(start_paused = true)]
+async fn a_sheep_that_is_no_longer_the_process_the_lamb_was_found_under_is_not_told() {
+    let h = harness_identifying(vec![ProcScript::never_exits()], process_table());
+    start(&h, &["web"]).await;
+    let mut io = h.runner.io_handles(0);
+    let row = h.ctx.supervisor.list().await.remove(0);
+    let root = row.pid.expect("web is running");
+
+    let told = h
+        .ctx
+        .supervisor
+        .tell_lamb_signalled(row.id, root + 1, LAMB, OperatorSignal::Hup)
+        .await
+        .unwrap();
+    assert!(!told);
+    assert!(io.to_child_rx.try_recv().is_err());
+
+    let told = h
+        .ctx
+        .supervisor
+        .tell_lamb_signalled(row.id, root, LAMB, OperatorSignal::Hup)
+        .await
+        .unwrap();
+    assert!(told);
 }
 
 #[tokio::test(start_paused = true)]
