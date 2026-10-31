@@ -6,7 +6,7 @@ shep_sheep_cpu_percent{sheep="we\"b\\x\n",id="3",fold="backend"} 1.5
 # TYPE shep_sheep_memory_bytes gauge
 shep_sheep_memory_bytes{sheep="web",id="3",fold="backend"} 2048
 shep_sheep_memory_bytes{sheep="we\"b\\x\n",id="3",fold="backend"} 2048
-# HELP shep_sheep_restart_total Restart count since registration.
+# HELP shep_sheep_restart_total Restart count since registration or the last `shep reset`.
 # TYPE shep_sheep_restart_total counter
 shep_sheep_restart_total{sheep="web",id="3",fold="backend"} 2
 shep_sheep_restart_total{sheep="worker",id="3",fold="backend"} 2
