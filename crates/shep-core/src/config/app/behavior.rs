@@ -23,6 +23,7 @@ impl Default for AppConfig {
             args: Vec::new(),
             cwd: None,
             interpreter: None,
+            sandbox: None,
             env: BTreeMap::new(),
             environment: None,
             instances: 1,

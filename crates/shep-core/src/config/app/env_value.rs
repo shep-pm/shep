@@ -210,6 +210,11 @@ mod tests {
                     "shep-daemon's privilege::resolve, at spawn",
                 ),
                 (
+                    "sandbox",
+                    "any value on Windows",
+                    "normalize on a Windows build, as `validate_sandbox` with `windows = true` proves",
+                ),
+                (
                     "user",
                     "a name with no passwd entry",
                     "shep-daemon's privilege::resolve, at spawn",

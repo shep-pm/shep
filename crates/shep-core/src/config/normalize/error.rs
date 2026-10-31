@@ -247,6 +247,18 @@ pub enum NormalizeError {
         /// The sheep name
         name: String,
     },
+    /// `sandbox` is the empty string, naming no crabpot settings file.
+    /// Carries the sheep name.
+    EmptySandbox {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `sandbox` is set on Windows, where crabpot's sandbox cannot start from
+    /// session 0. Carries the sheep name.
+    SandboxOnWindows {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
 }
 
 impl fmt::Display for NormalizeError {
@@ -386,6 +398,14 @@ impl fmt::Display for NormalizeError {
             Self::EmptyDogName { name } => {
                 write!(f, "sheep `{name}` has a dogs entry with an empty name")
             }
+            Self::EmptySandbox { name } => write!(
+                f,
+                "sheep `{name}` has sandbox = \"\": name a crabpot settings file, or leave the key out"
+            ),
+            Self::SandboxOnWindows { name } => write!(
+                f,
+                "sheep `{name}` sets sandbox, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
+            ),
         }
     }
 }

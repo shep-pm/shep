@@ -378,6 +378,17 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             }),
             |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
         ),
+        refused(
+            "sandbox",
+            "an empty value",
+            sheep(|a| a.sandbox = Some(String::new())),
+            |e| matches!(e, NormalizeError::EmptySandbox { .. }),
+        ),
+        elsewhere(
+            "sandbox",
+            "any value on Windows",
+            "normalize on a Windows build, as `validate_sandbox` with `windows = true` proves",
+        ),
         elsewhere(
             "user",
             "a name with no passwd entry",

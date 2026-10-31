@@ -202,7 +202,7 @@ fn set_sheep_env_batch_wire_v8() {
 /// The request names two sheep and carries no value: the shepherd reads the
 /// source's env itself.
 #[test]
-fn copy_sheep_env_wire_v13() {
+fn copy_sheep_env_wire_v14() {
     let request = Request::CopySheepEnv {
         from: "web".to_string(),
         to: "api".to_string(),
@@ -222,7 +222,7 @@ fn copy_sheep_env_wire_v13() {
 /// The reviewed change list rides along on a write, and its absence is what
 /// an earlier client's request looks like.
 #[test]
-fn copy_sheep_env_expect_wire_v13() {
+fn copy_sheep_env_expect_wire_v14() {
     let request = Request::CopySheepEnv {
         from: "web".to_string(),
         to: "api".to_string(),
@@ -611,13 +611,13 @@ fn request_wire_snapshots() {
             },
         ),
     ];
-    insta::assert_json_snapshot!("request_wire_v13", requests);
+    insta::assert_json_snapshot!("request_wire_v14", requests);
 }
 
 /// The request names a sheep and a stream. A `path` key here would make the
 /// shepherd a reader of arbitrary files.
 #[test]
-fn tail_log_request_wire_v13() {
+fn tail_log_request_wire_v14() {
     assert_eq!(
         serde_json::to_string(&Request::TailLog {
             id: 3,

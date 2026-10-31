@@ -81,6 +81,20 @@ pub struct AppConfig {
         "accepts": ["a command name found on PATH", "none, to exec the script directly"]
     })))]
     pub interpreter: Option<String>,
+    /// A crabpot settings file. The sheep runs inside crabpot's sandbox.
+    ///
+    /// The shepherd spawns `crabpot -s <file> -- <command>`, finding
+    /// `crabpot` on the sheep's `PATH`. A relative file is read from `cwd`.
+    /// Not supported on Windows.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "sandbox.json",
+        "group": "process",
+        "blurb": "A crabpot settings file. The sheep runs inside crabpot's sandbox",
+        "accepts": ["an absolute or relative path, a relative one read from cwd"],
+        "refuses": ["an empty value", "any value on Windows"],
+        "neighbours": [{"field": "cwd", "note": "a relative file is read from it"}]
+    })))]
+    pub sandbox: Option<String>,
     /// Environment for the sheep (merged over the daemon's filtered env).
     ///
     /// A value may arrive as a string, a bare boolean, or a bare whole

@@ -98,6 +98,8 @@ const FIELDS: &[FieldRow] = &[
     FieldRow { field: "args",                       group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "cwd",                        group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "interpreter",                group: ApplyGroup::NeedsRespawn,  reaches_running: false },
+    // Wraps the command in `crabpot` at spawn, so it is baked into argv.
+    FieldRow { field: "sandbox",                    group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     FieldRow { field: "env",                        group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     // Decides what every `{{secret:...}}` in this child's env resolved to,
     // and those are baked in at exec like the rest of the environment.
@@ -280,12 +282,12 @@ mod tests {
 
     /// fails if the split drifts unnoticed.
     #[test]
-    fn the_split_is_21_5_16_2() {
+    fn the_split_is_21_5_17_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 21, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
-        assert_eq!(count(ApplyGroup::NeedsRespawn), 16, "NeedsRespawn");
+        assert_eq!(count(ApplyGroup::NeedsRespawn), 17, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 2, "Structural");
     }
 

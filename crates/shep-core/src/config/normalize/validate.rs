@@ -99,6 +99,33 @@ pub(super) fn validate_probe(
     Ok(())
 }
 
+/// Validates `sandbox`, if the app sets one.
+///
+/// `windows` is passed in rather than read from `cfg!` so both answers are
+/// testable on one host.
+pub(super) fn validate_sandbox(
+    name: &str,
+    sandbox: Option<&str>,
+    windows: bool,
+) -> Result<(), NormalizeError> {
+    let Some(sandbox) = sandbox else {
+        return Ok(());
+    };
+    if sandbox.is_empty() {
+        return Err(NormalizeError::EmptySandbox {
+            name: name.to_string(),
+        });
+    }
+    if windows {
+        // crabpot's Windows sandbox cannot start from session 0, where the
+        // shepherd runs as a service.
+        return Err(NormalizeError::SandboxOnWindows {
+            name: name.to_string(),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,5 +361,50 @@ target = "http://127.0.0.1:8080/healthz"
         app.watch_options = vec!["src/**/*.rs".to_string(), "*.[ch]".to_string()];
         app.ignore_watch = vec!["target/**".to_string(), "**/[!.]*.{tmp,swp}".to_string()];
         assert!(normalize(app).is_ok());
+    }
+
+    #[test]
+    fn a_sandbox_file_is_accepted_off_windows() {
+        assert_eq!(validate_sandbox("web", Some("sandbox.json"), false), Ok(()));
+        assert_eq!(validate_sandbox("web", None, false), Ok(()));
+    }
+
+    #[test]
+    fn an_empty_sandbox_is_refused() {
+        let err = validate_sandbox("web", Some(""), false).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::EmptySandbox {
+                name: "web".to_string()
+            }
+        );
+        assert!(err.to_string().contains("sandbox"), "{err}");
+    }
+
+    #[test]
+    fn the_sandbox_key_is_refused_on_windows() {
+        let err = validate_sandbox("web", Some("sandbox.json"), true).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::SandboxOnWindows {
+                name: "web".to_string()
+            }
+        );
+        assert!(err.to_string().contains("Windows"), "{err}");
+        assert_eq!(validate_sandbox("web", None, true), Ok(()));
+    }
+
+    #[test]
+    fn normalize_applies_the_sandbox_checks_for_this_platform() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.sandbox = Some(String::new());
+        assert_eq!(
+            normalize(app.clone()).unwrap_err(),
+            NormalizeError::EmptySandbox {
+                name: "web".to_string()
+            }
+        );
+        app.sandbox = Some("sandbox.json".to_string());
+        assert_eq!(normalize(app).is_err(), cfg!(windows));
     }
 }

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Additions
 
+- Add `AppConfig::sandbox`, a crabpot settings file the sheep runs inside, and move the protocol to 14. An older shepherd would ignore the key and run the sheep unsandboxed.
 - Add optional `ProcessInfo::spawn_failure`, absent until a spawn fails, without a protocol or schema bump. ([#1294])
 
 ## [0.19.0] - 2026-10-28
