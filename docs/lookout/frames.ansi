@@ -1291,6 +1291,7 @@ The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin
 [0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
 [0m[38;5;245mname                      [0m  web                                             [0m[38;5;245m│[0m                                                                                   [0m
 [0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
+[0m[38;5;245msandbox                   [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
 [0m[38;5;245mscript                    [0m  ./srv                                           [0m[38;5;245m│[0m                                                                                   [0m
 [0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         │[0m                                                                                   [0m
                                                                             [0m[38;5;245m│[0m                                                                                   [0m
@@ -1305,7 +1306,6 @@ The sheep pane on web, at its design size: 160 = 8 gutter + 140 body + 12 margin
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────│[0m                                                                                   [0m
 [0m[38;5;245minputs[0m                                                                      [0m[38;5;245m│[0m                                                                                   [0m
 [0m[38;5;245margs                      [0m  ["--port","8080"]                               [0m[38;5;245m│[0m                                                                                   [0m
-[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       │[0m                                                                                   [0m
                                                                                                                                                                 [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                     [0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1344,6 +1344,7 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
 [0m[38;5;245mname                      [0m  web                                                                                                            [0m
 [0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
+[0m[38;5;245msandbox                   [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
 [0m[38;5;245mscript                    [0m  ./srv                                                                                                          [0m
 [0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         [0m                                                               [0m
                                                                                                                                            [0m
@@ -1358,7 +1359,6 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                                                               [0m
 [0m[38;5;245minputs[0m                                                                                                                                     [0m
 [0m[38;5;245margs                      [0m  ["--port","8080"]                                                                                              [0m
-[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                                                               [0m
                                                                                                                                            [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                [0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1397,6 +1397,7 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245minterpreter               [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
 [0m[38;5;245mname                      [0m  web                                                                    [0m
 [0m[38;5;245mreuse_port                [0m  [0m[38;5;245m(default)                                       [0m                       [0m
+[0m[38;5;245msandbox                   [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
 [0m[38;5;245mscript                    [0m  ./srv                                                                  [0m
 [0m[38;5;245muser                      [0m  [0m[38;5;245m(unset)                                         [0m                       [0m
                                                                                                    [0m
@@ -1411,7 +1412,6 @@ rss 30.0M of 64.0M █████░░░░░                               
 [0m[38;5;245m────────────────────────────────────────────────────────────────────────────[0m                       [0m
 [0m[38;5;245minputs[0m                                                                                             [0m
 [0m[38;5;245margs                      [0m  ["--port","8080"]                                                      [0m
-[0m[38;5;245mchannel                   [0m  [0m[38;5;245m(default)                                       [0m                       [0m
                                                                                                    [0m
 [0m[38;5;221m[48;5;235mesc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  …[0m[38;5;245m[48;5;235m control enabled[0m
 
@@ -1463,14 +1463,14 @@ The redrawn editing pane on api, fresh: no edits filed, at 160x48. The tab row n
    interpreter                (unset)                                         respawn   [0m[38;5;245m  example [0m/srv/app                                                      [0m
  [0m[38;5;245m= name                       api                                             read-only [0m                                                                        [0m
    reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        [0m
-   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane[0m
-   user                       (unset)                                         respawn                                                                           [0m
-                                                                                        [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m  env[0m                                                                                   [0m[38;5;245m  VALIDATION[0m                                                            [0m
-   DATABASE_URL               (set)                                                     [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd                     [0m
-   NODE_ENV                   (set)                                                     [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                                             [0m
- [0m[38;5;245m  + add a key                                                              [0m            [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned                         [0m
-                                                                                                                                                                [0m
+   sandbox                    (unset)                                         respawn                                    pick the timing when you close the pane[0m
+   script                     ./api/server.js                                 respawn                                                                           [0m
+   user                       (unset)                                         respawn   [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────[0m
+                                                                                        [0m[38;5;245m  VALIDATION[0m                                                            [0m
+[0m[38;5;245m  env[0m                                                                                   [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd                     [0m
+   DATABASE_URL               (set)                                                     [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                                             [0m
+   NODE_ENV                   (set)                                                     [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned                         [0m
+ [0m[38;5;245m  + add a key                                                              [0m                                                                                    [0m
                                                                                         [0m[38;5;245m  NEIGHBOURS[0m                                                            [0m
                                                                                           script  resolved against this cwd                                     [0m
                                                                                           out_file  relative paths follow it too                                [0m
@@ -1569,14 +1569,14 @@ The same fresh pane at 120 columns: narrow enough that LANDS gives way to the ex
    interpreter                (unset)                             [0m[38;5;245m  default [0m(none)                                      [0m
  [0m[38;5;245m= name                       api                                   example [0m/srv/app                                    [0m
    reuse_port                 false                                                                                     [0m
-   script                     ./api/server.js                       ▲ respawn  the sheep must stop and start again      [0m
-   user                       (unset)                                            pick the timing when you close the pane[0m
-                                                                                                                        [0m
-[0m[38;5;245m  env[0m                                                             [0m[38;5;238m  ────────────────────────────────────────────────────[0m
-   DATABASE_URL               (set)                               [0m[38;5;245m  VALIDATION[0m                                          [0m
-   NODE_ENV                   (set)                               [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd   [0m
- [0m[38;5;245m  + add a key                                                    [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                           [0m
-                                                                  [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned       [0m
+   sandbox                    (unset)                               ▲ respawn  the sheep must stop and start again      [0m
+   script                     ./api/server.js                                    pick the timing when you close the pane[0m
+   user                       (unset)                                                                                   [0m
+                                                                  [0m[38;5;238m  ────────────────────────────────────────────────────[0m
+[0m[38;5;245m  env[0m                                                             [0m[38;5;245m  VALIDATION[0m                                          [0m
+   DATABASE_URL               (set)                               [0m[7m[38;5;29m  █ [0man absolute or relative path, expanded from cwd   [0m
+   NODE_ENV                   (set)                               [0m[7m[38;5;29m  █ [0m~ expands, $VARS do not                           [0m
+ [0m[38;5;245m  + add a key                                                    [0m[7m[38;5;29m  █ [0ma directory that does not exist yet: warned       [0m
                                                                                                                         [0m
                                                                   [0m[38;5;245m  NEIGHBOURS[0m                                          [0m
                                                                     script  resolved against this cwd                   [0m
@@ -1623,6 +1623,7 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
    interpreter                (unset)                                         respawn   [0m
  [0m[38;5;245m= name                       api                                             read-only [0m
    reuse_port                 false                                           now       [0m
+   sandbox                    (unset)                                         respawn   [0m
    script                     ./api/server.js                                 respawn   [0m
    user                       (unset)                                         respawn   [0m
                                                                                         [0m
@@ -1632,7 +1633,6 @@ The same fresh pane at 88 columns: narrow enough that the explanation panel is g
  [0m[38;5;245m  + add a key                                                              [0m            [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …[0m
-                                                                                        [0m
                                                                                         [0m
                                                                                         [0m
                                                                                         [0m
@@ -2311,14 +2311,14 @@ esc pressed with no edit of the operator's own, only listen_timeout already park
 [0m[38;5;245m   interpreter                (unset)                                         respawn     example /srv/app                                                      [0m
 [0m[38;5;245m = name                       api                                             read-only                                                                         [0m
 [0m[38;5;245m   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        [0m
-[0m[38;5;245m   script                     ./api/server.js                                 respawn                                    pick the timing when you close the pane[0m
-[0m[38;5;245m   user                       (unset)                                         respawn                                                                           [0m
-[0m[38;5;245m                                                                                          ──────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;245m  env                                                                                     VALIDATION                                                            [0m
-[0m[38;5;245m   DATABASE_URL               (set)                                                       █ an absolute or relative path, expanded from cwd                     [0m
-[0m[38;5;245m   NODE_ENV                   (set) [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
-[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING             api is online, pid 48219                        [0m[38;5;238m▌[0m[38;5;245myet: warned                         [0m
-[0m[38;5;245m                                    [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
+[0m[38;5;245m   sandbox                    (unset)                                         respawn                                    pick the timing when you close the pane[0m
+[0m[38;5;245m   script                     ./api/server.js                                 respawn                                                                           [0m
+[0m[38;5;245m   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m                                                                                          VALIDATION                                                            [0m
+[0m[38;5;245m  env                                                                                     █ an absolute or relative path, expanded from cwd                     [0m
+[0m[38;5;245m   DATABASE_URL               (set) [0m[38;5;238m▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜[0m[38;5;245m                                    [0m
+[0m[38;5;245m   NODE_ENV                   (set) [0m[38;5;238m▐[0m[7m[38;5;221m  1 FIELD ALREADY WAITING             api is online, pid 48219                        [0m[38;5;238m▌[0m[38;5;245myet: warned                         [0m
+[0m[38;5;245m   + add a key                      [0m[38;5;238m▐[0m                                                                                      [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  R   restart now      stop, then start. The stop takes up to 1600ms.                 [0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m  L   reload           the replacement starts alongside and takes over. No gap, if the[0m[38;5;238m▌[0m[38;5;245m                                    [0m
 [0m[38;5;245m                                    [0m[38;5;238m▐[0m[48;5;235m                       app sets SO_REUSEPORT itself.                                  [0m[38;5;238m▌[0m[38;5;245m too                                [0m

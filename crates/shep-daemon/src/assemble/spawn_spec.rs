@@ -17,8 +17,7 @@ use std::path::PathBuf;
 /// runs the script directly; `Some(path)` runs `path` with the script.
 /// Explicit `out_file`/`err_file` win over the default log path and render
 /// `{{instance}}`, `{{name}}` and `{{SHEP_HOME}}` as `env` and `args` do.
-/// `SpawnSpec::stdin` carries `config.stdin` straight through. A set
-/// `sandbox` wraps the command last, as `crabpot -s <file> -- <command>`.
+/// `SpawnSpec::stdin` is `config.stdin`; a set `sandbox` runs under `crabpot`.
 ///
 /// # Errors
 ///

@@ -373,7 +373,7 @@ mod tests {
         });
         let pane = app.config_pane().expect("the reply opens the pane");
         assert_eq!(pane.target().name(), "web");
-        assert_eq!(pane.fields().len(), 44);
+        assert_eq!(pane.fields().len(), 45);
     }
 
     /// `h` before the reply arrives raises the overlay over the dashboard;
@@ -673,10 +673,10 @@ mod tests {
         app.update(Msg::Key(KeyPress::SelectDown));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 2);
         app.update(Msg::Key(KeyPress::SelectLast));
-        // `process`, the group a fresh pane opens on, has ten fields, then
-        // the fixture's two env keys and `+ add a key`: thirteen rows,
-        // index 12.
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 12);
+        // `process`, the group a fresh pane opens on, has eleven fields, then
+        // the fixture's two env keys and `+ add a key`: fourteen rows,
+        // index 13.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 13);
         app.update(Msg::Key(KeyPress::SelectFirst));
         assert_eq!(app.config_pane().unwrap().view().cursor(), 0);
     }
@@ -698,10 +698,10 @@ mod tests {
                 fixtures::sheep_config_view(),
             ))),
         });
-        // `process`, the group a fresh pane opens on, has ten fields, then
-        // the fixture's two env keys and `+ add a key`: thirteen rows,
-        // index 12.
-        assert_eq!(app.config_pane().unwrap().view().cursor(), 12);
+        // `process`, the group a fresh pane opens on, has eleven fields, then
+        // the fixture's two env keys and `+ add a key`: fourteen rows,
+        // index 13.
+        assert_eq!(app.config_pane().unwrap().view().cursor(), 13);
     }
 
     #[test]
@@ -768,8 +768,8 @@ mod tests {
         let mut app = fixtures::app_in_sheep_pane();
         app.note_body_rows(6);
         app.update(Msg::Key(KeyPress::SelectLast));
-        // `process`, the group a fresh pane opens on, has ten fields, then
-        // the fixture's two env keys and `+ add a key`: thirteen rows.
-        assert_eq!(app.config_pane().unwrap().view().offset(), 13 - 5);
+        // `process`, the group a fresh pane opens on, has eleven fields, then
+        // the fixture's two env keys and `+ add a key`: fourteen rows.
+        assert_eq!(app.config_pane().unwrap().view().offset(), 14 - 5);
     }
 }

@@ -10,9 +10,9 @@ use super::config::{ConfiguredReadiness, reload_mode};
 use super::*;
 
 #[test]
-fn a_sheep_pane_has_forty_four_fields_in_nine_groups() {
+fn a_sheep_pane_has_forty_five_fields_in_nine_groups() {
     let pane = ConfigPane::sheep(web());
-    assert_eq!(pane.fields().len(), 44);
+    assert_eq!(pane.fields().len(), 45);
     let mut groups: Vec<&str> = Vec::new();
     for field in pane.fields().fields() {
         let group = field.group.as_deref().expect("every field carries a group");
@@ -435,6 +435,6 @@ fn the_panes_debug_names_no_value_it_holds() {
     let pane = ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()));
     assert_eq!(
         format!("{pane:?}"),
-        r#"ConfigPane { target: Sheep { name: "web" }, fields: 44, env_keys: 1, armed: false, cursor: 0 }"#
+        r#"ConfigPane { target: Sheep { name: "web" }, fields: 45, env_keys: 1, armed: false, cursor: 0 }"#
     );
 }

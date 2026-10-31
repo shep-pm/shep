@@ -16,14 +16,14 @@ shep lookout   /home/ada/.shep                                                  
    interpreter                (unset)                               default (none)                                      
  = name                       api                                   example /srv/app                                    
    reuse_port                 false                                                                                     
-   script                     ./api/server.js                       ▲ respawn  the sheep must stop and start again      
-   user                       (unset)                                            pick the timing when you close the pane
-                                                                                                                        
-  env                                                               ────────────────────────────────────────────────────
-   DATABASE_URL               (set)                                 VALIDATION                                          
-   NODE_ENV                   (set)                                 █ an absolute or relative path, expanded from cwd   
-   + add a key                                                      █ ~ expands, $VARS do not                           
-                                                                    █ a directory that does not exist yet: warned       
+   sandbox                    (unset)                               ▲ respawn  the sheep must stop and start again      
+   script                     ./api/server.js                                    pick the timing when you close the pane
+   user                       (unset)                                                                                   
+                                                                    ────────────────────────────────────────────────────
+  env                                                               VALIDATION                                          
+   DATABASE_URL               (set)                                 █ an absolute or relative path, expanded from cwd   
+   NODE_ENV                   (set)                                 █ ~ expands, $VARS do not                           
+   + add a key                                                      █ a directory that does not exist yet: warned       
                                                                                                                         
                                                                     NEIGHBOURS                                          
                                                                     script  resolved against this cwd                   
