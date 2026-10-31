@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use shep_client::{EventStream, ReconnectingClient, RequestError};
+use shep_client::{EventStream, RECONNECT_MIN_DELAY, ReconnectingClient, RequestError};
 use shep_core::protocol::{BusEvent, ProcessEventKind};
 
 use super::samples::{ChannelMetric, SampleStore};
@@ -66,8 +66,9 @@ async fn arm(client: &ReconnectingClient) -> Result<EventStream, ExitCode> {
             Ok(stream) => return Ok(stream),
             // The generation this was issued on had already gone. The
             // supervisor reports a connection's death a moment after the
-            // socket does, so ask again rather than spin on this error.
-            Err(RequestError::Closed) => {}
+            // socket does. A bare retry would spin and starve it on a
+            // current-thread runtime, so wait one rung of its ladder.
+            Err(RequestError::Closed) => tokio::time::sleep(RECONNECT_MIN_DELAY).await,
             // The request reached a shepherd and did not succeed. Waiting
             // cannot change that, and a dog serving without its feed looks
             // healthy, so say so and exit on the refusal's own code.

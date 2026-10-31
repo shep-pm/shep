@@ -307,9 +307,9 @@ instability = { version = "0.3.4", default-features = false }
 # protocol, and tracking an SDK beats owning a parser for a wire format
 # still moving.
 #
-# Version 3.1.2, not "3": -Z minimal-versions resolves a bare "3" to 3.0.0,
+# Version 3.7.0, not "3": -Z minimal-versions resolves a bare "3" to 3.0.0,
 # an API nobody here has compiled.
-rmcp = { version = "3.1.2", default-features = false, features = ["server", "macros", "transport-io"] }
+rmcp = { version = "3.7.0", default-features = false, features = ["server", "macros", "transport-io"] }
 # Generates each whistle tool's input/output schema. Costs no extra crate:
 # rmcp's `server` feature already requires it. Declared directly because
 # `#[derive(JsonSchema)]` emits absolute `schemars::` paths, and rmcp only
