@@ -879,7 +879,7 @@ mod tests {
         let (_proc, io) = runner
             .spawn(&SpawnSpec {
                 stdin: false,
-                ..spec()
+                ..Default::default()
             })
             .unwrap();
         assert!(io.to_stdin.is_closed());
@@ -893,7 +893,7 @@ mod tests {
         let (_proc, io) = runner
             .spawn(&SpawnSpec {
                 stdin: true,
-                ..spec()
+                ..Default::default()
             })
             .unwrap();
         assert!(!io.to_stdin.is_closed());

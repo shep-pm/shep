@@ -33,19 +33,9 @@ struct Running {
 
 fn sweep_spec() -> SpawnSpec {
     SpawnSpec {
-        name: "web".to_string(),
-        program: "./srv".to_string(),
-        args: Vec::new(),
-        cwd: None,
-        env: std::collections::BTreeMap::new(),
-        out_file: std::path::PathBuf::from("out.log"),
-        err_file: std::path::PathBuf::from("err.log"),
-        log_timestamps: true,
         // A channel, so `shutdown_with_message` has somewhere to send.
         channel: true,
-        stdin: false,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 

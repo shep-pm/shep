@@ -55,7 +55,6 @@ fn cmd_spec(dir: &tempfile::TempDir, args: &[&str]) -> SpawnSpec {
     let mut argv = vec!["/C".to_string()];
     argv.extend(args.iter().map(|a| (*a).to_string()));
     SpawnSpec {
-        name: "web".to_string(),
         program: "cmd".to_string(),
         args: argv,
         cwd: Some(dir.path().to_path_buf()),
@@ -63,10 +62,7 @@ fn cmd_spec(dir: &tempfile::TempDir, args: &[&str]) -> SpawnSpec {
         out_file: dir.path().join("web-out.log"),
         err_file: dir.path().join("web-err.log"),
         log_timestamps: true,
-        channel: false,
-        stdin: false,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 

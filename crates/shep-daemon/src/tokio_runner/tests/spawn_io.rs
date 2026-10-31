@@ -403,18 +403,12 @@ fn adopt_spec(
 #[cfg(unix)]
 fn child_spec(dir: &tempfile::TempDir, program: &str, args: &[&str], stdin: bool) -> SpawnSpec {
     SpawnSpec {
-        name: "web".to_string(),
         program: program.to_string(),
         args: args.iter().map(|arg| (*arg).to_string()).collect(),
-        cwd: None,
-        env: BTreeMap::new(),
         out_file: dir.path().join("out.log"),
         err_file: dir.path().join("err.log"),
-        log_timestamps: true,
-        channel: false,
         stdin,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 
@@ -488,18 +482,10 @@ fn preflight_spec(program: &str, cwd: Option<PathBuf>, path: Option<&str>) -> Sp
         env.insert("PATH".to_string(), path.to_string());
     }
     SpawnSpec {
-        name: "web".to_string(),
         program: program.to_string(),
-        args: Vec::new(),
         cwd,
         env,
-        out_file: PathBuf::from("/dev/null"),
-        err_file: PathBuf::from("/dev/null"),
-        log_timestamps: true,
-        channel: false,
-        stdin: false,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 

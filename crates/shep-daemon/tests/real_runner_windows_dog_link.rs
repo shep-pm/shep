@@ -49,16 +49,11 @@ fn script_spec(dir: &tempfile::TempDir, body: &[&str]) -> SpawnSpec {
     SpawnSpec {
         name: "metrics".to_string(),
         program: script.display().to_string(),
-        args: Vec::new(),
         cwd: Some(dir.path().to_path_buf()),
         env,
         out_file: dir.path().join("out.log"),
         err_file: dir.path().join("err.log"),
-        log_timestamps: false,
-        channel: false,
-        stdin: false,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 
