@@ -430,7 +430,7 @@ fn gave_up_fires_on_a_sandbox_refusal_and_says_so() {
 #[test]
 fn the_poll_keeps_saying_sandbox_refused_for_a_sheep_the_bus_reported_refused() {
     let mut rules = gave_up_rules();
-    rules.on_event(
+    let _ = rules.on_event(
         &process_event("web", ProcessEventKind::SandboxRefused),
         1_000,
     );
@@ -442,11 +442,11 @@ fn the_poll_keeps_saying_sandbox_refused_for_a_sheep_the_bus_reported_refused() 
 #[test]
 fn the_poll_goes_back_to_budget_exhausted_once_the_refused_sheep_has_run_again() {
     let mut rules = gave_up_rules();
-    rules.on_event(
+    let _ = rules.on_event(
         &process_event("web", ProcessEventKind::SandboxRefused),
         1_000,
     );
-    rules.on_poll(&[online_info("web")], 2_000);
+    let _ = rules.on_poll(&[online_info("web")], 2_000);
     let fired = rules.on_poll(&[errored_info("web")], 1_000 + 5 * 60 * 1_000);
     assert_eq!(fired.len(), 1);
     assert_eq!(fired[0].bark.message, gave_up_message("web"));
@@ -455,11 +455,11 @@ fn the_poll_goes_back_to_budget_exhausted_once_the_refused_sheep_has_run_again()
 #[test]
 fn a_start_event_ends_the_sandbox_refusal_for_the_poll() {
     let mut rules = gave_up_rules();
-    rules.on_event(
+    let _ = rules.on_event(
         &process_event("web", ProcessEventKind::SandboxRefused),
         1_000,
     );
-    rules.on_event(&process_event("web", ProcessEventKind::Start), 2_000);
+    let _ = rules.on_event(&process_event("web", ProcessEventKind::Start), 2_000);
     let fired = rules.on_poll(&[errored_info("web")], 1_000 + 5 * 60 * 1_000);
     assert_eq!(fired.len(), 1);
     assert_eq!(fired[0].bark.message, gave_up_message("web"));
