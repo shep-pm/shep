@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-31
+
+### Added
+
+- Error a sandboxed sheep that exits 125 without restarting it
+- Report on an errored row whether a sandbox refusal stopped it
+
+
 ### Added
 
 - Error a sandboxed sheep that exits 125 at once, with a process.sandbox_refused event and no restart

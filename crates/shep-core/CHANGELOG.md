@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-31
+
+### Added
+
+- Error a sandboxed sheep that exits 125 without restarting it
+- Report on an errored row whether a sandbox refusal stopped it
+
+### Fixed
+
+- List chrono under croner in Cargo.lock and shorten a doc block
+- Document croner 4's DST overlap and test the search-error mapping
+
+
 ### Added
 
 - Add the process.sandbox_refused event kind

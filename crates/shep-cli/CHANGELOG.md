@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-31
+
+### Added
+
+- Error a sandboxed sheep that exits 125 without restarting it
+- Report on an errored row whether a sandbox refusal stopped it
+
+### Fixed
+
+- Keep the sandbox refusal cause in bark's reconciliation alert
+- Carry bark's sandbox refusals across a config reload
+- Read bark's sandbox refusal cause from the polled row
+- Pause the metrics feed before it resubscribes on a dead generation
+
+
 ### Added
 
 - Fire bark's gave_up rule on a sandbox refusal, saying so, and count it with errored in the metrics feed
