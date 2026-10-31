@@ -43,17 +43,12 @@ async fn an_adopted_sheep_that_was_still_starting_reaches_online() {
         "the blob said this sheep was still starting, so the successor must agree"
     );
 
-    // Polled, not advanced by a fixed amount: the wait runs on a task, so
-    // its result reaches the actor a message later than the deadline. The
-    // bound sits past the app's 3s `listen_timeout`.
-    let goes_online = async {
-        while sup.list().await[0].status != ProcStatus::Online {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    };
-    tokio::time::timeout(Duration::from_secs(30), goes_online)
-        .await
-        .expect("an adopted sheep left `Starting` must still have a readiness wait over it");
+    flock_until(
+        &sup,
+        |info| info[0].status == ProcStatus::Online,
+        "an adopted sheep left `Starting` must still have a readiness wait over it",
+    )
+    .await;
 }
 
 /// Every row of a listing by id, which is the order these cases name
@@ -216,17 +211,12 @@ async fn an_adopted_sheeps_exit_flows_through_the_ordinary_path() {
     )
     .expect("the adopted child is signalable");
 
-    let info = tokio::time::timeout(Duration::from_secs(20), async {
-        loop {
-            let info = sup.list().await;
-            if info[0].status == ProcStatus::Stopped {
-                return info;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("an adopted sheep's exit reaches the actor");
+    let info = flock_until(
+        &sup,
+        |info| info[0].status == ProcStatus::Stopped,
+        "an adopted sheep's exit reaches the actor",
+    )
+    .await;
 
     assert_eq!(
         info[0].last_exit,
@@ -280,20 +270,13 @@ async fn a_carried_pending_delete_deregisters_on_the_next_exit() {
     )
     .expect("the adopted child is signalable");
 
-    let info = tokio::time::timeout(Duration::from_secs(20), async {
-        loop {
-            let info = sup.list().await;
-            if info.is_empty() {
-                return info;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect(
+    let info = flock_until(
+        &sup,
+        |info| info.is_empty(),
         "a carried pending delete must deregister the sheep on its next exit, not merely \
          stop it",
-    );
+    )
+    .await;
 
     assert!(
         info.is_empty(),

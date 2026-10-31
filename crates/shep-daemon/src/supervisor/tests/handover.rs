@@ -13,6 +13,21 @@ fn is_open(fd: std::os::fd::RawFd) -> bool {
     nix::fcntl::fcntl(fd, nix::fcntl::FcntlArg::F_GETFD).is_ok()
 }
 
+/// Far longer than the deadline under test, and never actually waited: it
+/// buys a failure rather than a hung suite if the snapshot has no deadline
+/// of its own.
+#[cfg(unix)]
+const SNAPSHOT_WINDOW: Duration = Duration::from_secs(3600);
+
+/// The snapshot over wedged pumps, failing the case rather than hanging it.
+#[cfg(unix)]
+async fn await_snapshot(handle: &SupervisorHandle, fds: DaemonFds) -> Snapshot {
+    tokio::time::timeout(SNAPSHOT_WINDOW, handle.handover_snapshot(fds))
+        .await
+        .expect("a snapshot over wedged pumps must answer rather than hang")
+        .unwrap()
+}
+
 /// One of the two sheep has a shepherd channel and the other does not. The
 /// channel is the one number a snapshot may drop, so a case with only
 /// channelled sheep could not tell "every number is open" from "every
@@ -111,14 +126,7 @@ async fn a_pump_that_never_reports_refuses_the_snapshot_instead_of_hanging() {
         .await
         .unwrap();
 
-    // Far longer than the deadline under test, and never actually waited:
-    // it buys a failure rather than a hung suite if the snapshot has no
-    // deadline of its own.
-    let snapshot = tokio::time::timeout(Duration::from_secs(3600), handle.handover_snapshot(fds))
-        .await
-        .expect("a snapshot over a wedged pump must answer rather than hang")
-        .unwrap();
-    let (candidates, _blob, _parked) = snapshot;
+    let (candidates, _blob, _parked) = await_snapshot(&handle, fds).await;
 
     let borrowed: Vec<crate::handover::Candidate<'_>> = candidates
         .iter()
@@ -164,11 +172,7 @@ async fn a_pump_that_missed_the_deadline_is_not_in_the_parked_set() {
         .await
         .unwrap();
 
-    let (_candidates, _blob, parked) =
-        tokio::time::timeout(Duration::from_secs(3600), handle.handover_snapshot(fds))
-            .await
-            .expect("a snapshot over a wedged pump must answer rather than hang")
-            .unwrap();
+    let (_candidates, _blob, parked) = await_snapshot(&handle, fds).await;
     parked.resume().await;
 
     // By name, because spawn order is the supervisor's business and
@@ -221,11 +225,7 @@ async fn a_sweep_of_six_wedged_pumps_costs_one_deadline_not_six() {
         .unwrap();
 
     let started_at = tokio::time::Instant::now();
-    let (candidates, blob, _parked) =
-        tokio::time::timeout(Duration::from_secs(3600), handle.handover_snapshot(fds))
-            .await
-            .expect("a snapshot over six wedged pumps must answer rather than hang")
-            .unwrap();
+    let (candidates, blob, _parked) = await_snapshot(&handle, fds).await;
     let elapsed = started_at.elapsed();
 
     assert!(
