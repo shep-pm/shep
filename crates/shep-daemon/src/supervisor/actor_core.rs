@@ -271,6 +271,10 @@ impl<R: ProcessRunner> Actor<R> {
                 self.handle_flush(&selector, reply);
                 false
             }
+            Command::Reset { selector, reply } => {
+                self.handle_reset(&selector, reply);
+                false
+            }
             #[cfg(unix)]
             Command::HandoverSnapshot { fds, reply } => {
                 self.handle_handover_snapshot(fds, reply);

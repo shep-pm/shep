@@ -13,7 +13,7 @@ pub(super) enum Sweep {
     /// Sheep that are disabled: `enable`.
     Disabled,
     /// Every sheep, parked or not: the log verbs, which read or empty files a
-    /// disabled app still owns.
+    /// disabled app still owns, and `reset`, which moves no process.
     Any,
 }
 
