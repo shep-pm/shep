@@ -123,17 +123,21 @@ impl LogSource<'_> {
             (Self::Host { name, .. }, RequestError::Rpc(rpc))
                 if rpc.code == RpcErrorCode::Unsupported =>
             {
-                let words = ["shep", "daemon", "reload"].map(String::from);
-                let message = format!(
-                    "the shepherd on {name} predates remote log reads; run `{}` to load a \
-                     newer one",
-                    ssh_hint(name, &words)
-                );
-                streams.fail(ExitCode::Unsupported, &message)
+                streams.fail(ExitCode::Unsupported, &predates_tail_log(name))
             }
             _ => typed_request_error(streams, err),
         }
     }
+}
+
+/// What to tell the operator of host `name`, whose shepherd refused
+/// `Request::TailLog` as unsupported.
+pub(crate) fn predates_tail_log(name: &str) -> String {
+    let words = ["shep", "daemon", "reload"].map(String::from);
+    format!(
+        "the shepherd on {name} predates remote log reads; run `{}` to load a newer one",
+        ssh_hint(name, &words)
+    )
 }
 
 /// The word `bleats` prints for `stream`, the same one a `BleatLine` carries.

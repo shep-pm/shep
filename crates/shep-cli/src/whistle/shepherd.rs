@@ -16,10 +16,10 @@ use std::time::Duration;
 use rmcp::model::CallToolResult;
 use shep_client::{Client, ConnectError, RequestError, SshOptions};
 use shep_core::protocol::{
-    HelloAck, HostUsage, LogStream, ProcessInfo, Request, Response, SelectorSpec,
+    HelloAck, HostUsage, LogStream, ProcessInfo, Request, Response, RpcErrorCode, SelectorSpec,
 };
 
-use crate::commands::bleats::{FileTail, LogSource};
+use crate::commands::bleats::{FileTail, LogSource, predates_tail_log};
 use crate::commands::rpc::deadline_for;
 use crate::exit::ExitCode;
 use crate::whistle::read::unexpected_response;
@@ -240,9 +240,12 @@ impl Shepherd {
             Ok((info, [out, err]))
         }
         .await
-        .map_err(|err| match err {
-            RequestError::UnexpectedReply { .. } => unexpected_response(),
-            other => refusal(&other),
+        .map_err(|err| match (&err, self.target.host()) {
+            (RequestError::UnexpectedReply { .. }, _) => unexpected_response(),
+            (RequestError::Rpc(rpc), Some(name)) if rpc.code == RpcErrorCode::Unsupported => {
+                own_refusal(ExitCode::Unsupported.code_str(), predates_tail_log(name))
+            }
+            _ => refusal(&err),
         });
         let _ = client.close().await;
         read

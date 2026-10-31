@@ -30,7 +30,7 @@ use crate::shutdown::Interrupt;
 
 mod source;
 use source::stream_label;
-pub(crate) use source::{FileTail, LogSource};
+pub(crate) use source::{FileTail, LogSource, predates_tail_log};
 
 pub(crate) use shep_core::logtail::read_tail;
 // Only the tests size a file against the window.

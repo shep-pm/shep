@@ -18,6 +18,7 @@ use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use shep_core::barks;
+use shep_core::logtail::TAIL_WINDOW_BYTES;
 use shep_core::protocol::{Request, Response, SelectorSpec};
 
 use super::Whistle;
@@ -321,9 +322,10 @@ fn tail_stream(
 
 /// What a host's shepherd said about one stream, as a [`StreamTail`].
 ///
-/// The shepherd was asked for `limit` lines. A reply with more is cut to the
-/// last `limit` and marked truncated: the cap is this tool's, and a host is
-/// not trusted to keep it.
+/// The shepherd was asked for `limit` lines. A reply with more, or with more
+/// than [`TAIL_WINDOW_BYTES`] of them, loses its oldest lines and is marked
+/// truncated: both caps are this tool's, and a host is not trusted to keep
+/// them.
 ///
 /// # Errors
 /// The host's shepherd found the file and could not read it.
@@ -333,7 +335,16 @@ fn host_stream(tail: FileTail, limit: usize) -> Result<StreamTail, CallToolResul
             mut lines,
             truncated,
         } => {
-            let over = lines.len().saturating_sub(limit);
+            let mut keep = lines.len().min(limit);
+            let mut bytes = 0u64;
+            for (kept, line) in lines.iter().rev().take(keep).enumerate() {
+                bytes += line.len() as u64 + 1;
+                if bytes > TAIL_WINDOW_BYTES {
+                    keep = kept;
+                    break;
+                }
+            }
+            let over = lines.len() - keep;
             lines.drain(..over);
             Ok(StreamTail {
                 lines,

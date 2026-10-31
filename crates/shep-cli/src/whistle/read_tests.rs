@@ -17,7 +17,10 @@ use crate::whistle::matching_ack;
 #[path = "read_tests/ssh_stand_in.rs"]
 mod ssh_stand_in;
 #[cfg(unix)]
-use ssh_stand_in::{ssh_stand_in, ssh_stand_in_answering, ssh_stand_in_replying, stand_in_file};
+use ssh_stand_in::{
+    ssh_stand_in, ssh_stand_in_answering, ssh_stand_in_replying, ssh_stand_in_results,
+    stand_in_file,
+};
 #[path = "read_tests/barks.rs"]
 mod barks;
 #[path = "read_tests/whistles.rs"]
@@ -594,6 +597,91 @@ async fn tail_bleats_over_a_host_reads_the_tail_through_the_shepherd_and_caps_it
             }
         );
     }
+}
+
+/// A host answers from its own files, so the byte window bounds its reply as
+/// it bounds a local read: 200 lines of 2 KiB would be 400 KiB.
+#[cfg(unix)]
+#[tokio::test]
+async fn tail_bleats_over_a_host_keeps_a_reply_inside_the_byte_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let long = "x".repeat(2047);
+    let lines: Vec<String> = (0..200).map(|n| format!("{n:03}{long}")).collect();
+    let program = ssh_stand_in_replying(
+        dir.path(),
+        Ok(matching_ack()),
+        host_tail_replies(lines, false),
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.tail_bleats(Parameters(TailParams {
+            name: "web".to_string(),
+            lines: Some(200),
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("tail_bleats must return within the test timeout")
+    .expect("a stand-in shepherd must not produce a tool error");
+
+    // Each line is 2050 bytes with its newline: 127 fit in 256 KiB.
+    assert_eq!(result.0.out.len(), 127);
+    assert!(
+        result.0.out[0].starts_with("073"),
+        "the oldest lines go first"
+    );
+    assert!(result.0.out[126].starts_with("199"));
+    assert!(result.0.truncated);
+}
+
+/// A shepherd that predates `TailLog` refuses it as `unsupported`; the model
+/// is told the fix, as `shep bleats` tells an operator.
+#[cfg(unix)]
+#[tokio::test]
+async fn tail_bleats_over_a_host_that_predates_tail_log_says_to_reload_it() {
+    use shep_core::protocol::{RpcError, RpcErrorCode};
+
+    let dir = tempfile::tempdir().unwrap();
+    let program = ssh_stand_in_results(
+        dir.path(),
+        Ok(matching_ack()),
+        vec![
+            Ok(Response::Described(vec![
+                shep_client::testing::sample_info(),
+            ])),
+            Err(RpcError {
+                code: RpcErrorCode::Unsupported,
+                message: "unknown request".to_string(),
+                daemon_version: None,
+            }),
+        ],
+    );
+    let whistle = whistle_with_hosts(dir.path(), &["amp2"], &program);
+
+    let outcome = tokio::time::timeout(
+        TEST_TIMEOUT,
+        whistle.tail_bleats(Parameters(TailParams {
+            name: "web".to_string(),
+            lines: None,
+            host: Some("amp2".to_string()),
+        })),
+    )
+    .await
+    .expect("tail_bleats must return within the test timeout");
+    let Err(refusal) = outcome else {
+        panic!("a shepherd that cannot tail is a refusal");
+    };
+
+    let structured = refusal.structured_content.expect("structured");
+    assert_eq!(structured["code"], "unsupported");
+    let message = structured["message"].as_str().expect("a string");
+    assert!(message.contains("amp2"), "names the host: {message}");
+    assert!(
+        message.contains("shep daemon reload"),
+        "names the fix: {message}"
+    );
 }
 
 /// A reply that names its host is how a consumer tells a tail from that
