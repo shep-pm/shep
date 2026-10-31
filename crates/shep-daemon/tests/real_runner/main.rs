@@ -11,7 +11,6 @@
 
 #![cfg(unix)]
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::future::Future;
 use std::panic::Location;
@@ -41,18 +40,13 @@ pub(crate) use channel::*;
 /// Builds a `/bin/sh -c <script>` spec writing logs into a fresh tempdir.
 fn sh_spec(script: &str, channel: bool, out_file: PathBuf, err_file: PathBuf) -> SpawnSpec {
     SpawnSpec {
-        name: "real-runner-test".to_string(),
         program: "/bin/sh".to_string(),
         args: vec!["-c".to_string(), script.to_string()],
-        cwd: None,
-        env: BTreeMap::new(),
         out_file,
         err_file,
         log_timestamps: true,
         channel,
-        stdin: false,
-        credentials: None,
-        dog_link: false,
+        ..Default::default()
     }
 }
 
@@ -63,7 +57,10 @@ fn spec_for(dir: &tempfile::TempDir, program: &str, args: &[&str]) -> SpawnSpec 
     SpawnSpec {
         program: program.to_string(),
         args: args.iter().map(|s| (*s).to_string()).collect(),
-        ..sh_spec("", false, out_file, err_file)
+        out_file,
+        err_file,
+        log_timestamps: true,
+        ..Default::default()
     }
 }
 

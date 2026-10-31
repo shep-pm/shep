@@ -181,7 +181,7 @@ pub enum Preflight {
 }
 
 /// Everything a spawn needs, pre-assembled by the assembler (a later task)
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct SpawnSpec {
     /// Sheep name (for logging/tracing, not passed to the child)
     pub name: String,
@@ -393,10 +393,6 @@ pub trait ProcessRunner: Send + Sync + 'static {
 #[cfg(all(test, unix))]
 mod tests {
 
-    use std::collections::BTreeMap;
-
-    use std::path::PathBuf;
-
     use super::*;
 
     /// This type sits on the exec boundary, so a `tracing` call that
@@ -411,15 +407,7 @@ mod tests {
             name: "web".to_string(),
             program: "./srv".to_string(),
             args: vec!["--token=sk-live-abc".to_string(), "--port=8080".to_string()],
-            cwd: None,
-            env: BTreeMap::new(),
-            out_file: PathBuf::from("/tmp/web-out.log"),
-            err_file: PathBuf::from("/tmp/web-err.log"),
-            log_timestamps: true,
-            channel: false,
-            stdin: false,
-            credentials: None,
-            dog_link: false,
+            ..Default::default()
         };
         spec.env.insert(
             "DATABASE_URL".to_string(),
