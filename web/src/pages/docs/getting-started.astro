@@ -61,7 +61,8 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
       Windows all work; the Windows tier is newer, and two limits are worth
       knowing before you rely on it: <code>shep stop</code> has no graceful
       signal to send unless your app reads the shepherd channel, and{" "}
-      <code>shep startup</code> is not built there. Your flock lives in{" "}
+      <code>shep startup</code> brings the flock back at sign-in, not at
+      boot. Your flock lives in{" "}
       <code>%USERPROFILE%\.shep</code> on Windows, since it sets no{" "}
       <code>HOME</code>.
     </Callout>

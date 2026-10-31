@@ -380,7 +380,10 @@ export const BUDGETS: Record<string, number> = {
   // build, and is absent from every other, is a shape a script has to be
   // told about.
   "json-output": 1580,
-  startup: 1250,
+  // Raised from 1250 for the Windows section: `shep startup` registers a
+  // logon task there, and an operator has to be told it runs at sign-in, not
+  // boot, and what logoff and a crash leave behind. The page had no headroom.
+  startup: 1360,
   examples: 1200,
   "not-built": 1080,
   folds: 900,
