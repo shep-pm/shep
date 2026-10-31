@@ -155,7 +155,7 @@ const UPGRADE_COMMAND: &str = "cargo install shep";
 ///
 /// With a `host` it runs over ssh: the bare [`VERSION_SKEW_REMEDY`] would
 /// reload this machine's shepherd, which is not the one in skew.
-fn version_skew_command(host: Option<&str>) -> String {
+pub(crate) fn version_skew_command(host: Option<&str>) -> String {
     match host {
         Some(dest) => format!("ssh {dest} shep {VERSION_SKEW_REMEDY}"),
         None => format!("shep {VERSION_SKEW_REMEDY}"),

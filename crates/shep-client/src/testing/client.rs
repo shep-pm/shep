@@ -204,10 +204,19 @@ pub async fn fake_client_answering_refusals(
 /// the returned channel, for asserting on what a `Client` puts on the wire
 /// rather than on how the daemon answers.
 pub async fn fake_client_capturing_envelopes(path: &Path) -> (Client, mpsc::Receiver<Envelope>) {
+    fake_client_capturing_envelopes_with_ack(path, sample_ack()).await
+}
+
+/// As [`fake_client_capturing_envelopes`], but handshaking with a
+/// caller-chosen [`HelloAck`], for a verb that reads the peer's protocol.
+pub async fn fake_client_capturing_envelopes_with_ack(
+    path: &Path,
+    ack: HelloAck,
+) -> (Client, mpsc::Receiver<Envelope>) {
     let mut listener = bind(path);
     let (tx, rx) = mpsc::channel(SCRIPT_CHANNEL_CAPACITY);
     tokio::spawn(async move {
-        let mut frames = accept_handshaked(&mut listener, sample_ack()).await;
+        let mut frames = accept_handshaked(&mut listener, ack).await;
         loop {
             let envelope = read_envelope(&mut frames).await;
             let id = envelope.id;

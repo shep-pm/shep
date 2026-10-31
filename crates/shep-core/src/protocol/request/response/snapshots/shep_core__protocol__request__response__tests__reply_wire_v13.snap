@@ -333,6 +333,13 @@ expression: replies
               "kind": "failed",
               "reason": "no such process"
             }
+          },
+          {
+            "id": 4,
+            "name": "web",
+            "outcome": {
+              "kind": "not_a_lamb"
+            }
           }
         ]
       }

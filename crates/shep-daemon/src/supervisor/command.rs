@@ -425,6 +425,20 @@ pub(crate) enum Command {
         /// running, off a task of its own (see [`Actor::begin_signal`]).
         reply: oneshot::Sender<Result<Vec<SignalReply>, SupervisorError>>,
     },
+    /// Tells sheep `id`, on its channel, that its lamb `pid` was sent `sig`
+    /// (see [`Actor::tell_lamb_signalled`]).
+    LambSignalled {
+        /// Which sheep.
+        id: u32,
+        /// The pid the sheep ran as when the lamb was found under it.
+        root: u32,
+        /// The lamb's pid.
+        pid: u32,
+        /// The signal that was sent.
+        sig: OperatorSignal,
+        /// Whether the message was queued on the sheep's channel.
+        reply: oneshot::Sender<bool>,
+    },
     /// Writes one line to every matched sheep's stdin.
     SendLine {
         /// Which sheep.

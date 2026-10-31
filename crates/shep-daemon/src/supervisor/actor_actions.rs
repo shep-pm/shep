@@ -141,6 +141,33 @@ impl<R: ProcessRunner> Actor<R> {
         spawn_signal_task(settled, waits, reply);
     }
 
+    /// Queues [`ShepherdMessage::LambSignalled`] on sheep `id`'s channel, and
+    /// says whether it was queued.
+    ///
+    /// `try_send`, so a sheep that is not reading cannot park the actor loop.
+    /// A sheep with no open channel is told nothing, and neither is one whose
+    /// process is no longer `root`: the lamb belonged to its predecessor.
+    pub(super) fn tell_lamb_signalled(
+        &self,
+        id: u32,
+        root: u32,
+        pid: u32,
+        sig: OperatorSignal,
+    ) -> bool {
+        self.sheep
+            .get(&id)
+            .filter(|slot| slot.entry.pid == Some(root))
+            .and_then(SheepSlot::open_channel)
+            .is_some_and(|to_child| {
+                to_child
+                    .try_send(ShepherdMessage::LambSignalled {
+                        pid,
+                        signal: sig.as_str().to_string(),
+                    })
+                    .is_ok()
+            })
+    }
+
     /// Writes one line to every matched sheep's stdin, off the actor loop like
     /// [`Self::begin_signal`].
     ///

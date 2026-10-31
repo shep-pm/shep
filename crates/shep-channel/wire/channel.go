@@ -25,6 +25,8 @@ const (
 	KindShutdown = "shutdown"
 	// KindAction is the shepherd dispatching one custom action.
 	KindAction = "action"
+	// KindLambSignalled is the shepherd reporting a signal it sent one of the app's lambs.
+	KindLambSignalled = "lamb-signalled"
 )
 
 // ChildMessage is one line the app writes to the shepherd.
@@ -58,4 +60,6 @@ type ShepherdMessage struct {
 	Name   *string `json:"name,omitempty"`
 	Params *string `json:"params,omitempty"`
 	ID     *uint64 `json:"id,omitempty"`
+	PID    *uint32 `json:"pid,omitempty"`
+	Signal *string `json:"signal,omitempty"`
 }

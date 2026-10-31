@@ -208,6 +208,7 @@ mod push;
 mod reset_field;
 mod sheep_dog_names;
 mod sheep_dog_secrets;
+mod signal_lamb;
 mod start_add;
 mod stats;
 mod trigger_signal;

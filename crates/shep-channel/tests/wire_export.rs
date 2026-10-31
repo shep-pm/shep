@@ -1,8 +1,8 @@
 //! The Go spelling of this crate's two wire enums.
 //!
 //! `github.com/shep-pm/shep-go/channel` vendors these bytes as
-//! `channel/wire.go`. Neither match below has a wildcard arm. A new
-//! variant stops this file compiling until Go's spelling is decided.
+//! `channel/wire.go`. `child_kind` and `shepherd_kind` have no wildcard arm,
+//! so a new variant stops this file compiling until Go's spelling is decided.
 //!
 //! Regenerate with
 //! `SHEP_CHANNEL_BLESS=1 cargo test -p shep-channel --test wire_export`.
@@ -67,8 +67,6 @@ fn child_kind(message: &ChildMessage) -> Kind {
 }
 
 /// The Go constant for a shepherd message's kind.
-///
-/// No wildcard arm, for the same reason as [`child_kind`].
 fn shepherd_kind(message: &ShepherdMessage) -> Kind {
     match message {
         ShepherdMessage::Shutdown => Kind {
@@ -80,6 +78,11 @@ fn shepherd_kind(message: &ShepherdMessage) -> Kind {
             ident: "KindAction",
             doc: "KindAction is the shepherd dispatching one custom action.",
             wire: "action",
+        },
+        ShepherdMessage::LambSignalled { .. } => Kind {
+            ident: "KindLambSignalled",
+            doc: "KindLambSignalled is the shepherd reporting a signal it sent one of the app's lambs.",
+            wire: "lamb-signalled",
         },
     }
 }
@@ -122,6 +125,10 @@ fn shepherd_samples() -> Vec<ShepherdMessage> {
             params: Some("now".into()),
             id: 7,
         },
+        ShepherdMessage::LambSignalled {
+            pid: 4312,
+            signal: "SIGHUP".into(),
+        },
     ]
 }
 
@@ -146,10 +153,12 @@ const CHILD_FIELDS: &[Field] = &[
 /// different messages.
 #[rustfmt::skip]
 const SHEPHERD_FIELDS: &[Field] = &[
-    Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action"] },
+    Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action", "lamb-signalled"] },
     Field { ident: "Name",   ty: "*string", tag: "name,omitempty",    kinds: &["action"] },
     Field { ident: "Params", ty: "*string", tag: "params,omitempty",  kinds: &["action"] },
     Field { ident: "ID",     ty: "*uint64", tag: "id,omitempty",      kinds: &["action"] },
+    Field { ident: "PID",    ty: "*uint32", tag: "pid,omitempty",     kinds: &["lamb-signalled"] },
+    Field { ident: "Signal", ty: "*string", tag: "signal,omitempty",  kinds: &["lamb-signalled"] },
 ];
 
 const CHILD_DOC: &str = "\

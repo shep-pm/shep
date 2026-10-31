@@ -228,6 +228,18 @@ pub enum ShepherdMessage {
         /// implementation details, not a promise.
         id: u64,
     },
+    /// The operator signalled one of the app's lambs with `shep signal --lamb`
+    ///
+    /// Sent after the kernel accepted the signal, so an app can record which
+    /// signal it was. The lamb may not have stopped: `SIGHUP` can leave it
+    /// running. The library takes no action on it.
+    LambSignalled {
+        /// The lamb's pid
+        pid: u32,
+        /// The signal's canonical name, `SIG`-prefixed and uppercase, as in
+        /// `SIGHUP`
+        signal: String,
+    },
 }
 
 #[cfg(test)]
@@ -359,6 +371,16 @@ mod tests {
             id: 8,
         };
         assert_round_trip(with_params, &with_params_msg);
+    }
+
+    #[test]
+    fn a_lamb_signalled_round_trips() {
+        let fixture = r#"{"kind":"lamb-signalled","pid":4312,"signal":"SIGHUP"}"#;
+        let msg = ShepherdMessage::LambSignalled {
+            pid: 4312,
+            signal: "SIGHUP".to_string(),
+        };
+        assert_round_trip(fixture, &msg);
     }
 
     #[test]

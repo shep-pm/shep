@@ -495,7 +495,11 @@ than relative to a directory fd for the log directory.
 
 Tracked as https://github.com/shep-pm/shep/issues/353.
 
-### `shep signal` cannot reach a sheep's lambs, on purpose
+### `shep signal` cannot reach a sheep's lambs, on purpose -- one lamb built; `--group` still deferred
+
+Built as `shep signal <selector> --lamb <pid> <signal>` (#354), for a sheep
+that supervises its own workers. The text below is the original entry, and it
+still holds for `--group`.
 
 `signal` delivers to the sheep's own pid. An operator who wants a whole
 process tree to get a `SIGHUP` — the nginx-worker shape — has no verb for it:

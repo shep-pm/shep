@@ -276,6 +276,10 @@ pub struct SignalArgs {
     pub selector: String,
     /// Signal name, e.g. `SIGHUP` or `hup`
     pub signal: String,
+    /// Signal this lamb of the sheep instead of the sheep itself. The
+    /// selector must match exactly one sheep, and the pid one of its lambs
+    #[arg(long, value_name = "PID")]
+    pub lamb: Option<u32>,
 }
 
 /// Arguments to `shep whisper`.
@@ -369,6 +373,24 @@ mod tests {
             Cli::try_parse_from(["shep", "copy", "web.dogs.kelpie"]).is_err(),
             "a copy with one side named is a usage error"
         );
+    }
+
+    /// fails if `--lamb` stops reaching its field between the two positionals,
+    /// or defaults to something other than the sheep itself.
+    #[test]
+    fn signal_takes_a_lamb_pid_and_defaults_to_the_sheep_itself() {
+        use clap::Parser;
+        let parse = |argv: &[&str]| match Cli::try_parse_from(argv).unwrap().command {
+            Commands::Signal(args) => args,
+            other => panic!("expected signal, got {other:?}"),
+        };
+
+        assert_eq!(parse(&["shep", "signal", "web", "hup"]).lamb, None);
+        let lamb = parse(&["shep", "signal", "web", "--lamb", "123", "hup"]);
+        assert_eq!(lamb.lamb, Some(123));
+        assert_eq!(lamb.selector, "web");
+        assert_eq!(lamb.signal, "hup");
+        assert!(Cli::try_parse_from(["shep", "signal", "web", "hup", "--lamb", "x"]).is_err());
     }
 
     #[test]

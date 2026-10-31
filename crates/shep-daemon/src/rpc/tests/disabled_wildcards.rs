@@ -166,6 +166,7 @@ async fn naming_a_disabled_app_still_reaches_stop_signal_describe_and_delete() {
         Request::Signal {
             selector: by_name("api"),
             signal: "TERM".to_string(),
+            lamb: None,
         },
     )
     .await
