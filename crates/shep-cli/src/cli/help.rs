@@ -19,8 +19,8 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
     (
         "Run things",
         &[
-            "start", "add", "serve", "stop", "restart", "reload", "delete", "stock", "enable",
-            "disable",
+            "start", "add", "serve", "stop", "restart", "reset", "reload", "delete", "stock",
+            "enable", "disable",
         ],
     ),
     (
@@ -61,7 +61,7 @@ Getting started
   shep bleats server      follow its output
   shep startup            bring it back after a reboot
 
-Run things       start add serve stop restart reload delete stock enable disable
+Run things       start add serve stop restart reset reload delete stock enable disable
 See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper

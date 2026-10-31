@@ -21,7 +21,7 @@ go for the full argument. The commit that removed them names itself.
 
 - [Core types and the daemon's shape](#core-types-and-the-daemons-shape) (5)
 - [The CLI surface](#the-cli-surface) (8)
-- [Supervision and lifecycle](#supervision-and-lifecycle) (18)
+- [Supervision and lifecycle](#supervision-and-lifecycle) (19)
 - [The log plane](#the-log-plane) (9)
 - [Reload](#reload) (9)
 - [Custom actions and the shepherd channel](#custom-actions-and-the-shepherd-channel) (10)
@@ -317,6 +317,16 @@ normalize() rejects watch=true when the app sets no cwd (NormalizeError::WatchWi
 **Why:** #687. The first probe lands at t=0, before a fresh process has bound anything, so an interval at or past the deadline (10s default against a 3s one) left one failure and no second look: every reload of a probed app at the defaults ended with its replacement left `starting`, and a plain start only survived it because a start marks a timed-out sheep `online` anyway. The alternative the issue offered was a Flockfile warning for `interval >= listen_timeout`, which reports a broken default instead of fixing it, and every probed app on a stock Flockfile sits on that default. Dividing the deadline rather than polling on one fixed short gap bounds the sleep after each look to a quarter of the wait: at a 60s `listen_timeout` the gap is 15s, not 500ms, so an exec probe is not run 120 times to learn that one app is slow. Four looks inside the deadline is what a prober that answers at once gets at that cap, not what every wait gets: an `interval` under the cap, and the 1ms floor, give more looks, and a probe that takes time to answer moves the looks after it later. The 1ms floor is the daemon's own guard, because `normalize` says nothing about `listen_timeout` and a deadline under 4ms divides to zero.
 
 `verified crates/shep-daemon/src/probes/ready.rs (await_ready, readiness_poll_interval, READINESS_PROBE_GAPS, a_probe_that_takes_a_second_to_answer_shifts_the_looks_after_it), crates/shep-core/src/config/normalize/resolved_app.rs (MIN_READINESS_INTERVAL), crates/shep-daemon/src/supervisor/tests/readiness.rs (a_reload_of_a_probed_app_reaches_online_at_the_default_probe_interval)`
+
+### `shep reset` zeroes counters and nothing else, is refused bare, and lets `shep_sheep_restart_total` drop
+
+`shep reset <selector>...` sends `Request::Reset` once per selector and prints the flock rows `shep stop` prints, under `--format json` in the envelope `command: "reset"`. It zeroes the restart count and hands back the restart budget; it never signals, starts or stops anything, so an `errored` sheep stays errored. `SelectorArgs` requires a selector, so a bare `shep reset` is a usage error (exit 2) and `all` has to be typed. The verb is local-only until `--host` reaches it. A shepherd that predates `Reset` answers `Unsupported`, which exits 13 (`Unsupported`). `shep_sheep_restart_total` keeps its type and falls to 0 on a reset.
+
+Three words share the name and are unrelated. This verb is `Request::Reset`. `shep unset` sends `Request::ResetSheepField`, which drops one field's override. `shep start --reset=<mode>` is `ResetDepth`, which says how much config a start discards.
+
+**Why:** #1016, under #1003. A crash loop's count never falls, so two sheep read 2,382 and 2,378 after 20 days up and only restarting the flock cleared them. `reset` is pm2's spelling and sits in "Run things" beside `restart`, which clap tells apart from `--reset` because a verb and a flag parse separately. A reset that also started a process would be `restart` with a side effect, and it would hide the failure an `errored` row records. Refusing a bare selector keeps a reset from wiping the only record of a crash loop by accident. The metric drop reads as a counter reset to Prometheus `rate()`, which handles it; keeping a second never-reset count would have meant a new series for a number nobody asked for. The cost: `RESTARTS` no longer says how often a sheep crashed since registration, and a script that diffs it across a reset reads a negative step.
+
+`verified crates/shep-core/src/protocol/request/verbs.rs (Request::Reset), crates/shep-cli/src/commands/lifecycle/operational.rs (reset), crates/shep-cli/src/cli/sheep.rs (SelectorArgs), crates/shep-cli/src/remote.rs (host_scope), crates/shep-cli/src/cli/verbs.rs (Reset)`
 
 ## The log plane
 

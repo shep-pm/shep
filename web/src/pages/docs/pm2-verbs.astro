@@ -20,6 +20,11 @@ const verbTable: { pm2: string; shep: string; note?: string }[] = [
   { pm2: "pm2 stop", shep: "shep stop" },
   { pm2: "pm2 restart", shep: "shep restart" },
   {
+    pm2: "pm2 reset",
+    shep: "shep reset",
+    note: "zeroes the restart counters and touches nothing else",
+  },
+  {
     pm2: "pm2 reload",
     shep: "shep reload",
     note: "N instances on one port need the app to set SO_REUSEPORT: see below",

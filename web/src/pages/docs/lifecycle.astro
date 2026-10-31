@@ -387,6 +387,21 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       </a>.
     </p>
 
+    <h2 id="reset-zero-the-counters">reset: zero the counters</h2>
+    <VerbSignature verb="reset" usage="shep reset <selector>...">
+      <p>
+        Zeroes the restart count and hands back the restart budget, so a
+        crash loop that ended days ago stops showing in{" "}
+        <code>RESTARTS</code>. Nothing is signalled, started or stopped: a
+        running process keeps its pid, and an <code>errored</code> sheep
+        stays errored until <code>shep restart</code>. The selector is
+        required, <code>all</code> included, and the listing is the one{" "}
+        <code>stop</code> prints. It runs on this machine only.{" "}
+        <code>shep start --reset=&lt;mode&gt;</code> is about config, not
+        counters.
+      </p>
+    </VerbSignature>
+
     <h2 id="reload-one-instance-at-a-time-in-one-of-two-orders">reload: one instance at a time, in one of two orders</h2>
     <p>
       A reload overlaps the old instance and the new one by default: the

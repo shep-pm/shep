@@ -502,3 +502,101 @@ async fn a_restart_over_a_host_probes_no_local_dog() {
         "no local dog is warned about on a restart that goes to a host: {said}"
     );
 }
+
+/// Runs `shep reset <selectors>` against `client`, handing back its code
+/// and both streams.
+async fn reset_against_in(
+    client: &Client,
+    selectors: &[&str],
+    fmt: Format,
+) -> (ExitCode, String, String) {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = {
+        let mut streams = Streams::bare(&mut out, &mut err, fmt);
+        reset(
+            client,
+            &mut streams,
+            &SelectorArgs {
+                selectors: selectors.iter().map(|one| (*one).to_string()).collect(),
+            },
+        )
+        .await
+    };
+    (
+        code,
+        String::from_utf8(out).unwrap(),
+        String::from_utf8(err).unwrap(),
+    )
+}
+
+/// fails if `reset` sends anything but one `Reset` per selector, or prints
+/// nothing of the flock after it did its work.
+#[tokio::test]
+async fn reset_sends_one_reset_request_per_selector_and_prints_the_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = shep_client::testing::control_address(dir.path());
+    let (client, mut envelopes) = fake_client_answering(&path, |request| match request {
+        Request::Reset { .. } => Response::Reset(vec![reloaded_api()]),
+        Request::ListFlock => Response::Flock(vec![reloaded_api()]),
+        _ => Response::Pong,
+    })
+    .await;
+
+    let (code, printed, said) = reset_against_in(&client, &["api", "7"], Format::Table).await;
+
+    assert_eq!(code, ExitCode::Success, "{said}");
+    assert_eq!(
+        envelopes.recv().await.unwrap().body,
+        Request::Reset {
+            selector: SelectorSpec::Name("api".into())
+        }
+    );
+    assert_eq!(
+        envelopes.recv().await.unwrap().body,
+        Request::Reset {
+            selector: SelectorSpec::Id(7)
+        }
+    );
+    assert!(printed.contains("api"), "the flock rows print: {printed}");
+}
+
+/// fails if a shepherd that predates `Reset` stops exiting `Unsupported`, or
+/// stops naming the code it answered.
+#[tokio::test]
+async fn reset_against_a_shepherd_that_predates_it_exits_unsupported() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = shep_client::testing::control_address(dir.path());
+    let (client, _daemon) =
+        fake_client_replying_err(&path, RpcErrorCode::Unsupported, "unknown variant").await;
+
+    let (code, printed, said) = reset_against_in(&client, &["api"], Format::Table).await;
+
+    assert_eq!(code, ExitCode::Unsupported, "{said}");
+    assert!(said.contains("Unsupported"), "{said}");
+    assert!(
+        printed.is_empty(),
+        "nothing was done, so nothing prints: {printed}"
+    );
+}
+
+/// fails if `--format json` prints more than one envelope, or files it
+/// under a command other than `reset`.
+#[tokio::test]
+async fn reset_prints_one_json_envelope_under_command_reset() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = shep_client::testing::control_address(dir.path());
+    let (client, _envelopes) = fake_client_answering(&path, |request| match request {
+        Request::Reset { .. } => Response::Reset(vec![reloaded_api()]),
+        _ => Response::Pong,
+    })
+    .await;
+
+    let (code, printed, said) = reset_against_in(&client, &["api"], Format::Json).await;
+
+    assert_eq!(code, ExitCode::Success, "{said}");
+    assert_eq!(objects_in(&printed), 1, "{printed}");
+    let envelope: serde_json::Value = serde_json::from_str(&printed).unwrap();
+    assert_eq!(envelope["command"], "reset", "{envelope}");
+    assert_eq!(envelope["data"][0]["name"], "api", "{envelope}");
+}

@@ -1,6 +1,6 @@
 //! The selector-driven operational verbs.
 //!
-//! `stop`, `restart`, `reload`, `delete` and `stock`, plus the refusal
+//! `stop`, `reset`, `restart`, `reload`, `delete` and `stock`, plus the refusal
 //! rendering they share for a staged walk over a fold.
 
 use std::time::Duration;
@@ -37,6 +37,34 @@ pub async fn stop(client: &Client, streams: &mut Streams<'_>, args: &SelectorArg
     // Printed whenever the verb did its work; see `load`.
     if !procs.is_empty() || failure.is_none() {
         let wrote = render_outcome(client, streams, "stop", FlockRows(procs)).await;
+        if wrote != ExitCode::Success {
+            return wrote;
+        }
+    }
+    failure.unwrap_or(ExitCode::Success)
+}
+
+/// Zeroes the restart counters of the sheep matching `args.selectors`.
+pub async fn reset(client: &Client, streams: &mut Streams<'_>, args: &SelectorArgs) -> ExitCode {
+    let selectors = match parse_selectors(streams, &args.selectors) {
+        Ok(selectors) => selectors,
+        Err(code) => return code,
+    };
+    let (procs, failure) = request_each(
+        client,
+        streams,
+        &selectors,
+        None,
+        |selector| Request::Reset { selector },
+        |response| match response {
+            Response::Reset(procs) => Some(procs),
+            _ => None,
+        },
+    )
+    .await;
+    // Printed whenever the verb did its work; see `load`.
+    if !procs.is_empty() || failure.is_none() {
+        let wrote = render_outcome(client, streams, "reset", FlockRows(procs)).await;
         if wrote != ExitCode::Success {
             return wrote;
         }
