@@ -303,11 +303,10 @@ pub(super) fn signallable_pid(pid: u32) -> Result<i32, RunnerError> {
         })
 }
 
-// Group-wide for the stop rungs of an unsandboxed sheep and for the exec
-// prober's timeout path (`probes/os.rs`, the reason this is `pub(crate)`): a
-// wrapper script that forks without exec'ing leaves its child in the sheep's
-// group, and a leader-only signal would leave that child running orphaned.
-// A sandboxed sheep's first rung is leader-only, see `signal_leader`.
+// Group-wide for an unsandboxed sheep's stop rungs and the exec prober's
+// timeout path (`probes/os.rs`, why this is `pub(crate)`): a wrapper script
+// that forks leaves its child in the group, and a leader-only signal would
+// orphan it. A sandboxed sheep's first rung is `signal_leader`.
 /// Sends `sig` to the whole process group led by `pid`, through
 /// [`shep_tree::group::signal_group`].
 ///

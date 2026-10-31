@@ -5,11 +5,9 @@
 //! both the engine tests' fake and the real child. Portable: it touches only
 //! [`StopSignal`] and the trait, never an OS signal API.
 //!
-//! The ladder reaches the sheep's process group and nothing else, except
-//! that a sandboxed sheep's stop signal reaches the leader alone
-//! ([`crate::runner::SpawnSpec::leader_only_stop`]). A lamb that left the
-//! group, or outlived the leader, is ended by the lamb sweep the sheep task
-//! runs once this returns ([`crate::sweep`]).
+//! The ladder reaches the sheep's process group, bar a sandboxed sheep's
+//! stop signal ([`crate::runner::SpawnSpec::leader_only_stop`]), which
+//! reaches the leader alone. The lamb sweep ends the rest ([`crate::sweep`]).
 
 use core::time::Duration;
 
