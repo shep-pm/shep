@@ -13,6 +13,11 @@ use crate::runner::ExitOutcome;
 /// The exit code crabpot uses when its sandbox refuses to start
 pub const SANDBOX_REFUSED_EXIT: i32 = 125;
 
+/// Whether a sheep configured as `app` that exited with `code` was refused by its sandbox
+pub fn is_sandbox_refusal(app: &AppConfig, code: Option<i32>) -> bool {
+    app.sandbox.is_some() && code == Some(SANDBOX_REFUSED_EXIT)
+}
+
 /// Restart decision for a process exit
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -42,7 +47,7 @@ pub fn decide_on_exit(
         return Decision::CleanStop;
     }
 
-    if app.sandbox.is_some() && exit.code == Some(SANDBOX_REFUSED_EXIT) {
+    if is_sandbox_refusal(app, exit.code) {
         return Decision::SandboxRefused;
     }
 

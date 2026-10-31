@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add the process.sandbox_refused event kind
+- Add sandbox_refused to ProcessInfo, set on an errored row to say a sandbox refusal stopped it
+
 ## [0.20.0] - 2026-10-31
 
 ### Added

@@ -265,6 +265,15 @@ pub struct ProcessInfo {
     /// a revision to report, and no shepherd reports one yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vcs: Option<Vcs>,
+    /// Whether this `errored` sheep stopped because its sandbox refused to
+    /// start, as opposed to exhausting its restart budget. `Some` on every
+    /// `errored` row from a daemon that knows the cause; `None` on any other
+    /// row, and from a peer daemon that predates the field.
+    ///
+    /// Not derivable from [`Self::last_exit`]: an unsandboxed sheep exits 125
+    /// like any other. Additive, like [`Self::disabled`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_refused: Option<bool>,
 }
 
 /// Orders one flock listing the way every operator-facing surface presents
@@ -320,6 +329,7 @@ impl ProcessInfo {
                 log_timestamps: None,
                 access: None,
                 vcs: None,
+                sandbox_refused: None,
             },
         }
     }
@@ -510,6 +520,13 @@ impl ProcessInfoBuilder {
         self
     }
 
+    /// Sets whether this `errored` sheep was stopped by a sandbox refusal;
+    /// `None` on any other row.
+    pub fn sandbox_refused(mut self, sandbox_refused: Option<bool>) -> Self {
+        self.info.sandbox_refused = sandbox_refused;
+        self
+    }
+
     /// Finishes the row.
     #[must_use]
     pub fn build(self) -> ProcessInfo {
@@ -577,6 +594,9 @@ pub(super) fn sample_info() -> ProcessInfo {
         // `a_row_with_no_revision_has_no_vcs_key` and
         // `a_revision_round_trips_with_and_without_a_branch`.
         vcs: None,
+        // `None` so the key is absent from the pinned bytes; its shape is
+        // pinned by `a_sandbox_refusal_flag_is_absent_from_the_wire_until_set`.
+        sandbox_refused: None,
     }
 }
 
@@ -584,6 +604,8 @@ pub(super) fn sample_info() -> ProcessInfo {
 #[cfg(test)]
 pub(super) const REVISION: &str = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 
+#[cfg(test)]
+mod sandbox_wire;
 #[cfg(test)]
 mod sorting;
 #[cfg(test)]

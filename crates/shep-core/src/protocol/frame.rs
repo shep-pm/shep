@@ -233,6 +233,7 @@ mod tests {
                 log_timestamps: None,
                 access: None,
                 vcs: None,
+                sandbox_refused: None,
             },
             manually: false,
             at_ms: 1_700_000_000_000,
