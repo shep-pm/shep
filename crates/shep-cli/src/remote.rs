@@ -36,6 +36,7 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Stop(_)
         | Commands::Thatlldo(_)
         | Commands::Restart(_)
+        | Commands::Reset(_)
         | Commands::Reload(_)
         | Commands::Delete(_)
         | Commands::Disable(_)
@@ -78,7 +79,6 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Runtime(_)
         | Commands::Dev(_)
         | Commands::Import(_)
-        | Commands::Reset(_)
         | Commands::Startup(_)
         | Commands::Unstartup(_)
         | Commands::Completions(_)
@@ -309,6 +309,17 @@ mod tests {
     /// Every argv of `muster`, the verb that boots a host's shepherd.
     const MUSTERING: &[&[&str]] = &[&["muster"]];
 
+    /// Every argv of `reset`, which has no dog half and so reaches a host.
+    const RESETTING: &[&[&str]] = &[&["reset", "web"], &["reset", "web", "api"]];
+
+    #[test]
+    fn reset_reaches_a_host() {
+        for argv in RESETTING {
+            let cli = parsed_with_host(argv);
+            assert_eq!(host_scope(&cli.command), HostScope::Reaches, "{argv:?}");
+        }
+    }
+
     #[test]
     fn start_reaches_a_host_and_add_does_not() {
         for argv in STARTING {
@@ -391,6 +402,7 @@ mod tests {
                 .chain(MARKING)
                 .chain(STARTING)
                 .chain(MUSTERING)
+                .chain(RESETTING)
                 .any(|argv| argv[0] == sample[0])
             {
                 continue;

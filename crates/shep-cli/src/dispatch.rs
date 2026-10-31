@@ -721,6 +721,7 @@ async fn run_on_host(
             lifecycle::stop(&client, &mut streams, args).await
         }
         Commands::Restart(args) => lifecycle::restart(&client, &mut streams, None, args).await,
+        Commands::Reset(args) => lifecycle::reset(&client, &mut streams, args).await,
         Commands::Reload(args) => lifecycle::reload(&client, &mut streams, args).await,
         Commands::Bleats(args) => {
             bleats::bleats_on_host(&client, &mut streams, quiet, dest, args).await
