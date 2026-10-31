@@ -216,12 +216,10 @@ predicates = { version = "3", default-features = false }
 # Dependabot would otherwise rewrite. Drop the ceiling once lookout_terminal.rs
 # is ported to the 0.18 API.
 vt100 = { version = ">=0.16.2, <0.17", default-features = false }
-# The cron_restart dialect (spec §4). `serde` is croner's only feature; we do
-# not serialize a parsed Cron, the Flockfile carries the pattern string.
-# Held below 4: croner 4 changes the parser API and the accepted patterns that
-# shep-core's config::cron tests pin, and cron_restart is a Flockfile contract.
-# Drop the ceiling once config/cron.rs is migrated to croner 4.
-croner = { version = ">=3.0.1, <4", default-features = false }
+# The cron_restart dialect (spec §4). `chrono` is the backend croner 4 makes
+# optional; `serde` is skipped, the Flockfile carries the pattern string and a
+# parsed Cron is never serialized.
+croner = { version = "4", default-features = false, features = ["chrono"] }
 # croner is generic over chrono::TimeZone; `clock` provides Utc::now(), which
 # the daemon's cron worker reads to derive the next occurrence.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -1,7 +1,7 @@
 //! `cron_restart` schedule parsing: the croner-backed cron grammar (spec §4).
 //!
-//! Five-field standard cron only. croner still accepts `L`, `W`, `#` and
-//! `?` natively; rejecting them is this module's job, done by a
+//! Five-field standard cron only. croner still accepts `L`, `W`, `#`, `?`
+//! and a leading `+` natively; rejecting them is this module's job, done by a
 //! token-aware pre-parse scan, since a character scan alone would reject
 //! `JUL` and `WED`.
 //!
@@ -77,6 +77,7 @@ impl CronSchedule {
             trimmed.to_string()
         };
         reject_extension_characters(&candidate, pattern)?;
+        reject_startless_step(&candidate, pattern)?;
 
         let cron = cron_parser()
             .parse(&candidate)
@@ -95,8 +96,8 @@ impl CronSchedule {
     /// The first occurrence strictly after `after`, in UTC.
     ///
     /// Returns `None` when the pattern can never match again, like `0 0 30 2 *`
-    /// (30 February). A DST fall-back hour resolves to its earlier instant
-    /// only, never the repeated wall-clock hour twice, croner's own semantics.
+    /// (30 February). Across a DST fall-back, croner's semantics apply: `30 1 * * *`
+    /// fires once, at the earlier instant; `0 * * * *` fires in both passes.
     ///
     /// # Errors
     /// - [`CronScheduleError::Search`]: the search failed for a reason other than exhaustion.
@@ -109,13 +110,7 @@ impl CronSchedule {
         after: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, CronScheduleError> {
         let start = after.with_timezone(&self.zone);
-        match self.cron.find_next_occurrence(&start, false) {
-            Ok(dt) => Ok(Some(dt.with_timezone(&Utc))),
-            Err(CronError::TimeSearchLimitExceeded) => Ok(None),
-            Err(e) => Err(CronScheduleError::Search {
-                reason: e.to_string(),
-            }),
-        }
+        into_next_occurrence(self.cron.find_next_occurrence(&start, false))
     }
 
     /// The pattern as written in the Flockfile.
@@ -184,15 +179,28 @@ impl fmt::Display for CronScheduleError {
 
 impl core::error::Error for CronScheduleError {}
 
-/// Builds the five-field-only parser. Not a `const`/`static`:
-/// `CronParserBuilder::build` is not a `const fn`.
-///
-/// `Seconds::Disallowed` is the load-bearing call: croner's default is
-/// `Seconds::Optional`, which accepts a six-field pattern. No
-/// `.dom_and_dow(true)` call: croner's default OR semantics is the dialect
-/// map.md promises, and `true` would change what an existing pattern means.
+/// Maps croner's search result: exhaustion is `None`, any other failure is an error.
+fn into_next_occurrence(
+    found: Result<DateTime<Tz>, CronError>,
+) -> Result<Option<DateTime<Utc>>, CronScheduleError> {
+    match found {
+        Ok(dt) => Ok(Some(dt.with_timezone(&Utc))),
+        Err(CronError::TimeSearchLimitExceeded) => Ok(None),
+        Err(e) => Err(CronScheduleError::Search {
+            reason: e.to_string(),
+        }),
+    }
+}
+
+/// Builds the five-field-only parser. `Seconds::Disallowed` rejects a six-field
+/// pattern; no `.dom_and_dow(true)`, which would change what a pattern means.
+/// `sloppy_ranges(true)` keeps `5/15`, which croner 4 refuses by default; it
+/// also admits `/15`, which [`reject_startless_step`] refuses first.
 fn cron_parser() -> CronParser {
-    CronParser::builder().seconds(Seconds::Disallowed).build()
+    CronParser::builder()
+        .seconds(Seconds::Disallowed)
+        .sloppy_ranges(true)
+        .build()
 }
 
 /// Parses an IANA timezone name. Shared by [`CronSchedule::parse`] and
@@ -237,7 +245,7 @@ fn expand_nickname(trimmed: &str, original: &str) -> Result<String, CronParseErr
     })
 }
 
-/// Rejects croner's `L`, `W`, `#` and `?` extensions before the pattern
+/// Rejects croner's `L`, `W`, `#`, `?` and `+` extensions before the pattern
 /// reaches croner, which accepts all four natively. Scans token-aware, per
 /// whitespace-separated field, treating a recognized three-letter month or
 /// weekday name as opaque first: a character-wise scan would reject `JUL`
@@ -257,7 +265,22 @@ fn reject_extension_characters(candidate: &str, original: &str) -> Result<(), Cr
     Ok(())
 }
 
-/// Scans one field for `L`/`W`/`#`/`?`, skipping over any three-character
+/// Rejects a list item that opens with `/`, like `/10`. Sloppy ranges make
+/// croner 4 read it as `*/10`; croner 3 refused it, and so does shep.
+fn reject_startless_step(candidate: &str, original: &str) -> Result<(), CronParseError> {
+    let startless = candidate
+        .split_whitespace()
+        .any(|field| field.split(',').any(|item| item.starts_with('/')));
+    if startless {
+        return Err(CronParseError::Pattern {
+            pattern: original.to_string(),
+            reason: "cron_restart step has no start before `/`; write `*/N` or `A-B/N`".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Scans one field for `L`/`W`/`#`/`?`/`+`, skipping over any three-character
 /// window that case-insensitively matches a recognized month/weekday name.
 fn field_has_bad_char(field: &str) -> Option<char> {
     let chars: Vec<char> = field.chars().collect();
@@ -270,7 +293,7 @@ fn field_has_bad_char(field: &str) -> Option<char> {
                 continue;
             }
         }
-        if matches!(chars[i].to_ascii_uppercase(), 'L' | 'W' | '#' | '?') {
+        if matches!(chars[i].to_ascii_uppercase(), 'L' | 'W' | '#' | '?' | '+') {
             return Some(chars[i]);
         }
         i += 1;
@@ -537,6 +560,23 @@ mod tests {
     }
 
     #[test]
+    fn fall_back_repeated_hour_fires_in_both_passes_for_a_wildcard_pattern() {
+        // fails if a wildcard pattern skips the second pass of the repeated
+        // hour; croner 3 did, croner 4 fires in both
+        let schedule = CronSchedule::parse("0 * * * *", Some("America/New_York")).unwrap();
+        let seq = occurrence_sequence(&schedule, dt("2026-11-01T03:30:00Z"), 4);
+        assert_eq!(
+            seq,
+            vec![
+                dt("2026-11-01T04:00:00Z"),
+                dt("2026-11-01T05:00:00Z"), // 01:00 EDT
+                dt("2026-11-01T06:00:00Z"), // 01:00 EST, the repeated hour
+                dt("2026-11-01T07:00:00Z"),
+            ]
+        );
+    }
+
+    #[test]
     fn pattern_that_never_matches_returns_none() {
         // fails if every `CronError` variant is mapped to `Err`, losing the
         // `Ok(None)` that `TimeSearchLimitExceeded` alone must produce
@@ -545,17 +585,28 @@ mod tests {
     }
 
     #[test]
+    fn start_past_croner_year_limit_returns_none() {
+        // croner 4 reports a start beyond its year limit as exhaustion where
+        // croner 3 reported `InvalidTime`
+        let schedule = CronSchedule::parse("0 3 * * *", None).unwrap();
+        assert_eq!(schedule.next_after(DateTime::<Utc>::MAX_UTC), Ok(None));
+    }
+
+    #[test]
     fn search_failure_other_than_exhaustion_surfaces_as_err() {
         // Guards `Err(_) => Ok(None)` from collapsing both `CronError` arms
-        // into one. `MAX_UTC` reports `InvalidTime`, not
-        // `TimeSearchLimitExceeded`, so this must take the `Err` arm.
-        let schedule = CronSchedule::parse("0 3 * * *", None).unwrap();
-        match schedule.next_after(DateTime::<Utc>::MAX_UTC) {
-            Err(CronScheduleError::Search { reason }) => {
-                assert_eq!(reason, "CronScheduler encountered an invalid time.");
-            }
-            other => panic!("expected Err(Search), got {other:?}"),
-        }
+        // into one. No public input reaches `InvalidTime` under croner 4, so
+        // the mapping is tested directly.
+        assert_eq!(
+            into_next_occurrence(Err(CronError::TimeSearchLimitExceeded)),
+            Ok(None)
+        );
+        assert_eq!(
+            into_next_occurrence(Err(CronError::InvalidTime)),
+            Err(CronScheduleError::Search {
+                reason: "CronScheduler encountered an invalid time.".to_string()
+            })
+        );
     }
 
     #[test]
@@ -630,5 +681,59 @@ mod tests {
         // fails the same way, for a range spelled with day names either side
         let schedule = CronSchedule::parse("0 0 * * MON-FRI", None).unwrap();
         assert_eq!(schedule.pattern(), "0 0 * * MON-FRI");
+    }
+
+    #[test]
+    fn step_from_a_single_start_still_matches() {
+        // fails if the parser is strict about steps: croner 4 refuses `5/5`,
+        // which croner 3 and so every existing Flockfile accepted
+        let schedule = CronSchedule::parse("5/20 * * * *", None).unwrap();
+        let seq = occurrence_sequence(&schedule, dt("2026-01-01T00:00:00Z"), 4);
+        assert_eq!(
+            seq,
+            vec![
+                dt("2026-01-01T00:05:00Z"),
+                dt("2026-01-01T00:25:00Z"),
+                dt("2026-01-01T00:45:00Z"),
+                dt("2026-01-01T01:05:00Z"),
+            ]
+        );
+    }
+
+    #[test]
+    fn step_without_a_start_is_rejected() {
+        // fails if `/10` reaches a sloppy croner 4 parser, which reads it as
+        // `*/10`; croner 3 refused it
+        for pattern in ["/10 * * * *", "0 /2 * * *", "0,/10 * * * *"] {
+            match CronSchedule::parse(pattern, None) {
+                Err(CronParseError::Pattern {
+                    pattern: got,
+                    reason,
+                }) => {
+                    assert_eq!(got, pattern);
+                    assert_eq!(
+                        reason,
+                        "cron_restart step has no start before `/`; write `*/N` or `A-B/N`"
+                    );
+                }
+                other => panic!("expected Pattern error for {pattern}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn day_of_week_and_prefix_is_rejected() {
+        // fails if the croner 4 `+` prefix, which switches day-of-month and
+        // day-of-week from OR to AND, reaches croner
+        for pattern in ["0 0 1 * +1", "0 0 * * +MON"] {
+            match CronSchedule::parse(pattern, None) {
+                Err(CronParseError::Pattern { reason, .. }) => assert_eq!(
+                    reason,
+                    "cron_restart pattern contains `+`, a croner extension character \
+                     shep's five-field dialect does not accept"
+                ),
+                other => panic!("expected Pattern error for {pattern}, got {other:?}"),
+            }
+        }
     }
 }
