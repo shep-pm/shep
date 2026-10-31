@@ -66,8 +66,7 @@ async fn a_replacement_is_never_spawned_for_a_disabled_app() {
 async fn a_disable_during_a_serial_drain_spawns_no_replacement() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
     actor.advance_reload("web", VecDeque::from([0]));
     assert_eq!(actor.reloads["web"].swap.phase, ReloadPhase::DrainFirst);
 
@@ -89,8 +88,7 @@ async fn a_disable_during_a_restart_in_flight_leaves_the_app_stopped() {
     let dir = tempfile::tempdir().unwrap();
     // No scripts: a respawn here would panic.
     let (mut actor, _mailbox) = actor_with_one_online_sheep(&dir, vec![]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
     let (restart_reply, _restarted) = oneshot::channel();
     actor.restart_unless_disabled(
         &ProcessSelector::Name("web".into()),
@@ -122,8 +120,7 @@ async fn a_disable_while_a_serial_replacement_awaits_readiness_keeps_the_row() {
     let dir = tempfile::tempdir().unwrap();
     let (mut actor, _mailbox) =
         actor_with_one_online_sheep_of(&dir, probed_app("web"), vec![ProcScript::never_exits()]);
-    let (ctl_tx, _ctl_rx) = mpsc::channel(SHEEP_CTL_CAPACITY);
-    actor.sheep.get_mut(&0).expect("the fixture's sheep").ctl = Some(ctl_tx);
+    let _ctl_rx = attach_ctl(&mut actor);
     actor.advance_reload("web", VecDeque::from([0]));
     exit_clean(&mut actor, 0);
     let replacement = actor.reloads["web"].swap.new_id.expect("a replacement");
