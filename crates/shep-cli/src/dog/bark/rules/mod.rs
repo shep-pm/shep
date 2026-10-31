@@ -266,9 +266,6 @@ struct SubjectState {
     /// window last reset for this subject, when that reset happened).
     /// Only `RestartRate` rules ever populate this.
     restart_windows: BTreeMap<usize, (u32, u64)>,
-    /// The bus reported this sheep's sandbox refusing to start and nothing
-    /// since says it ran again, so the poll's `Errored` has that cause.
-    sandbox_refused: bool,
 }
 
 /// The subject's entry in `subjects`, created on first sight.
@@ -462,7 +459,6 @@ impl Rules {
         };
         let kind = *kind;
         self.note_name(kind, info);
-        self.note_sandbox_refusal(kind, &info.name);
         let kind_wire = wire_spelling(kind);
         let mut firings = Vec::new();
         for idx in 0..self.rules.len() {
@@ -529,23 +525,6 @@ impl Rules {
         }
     }
 
-    /// Whether `name`'s last lifecycle event on the bus was a sandbox refusal.
-    fn sandbox_refused(&self, name: &str) -> bool {
-        self.subjects
-            .get(name)
-            .is_some_and(|state| state.sandbox_refused)
-    }
-
-    /// Remembers whether `name`'s last word on the bus was a sandbox refusal,
-    /// for the poll's message. Any other lifecycle event ends it.
-    fn note_sandbox_refusal(&mut self, kind: ProcessEventKind, name: &str) {
-        if kind == ProcessEventKind::SandboxRefused {
-            subject_state(&mut self.subjects, name).sandbox_refused = true;
-        } else if let Some(state) = self.subjects.get_mut(name) {
-            state.sandbox_refused = false;
-        }
-    }
-
     /// Replaces the id-to-name map with `flock`'s, evaluating no rule.
     ///
     /// For a caller that needs log lines to resolve before the first poll,
@@ -569,16 +548,6 @@ impl Rules {
         }
     }
 
-    /// Takes the sandbox refusals `previous` saw, for the rules a config
-    /// reload builds, so the poll keeps naming their cause.
-    pub fn take_sandbox_refusals_from(&mut self, previous: &mut Self) {
-        for (name, state) in &previous.subjects {
-            if state.sandbox_refused {
-                subject_state(&mut self.subjects, name).sandbox_refused = true;
-            }
-        }
-    }
-
     /// The bus topics the log rules need: `log.out` and/or `log.err`, and
     /// none when no rule reads logs.
     #[must_use]
@@ -598,18 +567,13 @@ impl Rules {
         self.learn(flock);
         let mut firings = Vec::new();
         for info in flock {
-            if info.status != ProcStatus::Errored
-                && let Some(state) = self.subjects.get_mut(&info.name)
-            {
-                state.sandbox_refused = false;
-            }
             for idx in 0..self.rules.len() {
                 // Owned: the `RestartRate` arm needs `&mut self` while matching.
                 let trigger = self.rules[idx].when.clone();
                 let message = match &trigger {
                     Trigger::Event { .. } | Trigger::LogMatch { .. } => None,
                     Trigger::GaveUp {} => (info.status == ProcStatus::Errored).then(|| {
-                        if self.sandbox_refused(&info.name) {
+                        if info.sandbox_refused == Some(true) {
                             sandbox_refused_message(&info.name)
                         } else {
                             gave_up_message(&info.name)

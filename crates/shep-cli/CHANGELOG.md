@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fire bark's gave_up rule on a sandbox refusal, saying so, and count it with errored in the metrics feed
+
 ## [0.20.0] - 2026-10-31
 
 ### Added
