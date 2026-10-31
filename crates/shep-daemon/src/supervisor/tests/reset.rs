@@ -168,7 +168,12 @@ async fn a_reload_after_a_reset_carries_zero_restarts() {
     let mut app = AppConfig::minimal("svc", "./svc");
     app.exp_backoff_restart_delay = None;
     handle.start(vec![normalize(app).unwrap()]).await.unwrap();
-    wait_for_restarts_online(&handle, 2).await;
+    let before = wait_for_restarts_online(&handle, 2).await;
+    assert_eq!(
+        (before.status, before.restarts),
+        (ProcStatus::Online, 2),
+        "never reached the drainee with two restarts to carry: {before:?}"
+    );
     handle.reset(name("svc")).await.unwrap();
 
     handle.reload(name("svc")).await.unwrap();
@@ -232,13 +237,16 @@ async fn reset_leaves_a_waiting_restart_timer_running() {
         }
     }
     assert_eq!(handle.list().await[0].restarts, 1);
+    // Halfway through the delay, so a timer re-armed by the reset would
+    // still have a full hour to run.
+    tokio::time::advance(Duration::from_secs(1800)).await;
 
     let rows = handle.reset(name("svc")).await.unwrap();
 
     assert_eq!(rows[0].status, ProcStatus::WaitingRestart);
     assert_eq!(rows[0].restarts, 0);
     assert_eq!(runner.spawn_count(), 2, "a reset must not respawn early");
-    tokio::time::advance(Duration::from_secs(3600)).await;
+    tokio::time::advance(Duration::from_secs(1800)).await;
     let waits = async {
         while handle.list().await[0].status != ProcStatus::Online {
             tokio::task::yield_now().await;

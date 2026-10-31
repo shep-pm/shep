@@ -767,7 +767,8 @@ impl SupervisorHandle {
     /// answering with one row per match after the reset.
     ///
     /// A wildcard reaches a parked app and passes a dog by; an exact name
-    /// reaches either. Nothing else about a sheep moves: it is not stopped,
+    /// reaches either. Beyond the count, the budget and `last_exit` (kept on a
+    /// stopped dog), nothing about a sheep moves: it is not stopped,
     /// respawned or told.
     ///
     /// # Errors
