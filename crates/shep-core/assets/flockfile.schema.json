@@ -737,7 +737,8 @@
           "default": null,
           "init": {
             "accepts": [
-              "an absolute or relative path, a relative one read from cwd"
+              "an absolute or relative path, a relative one read from cwd",
+              "~ expands, $VARS do not"
             ],
             "blurb": "A crabpot settings file. The sheep runs inside crabpot's sandbox",
             "example": "sandbox.json",

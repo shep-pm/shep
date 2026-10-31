@@ -134,10 +134,11 @@ pub(super) fn build<E>(
 
     // After the interpreter, so crabpot wraps whatever would have run. Bare
     // `crabpot`: the sheep's own `PATH` finds it, there is no key for its path.
+    // A relative `cwd` is not joined in: crabpot starts inside it already.
     let (program, args) = match &config.sandbox {
         None => (program, args),
         Some(file) => {
-            let file = anchor_log_path(file.clone(), cwd.as_deref());
+            let file = anchor_log_path(file.clone(), cwd.as_deref().filter(|c| c.is_absolute()));
             let mut wrapped = vec![
                 "-s".to_string(),
                 file.to_string_lossy().into_owned(),

@@ -68,6 +68,17 @@ fn a_relative_sandbox_file_is_anchored_at_the_app_cwd() {
 
 #[test]
 #[cfg(unix)]
+fn a_relative_sandbox_file_is_left_for_crabpot_to_read_from_a_relative_cwd() {
+    let spec = sandboxed(|c| {
+        c.cwd = Some("app".to_string());
+        c.sandbox = Some("sandbox.json".to_string());
+    });
+
+    assert_eq!(&spec.args[..2], ["-s", "sandbox.json"]);
+}
+
+#[test]
+#[cfg(unix)]
 fn an_absolute_sandbox_file_ignores_the_app_cwd() {
     let spec = sandboxed(|c| {
         c.cwd = Some("/srv/app".to_string());

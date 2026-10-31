@@ -90,7 +90,8 @@ pub struct AppConfig {
         "example": "sandbox.json",
         "group": "process",
         "blurb": "A crabpot settings file. The sheep runs inside crabpot's sandbox",
-        "accepts": ["an absolute or relative path, a relative one read from cwd"],
+        "accepts": ["an absolute or relative path, a relative one read from cwd",
+                    "~ expands, $VARS do not"],
         "refuses": ["an empty value", "any value on Windows"],
         "neighbours": [{"field": "cwd", "note": "a relative file is read from it"}]
     })))]

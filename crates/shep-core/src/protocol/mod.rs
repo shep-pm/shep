@@ -52,6 +52,12 @@ pub const PROTOCOL_VERSION: u32 = 14;
 /// must not send one to it.
 pub const LAMB_SIGNAL_SINCE: u32 = 13;
 
+/// The first protocol version whose shepherd runs an app's `sandbox` file.
+///
+/// An older shepherd ignores the key and starts the sheep unsandboxed, so a
+/// client must not send one to it.
+pub const SANDBOX_SINCE: u32 = 14;
+
 /// The oldest protocol this build accepts from a peer.
 ///
 /// The handshake compares against this rather than [`PROTOCOL_VERSION`],

@@ -14,7 +14,9 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
 use shep_core::destination::Destination;
-use shep_core::protocol::{HelloAck, Request, Response, RpcError, WireError};
+use shep_core::protocol::{
+    HelloAck, Request, Response, RpcError, RpcErrorCode, SANDBOX_SINCE, WireError,
+};
 
 use crate::actor::{self, Command};
 use crate::connection::{ConnectError, Connection, HANDSHAKE_TIMEOUT};
@@ -467,7 +469,10 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// - [`RequestError::Rpc`]: the daemon answered with a structured error.
+    /// - [`RequestError::Rpc`]: the daemon answered with a structured error,
+    ///   or `body` asks for a `sandbox` from a shepherd below
+    ///   [`SANDBOX_SINCE`], which is refused as `Unsupported` before anything
+    ///   is sent.
     /// - [`RequestError::Timeout`]: no reply within `deadline + DEADLINE_GRACE`.
     /// - [`RequestError::Closed`]: the connection closed before a reply arrived.
     /// - [`RequestError::Wire`]: `body` failed to encode.
@@ -476,6 +481,18 @@ impl Client {
         body: Request,
         deadline: Option<Duration>,
     ) -> Result<Response, RequestError> {
+        if body.asks_for_sandbox() && self.ack.protocol < SANDBOX_SINCE {
+            return Err(RequestError::Rpc(RpcError {
+                code: RpcErrorCode::Unsupported,
+                message: format!(
+                    "this shepherd speaks protocol {} and runs a sandbox from protocol \
+                     {SANDBOX_SINCE}, so it would start the sheep unsandboxed. Restart the \
+                     shepherd and run this again; nothing was sent",
+                    self.ack.protocol
+                ),
+                daemon_version: None,
+            }));
+        }
         let deadline = deadline.unwrap_or(DEFAULT_DEADLINE);
         let (reply_to, reply_rx) = oneshot::channel();
         self.send_command(Command::Request {
@@ -574,6 +591,55 @@ mod tests {
         for (err, code) in cases {
             assert_eq!(err.exit_code(), code, "{err}");
         }
+    }
+
+    fn sandboxed_start() -> Request {
+        let app = shep_core::config::AppConfig {
+            sandbox: Some("sandbox.json".to_owned()),
+            ..shep_core::config::AppConfig::minimal("web", "./srv")
+        };
+        Request::Start { apps: vec![app] }
+    }
+
+    #[tokio::test]
+    async fn a_sandbox_is_refused_before_it_reaches_an_older_shepherd() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: SANDBOX_SINCE - 1,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let refused = client.request(sandboxed_start()).await.unwrap_err();
+
+        let RequestError::Rpc(rpc) = &refused else {
+            panic!("expected a refusal, got {refused:?}");
+        };
+        assert_eq!(rpc.code, RpcErrorCode::Unsupported);
+        assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
+        assert_eq!(refused.exit_code(), exit::UNSUPPORTED);
+        assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    #[tokio::test]
+    async fn a_sandbox_is_sent_to_a_shepherd_that_runs_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: SANDBOX_SINCE,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let _ = client.request(sandboxed_start()).await;
+
+        assert!(
+            sent.try_recv().is_ok(),
+            "the request never reached the wire"
+        );
     }
 
     #[cfg(unix)]
