@@ -13,9 +13,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+
+- List an adopted dog's env keys under its settings row
+- Add and remove an adopted dog's env keys on the settings screen
+- Draw the env editor on the settings screen
+- Parse a trailing d as a day in UpDuration
+- Say when a running adopted dog keeps an entry it no longer has
+- Store one default table per dog and layer a sheep's table over it
+- Read a dog's defaults address and refuse it in shep copy
+- Write a dog's defaults with shep set and check them against every sheep they reach
+- Mask a secret field's editor while typing
+- Add a lamb to Request::Signal and move the protocol to 13 **(BREAKING)**
+- Let get_metrics read another host's usage
+- Signal one lamb of a sheep with `shep signal --lamb`
+- Let tail_bleats read another host's log tail
+- Register a logon task for shep startup on Windows
+- Add shep reset to zero a sheep's restart counters
+- Let `shep --host <dest> reset` zero that host's sheep
+- Show an adopted dog's env on the settings screen
+- Layer a dog's operator-set default under each sheep's table
+- Signal a sheep's lamb with shep signal --lamb
+- Add `shep reset` to zero a sheep's restart counters
+- Run a sheep with a sandbox key inside crabpot and stop its leader alone
+
+### Changed
+
+- Name lookout's text-entry hint once
+- Dispatch connects to the shepherd through one helper
+- Name confirmation gate inputs
+- Represent report stages as named modes
+- Name import and schema flattening flags
+- Build close dialogs from named readiness
+- Name boolean inputs in function types
+
+### Fixed
+
+- Edit a dog's env in place so comments and key order stay
+- An adopted dog's pane draws its env rows
+- Stop telling an operator a reload restarts a running dog's env
+- Say where a dog's env goes when both files configure it
+- Preserve settings in dog migration guidance
+- Mask pending edits inside dog entries
+- Report errored dog enable failures and describe reasons
+- Reconstruct lookout screens before matching labels
+- Find the shep binary without assert_cmd's get_program
+- Remove the empty [dog.*] tables the dogs.toml move leaves in shep.toml
+- Judge the empty-header strike on the locked document
+- Report a kept dog entry after a restart, from the rows it returns
+- Retry vet probes when the executable is busy
+- Mask a secret in the status bar and the settings editors too
+- Ask the dog about a default per sheep, and check a whole default by its leaves
+- Resolve a defaults address before sheep names in set, unset and copy
+- Leave a defaults address with an empty segment to each verb's malformed-address error
+- Quote stand-in paths and correct the HostUsage None comment
+- Name the host in the protocol 13 refusal and say --lamb in help
+- Bound a host's tail by the byte window and say when its shepherd is too old
+- Judge a default by its own value where a sheep shadows it
+- Keep the Windows startup help out of the IR-47 doc blocks
+- Do not read a failed task query as an absent task
+- Scaffold a fresh home on Windows startup and say when no shepherd came up
+- Report a default's refusal at the first path no sheep names
+- Count the sandbox field in the lookout pane tests and frames
+- Explain dog env placement and settings files
+- Draw env rows in adopted dog panes
+- Retry errored dogs and describe spawn failures
+- Route, refuse and document a dog's defaults address the same way everywhere
+
 ### Fixes
 
 - Fail `enable` when a dog remains errored and show its spawn refusal in `describe`. ([#1294])
+
 
 ## [0.19.0] - 2026-10-28
 

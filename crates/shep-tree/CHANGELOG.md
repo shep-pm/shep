@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+
+- Sweep what a process left running through a step machine
+
+### Changed
+
+- Drive lamb sweeps through shep-tree
+- Sweep lambs through shep-tree
+
+### Fixed
+
+- Take a sweep look's own time out of its sleep
+
+
 ### Added
 
 - Re-export `ProcInstant` and the lamb sweep types at the crate root
