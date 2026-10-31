@@ -216,9 +216,11 @@ pub(super) fn respawnable(mutate: impl FnOnce(&mut AppConfig)) -> impl FnOnce(&m
 
 /// Polls the flock until `done` accepts it, or fails the case.
 ///
-/// Real children and real signals, so the clock is real too: nothing here
-/// can advance a paused one on the child's behalf. The bound sits past
-/// anything these cases ask for, so a stall fails rather than hangs.
+/// Real children and real signals, so most cases run on a real clock: nothing
+/// here can advance a paused one on the child's behalf. A paused clock runs
+/// the same bound, since the sleep between polls lets it auto-advance. The
+/// bound sits past anything these cases ask for, so a stall fails rather
+/// than hangs.
 #[cfg(unix)]
 pub(super) async fn flock_until(
     sup: &SupervisorHandle,
