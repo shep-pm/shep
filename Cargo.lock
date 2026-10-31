@@ -339,6 +339,7 @@ version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26d09284075f5c87675790d1ad74212a7863eb8bdf228cdbd364f08a152fc62d"
 dependencies = [
+ "chrono",
  "derive_builder",
  "strum 0.27.2",
 ]

@@ -185,15 +185,10 @@ impl fmt::Display for CronScheduleError {
 
 impl core::error::Error for CronScheduleError {}
 
-/// Builds the five-field-only parser. Not a `const`/`static`:
-/// `CronParserBuilder::build` is not a `const fn`.
-///
-/// `Seconds::Disallowed` is the load-bearing call: croner's default is
-/// `Seconds::Optional`, which accepts a six-field pattern. No
-/// `.dom_and_dow(true)` call: croner's default OR semantics is the dialect
-/// map.md promises, and `true` would change what an existing pattern means.
-/// `sloppy_ranges(true)` keeps `5/15`, which croner 4 refuses by default;
-/// it also admits `/15`, which [`reject_startless_step`] refuses first.
+/// Builds the five-field-only parser. `Seconds::Disallowed` rejects a six-field
+/// pattern; no `.dom_and_dow(true)`, which would change what a pattern means.
+/// `sloppy_ranges(true)` keeps `5/15`, which croner 4 refuses by default; it
+/// also admits `/15`, which [`reject_startless_step`] refuses first.
 fn cron_parser() -> CronParser {
     CronParser::builder()
         .seconds(Seconds::Disallowed)
