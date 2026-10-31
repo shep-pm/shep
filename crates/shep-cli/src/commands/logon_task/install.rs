@@ -3,7 +3,9 @@
 //! `schtasks /XML` rather than the Task Scheduler COM API: no `unsafe` and no
 //! new crate. Needs no elevation, since the task is the signed-in user's own.
 
-use super::render::{TaskTarget, refuse, run_args, task_name, task_path, task_xml};
+use super::render::{
+    TaskTarget, is_access_denied, refuse, run_args, task_listed, task_name, task_path, task_xml,
+};
 use crate::cli::StartupArgs;
 use crate::commands::startup_shared::{ABSENT, OK, Refusal, failure_line, report};
 use crate::exit::ExitCode;
@@ -159,10 +161,28 @@ fn schtasks<S: AsRef<str>>(args: &[S]) -> Result<(), String> {
     }
 }
 
-/// Whether Task Scheduler has a task named `name`. A query that exits
-/// non-zero is a task that is not there.
+/// Whether Task Scheduler has a task named `name`.
+///
+/// A failed `/Query` is not taken for a task that is not there: `schtasks`
+/// exits 1 for both, so an unreadable task is an error and anything else is
+/// settled by whether the full task list names it.
 fn task_exists(name: &str) -> Result<bool, String> {
-    Ok(run(&["/Query", "/TN", name])?.status.success())
+    let query = run(&["/Query", "/TN", name])?;
+    if query.status.success() {
+        return Ok(true);
+    }
+    let line = failure_line(&query);
+    if is_access_denied(&line) {
+        return Err(format!("could not query task \\{name}: {line}"));
+    }
+    let listing = run(&["/Query", "/FO", "CSV", "/NH"])?;
+    if !listing.status.success() {
+        return Err(format!(
+            "could not list tasks to look for \\{name}: {}",
+            failure_line(&listing)
+        ));
+    }
+    Ok(task_listed(&String::from_utf8_lossy(&listing.stdout), name))
 }
 
 /// Registers `xml` as `name`. The XML goes through a temporary file, removed

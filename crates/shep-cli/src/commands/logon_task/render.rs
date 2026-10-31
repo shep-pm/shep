@@ -88,6 +88,26 @@ pub(super) fn task_path(user: &str) -> String {
     format!("\\{}", task_name(user))
 }
 
+/// Whether `listing`, `schtasks /Query /FO CSV /NH` output, has a task named
+/// `name` at the root of Task Scheduler. Task names compare without case.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(super) fn task_listed(listing: &str, name: &str) -> bool {
+    let wanted = format!("\\{name}");
+    listing.lines().any(|line| {
+        let first = line.split(',').next().unwrap_or_default();
+        first.trim().trim_matches('"').eq_ignore_ascii_case(&wanted)
+    })
+}
+
+/// Whether a `schtasks` failure line says the caller may not read the task.
+///
+/// English only: `schtasks` words its failures in the display language, and
+/// any other failure is settled by listing the tasks instead.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(super) fn is_access_denied(line: &str) -> bool {
+    line.to_ascii_lowercase().contains("access is denied")
+}
+
 /// The `schtasks` arguments that start the task now, or `None` when a
 /// shepherd already holds the home and `start` is false.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -143,6 +163,28 @@ mod tests {
             user: user.map(str::to_string),
             init,
         }
+    }
+
+    #[test]
+    fn a_listing_with_the_task_at_the_root_has_it() {
+        let listing = "\"\\other\",\"N/A\",\"Ready\"\n\"\\SHEP-ada\",\"N/A\",\"Ready\"\n";
+        assert!(task_listed(listing, "shep-ada"));
+    }
+
+    #[test]
+    fn a_task_in_a_folder_or_with_a_longer_name_is_not_the_task() {
+        let listing =
+            "\"\\Vendor\\shep-ada\",\"N/A\",\"Ready\"\n\"\\shep-ada2\",\"N/A\",\"Ready\"\n";
+        assert!(!task_listed(listing, "shep-ada"));
+        assert!(!task_listed("", "shep-ada"));
+    }
+
+    #[test]
+    fn an_access_denied_line_is_told_from_any_other() {
+        assert!(is_access_denied("ERROR: Access is denied."));
+        assert!(!is_access_denied(
+            "ERROR: The system cannot find the file specified."
+        ));
     }
 
     #[test]
