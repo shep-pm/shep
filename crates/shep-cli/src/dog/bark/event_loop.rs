@@ -131,6 +131,7 @@ pub fn run_loop<E: EventSource, F: FlockSource, C: ConfigSource>(
                                 // an index that moved.
                                 let mut next_rules = next_rules;
                                 next_rules.take_names_from(&mut rules);
+                                next_rules.take_sandbox_refusals_from(&mut rules);
                                 rules = next_rules;
                                 if next.poll.as_duration() != poll_period {
                                     poll_period = next.poll.as_duration();

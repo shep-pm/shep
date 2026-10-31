@@ -569,6 +569,16 @@ impl Rules {
         }
     }
 
+    /// Takes the sandbox refusals `previous` saw, for the rules a config
+    /// reload builds, so the poll keeps naming their cause.
+    pub fn take_sandbox_refusals_from(&mut self, previous: &mut Self) {
+        for (name, state) in &previous.subjects {
+            if state.sandbox_refused {
+                subject_state(&mut self.subjects, name).sandbox_refused = true;
+            }
+        }
+    }
+
     /// The bus topics the log rules need: `log.out` and/or `log.err`, and
     /// none when no rule reads logs.
     #[must_use]

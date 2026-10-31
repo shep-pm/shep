@@ -466,6 +466,20 @@ fn a_start_event_ends_the_sandbox_refusal_for_the_poll() {
 }
 
 #[test]
+fn a_config_reload_keeps_the_sandbox_refusals_the_bus_reported() {
+    let mut old = gave_up_rules();
+    let _ = old.on_event(
+        &process_event("web", ProcessEventKind::SandboxRefused),
+        1_000,
+    );
+    let mut next = gave_up_rules();
+    next.take_sandbox_refusals_from(&mut old);
+    let fired = next.on_poll(&[errored_info("web")], 2_000);
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].bark.message, "web sandbox refused");
+}
+
+#[test]
 fn an_event_rule_names_a_sandbox_refusal_by_its_wire_spelling() {
     let sinks = one_sink("ops");
     let mut rules = Rules::new(
