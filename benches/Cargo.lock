@@ -667,20 +667,21 @@ dependencies = [
 
 [[package]]
 name = "notify"
-version = "8.2.0"
+version = "8.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
+checksum = "82f812702fbc75d35416d3f884e04925be7e9498f4eceea2e24ba34559284674"
 dependencies = [
  "bitflags",
- "fsevent-sys",
  "inotify",
  "kqueue",
  "libc",
  "log",
  "mio",
  "notify-types",
+ "objc2-core-foundation",
+ "objc2-core-services",
  "walkdir",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -730,6 +731,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "objc2-core-services"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "583300ad934cba24ff5292aee751ecc070f7ca6b39a574cc21b7b5e588e06a0b"
+dependencies = [
+ "libc",
+ "objc2-core-foundation",
 ]
 
 [[package]]
@@ -1026,14 +1037,14 @@ dependencies = [
 
 [[package]]
 name = "shep-channel"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "shep-core"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "annotate-snippets",
  "anstyle",
@@ -1062,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "shep-daemon"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -1092,7 +1103,7 @@ dependencies = [
 
 [[package]]
 name = "shep-handover"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "nix 0.29.0",
  "serde",
@@ -1102,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "shep-tree"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "nix 0.29.0",
  "rustix",
