@@ -90,7 +90,7 @@ syn = { version = "3.0", default-features = false }
 # type itself, so -Z minimal-versions fails to compile shep-core without this.
 # Held below 1.0: Flockfile parsing and its nesting guard depend on the
 # json5 0.4 deserializer API and recursive-descent parser.
-json5 = { version = ">=0.4.1, <1.0", default-features = false }
+json5 = { version = ">=0.4.1, <2.0", default-features = false }
 # Floor 1.9: regex 1.8's compiled-size accounting lets
 # `selector_spec_oversized_regex_is_rejected`'s huge pattern slip under the
 # 1 MiB size_limit; 1.9 rejects it.
