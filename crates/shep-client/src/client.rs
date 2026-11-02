@@ -14,9 +14,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
 use shep_core::destination::Destination;
-use shep_core::protocol::{
-    HelloAck, Request, Response, RpcError, RpcErrorCode, SANDBOX_SINCE, WireError,
-};
+use shep_core::protocol::{HelloAck, Request, Response, RpcError, RpcErrorCode, WireError};
 
 use crate::actor::{self, Command};
 use crate::connection::{ConnectError, Connection, HANDSHAKE_TIMEOUT};
@@ -470,9 +468,9 @@ impl Client {
     /// # Errors
     ///
     /// - [`RequestError::Rpc`]: the daemon answered with a structured error,
-    ///   or `body` asks for a `sandbox` from a shepherd below
-    ///   [`SANDBOX_SINCE`], which is refused as `Unsupported` before anything
-    ///   is sent.
+    ///   or `body` carries a key a shepherd below its protocol version would
+    ///   drop (`sandbox`, `listen`; see [`Request::gated_key_dropped_at`]),
+    ///   which is refused as `Unsupported` before anything is sent.
     /// - [`RequestError::Timeout`]: no reply within `deadline + DEADLINE_GRACE`.
     /// - [`RequestError::Closed`]: the connection closed before a reply arrived.
     /// - [`RequestError::Wire`]: `body` failed to encode.
@@ -481,14 +479,14 @@ impl Client {
         body: Request,
         deadline: Option<Duration>,
     ) -> Result<Response, RequestError> {
-        if body.asks_for_sandbox() && self.ack.protocol < SANDBOX_SINCE {
+        if let Some(gated) = body.gated_key_dropped_at(self.ack.protocol) {
             return Err(RequestError::Rpc(RpcError {
                 code: RpcErrorCode::Unsupported,
                 message: format!(
-                    "this shepherd speaks protocol {} and runs a sandbox from protocol \
-                     {SANDBOX_SINCE}, so it would start the sheep unsandboxed. Restart the \
-                     shepherd and run this again; nothing was sent",
-                    self.ack.protocol
+                    "this shepherd speaks protocol {} and honours `{}` from protocol {}, so it \
+                     would start the sheep without it. Restart the shepherd and run this again; \
+                     nothing was sent",
+                    self.ack.protocol, gated.key, gated.since
                 ),
                 daemon_version: None,
             }));
@@ -560,7 +558,7 @@ fn millis(d: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use shep_core::exit;
-    use shep_core::protocol::RpcErrorCode;
+    use shep_core::protocol::{LISTEN_SINCE, RpcErrorCode, SANDBOX_SINCE};
 
     use super::*;
 
@@ -621,6 +619,55 @@ mod tests {
         assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
         assert_eq!(refused.exit_code(), exit::UNSUPPORTED);
         assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    fn listening_start() -> Request {
+        let mut app = shep_core::config::AppConfig::minimal("web", "./srv");
+        app.listen
+            .insert("http".to_owned(), "0.0.0.0:8080".to_owned());
+        Request::Start { apps: vec![app] }
+    }
+
+    #[tokio::test]
+    async fn a_listen_is_refused_before_it_reaches_an_older_shepherd() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: LISTEN_SINCE - 1,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let refused = client.request(listening_start()).await.unwrap_err();
+
+        let RequestError::Rpc(rpc) = &refused else {
+            panic!("expected a refusal, got {refused:?}");
+        };
+        assert_eq!(rpc.code, RpcErrorCode::Unsupported);
+        assert!(rpc.message.contains("`listen`"), "{}", rpc.message);
+        assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
+        assert_eq!(refused.exit_code(), exit::UNSUPPORTED);
+        assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    #[tokio::test]
+    async fn a_listen_is_sent_to_a_shepherd_that_binds_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: LISTEN_SINCE,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let _ = client.request(listening_start()).await;
+
+        assert!(
+            sent.try_recv().is_ok(),
+            "the request never reached the wire"
+        );
     }
 
     #[tokio::test]
