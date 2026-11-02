@@ -37,8 +37,11 @@ fn carried_listener(name: &str, address: SocketAddr, fd: i32) -> CarriedListener
 #[tokio::test]
 async fn a_sheeps_listener_keeps_its_socket_and_the_client_waiting_on_it() {
     let predecessor = Predecessor::new();
-    let sockets = ListenSockets::bind(&table(&[("http", "127.0.0.1:0")])).unwrap();
-    let address = sockets.local_addrs().unwrap()[0];
+    // A named port, not `:0`: a set remembers the address it was bound from, so
+    // `is_bound_from` below can only agree with the table that bound it.
+    let address = free_address();
+    let sockets = ListenSockets::bind(&table(&[("http", &address.to_string())])).unwrap();
+    assert_eq!(sockets.local_addrs().unwrap(), [address]);
     let mut waiting = TcpStream::connect(address).unwrap();
     waiting.write_all(b"ping").unwrap();
     let held = sockets.hold("web").unwrap();
