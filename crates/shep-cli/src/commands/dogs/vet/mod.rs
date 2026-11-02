@@ -139,10 +139,9 @@ impl core::error::Error for AdoptRefusal {}
 ///
 /// # Errors
 /// [`AdoptRefusal`] when the path does not resolve, is not a file this
-/// kernel will exec, answers a protocol this shep cannot speak, or declares
-/// `validate` without the channel [`AdoptRefusal::ValidateWithoutChannel`]
-/// needs, or is adopted as `sandbox` without declaring `launch`
-/// ([`AdoptRefusal::SandboxWithoutLaunch`]). Silence is not an error.
+/// kernel will exec, answers a protocol this shep cannot speak, declares
+/// `validate` without a channel, or is adopted as `sandbox` without
+/// declaring `launch`. Silence is not an error.
 pub fn vet_binary(path: &Path, home: &Path, name: &str) -> Result<VettedBinary, AdoptRefusal> {
     vet_binary_within(path, home, name, VERSION_BUDGET)
 }
