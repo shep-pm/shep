@@ -95,7 +95,7 @@ Facts the code does not make obvious:
 - Three version constants answer three questions. `PROTOCOL_VERSION` is what this build speaks and `MIN_SUPPORTED` is the oldest peer it accepts (both in `shep_core::protocol`). `SCHEMA_VERSION` governs the JSON output envelope (`crates/shep-cli/src/output/mod.rs`) and moves only on a rename, removal or retype. Only raising `MIN_SUPPORTED` refuses anyone.
 - A Flockfile is a project template that shep never writes. Operator tuning lives in `$SHEP_HOME/overrides.json`: a Flockfile load spends an override, a lookout pane sets one.
 - A dog's config lives in `$SHEP_HOME/dogs.toml`.
-- A reload overlaps old and new only with `reuse_port` or a readiness probe. shep never binds an app's listening socket.
+- A reload overlaps old and new with `reuse_port`, a readiness probe or a `listen` table. shep binds an app's listening socket only for a sheep's `listen` table (TCP, fd 3 upward through `LISTEN_FDS`, the channel after them); otherwise the app binds its own.
 - Windows is built and shipped, so `cfg(unix)` is a design choice. The OS transport lives only in `shep_core::transport`.
 - Tests in `crates/shep-cli/src/cli/help.rs` pin every visible verb to one help group and to the docs generator's `VERBS` list. A new verb fails one of them until it is wired into both.
 

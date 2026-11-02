@@ -19,7 +19,9 @@ cutover, the dogs subsystem with working metrics and bark dogs, and an
 audit-debt phase.
 
 **That reload is NOT "SO_REUSEPORT reload", which this line said until
-2026-08-28.** shep never binds an app's listening socket and never sets
+2026-08-28.** (`listen` later changed the first half: a sheep's `listen`
+table has the shepherd bind its sockets, see `decisions.md`.) shep never binds
+an app's listening socket without `listen` and never sets
 `SO_REUSEPORT` on one. The only endpoint it binds is its own control
 endpoint, a unix socket at `$SHEP_HOME/run/shep.sock` and a named pipe on
 Windows, which is a different thing entirely. The unix one does fail loudly
