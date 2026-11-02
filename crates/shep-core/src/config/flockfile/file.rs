@@ -21,15 +21,11 @@ impl Flockfile {
     ///
     /// # Errors
     /// - [`FlockfileError::Parse`]: backend parse failure, carrying the
-    ///   format and the backend's message. Json5 additionally rejects
-    ///   sources nested past a depth of 64 before reaching the backend
-    ///   parser, whose recursive-descent stack-overflows on deep input
-    ///   rather than returning an error.
+    ///   format and the backend's message. Json5 nested past 64 is refused
+    ///   before the backend, whose parser would overflow the stack.
     /// - [`FlockfileError::NoApps`]: parsed fine but declared no apps.
     /// - [`FlockfileError::UnknownKeys`]: an `app` entry named a key no
-    ///   field claims. A typo at the top level never reaches this variant:
-    ///   `RawFlockfile`'s `deny_unknown_fields` refuses it inside the
-    ///   backend, so it arrives as `Parse` naming the key.
+    ///   field claims. A top-level typo arrives as `Parse` instead.
     /// - [`FlockfileError::SandboxKeyRemoved`]: an `app` entry set the
     ///   removed `sandbox` key, to any value.
     pub fn parse(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
