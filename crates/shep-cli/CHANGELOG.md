@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-02
+
+### Added
+
+- A manifest declares launch and adopt refuses a sandbox dog without it
+- Count a listen table as sharing a socket when predicting a reload
+- Colour help in shep's palette
+- Colour the hand-written verb listing in --help
+
+### Fixed
+
+- Keep vet_binary's doc comment inside IR-47's limit
+- Count the listen field in the lookout pane tests and frames
+
+
 ## [0.21.0] - 2026-10-31
 
 ### Added
