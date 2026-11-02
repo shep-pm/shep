@@ -417,10 +417,8 @@ pub struct DogConnection {
 ///
 /// Keyed by the sheep's name and the entry's name in its `listen` table, since
 /// the sockets belong to the app and not to one instance. Not part of
-/// [`CarriedFds`]: its number is adopted to a socket the successor may
-/// replace, where every number there is refused when it fails.
-///
-/// `Debug` is derived: a name, an address and a descriptor number.
+/// [`CarriedFds`]: the successor replaces a bad one, where it refuses a bad
+/// number there. `Debug` is derived: no env value reaches this type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CarriedListener {
     /// The sheep whose `listen` table holds the entry.
@@ -464,10 +462,8 @@ impl CarriedListener {
 ///
 /// Owns a duplicate of the socket, so the number
 /// [`Handover::carry_listeners`](super::Handover::carry_listeners) writes into
-/// the blob cannot name a different file if the supervisor drops its set
-/// first.
-///
-/// `Debug` is derived: no env value reaches this type.
+/// the blob stays open if the supervisor drops its set first. `Debug` is
+/// derived: no env value reaches this type.
 #[derive(Debug)]
 pub struct HeldListener {
     /// The sheep whose `listen` table holds the entry.

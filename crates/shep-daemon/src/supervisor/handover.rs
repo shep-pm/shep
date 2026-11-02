@@ -22,8 +22,7 @@ pub(super) type Snapshot = (Vec<OwnedCandidate>, Handover, ParkedPumps);
 /// Taking the snapshot parks every pump that answers it, because a report is
 /// only true while nothing moves behind it. A pump that missed
 /// [`REPORT_DEADLINE`] never parked, so it is not in here. The party that
-/// parked them hands them back. The duplicates keep the numbers the blob names
-/// open sockets even if the supervisor drops its set meanwhile.
+/// parked them hands them back. The duplicates keep the blob's numbers open.
 #[cfg(unix)]
 #[derive(Debug, Default)]
 pub(crate) struct ParkedPumps {

@@ -101,13 +101,11 @@ pub fn arrive() -> Result<Option<Arrival<Handover>>, BootError> {
 /// Turn an [`Arrival`] into the blob and the open descriptors it names, left
 /// unowned for [`adopt`](super::adopt::adopt) to take by number.
 ///
-/// Every number the blob names must have arrived under its own number as a key.
-/// Without that check the number-based adoption could take a descriptor this
-/// image opened. A `listen` socket is the exception: one that did not arrive
-/// under its number is closed if it arrived at all, and its absence is
-/// [`adopt`](super::adopt::adopt)'s to replace. The descriptors are left open on a refusal too: a refused
-/// rehydrate holds the pidfile lock, which stops a fresh boot from running
-/// beside the sheep this one failed to adopt.
+/// Every number the blob names must have arrived under its own number as a key,
+/// or number-based adoption could take a descriptor this image opened. A
+/// missing `listen` socket is the exception: [`adopt`](super::adopt::adopt)
+/// replaces it. The descriptors stay open on a refusal too, so the held pidfile
+/// lock stops a fresh boot running beside the sheep this one failed to adopt.
 ///
 /// # Errors
 ///
