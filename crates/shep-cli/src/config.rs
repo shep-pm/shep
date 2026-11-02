@@ -2,8 +2,12 @@
 //! style level in force and which layer chose it, and the hard rule that
 //! forces bare rendering.
 
+use std::ffi::OsString;
+
+use clap::ColorChoice;
 use cli::GlobalArgs;
 
+use crate::adopted::{home_before, style_before};
 use crate::home::resolve_paths;
 use crate::{cli, style};
 
@@ -37,14 +41,44 @@ pub(crate) fn style_from_config(shep_toml: Option<&str>) -> Option<style::StyleL
 /// directory. Unforced: [`crate::entry::run_argv`] applies the `--format json`
 /// and piped-stdout rule.
 pub(crate) fn resolve_style(global: &GlobalArgs) -> (style::StyleLevel, style::StyleSource) {
+    resolve_style_with_env(global, std::env::var("SHEP_STYLE").ok().as_deref())
+}
+
+/// [`resolve_style`] with `$SHEP_STYLE` passed in, so a test never sets it.
+fn resolve_style_with_env(
+    global: &GlobalArgs,
+    shep_style: Option<&str>,
+) -> (style::StyleLevel, style::StyleSource) {
     let config_text = resolve_paths(global)
         .ok()
         .and_then(|paths| std::fs::read_to_string(paths.daemon_config).ok());
     style::resolve(
         global.style,
-        std::env::var("SHEP_STYLE").ok().as_deref(),
+        shep_style,
         style_from_config(config_text.as_deref()),
     )
+}
+
+/// Whether clap may colour its help for this `argv`, decided before the parse.
+///
+/// clap renders `--help` inside the parse, ahead of [`resolve_style`], so
+/// `--style` and `--home` are read off the raw tokens ([`style_before`],
+/// [`home_before`]) and the same layers answer. `bare` is
+/// [`ColorChoice::Never`]; any other level is [`ColorChoice::Auto`], which
+/// drops colour for `NO_COLOR` and a pipe.
+pub(crate) fn help_colour_choice(argv: &[OsString], shep_style: Option<&str>) -> ColorChoice {
+    let rest = argv.get(1..).unwrap_or_default();
+    let global = GlobalArgs {
+        host: None,
+        home: home_before(rest),
+        format: cli::Format::Table,
+        quiet: false,
+        style: style_before(rest),
+    };
+    match resolve_style_with_env(&global, shep_style).0 {
+        style::StyleLevel::Bare => ColorChoice::Never,
+        style::StyleLevel::Full | style::StyleLevel::Plain => ColorChoice::Auto,
+    }
 }
 
 /// Whether the level [`crate::cli::Commands::Style`]'s set form just wrote
@@ -161,6 +195,79 @@ mod tests {
             (style::StyleLevel::Bare, style::StyleSource::Flag),
             "the flag wins over the very shep.toml that set plain above"
         );
+    }
+
+    fn argv(tokens: &[&str]) -> Vec<OsString> {
+        tokens.iter().map(OsString::from).collect()
+    }
+
+    /// A home with no `shep.toml` in it, so only the layer under test speaks.
+    fn empty_home() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let flag = format!("--home={}", dir.path().display());
+        (dir, flag)
+    }
+
+    #[test]
+    fn help_colour_is_never_for_a_separate_style_flag_of_bare() {
+        let (_home, home) = empty_home();
+        let tokens = argv(&["shep", &home, "--style", "bare", "--help"]);
+        assert_eq!(help_colour_choice(&tokens, None), ColorChoice::Never);
+    }
+
+    #[test]
+    fn help_colour_is_never_for_an_equals_style_flag_of_bare() {
+        let (_home, home) = empty_home();
+        let tokens = argv(&["shep", &home, "--style=bare", "--help"]);
+        assert_eq!(help_colour_choice(&tokens, None), ColorChoice::Never);
+    }
+
+    #[test]
+    fn help_colour_is_never_for_a_shep_style_of_bare() {
+        let (_home, home) = empty_home();
+        let tokens = argv(&["shep", &home, "--help"]);
+        assert_eq!(
+            help_colour_choice(&tokens, Some("bare")),
+            ColorChoice::Never
+        );
+    }
+
+    #[test]
+    fn help_colour_is_never_for_a_shep_toml_level_of_bare() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("shep.toml"), "[style]\nlevel = \"bare\"\n").unwrap();
+        let home = format!("--home={}", dir.path().display());
+        let tokens = argv(&["shep", &home, "--help"]);
+        assert_eq!(help_colour_choice(&tokens, None), ColorChoice::Never);
+    }
+
+    #[test]
+    fn help_colour_is_auto_for_every_other_level_and_for_no_choice() {
+        let (_home, home) = empty_home();
+        for level in ["full", "plain"] {
+            let tokens = argv(&["shep", &home, "--style", level, "--help"]);
+            assert_eq!(help_colour_choice(&tokens, None), ColorChoice::Auto);
+        }
+        let tokens = argv(&["shep", &home, "--help"]);
+        assert_eq!(help_colour_choice(&tokens, None), ColorChoice::Auto);
+    }
+
+    #[test]
+    fn help_colour_lets_an_unparseable_style_flag_fall_through() {
+        let (_home, home) = empty_home();
+        let tokens = argv(&["shep", &home, "--style", "loud", "--help"]);
+        assert_eq!(
+            help_colour_choice(&tokens, Some("bare")),
+            ColorChoice::Never,
+            "$SHEP_STYLE answers when --style names no level"
+        );
+    }
+
+    #[test]
+    fn help_colour_lets_the_flag_beat_the_environment() {
+        let (_home, home) = empty_home();
+        let tokens = argv(&["shep", &home, "--style=full", "--help"]);
+        assert_eq!(help_colour_choice(&tokens, Some("bare")), ColorChoice::Auto);
     }
 
     #[test]

@@ -10,6 +10,7 @@ use exit::ExitCode;
 
 use crate::home::resolve_paths;
 use crate::remote::refuse_host;
+use crate::style::StyleLevel;
 use crate::{cli, commands, exit};
 
 /// Runs the token clap could not place as an adopted dog: `shep <dogname> [args...]`.
@@ -78,6 +79,30 @@ pub(crate) fn home_before(prefix: &[OsString]) -> Option<PathBuf> {
         }
     }
     std::env::var_os("SHEP_HOME").map(PathBuf::from)
+}
+
+/// Scans `argv` for `--style` in either `--style value` or `--style=value`
+/// form, before clap has parsed anything.
+///
+/// The first occurrence that names a level wins; one that does not (a typo, a
+/// missing value, a non-UTF-8 value) is skipped, as an unparseable
+/// `$SHEP_STYLE` is, and clap still reports it afterwards. Stops at `--`.
+pub(crate) fn style_before(argv: &[OsString]) -> Option<StyleLevel> {
+    let mut tokens = argv.iter();
+    while let Some(arg) = tokens.next() {
+        if arg == "--" {
+            break;
+        }
+        let raw = if arg == "--style" {
+            tokens.next().and_then(|value| value.to_str())
+        } else {
+            arg.to_str().and_then(|text| text.strip_prefix("--style="))
+        };
+        if let Some(level) = raw.and_then(StyleLevel::parse) {
+            return Some(level);
+        }
+    }
+    None
 }
 
 /// Scans `prefix`, the argv tokens before the one clap could not place, for
@@ -228,6 +253,56 @@ mod tests {
             OsString::from("/tmp/z"),
         ];
         assert_eq!(home_before(&prefix), Some(PathBuf::from("/tmp/z")));
+    }
+
+    fn argv(tokens: &[&str]) -> Vec<OsString> {
+        tokens.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn style_before_reads_a_separate_value_and_an_equals_form() {
+        assert_eq!(
+            style_before(&argv(&["shep", "--style", "bare", "--help"])),
+            Some(StyleLevel::Bare)
+        );
+        assert_eq!(
+            style_before(&argv(&["shep", "--style=plain", "flock"])),
+            Some(StyleLevel::Plain)
+        );
+    }
+
+    #[test]
+    fn style_before_finds_the_flag_after_the_verb_and_past_other_flags() {
+        assert_eq!(
+            style_before(&argv(&[
+                "shep",
+                "flock",
+                "--format",
+                "json",
+                "--style=bare"
+            ])),
+            Some(StyleLevel::Bare)
+        );
+    }
+
+    #[test]
+    fn style_before_skips_a_value_that_names_no_level() {
+        assert_eq!(style_before(&argv(&["shep", "--style", "loud"])), None);
+        assert_eq!(style_before(&argv(&["shep", "--style=loud"])), None);
+        assert_eq!(style_before(&argv(&["shep", "--style"])), None);
+        assert_eq!(
+            style_before(&argv(&["shep", "--style=loud", "--style=bare"])),
+            Some(StyleLevel::Bare),
+            "a later, valid occurrence still answers"
+        );
+    }
+
+    #[test]
+    fn style_before_ignores_what_follows_a_double_dash() {
+        assert_eq!(
+            style_before(&argv(&["shep", "start", "--", "app", "--style=bare"])),
+            None
+        );
     }
 
     #[test]

@@ -134,7 +134,7 @@ fn the_dogs_join_the_dogs_group_of_the_rendered_help() {
     let verbs = adopted_verbs(&paths);
 
     let mut command = Cli::command();
-    list_in_help(&mut command, &verbs);
+    list_in_help(&mut command, &verbs, true);
     let help = command.render_long_help().to_string();
 
     let group = help
@@ -159,7 +159,7 @@ fn a_home_with_no_adopted_dogs_renders_the_help_template_unchanged() {
     assert!(adopted_verbs(&paths).is_empty());
 
     let mut command = Cli::command();
-    list_in_help(&mut command, &[]);
+    list_in_help(&mut command, &[], true);
 
     assert_eq!(
         command.render_long_help().to_string(),
@@ -400,7 +400,7 @@ fn a_manifest_carrying_a_placeholder_or_a_line_break_is_listed_as_text() {
     );
 
     let mut command = Cli::command();
-    list_in_help(&mut command, &verbs);
+    list_in_help(&mut command, &verbs, true);
     let listed = command.render_long_help().to_string();
     let plain = Cli::command().render_long_help().to_string();
     let at = plain
@@ -623,7 +623,7 @@ fn dog_descriptions_line_up_by_display_width_and_not_byte_length() {
     );
 
     let mut command = Cli::command();
-    list_in_help(&mut command, &adopted_verbs(&paths));
+    list_in_help(&mut command, &adopted_verbs(&paths), true);
     let help = command.render_long_help().to_string();
 
     let description = "exports traces to an OTLP collector";
