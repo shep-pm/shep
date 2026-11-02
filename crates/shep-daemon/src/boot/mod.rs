@@ -275,11 +275,29 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     // serve and the SIGHUP task reads them out to carry across the exec.
     #[cfg(unix)]
     let dog_link_table = crate::server::DogLinks::default();
+    // Not derived from `carried_apps` below: a successor that inherited an
+    // empty flock is still a successor.
+    #[cfg(unix)]
+    let inherited_flock = inherited.is_some();
+    #[cfg(windows)]
+    let inherited_flock = false;
+
+    // A saved sheep keeps its name against a dog, built-in or adopted: an
+    // upgrade that starts listing the built-ins must not cost anyone an app.
+    // Ahead of the builder, which is handed the paths of the dogs that
+    // survive it.
+    if options.restore && !inherited_flock {
+        crate::dogs::leave_held_names(
+            &mut options.dogs,
+            &mut options.known_dogs,
+            &crate::dogs::saved_sheep_names(&paths.snapshot),
+        );
+    }
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
         .provider_secrets(Arc::clone(&provider_secrets))
         .dog_defaults(dog_defaults)
-        .dog_binaries(adopted_dog_paths(&options.known_dogs));
+        .dog_binaries(adopted_dog_paths(&options.dogs));
     // Cloned before the `take` below feeds the supervisor, and defaulted the
     // way the builder defaults it, so a dog and a sheep that name no
     // environment resolve in the same one.
@@ -295,10 +313,6 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     // signals, spawns or reopens.
     #[cfg(unix)]
     let mut carried_apps = Vec::new();
-    // Not derived from `carried_apps` below: a successor that inherited an
-    // empty flock is still a successor.
-    #[cfg(unix)]
-    let inherited_flock = inherited.is_some();
     #[cfg(unix)]
     let supervisor = match inherited {
         Some((flock, counters, reloads)) => {
@@ -347,19 +361,6 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     for app in &carried_apps {
         registry.record_config(app);
     }
-    #[cfg(windows)]
-    let inherited_flock = false;
-
-    // A saved sheep keeps its name against a dog, built-in or adopted: an
-    // upgrade that starts listing the built-ins must not cost anyone an app.
-    if options.restore && !inherited_flock {
-        crate::dogs::leave_held_names(
-            &mut options.dogs,
-            &mut options.known_dogs,
-            &crate::dogs::saved_sheep_names(&paths.snapshot),
-        );
-    }
-
     // Split around the restore rather than run whole after it: a log-rotation
     // dog has to be running before a sheep starts writing, while a metrics dog
     // must not answer for a flock that is not up. Both are true in one flock,
@@ -521,6 +522,11 @@ fn known_dog_grants(options: &BootOptions) -> crate::rpc::KnownDogs {
 }
 
 /// Where each adopted dog in `dogs` keeps its binary, by dog name.
+///
+/// Called with the enabled list, after a saved sheep has claimed its names:
+/// a disabled dog, or one that lost its name, is absent here and a sheep that
+/// needs it is refused. The actor adds a dog to its own copy when one is
+/// started later.
 ///
 /// A built-in dog has no path: it is an argv branch of the shep binary.
 fn adopted_dog_paths(dogs: &[DogSpec]) -> BTreeMap<String, String> {
