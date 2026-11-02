@@ -247,13 +247,13 @@ pub enum NormalizeError {
         /// The sheep name
         name: String,
     },
-    /// `sandbox` is the empty string, naming no crabpot settings file.
-    /// Carries the sheep name.
-    EmptySandbox {
+    /// `sandbox` is set, to any value. The sandbox dog replaced the key, and
+    /// ignoring it would run the sheep unsandboxed. Carries the sheep name.
+    SandboxKeyRemoved {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
-    /// `sandbox` or a `dogs.sandbox` table is set on Windows, where crabpot's
+    /// A `dogs.sandbox` table is set on Windows, where crabpot's
     /// sandbox cannot start from session 0. Carries the sheep name.
     SandboxOnWindows {
         /// The sheep name, so the error names which Flockfile entry to edit.
@@ -289,7 +289,7 @@ pub enum NormalizeError {
         /// The address as the second wrote it.
         address: String,
     },
-    /// `listen` is set together with `sandbox` or a `dogs.sandbox` table, and
+    /// `listen` is set together with a `dogs.sandbox` table, and
     /// nothing yet shows crabpot passes the descriptors through.
     ListenWithSandbox {
         /// The sheep name, so the error names which Flockfile entry to edit.
@@ -440,13 +440,13 @@ impl fmt::Display for NormalizeError {
             Self::EmptyDogName { name } => {
                 write!(f, "sheep `{name}` has a dogs entry with an empty name")
             }
-            Self::EmptySandbox { name } => write!(
+            Self::SandboxKeyRemoved { name } => write!(
                 f,
-                "sheep `{name}` has sandbox = \"\": name a crabpot settings file, or leave the key out"
+                "sheep `{name}` sets sandbox, which the sandbox dog replaced: remove the key and configure the dog in an [app.dogs.sandbox] table"
             ),
             Self::SandboxOnWindows { name } => write!(
                 f,
-                "sheep `{name}` sets sandbox or a dogs.sandbox table, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
+                "sheep `{name}` sets a dogs.sandbox table, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
             ),
             Self::InvalidListenName { name, listener } => write!(
                 f,
@@ -471,7 +471,7 @@ impl fmt::Display for NormalizeError {
             ),
             Self::ListenWithSandbox { name } => write!(
                 f,
-                "sheep `{name}` sets listen and sandbox together, which is not supported: nothing yet shows crabpot passes the shepherd's sockets through to the sandboxed command"
+                "sheep `{name}` sets listen and a dogs.sandbox table together, which is not supported: nothing yet shows crabpot passes the shepherd's sockets through to the sandboxed command"
             ),
             Self::ListenOnWindows { name } => write!(
                 f,

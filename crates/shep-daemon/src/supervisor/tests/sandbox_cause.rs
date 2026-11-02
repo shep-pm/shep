@@ -43,20 +43,6 @@ async fn wait_errored(handle: &SupervisorHandle) -> ProcessInfo {
         .expect("the sheep must reach errored")
 }
 
-#[cfg(unix)] // normalize refuses sandbox on Windows.
-#[tokio::test(start_paused = true)]
-async fn a_refused_sandboxed_sheep_reports_the_refusal() {
-    let (events, _rx) = crate::bus::test_bus(64);
-    let runner = ScriptedRunner::new(vec![ProcScript::const_exit(125)]);
-    let dir = tempfile::tempdir().unwrap();
-    let handle = spawn_supervisor(runner, test_paths(&dir), events);
-    let mut app = AppConfig::minimal("jailed", "./srv");
-    app.sandbox = Some("sandbox.json".to_owned());
-    handle.start(vec![normalize(app).unwrap()]).await.unwrap();
-
-    assert_eq!(wait_errored(&handle).await.sandbox_refused, Some(true));
-}
-
 #[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_refused_sheep_with_a_sandbox_dog_table_reports_the_refusal() {

@@ -16,9 +16,9 @@ pub const SANDBOX_REFUSED_EXIT: i32 = 125;
 /// The name of the adopted dog that launches a sheep holding a table under this key.
 pub(crate) const SANDBOX_DOG: &str = "sandbox";
 
-/// Whether `app` runs sandboxed: it sets `sandbox`, or holds an `[app.dogs.sandbox]` table
+/// Whether `app` runs sandboxed: it holds an `[app.dogs.sandbox]` table
 pub(crate) fn is_sandboxed(app: &AppConfig) -> bool {
-    app.sandbox.is_some() || app.dogs.contains_key(SANDBOX_DOG)
+    app.dogs.contains_key(SANDBOX_DOG)
 }
 
 /// Whether a sheep configured as `app` that exited with `code` was refused by its sandbox
@@ -148,9 +148,9 @@ mod tests {
     }
 
     #[test]
-    fn sandboxed_exit_125_is_a_refusal() {
+    fn exit_125_from_a_sheep_with_a_sandbox_table_is_a_refusal() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(
             &app,
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn sandboxed_exit_125_is_a_refusal_even_with_autorestart_off() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         app.autorestart = false;
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn sandboxed_exit_125_beats_stop_exit_codes() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         app.stop_exit_codes = vec![125];
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn sandboxed_exit_125_leaves_the_budget_alone() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         let mut budget = RestartBudget::default();
         decide_on_exit(
             &app,
@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn sandboxed_other_exit_code_is_ordinary() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(
             &app,
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn sandboxed_manual_stop_is_not_a_refusal() {
         let mut app = AppConfig::minimal("test", "./test");
-        app.sandbox = Some("sandbox.json".to_owned());
+        app.dogs.insert("sandbox".to_owned(), dog_table());
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(
             &app,
@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn unsandboxed_exit_125_is_an_ordinary_exit() {
+    fn exit_125_from_a_sheep_with_no_sandbox_table_is_an_ordinary_exit() {
         let app = AppConfig::minimal("test", "./test");
         let mut budget = RestartBudget::default();
         let d = decide_on_exit(

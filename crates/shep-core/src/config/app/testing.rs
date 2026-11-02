@@ -407,15 +407,9 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
         ),
         refused(
             "sandbox",
-            "an empty value",
-            sheep(|a| a.sandbox = Some(String::new())),
-            |e| matches!(e, NormalizeError::EmptySandbox { .. }),
-        ),
-        refused_on_windows(
-            "sandbox",
-            "any value on Windows",
+            "any value",
             sheep(|a| a.sandbox = Some("sandbox.json".to_owned())),
-            |e| matches!(e, NormalizeError::SandboxOnWindows { .. }),
+            |e| matches!(e, NormalizeError::SandboxKeyRemoved { .. }),
         ),
         refused_on_windows(
             "dogs",
@@ -461,15 +455,6 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
                 a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
             }),
             |e| matches!(e, NormalizeError::ListenOnWindows { .. }),
-        ),
-        refused(
-            "listen",
-            "a value together with sandbox",
-            sheep(|a| {
-                a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
-                a.sandbox = Some("sandbox.json".to_owned());
-            }),
-            |e| matches!(e, NormalizeError::ListenWithSandbox { .. }),
         ),
         refused(
             "listen",

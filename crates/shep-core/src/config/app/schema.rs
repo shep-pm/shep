@@ -81,19 +81,16 @@ pub struct AppConfig {
         "accepts": ["a command name found on PATH", "none, to exec the script directly"]
     })))]
     pub interpreter: Option<String>,
-    /// A crabpot settings file. The sheep runs inside crabpot's sandbox.
+    /// Removed. The sandbox dog replaced it, so any value is refused.
     ///
-    /// The shepherd spawns `crabpot -s <file> -- <command>`, finding
-    /// `crabpot` on the sheep's `PATH`. A relative file is read from `cwd`.
-    /// Not supported on Windows.
+    /// Configure the dog in an `[app.dogs.sandbox]` table. The field stays so
+    /// a client that still sends the key is told, not ignored.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": "sandbox.json",
         "group": "process",
-        "blurb": "A crabpot settings file. The sheep runs inside crabpot's sandbox",
-        "accepts": ["an absolute or relative path, a relative one read from cwd",
-                    "~ expands, $VARS do not"],
-        "refuses": ["an empty value", "any value on Windows"],
-        "neighbours": [{"field": "cwd", "note": "a relative file is read from it"}]
+        "blurb": "Removed: the sandbox dog replaced it. Set an [app.dogs.sandbox] table instead",
+        "accepts": ["nothing, since every value is refused"],
+        "refuses": ["any value"]
     })))]
     pub sandbox: Option<String>,
     /// Environment for the sheep (merged over the daemon's filtered env).
@@ -468,7 +465,7 @@ pub struct AppConfig {
     /// the systemd way: fd 3 upward in name order, with `LISTEN_FDS`,
     /// `LISTEN_FDNAMES` and `LISTEN_PID`. The shepherd channel moves to the fd
     /// after the last socket, named by `SHEP_CHANNEL_FD`. A reload overlaps on
-    /// the same sockets. Not supported on Windows, or together with `sandbox`.
+    /// the same sockets. Not supported on Windows, or together with the sandbox dog.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "http": "0.0.0.0:8080" },
         "group": "process",
@@ -477,7 +474,6 @@ pub struct AppConfig {
                     "a name of ASCII letters, digits, _ and -"],
         "refuses": ["an address that does not parse", "the same address twice",
                     "a name outside the accepted set", "any value on Windows",
-                    "a value together with sandbox",
                     "a value together with the sandbox dog"],
         "neighbours": [{"field": "reuse_port", "note": "needed for overlap only when listen is unset"},
                        {"field": "channel",    "note": "moves to the fd after the last socket"}]

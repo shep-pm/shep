@@ -267,17 +267,12 @@ pub fn normalize_with_home(
     if app.dogs.keys().any(String::is_empty) {
         return Err(NormalizeError::EmptyDogName { name: app.name });
     }
-    // Before the sandbox check: a Windows build refuses `sandbox` outright,
+    validate::validate_sandbox_key(&app.name, app.sandbox.as_deref())?;
+    // Before the sandbox check: a Windows build refuses the table outright,
     // and `listen` with it should say so about `listen`.
-    let sandbox_table = app.dogs.contains_key("sandbox");
-    let sandboxed = app.sandbox.is_some() || sandbox_table;
+    let sandboxed = app.dogs.contains_key("sandbox");
     validate::validate_listen(&app.name, &app.listen, sandboxed, cfg!(windows))?;
-    validate::validate_sandbox(
-        &app.name,
-        app.sandbox.as_deref(),
-        sandbox_table,
-        cfg!(windows),
-    )?;
+    validate::validate_sandbox(&app.name, sandboxed, cfg!(windows))?;
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(app.depends_on.len());
     for target in &app.depends_on {

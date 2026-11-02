@@ -224,8 +224,8 @@ pub struct SpawnSpec {
     pub dog_link: bool,
     /// Send the stop signal to the leader alone, not its process group.
     ///
-    /// Set with `sandbox`: `crabpot` passes the signal on to its command,
-    /// so a group signal would reach that command twice on macOS.
+    /// Set with a `dogs.sandbox` table: the sandbox passes the signal on to
+    /// the command, so a group signal would reach it twice on macOS.
     /// [`RunningProcess::kill_tree`] stays group-wide, and `max_memory`
     /// still counts the whole tree.
     pub leader_only_stop: bool,
