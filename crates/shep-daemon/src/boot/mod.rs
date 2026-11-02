@@ -523,12 +523,9 @@ fn known_dog_grants(options: &BootOptions) -> crate::rpc::KnownDogs {
 
 /// Where each adopted dog in `dogs` keeps its binary, by dog name.
 ///
-/// Called with the enabled list, after a saved sheep has claimed its names:
-/// a disabled dog, or one that lost its name, is absent here and a sheep that
-/// needs it is refused. The actor adds a dog to its own copy when one is
-/// started later.
-///
-/// A built-in dog has no path: it is an argv branch of the shep binary.
+/// Called with the enabled list, after saved sheep have claimed their names,
+/// so a disabled dog or one that lost its name is absent and a sheep that
+/// needs it is refused. A built-in dog has no path: it is an argv branch.
 fn adopted_dog_paths(dogs: &[DogSpec]) -> BTreeMap<String, String> {
     dogs.iter()
         .filter_map(|dog| match &dog.source {
