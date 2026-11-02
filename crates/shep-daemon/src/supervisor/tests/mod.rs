@@ -141,6 +141,7 @@ fn test_actor(
         events,
         host_environment: DEFAULT_ENVIRONMENT.to_string(),
         dog_defaults: DogDefaults::default(),
+        dog_binaries: BTreeMap::new(),
         provider_secrets,
         tx,
         sheep,

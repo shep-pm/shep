@@ -2,12 +2,12 @@ use crate::listen::ListenError;
 use core::fmt;
 use shep_core::config::template::RenderError;
 
-/// Which of an app's fields carried a `{{secret:...}}` that would not
-/// resolve, and why.
+/// Why a spawn spec could not be built: a `{{secret:...}}` that would not
+/// resolve, or a dog the sheep needs and the shepherd lacks.
 ///
 /// Redacted by construction (IR-41): `field` is an env key or a field's own
-/// name, and [`RenderError`] quotes only the reference, the namespace and
-/// the environment. Neither half can hold a secret's value.
+/// name, [`RenderError`] quotes only the reference, the namespace and the
+/// environment, and `dog` is a dog's name. None can hold a secret's value.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum AssembleError {
@@ -19,6 +19,12 @@ pub enum AssembleError {
         /// Why.
         source: RenderError,
     },
+    /// The sheep holds a table for dog `dog` that must launch it, and the
+    /// shepherd has no enabled, adopted binary under that name.
+    DogMissing {
+        /// The dog's name.
+        dog: String,
+    },
     /// The sheep's `listen` sockets could not be bound.
     Listen(ListenError),
 }
@@ -28,11 +34,13 @@ impl AssembleError {
     ///
     /// `true` only for a namespace no provider dog has pushed to yet; see
     /// [`RenderError::is_retriable`]. A caller that calls every refusal
-    /// retriable turns a key nobody has set into a crash loop.
+    /// retriable turns a key nobody has set into a crash loop. A missing dog
+    /// waits on an operator, never on time.
     #[must_use]
     pub fn is_retriable(&self) -> bool {
         match self {
             Self::Template { source, .. } => source.is_retriable(),
+            Self::DogMissing { .. } => false,
             // A held port may free up, but nothing here can tell when, and a
             // crash loop on it would only hide the address in the log.
             Self::Listen(_) => false,
@@ -44,6 +52,10 @@ impl fmt::Display for AssembleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Template { field, source } => write!(f, "`{field}`: {source}"),
+            Self::DogMissing { dog } => write!(
+                f,
+                "the `{dog}` dog is not adopted or is disabled, and this sheep does not run without it"
+            ),
             Self::Listen(source) => source.fmt(f),
         }
     }
@@ -53,6 +65,7 @@ impl core::error::Error for AssembleError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Template { source, .. } => Some(source),
+            Self::DogMissing { .. } => None,
             Self::Listen(source) => Some(source),
         }
     }
@@ -61,6 +74,7 @@ impl core::error::Error for AssembleError {
 #[cfg(test)]
 mod tests {
     use super::super::spawn_spec::assemble;
+    use super::AssembleError;
 
     use shep_core::secrets::SecretView;
 
@@ -98,5 +112,18 @@ mod tests {
             !rendered.contains('\u{2014}') && !rendered.contains('\u{2013}'),
             "no em or en dash in copy a user reads: {rendered}"
         );
+    }
+
+    #[test]
+    fn a_missing_dog_is_named_and_never_worth_waiting_for() {
+        let err = AssembleError::DogMissing {
+            dog: "sandbox".into(),
+        };
+        assert!(!err.is_retriable());
+        assert_eq!(
+            err.to_string(),
+            "the `sandbox` dog is not adopted or is disabled, and this sheep does not run without it"
+        );
+        assert_eq!(format!("{err:?}"), "DogMissing { dog: \"sandbox\" }");
     }
 }

@@ -41,9 +41,9 @@ use shep_core::signals::OperatorSignal;
 use shep_core::status::ProcStatus;
 use shep_core::values::MemSize;
 
-use crate::assemble::{AssembleError, assemble, describe, instance_slots};
+use crate::assemble::{AssembleError, assemble, describe, instance_slots, through_dog};
 use crate::backoff::restart_delay;
-use crate::brain::{Decision, decide_on_exit, is_sandbox_refusal};
+use crate::brain::{Decision, SANDBOX_DOG, decide_on_exit, is_sandbox_refusal};
 use crate::bus::{Bus, SharedEvent};
 use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::entry::{ProcessEntry, ReloadState, RestartBudget};
@@ -204,6 +204,10 @@ struct Actor<R: ProcessRunner> {
     /// sheep carries for that dog; see [`Actor::dog_tables`]. Loaded once
     /// and kept in step by [`Actor::handle_set_dog_defaults`].
     dog_defaults: DogDefaults,
+    /// The binary of each adopted dog the shepherd knows, by dog name: from
+    /// boot, then from every `StartDog` handed an adopted source. A sheep
+    /// holding a `dogs.sandbox` table spawns through the `sandbox` entry.
+    dog_binaries: BTreeMap<String, String>,
     /// What provider dogs have pushed, the namespaced half of every
     /// [`SecretView`] this actor builds. Shared with the connection tasks
     /// that write it; see [`ProviderSecrets`].
