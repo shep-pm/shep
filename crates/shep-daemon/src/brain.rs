@@ -13,9 +13,14 @@ use crate::runner::ExitOutcome;
 /// The exit code crabpot uses when its sandbox refuses to start
 pub const SANDBOX_REFUSED_EXIT: i32 = 125;
 
+/// Whether `app` runs sandboxed: it sets `sandbox`, or holds an `[app.dogs.sandbox]` table
+pub(crate) fn is_sandboxed(app: &AppConfig) -> bool {
+    app.sandbox.is_some() || app.dogs.contains_key("sandbox")
+}
+
 /// Whether a sheep configured as `app` that exited with `code` was refused by its sandbox
 pub fn is_sandbox_refusal(app: &AppConfig, code: Option<i32>) -> bool {
-    app.sandbox.is_some() && code == Some(SANDBOX_REFUSED_EXIT)
+    is_sandboxed(app) && code == Some(SANDBOX_REFUSED_EXIT)
 }
 
 /// Restart decision for a process exit
@@ -117,6 +122,26 @@ mod tests {
             code: Some(code),
             signal: None,
         }
+    }
+
+    fn dog_table() -> shep_core::config::DogTable {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    #[test]
+    fn a_sandbox_dog_table_counts_as_sandboxed() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.dogs.insert("sandbox".to_owned(), dog_table());
+        assert!(is_sandboxed(&app));
+        assert!(is_sandbox_refusal(&app, Some(125)));
+    }
+
+    #[test]
+    fn a_table_for_another_dog_does_not_count_as_sandboxed() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.dogs.insert("jobs".to_owned(), dog_table());
+        assert!(!is_sandboxed(&app));
+        assert!(!is_sandbox_refusal(&app, Some(125)));
     }
 
     #[test]
