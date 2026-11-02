@@ -253,8 +253,8 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
-    /// `sandbox` is set on Windows, where crabpot's sandbox cannot start from
-    /// session 0. Carries the sheep name.
+    /// `sandbox` or a `dogs.sandbox` table is set on Windows, where crabpot's
+    /// sandbox cannot start from session 0. Carries the sheep name.
     SandboxOnWindows {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
@@ -446,7 +446,7 @@ impl fmt::Display for NormalizeError {
             ),
             Self::SandboxOnWindows { name } => write!(
                 f,
-                "sheep `{name}` sets sandbox, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
+                "sheep `{name}` sets sandbox or a dogs.sandbox table, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
             ),
             Self::InvalidListenName { name, listener } => write!(
                 f,

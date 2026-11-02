@@ -52,11 +52,12 @@ pub const PROTOCOL_VERSION: u32 = 15;
 /// must not send one to it.
 pub const LAMB_SIGNAL_SINCE: u32 = 13;
 
-/// The first protocol version whose shepherd runs an app's `sandbox` file.
+/// The first protocol version whose shepherd spawns a sheep with a
+/// `dogs.sandbox` table through the sandbox dog.
 ///
-/// An older shepherd ignores the key and starts the sheep unsandboxed, so a
-/// client must not send one to it.
-pub const SANDBOX_SINCE: u32 = 14;
+/// An older shepherd starts the sheep unsandboxed, so a client must not send
+/// one to it.
+pub const SANDBOX_DOG_SINCE: u32 = 15;
 
 /// The first protocol version whose shepherd binds an app's `listen` sockets.
 ///
@@ -82,7 +83,7 @@ mod tests {
     // `*_wire_v15` snapshots instead. A bump moves the constant, this
     // literal, this test's name, the doc header and the snapshots.
     #[test]
-    fn an_added_app_config_field_forced_the_protocol_version_up() {
+    fn the_protocol_version_is_15() {
         assert_eq!(PROTOCOL_VERSION, 15);
     }
 

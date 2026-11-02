@@ -218,7 +218,8 @@
             "group": "dogs",
             "refuses": [
               "a value that is not a table",
-              "an empty dog name"
+              "an empty dog name",
+              "a sandbox table on Windows"
             ]
           }
         },

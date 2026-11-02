@@ -200,6 +200,7 @@ async fn a_boot_first_dog_still_spawns_first_and_is_not_registered_twice() {
     drop(daemon);
 }
 
+#[cfg(unix)] // restore normalizes, which refuses a sandbox dog table on Windows.
 #[tokio::test]
 async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told_of() {
     let _guard = SIGNAL_TEST_LOCK.lock().await;
@@ -249,6 +250,7 @@ async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told
     drop(daemon);
 }
 
+#[cfg(unix)]
 fn adopted_sandbox() -> DogSpec {
     DogSpec {
         name: "sandbox".to_owned(),
@@ -261,6 +263,7 @@ fn adopted_sandbox() -> DogSpec {
     }
 }
 
+#[cfg(unix)]
 fn jailed_config() -> AppConfig {
     let mut jailed = AppConfig::minimal("jailed", "./srv");
     jailed.dogs.insert(
@@ -270,6 +273,7 @@ fn jailed_config() -> AppConfig {
     jailed
 }
 
+#[cfg(unix)] // restore normalizes, which refuses a sandbox dog table on Windows.
 #[tokio::test]
 async fn a_restored_sandboxed_sheep_is_refused_when_the_dog_is_adopted_but_not_enabled() {
     let _guard = SIGNAL_TEST_LOCK.lock().await;
@@ -299,6 +303,7 @@ async fn a_restored_sandboxed_sheep_is_refused_when_the_dog_is_adopted_but_not_e
     drop(daemon);
 }
 
+#[cfg(unix)] // restore normalizes, which refuses a sandbox dog table on Windows.
 #[tokio::test]
 async fn a_restored_sandboxed_sheep_is_refused_when_a_saved_sheep_holds_the_dogs_name() {
     let _guard = SIGNAL_TEST_LOCK.lock().await;

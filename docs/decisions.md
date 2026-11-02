@@ -2737,6 +2737,14 @@ With the `vcs` feature on, `Describe` fills `ProcessInfo::vcs` from the revision
 
 `verified crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/supervisor/actor_exit.rs, crates/shep-core/src/protocol/events.rs, crates/shep-core/src/protocol/request/process.rs, crates/shep-daemon/src/supervisor/wire.rs, crates/shep-cli/src/dog/bark/rules/mod.rs, crates/shep-cli/src/dog/metrics/feed.rs`
 
+### A `dogs.sandbox` table is gated at protocol 15 and refused on Windows like the `sandbox` key
+
+`Request::gated_key_dropped_at` also names `dogs.sandbox` for a `Start`, `Add`, `ConfigDrift` or `ApplyConfig` app holding the table and for a `SetSheepDogSettings` that sets one, below `SANDBOX_DOG_SINCE` (15, replacing `SANDBOX_SINCE`). The old `sandbox` key is its own gate at the same version, named `sandbox`, so a client keeps failing closed until the key is removed. `validate_sandbox` refuses the table on Windows with `SandboxOnWindows`.
+
+**Why:** a shepherd that does not spawn through the sandbox dog starts a sheep with the table unsandboxed and says nothing. Protocol 15 is the version `listen` already moved to, so no bump is added: this assumes no release is cut between the dog spawn and this gate.
+
+`verified crates/shep-core/src/protocol/mod.rs (SANDBOX_DOG_SINCE), crates/shep-core/src/protocol/request/gated_keys.rs, crates/shep-core/src/config/normalize/validate.rs, crates/shep-client/src/client.rs`
+
 ## Listening sockets held by the shepherd
 
 ### A sheep's `listen` table has the shepherd bind its TCP sockets once and pass them to every instance through `LISTEN_FDS`

@@ -20,6 +20,8 @@ mod verbs;
 
 #[cfg(test)]
 mod reset_field_tests;
+#[cfg(test)]
+mod sandbox;
 
 pub use config_reply::{SheepApplied, SheepConfigView, SheepDrift, SheepRefusal};
 pub use dog_access::DogAccess;
