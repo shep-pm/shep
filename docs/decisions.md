@@ -2721,7 +2721,17 @@ With the `vcs` feature on, `Describe` fills `ProcessInfo::vcs` from the revision
 
 ## Sandboxed sheep
 
-### A sheep's `sandbox` key runs it under `crabpot` from `PATH`, and its stop signal goes to the leader alone
+### A sheep with an `[app.dogs.sandbox]` table is spawned as `<dog> launch <sheep> -- <cmd>`, and its stop signal goes to the leader alone
+
+The shepherd looks up the dog adopted under the name `sandbox` and spawns the sheep as `<dog> launch <sheep> -- <program> <args...>`, wrapping after the `interpreter` is applied, so the interpreter and script sit inside the dog's command. `shep adopt` refuses a dog adopted as `sandbox` when its manifest is absent, unreadable or does not declare `launch`; under any other name `launch` is never asked. A sheep that holds the table while no enabled `sandbox` dog is adopted fails to assemble with `DogMissing`, which is not retried, since waiting on an operator never fixes it. `SpawnSpec.leader_only_stop` is set for such a sheep: `signal` goes to the leader pid alone, `kill_tree` stays a group SIGKILL, and `max_memory` keeps counting the whole tree, the dog included. `AdoptSpec` carries the flag, so a handover does not return the sheep to group signalling. The `sandbox` key is removed: any value is refused with an error naming the dog, and `shep daemon reload` refuses to hand a flock over while a running sheep sets it. The table's own keys belong to the dog and are described in its README; shep does not interpret the dog's own keys at spawn or at an exit decision; it only scans the table's string values for `{{secret:...}}` references and resolves them when the dog asks for its settings.
+
+**Why:** the dog passes the stop signal on to its command, so a group signal reaches the command twice on macOS, once through the dog and once directly. SIGKILL needs no such care: the dog cannot pass it on, so the group must take it. Moving the wrap into a dog keeps shep's config from naming a sandbox project's binary or settings format, and lets the sandbox change without a shep release. The cost: a sheep with the table needs the dog adopted first, and a dog whose manifest is absent, unreadable or lacks `launch` cannot be adopted as `sandbox`.
+
+`verified crates/shep-daemon/src/assemble/launch.rs, crates/shep-daemon/src/assemble/spawn_spec.rs, crates/shep-daemon/src/assemble/assembly_errors.rs, crates/shep-daemon/src/tokio_runner/runner.rs, crates/shep-core/src/dogs/manifest.rs`
+
+### Superseded: a sheep's `sandbox` key ran it under `crabpot` from `PATH`, and its stop signal went to the leader alone
+
+**Superseded** by the `[app.dogs.sandbox]` entries above and below: the `sandbox` key is removed, any value is refused, and no `crabpot` is looked up on `PATH`. Kept for the reasoning.
 
 `sandbox = "<file>"` names a crabpot settings file. The shepherd spawns `crabpot -s <file> -- <program> <args...>`, wrapping after the `interpreter` is applied, so the interpreter and script sit inside the sandbox. A relative file is read from the sheep's `cwd`: an absolute `cwd` is joined onto it, as a relative log path is, and a relative `cwd` is left alone, since crabpot starts inside it already. A leading `~/` expands like the other path fields. `crabpot` is looked up on the sheep's `PATH`; there is no key for its path. The key is `NeedsRespawn`, an empty value is refused on every platform, and Windows refuses the key, since crabpot's Windows sandbox cannot start from session 0. `SpawnSpec.leader_only_stop` is set along with `sandbox`: `signal` goes to the leader pid alone, `kill_tree` stays a group SIGKILL, and `max_memory` keeps counting the whole tree, crabpot included. `AdoptSpec` carries the flag, so a handover does not return a sandboxed sheep to group signalling. `PROTOCOL_VERSION` moves to 14.
 
@@ -2729,7 +2739,17 @@ With the `vcs` feature on, `Describe` fills `ProcessInfo::vcs` from the revision
 
 `verified crates/shep-daemon/src/assemble/spawn_spec.rs, crates/shep-daemon/src/tokio_runner/runner.rs, crates/shep-daemon/tests/real_runner/sandbox.rs, crates/shep-core/src/protocol/mod.rs (PROTOCOL_VERSION), crates/shep-core/src/protocol/request/sandbox.rs, crates/shep-client/src/client.rs`
 
-### A sandboxed sheep that exits 125 is errored at once and not restarted
+### A sheep with an `[app.dogs.sandbox]` table that exits 125 is errored at once and not restarted
+
+`decide_on_exit` returns `Decision::SandboxRefused` for a sheep holding the table that exits with code 125, after the manual-stop check and before `stop_exit_codes`, `autorestart` and the restart budget. The rest is as the superseded entry below describes: `ProcStatus::Errored`, `process.sandbox_refused`, the budget untouched, `ProcessInfo::sandbox_refused` on an `errored` row. A sheep without the table that exits 125 is an ordinary exit.
+
+**Why:** a dog that cannot start its sandbox exits 125, and that repeats on every restart, so the loop only hides it until the budget runs out. The cost: a sandboxed sheep whose own code exits 125 is read as a refusal and needs a different exit code.
+
+`verified crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/supervisor/actor_exit.rs`
+
+### Superseded: a sheep with the `sandbox` key that exited 125 was errored at once and not restarted
+
+**Superseded** by the entry above for what sets the behaviour: it is now an `[app.dogs.sandbox]` table, not the `sandbox` key. The mechanics below are unchanged. Kept for the reasoning.
 
 `decide_on_exit` returns `Decision::SandboxRefused` for a sheep with `sandbox` set that exits with code 125, after the manual-stop check and before `stop_exit_codes`, `autorestart` and the restart budget. `handle_exited` sets `ProcStatus::Errored`, emits `ProcessEventKind::SandboxRefused` (topic `process.sandbox_refused`, wire string `sandbox_refused`) and disarms extras as `Errored` does. The budget is not touched and no `Errored` event follows. A sheep without `sandbox` that exits 125 is an ordinary exit. The bark `gave_up` rule fires on the new kind with the text "sandbox refused", and the metrics feed clears the sender's samples as it does for `Errored`. `ProcessInfo::sandbox_refused` is `Some` on an `errored` row (true for a refusal, false for a spent budget or a spawn failure) and `None` elsewhere, so bark's poll names the cause for a refusal it never saw on the bus. `PROTOCOL_VERSION` stays 14: an older client decodes the kind as `Unrecognized`, and the field is additive.
 
