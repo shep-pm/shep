@@ -40,7 +40,11 @@ pub(super) fn adopt_listeners(blob: &Handover) -> Vec<AdoptedListeners> {
         // below is closed rather than left open and unowned.
         let adopted = adopt_fd(
             carried.fd(),
-            &format!("the listen socket '{}' of sheep '{}'", carried.name(), carried.sheep()),
+            &format!(
+                "the listen socket '{}' of sheep '{}'",
+                carried.name(),
+                carried.sheep()
+            ),
         )
         .and_then(|file| listening_tcp(OwnedFd::from(file)));
         let socket = match (adopted, &configured) {
@@ -80,10 +84,7 @@ fn listening_tcp(fd: OwnedFd) -> io::Result<TcpListener> {
         ));
     }
     listener.local_addr().map_err(|error| {
-        io::Error::new(
-            error.kind(),
-            format!("it is not a TCP socket: {error}"),
-        )
+        io::Error::new(error.kind(), format!("it is not a TCP socket: {error}"))
     })?;
     Ok(listener)
 }

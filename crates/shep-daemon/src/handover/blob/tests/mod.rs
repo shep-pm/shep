@@ -19,6 +19,7 @@ use crate::testing::test_paths;
 mod compat;
 mod disabled;
 mod dog_link;
+mod listeners;
 mod old_blob_shape;
 mod old_blob_state;
 mod old_blobs;

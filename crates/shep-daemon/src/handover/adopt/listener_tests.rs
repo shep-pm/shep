@@ -57,13 +57,19 @@ async fn a_sheeps_listener_keeps_its_socket_and_the_client_waiting_on_it() {
     assert_eq!(web.sheep, "web");
     assert_eq!(web.sockets.names().collect::<Vec<_>>(), ["http"]);
     assert_eq!(web.sockets.local_addrs().unwrap(), [address]);
-    assert!(web.sockets.is_bound_from(&table(&[("http", &address.to_string())])));
+    assert!(
+        web.sockets
+            .is_bound_from(&table(&[("http", &address.to_string())]))
+    );
     // A rebind would have a fresh backlog, with no client in it.
     let serving = TcpListener::from(web.sockets.duplicates().unwrap().remove(0));
     let (mut accepted, _) = serving.accept().unwrap();
     let mut said = [0_u8; 4];
     accepted.read_exact(&mut said).unwrap();
-    assert_eq!(&said, b"ping", "the client connected before the handover is served");
+    assert_eq!(
+        &said, b"ping",
+        "the client connected before the handover is served"
+    );
 }
 
 #[tokio::test]
