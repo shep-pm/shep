@@ -1252,7 +1252,6 @@ interpreter                 (unset)                                         │
 listen                      (default)                                       │                                                                                   
 name                        web                                             │                                                                                   
 reuse_port                  (default)                                       │                                                                                   
-sandbox                     (unset)                                         │                                                                                   
 script                      ./srv                                           │                                                                                   
 user                        (unset)                                         │                                                                                   
                                                                             │                                                                                   
@@ -1266,6 +1265,7 @@ out_file                    (unset)                                         │
                                                                             │                                                                                   
 ────────────────────────────────────────────────────────────────────────────│                                                                                   
 inputs                                                                      │                                                                                   
+args                        ["--port","8080"]                               │                                                                                   
                                                                                                                                                                 
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                                      control enabled
 
@@ -1304,7 +1304,6 @@ interpreter                 (unset)
 listen                      (default)                                                                                                      
 name                        web                                                                                                            
 reuse_port                  (default)                                                                                                      
-sandbox                     (unset)                                                                                                        
 script                      ./srv                                                                                                          
 user                        (unset)                                                                                                        
                                                                                                                                            
@@ -1318,6 +1317,7 @@ out_file                    (unset)
                                                                                                                                            
 ────────────────────────────────────────────────────────────────────────────                                                               
 inputs                                                                                                                                     
+args                        ["--port","8080"]                                                                                              
                                                                                                                                            
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled
 
@@ -1356,7 +1356,6 @@ interpreter                 (unset)
 listen                      (default)                                                              
 name                        web                                                                    
 reuse_port                  (default)                                                              
-sandbox                     (unset)                                                                
 script                      ./srv                                                                  
 user                        (unset)                                                                
                                                                                                    
@@ -1370,6 +1369,7 @@ out_file                    (unset)
                                                                                                    
 ────────────────────────────────────────────────────────────────────────────                       
 inputs                                                                                             
+args                        ["--port","8080"]                                                      
                                                                                                    
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled
 
@@ -1420,14 +1420,14 @@ shep lookout   /home/ada/.shep                                                  
    listen                     {}                                              respawn                                                                           
  = name                       api                                             read-only   ▲ respawn  the sheep must stop and start again                        
    reuse_port                 false                                           now                                        pick the timing when you close the pane
-   sandbox                    (unset)                                         respawn                                                                           
-   script                     ./api/server.js                                 respawn     ──────────────────────────────────────────────────────────────────────
-   user                       (unset)                                         respawn     VALIDATION                                                            
-                                                                                          █ an absolute or relative path, expanded from cwd                     
-  env                                                                                     █ ~ expands, $VARS do not                                             
-   DATABASE_URL               (set)                                                       █ a directory that does not exist yet: warned                         
-   NODE_ENV                   (set)                                                                                                                             
-   + add a key                                                                            NEIGHBOURS                                                            
+   script                     ./api/server.js                                 respawn                                                                           
+   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+  env                                                                                     █ an absolute or relative path, expanded from cwd                     
+   DATABASE_URL               (set)                                                       █ ~ expands, $VARS do not                                             
+   NODE_ENV                   (set)                                                       █ a directory that does not exist yet: warned                         
+   + add a key                                                                                                                                                  
+                                                                                          NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  
@@ -1524,14 +1524,14 @@ shep lookout   /home/ada/.shep                                                  
    listen                     {}                                    example /srv/app                                    
  = name                       api                                                                                       
    reuse_port                 false                                 ▲ respawn  the sheep must stop and start again      
-   sandbox                    (unset)                                            pick the timing when you close the pane
-   script                     ./api/server.js                                                                           
-   user                       (unset)                               ────────────────────────────────────────────────────
-                                                                    VALIDATION                                          
-  env                                                               █ an absolute or relative path, expanded from cwd   
-   DATABASE_URL               (set)                                 █ ~ expands, $VARS do not                           
-   NODE_ENV                   (set)                                 █ a directory that does not exist yet: warned       
-   + add a key                                                                                                          
+   script                     ./api/server.js                                    pick the timing when you close the pane
+   user                       (unset)                                                                                   
+                                                                    ────────────────────────────────────────────────────
+  env                                                               VALIDATION                                          
+   DATABASE_URL               (set)                                 █ an absolute or relative path, expanded from cwd   
+   NODE_ENV                   (set)                                 █ ~ expands, $VARS do not                           
+   + add a key                                                      █ a directory that does not exist yet: warned       
+                                                                                                                        
                                                                     NEIGHBOURS                                          
                                                                     script  resolved against this cwd                   
                                                                     out_file  relative paths follow it too              
@@ -1577,7 +1577,6 @@ shep lookout   /home/ada/.shep                                            6 in t
    listen                     {}                                              respawn   
  = name                       api                                             read-only 
    reuse_port                 false                                           now       
-   sandbox                    (unset)                                         respawn   
    script                     ./api/server.js                                 respawn   
    user                       (unset)                                         respawn   
                                                                                         
@@ -1587,6 +1586,7 @@ shep lookout   /home/ada/.shep                                            6 in t
    + add a key                                                                          
   ──────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …
+                                                                                        
                                                                                         
                                                                                         
                                                                                         
@@ -2252,14 +2252,14 @@ shep lookout   /home/ada/.shep                                                  
    listen                     {}                                              respawn                                                                           
  = name                       api                                             read-only   ▲ respawn  the sheep must stop and start again                        
    reuse_port                 false                                           now                                        pick the timing when you close the pane
-   sandbox                    (unset)                                         respawn                                                                           
-   script                     ./api/server.js                                 respawn     ──────────────────────────────────────────────────────────────────────
-   user                       (unset)                                         respawn     VALIDATION                                                            
-                                                                                          █ an absolute or relative path, expanded from cwd                     
-  env                               ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-   DATABASE_URL               (set) ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
-   NODE_ENV                   (set) ▐                                                                                      ▌                                    
-   + add a key                      ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+   script                     ./api/server.js                                 respawn                                                                           
+   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+  env                                                                                     █ an absolute or relative path, expanded from cwd                     
+   DATABASE_URL               (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+   NODE_ENV                   (set) ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
+   + add a key                      ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
                                     ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
                                     ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
                                     ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  

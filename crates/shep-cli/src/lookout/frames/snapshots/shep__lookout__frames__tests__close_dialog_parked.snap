@@ -17,14 +17,14 @@ shep lookout   /home/ada/.shep                                                  
    listen                     {}                                              respawn                                                                           
  = name                       api                                             read-only   ▲ respawn  the sheep must stop and start again                        
    reuse_port                 false                                           now                                        pick the timing when you close the pane
-   sandbox                    (unset)                                         respawn                                                                           
-   script                     ./api/server.js                                 respawn     ──────────────────────────────────────────────────────────────────────
-   user                       (unset)                                         respawn     VALIDATION                                                            
-                                                                                          █ an absolute or relative path, expanded from cwd                     
-  env                               ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
-   DATABASE_URL               (set) ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
-   NODE_ENV                   (set) ▐                                                                                      ▌                                    
-   + add a key                      ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
+   script                     ./api/server.js                                 respawn                                                                           
+   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+  env                                                                                     █ an absolute or relative path, expanded from cwd                     
+   DATABASE_URL               (set) ▛▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▜                                    
+   NODE_ENV                   (set) ▐  1 FIELD ALREADY WAITING             api is online, pid 48219                        ▌yet: warned                         
+   + add a key                      ▐                                                                                      ▌                                    
+                                    ▐  R   restart now      stop, then start. The stop takes up to 1600ms.                 ▌                                    
                                     ▐  L   reload           the replacement starts alongside and takes over. No gap, if the▌                                    
                                     ▐                       app sets SO_REUSEPORT itself.                                  ▌ too                                
                                     ▐  c   continue         write them and leave it running. They wait for a respawn.      ▌re                                  

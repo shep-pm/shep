@@ -753,7 +753,6 @@ expression: replies
             "args": [],
             "cwd": null,
             "interpreter": null,
-            "sandbox": null,
             "env": {},
             "environment": null,
             "instances": 1,

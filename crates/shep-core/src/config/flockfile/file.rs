@@ -21,15 +21,13 @@ impl Flockfile {
     ///
     /// # Errors
     /// - [`FlockfileError::Parse`]: backend parse failure, carrying the
-    ///   format and the backend's message. Json5 additionally rejects
-    ///   sources nested past a depth of 64 before reaching the backend
-    ///   parser, whose recursive-descent stack-overflows on deep input
-    ///   rather than returning an error.
+    ///   format and the backend's message. Json5 nested past 64 is refused
+    ///   before the backend, whose parser would overflow the stack.
     /// - [`FlockfileError::NoApps`]: parsed fine but declared no apps.
     /// - [`FlockfileError::UnknownKeys`]: an `app` entry named a key no
-    ///   field claims. A typo at the top level never reaches this variant:
-    ///   `RawFlockfile`'s `deny_unknown_fields` refuses it inside the
-    ///   backend, so it arrives as `Parse` naming the key.
+    ///   field claims. A top-level typo arrives as `Parse` instead.
+    /// - [`FlockfileError::SandboxKeyRemoved`]: an `app` entry set the
+    ///   removed `sandbox` key, to any value.
     pub fn parse(source: &str, format: FlockFormat) -> Result<Self, FlockfileError> {
         Ok(Self {
             apps: parse_nonempty_apps(source, format)?,
@@ -111,6 +109,13 @@ fn parse_nonempty_apps(
     if apps.is_empty() {
         return Err(FlockfileError::NoApps);
     }
+    // Here, not left to the shepherd: `AppConfig` does not serialize the key,
+    // so past this point nothing can tell the sheep asked to be sandboxed.
+    if let Some(app) = apps.iter().find(|app| app.sandbox.is_some()) {
+        return Err(FlockfileError::SandboxKeyRemoved {
+            name: app.name.clone(),
+        });
+    }
     Ok(apps)
 }
 
@@ -118,6 +123,28 @@ fn parse_nonempty_apps(
 mod tests {
     use super::*;
     use crate::config::flockfile::format::FlockFormat;
+
+    #[test]
+    fn a_flockfile_that_sets_the_sandbox_key_is_refused_before_anything_is_sent() {
+        let src = "[[app]]\nname = \"web\"\nscript = \"./srv\"\nsandbox = \"sandbox.json\"\n";
+        let expected = FlockfileError::SandboxKeyRemoved {
+            name: "web".to_string(),
+        };
+        assert_eq!(
+            Flockfile::parse(src, FlockFormat::Toml).unwrap_err(),
+            expected
+        );
+        assert_eq!(
+            Flockfile::parse_declared(src, FlockFormat::Toml).unwrap_err(),
+            expected
+        );
+        let json = r#"{"app":[{"name":"web","script":"./srv","sandbox":""}]}"#;
+        assert_eq!(
+            Flockfile::parse(json, FlockFormat::Json).unwrap_err(),
+            expected,
+            "an empty value is still the key"
+        );
+    }
 
     #[test]
     fn toml_array_of_tables() {

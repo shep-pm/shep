@@ -6,7 +6,7 @@
 //! refuse with the old shepherd still running is here, before the signal.
 
 use shep_client::Client;
-use shep_core::protocol::Request;
+use shep_core::protocol::{Request, SheepConfigView};
 
 /// Asks `client`'s shepherd which sheep still set the removed `sandbox` key,
 /// and returns the refusal that names them, or `None` when none does.
@@ -26,7 +26,7 @@ pub(super) async fn refusal(client: &Client) -> Option<String> {
         };
         match client.request(request).await {
             Ok(shep_core::protocol::Response::SheepConfig(view)) => {
-                if view.config.sandbox.is_some() {
+                if sets_removed_key(&view) {
                     setting.push(info.name.as_str());
                 }
             }
@@ -35,6 +35,12 @@ pub(super) async fn refusal(client: &Client) -> Option<String> {
         }
     }
     (!setting.is_empty()).then(|| naming(&setting))
+}
+
+/// Whether a sheep's config, as a shepherd that still serializes the key
+/// sent it, sets the removed `sandbox` key.
+fn sets_removed_key(view: &SheepConfigView) -> bool {
+    view.config.sandbox.is_some()
 }
 
 /// The refusal for sheep that set the removed key, one name each.
@@ -92,12 +98,11 @@ mod tests {
         assert!(text.contains("still running"), "{text}");
     }
 
-    /// A fake shepherd that can be handed over, holding `flock`: each name
-    /// paired with whether that sheep still sets the removed `sandbox` key.
+    /// A fake shepherd that can be handed over, holding `flock` by name.
     #[cfg(unix)]
     async fn flock_answering(
         paths: &ShepPaths,
-        flock: &[(&str, bool)],
+        flock: &[&str],
     ) -> tokio::sync::mpsc::UnboundedReceiver<shep_core::protocol::Envelope> {
         use shep_core::config::AppConfig;
         use shep_core::protocol::{ProcessInfo, SheepConfigView};
@@ -105,10 +110,7 @@ mod tests {
 
         std::fs::create_dir_all(&paths.run).unwrap();
         std::fs::create_dir_all(&paths.pids).unwrap();
-        let flock: Vec<(String, bool)> = flock
-            .iter()
-            .map(|(name, sandbox)| ((*name).to_string(), *sandbox))
-            .collect();
+        let flock: Vec<String> = flock.iter().map(|name| (*name).to_string()).collect();
         shep_client::testing::fake_daemon_answering_with_ack(
             &paths.socket,
             ack_naming("9.9.9"),
@@ -118,61 +120,34 @@ mod tests {
                     flock
                         .iter()
                         .zip(1..)
-                        .map(|((name, _), id)| {
+                        .map(|(name, id)| {
                             ProcessInfo::builder(id, name.clone(), ProcStatus::Online).build()
                         })
                         .collect(),
                 ),
-                Request::SheepConfig { name } => {
-                    let mut config = AppConfig::minimal(name, "./srv");
-                    config.sandbox = flock
-                        .iter()
-                        .find(|(held, _)| held == name)
-                        .filter(|(_, sandbox)| *sandbox)
-                        .map(|_| "sandbox.json".to_string());
-                    Response::SheepConfig(Box::new(SheepConfigView::new(
-                        config,
-                        Vec::new(),
-                        Vec::new(),
-                    )))
-                }
+                Request::SheepConfig { name } => Response::SheepConfig(Box::new(
+                    SheepConfigView::new(AppConfig::minimal(name, "./srv"), Vec::new(), Vec::new()),
+                )),
                 other => panic!("a reload asked a question this fake does not hold: {other:?}"),
             },
         )
         .await
     }
 
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_flock_with_a_sheep_that_sets_the_removed_sandbox_key_is_not_handed_over() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = ShepPaths::resolve(&|_| None, dir.path());
-        let _sent = flock_answering(&paths, &[("api", false), ("web", true), ("jobs", true)]).await;
-
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let code = {
-            let mut streams = Streams::bare(&mut out, &mut err, Format::Table);
-            reload(&mut streams, &paths, VersionGuard::Exempt).await
+    /// The reply of a shepherd that predates the hidden field, which is the
+    /// only kind that still sends the key: this build's fake cannot, since
+    /// `AppConfig` no longer serializes it.
+    #[test]
+    fn a_config_view_from_an_older_shepherd_that_sends_the_key_is_seen_to_set_it() {
+        let view = |sandbox: &str| -> SheepConfigView {
+            serde_json::from_str(&format!(
+                r#"{{"name":"web","config":{{"name":"web","script":"./srv"{sandbox}}},
+                    "env_keys":[],"env_secrets":[],"overridden":[],"pending":[]}}"#
+            ))
+            .unwrap()
         };
-
-        let text = format!(
-            "{}{}",
-            String::from_utf8(out).unwrap(),
-            String::from_utf8(err).unwrap()
-        );
-        // The pidfile is absent, so a reload that went on to signal would fail
-        // as "no shepherd is running" and `DaemonUnreachable`.
-        assert_eq!(code, ExitCode::InvalidConfig, "{text}");
-        assert!(
-            text.contains("web") && text.contains("jobs") && !text.contains("api"),
-            "each offending sheep is named, and no other: {text}"
-        );
-        assert!(text.contains("[app.dogs.sandbox]"), "{text}");
-        assert!(
-            !text.contains("stopping and starting") && !text.contains("stopped and started"),
-            "the flock is left running, not restarted by the other arm: {text}"
-        );
+        assert!(sets_removed_key(&view(r#","sandbox":"sandbox.json""#)));
+        assert!(!sets_removed_key(&view("")));
     }
 
     #[cfg(unix)]
@@ -180,7 +155,7 @@ mod tests {
     async fn a_flock_with_no_removed_sandbox_key_goes_on_to_the_handover() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
-        let mut sent = flock_answering(&paths, &[("api", false), ("web", false)]).await;
+        let mut sent = flock_answering(&paths, &["api", "web"]).await;
 
         let mut out = Vec::new();
         let mut err = Vec::new();

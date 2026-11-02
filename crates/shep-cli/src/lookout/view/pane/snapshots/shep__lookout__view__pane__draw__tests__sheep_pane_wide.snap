@@ -15,14 +15,14 @@ expression: "text_of(&lines).join(\"\\n\")"
    listen                     {}                                    example /srv/app
  = name                       web                                 
   *reuse_port                 false                                 ▲ respawn  the sheep must stop and start again
-   sandbox                    (unset)                                            pick the timing when you close the pane
-   script                     ./srv                               
-   user                       (unset)                               ────────────────────────────────────────────────────
-                                                                    VALIDATION
-  env                                                               █ an absolute or relative path, expanded from cwd
-   DB_HOST                    (set)                                 █ ~ expands, $VARS do not
-   LOG_LEVEL                  (set)                                 █ a directory that does not exist yet: warned
-   + add a key                                                    
+   script                     ./srv                                              pick the timing when you close the pane
+   user                       (unset)                             
+                                                                    ────────────────────────────────────────────────────
+  env                                                               VALIDATION
+   DB_HOST                    (set)                                 █ an absolute or relative path, expanded from cwd
+   LOG_LEVEL                  (set)                                 █ ~ expands, $VARS do not
+   + add a key                                                      █ a directory that does not exist yet: warned
+                                                                  
                                                                     NEIGHBOURS
                                                                     script  resolved against this cwd
                                                                     out_file  relative paths follow it too

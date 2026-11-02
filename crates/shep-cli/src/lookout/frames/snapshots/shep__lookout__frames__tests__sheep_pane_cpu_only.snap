@@ -34,7 +34,6 @@ interpreter                 (unset)
 listen                      (default)                                                                                                      
 name                        web                                                                                                            
 reuse_port                  (default)                                                                                                      
-sandbox                     (unset)                                                                                                        
 script                      ./srv                                                                                                          
 user                        (unset)                                                                                                        
                                                                                                                                            
@@ -48,5 +47,6 @@ out_file                    (unset)
                                                                                                                                            
 ────────────────────────────────────────────────────────────────────────────                                                               
 inputs                                                                                                                                     
+args                        ["--port","8080"]                                                                                              
                                                                                                                                            
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log   / filter                                 control enabled

@@ -765,25 +765,6 @@
             "group": "process"
           }
         },
-        "sandbox": {
-          "description": "Removed. The sandbox dog replaced it, so any value is refused.\n\nConfigure the dog in an `[app.dogs.sandbox]` table. The field stays so\na client that still sends the key is told, not ignored.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null,
-          "init": {
-            "accepts": [
-              "nothing, since every value is refused"
-            ],
-            "blurb": "Removed: the sandbox dog replaced it. Set an [app.dogs.sandbox] table instead",
-            "example": "sandbox.json",
-            "group": "process",
-            "refuses": [
-              "any value"
-            ]
-          }
-        },
         "script": {
           "description": "Executable or script path (required)",
           "type": "string",
