@@ -44,7 +44,11 @@ async fn a_taken_address_fails_the_start_naming_it() {
     let after = actor.respawn(info.id, true);
 
     assert_eq!(after.status, ProcStatus::Errored);
-    assert_eq!(actor.runner.spawn_count(), 0, "nothing runs without its socket");
+    assert_eq!(
+        actor.runner.spawn_count(),
+        0,
+        "nothing runs without its socket"
+    );
     let failure = actor.sheep[&info.id].entry.spawn_failure.clone().unwrap();
     assert!(
         failure.contains(&address) && failure.contains("`http`"),
@@ -65,9 +69,16 @@ async fn every_instance_of_a_scaled_sheep_gets_the_same_sockets() {
 
     handle.scale("web", 2).await.unwrap();
 
-    let first = runner.spawned_listen(0).expect("the first instance has them");
-    let second = runner.spawned_listen(1).expect("the second instance has them");
-    assert!(Arc::ptr_eq(&first, &second), "one bind serves every instance");
+    let first = runner
+        .spawned_listen(0)
+        .expect("the first instance has them");
+    let second = runner
+        .spawned_listen(1)
+        .expect("the second instance has them");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "one bind serves every instance"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -96,7 +107,10 @@ async fn a_reload_that_leaves_listen_alone_keeps_the_set() {
     let before = actor.listen_for(&app).unwrap().expect("a set is bound");
     let after = actor.listen_for(&app).unwrap().expect("and kept");
 
-    assert!(Arc::ptr_eq(&before, &after), "the same open sockets, not a rebind");
+    assert!(
+        Arc::ptr_eq(&before, &after),
+        "the same open sockets, not a rebind"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -154,7 +168,10 @@ async fn the_sockets_of_a_sheep_with_no_instance_left_are_closed() {
 
     actor.prune_listeners();
 
-    assert!(actor.listeners.contains_key("web"), "an online sheep keeps its set");
+    assert!(
+        actor.listeners.contains_key("web"),
+        "an online sheep keeps its set"
+    );
     assert!(
         !actor.listeners.contains_key("gone"),
         "no sheep named it, so the sockets close and the next start binds afresh"

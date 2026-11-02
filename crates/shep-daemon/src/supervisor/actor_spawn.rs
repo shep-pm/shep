@@ -219,13 +219,14 @@ impl<R: ProcessRunner> Actor<R> {
         let overridden = self.overridden_for(&app.config().name);
         let id = self.next_id;
         self.next_id += 1;
-        let assembled = assemble(app, instance, &self.paths, credentials, secrets).and_then(|spec| {
-            Ok(SpawnSpec {
-                dog_link: dog.is_some(),
-                listen: self.listen_for(app.config())?,
-                ..spec
-            })
-        });
+        let assembled =
+            assemble(app, instance, &self.paths, credentials, secrets).and_then(|spec| {
+                Ok(SpawnSpec {
+                    dog_link: dog.is_some(),
+                    listen: self.listen_for(app.config())?,
+                    ..spec
+                })
+            });
         let spec = match assembled {
             Ok(spec) => spec,
             Err(err) => {

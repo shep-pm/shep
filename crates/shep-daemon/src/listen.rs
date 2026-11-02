@@ -244,7 +244,11 @@ mod tests {
 
         let error = ListenSockets::bind(&table(&[("http", &address)])).unwrap_err();
 
-        let ListenError::Bind { name, address: named, .. } = &error;
+        let ListenError::Bind {
+            name,
+            address: named,
+            ..
+        } = &error;
         assert_eq!((name.as_str(), named.as_str()), ("http", address.as_str()));
         assert!(
             error

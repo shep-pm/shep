@@ -18,7 +18,10 @@ const DEADLINE: Duration = Duration::from_secs(10);
 
 fn pipe() -> (std::fs::File, OwnedFd) {
     let (read, write) = std::io::pipe().unwrap();
-    (std::fs::File::from(OwnedFd::from(read)), OwnedFd::from(write))
+    (
+        std::fs::File::from(OwnedFd::from(read)),
+        OwnedFd::from(write),
+    )
 }
 
 #[tokio::test]
@@ -75,7 +78,10 @@ printf '%s|%s|%s|%s|%s' "$LISTEN_FDS" "$LISTEN_FDNAMES" "$SHEP_CHANNEL_FD" "$$" 
     .expect("the child logs its environment");
     let parts: Vec<&str> = line.split('|').collect();
     assert_eq!(&parts[..3], ["2", "admin:web", "5"], "{line}");
-    assert_eq!(parts[3], parts[4], "LISTEN_PID is the child's own pid: {line}");
+    assert_eq!(
+        parts[3], parts[4],
+        "LISTEN_PID is the child's own pid: {line}"
+    );
     assert_eq!(parts[3], proc.pid().to_string());
 }
 
@@ -91,11 +97,14 @@ async fn listen_variables_set_by_the_operator_are_replaced() {
         ],
         out_file: dir.path().join("out.log"),
         err_file: dir.path().join("err.log"),
-        listen: Some(Arc::new(ListenSockets::from_descriptors(vec![("http", only)]))),
+        listen: Some(Arc::new(ListenSockets::from_descriptors(vec![(
+            "http", only,
+        )]))),
         ..Default::default()
     };
     spec.env.insert("LISTEN_FDS".to_string(), "9".to_string());
-    spec.env.insert("LISTEN_FDNAMES".to_string(), "stale".to_string());
+    spec.env
+        .insert("LISTEN_FDNAMES".to_string(), "stale".to_string());
     spec.env.insert("KEPT".to_string(), "yes".to_string());
 
     let runner = TokioRunner::new();
@@ -112,6 +121,9 @@ async fn listen_variables_set_by_the_operator_are_replaced() {
     })
     .await
     .expect("the child logs its environment");
-    assert_eq!(shep_core::logstamp::strip(text.lines().next().unwrap()), "1|http|yes");
+    assert_eq!(
+        shep_core::logstamp::strip(text.lines().next().unwrap()),
+        "1|http|yes"
+    );
     let _ = proc.kill_tree();
 }

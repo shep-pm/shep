@@ -59,6 +59,7 @@ impl<R: ProcessRunner> Actor<R> {
             })
             .map(|slot| slot.entry.spec.config().name.as_str())
             .collect();
-        self.listeners.retain(|name, _| wanted.contains(name.as_str()));
+        self.listeners
+            .retain(|name, _| wanted.contains(name.as_str()));
     }
 }

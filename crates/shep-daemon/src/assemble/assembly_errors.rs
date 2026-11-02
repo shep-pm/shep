@@ -1,5 +1,5 @@
-use core::fmt;
 use crate::listen::ListenError;
+use core::fmt;
 use shep_core::config::template::RenderError;
 
 /// Which of an app's fields carried a `{{secret:...}}` that would not

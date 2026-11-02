@@ -22,11 +22,11 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::listen::ListenSockets;
 use shep_core::config::{
     AppConfig, ApplyGroup, DeclaredApp, DogTable, NormalizeError, ResetDepth, ResolvedApp,
     apply_group, normalize, reaches_running,
 };
-use crate::listen::ListenSockets;
 use shep_core::dog_defaults::{self, DogDefaults};
 use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;

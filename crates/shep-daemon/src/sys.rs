@@ -219,11 +219,7 @@ impl ListenEnv {
         let mut block = Vec::new();
         let mut starts = Vec::with_capacity(vars.len() + 1);
         for (key, value) in vars {
-            if key.is_empty()
-                || key.contains('=')
-                || key.contains('\0')
-                || value.contains('\0')
-            {
+            if key.is_empty() || key.contains('=') || key.contains('\0') || value.contains('\0') {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("environment variable `{key}` cannot be passed to a child"),
@@ -468,7 +464,10 @@ mod tests {
 
         let text = String::from_utf8(out.stdout).unwrap();
         let parts: Vec<&str> = text.split('|').collect();
-        assert_eq!(parts[0], parts[1], "LISTEN_PID is the child's own pid: {text}");
+        assert_eq!(
+            parts[0], parts[1],
+            "LISTEN_PID is the child's own pid: {text}"
+        );
         assert!(parts[0].parse::<u32>().is_ok(), "{text}");
         assert_eq!((parts[2], parts[3]), ("bar baz", "[]"), "{text}");
     }

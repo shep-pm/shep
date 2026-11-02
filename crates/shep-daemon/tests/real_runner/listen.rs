@@ -129,7 +129,10 @@ async fn two_instances_of_one_set_accept_on_the_same_sockets() {
 /// nothing about socket activation.
 #[tokio::test]
 async fn a_sheep_without_listen_keeps_its_channel_on_fd_3_and_gets_no_listen_vars() {
-    for listen in [None, Some(Arc::new(ListenSockets::bind(&BTreeMap::new()).unwrap()))] {
+    for listen in [
+        None,
+        Some(Arc::new(ListenSockets::bind(&BTreeMap::new()).unwrap())),
+    ] {
         let dir = tempfile::tempdir().unwrap();
         let mut spec = sh_spec(
             r#"printf '[%s][%s][%s][%s]' "$LISTEN_FDS" "$LISTEN_FDNAMES" "$LISTEN_PID" "$SHEP_CHANNEL_FD"; printf '{"kind":"ready"}\n' >&3"#,
