@@ -26,52 +26,104 @@ pub struct AdoptedListeners {
     pub sockets: ListenSockets,
 }
 
-/// Rebuild every sheep's `listen` sockets the blob carries.
+/// The first pass over a blob's `listen` sockets: every carried descriptor
+/// taken, none replaced yet.
 ///
-/// A descriptor that is not open, or is not a listening TCP socket, is
-/// replaced by a fresh bind of the address it carried, with one `warn!`
-/// naming the sheep and the address. A replacement that cannot bind is left
-/// out, and the sheep's next start binds it or fails naming it.
-pub(super) fn adopt_listeners(blob: &Handover) -> Vec<AdoptedListeners> {
-    let mut by_sheep: BTreeMap<&str, Vec<(String, SocketAddr, TcpListener)>> = BTreeMap::new();
-    for carried in blob.listeners() {
-        let configured = carried.address().parse::<SocketAddr>();
-        // Taken before anything else is checked, so a socket that is refused
-        // below is closed rather than left open and unowned.
-        let adopted = adopt_fd(
-            carried.fd(),
-            &format!(
-                "the listen socket '{}' of sheep '{}'",
-                carried.name(),
-                carried.sheep()
-            ),
-        )
-        .and_then(|file| listening_tcp(OwnedFd::from(file)));
-        let socket = match (adopted, &configured) {
-            (Ok(socket), Ok(_)) => Ok(socket),
-            (Ok(_), Err(error)) => Err(io::Error::other(format!(
-                "its address does not parse: {error}"
-            ))),
-            (Err(error), _) => Err(error),
-        };
-        let socket = socket
-            .or_else(|reason| replace(carried, &configured, &reason))
-            .ok();
-        if let (Some(socket), Ok(configured)) = (socket, configured) {
-            by_sheep.entry(carried.sheep()).or_default().push((
-                carried.name().to_string(),
-                configured,
-                socket,
-            ));
-        }
-    }
-    by_sheep
-        .into_iter()
-        .map(|(sheep, entries)| AdoptedListeners {
-            sheep: sheep.to_string(),
-            sockets: ListenSockets::from_adopted(entries),
+/// Split from [`Self::rebind`] so every number the blob names is adopted
+/// before any bind can be handed one. A bind takes the lowest free number,
+/// and one taken early could be a number the blob still names.
+#[derive(Debug)]
+pub(super) struct TakenListeners<'a> {
+    entries: Vec<(
+        &'a CarriedListener,
+        Result<SocketAddr, core::net::AddrParseError>,
+        io::Result<TcpListener>,
+    )>,
+}
+
+/// Take every `listen` descriptor the blob carries, checking each is a
+/// listening socket bound where the blob says.
+///
+/// A descriptor that did not arrive under its number is not taken at all: the
+/// number may now name something this process opened.
+pub(super) fn take_listeners(blob: &Handover) -> TakenListeners<'_> {
+    let entries = blob
+        .listeners()
+        .iter()
+        .map(|carried| {
+            let configured = carried.address().parse::<SocketAddr>();
+            let socket = take(carried, &configured);
+            (carried, configured, socket)
         })
-        .collect()
+        .collect();
+    TakenListeners { entries }
+}
+
+fn take(
+    carried: &CarriedListener,
+    configured: &Result<SocketAddr, core::net::AddrParseError>,
+) -> io::Result<TcpListener> {
+    if carried.unclaimed() {
+        return Err(io::Error::other("it did not arrive under its number"));
+    }
+    // Taken before anything else is checked, so a socket that is refused
+    // below is closed rather than left open and unowned.
+    let socket = adopt_fd(
+        carried.fd(),
+        &format!(
+            "the listen socket '{}' of sheep '{}'",
+            carried.name(),
+            carried.sheep()
+        ),
+    )
+    .and_then(|file| listening_tcp(OwnedFd::from(file)))?;
+    let configured = configured
+        .as_ref()
+        .map_err(|error| io::Error::other(format!("its address does not parse: {error}")))?;
+    let local = socket.local_addr()?;
+    if serves(local, *configured) {
+        Ok(socket)
+    } else {
+        Err(io::Error::other(format!("it is bound to {local}")))
+    }
+}
+
+/// Whether a socket bound at `local` is the one `configured` asked for, where
+/// port 0 asked for any port.
+pub(super) fn serves(local: SocketAddr, configured: SocketAddr) -> bool {
+    local.ip() == configured.ip() && (configured.port() == 0 || local.port() == configured.port())
+}
+
+impl TakenListeners<'_> {
+    /// Replace each socket that could not be taken and group the rest by
+    /// sheep.
+    ///
+    /// A descriptor that is not open, not a listening TCP socket, or not
+    /// bound where the blob says is replaced by a fresh bind of its address,
+    /// with one `warn!` naming the sheep and the address. A replacement that
+    /// cannot bind is left out, and the sheep's next start binds it.
+    pub(super) fn rebind(self) -> Vec<AdoptedListeners> {
+        let mut by_sheep: BTreeMap<&str, Vec<(String, SocketAddr, TcpListener)>> = BTreeMap::new();
+        for (carried, configured, socket) in self.entries {
+            let socket = socket
+                .or_else(|reason| replace(carried, &configured, &reason))
+                .ok();
+            if let (Some(socket), Ok(configured)) = (socket, configured) {
+                by_sheep.entry(carried.sheep()).or_default().push((
+                    carried.name().to_string(),
+                    configured,
+                    socket,
+                ));
+            }
+        }
+        by_sheep
+            .into_iter()
+            .map(|(sheep, entries)| AdoptedListeners {
+                sheep: sheep.to_string(),
+                sockets: ListenSockets::from_adopted(entries),
+            })
+            .collect()
+    }
 }
 
 /// `fd` as a TCP listener, if it is a listening socket of an internet family.

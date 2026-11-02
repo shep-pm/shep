@@ -113,7 +113,7 @@ pub fn arrive() -> Result<Option<Arrival<Handover>>, BootError> {
 /// not carried under that number.
 pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
     let Arrival {
-        state: blob,
+        state: mut blob,
         mut fds,
     } = arrival;
     let mut problem = (blob.version != VERSION).then(|| {
@@ -144,14 +144,21 @@ pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
             }
         }
     }
-    for socket in blob.listeners() {
-        let Some(carried) = fds.take(&socket.fd().to_string()) else {
-            continue;
+    // Not a refusal, but flagged: adopting a number nothing carried would take
+    // whatever this process holds there.
+    for socket in blob.listeners.iter_mut().flatten() {
+        let number = socket.fd();
+        socket.unclaimed = match fds.take(&number.to_string()) {
+            Some(carried) => {
+                let owned = carried.into_owned_fd();
+                let arrived = owned.as_raw_fd() == number;
+                if arrived {
+                    let _ = owned.into_raw_fd();
+                }
+                !arrived
+            }
+            None => true,
         };
-        let owned = carried.into_owned_fd();
-        if owned.as_raw_fd() == socket.fd() {
-            let _ = owned.into_raw_fd();
-        }
     }
     problem.map_or(Ok(blob), |problem| {
         Err(io::Error::new(io::ErrorKind::InvalidData, problem))

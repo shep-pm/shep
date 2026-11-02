@@ -138,6 +138,7 @@ impl Handover {
                 name: socket.name.clone(),
                 address: socket.address.clone(),
                 fd: socket.fd.as_raw_fd(),
+                unclaimed: false,
             })
             .collect();
         listeners.sort_unstable_by(|a, b| (&a.sheep, &a.name).cmp(&(&b.sheep, &b.name)));
@@ -188,8 +189,10 @@ impl Handover {
 
     /// Every descriptor number this blob names, listener and pidfile first.
     ///
-    /// The exact set [`hand_over`](super::hand_over) carries. A descriptor
-    /// carried without being named is one the successor never adopts.
+    /// Every descriptor but the `listen` sockets, which
+    /// [`Self::carried_fds`] adds to the set [`hand_over`](super::hand_over)
+    /// carries. A descriptor carried without being named is one the successor
+    /// never adopts.
     pub(super) fn named_fds(&self) -> impl Iterator<Item = RawFd> + '_ {
         [self.listener_fd, self.pidfile_fd].into_iter().chain(
             self.sheep

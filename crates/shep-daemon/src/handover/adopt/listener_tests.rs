@@ -31,6 +31,7 @@ fn carried_listener(name: &str, address: SocketAddr, fd: i32) -> CarriedListener
         name: name.to_owned(),
         address: address.to_string(),
         fd,
+        unclaimed: false,
     }
 }
 
@@ -174,6 +175,7 @@ async fn a_carried_address_that_does_not_parse_is_left_out_with_the_warning() {
         name: "http".to_owned(),
         address: "not-an-address".to_owned(),
         fd: NEVER_OPEN,
+        unclaimed: false,
     }]);
 
     let mut adopted = None;
@@ -182,4 +184,63 @@ async fn a_carried_address_that_does_not_parse_is_left_out_with_the_warning() {
     assert!(adopted.unwrap().listeners.is_empty());
     assert_eq!(logs.matches("WARN").count(), 1, "{logs}");
     assert!(logs.contains("not-an-address"), "{logs}");
+}
+
+#[tokio::test]
+async fn a_listener_that_did_not_arrive_leaves_the_descriptor_at_its_number_alone() {
+    use std::os::fd::AsRawFd as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    // Something this process holds, at the number the blob names. The address
+    // does not parse, so nothing here binds.
+    let bystander = tempfile::tempfile().unwrap();
+    let mut blob = blob_with(&dir.path().join("shep.sock"), Vec::new());
+    blob.listeners = Some(vec![CarriedListener {
+        sheep: "web".to_owned(),
+        name: "http".to_owned(),
+        address: "not-an-address".to_owned(),
+        fd: bystander.as_raw_fd(),
+        unclaimed: true,
+    }]);
+
+    let mut adopted = None;
+    let logs = capture_logs(|| adopted = Some(adopt(&blob).unwrap()));
+    drop(adopted);
+
+    assert!(
+        crate::sys::adoptable_fd(bystander.as_raw_fd()).is_ok(),
+        "the descriptor at that number is not the blob's to close"
+    );
+    assert_eq!(logs.matches("WARN").count(), 1, "{logs}");
+    assert!(logs.contains("did not arrive"), "{logs}");
+}
+
+#[tokio::test]
+async fn a_listening_socket_bound_elsewhere_than_the_blob_says_is_replaced() {
+    let predecessor = Predecessor::new();
+    let elsewhere = TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut blob = predecessor.blob();
+    blob.listeners = Some(vec![carried_listener(
+        "http",
+        free_address(),
+        std::os::fd::AsRawFd::as_raw_fd(&elsewhere),
+    )]);
+
+    let mut adopted = None;
+    let logs = capture_logs(|| adopted = Some(adopt_a_copy_keeping(&blob).unwrap()));
+    drop(adopted);
+
+    assert_eq!(logs.matches("WARN").count(), 1, "{logs}");
+    assert!(logs.contains("it is bound to"), "{logs}");
+}
+
+#[test]
+fn port_zero_asks_for_any_port_on_the_same_address() {
+    use super::adopt_listeners::serves;
+
+    let any = |text: &str| text.parse::<SocketAddr>().unwrap();
+    assert!(serves(any("127.0.0.1:4000"), any("127.0.0.1:0")));
+    assert!(serves(any("127.0.0.1:4000"), any("127.0.0.1:4000")));
+    assert!(!serves(any("127.0.0.1:4001"), any("127.0.0.1:4000")));
+    assert!(!serves(any("127.0.0.2:4000"), any("127.0.0.1:0")));
 }

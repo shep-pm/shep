@@ -430,6 +430,12 @@ pub struct CarriedListener {
     pub(super) address: String,
     /// The descriptor number the listening socket travels on.
     pub(super) fd: RawFd,
+    /// Set by [`claim`](super::claim) when the socket did not arrive under
+    /// `fd`, so that number is not this socket's to adopt.
+    ///
+    /// Never written to a blob: it describes an arrival, not a predecessor.
+    #[serde(skip)]
+    pub(super) unclaimed: bool,
 }
 
 impl CarriedListener {
@@ -455,6 +461,13 @@ impl CarriedListener {
     #[must_use]
     pub const fn fd(&self) -> RawFd {
         self.fd
+    }
+
+    /// Whether the socket failed to arrive under [`Self::fd`], which then
+    /// names nothing the successor may take.
+    #[must_use]
+    pub const fn unclaimed(&self) -> bool {
+        self.unclaimed
     }
 }
 
