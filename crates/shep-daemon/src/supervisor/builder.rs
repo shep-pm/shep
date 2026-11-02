@@ -17,6 +17,7 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     pub(super) environment: String,
     pub(super) provider_secrets: Option<Arc<ProviderSecrets>>,
     pub(super) dog_defaults: DogDefaults,
+    pub(super) dog_binaries: BTreeMap<String, String>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -32,6 +33,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             environment: DEFAULT_ENVIRONMENT.to_string(),
             provider_secrets: None,
             dog_defaults: DogDefaults::default(),
+            dog_binaries: BTreeMap::new(),
         }
     }
 
@@ -76,6 +78,18 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn dog_defaults(mut self, defaults: DogDefaults) -> Self {
         self.dog_defaults = defaults;
+        self
+    }
+
+    /// Where each adopted dog's binary lives, by dog name.
+    ///
+    /// A sheep with a `dogs.sandbox` table spawns through the `sandbox` entry
+    /// and is refused without one. Left empty, the actor knows no dog until a
+    /// `StartDog` hands it an adopted source. `boot` fills it from the dogs
+    /// `shep.toml` records, since the daemon never reads that file itself.
+    #[must_use]
+    pub(crate) fn dog_binaries(mut self, binaries: BTreeMap<String, String>) -> Self {
+        self.dog_binaries = binaries;
         self
     }
 
@@ -141,6 +155,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             events: self.events,
             host_environment: self.environment,
             dog_defaults: self.dog_defaults,
+            dog_binaries: self.dog_binaries,
             provider_secrets,
             tx,
             sheep: HashMap::new(),

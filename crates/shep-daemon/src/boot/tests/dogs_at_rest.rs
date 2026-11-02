@@ -199,3 +199,41 @@ async fn a_boot_first_dog_still_spawns_first_and_is_not_registered_twice() {
 
     drop(daemon);
 }
+
+#[tokio::test]
+async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told_of() {
+    let _guard = SIGNAL_TEST_LOCK.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = test_paths(&dir);
+    let mut jailed = AppConfig::minimal("jailed", "./srv");
+    jailed.dogs.insert(
+        "sandbox".to_owned(),
+        serde_json::from_value(serde_json::json!({})).unwrap(),
+    );
+    seed_roll(&paths, vec![jailed]);
+    let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+
+    let daemon = boot_with_idle_sweep(
+        crate::testing::SharedRunner(Arc::clone(&runner)),
+        paths,
+        BootOptions {
+            restore: true,
+            known_dogs: vec![DogSpec {
+                name: "sandbox".to_owned(),
+                source: DogSource::Adopted {
+                    path: "/opt/dogs/box".to_owned(),
+                    channel: false,
+                    grants: None,
+                },
+                env: BTreeMap::new(),
+            }],
+            ..BootOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(runner.spawned_program(0), "/opt/dogs/box");
+    assert_eq!(runner.spawned_args(0), ["launch", "jailed", "--", "./srv"]);
+    drop(daemon);
+}

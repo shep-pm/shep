@@ -399,6 +399,10 @@ impl<R: ProcessRunner> Actor<R> {
             return Err(SupervisorError::EngineStopped);
         }
         let name = app.config().name.clone();
+        // Before the spawn, so a sheep started right after finds the dog.
+        if let DogSource::Adopted { path, .. } = &source {
+            self.dog_binaries.insert(name.clone(), path.clone());
+        }
         let held = self
             .sheep
             .iter()

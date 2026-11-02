@@ -28,6 +28,7 @@ pub use self::running::RunningDaemon;
 pub use self::socket::READY_FD_ENV;
 
 use core::time::Duration;
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 #[cfg(all(test, windows))]
 use std::path::Path;
@@ -37,6 +38,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
 use shep_core::paths::ShepPaths;
+use shep_core::protocol::DogSource;
 
 #[cfg(unix)]
 use self::handover::{HandoverSeam, Rehydrated, apps_for_the_roll, rehydrate, successor_handover};
@@ -276,7 +278,8 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
         .provider_secrets(Arc::clone(&provider_secrets))
-        .dog_defaults(dog_defaults);
+        .dog_defaults(dog_defaults)
+        .dog_binaries(adopted_dog_paths(&options.known_dogs));
     // Cloned before the `take` below feeds the supervisor, and defaulted the
     // way the builder defaults it, so a dog and a sheep that name no
     // environment resolve in the same one.
@@ -515,6 +518,18 @@ fn known_dog_grants(options: &BootOptions) -> crate::rpc::KnownDogs {
             .chain(&options.dogs)
             .map(|spec| (spec.name.clone(), spec.source.grants().cloned())),
     )
+}
+
+/// Where each adopted dog in `dogs` keeps its binary, by dog name.
+///
+/// A built-in dog has no path: it is an argv branch of the shep binary.
+fn adopted_dog_paths(dogs: &[DogSpec]) -> BTreeMap<String, String> {
+    dogs.iter()
+        .filter_map(|dog| match &dog.source {
+            DogSource::Adopted { path, .. } => Some((dog.name.clone(), path.clone())),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The cron sleep bound this boot runs with: [`BootOptions::max_cron_sleep`],

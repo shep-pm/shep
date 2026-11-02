@@ -296,14 +296,9 @@ impl<R: ProcessRunner> Actor<R> {
         // `refuse_spawn` could leave behind.
         let spec = SpawnSpec {
             dog_link: dog.is_some(),
-            ..assemble(
-                &app,
-                instance,
-                &self.paths,
-                credentials,
-                &self.secret_view(&app),
-            )
-            .map_err(|err| err.to_string())?
+            ..self
+                .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
+                .map_err(|err| err.to_string())?
         };
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();

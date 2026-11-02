@@ -73,6 +73,39 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
+    /// [`assemble`], then through the sandbox dog when the app holds a
+    /// `dogs.sandbox` table.
+    ///
+    /// The one door every real spawn takes. The preflight in
+    /// [`Self::do_start`] reads no program, so it calls [`assemble`] alone.
+    ///
+    /// # Errors
+    ///
+    /// - [`AssembleError::DogMissing`]: the app is sandboxed by a dog, and
+    ///   that dog is not adopted or is disabled. The command never runs bare.
+    /// - Anything [`assemble`] refuses.
+    pub(super) fn assemble_for_spawn(
+        &self,
+        app: &ResolvedApp,
+        instance: u32,
+        credentials: Option<Credentials>,
+        secrets: &SecretView,
+    ) -> Result<SpawnSpec, AssembleError> {
+        let spec = assemble(app, instance, &self.paths, credentials, secrets)?;
+        let config = app.config();
+        if !config.dogs.contains_key(SANDBOX_DOG) {
+            return Ok(spec);
+        }
+        match self.dog_binaries.get(SANDBOX_DOG) {
+            Some(dog) if !self.disabled.contains(SANDBOX_DOG) => {
+                Ok(through_dog(spec, dog, &self.paths.home, &config.name))
+            }
+            _ => Err(AssembleError::DogMissing {
+                dog: SANDBOX_DOG.to_string(),
+            }),
+        }
+    }
+
     /// The secret view one spawn, or one batch of instances, resolves against.
     ///
     /// The store is read here rather than inside [`assemble`], the same way
@@ -219,7 +252,7 @@ impl<R: ProcessRunner> Actor<R> {
         let overridden = self.overridden_for(&app.config().name);
         let id = self.next_id;
         self.next_id += 1;
-        let spec = match assemble(app, instance, &self.paths, credentials, secrets) {
+        let spec = match self.assemble_for_spawn(app, instance, credentials, secrets) {
             Ok(spec) => SpawnSpec {
                 dog_link: dog.is_some(),
                 ..spec
