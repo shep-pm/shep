@@ -1,4 +1,5 @@
 use core::fmt;
+use crate::listen::ListenError;
 use shep_core::config::template::RenderError;
 
 /// Which of an app's fields carried a `{{secret:...}}` that would not
@@ -18,6 +19,8 @@ pub enum AssembleError {
         /// Why.
         source: RenderError,
     },
+    /// The sheep's `listen` sockets could not be bound.
+    Listen(ListenError),
 }
 
 impl AssembleError {
@@ -30,6 +33,9 @@ impl AssembleError {
     pub fn is_retriable(&self) -> bool {
         match self {
             Self::Template { source, .. } => source.is_retriable(),
+            // A held port may free up, but nothing here can tell when, and a
+            // crash loop on it would only hide the address in the log.
+            Self::Listen(_) => false,
         }
     }
 }
@@ -38,6 +44,7 @@ impl fmt::Display for AssembleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Template { field, source } => write!(f, "`{field}`: {source}"),
+            Self::Listen(source) => source.fmt(f),
         }
     }
 }
@@ -46,6 +53,7 @@ impl core::error::Error for AssembleError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Template { source, .. } => Some(source),
+            Self::Listen(source) => Some(source),
         }
     }
 }

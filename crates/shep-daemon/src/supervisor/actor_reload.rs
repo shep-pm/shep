@@ -294,17 +294,23 @@ impl<R: ProcessRunner> Actor<R> {
         // abandons the reload rather than reaching for a restart ladder: the
         // drainee is still up and still serving, which beats either status
         // `refuse_spawn` could leave behind.
-        let spec = SpawnSpec {
-            dog_link: dog.is_some(),
-            ..assemble(
-                &app,
-                instance,
-                &self.paths,
-                credentials,
-                &self.secret_view(&app),
-            )
-            .map_err(|err| err.to_string())?
-        };
+        // The new set is bound here, ahead of the replacement, and the old
+        // set's sockets stay with the drainee until it exits.
+        let spec = assemble(
+            &app,
+            instance,
+            &self.paths,
+            credentials,
+            &self.secret_view(&app),
+        )
+        .and_then(|spec| {
+            Ok(SpawnSpec {
+                dog_link: dog.is_some(),
+                listen: self.listen_for(app.config())?,
+                ..spec
+            })
+        })
+        .map_err(|err| err.to_string())?;
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();
         let source = ReadinessSource::of_normalized(app.config());

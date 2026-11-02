@@ -26,6 +26,7 @@ use shep_core::config::{
     AppConfig, ApplyGroup, DeclaredApp, DogTable, NormalizeError, ResetDepth, ResolvedApp,
     apply_group, normalize, reaches_running,
 };
+use crate::listen::ListenSockets;
 use shep_core::dog_defaults::{self, DogDefaults};
 use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;
@@ -79,6 +80,7 @@ mod actor_dog_tables;
 mod actor_env_copy;
 mod actor_exit;
 mod actor_lifecycle;
+mod actor_listen;
 mod actor_pane;
 mod actor_reload;
 mod actor_reload_done;
@@ -245,6 +247,10 @@ struct Actor<R: ProcessRunner> {
     /// each create an entry a per-instance flag would miss. Pruned of names
     /// with no registered instance after every message.
     disabled: BTreeSet<String>,
+    /// The sockets bound for each app's `listen` table, by app name, shared
+    /// by every instance. See [`Actor::listen_for`]; pruned of apps with no
+    /// instance left to serve after every message.
+    listeners: BTreeMap<String, Arc<ListenSockets>>,
 }
 
 #[cfg(test)]

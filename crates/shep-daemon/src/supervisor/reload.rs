@@ -91,10 +91,10 @@ pub(crate) enum ReloadMode {
     /// `SpawnNew → AwaitReady → DrainOld → ReapOld`. Both instances run at
     /// once, so the app is never short one.
     ///
-    /// Taken by an app with no probe, by one using `wait_ready`, and by one
-    /// whose `reuse_port` says the app sets `SO_REUSEPORT` itself. The last
-    /// keeps a residue of the problem above, which
-    /// [`Actor::post_drain_probe`] closes.
+    /// Taken by an app with no probe, by one using `wait_ready`, by one whose
+    /// `reuse_port` says the app sets `SO_REUSEPORT` itself, and by one with
+    /// `listen`, whose sockets both instances inherit. The last two keep a
+    /// residue of the problem above, which [`Actor::post_drain_probe`] closes.
     Overlap,
     /// `DrainOld → ReapOld → SpawnNew → AwaitReady`. The instance being
     /// replaced goes first, and its replacement is spawned into the empty
@@ -115,7 +115,11 @@ impl ReloadMode {
     /// answerable by the wrong instance, so only a `Probe` serialises.
     pub(super) fn of(config: &AppConfig, source: &ReadinessSource) -> Self {
         match source {
-            ReadinessSource::Probe(..) if !config.reuse_port => Self::Serial,
+            // An app that shares its port by `reuse_port` or by a socket the
+            // shepherd holds can have two instances answer at once.
+            ReadinessSource::Probe(..) if !config.reuse_port && config.listen.is_empty() => {
+                Self::Serial
+            }
             _ => Self::Overlap,
         }
     }

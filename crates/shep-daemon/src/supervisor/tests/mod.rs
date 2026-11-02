@@ -152,6 +152,7 @@ fn test_actor(
         reloads: HashMap::new(),
         smits: Smits::new(),
         disabled: BTreeSet::new(),
+        listeners: BTreeMap::new(),
     }
 }
 

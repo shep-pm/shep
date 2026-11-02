@@ -165,6 +165,169 @@ pub(crate) fn open_resolving_no_symlinks(
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
+/// An environment block for a child whose `LISTEN_PID` is its own pid.
+///
+/// systemd's contract is that `LISTEN_PID` equals the pid of the process that
+/// reads it, so the number exists only after the fork. [`set_listen_env`]
+/// installs this block as the child's `environ` between the fork and the
+/// exec, and [`Self::install`] writes the pid into it there.
+//
+// Why not `setenv` in a `pre_exec` hook, or a safe `Command::env`? Rationale:
+// - `Command::env` is read before the fork, when the pid is not yet known.
+// - std applies a `Command`'s env map to `environ` AFTER every `pre_exec`
+//   hook runs, so a `setenv` inside a hook is overwritten whenever the
+//   command touched its env at all. A listen sheep's `Command` leaves its env
+//   untouched and this block replaces `environ` outright instead.
+// - `setenv` allocates, and malloc between fork and exec is not
+//   async-signal-safe in a multithreaded process; the shepherd is one.
+// Invariant: every byte this hook touches was allocated before the fork and
+// is owned by `self`, which the closure owns. The hook calls `getpid`, writes
+// at most 11 bytes into the reserved slot and stores one pointer into
+// `environ`: no allocation, no lock, no panic path.
+// Failure scenarios: the child's `environ` points into this block until exec
+// replaces the image, and on a failed exec the child exits without reading it;
+// the parent's copy is a different address space after the fork, so the pid
+// written here never reaches the parent or a sibling instance.
+pub(crate) struct ListenEnv {
+    /// Every `KEY=value\0` string back to back, then `LISTEN_PID=` and room
+    /// for the digits. Held only to keep the allocation `table` and `pid_slot`
+    /// point into alive; never resized once they exist.
+    _block: Vec<u8>,
+    /// `environ`'s shape: a null-terminated array of pointers into `block`.
+    table: Vec<*mut core::ffi::c_char>,
+    /// Where the digits go: the byte after `LISTEN_PID=`, inside `block`.
+    pid_slot: *mut u8,
+}
+
+// SAFETY: the raw pointers address only `block`, which `self` owns and which
+// does not move when `self` does. Sharing a `&ListenEnv` reads nothing through
+// them, and `install` takes `&mut self`.
+unsafe impl Send for ListenEnv {}
+// SAFETY: as `Send`: a shared reference exposes no access through the pointers.
+unsafe impl Sync for ListenEnv {}
+
+/// Room for the largest `u32` in decimal, plus its NUL.
+const PID_SLOT_LEN: usize = 11;
+
+impl ListenEnv {
+    /// Builds the block from `vars`, with a `LISTEN_PID` entry still unset.
+    ///
+    /// # Errors
+    /// - `InvalidInput` if a name is empty or holds `=`, or a name or value
+    ///   holds a NUL, which are the cases `Command` refuses too.
+    pub(crate) fn new(vars: &std::collections::BTreeMap<String, String>) -> io::Result<Self> {
+        let mut block = Vec::new();
+        let mut starts = Vec::with_capacity(vars.len() + 1);
+        for (key, value) in vars {
+            if key.is_empty()
+                || key.contains('=')
+                || key.contains('\0')
+                || value.contains('\0')
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("environment variable `{key}` cannot be passed to a child"),
+                ));
+            }
+            starts.push(block.len());
+            block.extend_from_slice(key.as_bytes());
+            block.push(b'=');
+            block.extend_from_slice(value.as_bytes());
+            block.push(0);
+        }
+        starts.push(block.len());
+        block.extend_from_slice(b"LISTEN_PID=");
+        let slot_at = block.len();
+        block.resize(slot_at + PID_SLOT_LEN, 0);
+
+        // Every pointer derives from this one, taken after the last resize.
+        let base = block.as_mut_ptr();
+        // SAFETY: each offset is at most `block.len()`, so it stays inside the
+        // allocation `base` points into.
+        let mut table: Vec<*mut core::ffi::c_char> = starts
+            .iter()
+            .map(|at| unsafe { base.add(*at) }.cast())
+            .collect();
+        table.push(core::ptr::null_mut());
+        // SAFETY: `slot_at + PID_SLOT_LEN` is `block.len()`.
+        let pid_slot = unsafe { base.add(slot_at) };
+        Ok(Self {
+            _block: block,
+            table,
+            pid_slot,
+        })
+    }
+
+    /// Writes this process's pid into `LISTEN_PID` and makes the block the
+    /// process's environment. Runs in the forked child before the exec.
+    fn install(&mut self) -> io::Result<()> {
+        // SAFETY: `getpid` takes no arguments and cannot fail.
+        let pid = unsafe { nix::libc::getpid() }.unsigned_abs();
+        let mut reversed = [0u8; PID_SLOT_LEN];
+        let (mut rest, mut len) = (pid, 0);
+        loop {
+            reversed[len] = b'0' + (rest % 10) as u8;
+            rest /= 10;
+            len += 1;
+            if rest == 0 {
+                break;
+            }
+        }
+        debug_assert!(len < PID_SLOT_LEN, "a u32 is ten digits at most");
+        for (at, digit) in reversed[..len].iter().rev().enumerate() {
+            // SAFETY: `at < len < PID_SLOT_LEN`, and `pid_slot` addresses
+            // `PID_SLOT_LEN` writable bytes of `self._block`.
+            unsafe { self.pid_slot.add(at).write(*digit) };
+        }
+        // SAFETY: as above, `len < PID_SLOT_LEN`; this is the terminator.
+        unsafe { self.pid_slot.add(len).write(0) };
+        // SAFETY: `environ_slot` names this process's environment pointer. The
+        // table is null-terminated and its strings are NUL-terminated and
+        // live in `self._block`, which outlives the exec.
+        unsafe { *environ_slot() = self.table.as_mut_ptr() };
+        Ok(())
+    }
+}
+
+/// The address of the process's `environ` pointer.
+///
+/// # Safety
+/// Only meaningful in a process no other thread is reading the environment
+/// of: a forked child between `fork` and `exec`.
+#[cfg(target_vendor = "apple")]
+unsafe fn environ_slot() -> *mut *mut *mut core::ffi::c_char {
+    // SAFETY: the call takes no arguments and returns the process's slot.
+    unsafe { nix::libc::_NSGetEnviron() }
+}
+
+/// The address of the process's `environ` pointer.
+///
+/// # Safety
+/// As the macOS definition.
+#[cfg(not(target_vendor = "apple"))]
+unsafe fn environ_slot() -> *mut *mut *mut core::ffi::c_char {
+    unsafe extern "C" {
+        static mut environ: *mut *mut core::ffi::c_char;
+    }
+    // SAFETY: `environ` is the C library's own symbol, present on every unix
+    // target that is not Apple; taking its address reads nothing.
+    unsafe { &raw mut environ }
+}
+
+/// Makes `command`'s child run with `env` as its whole environment, `LISTEN_PID`
+/// included.
+///
+/// `command` must not have had `env`, `envs` or `env_clear` called: std
+/// applies those after this hook and would replace the block.
+pub(crate) fn set_listen_env(command: &mut std::process::Command, mut env: ListenEnv) {
+    use std::os::unix::process::CommandExt as _;
+    // SAFETY: `pre_exec` requires the closure to be async-signal-safe.
+    // `ListenEnv::install` calls `getpid`, writes into memory allocated
+    // before the fork and stores one pointer; it allocates, locks and panics
+    // nowhere.
+    unsafe { command.pre_exec(move || env.install()) };
+}
+
 /// Errors adopting an inherited descriptor.
 ///
 /// `#[non_exhaustive]`: a future adoption check would need its own variant
@@ -289,6 +452,47 @@ mod tests {
             matches!(err, SysError::BadFd { fd: 4096, .. }),
             "a fd this process never owned must be refused as BadFd: {err:?}"
         );
+    }
+
+    #[test]
+    fn a_listen_child_reads_its_own_pid_in_a_block_that_replaces_the_environment() {
+        let vars = std::collections::BTreeMap::from([("FOO".to_string(), "bar baz".to_string())]);
+        let mut command = std::process::Command::new("/bin/sh");
+        command.args([
+            "-c",
+            r#"printf '%s|%s|%s|[%s]' "$LISTEN_PID" "$$" "$FOO" "$HOME""#,
+        ]);
+        set_listen_env(&mut command, ListenEnv::new(&vars).unwrap());
+
+        let out = command.output().unwrap();
+
+        let text = String::from_utf8(out.stdout).unwrap();
+        let parts: Vec<&str> = text.split('|').collect();
+        assert_eq!(parts[0], parts[1], "LISTEN_PID is the child's own pid: {text}");
+        assert!(parts[0].parse::<u32>().is_ok(), "{text}");
+        assert_eq!((parts[2], parts[3]), ("bar baz", "[]"), "{text}");
+    }
+
+    #[test]
+    fn two_children_of_one_block_each_read_their_own_pid() {
+        let mut pids = Vec::new();
+        for _ in 0..2 {
+            let mut command = std::process::Command::new("/bin/sh");
+            command.args(["-c", r#"printf '%s' "$LISTEN_PID""#]);
+            set_listen_env(&mut command, ListenEnv::new(&Default::default()).unwrap());
+            let out = command.output().unwrap();
+            pids.push(String::from_utf8(out.stdout).unwrap());
+        }
+        assert_ne!(pids[0], pids[1]);
+    }
+
+    #[test]
+    fn a_name_or_value_a_command_would_refuse_is_refused_up_front() {
+        for (key, value) in [("", "v"), ("A=B", "v"), ("A\0B", "v"), ("A", "v\0")] {
+            let vars = std::collections::BTreeMap::from([(key.to_string(), value.to_string())]);
+            let error = ListenEnv::new(&vars).err().expect("refused");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{key:?}");
+        }
     }
 
     /// The property that closes the race: whatever resolved the path before,
