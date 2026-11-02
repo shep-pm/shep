@@ -83,15 +83,11 @@ pub struct AppConfig {
     pub interpreter: Option<String>,
     /// Removed. The sandbox dog replaced it, so any value is refused.
     ///
-    /// Configure the dog in an `[app.dogs.sandbox]` table. The field stays so
-    /// a client that still sends the key is told, not ignored.
-    #[cfg_attr(feature = "schema", schemars(extend("init" = {
-        "example": "sandbox.json",
-        "group": "process",
-        "blurb": "Removed: the sandbox dog replaced it. Set an [app.dogs.sandbox] table instead",
-        "accepts": ["nothing, since every value is refused"],
-        "refuses": ["any value"]
-    })))]
+    /// Configure the dog in an `[app.dogs.sandbox]` table. The field stays
+    /// deserialize-only so a client that still sends the key is told, not
+    /// ignored. It is never serialized and the schema does not list it.
+    #[serde(skip_serializing)]
+    #[cfg_attr(feature = "schema", schemars(skip))]
     pub sandbox: Option<String>,
     /// Environment for the sheep (merged over the daemon's filtered env).
     ///
@@ -800,6 +796,38 @@ mod tests {
             .and_then(serde_json::Value::as_object)
             .cloned()
             .expect("app config properties must exist")
+    }
+
+    #[test]
+    fn the_flockfile_schema_has_no_sandbox_property() {
+        assert!(!app_props().contains_key("sandbox"));
+    }
+
+    #[test]
+    fn a_wire_config_with_the_sandbox_key_still_deserializes_and_is_refused_by_normalize() {
+        let wire = serde_json::json!({
+            "name": "web",
+            "script": "./srv",
+            "sandbox": "sandbox.json"
+        });
+        let app: AppConfig = serde_json::from_value(wire).unwrap();
+        assert_eq!(app.sandbox.as_deref(), Some("sandbox.json"));
+        assert_eq!(
+            crate::config::normalize(app).unwrap_err(),
+            crate::config::NormalizeError::SandboxKeyRemoved {
+                name: "web".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn the_sandbox_key_is_never_serialized() {
+        let app = AppConfig {
+            sandbox: Some("sandbox.json".to_string()),
+            ..AppConfig::minimal("web", "./srv")
+        };
+        let wire = serde_json::to_value(&app).unwrap();
+        assert!(!wire.as_object().unwrap().contains_key("sandbox"));
     }
 
     /// The path fields are the ones an operator gets wrong, and the ones the

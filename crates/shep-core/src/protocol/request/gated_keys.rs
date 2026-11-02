@@ -32,9 +32,9 @@ struct Gate {
 
 /// Every key a client refuses to send to a shepherd that predates it.
 ///
-/// The old `sandbox` key gates with the `dogs.sandbox` table: a shepherd that
-/// does not spawn through the dog does not sandbox as the operator wrote.
-const GATES: [Gate; 3] = [
+/// The old `sandbox` key is not here: a shepherd refuses it, and a client no
+/// longer serializes it.
+const GATES: [Gate; 2] = [
     Gate {
         key: GatedKey {
             key: "dogs.sandbox",
@@ -44,16 +44,6 @@ const GATES: [Gate; 3] = [
         dog: Some("sandbox"),
         in_app: |app| app.dogs.contains_key("sandbox"),
         sets: |_| false,
-    },
-    Gate {
-        key: GatedKey {
-            key: "sandbox",
-            since: SANDBOX_DOG_SINCE,
-        },
-        field: Some("sandbox"),
-        dog: None,
-        in_app: |app| app.sandbox.is_some(),
-        sets: |value| !value.is_null(),
     },
     Gate {
         key: GatedKey {

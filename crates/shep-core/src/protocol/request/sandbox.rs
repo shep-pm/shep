@@ -1,4 +1,4 @@
-//! Which requests ask a shepherd to sandbox a sheep, by the `dogs.sandbox` table or the old key.
+//! Which requests ask a shepherd to sandbox a sheep, by the `dogs.sandbox` table.
 
 #[cfg(test)]
 mod tests {
@@ -9,10 +9,6 @@ mod tests {
 
     const DOG: GatedKey = GatedKey {
         key: "dogs.sandbox",
-        since: SANDBOX_DOG_SINCE,
-    };
-    const KEY: GatedKey = GatedKey {
-        key: "sandbox",
         since: SANDBOX_DOG_SINCE,
     };
 
@@ -83,30 +79,18 @@ mod tests {
     }
 
     #[test]
-    fn the_old_sandbox_key_still_asks_for_one() {
+    fn setting_the_old_sandbox_key_asks_for_none() {
         let old = AppConfig {
             sandbox: Some("sandbox.json".to_string()),
             ..AppConfig::minimal("web", "./srv")
         };
-        let load = Request::Start {
-            apps: vec![old.clone()],
-        };
-        assert_eq!(load.gated_key_dropped_at(SANDBOX_DOG_SINCE - 1), Some(KEY));
-        assert_eq!(load.gated_key_dropped_at(SANDBOX_DOG_SINCE), None);
-        let merge = Request::ApplyConfig {
-            apps: vec![declared(old)],
-            reset: Default::default(),
-        };
-        assert_eq!(merge.gated_key_dropped_at(0), Some(KEY));
-        let set = |value| Request::SetSheepField {
+        let set = Request::SetSheepField {
             name: "web".to_string(),
             key: "sandbox".to_string(),
-            value,
+            value: json!("sandbox.json"),
         };
-        assert_eq!(
-            set(json!("sandbox.json")).gated_key_dropped_at(0),
-            Some(KEY)
-        );
-        assert_eq!(set(json!(null)).gated_key_dropped_at(0), None);
+        assert_eq!(set.gated_key_dropped_at(0), None);
+        let load = Request::Start { apps: vec![old] };
+        assert_eq!(load.gated_key_dropped_at(0), None);
     }
 }

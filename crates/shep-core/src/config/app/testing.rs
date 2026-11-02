@@ -405,12 +405,6 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             }),
             |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
         ),
-        refused(
-            "sandbox",
-            "any value",
-            sheep(|a| a.sandbox = Some("sandbox.json".to_owned())),
-            |e| matches!(e, NormalizeError::SandboxKeyRemoved { .. }),
-        ),
         refused_on_windows(
             "dogs",
             "a sandbox table on Windows",

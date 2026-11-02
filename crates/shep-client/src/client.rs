@@ -623,38 +623,6 @@ mod tests {
         assert!(sent.try_recv().is_err(), "the request reached the wire");
     }
 
-    #[tokio::test]
-    async fn the_old_sandbox_key_is_refused_naming_the_key_the_request_carried() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = crate::testing::control_address(dir.path());
-        let ack = HelloAck {
-            protocol: SANDBOX_DOG_SINCE - 1,
-            ..crate::testing::sample_ack()
-        };
-        let (client, mut sent) =
-            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
-        let app = shep_core::config::AppConfig {
-            sandbox: Some("sandbox.json".to_owned()),
-            ..shep_core::config::AppConfig::minimal("web", "./srv")
-        };
-
-        let refused = client
-            .request(Request::Start { apps: vec![app] })
-            .await
-            .unwrap_err();
-
-        let RequestError::Rpc(rpc) = &refused else {
-            panic!("expected a refusal, got {refused:?}");
-        };
-        assert!(
-            rpc.message.contains("`sandbox` needs protocol 15"),
-            "{}",
-            rpc.message
-        );
-        assert!(!rpc.message.contains("dogs.sandbox"), "{}", rpc.message);
-        assert!(sent.try_recv().is_err(), "the request reached the wire");
-    }
-
     fn listening_start() -> Request {
         let mut app = shep_core::config::AppConfig::minimal("web", "./srv");
         app.listen
