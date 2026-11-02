@@ -154,6 +154,7 @@ fn test_actor(
         smits: Smits::new(),
         disabled: BTreeSet::new(),
         listeners: BTreeMap::new(),
+        listeners_before: BTreeMap::new(),
     }
 }
 

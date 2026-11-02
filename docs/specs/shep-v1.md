@@ -223,9 +223,12 @@ is systemd's: listeners sit at fd 3 upward in name order, `LISTEN_FDS` counts
 them, `LISTEN_FDNAMES` lists the names colon-separated, and `LISTEN_PID` is the
 child's own pid. The shepherd channel moves to the next fd and
 `SHEP_CHANNEL_FD` names it; a sheep without `listen` keeps the channel on fd 3
-and gets no `LISTEN_*`. A reload that changes `listen` binds the new set
-before it spawns the replacement and closes the old sockets once the drainee
-is reaped; one that leaves it alone never closes a socket. A bind failure
+and gets no `LISTEN_*`. A reload that changes `listen` binds only the
+addresses it adds, before it spawns the replacement, and keeps the socket of
+every address it still names, by address and not by name, so a renamed entry
+keeps its socket. The sockets of an address it drops close once the drainee is
+reaped, and an abandoned reload leaves the old set held. A reload that leaves
+`listen` alone never closes a socket. A bind failure
 fails the start, naming the address. Stopping or deleting the sheep closes the
 sockets, and the next start binds them again. Refused at load: an address that
 does not parse, a duplicate address, a name outside ASCII letters, digits, `_`

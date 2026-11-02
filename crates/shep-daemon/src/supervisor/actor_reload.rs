@@ -294,6 +294,8 @@ impl<R: ProcessRunner> Actor<R> {
         // abandons the reload rather than reaching for a restart ladder: the
         // drainee is still up and still serving, which beats either status
         // `refuse_spawn` could leave behind.
+        let name = app.config().name.clone();
+        let held_before = self.listeners.get(&name).cloned();
         let spec = assemble(
             &app,
             instance,
@@ -311,6 +313,9 @@ impl<R: ProcessRunner> Actor<R> {
             })
         })
         .map_err(|err| err.to_string())?;
+        if let Some(before) = held_before {
+            self.listeners_before.insert(name.clone(), before);
+        }
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();
         let source = ReadinessSource::of_normalized(app.config());
@@ -406,6 +411,7 @@ impl<R: ProcessRunner> Actor<R> {
                     drainee.entry.status = restored_status(drainee);
                     drainee.entry.reload = ReloadState::None;
                 }
+                self.restore_listeners(&name);
                 Err(error.to_string())
             }
         }
@@ -486,6 +492,8 @@ impl<R: ProcessRunner> Actor<R> {
         };
         job.swap.phase = ReloadPhase::DrainOld;
         let old_id = job.swap.old_id;
+        // Committed: the drainee is on its way out, so no set to go back to.
+        self.listeners_before.remove(name);
 
         if !self.sheep.contains_key(&old_id) {
             // The drainee went on its own while the replacement was still

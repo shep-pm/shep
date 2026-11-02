@@ -472,11 +472,12 @@ pub struct AppConfig {
         "example": { "http": "0.0.0.0:8080" },
         "group": "process",
         "blurb": "TCP addresses shep binds and hands to every instance as LISTEN_FDS sockets",
-        "accepts": ["a table of name to host:port",
+        "accepts": ["a table of name to ip:port, such as 0.0.0.0:8080",
                     "a name of ASCII letters, digits, _ and -"],
         "refuses": ["an address that does not parse", "the same address twice",
                     "a name outside the accepted set", "any value on Windows",
-                    "a value together with sandbox"],
+                    "a value together with sandbox",
+                    "a value together with the sandbox dog"],
         "neighbours": [{"field": "reuse_port", "note": "needed for overlap only when listen is unset"},
                        {"field": "channel",    "note": "moves to the fd after the last socket"}]
     })))]

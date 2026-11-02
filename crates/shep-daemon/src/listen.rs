@@ -22,8 +22,8 @@ pub struct ListenSockets {
 
 struct Entry {
     name: String,
-    /// What the Flockfile said, kept to compare against a later load.
-    configured: String,
+    /// The address as parsed, so two spellings of one address compare equal.
+    configured: SocketAddr,
     listener: TcpListener,
 }
 
@@ -92,24 +92,19 @@ impl ListenSockets {
                 address: address.clone(),
                 reason,
             };
-            let kept = previous
-                .and_then(|held| held.entries.iter().find(|e| &e.configured == address))
-                .and_then(|e| e.listener.try_clone().ok());
-            if let Some(listener) = kept {
-                entries.push(Entry {
-                    name: name.clone(),
-                    configured: address.clone(),
-                    listener,
-                });
-                continue;
-            }
             let parsed: SocketAddr = address
                 .parse()
                 .map_err(|error: core::net::AddrParseError| fail(error.to_string()))?;
-            let listener = TcpListener::bind(parsed).map_err(|error| fail(error.to_string()))?;
+            let kept = previous
+                .and_then(|held| held.entries.iter().find(|e| e.configured == parsed))
+                .and_then(|e| e.listener.try_clone().ok());
+            let listener = match kept {
+                Some(listener) => listener,
+                None => TcpListener::bind(parsed).map_err(|error| fail(error.to_string()))?,
+            };
             entries.push(Entry {
                 name: name.clone(),
-                configured: address.clone(),
+                configured: parsed,
                 listener,
             });
         }
@@ -120,10 +115,12 @@ impl ListenSockets {
     #[must_use]
     pub fn is_bound_from(&self, table: &BTreeMap<String, String>) -> bool {
         self.entries.len() == table.len()
-            && self
-                .entries
-                .iter()
-                .all(|e| table.get(&e.name) == Some(&e.configured))
+            && self.entries.iter().all(|e| {
+                table
+                    .get(&e.name)
+                    .and_then(|a| a.parse::<SocketAddr>().ok())
+                    == Some(e.configured)
+            })
     }
 
     /// The entry names, in the fd order they are passed.
@@ -182,7 +179,7 @@ impl ListenSockets {
             .into_iter()
             .map(|(name, fd)| Entry {
                 name: name.to_string(),
-                configured: "stand-in".to_string(),
+                configured: SocketAddr::from(([0, 0, 0, 0], 0)),
                 listener: TcpListener::from(fd),
             })
             .collect();
@@ -209,7 +206,11 @@ impl Eq for ListenSockets {}
 impl fmt::Debug for ListenSockets {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
-            .entries(self.entries.iter().map(|e| (&e.name, &e.configured)))
+            .entries(
+                self.entries
+                    .iter()
+                    .map(|e| (&e.name, e.configured.to_string())),
+            )
             .finish()
     }
 }
@@ -307,6 +308,20 @@ mod tests {
             ListenSockets::bind(&renamed).is_err(),
             "the old set still holds the address, so a plain bind would fail"
         );
+    }
+
+    #[test]
+    fn a_respelled_address_is_the_same_address() {
+        let held = ListenSockets::bind(&table(&[("http", "127.0.0.1:0")])).unwrap();
+        let port = held.local_addrs().unwrap()[0].port();
+        drop(held);
+        let held = ListenSockets::bind(&table(&[("http", &format!("127.0.0.1:{port}"))])).unwrap();
+
+        let respelled = table(&[("http", &format!("127.0.0.1:0{port}"))]);
+        assert!(held.is_bound_from(&respelled));
+        let next = ListenSockets::bind_keeping(Some(&held), &respelled)
+            .expect("the held address is kept, not bound again");
+        assert_eq!(next.local_addrs().unwrap(), held.local_addrs().unwrap());
     }
 
     #[test]

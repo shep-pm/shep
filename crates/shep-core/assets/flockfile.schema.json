@@ -513,7 +513,7 @@
           "default": {},
           "init": {
             "accepts": [
-              "a table of name to host:port",
+              "a table of name to ip:port, such as 0.0.0.0:8080",
               "a name of ASCII letters, digits, _ and -"
             ],
             "blurb": "TCP addresses shep binds and hands to every instance as LISTEN_FDS sockets",
@@ -536,7 +536,8 @@
               "the same address twice",
               "a name outside the accepted set",
               "any value on Windows",
-              "a value together with sandbox"
+              "a value together with sandbox",
+              "a value together with the sandbox dog"
             ]
           }
         },

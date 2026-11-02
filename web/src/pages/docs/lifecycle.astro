@@ -504,6 +504,7 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
     <CodeBlock label="Flockfile.toml">{`[[app]]
 name = "web"
 script = "./server"
+channel = true
 listen = { http = "0.0.0.0:8080", admin = "127.0.0.1:9000" }`}</CodeBlock>
     <ul>
       <li>
@@ -512,7 +513,8 @@ listen = { http = "0.0.0.0:8080", admin = "127.0.0.1:9000" }`}</CodeBlock>
         <code>LISTEN_FDS</code>, <code>LISTEN_FDNAMES</code> and{" "}
         <code>LISTEN_PID</code> set. The{" "}
         <a href="/docs/shepherd-channel/">shepherd channel</a> moves to the
-        next fd, here 5, and <code>SHEP_CHANNEL_FD</code> says which.
+        next fd, here 5 once <code>channel = true</code> opens one, and{" "}
+        <code>SHEP_CHANNEL_FD</code> says which.
       </li>
       <li>
         A reload that leaves <code>listen</code> alone never closes a

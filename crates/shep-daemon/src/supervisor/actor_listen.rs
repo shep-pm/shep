@@ -38,11 +38,21 @@ impl<R: ProcessRunner> Actor<R> {
         Ok(Some(bound))
     }
 
+    /// Puts back the set a reload replaced, once the reload is abandoned.
+    ///
+    /// The drainee still holds those addresses, so the next reload has to
+    /// find them held or its bind of an address the drainee serves fails.
+    pub(super) fn restore_listeners(&mut self, name: &str) {
+        if let Some(before) = self.listeners_before.remove(name) {
+            self.listeners.insert(name.to_string(), before);
+        }
+    }
+
     /// Closes the sockets of every app with no instance left that is running
     /// or due to run again, so a stopped or deleted app frees its ports and
     /// binds them afresh on its next start.
     pub(super) fn prune_listeners(&mut self) {
-        if self.listeners.is_empty() {
+        if self.listeners.is_empty() && self.listeners_before.is_empty() {
             return;
         }
         let wanted: BTreeSet<&str> = self
@@ -61,5 +71,7 @@ impl<R: ProcessRunner> Actor<R> {
             .collect();
         self.listeners
             .retain(|name, _| wanted.contains(name.as_str()));
+        self.listeners_before
+            .retain(|name, _| self.reloads.contains_key(name));
     }
 }

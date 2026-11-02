@@ -78,6 +78,7 @@ impl<R: ProcessRunner> Actor<R> {
             reason,
             "reload abandoned"
         );
+        self.restore_listeners(name);
 
         // Read back out of the map rather than emitted inside the block: the
         // event carries the status the restore decides, and that block holds a

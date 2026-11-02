@@ -22,9 +22,9 @@ audit-debt phase.
 2026-08-28.** (`listen` later changed the first half: a sheep's `listen`
 table has the shepherd bind its sockets, see `decisions.md`.) shep never binds
 an app's listening socket without `listen` and never sets
-`SO_REUSEPORT` on one. The only endpoint it binds is its own control
-endpoint, a unix socket at `$SHEP_HOME/run/shep.sock` and a named pipe on
-Windows, which is a different thing entirely. The unix one does fail loudly
+`SO_REUSEPORT` on one. For a sheep without `listen` the only endpoint it binds
+is its own control endpoint, a unix socket at `$SHEP_HOME/run/shep.sock` and a
+named pipe on Windows, which is a different thing entirely. The unix one does fail loudly
 when its path exceeds the platform limit. Whether a reload's overlap is
 zero-downtime depends on the app having set `SO_REUSEPORT` on its own
 listener; without it the second instance takes `EADDRINUSE`.

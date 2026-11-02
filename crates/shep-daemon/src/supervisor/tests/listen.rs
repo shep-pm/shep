@@ -102,7 +102,7 @@ async fn a_sheep_without_listen_is_handed_no_sockets() {
 // `normalize` refuses `listen` on Windows, so these load it through one.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
-async fn a_reload_that_leaves_listen_alone_keeps_the_set() {
+async fn asking_again_for_an_unchanged_table_returns_the_held_set() {
     let dir = tempfile::tempdir().unwrap();
     let app = listening("web", &[("http", "127.0.0.1:0")]);
     let (mut actor, _mailbox) = actor_with_one_online_sheep_of(
@@ -199,4 +199,87 @@ async fn a_stopped_sheeps_sockets_are_closed() {
     actor.prune_listeners();
 
     assert!(actor.listeners.is_empty());
+}
+
+// A stand-in is bound from 0.0.0.0:0, so the app's 127.0.0.1:0 differs from it
+// and the reload binds a new set beside it.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_reload_whose_replacement_cannot_spawn_puts_back_the_old_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = listening("web", &[("http", "127.0.0.1:0")]);
+    // No scripts, so `runner.spawn` fails after the new set is bound.
+    let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
+    let serving = stand_in_set();
+    actor
+        .listeners
+        .insert("web".to_string(), Arc::clone(&serving));
+
+    actor
+        .spawn_replacement(0, ReloadMode::Overlap)
+        .expect_err("a runner with no scripts left cannot spawn");
+
+    assert!(
+        Arc::ptr_eq(&actor.listeners["web"], &serving),
+        "the drainee still serves from the old set, which a later reload must find held"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn an_abandoned_reload_puts_back_the_old_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = listening("web", &[("http", "127.0.0.1:0")]);
+    let (mut actor, _mailbox) =
+        actor_with_one_online_sheep_of(&dir, app, vec![ProcScript::never_exits()]);
+    let _ctl_rx = attach_ctl(&mut actor);
+    let serving = stand_in_set();
+    actor
+        .listeners
+        .insert("web".to_string(), Arc::clone(&serving));
+    let (reply, _rx) = oneshot::channel();
+    actor.handle_reload(&ProcessSelector::Name("web".to_string()), reply);
+    assert!(actor.reloads.contains_key("web"), "the reload began");
+    assert!(
+        !Arc::ptr_eq(&actor.listeners["web"], &serving),
+        "the replacement's set is held while it starts"
+    );
+
+    actor.abort_reload("web", "the replacement was not ready inside listen_timeout");
+
+    assert!(Arc::ptr_eq(&actor.listeners["web"], &serving));
+}
+
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn restoring_swaps_the_remembered_set_back_in_and_forgets_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = listening("web", &[("http", "127.0.0.1:0")]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
+    let serving = stand_in_set();
+    actor.listeners.insert("web".to_string(), stand_in_set());
+    actor
+        .listeners_before
+        .insert("web".to_string(), Arc::clone(&serving));
+
+    actor.restore_listeners("web");
+
+    assert!(Arc::ptr_eq(&actor.listeners["web"], &serving));
+    assert!(actor.listeners_before.is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_remembered_set_does_not_outlive_its_reload() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = listening("web", &[("http", "127.0.0.1:0")]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
+    actor.listeners.insert("web".to_string(), stand_in_set());
+    actor
+        .listeners_before
+        .insert("web".to_string(), stand_in_set());
+
+    actor.prune_listeners();
+
+    assert!(actor.listeners_before.is_empty(), "no reload is in flight");
 }

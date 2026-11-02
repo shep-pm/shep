@@ -155,6 +155,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             smits: Smits::new(),
             disabled: BTreeSet::new(),
             listeners: BTreeMap::new(),
+            listeners_before: BTreeMap::new(),
         }
     }
 }

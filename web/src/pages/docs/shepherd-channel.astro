@@ -74,11 +74,12 @@ name = "web"
 script = "./server"
 channel = true`}</CodeBlock>
     <p class="fine">
-      <strong>On unix</strong> the descriptor is <strong>fd 3</strong>, also
-      exported as the{" "}
+      <strong>On unix</strong> the descriptor is usually <strong>fd 3</strong>,
+      also exported as the{" "}
       <code>SHEP_CHANNEL_FD</code> environment variable: read that instead
-      of hardcoding <code>3</code>: a <code>listen</code> sheep's sockets
-      take fd 3 and the channel follows. It's a normal <em>blocking</em> file descriptor: a plain{" "}
+      of hardcoding <code>3</code>. A{" "}
+      <a href="/docs/lifecycle/#overlap-on-a-socket-shep-holds"><code>listen</code></a>{" "}
+      table moves it past the sockets. It's a normal <em>blocking</em> file descriptor: a plain{" "}
       <code>read()</code> parks your process until the daemon has something
       to say, exactly like any other pipe. No event loop, non-blocking I/O,
       or polling required: a shell script doing{" "}

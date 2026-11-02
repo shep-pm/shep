@@ -460,6 +460,18 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             }),
             |e| matches!(e, NormalizeError::ListenWithSandbox { .. }),
         ),
+        refused(
+            "listen",
+            "a value together with the sandbox dog",
+            sheep(|a| {
+                a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
+                a.dogs.insert(
+                    "sandbox".to_owned(),
+                    crate::config::DogTable::from(serde_json::Map::new()),
+                );
+            }),
+            |e| matches!(e, NormalizeError::ListenWithSandbox { .. }),
+        ),
         elsewhere(
             "user",
             "a name with no passwd entry",

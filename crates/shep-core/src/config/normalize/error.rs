@@ -289,8 +289,8 @@ pub enum NormalizeError {
         /// The address as the second wrote it.
         address: String,
     },
-    /// `listen` is set together with `sandbox`, and nothing yet shows
-    /// crabpot passes the descriptors through.
+    /// `listen` is set together with `sandbox` or a `dogs.sandbox` table, and
+    /// nothing yet shows crabpot passes the descriptors through.
     ListenWithSandbox {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
