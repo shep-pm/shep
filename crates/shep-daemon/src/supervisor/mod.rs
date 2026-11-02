@@ -49,13 +49,13 @@ use crate::channel::{ChildMessage, ShepherdMessage};
 use crate::entry::{ProcessEntry, ReloadState, RestartBudget};
 use crate::extras::{Extras, ExtrasRegistry};
 #[cfg(unix)]
-use crate::handover::adopt::AdoptedSheep;
+use crate::handover::adopt::{AdoptedListeners, AdoptedSheep};
 #[cfg(unix)]
 use crate::handover::reap::AdoptedReaper;
 #[cfg(unix)]
 use crate::handover::{
-    Candidate, CarriedFds, CarriedSheep, Counters, DaemonFds, Fitness, Handover, OwnedCandidate,
-    fitness,
+    Candidate, CarriedFds, CarriedSheep, Counters, DaemonFds, Fitness, Handover, HeldListener,
+    OwnedCandidate, fitness,
 };
 use crate::kill::kill_process;
 use crate::privilege::{self, Credentials, PrivilegeError, SpawnIdentity};

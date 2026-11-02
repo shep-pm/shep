@@ -19,6 +19,7 @@ use crate::testing::test_paths;
 mod compat;
 mod disabled;
 mod dog_link;
+mod listeners;
 mod old_blob_shape;
 mod old_blob_state;
 mod old_blobs;
@@ -33,6 +34,7 @@ fn handover_over(entry: &ProcessEntry) -> Handover {
         next_deadline: 5,
         next_action_stamp: 2,
         reloads: Some(Vec::new()),
+        listeners: None,
     }
 }
 

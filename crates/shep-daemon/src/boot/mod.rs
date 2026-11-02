@@ -199,8 +199,9 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
                 flock,
                 counters,
                 reloads,
+                listeners,
             } = rehydrate(carried)?;
-            (lock, listener, Some((flock, counters, reloads)))
+            (lock, listener, Some((flock, counters, reloads, listeners)))
         }
         None => (
             PidfileLock::acquire(&paths)?,
@@ -315,11 +316,12 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     let mut carried_apps = Vec::new();
     #[cfg(unix)]
     let supervisor = match inherited {
-        Some((flock, counters, reloads)) => {
+        Some((flock, counters, reloads, listeners)) => {
             // Read before the flock is moved: the registry below is rebuilt
             // from these, and the roll would otherwise be written empty.
             carried_apps.extend(apps_for_the_roll(&flock));
             builder
+                .adopted_listeners(listeners)
                 .spawn_adopted(flock, counters, reloads)
                 .map_err(|source| BootError::Adopt(Box::new(source)))?
         }

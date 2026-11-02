@@ -68,7 +68,7 @@ fn hand_over_tuned(
     ) -> shep_handover::Handover<'a, Handover>,
 ) -> Result<Infallible, HandOverError> {
     let mut open = Vec::new();
-    for number in blob.named_fds() {
+    for number in blob.carried_fds() {
         let fd = OpenFd::new(number).map_err(|source| HandOverError::Descriptor {
             key: number.to_string(),
             source: io::Error::new(io::ErrorKind::InvalidInput, source),
@@ -101,11 +101,11 @@ pub fn arrive() -> Result<Option<Arrival<Handover>>, BootError> {
 /// Turn an [`Arrival`] into the blob and the open descriptors it names, left
 /// unowned for [`adopt`](super::adopt::adopt) to take by number.
 ///
-/// Every number the blob names must have arrived under its own number as a key.
-/// Without that check the number-based adoption could take a descriptor this
-/// image opened. The descriptors are left open on a refusal too: a refused
-/// rehydrate holds the pidfile lock, which stops a fresh boot from running
-/// beside the sheep this one failed to adopt.
+/// Every number the blob names must have arrived under its own number as a key,
+/// or number-based adoption could take a descriptor this image opened. A
+/// missing `listen` socket is the exception: [`adopt`](super::adopt::adopt)
+/// replaces it. The descriptors stay open on a refusal too, so the held pidfile
+/// lock stops a fresh boot running beside the sheep this one failed to adopt.
 ///
 /// # Errors
 ///
@@ -113,7 +113,7 @@ pub fn arrive() -> Result<Option<Arrival<Handover>>, BootError> {
 /// not carried under that number.
 pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
     let Arrival {
-        state: blob,
+        state: mut blob,
         mut fds,
     } = arrival;
     let mut problem = (blob.version != VERSION).then(|| {
@@ -143,6 +143,22 @@ pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
                 });
             }
         }
+    }
+    // Not a refusal, but flagged: adopting a number nothing carried would take
+    // whatever this process holds there.
+    for socket in blob.listeners.iter_mut().flatten() {
+        let number = socket.fd();
+        socket.unclaimed = match fds.take(&number.to_string()) {
+            Some(carried) => {
+                let owned = carried.into_owned_fd();
+                let arrived = owned.as_raw_fd() == number;
+                if arrived {
+                    let _ = owned.into_raw_fd();
+                }
+                !arrived
+            }
+            None => true,
+        };
     }
     problem.map_or(Ok(blob), |problem| {
         Err(io::Error::new(io::ErrorKind::InvalidData, problem))
@@ -190,6 +206,7 @@ mod tests {
             next_deadline: 5,
             next_action_stamp: 2,
             reloads: Some(Vec::new()),
+            listeners: None,
         }
     }
 

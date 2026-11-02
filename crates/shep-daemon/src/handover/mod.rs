@@ -22,7 +22,7 @@ mod fixtures;
 
 pub use blob::{Counters, DaemonFds, Handover};
 pub(crate) use carried::SheepFd;
-pub use carried::{CarriedFds, CarriedSheep, DogConnection};
+pub use carried::{CarriedFds, CarriedListener, CarriedSheep, DogConnection, HeldListener};
 pub use exec::{HANDOVER_ENV, arrive, claim, exec_target, hand_over, record_launch_path};
 pub use fitness::{Candidate, Fitness, OwnedCandidate, fitness};
 

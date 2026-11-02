@@ -136,6 +136,15 @@ pub(crate) fn duplicate_fd(fd: RawFd) -> io::Result<RawFd> {
     Ok(borrowed.try_clone_to_owned()?.into_raw_fd())
 }
 
+/// Whether `socket` has been marked to accept connections with `listen(2)`.
+///
+/// `false` for a socket that is not listening and for a descriptor that is not
+/// a socket at all, which is how a number the kernel recycled into something
+/// else reads.
+pub(crate) fn is_listening_socket(socket: &impl AsFd) -> bool {
+    nix::sys::socket::getsockopt(socket, nix::sys::socket::sockopt::AcceptConn).unwrap_or(false)
+}
+
 /// Opens `path` through `openat2` with `RESOLVE_NO_SYMLINKS`, so no component
 /// of it may be a symlink at the moment of the open.
 ///
@@ -356,6 +365,22 @@ mod tests {
     use super::*;
     use std::io::Read;
     use std::os::unix::io::{AsRawFd, IntoRawFd};
+
+    #[test]
+    fn a_listening_tcp_socket_reads_as_one() {
+        let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+
+        assert!(is_listening_socket(&listening));
+    }
+
+    #[test]
+    fn a_connected_socket_and_a_file_do_not() {
+        let (connected, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let file = tempfile::tempfile().unwrap();
+
+        assert!(!is_listening_socket(&connected));
+        assert!(!is_listening_socket(&file));
+    }
 
     #[test]
     fn a_real_inherited_descriptor_is_adopted_and_owned() {

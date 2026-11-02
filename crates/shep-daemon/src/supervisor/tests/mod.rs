@@ -52,6 +52,8 @@ mod handover;
 mod interleaving;
 mod lamb_sweep;
 mod listen;
+#[cfg(unix)]
+mod listen_handover;
 mod readiness;
 mod reload_bus;
 mod reload_drain;

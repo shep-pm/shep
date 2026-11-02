@@ -150,6 +150,25 @@ impl<R: ProcessRunner> Actor<R> {
         // `HashMap` iteration order is arbitrary, for the reason the sheep
         // are sorted above.
         reloads.sort_unstable_by(|left, right| left.app.cmp(&right.app));
+        // Duplicated in the same step, for the reason the entries are cloned.
+        // A set that cannot be duplicated is left out and warned about: the
+        // successor then binds that sheep's sockets on its next start, as a
+        // shepherd that carried none would.
+        let listeners: Vec<HeldListener> = self
+            .listeners
+            .iter()
+            .flat_map(|(app, sockets)| match sockets.hold(app) {
+                Ok(held) => held,
+                Err(error) => {
+                    tracing::warn!(
+                        sheep = app.as_str(),
+                        %error,
+                        "the listen sockets could not be duplicated, so they do not cross the handover"
+                    );
+                    Vec::new()
+                }
+            })
+            .collect();
         spawn_handover_task(
             drafts,
             fds,
@@ -159,6 +178,7 @@ impl<R: ProcessRunner> Actor<R> {
                 next_action_stamp: self.next_action_stamp,
             },
             reloads,
+            listeners,
             reply,
         );
     }

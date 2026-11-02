@@ -16,7 +16,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::{CarriedSheep, DogConnection};
+use super::{CarriedListener, CarriedSheep, DogConnection, HeldListener};
 use crate::supervisor::CarriedReload;
 
 /// The blob format this daemon writes, and the only one it can read.
@@ -64,6 +64,15 @@ pub struct Handover {
     /// Sorted by app name by its writer, since the blob is a file an operator
     /// may read.
     pub(super) reloads: Option<Vec<CarriedReload>>,
+    /// Every `listen` socket the supervisor held at the exec, by sheep and
+    /// entry name.
+    ///
+    /// An absent key loads as `None`, which means none were held: a blob from
+    /// a shepherd that predates `listen`, or a flock with no `listen` sheep.
+    /// The successor binds a sheep's sockets on its next start as it would
+    /// without a handover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) listeners: Option<Vec<CarriedListener>>,
 }
 
 impl Handover {
@@ -84,6 +93,7 @@ impl Handover {
             next_deadline: counters.next_deadline,
             next_action_stamp: counters.next_action_stamp,
             reloads: Some(reloads),
+            listeners: None,
         }
     }
 
@@ -111,6 +121,36 @@ impl Handover {
             };
             sheep.carry_dog_link(link.fd.as_raw_fd(), link.topics.clone());
         }
+    }
+
+    /// Names each of `held` in the blob, so the successor adopts the sockets
+    /// a sheep's instances were started with.
+    ///
+    /// Written sorted by sheep and then entry name, since the blob is a file an
+    /// operator may read. Nothing is written for an empty `held`, so a flock
+    /// with no `listen` sheep leaves the blob as it was before the key
+    /// existed.
+    pub fn carry_listeners(&mut self, held: &[HeldListener]) {
+        let mut listeners: Vec<CarriedListener> = held
+            .iter()
+            .map(|socket| CarriedListener {
+                sheep: socket.sheep.clone(),
+                name: socket.name.clone(),
+                address: socket.address.clone(),
+                fd: socket.fd.as_raw_fd(),
+                unclaimed: false,
+            })
+            .collect();
+        listeners.sort_unstable_by(|a, b| (&a.sheep, &a.name).cmp(&(&b.sheep, &b.name)));
+        self.listeners = (!listeners.is_empty()).then_some(listeners);
+    }
+
+    /// Every `listen` socket this blob carries.
+    ///
+    /// Empty both for a flock that held none and for a blob that carried none.
+    #[must_use]
+    pub fn listeners(&self) -> &[CarriedListener] {
+        self.listeners.as_deref().unwrap_or_default()
     }
 
     /// The entry id the successor is to issue next.
@@ -149,14 +189,27 @@ impl Handover {
 
     /// Every descriptor number this blob names, listener and pidfile first.
     ///
-    /// The exact set [`hand_over`](super::hand_over) carries. A descriptor
-    /// carried without being named is one the successor never adopts.
+    /// Every descriptor but the `listen` sockets, which
+    /// [`Self::carried_fds`] adds to the set [`hand_over`](super::hand_over)
+    /// carries. A descriptor carried without being named is one the successor
+    /// never adopts.
     pub(super) fn named_fds(&self) -> impl Iterator<Item = RawFd> + '_ {
         [self.listener_fd, self.pidfile_fd].into_iter().chain(
             self.sheep
                 .iter()
                 .flat_map(|sheep| sheep.fds.all().into_iter().flatten()),
         )
+    }
+
+    /// Every descriptor number the blob carries, [`Self::named_fds`] and the
+    /// `listen` sockets after them.
+    ///
+    /// The set [`hand_over`](super::hand_over) carries, and the set no number
+    /// may repeat in. A listener's number is not in [`Self::named_fds`]: the
+    /// successor replaces one it cannot adopt, where it refuses any other.
+    pub(super) fn carried_fds(&self) -> impl Iterator<Item = RawFd> + '_ {
+        self.named_fds()
+            .chain(self.listeners().iter().map(CarriedListener::fd))
     }
 
     /// Write the blob the way a release before the envelope did, at mode

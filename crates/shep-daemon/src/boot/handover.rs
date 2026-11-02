@@ -94,6 +94,7 @@ pub(super) fn rehydrate(carried: Successor) -> Result<Rehydrated, BootError> {
         flock: adopted.sheep,
         counters,
         reloads,
+        listeners: adopted.listeners,
     })
 }
 
@@ -137,8 +138,8 @@ fn successor_handover_at(path: &Path) -> Option<crate::handover::Handover> {
 const DOG_LINK_PARK: core::time::Duration = core::time::Duration::from_secs(1);
 
 /// What [`rehydrate`] rebuilds from a blob: the home's lock, the control
-/// listener, and the flock to install with the counters and the in-flight
-/// reloads it ran under.
+/// listener, and the flock to install with the counters, the in-flight
+/// reloads and the `listen` sockets it ran under.
 ///
 /// No `Debug`: `flock` carries each sheep's environment.
 pub(super) struct Rehydrated {
@@ -153,6 +154,8 @@ pub(super) struct Rehydrated {
     pub(super) counters: crate::handover::Counters,
     /// The reloads in flight when the predecessor handed over.
     pub(super) reloads: Vec<crate::supervisor::CarriedReload>,
+    /// Every sheep's `listen` sockets, for the next spawn or reload to pass on.
+    pub(super) listeners: Vec<crate::handover::adopt::AdoptedListeners>,
 }
 
 /// Everything the SIGHUP task needs to replace this daemon's image.
