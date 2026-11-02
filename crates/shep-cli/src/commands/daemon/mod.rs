@@ -10,6 +10,8 @@
 mod lifecycle;
 mod reload;
 mod reload_report;
+#[cfg(unix)]
+mod reload_sandbox;
 
 pub(crate) use lifecycle::dog_spec;
 pub use lifecycle::{boot_supervisor, daemon_exit_code, run_daemon};
