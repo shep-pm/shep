@@ -252,8 +252,9 @@ struct Actor<R: ProcessRunner> {
     /// instance left to serve after every message.
     listeners: BTreeMap<String, Arc<ListenSockets>>,
     /// The set an uncommitted overlap reload replaced, by app name, which
-    /// its drainee still serves from. See [`Actor::restore_listeners`].
-    listeners_before: BTreeMap<String, Arc<ListenSockets>>,
+    /// its drainee still serves from. `None` is no set at all. See
+    /// [`Actor::restore_listeners`].
+    listeners_before: BTreeMap<String, Option<Arc<ListenSockets>>>,
 }
 
 #[cfg(test)]

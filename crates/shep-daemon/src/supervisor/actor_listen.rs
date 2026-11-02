@@ -41,10 +41,18 @@ impl<R: ProcessRunner> Actor<R> {
     /// Puts back the set a reload replaced, once the reload is abandoned.
     ///
     /// The drainee still holds those addresses, so the next reload has to
-    /// find them held or its bind of an address the drainee serves fails.
+    /// find them held or its bind of an address the drainee serves fails. A
+    /// drainee with no sockets gets none back: the set the reload bound has
+    /// no process to accept on it.
     pub(super) fn restore_listeners(&mut self, name: &str) {
-        if let Some(before) = self.listeners_before.remove(name) {
-            self.listeners.insert(name.to_string(), before);
+        match self.listeners_before.remove(name) {
+            Some(Some(before)) => {
+                self.listeners.insert(name.to_string(), before);
+            }
+            Some(None) => {
+                self.listeners.remove(name);
+            }
+            None => {}
         }
     }
 

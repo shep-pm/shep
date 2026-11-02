@@ -260,7 +260,7 @@ async fn restoring_swaps_the_remembered_set_back_in_and_forgets_it() {
     actor.listeners.insert("web".to_string(), stand_in_set());
     actor
         .listeners_before
-        .insert("web".to_string(), Arc::clone(&serving));
+        .insert("web".to_string(), Some(Arc::clone(&serving)));
 
     actor.restore_listeners("web");
 
@@ -277,9 +277,26 @@ async fn a_remembered_set_does_not_outlive_its_reload() {
     actor.listeners.insert("web".to_string(), stand_in_set());
     actor
         .listeners_before
-        .insert("web".to_string(), stand_in_set());
+        .insert("web".to_string(), Some(stand_in_set()));
 
     actor.prune_listeners();
 
     assert!(actor.listeners_before.is_empty(), "no reload is in flight");
+}
+
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn restoring_a_reload_that_added_listen_drops_the_set_it_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = listening("web", &[("http", "127.0.0.1:0")]);
+    let (mut actor, _mailbox) = actor_with_one_online_sheep_of(&dir, app, vec![]);
+    actor.listeners.insert("web".to_string(), stand_in_set());
+    actor.listeners_before.insert("web".to_string(), None);
+
+    actor.restore_listeners("web");
+
+    assert!(
+        !actor.listeners.contains_key("web"),
+        "the drainee had no sockets, so the replacement's are closed"
+    );
 }

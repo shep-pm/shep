@@ -313,9 +313,7 @@ impl<R: ProcessRunner> Actor<R> {
             })
         })
         .map_err(|err| err.to_string())?;
-        if let Some(before) = held_before {
-            self.listeners_before.insert(name.clone(), before);
-        }
+        self.listeners_before.insert(name.clone(), held_before);
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();
         let source = ReadinessSource::of_normalized(app.config());
