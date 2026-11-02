@@ -9,7 +9,7 @@ use cli::Cli;
 
 use crate::adopted::dispatch_adopted_dog;
 use crate::adopted_help;
-use crate::config::{must_render_bare, resolve_style};
+use crate::config::{help_colour_choice, must_render_bare, resolve_style};
 use crate::dispatch::run;
 use crate::home::print_shepherd_status;
 use crate::{cli, exit, lookout, output, style};
@@ -44,7 +44,17 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     // bare `shep` and `shep help` could not carry a status line. The command
     // is built here because adopted dogs join the hand-written `--help`
     // listing, and clap bakes that render into its `--help` error.
-    let mut command = Cli::command();
+    // Colour is chosen here, ahead of the parse: clap renders `--help`
+    // inside it, before `resolve_style` could run.
+    let mut command = Cli::command()
+        .styles(output::paint::help_styles(style::deep_colour_terminal(
+            std::env::var_os("TERM").as_deref(),
+            std::env::var_os("COLORTERM").as_deref(),
+        )))
+        .color(help_colour_choice(
+            &argv,
+            std::env::var("SHEP_STYLE").ok().as_deref(),
+        ));
     if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)
     {
@@ -80,8 +90,12 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
             ) {
                 runtime.block_on(print_shepherd_status(&argv));
             }
-            // clap renders the help or the usage error and picks the exit
-            // code, as `parse_from` would have.
+            // clap renders the help and picks the exit code, as
+            // `parse_from` would have. A usage error is ours to print.
+            if let Some(text) = usage_error_text(&err) {
+                let _ = std::io::Write::write_all(&mut std::io::stderr(), text.as_bytes());
+                std::process::exit(err.exit_code());
+            }
             err.exit();
         }
     };
@@ -108,10 +122,56 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
         .into()
 }
 
+/// A clap usage error as plain text, or `None` for the help and version
+/// output clap prints itself.
+///
+/// Error text stays plain whatever colour the help has: the help styles
+/// reach the `Usage:` line inside an error too, so the escapes are stripped
+/// here rather than left to clap's `ColorChoice`.
+fn usage_error_text(err: &clap::Error) -> Option<String> {
+    use clap::error::ErrorKind;
+    let is_help = matches!(
+        err.kind(),
+        ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    );
+    (!is_help).then(|| err.render().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// The fixture is the case under test: the same error, rendered by
+    /// clap, does carry escape codes when the help is coloured.
+    #[test]
+    fn a_usage_error_prints_no_escape_codes_while_the_help_is_coloured() {
+        let bare: &[&str] = &["shep"];
+        for argv in [bare, &["shep", "strt"], &["shep", "--nonsense"]] {
+            let err = Cli::command()
+                .styles(output::paint::help_styles(true))
+                .color(clap::ColorChoice::Always)
+                .try_get_matches_from(argv)
+                .unwrap_err();
+            assert!(
+                err.render().ansi().to_string().contains('\x1b'),
+                "{argv:?}: clap's own rendering must be coloured"
+            );
+            let text = usage_error_text(&err).expect("a usage error");
+            assert!(!text.contains('\x1b'), "{argv:?}: got {text:?}");
+            assert!(text.contains("Usage:"), "{argv:?}: got {text:?}");
+        }
+    }
+
+    #[test]
+    fn help_and_version_are_left_to_clap() {
+        for argv in [["shep", "--help"], ["shep", "--version"]] {
+            let err = Cli::command().try_get_matches_from(argv).unwrap_err();
+            assert_eq!(usage_error_text(&err), None, "{argv:?}");
+        }
+    }
 
     #[test]
     fn an_alias_supplies_its_verb() {

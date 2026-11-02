@@ -131,7 +131,10 @@ unicode-width = { version = "0.2", default-features = false }
 # `crate::adopted_help`, and without this feature clap's `Str` accepts only a
 # `&'static str`. Adds zero crates: it switches `Str`'s inner from a
 # `Cow<'static, str>` to a boxed one.
-clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "env", "wrap_help", "string"] }
+#
+# `color` is `entry::run_argv`'s help colouring: without it clap strips every
+# style from its output. Adds `anstream` and its five small dependencies.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "env", "wrap_help", "string", "color"] }
 # `default-features = false` is a no-op: clap_complete's default feature set
 # is empty, kept for consistency. `unstable-dynamic` not enabled: dynamic
 # completion is out of scope.

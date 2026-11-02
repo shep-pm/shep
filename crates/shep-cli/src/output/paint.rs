@@ -37,9 +37,66 @@ pub(crate) fn style_for(role: Role, deep: bool) -> Style {
     Style::new().fg_color(Some(colour))
 }
 
+/// clap's help styles, in the palette's roles.
+///
+/// Headings and `Usage:` are butter and bold, flags and verbs meadow,
+/// placeholders sky. Every other slot, the error ones included, stays plain:
+/// error text carries no colour, and [`crate::entry`] renders usage errors
+/// plain regardless. `deep` is [`style_for`]'s.
+#[must_use]
+pub(crate) fn help_styles(deep: bool) -> clap::builder::Styles {
+    let heading = style_for(Role::Butter, deep).bold();
+    clap::builder::Styles::plain()
+        .header(heading)
+        .usage(heading)
+        .literal(style_for(Role::Meadow, deep))
+        .placeholder(style_for(Role::Sky, deep))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory as _;
+
+    use crate::cli::Cli;
+
+    /// The sequences are the 256-colour palette's own indices, written out
+    /// rather than derived from `style_for`.
+    #[test]
+    fn coloured_help_paints_headings_flags_and_placeholders_in_the_palette() {
+        let coloured = Cli::command().styles(help_styles(true)).render_help();
+        let ansi = coloured.ansi().to_string();
+        assert!(
+            ansi.contains("\x1b[1m\x1b[38;5;221mUsage:\x1b[0m"),
+            "bold butter heading, got {ansi:?}"
+        );
+        assert!(
+            ansi.contains("\x1b[38;5;29m--format\x1b[0m"),
+            "meadow flag, got {ansi:?}"
+        );
+        assert!(
+            ansi.contains("\x1b[38;5;74m<FORMAT>\x1b[0m"),
+            "sky placeholder, got {ansi:?}"
+        );
+    }
+
+    #[test]
+    fn coloured_help_has_the_same_text_as_the_help_it_replaces() {
+        let today = Cli::command().render_help().to_string();
+        let coloured = Cli::command().styles(help_styles(true)).render_help();
+        assert!(coloured.ansi().to_string().contains('\x1b'));
+        assert_eq!(coloured.to_string(), today);
+    }
+
+    #[test]
+    fn the_sixteen_colour_tier_uses_named_colours() {
+        let ansi = Cli::command()
+            .styles(help_styles(false))
+            .render_help()
+            .ansi()
+            .to_string();
+        assert!(ansi.contains("\x1b[32m--format\x1b[0m"), "got {ansi:?}");
+    }
 
     /// No "off" case: `NO_COLOR` is vetoed upstream, in
     /// `Presentation::colour`.
