@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-02
+
+### Added
+
+- Bind a sheep's listen sockets and pass them through LISTEN_FDS
+- Count a dogs.sandbox table as sandboxed
+- Wrap a spawn spec in the sandbox dog's launch
+- Spawn a sheep with a dogs.sandbox table through the adopted sandbox dog
+- Carry a sheep's listen sockets across a handover
+- Bind a sheep's listen sockets and pass them to every instance through LISTEN_FDS
+- Carry a sheep's listen sockets across a shepherd self-upgrade
+- Gate and refuse the dogs.sandbox table like the sandbox key
+
+### Fixed
+
+- Build the listen sockets code on Windows
+- Count the listen field in the lookout pane tests and frames
+- Take the address of environ without an unsafe block
+- Match listen sockets by parsed address and keep the old set on an abandoned reload
+- Record a dog's path only once the start owns its entry
+- Drop the set an abandoned reload bound for a sheep that had none
+- Hand the actor only the dogs boot leaves enabled and unclaimed
+- Adopt every listen descriptor before any rebind and check its address
+- Read TCP_CONNECTION_INFO to tell a listening socket on Darwin
+
+
 ## [0.21.0] - 2026-10-31
 
 ### Added

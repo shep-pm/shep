@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-02
+
+### Added
+
+- A manifest declares launch and adopt refuses a sandbox dog without it
+- Refuse a listen key below the protocol that honours it
+- Gate and refuse the dogs.sandbox table like the sandbox key
+- Bind a sheep's listen sockets and pass them to every instance through LISTEN_FDS
+
+### Fixed
+
+- Name the sandbox key a request carried and move the gate tests to request::sandbox
+
+
 ## [0.21.0] - 2026-10-31
 
 
