@@ -457,7 +457,20 @@ impl<R: ProcessRunner> Actor<R> {
             channel,
             dog_link,
         } = sheep;
-        let app = normalize(carried.app().clone()).map_err(|source| AdoptError::Spec {
+        // A predecessor that still honoured `sandbox` may carry the key. This
+        // build refuses it, and refusing here would strand the whole flock, so
+        // it is cleared and warned about: the running process keeps its
+        // wrapper, but a restart of it runs without a sandbox.
+        let mut carried_app = carried.app().clone();
+        if carried_app.sandbox.take().is_some() {
+            tracing::warn!(
+                sheep = carried.name(),
+                "this sheep was started with the removed `sandbox` key: it stays running as it \
+                 is, but a restart runs it unsandboxed. Replace the key with an \
+                 [app.dogs.sandbox] table and reload"
+            );
+        }
+        let app = normalize(carried_app).map_err(|source| AdoptError::Spec {
             sheep: carried.name().to_string(),
             source,
         })?;

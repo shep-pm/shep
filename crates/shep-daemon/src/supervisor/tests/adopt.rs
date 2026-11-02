@@ -384,3 +384,24 @@ async fn an_adopted_flock_announces_none_of_the_tables_it_carried() {
         "web's table crossed the handover and is not news"
     );
 }
+
+/// A v0.22 shepherd carries a sheep whose config still sets `sandbox`, which
+/// this build refuses. Fails if that strands the flock instead of adopting it.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_carried_sheep_that_sets_the_removed_sandbox_key_is_still_adopted() {
+    let mut blob = serde_json::to_value(carried("boxed", 0, Some(4242), |_| {})).unwrap();
+    blob["app"]["sandbox"] = serde_json::json!("box.json");
+    let crossed: CarriedSheep = serde_json::from_value(blob).unwrap();
+    assert_eq!(crossed.app().sandbox.as_deref(), Some("box.json"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let (events, _rx) = crate::bus::test_bus(64);
+    let sup = SupervisorBuilder::new(AdoptingRunner, test_paths(&dir), events)
+        .spawn_adopted(vec![without_handles(crossed)], counters(1), Vec::new())
+        .expect("a sheep carrying the removed key must not strand the flock");
+
+    let listed = sup.list().await;
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0].pid, Some(4242), "{:?}", listed[0]);
+}
