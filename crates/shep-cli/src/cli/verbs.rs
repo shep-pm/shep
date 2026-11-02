@@ -124,7 +124,7 @@ pub enum Commands {
     /// so nothing else can answer it), a probed app that sets reuse_port, and
     /// a probed app with a listen table.
     ///
-    /// An overlap asks the same thing of all three. Both instances are bound
+    /// An overlap asks the same thing of all of them. Both instances are bound
     /// at once, so an app that binds an address has to share the socket
     /// itself, with SO_REUSEPORT set before it binds, unless the app has a
     /// listen table: then shep binds the sockets once and every instance
