@@ -178,16 +178,27 @@ Recorded in that direction deliberately. The old wording described worse
 behaviour than shep has, and an operator told to expect a crash loop goes
 looking for a restart storm that was never there.
 
-The abort is not silent. `abort_reload` logs a `warn!` ("reload abandoned")
-carrying the sheep's name, both ids and the reason, and emits a
-`ReloadAbandoned` event. The event names whichever instance still holds the
-slot: the drainee under overlap, and under serial the replacement once the
-drainee has exited. The reasons the log gives:
+The abort is not silent. Every way a reload ends without replacing the
+instance logs a `warn!` starting "reload abandoned" with the sheep's name, the
+ids and the reason, and emits a `ReloadAbandoned` event where an instance is
+still registered to name.
+
+Under overlap, while the drainee is still registered, `abort_reload` logs the
+reason and emits the event for the drainee. Its reasons:
 
 - the replacement exited before it was ready (the `EADDRINUSE` case);
 - the replacement was not ready inside `listen_timeout`;
 - an operator's command reached the drainee first;
 - the swap passed its deadline with no readiness result.
+
+Once the drainee is gone, which is every serial reload and any overlap whose
+drainee died first, `abort_reload` is not reached. Other paths log their own
+"reload abandoned" line and emit the event for the replacement, which holds the
+slot: it exited before it was ready, it was not ready inside `listen_timeout`,
+its readiness probe went unanswered once the drainee was gone, or the swap
+passed its deadline. Two serial cases name the drainee or nothing: the drainee
+passing the swap's deadline without exiting emits for the drainee, and a
+`delete` of the drainee emits nothing, since no instance is left.
 
 The sheep's own stderr file still holds the `EADDRINUSE` itself. The daemon
 log carries the reason. The event stream carries only the abandonment status,
