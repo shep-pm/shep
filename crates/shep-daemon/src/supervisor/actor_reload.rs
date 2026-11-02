@@ -296,23 +296,18 @@ impl<R: ProcessRunner> Actor<R> {
         // `refuse_spawn` could leave behind.
         let name = app.config().name.clone();
         let held_before = self.listeners.get(&name).cloned();
-        let spec = assemble(
-            &app,
-            instance,
-            &self.paths,
-            credentials,
-            &self.secret_view(&app),
-        )
-        .and_then(|spec| {
-            Ok(SpawnSpec {
-                dog_link: dog.is_some(),
-                // Bound ahead of the replacement. The old set stays with the
-                // drainee until it exits.
-                listen: self.listen_for(app.config())?,
-                ..spec
+        let spec = self
+            .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
+            .and_then(|spec| {
+                Ok(SpawnSpec {
+                    dog_link: dog.is_some(),
+                    // Bound ahead of the replacement. The old set stays with the
+                    // drainee until it exits.
+                    listen: self.listen_for(app.config())?,
+                    ..spec
+                })
             })
-        })
-        .map_err(|err| err.to_string())?;
+            .map_err(|err| err.to_string())?;
         self.listeners_before.insert(name.clone(), held_before);
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();

@@ -13,9 +13,12 @@ use crate::runner::ExitOutcome;
 /// The exit code crabpot uses when its sandbox refuses to start
 pub const SANDBOX_REFUSED_EXIT: i32 = 125;
 
+/// The name of the adopted dog that launches a sheep holding a table under this key.
+pub(crate) const SANDBOX_DOG: &str = "sandbox";
+
 /// Whether `app` runs sandboxed: it sets `sandbox`, or holds an `[app.dogs.sandbox]` table
 pub(crate) fn is_sandboxed(app: &AppConfig) -> bool {
-    app.sandbox.is_some() || app.dogs.contains_key("sandbox")
+    app.sandbox.is_some() || app.dogs.contains_key(SANDBOX_DOG)
 }
 
 /// Whether a sheep configured as `app` that exited with `code` was refused by its sandbox

@@ -61,6 +61,9 @@ struct SpawnedProc {
     /// The program this spawn was asked to run, copied off
     /// [`SpawnSpec::program`], read back via [`ScriptedRunner::spawned_program`].
     program: String,
+    /// The arguments this spawn was asked to run with, copied off
+    /// [`SpawnSpec::args`], read back via [`ScriptedRunner::spawned_args`].
+    args: Vec<String>,
     /// The sockets this spawn was handed, off [`SpawnSpec::listen`], read
     /// back via [`ScriptedRunner::spawned_listen`].
     listen: Option<Arc<crate::listen::ListenSockets>>,
@@ -269,6 +272,16 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_program(&self, spawn_index: usize) -> String {
         self.spawned.lock().unwrap()[spawn_index].program.clone()
+    }
+
+    /// The arguments the spawn at `spawn_index` was asked to run with.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_args(&self, spawn_index: usize) -> Vec<String> {
+        self.spawned.lock().unwrap()[spawn_index].args.clone()
     }
 
     /// The listen sockets the spawn at `spawn_index` was handed, or `None`.
@@ -648,6 +661,7 @@ impl ProcessRunner for ScriptedRunner {
             stdin_lines,
             credentials: spec.credentials,
             program: spec.program.clone(),
+            args: spec.args.clone(),
             listen: spec.listen.clone(),
         });
         drop(spawned);

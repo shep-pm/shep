@@ -11,6 +11,7 @@
 
 mod assembly_errors;
 mod environment_inheritance;
+mod launch;
 mod log_path_resolution;
 #[cfg(test)]
 mod sandbox_tests;
@@ -19,6 +20,7 @@ mod spawn_spec;
 #[cfg(test)]
 mod testing;
 pub use assembly_errors::AssembleError;
+pub use launch::through_dog;
 pub use slots::instance_slots;
 pub use spawn_spec::assemble;
 pub(crate) use spawn_spec::describe;

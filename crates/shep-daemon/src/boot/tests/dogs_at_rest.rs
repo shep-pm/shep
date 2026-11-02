@@ -199,3 +199,141 @@ async fn a_boot_first_dog_still_spawns_first_and_is_not_registered_twice() {
 
     drop(daemon);
 }
+
+#[tokio::test]
+async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told_of() {
+    let _guard = SIGNAL_TEST_LOCK.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = test_paths(&dir);
+    let mut jailed = AppConfig::minimal("jailed", "./srv");
+    jailed.dogs.insert(
+        "sandbox".to_owned(),
+        serde_json::from_value(serde_json::json!({})).unwrap(),
+    );
+    seed_roll(&paths, vec![jailed]);
+    // The restored sheep, then the enabled dog.
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+
+    let sandbox = DogSpec {
+        name: "sandbox".to_owned(),
+        source: DogSource::Adopted {
+            path: "/opt/dogs/box".to_owned(),
+            channel: false,
+            grants: None,
+        },
+        env: BTreeMap::new(),
+    };
+
+    let daemon = boot_with_idle_sweep(
+        crate::testing::SharedRunner(Arc::clone(&runner)),
+        paths,
+        BootOptions {
+            restore: true,
+            known_dogs: vec![sandbox.clone()],
+            dogs: vec![sandbox],
+            ..BootOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let sheep = runner.spawn_index_of("jailed").expect("the sheep spawned");
+    assert_eq!(runner.spawned_program(sheep), "/opt/dogs/box");
+    assert_eq!(
+        runner.spawned_args(sheep),
+        ["launch", "jailed", "--", "./srv"]
+    );
+    drop(daemon);
+}
+
+fn adopted_sandbox() -> DogSpec {
+    DogSpec {
+        name: "sandbox".to_owned(),
+        source: DogSource::Adopted {
+            path: "/opt/dogs/box".to_owned(),
+            channel: false,
+            grants: None,
+        },
+        env: BTreeMap::new(),
+    }
+}
+
+fn jailed_config() -> AppConfig {
+    let mut jailed = AppConfig::minimal("jailed", "./srv");
+    jailed.dogs.insert(
+        "sandbox".to_owned(),
+        serde_json::from_value(serde_json::json!({})).unwrap(),
+    );
+    jailed
+}
+
+#[tokio::test]
+async fn a_restored_sandboxed_sheep_is_refused_when_the_dog_is_adopted_but_not_enabled() {
+    let _guard = SIGNAL_TEST_LOCK.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = test_paths(&dir);
+    seed_roll(&paths, vec![jailed_config()]);
+    // One script, so a spawn that wrongly goes ahead is counted rather than
+    // failing for want of a script.
+    let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+
+    let daemon = boot_with_idle_sweep(
+        crate::testing::SharedRunner(Arc::clone(&runner)),
+        paths,
+        BootOptions {
+            restore: true,
+            known_dogs: vec![adopted_sandbox()],
+            dogs: vec![],
+            ..BootOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let flock = daemon.context().supervisor.list_checked().await.unwrap();
+    assert_eq!(runner.spawn_count(), 0, "it never ran, sandboxed or not");
+    assert_eq!(row(&flock, "jailed").status, ProcStatus::Errored);
+    drop(daemon);
+}
+
+#[tokio::test]
+async fn a_restored_sandboxed_sheep_is_refused_when_a_saved_sheep_holds_the_dogs_name() {
+    let _guard = SIGNAL_TEST_LOCK.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = test_paths(&dir);
+    seed_roll(
+        &paths,
+        vec![AppConfig::minimal("sandbox", "./srv"), jailed_config()],
+    );
+    // The plain sheep named `sandbox`, and a spare so a wrong spawn of the
+    // other is counted rather than failing for want of a script.
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+
+    let daemon = boot_with_idle_sweep(
+        crate::testing::SharedRunner(Arc::clone(&runner)),
+        paths,
+        BootOptions {
+            restore: true,
+            known_dogs: vec![adopted_sandbox()],
+            dogs: vec![adopted_sandbox()],
+            ..BootOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(runner.spawn_count(), 1, "only the sheep named `sandbox`");
+    let plain = runner
+        .spawn_index_of("sandbox")
+        .expect("the plain sheep ran");
+    assert_ne!(runner.spawned_program(plain), "/opt/dogs/box");
+    let flock = daemon.context().supervisor.list_checked().await.unwrap();
+    assert_eq!(row(&flock, "jailed").status, ProcStatus::Errored);
+    drop(daemon);
+}

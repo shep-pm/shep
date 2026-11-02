@@ -20,6 +20,7 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     /// The `listen` sockets a predecessor carried, one set per sheep.
     #[cfg(unix)]
     pub(super) adopted_listeners: Vec<AdoptedListeners>,
+    pub(super) dog_binaries: BTreeMap<String, String>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -37,6 +38,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             dog_defaults: DogDefaults::default(),
             #[cfg(unix)]
             adopted_listeners: Vec::new(),
+            dog_binaries: BTreeMap::new(),
         }
     }
 
@@ -92,6 +94,18 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn adopted_listeners(mut self, listeners: Vec<AdoptedListeners>) -> Self {
         self.adopted_listeners = listeners;
+        self
+    }
+
+    /// Where each adopted dog's binary lives, by dog name.
+    ///
+    /// A sheep with a `dogs.sandbox` table spawns through the `sandbox` entry
+    /// and is refused without one. Left empty, the actor knows no dog until a
+    /// `StartDog` hands it an adopted source. `boot` fills it from the dogs
+    /// `shep.toml` records, since the daemon never reads that file itself.
+    #[must_use]
+    pub(crate) fn dog_binaries(mut self, binaries: BTreeMap<String, String>) -> Self {
+        self.dog_binaries = binaries;
         self
     }
 
@@ -165,6 +179,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             events: self.events,
             host_environment: self.environment,
             dog_defaults: self.dog_defaults,
+            dog_binaries: self.dog_binaries,
             provider_secrets,
             tx,
             sheep: HashMap::new(),
