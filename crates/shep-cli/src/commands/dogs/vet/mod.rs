@@ -22,6 +22,9 @@ mod manifest;
 
 pub(crate) use manifest::{ManifestRead, cached_manifest, read_manifest};
 
+/// The dog name that runs sheep through `launch`.
+const SANDBOX: &str = "sandbox";
+
 /// Why a binary cannot be adopted.
 ///
 /// The modes `enable` cannot have: a dog that ships inside this binary has
@@ -77,6 +80,11 @@ pub enum AdoptRefusal {
     /// ask would find no channel, and a check that never runs is a check an
     /// operator believes is running.
     ValidateWithoutChannel,
+    /// The dog is being adopted as `sandbox`, which runs a sheep's command as
+    /// `<path> launch <sheep> -- <cmd>`, and its manifest is absent,
+    /// unreadable or does not declare `launch`. Adopting it would record a
+    /// path that cannot run any sheep.
+    SandboxWithoutLaunch,
 }
 
 impl std::fmt::Display for AdoptRefusal {
@@ -109,6 +117,12 @@ impl std::fmt::Display for AdoptRefusal {
                  declares no channel to be consulted on; declare `channel` in the manifest, or \
                  drop `validate`"
             ),
+            Self::SandboxWithoutLaunch => write!(
+                f,
+                "the dog `sandbox` runs a sheep's command as `<path> launch <sheep> -- <cmd>`, \
+                 and this binary's manifest does not declare `launch`; declare `launch` in the \
+                 manifest, or adopt the binary under another name"
+            ),
         }
     }
 }
@@ -125,9 +139,9 @@ impl core::error::Error for AdoptRefusal {}
 ///
 /// # Errors
 /// [`AdoptRefusal`] when the path does not resolve, is not a file this
-/// kernel will exec, answers a protocol this shep cannot speak, or declares
-/// `validate` without the channel [`AdoptRefusal::ValidateWithoutChannel`]
-/// needs. Silence is not an error.
+/// kernel will exec, answers a protocol this shep cannot speak, declares
+/// `validate` without a channel, or is adopted as `sandbox` without
+/// declaring `launch`. Silence is not an error.
 pub fn vet_binary(path: &Path, home: &Path, name: &str) -> Result<VettedBinary, AdoptRefusal> {
     vet_binary_within(path, home, name, VERSION_BUDGET)
 }
@@ -177,6 +191,10 @@ pub fn vet_binary_within(
         // which one happened.
         ManifestRead::Absent | ManifestRead::Unreadable => None,
     };
+    // Before `--version` and `--schema`: a refused candidate is not run again.
+    if name == SANDBOX && !manifest.as_ref().is_some_and(|manifest| manifest.launch) {
+        return Err(AdoptRefusal::SandboxWithoutLaunch);
+    }
     let answer = match &manifest {
         Some(manifest) => Some(manifest::version_of(manifest)),
         None => ask_version(&canonical, home, name, budget)?,
@@ -799,3 +817,7 @@ mod tests;
 /// check shep runs: `validate`, which needs the channel to run on.
 #[cfg(all(test, unix))]
 mod validate_tests;
+
+/// The name `sandbox` adopts under, which asks the manifest for `launch`.
+#[cfg(all(test, unix))]
+mod launch_tests;
