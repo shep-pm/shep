@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A manifest declares launch and adopt refuses a sandbox dog without it
 - Add the listen key and widen the sandbox gate to GatedKey **(BREAKING)**
 - Gate and refuse the dogs.sandbox table like the sandbox key
+- Bind a sheep's listen sockets and pass them to every instance through LISTEN_FDS
 
 ### Fixed
 

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrap a spawn spec in the sandbox dog's launch
 - Spawn a sheep with a dogs.sandbox table through the adopted sandbox dog
 - Carry a sheep's listen sockets across a handover
+- Bind a sheep's listen sockets and pass them to every instance through LISTEN_FDS
+- Carry a sheep's listen sockets across a shepherd self-upgrade
+- Gate and refuse the dogs.sandbox table like the sandbox key
 
 ### Fixed
 

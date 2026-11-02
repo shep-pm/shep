@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Count a listen table as sharing a socket when predicting a reload
 - Colour help in shep's palette
 - Colour the hand-written verb listing in --help
+- Bind a sheep's listen sockets and pass them to every instance through LISTEN_FDS
 
 ### Fixed
 
