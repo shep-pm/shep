@@ -61,6 +61,7 @@ impl Default for AppConfig {
             stdin: false,
             wait_ready: false,
             reuse_port: false,
+            listen: BTreeMap::new(),
             readiness_probe: None,
             liveness_probe: None,
             watch_options: Vec::new(),

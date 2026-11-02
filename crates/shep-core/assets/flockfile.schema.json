@@ -504,6 +504,42 @@
             "$ref": "#/$defs/LevelRule"
           }
         },
+        "listen": {
+          "description": "TCP addresses the shepherd binds for this sheep, by name.\n\nThe shepherd binds each address once, when the first instance starts,\nand passes every instance the open sockets the systemd way: from fd 3\nupward in name order, with `LISTEN_FDS`, `LISTEN_FDNAMES` and\n`LISTEN_PID` set. The shepherd channel moves to the fd after the last\nsocket, named by `SHEP_CHANNEL_FD`. Reload overlaps old and new on the\nsame sockets, and a reload that leaves `listen` alone never closes\none. Not supported on Windows, or together with `sandbox`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "init": {
+            "accepts": [
+              "a table of name to host:port",
+              "a name of ASCII letters, digits, _ and -"
+            ],
+            "blurb": "TCP addresses shep binds and hands to every instance as LISTEN_FDS sockets",
+            "example": {
+              "http": "0.0.0.0:8080"
+            },
+            "group": "process",
+            "neighbours": [
+              {
+                "field": "reuse_port",
+                "note": "needed for overlap only when listen is unset"
+              },
+              {
+                "field": "channel",
+                "note": "moves to the fd after the last socket"
+              }
+            ],
+            "refuses": [
+              "an address that does not parse",
+              "the same address twice",
+              "a name outside the accepted set",
+              "any value on Windows",
+              "a value together with sandbox"
+            ]
+          }
+        },
         "listen_timeout": {
           "description": "Readiness fallback window when no ready signal/probe configured",
           "$ref": "#/$defs/UpDuration",
@@ -720,7 +756,7 @@
           }
         },
         "reuse_port": {
-          "description": "Whether the app itself sets `SO_REUSEPORT` before it binds. shep binds\nnothing, so it cannot set the option for the app.\n\nRead by one thing: which reload the daemon runs. Set, and the\nreplacement is spawned alongside the instance it replaces. An app that\nclaims the option but does not set it takes `EADDRINUSE`. Unset with a\n`readiness_probe`, reload is serial: a probe cannot say which instance answered.",
+          "description": "Whether the app itself sets `SO_REUSEPORT` before it binds. shep cannot\nset the option on a socket the app binds itself; `listen` is how shep\nbinds one for it.\n\nRead by one thing: which reload the daemon runs. Set, and the\nreplacement is spawned alongside the instance it replaces. An app that\nclaims the option but does not set it takes `EADDRINUSE`. Unset with a\n`readiness_probe`, reload is serial: a probe cannot say which instance answered.",
           "type": "boolean",
           "default": false,
           "init": {

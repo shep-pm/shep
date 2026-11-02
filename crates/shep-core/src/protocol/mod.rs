@@ -1,4 +1,4 @@
-//! The client<->daemon wire protocol (version 14).
+//! The client<->daemon wire protocol (version 15).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
@@ -6,7 +6,7 @@
 //! An additive change keeps the version: an older peer decodes
 //! [`Request::Unrecognized`] and refuses by name. `AppConfig` always bumps.
 //!
-//! A `*_wire_v14` test pins today's shape. A
+//! A `*_wire_v15` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload.
 
 pub mod events;
@@ -19,10 +19,10 @@ pub use events::{BusEvent, ProcessEventKind};
 pub use frame::ServerFrame;
 pub use request::{
     ActionOutcome, ActionReply, DogAccess, DogSectionToml, DogSource, EnvCopyChange, EnvCopyKind,
-    EnvValue, Envelope, ExitInfo, Hello, HelloAck, HelloReply, HostUsage, Lamb, LineOutcome,
-    LineReply, LogStream, LogTail, ProcessInfo, ProcessInfoBuilder, Reply, Request, Response,
-    RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView, SheepDrift, SheepRefusal,
-    SignalOutcome, SignalReply, Smit, SmitError, Vcs, sort_flock,
+    EnvValue, Envelope, ExitInfo, GatedKey, Hello, HelloAck, HelloReply, HostUsage, Lamb,
+    LineOutcome, LineReply, LogStream, LogTail, ProcessInfo, ProcessInfoBuilder, Reply, Request,
+    Response, RpcError, RpcErrorCode, SelectorSpec, SheepApplied, SheepConfigView, SheepDrift,
+    SheepRefusal, SignalOutcome, SignalReply, Smit, SmitError, Vcs, sort_flock,
 };
 pub use shep_channel::{
     CHANNEL_VERSION, ChildMessage, LambLabel, LambLabelError, MetricType, ShepherdMessage,
@@ -44,7 +44,7 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. `AppConfig` is the exception: an older peer ignores a key
 /// it does not know, so it runs a config the operator did not write.
-pub const PROTOCOL_VERSION: u32 = 14;
+pub const PROTOCOL_VERSION: u32 = 15;
 
 /// The first protocol version whose shepherd reads `lamb` on `Request::Signal`.
 ///
@@ -57,6 +57,12 @@ pub const LAMB_SIGNAL_SINCE: u32 = 13;
 /// An older shepherd ignores the key and starts the sheep unsandboxed, so a
 /// client must not send one to it.
 pub const SANDBOX_SINCE: u32 = 14;
+
+/// The first protocol version whose shepherd binds an app's `listen` sockets.
+///
+/// An older shepherd ignores the key and starts the sheep with no socket, so a
+/// client must not send one to it.
+pub const LISTEN_SINCE: u32 = 15;
 
 /// The oldest protocol this build accepts from a peer.
 ///
@@ -73,11 +79,11 @@ mod tests {
 
     // Fails whenever `PROTOCOL_VERSION` moves, so a bump is a deliberate
     // edit. A shape change that forgot to bump shows up in the
-    // `*_wire_v14` snapshots instead. A bump moves the constant, this
+    // `*_wire_v15` snapshots instead. A bump moves the constant, this
     // literal, this test's name, the doc header and the snapshots.
     #[test]
     fn an_added_app_config_field_forced_the_protocol_version_up() {
-        assert_eq!(PROTOCOL_VERSION, 14);
+        assert_eq!(PROTOCOL_VERSION, 15);
     }
 
     #[test]
