@@ -677,7 +677,7 @@ impl ProcessRunner for TokioRunner {
             // any local account and the `accept` below authenticates nobody,
             // so the descriptor is what refuses a second account (#350).
             let (pipe, mut listener) = windows_pipe::bind("channel", "shepherd channel pipe")?;
-            env.insert("SHEP_CHANNEL_PIPE".to_string(), pipe.to_string());
+            env.insert("SHEP_CHANNEL_PIPE".to_string(), pipe.display().to_string());
             env.insert(
                 "SHEP_CHANNEL_VERSION".to_string(),
                 CHANNEL_VERSION.to_string(),
@@ -713,7 +713,7 @@ impl ProcessRunner for TokioRunner {
         #[cfg(windows)]
         if spec.dog_link {
             let (pipe, listener) = windows_pipe::bind("dog", "dog connection pipe")?;
-            env.insert(DOG_LINK_PIPE_VAR.to_string(), pipe.to_string());
+            env.insert(DOG_LINK_PIPE_VAR.to_string(), pipe.display().to_string());
             dog_pipe = Some(listener);
         }
 

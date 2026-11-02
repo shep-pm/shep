@@ -5,6 +5,7 @@
 //! it.
 
 use super::*;
+#[cfg(unix)]
 use crate::listen::ListenSockets;
 
 fn listening(name: &str, entries: &[(&str, &str)]) -> AppConfig {
@@ -153,11 +154,13 @@ async fn a_reload_that_cannot_bind_its_new_set_keeps_the_old_one() {
 
 // Pipes stand in for sockets: the cases below ask only whether a set is held,
 // so they need no bind.
+#[cfg(unix)]
 fn stand_in_set() -> Arc<ListenSockets> {
     let (read, _write) = std::io::pipe().unwrap();
     Arc::new(ListenSockets::from_descriptors(vec![("http", read.into())]))
 }
 
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn the_sockets_of_a_sheep_with_no_instance_left_are_closed() {
     let dir = tempfile::tempdir().unwrap();
@@ -178,6 +181,7 @@ async fn the_sockets_of_a_sheep_with_no_instance_left_are_closed() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_stopped_sheeps_sockets_are_closed() {
     let dir = tempfile::tempdir().unwrap();
