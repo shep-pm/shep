@@ -1,6 +1,7 @@
 use super::assembly_errors::AssembleError;
 use super::environment_inheritance::{INHERITED, InheritedEnv, inherited_env};
 use super::log_path_resolution::anchor_log_path;
+use crate::brain::is_sandboxed;
 use crate::privilege::Credentials;
 use crate::runner::SpawnSpec;
 use core::convert::Infallible;
@@ -199,7 +200,7 @@ pub(super) fn build<E>(
         stdin: config.stdin,
         credentials,
         dog_link: false,
-        leader_only_stop: config.sandbox.is_some(),
+        leader_only_stop: is_sandboxed(config),
         // Bound by the supervisor, which owns the sockets across instances.
         listen: None,
     })

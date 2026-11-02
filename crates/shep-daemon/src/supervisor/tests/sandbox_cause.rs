@@ -32,6 +32,39 @@ async fn a_refused_sandboxed_sheep_reports_the_refusal() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_refused_sheep_with_a_sandbox_dog_table_reports_the_refusal() {
+    let (events, _rx) = crate::bus::test_bus(64);
+    let runner = ScriptedRunner::new(vec![ProcScript::const_exit(125)]);
+    let dir = tempfile::tempdir().unwrap();
+    let handle = spawn_supervisor(runner, test_paths(&dir), events);
+    let mut app = AppConfig::minimal("jailed", "./srv");
+    app.dogs.insert(
+        "sandbox".to_owned(),
+        serde_json::from_value(serde_json::json!({})).unwrap(),
+    );
+    handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+
+    assert_eq!(wait_errored(&handle).await.sandbox_refused, Some(true));
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_exit_125_from_a_sheep_with_no_sandbox_is_not_a_refusal() {
+    let (events, _rx) = crate::bus::test_bus(64);
+    let runner = ScriptedRunner::new(vec![
+        ProcScript::const_exit(125),
+        ProcScript::const_exit(125),
+    ]);
+    let dir = tempfile::tempdir().unwrap();
+    let handle = spawn_supervisor(runner, test_paths(&dir), events);
+    let mut app = AppConfig::minimal("plain", "./srv");
+    app.max_restarts = 2;
+    app.exp_backoff_restart_delay = None;
+    handle.start(vec![normalize(app).unwrap()]).await.unwrap();
+
+    assert_eq!(wait_errored(&handle).await.sandbox_refused, Some(false));
+}
+
+#[tokio::test(start_paused = true)]
 async fn an_errored_sheep_out_of_restarts_reports_no_refusal() {
     let (events, _rx) = crate::bus::test_bus(64);
     let runner = ScriptedRunner::new(vec![ProcScript::const_exit(1), ProcScript::const_exit(1)]);
