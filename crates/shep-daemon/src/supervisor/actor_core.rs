@@ -399,10 +399,6 @@ impl<R: ProcessRunner> Actor<R> {
             return Err(SupervisorError::EngineStopped);
         }
         let name = app.config().name.clone();
-        // Before the spawn, so a sheep started right after finds the dog.
-        if let DogSource::Adopted { path, .. } = &source {
-            self.dog_binaries.insert(name.clone(), path.clone());
-        }
         let held = self
             .sheep
             .iter()
@@ -426,6 +422,11 @@ impl<R: ProcessRunner> Actor<R> {
             }
             None => None,
         };
+        // Only now that this call owns the entry: a name held by a running
+        // sheep or dog returned above and leaves the recorded path alone.
+        if let DogSource::Adopted { path, .. } = &source {
+            self.dog_binaries.insert(name.clone(), path.clone());
+        }
         // Cleared whether or not the spawn lands: the operator's word is
         // `enable`, and a spawn that fails is `Errored` rather than disabled.
         self.disabled.remove(&name);

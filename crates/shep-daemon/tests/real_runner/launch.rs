@@ -18,15 +18,12 @@ async fn a_sheep_runs_its_command_through_the_stub_dog_with_shep_home_set() {
     let stub = dir.path().join("stub-dog");
     fs::write(
         &stub,
-        format!(
-            "#!/bin/sh\n\
-             for arg in \"$@\"; do echo \"arg=$arg\"; done > '{record}'\n\
-             echo \"SHEP_HOME=$SHEP_HOME\" >> '{record}'\n\
-             while [ \"$1\" != -- ]; do shift; done\n\
-             shift\n\
-             exec \"$@\"\n",
-            record = record.display()
-        ),
+        "#!/bin/sh\n\
+         for arg in \"$@\"; do echo \"arg=$arg\"; done > \"$RECORD_PATH\"\n\
+         echo \"SHEP_HOME=$SHEP_HOME\" >> \"$RECORD_PATH\"\n\
+         while [ \"$1\" != -- ]; do shift; done\n\
+         shift\n\
+         exec \"$@\"\n",
     )
     .unwrap();
     fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
@@ -48,6 +45,10 @@ async fn a_sheep_runs_its_command_through_the_stub_dog_with_shep_home_set() {
     )
     .expect("this fixture carries no secret to resolve");
     let mut spec = through_dog(spec, &stub.to_string_lossy(), &paths.home, "jailed");
+    spec.env.insert(
+        "RECORD_PATH".to_string(),
+        record.to_string_lossy().into_owned(),
+    );
     spec.out_file = dir.path().join("out.log");
     spec.err_file = dir.path().join("err.log");
 

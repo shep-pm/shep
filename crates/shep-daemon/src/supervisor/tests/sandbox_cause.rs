@@ -233,3 +233,55 @@ async fn a_restart_and_a_reload_spawn_through_the_dog_too() {
         );
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_start_dog_that_loses_the_name_to_a_running_sheep_records_no_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let (events, _rx) = crate::bus::test_bus(64);
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+    let handle =
+        SupervisorBuilder::new(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events).spawn();
+    handle
+        .start(vec![
+            normalize(AppConfig::minimal("sandbox", "./srv")).unwrap(),
+        ])
+        .await
+        .unwrap();
+    handle
+        .start_dog(dog_app("sandbox"), adopted(DOG_PATH))
+        .await
+        .unwrap();
+    let spawned_before = runner.spawn_count();
+
+    handle.start(vec![jailed_sheep()]).await.unwrap_err();
+
+    assert_eq!(runner.spawn_count(), spawned_before);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_second_start_dog_on_a_running_dog_leaves_its_path_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (events, _rx) = crate::bus::test_bus(64);
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+    let handle =
+        SupervisorBuilder::new(SharedRunner(Arc::clone(&runner)), test_paths(&dir), events).spawn();
+    handle
+        .start_dog(dog_app("sandbox"), adopted(DOG_PATH))
+        .await
+        .unwrap();
+    handle
+        .start_dog(dog_app("sandbox"), adopted("/elsewhere/box"))
+        .await
+        .unwrap();
+
+    handle.start(vec![jailed_sheep()]).await.unwrap();
+
+    let sheep = runner.spawn_index_of("jailed").expect("the sheep spawned");
+    assert_eq!(runner.spawned_program(sheep), DOG_PATH);
+}

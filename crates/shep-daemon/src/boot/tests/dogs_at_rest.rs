@@ -211,29 +211,40 @@ async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told
         serde_json::from_value(serde_json::json!({})).unwrap(),
     );
     seed_roll(&paths, vec![jailed]);
-    let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+    // The restored sheep, then the enabled dog.
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+
+    let sandbox = DogSpec {
+        name: "sandbox".to_owned(),
+        source: DogSource::Adopted {
+            path: "/opt/dogs/box".to_owned(),
+            channel: false,
+            grants: None,
+        },
+        env: BTreeMap::new(),
+    };
 
     let daemon = boot_with_idle_sweep(
         crate::testing::SharedRunner(Arc::clone(&runner)),
         paths,
         BootOptions {
             restore: true,
-            known_dogs: vec![DogSpec {
-                name: "sandbox".to_owned(),
-                source: DogSource::Adopted {
-                    path: "/opt/dogs/box".to_owned(),
-                    channel: false,
-                    grants: None,
-                },
-                env: BTreeMap::new(),
-            }],
+            known_dogs: vec![sandbox.clone()],
+            dogs: vec![sandbox],
             ..BootOptions::default()
         },
     )
     .await
     .unwrap();
 
-    assert_eq!(runner.spawned_program(0), "/opt/dogs/box");
-    assert_eq!(runner.spawned_args(0), ["launch", "jailed", "--", "./srv"]);
+    let sheep = runner.spawn_index_of("jailed").expect("the sheep spawned");
+    assert_eq!(runner.spawned_program(sheep), "/opt/dogs/box");
+    assert_eq!(
+        runner.spawned_args(sheep),
+        ["launch", "jailed", "--", "./srv"]
+    );
     drop(daemon);
 }
