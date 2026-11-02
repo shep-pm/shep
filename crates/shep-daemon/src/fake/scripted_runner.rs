@@ -271,11 +271,10 @@ impl ScriptedRunner {
         self.spawned.lock().unwrap()[spawn_index].program.clone()
     }
 
-    /// The listen sockets the spawn at `spawn_index` was handed, or `None`
-    /// for a sheep with no `listen` table.
+    /// The listen sockets the spawn at `spawn_index` was handed, or `None`.
     ///
-    /// Two spawns that share sockets return the same `Arc`, so
-    /// [`Arc::ptr_eq`] tells a shared set from a fresh bind.
+    /// Spawns that share sockets return the same `Arc`: [`Arc::ptr_eq`] tells
+    /// a shared set from a fresh bind.
     ///
     /// # Panics
     /// If `spawn_index` is out of range.

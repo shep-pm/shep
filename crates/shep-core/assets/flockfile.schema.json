@@ -505,7 +505,7 @@
           }
         },
         "listen": {
-          "description": "TCP addresses the shepherd binds for this sheep, by name.\n\nThe shepherd binds each address once, when the first instance starts,\nand passes every instance the open sockets the systemd way: from fd 3\nupward in name order, with `LISTEN_FDS`, `LISTEN_FDNAMES` and\n`LISTEN_PID` set. The shepherd channel moves to the fd after the last\nsocket, named by `SHEP_CHANNEL_FD`. Reload overlaps old and new on the\nsame sockets, and a reload that leaves `listen` alone never closes\none. Not supported on Windows, or together with `sandbox`.",
+          "description": "TCP addresses the shepherd binds for this sheep, by name.\n\nBound once, when the first instance starts, and passed to every instance\nthe systemd way: fd 3 upward in name order, with `LISTEN_FDS`,\n`LISTEN_FDNAMES` and `LISTEN_PID`. The shepherd channel moves to the fd\nafter the last socket, named by `SHEP_CHANNEL_FD`. A reload overlaps on\nthe same sockets. Not supported on Windows, or together with `sandbox`.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
@@ -756,7 +756,7 @@
           }
         },
         "reuse_port": {
-          "description": "Whether the app itself sets `SO_REUSEPORT` before it binds. shep cannot\nset the option on a socket the app binds itself; `listen` is how shep\nbinds one for it.\n\nRead by one thing: which reload the daemon runs. Set, and the\nreplacement is spawned alongside the instance it replaces. An app that\nclaims the option but does not set it takes `EADDRINUSE`. Unset with a\n`readiness_probe`, reload is serial: a probe cannot say which instance answered.",
+          "description": "Whether the app itself sets `SO_REUSEPORT` before it binds. shep cannot\nset the option for a socket the app binds; `listen` is how shep binds one.\n\nRead by one thing: which reload the daemon runs. Set, and the\nreplacement is spawned alongside the instance it replaces. An app that\nclaims the option but does not set it takes `EADDRINUSE`. Unset with a\n`readiness_probe`, reload is serial: a probe cannot say which instance answered.",
           "type": "boolean",
           "default": false,
           "init": {

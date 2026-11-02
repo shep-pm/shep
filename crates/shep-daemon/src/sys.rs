@@ -171,23 +171,10 @@ pub(crate) fn open_resolving_no_symlinks(
 /// reads it, so the number exists only after the fork. [`set_listen_env`]
 /// installs this block as the child's `environ` between the fork and the
 /// exec, and [`Self::install`] writes the pid into it there.
-//
-// Why not `setenv` in a `pre_exec` hook, or a safe `Command::env`? Rationale:
-// - `Command::env` is read before the fork, when the pid is not yet known.
-// - std applies a `Command`'s env map to `environ` AFTER every `pre_exec`
-//   hook runs, so a `setenv` inside a hook is overwritten whenever the
-//   command touched its env at all. A listen sheep's `Command` leaves its env
-//   untouched and this block replaces `environ` outright instead.
-// - `setenv` allocates, and malloc between fork and exec is not
-//   async-signal-safe in a multithreaded process; the shepherd is one.
-// Invariant: every byte this hook touches was allocated before the fork and
-// is owned by `self`, which the closure owns. The hook calls `getpid`, writes
-// at most 11 bytes into the reserved slot and stores one pointer into
-// `environ`: no allocation, no lock, no panic path.
-// Failure scenarios: the child's `environ` points into this block until exec
-// replaces the image, and on a failed exec the child exits without reading it;
-// the parent's copy is a different address space after the fork, so the pid
-// written here never reaches the parent or a sibling instance.
+// Not `setenv` in a `pre_exec` hook: std applies a `Command`'s env after every
+// hook, and `setenv` allocates, which is unsafe between fork and exec in a
+// threaded process. Everything the hook touches is allocated before the fork,
+// and it only calls `getpid`, writes the digits and stores one pointer.
 pub(crate) struct ListenEnv {
     /// Every `KEY=value\0` string back to back, then `LISTEN_PID=` and room
     /// for the digits. Held only to keep the allocation `table` and `pid_slot`

@@ -294,8 +294,6 @@ impl<R: ProcessRunner> Actor<R> {
         // abandons the reload rather than reaching for a restart ladder: the
         // drainee is still up and still serving, which beats either status
         // `refuse_spawn` could leave behind.
-        // The new set is bound here, ahead of the replacement, and the old
-        // set's sockets stay with the drainee until it exits.
         let spec = assemble(
             &app,
             instance,
@@ -306,6 +304,8 @@ impl<R: ProcessRunner> Actor<R> {
         .and_then(|spec| {
             Ok(SpawnSpec {
                 dog_link: dog.is_some(),
+                // Bound ahead of the replacement. The old set stays with the
+                // drainee until it exits.
                 listen: self.listen_for(app.config())?,
                 ..spec
             })

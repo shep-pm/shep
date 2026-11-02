@@ -105,12 +105,11 @@ pub enum Commands {
     /// What that failure COSTS depends on the order, and the order depends on
     /// the app.
     ///
-    /// An app with a readiness_probe, no reuse_port and no listen table is
-    /// replaced serially:
-    /// the old instance drains first, then the new one starts in its place. A probe asks an
-    /// address, and an address cannot say which process answered it. Run both
-    /// at once and the outgoing instance answers for the incoming one, so
-    /// shep would call a release ready that never bound anything.
+    /// A probed app with no reuse_port or listen table is replaced serially:
+    /// the old instance drains first, then the new one starts in its place. A
+    /// probe asks an address, and an address cannot say which process answered
+    /// it. Run both at once and the outgoing instance answers for the incoming
+    /// one, so shep would call a release ready that never bound anything.
     ///
     /// The old instance is gone by the time the new one is judged, so there is
     /// nothing to go back to. A replacement that never becomes ready is left
@@ -120,18 +119,16 @@ pub enum Commands {
     /// it; that reload can reach the instance this one left behind.
     ///
     /// Everything else overlaps, old and new running together: an app with no
-    /// probe, an app using wait_ready (its channel belongs to one instance,
-    /// so nothing else can answer it), a probed app that sets reuse_port, and
-    /// a probed app with a listen table.
+    /// probe, an app using wait_ready (its channel belongs to one instance, so
+    /// nothing else can answer it), and a probed app with reuse_port or listen.
     ///
-    /// An overlap asks the same thing of all of them. Both instances are bound
-    /// at once, so an app that binds an address has to share the socket
-    /// itself, with SO_REUSEPORT set before it binds, unless the app has a
-    /// listen table: then shep binds the sockets once and every instance
-    /// inherits them, so nothing is bound twice. Without one of the two the
-    /// replacement takes EADDRINUSE on every reload, and the reload is
-    /// abandoned with the old instance left serving. This command has already exited 0 by then, so
-    /// process.reload_abandoned on the bus is the only report of it.
+    /// An overlap asks the same of all of them. Both instances are bound at
+    /// once, so an app that binds an address must share the socket itself, with
+    /// SO_REUSEPORT set before it binds, unless it has a listen table: then
+    /// shep binds once and every instance inherits the sockets. Otherwise the
+    /// replacement takes EADDRINUSE and the reload is abandoned, with the old
+    /// instance left serving. This command has exited 0 by then, so
+    /// process.reload_abandoned on the bus is the only report.
     ///
     /// reuse_port neither creates that requirement nor satisfies it. It is how
     /// a probed app says it is already handling the sharing, and so asks for

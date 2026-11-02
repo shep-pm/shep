@@ -450,8 +450,7 @@ pub struct AppConfig {
     })))]
     pub wait_ready: bool,
     /// Whether the app itself sets `SO_REUSEPORT` before it binds. shep cannot
-    /// set the option on a socket the app binds itself; `listen` is how shep
-    /// binds one for it.
+    /// set the option for a socket the app binds; `listen` is how shep binds one.
     ///
     /// Read by one thing: which reload the daemon runs. Set, and the
     /// replacement is spawned alongside the instance it replaces. An app that
@@ -464,13 +463,11 @@ pub struct AppConfig {
     pub reuse_port: bool,
     /// TCP addresses the shepherd binds for this sheep, by name.
     ///
-    /// The shepherd binds each address once, when the first instance starts,
-    /// and passes every instance the open sockets the systemd way: from fd 3
-    /// upward in name order, with `LISTEN_FDS`, `LISTEN_FDNAMES` and
-    /// `LISTEN_PID` set. The shepherd channel moves to the fd after the last
-    /// socket, named by `SHEP_CHANNEL_FD`. Reload overlaps old and new on the
-    /// same sockets, and a reload that leaves `listen` alone never closes
-    /// one. Not supported on Windows, or together with `sandbox`.
+    /// Bound once, when the first instance starts, and passed to every instance
+    /// the systemd way: fd 3 upward in name order, with `LISTEN_FDS`,
+    /// `LISTEN_FDNAMES` and `LISTEN_PID`. The shepherd channel moves to the fd
+    /// after the last socket, named by `SHEP_CHANNEL_FD`. A reload overlaps on
+    /// the same sockets. Not supported on Windows, or together with `sandbox`.
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "http": "0.0.0.0:8080" },
         "group": "process",

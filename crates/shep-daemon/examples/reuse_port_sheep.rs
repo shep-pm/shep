@@ -1,13 +1,11 @@
 //! A sheep serving one TCP port with `SO_REUSEPORT`, and able to ignore its
 //! stop signal. Used by `daemon_e2e.rs`'s reload measurement, since `/bin/sh`
-//! cannot set a socket option.
+//! cannot set a socket option. With `LISTEN_FDS` set it serves fd 3 instead.
 //!
-//! With `LISTEN_FDS` set, serves the socket the shepherd passed on fd 3 instead
-//! and binds nothing, which is a `listen` sheep.
-//!
-//! Env, read once at startup: `SHEEP_PORT_BASE` + `SHEP_INSTANCE` (required
-//! unless `LISTEN_FDS` is set, bind port); `SHEEP_HOLD_MS` (default 40, reply delay); `SHEEP_DEFIANT=1`
-//! (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (if present, bind nothing).
+//! Env, read once: `SHEEP_PORT_BASE` + `SHEP_INSTANCE` (bind port, required
+//! without `LISTEN_FDS`); `SHEEP_HOLD_MS` (default 40, reply delay);
+//! `SHEEP_DEFIANT=1` (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (bind nothing if it
+//! exists).
 //!
 //! Protocol: the server writes `<pid>\n` and closes.
 
