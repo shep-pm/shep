@@ -115,6 +115,7 @@ pub struct Probe<'a> {
     shep: Option<String>,
     defaults: Option<String>,
     validate: bool,
+    launch: bool,
 }
 
 impl<'a> Probe<'a> {
@@ -130,6 +131,7 @@ impl<'a> Probe<'a> {
             shep: None,
             defaults: None,
             validate: false,
+            launch: false,
         }
     }
 
@@ -182,6 +184,14 @@ impl<'a> Probe<'a> {
     /// is the call that answers.
     pub const fn validate(mut self) -> Self {
         self.validate = true;
+        self
+    }
+
+    /// Declares that the dog runs a sheep's command, as
+    /// `<path> launch <sheep> -- <cmd>`. `shep adopt` refuses a dog adopted
+    /// as `sandbox` that does not declare it.
+    pub const fn launch(mut self) -> Self {
+        self.launch = true;
         self
     }
 
@@ -274,6 +284,7 @@ impl<'a> Probe<'a> {
         manifest.depends.dogs.clone_from(&self.dogs);
         manifest.depends.shep.clone_from(&self.shep);
         manifest.validate = self.validate;
+        manifest.launch = self.launch;
         manifest
     }
 

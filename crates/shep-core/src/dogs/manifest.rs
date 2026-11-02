@@ -59,6 +59,10 @@ pub struct Manifest {
     /// written, over its channel.
     #[serde(default)]
     pub validate: bool,
+    /// Whether the dog runs a sheep's command, as
+    /// `<path> launch <sheep> -- <cmd>`.
+    #[serde(default)]
+    pub launch: bool,
 }
 
 impl Manifest {
@@ -77,6 +81,7 @@ impl Manifest {
             verb: None,
             depends: Depends::default(),
             validate: false,
+            launch: false,
         }
     }
 }
