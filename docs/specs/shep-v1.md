@@ -176,11 +176,20 @@ nothing was ever dropped. The overlap fails safe.
 
 Recorded in that direction deliberately. The old wording described worse
 behaviour than shep has, and an operator told to expect a crash loop goes
-looking for a restart storm that was never there. The real defect is the
-opposite kind and is still open: the daemon logs NOTHING about the aborted
-reload, so the only evidence is `EADDRINUSE` in the sheep's own stderr file.
-That silence is the same shape as a version-mismatched dog reporting
-`online` while doing nothing.
+looking for a restart storm that was never there.
+
+The abort is not silent. `abort_reload` logs a `warn!` ("reload abandoned")
+carrying the sheep's name, both ids and the reason, and emits a
+`ReloadAbandoned` event for the drainee. The reasons it gives:
+
+- the replacement exited before it was ready (the `EADDRINUSE` case);
+- the replacement was not ready inside `listen_timeout`;
+- an operator's command reached the drainee first;
+- the swap passed its deadline with no readiness result.
+
+The sheep's own stderr file still holds the `EADDRINUSE` itself, but the
+daemon log and the event stream now say that the reload was abandoned and
+why.
 
 `reuse_port` is the app's own claim that it sets `SO_REUSEPORT` before its
 own `bind()`. shep never binds a listen socket on an app's behalf and cannot
