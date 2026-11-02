@@ -403,11 +403,13 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       A reload overlaps the old instance and the new one by default: the
       replacement is spawned and confirmed before the old one drains, so the
       app is never short an instance. Whether that overlap is actually
-      seamless is a property of the app, not of shep. shep never binds an
-      app's listening socket and never sets <code>SO_REUSEPORT</code> on
-      one; if the app hasn't set that option on its own listener, the second
-      instance has nowhere to go but <code>EADDRINUSE</code>, the moment it
-      tries to bind the port the first one is still holding.
+      seamless depends on how the app gets its port. shep never sets{" "}
+      <code>SO_REUSEPORT</code> on an app's own listener; if the app binds
+      its own port without that option, the second instance has nowhere to
+      go but <code>EADDRINUSE</code>, the moment it tries to bind the port
+      the first one is still holding. An app that lists its addresses in{" "}
+      <code>listen</code> skips the problem: <a href="#overlap-on-a-socket-shep-holds">shep
+      binds them once</a> and every instance shares the sockets.
     </p>
     <VerbSignature verb="reload" usage="shep reload <selector>...">
       <p>
@@ -427,14 +429,14 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
     <p>
       Before anything is killed, shep has to decide the order, and it picks
       from the app's own config: an app with a <code>readiness_probe</code>{" "}
-      and no <code>reuse_port</code> is reloaded serially, old instance
-      fully gone before the new one starts. Every other app overlaps, new
+      and neither <code>reuse_port</code> nor <code>listen</code> is
+      reloaded serially, old instance fully gone before the new one starts. Every other app overlaps, new
       instance spawned and confirmed before the old one drains: that's an
       app with no probe at all, one using <code>wait_ready</code> (its
       channel belongs to one instance, so an outgoing instance has no way to
       answer on the replacement's behalf, and <code>wait_ready</code> wins
       over a configured probe if an app sets both), or a probed app that
-      also sets <code>reuse_port</code>.
+      also sets <code>reuse_port</code> or <code>listen</code>.
     </p>
     <p>
       The reason is what a <code>readiness_probe</code> is actually asking.
@@ -491,6 +493,38 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       the run above, at reload time, with the same panic. Getting this
       right is entirely on the app.
     </Callout>
+
+    <h3 id="overlap-on-a-socket-shep-holds">Overlap on a socket shep holds</h3>
+    <p>
+      Name the addresses in <code>listen</code> and shep binds each one
+      itself, once, before the first instance starts. Every instance gets
+      the same open sockets, so nothing is bound twice, on macOS too,
+      where <code>SO_REUSEPORT</code> doesn't work for Node.
+    </p>
+    <CodeBlock label="Flockfile.toml">{`[[app]]
+name = "web"
+script = "./server"
+listen = { http = "0.0.0.0:8080", admin = "127.0.0.1:9000" }`}</CodeBlock>
+    <ul>
+      <li>
+        The layout is systemd's: sockets at fd 3 and up in name order
+        (<code>admin</code> is 3, <code>http</code> is 4), with{" "}
+        <code>LISTEN_FDS</code>, <code>LISTEN_FDNAMES</code> and{" "}
+        <code>LISTEN_PID</code> set. The{" "}
+        <a href="/docs/shepherd-channel/">shepherd channel</a> moves to the
+        next fd, here 5, and <code>SHEP_CHANNEL_FD</code> says which.
+      </li>
+      <li>
+        A reload that leaves <code>listen</code> alone never closes a
+        socket, so a connection arriving mid-swap waits for the replacement
+        instead of being refused. A start whose address can't be bound
+        fails, naming it. Stopping or deleting the sheep closes the sockets.
+      </li>
+      <li>
+        TCP only, and refused on Windows and together with{" "}
+        <code>sandbox</code>.
+      </li>
+    </ul>
 
     <h3 id="serial-the-gap-you-can-see">Serial: the gap you can see</h3>
     <p>

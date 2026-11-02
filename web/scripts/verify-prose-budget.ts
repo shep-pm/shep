@@ -330,7 +330,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 2300 for #1016: `reset` is a lifecycle verb and the page
   // has to say it leaves the process and the status alone.
-  lifecycle: 2350,
+  //
+  // Raised from 2350 for #1402: `listen` is a third way a reload overlaps,
+  // and the page has to say what shep binds and where the sockets land.
+  lifecycle: 2510,
   // Cut from 1900 for the stamps-off tail sentence: the page has to say a
   // sheep with `log_timestamps = false` carries no stamp for `bleats` to
   // strip, and it paid for that line by tightening the sentences around it
