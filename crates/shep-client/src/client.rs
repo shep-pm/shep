@@ -469,7 +469,7 @@ impl Client {
     ///
     /// - [`RequestError::Rpc`]: the daemon answered with a structured error,
     ///   or `body` carries a key a shepherd below its protocol version would
-    ///   drop (`dogs.sandbox`, `listen`; see [`Request::gated_key_dropped_at`]),
+    ///   drop (`dogs.sandbox`, `sandbox`, `listen`; see [`Request::gated_key_dropped_at`]),
     ///   which is refused as `Unsupported` before anything is sent.
     /// - [`RequestError::Timeout`]: no reply within `deadline + DEADLINE_GRACE`.
     /// - [`RequestError::Closed`]: the connection closed before a reply arrived.
@@ -483,8 +483,8 @@ impl Client {
             return Err(RequestError::Rpc(RpcError {
                 code: RpcErrorCode::Unsupported,
                 message: format!(
-                    "this shepherd speaks protocol {} and honours `{}` from protocol {}, so it \
-                     would start the sheep without it. Restart the shepherd and run this again; \
+                    "this shepherd speaks protocol {} and `{}` needs protocol {}, so it would not \
+                     run the sheep as configured. Restart the shepherd and run this again; \
                      nothing was sent",
                     self.ack.protocol, gated.key, gated.since
                 ),
@@ -620,6 +620,38 @@ mod tests {
         assert!(rpc.message.contains("`dogs.sandbox`"), "{}", rpc.message);
         assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
         assert_eq!(refused.exit_code(), exit::UNSUPPORTED);
+        assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    #[tokio::test]
+    async fn the_old_sandbox_key_is_refused_naming_the_key_the_request_carried() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: SANDBOX_DOG_SINCE - 1,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+        let app = shep_core::config::AppConfig {
+            sandbox: Some("sandbox.json".to_owned()),
+            ..shep_core::config::AppConfig::minimal("web", "./srv")
+        };
+
+        let refused = client
+            .request(Request::Start { apps: vec![app] })
+            .await
+            .unwrap_err();
+
+        let RequestError::Rpc(rpc) = &refused else {
+            panic!("expected a refusal, got {refused:?}");
+        };
+        assert!(
+            rpc.message.contains("`sandbox` needs protocol 15"),
+            "{}",
+            rpc.message
+        );
+        assert!(!rpc.message.contains("dogs.sandbox"), "{}", rpc.message);
         assert!(sent.try_recv().is_err(), "the request reached the wire");
     }
 
