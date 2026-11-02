@@ -292,9 +292,9 @@ unsafe fn environ_slot() -> *mut *mut *mut core::ffi::c_char {
     unsafe extern "C" {
         static mut environ: *mut *mut core::ffi::c_char;
     }
-    // SAFETY: `environ` is the C library's own symbol, present on every unix
-    // target that is not Apple; taking its address reads nothing.
-    unsafe { &raw mut environ }
+    // `environ` is the C library's own symbol, present on every unix target
+    // that is not Apple. Taking its address with `&raw mut` is safe.
+    &raw mut environ
 }
 
 /// Makes `command`'s child run with `env` as its whole environment, `LISTEN_PID`
