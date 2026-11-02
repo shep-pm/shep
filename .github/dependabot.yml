@@ -59,6 +59,17 @@ updates:
       # the root Cargo.toml once lookout_terminal.rs is ported to vt100 0.18.
       - dependency-name: vt100
         update-types: [version-update:semver-major, version-update:semver-minor]
+      # The root Cargo.toml caps json5 below 1.0: Flockfile parsing and its
+      # nesting guard are written against the 0.4 deserializer, and 1.x does
+      # not build here (#1311). Drop this once 1.x is adopted deliberately.
+      - dependency-name: json5
+        update-types: [version-update:semver-major]
+      # The root Cargo.toml holds toml_edit at 0.22 because it backs toml 0.8.
+      # Dependabot reads 0.22 -> 0.25 as minor, so a major-only hold misses it
+      # (#1396). Patch bumps stay allowed. Drop this with the toml hold once
+      # the root Cargo.toml moves to toml 1.x.
+      - dependency-name: toml_edit
+        update-types: [version-update:semver-minor]
 
   # benches/ is its own workspace with its own lockfile, excluded from the
   # root one so a bench-only dependency can never reach a shipped binary,
