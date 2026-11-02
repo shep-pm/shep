@@ -180,16 +180,18 @@ looking for a restart storm that was never there.
 
 The abort is not silent. `abort_reload` logs a `warn!` ("reload abandoned")
 carrying the sheep's name, both ids and the reason, and emits a
-`ReloadAbandoned` event for the drainee. The reasons it gives:
+`ReloadAbandoned` event. The event names whichever instance still holds the
+slot: the drainee under overlap, and under serial the replacement once the
+drainee has exited. The reasons the log gives:
 
 - the replacement exited before it was ready (the `EADDRINUSE` case);
 - the replacement was not ready inside `listen_timeout`;
 - an operator's command reached the drainee first;
 - the swap passed its deadline with no readiness result.
 
-The sheep's own stderr file still holds the `EADDRINUSE` itself, but the
-daemon log and the event stream now say that the reload was abandoned and
-why.
+The sheep's own stderr file still holds the `EADDRINUSE` itself. The daemon
+log carries the reason. The event stream carries only the abandonment status,
+not the reason.
 
 `reuse_port` is the app's own claim that it sets `SO_REUSEPORT` before its
 own `bind()`. shep never binds a listen socket on an app's behalf and cannot
