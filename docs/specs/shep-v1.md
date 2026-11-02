@@ -179,11 +179,33 @@ nothing was ever dropped. The overlap fails safe.
 
 Recorded in that direction deliberately. The old wording described worse
 behaviour than shep has, and an operator told to expect a crash loop goes
-looking for a restart storm that was never there. The real defect is the
-opposite kind and is still open: the daemon logs NOTHING about the aborted
-reload, so the only evidence is `EADDRINUSE` in the sheep's own stderr file.
-That silence is the same shape as a version-mismatched dog reporting
-`online` while doing nothing.
+looking for a restart storm that was never there.
+
+The abort is not silent. Every way a reload ends without replacing the
+instance logs a `warn!` starting "reload abandoned" with the sheep's name, the
+ids and the reason, and emits a `ReloadAbandoned` event where an instance is
+still registered to name.
+
+Under overlap, while the drainee is still registered, `abort_reload` logs the
+reason and emits the event for the drainee. Its reasons:
+
+- the replacement exited before it was ready (the `EADDRINUSE` case);
+- the replacement was not ready inside `listen_timeout`;
+- an operator's command reached the drainee first;
+- the swap passed its deadline with no readiness result.
+
+Once the drainee is gone, which is every serial reload and any overlap whose
+drainee died first, `abort_reload` is not reached. Other paths log their own
+"reload abandoned" line and emit the event for the replacement, which holds the
+slot: it exited before it was ready, it was not ready inside `listen_timeout`,
+its readiness probe went unanswered once the drainee was gone, or the swap
+passed its deadline. Two serial cases name the drainee or nothing: the drainee
+passing the swap's deadline without exiting emits for the drainee, and a
+`delete` of the drainee emits nothing, since no instance is left.
+
+The sheep's own stderr file still holds the `EADDRINUSE` itself. The daemon
+log carries the reason. The event stream carries only the abandonment status,
+not the reason.
 
 `reuse_port` is the app's own claim that it sets `SO_REUSEPORT` before its
 own `bind()`. shep cannot check the claim in advance. (An app that would
