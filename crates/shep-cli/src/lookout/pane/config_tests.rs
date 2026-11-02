@@ -128,6 +128,30 @@ fn a_pane_reads_its_reload_kind_off_the_three_fields_it_turns_on() {
 }
 
 #[test]
+fn a_probed_pane_with_a_listen_table_overlaps() {
+    let probed = |listen: &[(&str, &str)]| {
+        let config = AppConfig {
+            name: "web".into(),
+            listen: listen
+                .iter()
+                .map(|(name, address)| ((*name).into(), (*address).into()))
+                .collect(),
+            readiness_probe: Some(ProbeConfig {
+                kind: ProbeKind::Tcp,
+                target: "127.0.0.1:8080".into(),
+                interval: UpDuration::from_millis(10_000),
+                timeout: UpDuration::from_millis(5_000),
+                failure_threshold: 3,
+            }),
+            ..AppConfig::default()
+        };
+        ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new())).reload_kind()
+    };
+    assert_eq!(probed(&[("http", "0.0.0.0:8080")]), ReloadKind::Overlap);
+    assert_eq!(probed(&[]), ReloadKind::Serial);
+}
+
+#[test]
 fn overridden_and_pending_are_read_off_the_view() {
     let pane = ConfigPane::sheep(web());
     assert!(pane.is_overridden("max_restarts"));

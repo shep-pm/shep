@@ -629,7 +629,13 @@ impl ConfigPane {
         } else {
             ConfiguredReadiness::Heuristic
         };
-        reload_mode(readiness, flag("reuse_port"))
+        let shares_a_socket = flag("reuse_port")
+            || self
+                .values
+                .get("listen")
+                .and_then(Value::as_object)
+                .is_some_and(|table| !table.is_empty());
+        reload_mode(readiness, shares_a_socket)
     }
 
     /// Adopts a previous pane's pending set, so a refresh does not silently

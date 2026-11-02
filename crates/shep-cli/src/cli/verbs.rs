@@ -105,7 +105,8 @@ pub enum Commands {
     /// What that failure COSTS depends on the order, and the order depends on
     /// the app.
     ///
-    /// An app with a readiness_probe and no reuse_port is replaced serially:
+    /// An app with a readiness_probe, no reuse_port and no listen table is
+    /// replaced serially:
     /// the old instance drains first, then the new one starts in its place. A probe asks an
     /// address, and an address cannot say which process answered it. Run both
     /// at once and the outgoing instance answers for the incoming one, so
@@ -120,14 +121,16 @@ pub enum Commands {
     ///
     /// Everything else overlaps, old and new running together: an app with no
     /// probe, an app using wait_ready (its channel belongs to one instance,
-    /// so nothing else can answer it), and a probed app that sets reuse_port.
+    /// so nothing else can answer it), a probed app that sets reuse_port, and
+    /// a probed app with a listen table.
     ///
     /// An overlap asks the same thing of all three. Both instances are bound
     /// at once, so an app that binds an address has to share the socket
-    /// itself, with SO_REUSEPORT set before it binds; shep binds nothing and
-    /// cannot set it on the app's behalf. Without that the replacement takes
-    /// EADDRINUSE on every reload, and the reload is abandoned with the old
-    /// instance left serving. This command has already exited 0 by then, so
+    /// itself, with SO_REUSEPORT set before it binds, unless the app has a
+    /// listen table: then shep binds the sockets once and every instance
+    /// inherits them, so nothing is bound twice. Without one of the two the
+    /// replacement takes EADDRINUSE on every reload, and the reload is
+    /// abandoned with the old instance left serving. This command has already exited 0 by then, so
     /// process.reload_abandoned on the bus is the only report of it.
     ///
     /// reuse_port neither creates that requirement nor satisfies it. It is how
