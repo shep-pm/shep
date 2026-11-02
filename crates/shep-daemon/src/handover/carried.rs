@@ -413,6 +413,73 @@ pub struct DogConnection {
     pub topics: Option<Vec<String>>,
 }
 
+/// One of a sheep's bound `listen` sockets, as the blob names it.
+///
+/// Keyed by the sheep's name and the entry's name in its `listen` table, since
+/// the sockets belong to the app and not to one instance. Not part of
+/// [`CarriedFds`]: its number is adopted to a socket the successor may
+/// replace, where every number there is refused when it fails.
+///
+/// `Debug` is derived: a name, an address and a descriptor number.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CarriedListener {
+    /// The sheep whose `listen` table holds the entry.
+    pub(super) sheep: String,
+    /// The entry's name in that table.
+    pub(super) name: String,
+    /// The address the table binds, as the shepherd parsed it, which is what
+    /// a later reload matches an address on.
+    pub(super) address: String,
+    /// The descriptor number the listening socket travels on.
+    pub(super) fd: RawFd,
+}
+
+impl CarriedListener {
+    /// The sheep whose `listen` table holds the entry.
+    #[must_use]
+    pub fn sheep(&self) -> &str {
+        &self.sheep
+    }
+
+    /// The entry's name in the sheep's `listen` table.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The address the entry binds, as the shepherd parsed it.
+    #[must_use]
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    /// The descriptor number the socket travels on.
+    #[must_use]
+    pub const fn fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
+/// The shepherd's end of one `listen` socket, held for the exec.
+///
+/// Owns a duplicate of the socket, so the number
+/// [`Handover::carry_listeners`](super::Handover::carry_listeners) writes into
+/// the blob cannot name a different file if the supervisor drops its set
+/// first.
+///
+/// `Debug` is derived: no env value reaches this type.
+#[derive(Debug)]
+pub struct HeldListener {
+    /// The sheep whose `listen` table holds the entry.
+    pub sheep: String,
+    /// The entry's name in that table.
+    pub name: String,
+    /// The address the entry binds, as the shepherd parsed it.
+    pub address: String,
+    /// The duplicate to carry.
+    pub fd: std::os::fd::OwnedFd,
+}
+
 /// The descriptor numbers one sheep's output travels on, the one its input
 /// travels back through, the one carrying both directions of its shepherd
 /// channel, and for a dog the one carrying its own connection.

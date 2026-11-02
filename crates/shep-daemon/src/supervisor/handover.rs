@@ -16,16 +16,20 @@ use super::*;
 #[cfg(unix)]
 pub(super) type Snapshot = (Vec<OwnedCandidate>, Handover, ParkedPumps);
 
-/// The log pumps a snapshot stopped, so a handover that is then abandoned
-/// can start them reading again.
+/// What a snapshot holds until the handover happens or is abandoned: the log
+/// pumps it stopped, and the `listen` sockets it duplicated.
 ///
 /// Taking the snapshot parks every pump that answers it, because a report is
 /// only true while nothing moves behind it. A pump that missed
 /// [`REPORT_DEADLINE`] never parked, so it is not in here. The party that
-/// parked them hands them back.
+/// parked them hands them back. The duplicates keep the numbers the blob names
+/// open sockets even if the supervisor drops its set meanwhile.
 #[cfg(unix)]
 #[derive(Debug, Default)]
-pub(crate) struct ParkedPumps(Vec<mpsc::Sender<LogCtl>>);
+pub(crate) struct ParkedPumps {
+    pumps: Vec<mpsc::Sender<LogCtl>>,
+    _listeners: Vec<HeldListener>,
+}
 
 #[cfg(unix)]
 impl ParkedPumps {
@@ -34,7 +38,7 @@ impl ParkedPumps {
     /// A send that fails is a pump that has ended since the report, which is
     /// nothing to repair.
     pub(crate) async fn resume(&self) {
-        for pump in &self.0 {
+        for pump in &self.pumps {
             let _ = pump.send(LogCtl::Resume).await;
         }
     }
@@ -91,6 +95,7 @@ pub(super) fn spawn_handover_task(
     fds: DaemonFds,
     counters: Counters,
     reloads: Vec<CarriedReload>,
+    listeners: Vec<HeldListener>,
     reply: oneshot::Sender<Result<Snapshot, SupervisorError>>,
 ) {
     tokio::spawn(async move {
@@ -141,10 +146,12 @@ pub(super) fn spawn_handover_task(
             candidates.push(candidate);
             carried.push(sheep);
             if let Some(log_ctl) = parked_pump {
-                parked.0.push(log_ctl);
+                parked.pumps.push(log_ctl);
             }
         }
-        let blob = Handover::new(carried, fds, counters, reloads);
+        let mut blob = Handover::new(carried, fds, counters, reloads);
+        blob.carry_listeners(&listeners);
+        parked._listeners = listeners;
         let _ = reply.send(Ok((candidates, blob, parked)));
     });
 }

@@ -68,7 +68,7 @@ fn hand_over_tuned(
     ) -> shep_handover::Handover<'a, Handover>,
 ) -> Result<Infallible, HandOverError> {
     let mut open = Vec::new();
-    for number in blob.named_fds() {
+    for number in blob.carried_fds() {
         let fd = OpenFd::new(number).map_err(|source| HandOverError::Descriptor {
             key: number.to_string(),
             source: io::Error::new(io::ErrorKind::InvalidInput, source),
@@ -103,7 +103,9 @@ pub fn arrive() -> Result<Option<Arrival<Handover>>, BootError> {
 ///
 /// Every number the blob names must have arrived under its own number as a key.
 /// Without that check the number-based adoption could take a descriptor this
-/// image opened. The descriptors are left open on a refusal too: a refused
+/// image opened. A `listen` socket is the exception: one that did not arrive
+/// under its number is closed if it arrived at all, and its absence is
+/// [`adopt`](super::adopt::adopt)'s to replace. The descriptors are left open on a refusal too: a refused
 /// rehydrate holds the pidfile lock, which stops a fresh boot from running
 /// beside the sheep this one failed to adopt.
 ///
@@ -142,6 +144,15 @@ pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
                     format!("the blob names descriptor {number}, which was not carried under it")
                 });
             }
+        }
+    }
+    for socket in blob.listeners() {
+        let Some(carried) = fds.take(&socket.fd().to_string()) else {
+            continue;
+        };
+        let owned = carried.into_owned_fd();
+        if owned.as_raw_fd() == socket.fd() {
+            let _ = owned.into_raw_fd();
         }
     }
     problem.map_or(Ok(blob), |problem| {
@@ -190,6 +201,7 @@ mod tests {
             next_deadline: 5,
             next_action_stamp: 2,
             reloads: Some(Vec::new()),
+            listeners: None,
         }
     }
 

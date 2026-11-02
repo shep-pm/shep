@@ -11,6 +11,9 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::net::{SocketAddr, TcpListener};
 
+#[cfg(unix)]
+use crate::handover::HeldListener;
+
 /// A sheep's bound listening sockets, in name order.
 ///
 /// Dropping the last handle closes them in the shepherd. A running instance
@@ -164,6 +167,46 @@ impl ListenSockets {
             .iter()
             .map(|e| e.listener.try_clone().map(std::os::fd::OwnedFd::from))
             .collect()
+    }
+}
+
+#[cfg(unix)]
+impl ListenSockets {
+    /// A duplicate of each socket, named for the handover blob, in fd order.
+    /// `sheep` is the app the set belongs to.
+    ///
+    /// # Errors
+    /// - The OS's error if a descriptor cannot be duplicated.
+    pub(crate) fn hold(&self, sheep: &str) -> std::io::Result<Vec<HeldListener>> {
+        self.entries
+            .iter()
+            .map(|e| {
+                Ok(HeldListener {
+                    sheep: sheep.to_string(),
+                    name: e.name.clone(),
+                    address: e.configured.to_string(),
+                    fd: e.listener.try_clone()?.into(),
+                })
+            })
+            .collect()
+    }
+
+    /// The set a successor rebuilt from sockets it inherited: each entry's
+    /// name, the address it was bound from, and the socket itself.
+    ///
+    /// Put in name order, as [`Self::bind`] leaves them.
+    pub(crate) fn from_adopted(mut entries: Vec<(String, SocketAddr, TcpListener)>) -> Self {
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        Self {
+            entries: entries
+                .into_iter()
+                .map(|(name, configured, listener)| Entry {
+                    name,
+                    configured,
+                    listener,
+                })
+                .collect(),
+        }
     }
 }
 

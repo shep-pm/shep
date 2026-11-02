@@ -227,6 +227,9 @@ pub(super) fn adopt_a_copy_keeping(
             dog_link: sheep.fds.dog_link.map(|fd| dups.of(fd)).transpose()?,
         };
     }
+    for listener in copy.listeners.iter_mut().flatten() {
+        listener.fd = dups.of(listener.fd)?;
+    }
     // Released before the fallible call: `adopt` consumes the numbers it
     // reaches and says nothing about which, so holding the guard across it
     // would close some twice. A leak bounded by a test binary is better.

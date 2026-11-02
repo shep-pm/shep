@@ -1,4 +1,5 @@
 use super::super::{CarriedFds, CarriedSheep, Handover};
+use super::adopt_listeners::{AdoptedListeners, adopt_listeners};
 use super::rehearse_blob::refuse_repeated_fds;
 use crate::sys;
 use std::fs::File;
@@ -16,6 +17,8 @@ pub struct Adopted {
     pub listener: tokio::net::UnixListener,
     /// Every sheep the blob described, in the blob's own order.
     pub sheep: Vec<AdoptedSheep>,
+    /// The `listen` sockets of every sheep that held some, by sheep.
+    pub listeners: Vec<AdoptedListeners>,
     /// The pidfile, held for the process's life so its `flock` is not
     /// released. Never written through here: an `execve` keeps the pid, so
     /// the number already in the file is this process's own.
@@ -83,12 +86,14 @@ pub fn adopt(blob: &Handover) -> io::Result<Adopted> {
         .iter()
         .map(adopt_sheep)
         .collect::<io::Result<Vec<_>>>()?;
+    let listeners = adopt_listeners(blob);
     // Last: an earlier refusal leaves this descriptor open and unowned, so
     // the `flock` it carries stays held.
     let pidfile = adopt_fd(blob.pidfile_fd, "the pidfile lock")?;
     Ok(Adopted {
         listener,
         sheep,
+        listeners,
         pidfile,
     })
 }

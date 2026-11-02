@@ -10,10 +10,14 @@
 //! earlier refusal leaves it open, unowned, and locked.
 
 mod adopt_descriptors;
+mod adopt_listeners;
 #[cfg(test)]
 mod dog_link_tests;
+#[cfg(test)]
+mod listener_tests;
 mod rehearse_blob;
 #[cfg(test)]
 mod testing;
 pub use adopt_descriptors::{AdoptedSheep, adopt};
+pub use adopt_listeners::AdoptedListeners;
 pub use rehearse_blob::{discard_blob, dry_run};

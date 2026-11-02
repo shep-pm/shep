@@ -19,7 +19,7 @@ use std::os::fd::RawFd;
 /// Names the repeated number, which is all anything here can know.
 pub(super) fn refuse_repeated_fds(blob: &Handover) -> io::Result<()> {
     let mut seen = std::collections::BTreeSet::new();
-    for fd in blob.named_fds() {
+    for fd in blob.carried_fds() {
         if !seen.insert(fd) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,

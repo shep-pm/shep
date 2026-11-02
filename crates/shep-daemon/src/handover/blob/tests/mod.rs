@@ -33,6 +33,7 @@ fn handover_over(entry: &ProcessEntry) -> Handover {
         next_deadline: 5,
         next_action_stamp: 2,
         reloads: Some(Vec::new()),
+        listeners: None,
     }
 }
 

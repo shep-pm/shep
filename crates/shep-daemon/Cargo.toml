@@ -82,8 +82,9 @@ notify-debouncer-full.workspace = true
 # is for sys.rs's readiness-pipe adoption: `nix::fcntl::fcntl`/
 # `FcntlArg::F_GETFD` lets `adopt_fd` refuse a closed descriptor. `time` is
 # for proc_table.rs: `CLOCK_BOOTTIME`, the clock Linux dates a process on.
+# `socket` is for sys.rs's `is_listening_socket`, which reads `SO_ACCEPTCONN`.
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["fs", "time"] }
+nix = { workspace = true, features = ["fs", "time", "socket"] }
 command-fds.workspace = true
 # The handover's mechanism: carrying descriptors, the envelope, the exec and
 # the reaping across it. This crate keeps only what the flock puts in it.

@@ -17,6 +17,9 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     pub(super) environment: String,
     pub(super) provider_secrets: Option<Arc<ProviderSecrets>>,
     pub(super) dog_defaults: DogDefaults,
+    /// The `listen` sockets a predecessor carried, one set per sheep.
+    #[cfg(unix)]
+    pub(super) adopted_listeners: Vec<AdoptedListeners>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -32,6 +35,8 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             environment: DEFAULT_ENVIRONMENT.to_string(),
             provider_secrets: None,
             dog_defaults: DogDefaults::default(),
+            #[cfg(unix)]
+            adopted_listeners: Vec::new(),
         }
     }
 
@@ -76,6 +81,17 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn dog_defaults(mut self, defaults: DogDefaults) -> Self {
         self.dog_defaults = defaults;
+        self
+    }
+
+    /// The `listen` sockets a predecessor handed over, which the next spawn or
+    /// reload of each sheep passes on instead of binding.
+    ///
+    /// Left empty, every sheep binds on its next start.
+    #[cfg(unix)]
+    #[must_use]
+    pub(crate) fn adopted_listeners(mut self, listeners: Vec<AdoptedListeners>) -> Self {
+        self.adopted_listeners = listeners;
         self
     }
 
@@ -135,6 +151,14 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
         let provider_secrets = self
             .provider_secrets
             .unwrap_or_else(|| Arc::new(ProviderSecrets::load(&self.paths.secrets_cache)));
+        #[cfg(unix)]
+        let listeners = self
+            .adopted_listeners
+            .into_iter()
+            .map(|adopted| (adopted.sheep, Arc::new(adopted.sockets)))
+            .collect();
+        #[cfg(not(unix))]
+        let listeners = BTreeMap::new();
         Actor {
             runner: self.runner,
             paths: self.paths,
@@ -154,7 +178,7 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             reloads: HashMap::new(),
             smits: Smits::new(),
             disabled: BTreeSet::new(),
-            listeners: BTreeMap::new(),
+            listeners,
             listeners_before: BTreeMap::new(),
         }
     }
