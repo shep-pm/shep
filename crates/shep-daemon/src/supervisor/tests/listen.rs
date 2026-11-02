@@ -33,6 +33,8 @@ fn a_probed_sheep_with_listen_overlaps_its_reload() {
     );
 }
 
+// `normalize` refuses `listen` on Windows, so these load it through one.
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_taken_address_fails_the_start_naming_it() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -57,6 +59,8 @@ async fn a_taken_address_fails_the_start_naming_it() {
     );
 }
 
+// `normalize` refuses `listen` on Windows, so these load it through one.
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn every_instance_of_a_scaled_sheep_gets_the_same_sockets() {
     let dir = tempfile::tempdir().unwrap();
@@ -95,6 +99,8 @@ async fn a_sheep_without_listen_is_handed_no_sockets() {
     assert!(runner.spawned_listen(0).is_none());
 }
 
+// `normalize` refuses `listen` on Windows, so these load it through one.
+#[cfg(unix)]
 #[tokio::test(start_paused = true)]
 async fn a_reload_that_leaves_listen_alone_keeps_the_set() {
     let dir = tempfile::tempdir().unwrap();

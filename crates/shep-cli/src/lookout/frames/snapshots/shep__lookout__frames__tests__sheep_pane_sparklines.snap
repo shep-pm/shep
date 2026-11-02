@@ -31,6 +31,7 @@ fold                        (unset)
 group                       (unset)                                                                
 instances                   3                                                                      
 interpreter                 (unset)                                                                
+listen                      (default)                                                              
 name                        web                                                                    
 reuse_port                  (default)                                                              
 sandbox                     (unset)                                                                
@@ -47,6 +48,5 @@ out_file                    (unset)
                                                                                                    
 ────────────────────────────────────────────────────────────────────────────                       
 inputs                                                                                             
-args                        ["--port","8080"]                                                      
                                                                                                    
 esc flock   e edit   J/K next sheep   x stop   R restart   L reload   b full log  … control enabled
