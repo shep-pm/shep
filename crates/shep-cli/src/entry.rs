@@ -147,21 +147,44 @@ mod tests {
     /// clap, does carry escape codes when the help is coloured.
     #[test]
     fn a_usage_error_prints_no_escape_codes_while_the_help_is_coloured() {
-        let bare: &[&str] = &["shep"];
-        for argv in [bare, &["shep", "strt"], &["shep", "--nonsense"]] {
-            let err = Cli::command()
-                .styles(output::paint::help_styles(true))
-                .color(clap::ColorChoice::Always)
+        for argv in [["shep", "strt"], ["shep", "--nonsense"]] {
+            let err = coloured(Cli::command())
                 .try_get_matches_from(argv)
                 .unwrap_err();
-            assert!(
-                err.render().ansi().to_string().contains('\x1b'),
-                "{argv:?}: clap's own rendering must be coloured"
-            );
-            let text = usage_error_text(&err).expect("a usage error");
-            assert!(!text.contains('\x1b'), "{argv:?}: got {text:?}");
-            assert!(text.contains("Usage:"), "{argv:?}: got {text:?}");
+            assert_plain_with_usage(&err, &format!("{argv:?}"));
         }
+    }
+
+    /// Bare `shep` is not used for this: with `$SHEP_HOME` unset clap shows
+    /// help instead of a missing-subcommand error, so its kind follows the
+    /// environment.
+    #[test]
+    fn a_missing_subcommand_error_prints_no_escape_codes_too() {
+        let command = clap::Command::new("shep")
+            .subcommand_required(true)
+            .subcommand(clap::Command::new("flock"));
+        let err = coloured(command)
+            .try_get_matches_from(["shep"])
+            .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingSubcommand);
+        assert_plain_with_usage(&err, "missing subcommand");
+    }
+
+    fn coloured(command: clap::Command) -> clap::Command {
+        command
+            .styles(output::paint::help_styles(true))
+            .color(clap::ColorChoice::Always)
+    }
+
+    fn assert_plain_with_usage(err: &clap::Error, what: &str) {
+        assert!(
+            err.render().ansi().to_string().contains('\x1b'),
+            "{what}: clap's own rendering must be coloured"
+        );
+        let text = usage_error_text(err)
+            .unwrap_or_else(|| panic!("{what}: kind {:?} is not a usage error", err.kind()));
+        assert!(!text.contains('\x1b'), "{what}: got {text:?}");
+        assert!(text.contains("Usage:"), "{what}: got {text:?}");
     }
 
     #[test]
