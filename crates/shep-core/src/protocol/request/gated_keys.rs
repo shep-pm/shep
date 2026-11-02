@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::Request;
 use crate::config::AppConfig;
-use crate::protocol::{LISTEN_SINCE, SANDBOX_SINCE};
+use crate::protocol::{LISTEN_SINCE, SANDBOX_DOG_SINCE};
 
 /// An `AppConfig` key that a shepherd below [`GatedKey::since`] ignores,
 /// running the sheep without what the key asked for.
@@ -19,6 +19,10 @@ pub struct GatedKey {
 /// One gated key and how to tell a request sets it.
 struct Gate {
     key: GatedKey,
+    /// The `SetSheepField` key that sets it.
+    field: &'static str,
+    /// The dog whose table `SetSheepDogSettings` sets, if a table gates it.
+    dog: Option<&'static str>,
     /// Whether an app carries the key with a value.
     in_app: fn(&AppConfig) -> bool,
     /// Whether `SetSheepField` sets the key to this value, as opposed to
@@ -27,13 +31,18 @@ struct Gate {
 }
 
 /// Every key a client refuses to send to a shepherd that predates it.
+///
+/// The old `sandbox` key gates with the `dogs.sandbox` table: a shepherd that
+/// does not spawn through the dog starts either unsandboxed.
 const GATES: [Gate; 2] = [
     Gate {
         key: GatedKey {
-            key: "sandbox",
-            since: SANDBOX_SINCE,
+            key: "dogs.sandbox",
+            since: SANDBOX_DOG_SINCE,
         },
-        in_app: |app| app.sandbox.is_some(),
+        field: "sandbox",
+        dog: Some("sandbox"),
+        in_app: |app| app.sandbox.is_some() || app.dogs.contains_key("sandbox"),
         sets: |value| !value.is_null(),
     },
     Gate {
@@ -41,6 +50,8 @@ const GATES: [Gate; 2] = [
             key: "listen",
             since: LISTEN_SINCE,
         },
+        field: "listen",
+        dog: None,
         in_app: |app| !app.listen.is_empty(),
         sets: |value| !value.is_null() && value.as_object().is_none_or(|table| !table.is_empty()),
     },
@@ -67,7 +78,10 @@ impl Request {
                 apps.iter().any(gate.in_app)
             }
             Self::ApplyConfig { apps, .. } => apps.iter().any(|app| (gate.in_app)(&app.config)),
-            Self::SetSheepField { key, value, .. } => key == gate.key.key && (gate.sets)(value),
+            Self::SetSheepField { key, value, .. } => key == gate.field && (gate.sets)(value),
+            Self::SetSheepDogSettings { dog, table, .. } => {
+                gate.dog == Some(dog.as_str()) && table.is_some()
+            }
             _ => false,
         }
     }
@@ -76,10 +90,20 @@ impl Request {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AppConfig, DeclaredApp};
+    use crate::config::{AppConfig, DeclaredApp, DogTable};
     use serde_json::json;
 
+    fn table() -> DogTable {
+        serde_json::from_value(json!({"profile": "strict"})).unwrap()
+    }
+
     fn sandboxed() -> AppConfig {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.dogs.insert("sandbox".to_string(), table());
+        app
+    }
+
+    fn old_sandboxed() -> AppConfig {
         AppConfig {
             sandbox: Some("sandbox.json".to_string()),
             ..AppConfig::minimal("web", "./srv")
@@ -102,8 +126,8 @@ mod tests {
     }
 
     const SANDBOX: GatedKey = GatedKey {
-        key: "sandbox",
-        since: SANDBOX_SINCE,
+        key: "dogs.sandbox",
+        since: SANDBOX_DOG_SINCE,
     };
     const LISTEN: GatedKey = GatedKey {
         key: "listen",
@@ -130,6 +154,86 @@ mod tests {
     }
 
     #[test]
+    fn a_load_of_an_app_with_a_sandbox_dog_table_asks_for_one() {
+        let app = sandboxed();
+        for request in [
+            Request::Start {
+                apps: vec![app.clone()],
+            },
+            Request::Add {
+                apps: vec![app.clone()],
+            },
+            Request::ConfigDrift {
+                apps: vec![app.clone()],
+            },
+            Request::ApplyConfig {
+                apps: vec![declared(app)],
+                reset: Default::default(),
+            },
+        ] {
+            assert_eq!(request.gated_key_dropped_at(0), Some(SANDBOX));
+        }
+    }
+
+    #[test]
+    fn the_old_sandbox_key_still_asks_for_one() {
+        let request = Request::Start {
+            apps: vec![old_sandboxed()],
+        };
+        assert_eq!(
+            request.gated_key_dropped_at(SANDBOX_DOG_SINCE - 1),
+            Some(SANDBOX)
+        );
+        let merge = Request::ApplyConfig {
+            apps: vec![declared(old_sandboxed())],
+            reset: Default::default(),
+        };
+        assert_eq!(
+            merge.gated_key_dropped_at(SANDBOX_DOG_SINCE - 1),
+            Some(SANDBOX)
+        );
+        let set = Request::SetSheepField {
+            name: "web".to_string(),
+            key: "sandbox".to_string(),
+            value: json!("sandbox.json"),
+        };
+        assert_eq!(set.gated_key_dropped_at(0), Some(SANDBOX));
+        let cleared = Request::SetSheepField {
+            name: "web".to_string(),
+            key: "sandbox".to_string(),
+            value: json!(null),
+        };
+        assert_eq!(cleared.gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn setting_the_sandbox_dog_table_asks_for_one_and_removing_it_does_not() {
+        let set = |table| Request::SetSheepDogSettings {
+            name: "web".to_string(),
+            dog: "sandbox".to_string(),
+            table,
+        };
+        assert_eq!(set(Some(table())).gated_key_dropped_at(0), Some(SANDBOX));
+        assert_eq!(set(None).gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn a_table_for_another_dog_asks_for_none() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.dogs.insert("metrics".to_string(), table());
+        assert_eq!(
+            Request::Start { apps: vec![app] }.gated_key_dropped_at(0),
+            None
+        );
+        let set = Request::SetSheepDogSettings {
+            name: "web".to_string(),
+            dog: "metrics".to_string(),
+            table: Some(table()),
+        };
+        assert_eq!(set.gated_key_dropped_at(0), None);
+    }
+
+    #[test]
     fn a_merge_of_a_gated_app_names_its_key() {
         for (app, key) in [(sandboxed(), SANDBOX), (listening(), LISTEN)] {
             let request = Request::ApplyConfig {
@@ -141,23 +245,18 @@ mod tests {
     }
 
     #[test]
-    fn setting_a_gated_key_names_it_and_clearing_it_does_not() {
-        let set = |key: &str, value| Request::SetSheepField {
+    fn setting_a_listen_names_it_and_clearing_it_does_not() {
+        let set = |value| Request::SetSheepField {
             name: "web".to_string(),
-            key: key.to_string(),
+            key: "listen".to_string(),
             value,
         };
         assert_eq!(
-            set("sandbox", json!("sandbox.json")).gated_key_dropped_at(0),
-            Some(SANDBOX)
-        );
-        assert_eq!(set("sandbox", json!(null)).gated_key_dropped_at(0), None);
-        assert_eq!(
-            set("listen", json!({"http": "0.0.0.0:8080"})).gated_key_dropped_at(0),
+            set(json!({"http": "0.0.0.0:8080"})).gated_key_dropped_at(0),
             Some(LISTEN)
         );
-        assert_eq!(set("listen", json!({})).gated_key_dropped_at(0), None);
-        assert_eq!(set("listen", json!(null)).gated_key_dropped_at(0), None);
+        assert_eq!(set(json!({})).gated_key_dropped_at(0), None);
+        assert_eq!(set(json!(null)).gated_key_dropped_at(0), None);
     }
 
     #[test]
@@ -166,10 +265,9 @@ mod tests {
             apps: vec![sandboxed(), listening()],
         };
         assert_eq!(request.gated_key_dropped_at(LISTEN_SINCE), None);
-        // Below `listen` but at `sandbox`'s version, only `listen` is lost.
-        assert_eq!(request.gated_key_dropped_at(SANDBOX_SINCE), Some(LISTEN));
+        assert_eq!(request.gated_key_dropped_at(SANDBOX_DOG_SINCE), None);
         assert_eq!(
-            request.gated_key_dropped_at(SANDBOX_SINCE - 1),
+            request.gated_key_dropped_at(SANDBOX_DOG_SINCE - 1),
             Some(SANDBOX)
         );
     }

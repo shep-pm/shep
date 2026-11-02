@@ -269,9 +269,15 @@ pub fn normalize_with_home(
     }
     // Before the sandbox check: a Windows build refuses `sandbox` outright,
     // and `listen` with it should say so about `listen`.
-    let sandboxed = app.sandbox.is_some() || app.dogs.contains_key("sandbox");
+    let sandbox_table = app.dogs.contains_key("sandbox");
+    let sandboxed = app.sandbox.is_some() || sandbox_table;
     validate::validate_listen(&app.name, &app.listen, sandboxed, cfg!(windows))?;
-    validate::validate_sandbox(&app.name, app.sandbox.as_deref(), cfg!(windows))?;
+    validate::validate_sandbox(
+        &app.name,
+        app.sandbox.as_deref(),
+        sandbox_table,
+        cfg!(windows),
+    )?;
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(app.depends_on.len());
     for target in &app.depends_on {

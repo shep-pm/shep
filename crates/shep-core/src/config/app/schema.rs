@@ -417,7 +417,8 @@ pub struct AppConfig {
         "blurb": "Settings for one dog on this sheep alone, opaque to shep",
         "accepts": ["a table of dog name to a table of settings",
                     "a dog name shep does not know about yet"],
-        "refuses": ["a value that is not a table", "an empty dog name"]
+        "refuses": ["a value that is not a table", "an empty dog name",
+                    "a sandbox table on Windows"]
     })))]
     pub dogs: BTreeMap<String, DogTable>,
     /// Open the shepherd channel on fd 3 for this app on its own, without

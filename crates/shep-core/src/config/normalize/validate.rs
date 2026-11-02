@@ -101,24 +101,22 @@ pub(super) fn validate_probe(
     Ok(())
 }
 
-/// Validates `sandbox`, if the app sets one.
+/// Validates `sandbox` and the `dogs.sandbox` table, if the app sets either.
 ///
-/// `windows` is passed in rather than read from `cfg!` so both answers are
+/// `dog_table` is whether the app holds a `dogs.sandbox` table. `windows` is passed in rather than read from `cfg!` so both answers are
 /// testable on one host.
 pub(super) fn validate_sandbox(
     name: &str,
     sandbox: Option<&str>,
+    dog_table: bool,
     windows: bool,
 ) -> Result<(), NormalizeError> {
-    let Some(sandbox) = sandbox else {
-        return Ok(());
-    };
-    if sandbox.is_empty() {
+    if sandbox.is_some_and(str::is_empty) {
         return Err(NormalizeError::EmptySandbox {
             name: name.to_string(),
         });
     }
-    if windows {
+    if windows && (sandbox.is_some() || dog_table) {
         // crabpot's Windows sandbox cannot start from session 0, where the
         // shepherd runs as a service.
         return Err(NormalizeError::SandboxOnWindows {
@@ -420,13 +418,16 @@ target = "http://127.0.0.1:8080/healthz"
 
     #[test]
     fn a_sandbox_file_is_accepted_off_windows() {
-        assert_eq!(validate_sandbox("web", Some("sandbox.json"), false), Ok(()));
-        assert_eq!(validate_sandbox("web", None, false), Ok(()));
+        assert_eq!(
+            validate_sandbox("web", Some("sandbox.json"), false, false),
+            Ok(())
+        );
+        assert_eq!(validate_sandbox("web", None, false, false), Ok(()));
     }
 
     #[test]
     fn an_empty_sandbox_is_refused() {
-        let err = validate_sandbox("web", Some(""), false).unwrap_err();
+        let err = validate_sandbox("web", Some(""), false, false).unwrap_err();
         assert_eq!(
             err,
             NormalizeError::EmptySandbox {
@@ -438,7 +439,7 @@ target = "http://127.0.0.1:8080/healthz"
 
     #[test]
     fn the_sandbox_key_is_refused_on_windows() {
-        let err = validate_sandbox("web", Some("sandbox.json"), true).unwrap_err();
+        let err = validate_sandbox("web", Some("sandbox.json"), false, true).unwrap_err();
         assert_eq!(
             err,
             NormalizeError::SandboxOnWindows {
@@ -446,7 +447,20 @@ target = "http://127.0.0.1:8080/healthz"
             }
         );
         assert!(err.to_string().contains("Windows"), "{err}");
-        assert_eq!(validate_sandbox("web", None, true), Ok(()));
+        assert_eq!(validate_sandbox("web", None, false, true), Ok(()));
+    }
+
+    #[test]
+    fn a_sandbox_dog_table_is_refused_on_windows_and_accepted_elsewhere() {
+        assert_eq!(validate_sandbox("web", None, true, false), Ok(()));
+        let err = validate_sandbox("web", None, true, true).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::SandboxOnWindows {
+                name: "web".to_string()
+            }
+        );
+        assert!(err.to_string().contains("dogs.sandbox"), "{err}");
     }
 
     #[test]
@@ -460,6 +474,16 @@ target = "http://127.0.0.1:8080/healthz"
             }
         );
         app.sandbox = Some("sandbox.json".to_string());
+        assert_eq!(normalize(app).is_err(), cfg!(windows));
+    }
+
+    #[test]
+    fn normalize_refuses_a_sandbox_dog_table_only_on_windows() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.dogs.insert(
+            "sandbox".to_string(),
+            crate::config::DogTable::from(serde_json::Map::new()),
+        );
         assert_eq!(normalize(app).is_err(), cfg!(windows));
     }
 

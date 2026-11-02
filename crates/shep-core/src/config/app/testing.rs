@@ -417,6 +417,17 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             sheep(|a| a.sandbox = Some("sandbox.json".to_owned())),
             |e| matches!(e, NormalizeError::SandboxOnWindows { .. }),
         ),
+        refused_on_windows(
+            "dogs",
+            "a sandbox table on Windows",
+            sheep(|a| {
+                a.dogs.insert(
+                    "sandbox".to_owned(),
+                    crate::config::DogTable::from(serde_json::Map::new()),
+                );
+            }),
+            |e| matches!(e, NormalizeError::SandboxOnWindows { .. }),
+        ),
         refused(
             "listen",
             "an address that does not parse",
