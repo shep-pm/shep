@@ -44,21 +44,27 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     // bare `shep` and `shep help` could not carry a status line. The command
     // is built here because adopted dogs join the hand-written `--help`
     // listing, and clap bakes that render into its `--help` error.
+    let deep = style::deep_colour_terminal(
+        std::env::var_os("TERM").as_deref(),
+        std::env::var_os("COLORTERM").as_deref(),
+    );
     let mut command = Cli::command()
-        .styles(output::paint::help_styles(style::deep_colour_terminal(
-            std::env::var_os("TERM").as_deref(),
-            std::env::var_os("COLORTERM").as_deref(),
-        )))
+        .styles(output::paint::help_styles(deep))
         .color(help_colour_choice(
             &argv,
             std::env::var("SHEP_STYLE").ok().as_deref(),
         ));
     // Help colour is chosen above, ahead of the parse and `resolve_style`.
-    if adopted_help::top_level_help_asked(&argv)
+    let dogs = if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)
     {
-        adopted_help::list_in_help(&mut command, &adopted_help::adopted_verbs(&paths));
-    }
+        adopted_help::adopted_verbs(&paths)
+    } else {
+        Vec::new()
+    };
+    // The hand-written verb listing is template text clap's styles cannot
+    // reach, so it is painted as the template is set.
+    adopted_help::list_in_help(&mut command, &dogs, deep);
     let parsed = command
         .try_get_matches_from(argv.clone())
         .and_then(|mut matches| Cli::from_arg_matches_mut(&mut matches));

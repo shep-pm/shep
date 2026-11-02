@@ -152,26 +152,25 @@ pub(crate) fn paths_from_argv(argv: &[OsString]) -> Option<ShepPaths> {
     home::resolve_paths(&global).ok()
 }
 
-/// Render `verbs` into the Dogs group of `command`'s help template.
-///
-/// Does nothing without dogs, so a home with none renders `HELP_TEMPLATE` as is.
+/// Render `verbs` into the Dogs group of `command`'s help template, painted
+/// at `deep`'s colour depth.
 ///
 /// # Panics
 ///
-/// Panics, naming the heading, when `HELP_TEMPLATE` has lost `Dogs and agents`.
+/// Panics, naming the heading, when there are dogs and `HELP_TEMPLATE` has
+/// lost `Dogs and agents`.
 #[track_caller]
-pub(crate) fn list_in_help(command: &mut clap::Command, verbs: &[AdoptedVerb]) {
-    if verbs.is_empty() {
-        return;
-    }
-
+pub(crate) fn list_in_help(command: &mut clap::Command, verbs: &[AdoptedVerb], deep: bool) {
     let mut lines: Vec<String> = HELP_TEMPLATE.lines().map(str::to_string).collect();
-    let at = lines
-        .iter()
-        .position(|line| line.starts_with(DOG_GROUP_HEADING))
-        .expect("HELP_TEMPLATE has a Dogs group");
-    lines.splice(at + 1..at + 1, dog_lines(verbs));
-    *command = std::mem::take(command).help_template(lines.join("\n"));
+    if !verbs.is_empty() {
+        let at = lines
+            .iter()
+            .position(|line| line.starts_with(DOG_GROUP_HEADING))
+            .expect("HELP_TEMPLATE has a Dogs group");
+        lines.splice(at + 1..at + 1, dog_lines(verbs));
+    }
+    let template = crate::cli::dress_help_template(&lines.join("\n"), deep);
+    *command = std::mem::take(command).help_template(template);
 }
 
 /// The lines the dogs get under the group heading: each name in the column

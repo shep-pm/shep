@@ -76,6 +76,127 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
 
 {options}{after-help}";
 
+/// `template` with the palette applied to its hand-written listing, which
+/// clap's own styles cannot reach.
+///
+/// Group headings and labels get the headings' style and the verbs the
+/// literals', as in [`crate::output::paint::help_styles`]. Only escape codes
+/// are added, so clap strips them with the rest when colour is off and the
+/// plain text stays `template`'s, adopted dogs included.
+pub(crate) fn dress_help_template(template: &str, deep: bool) -> String {
+    dress(template, &Dress::new(deep))
+}
+
+/// The two styles [`dress`] paints with.
+struct Dress {
+    heading: anstyle::Style,
+    verb: anstyle::Style,
+}
+
+impl Dress {
+    fn new(deep: bool) -> Self {
+        let styles = crate::output::paint::help_styles(deep);
+        Self {
+            heading: *styles.get_header(),
+            verb: *styles.get_literal(),
+        }
+    }
+
+    fn paint(&self, style: anstyle::Style, text: &str) -> String {
+        format!("{style}{text}{style:#}")
+    }
+
+    /// Every word of `text` as a verb, keeping the spaces and any trailing
+    /// `:` or `,` plain.
+    fn verbs(&self, text: &str) -> String {
+        text.split(' ')
+            .map(|piece| {
+                let word = piece.trim_end_matches([':', ',']);
+                if word.is_empty() {
+                    return piece.to_string();
+                }
+                format!("{}{}", self.paint(self.verb, word), &piece[word.len()..])
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// `line` split at the first run of two spaces: a heading, then the rest.
+    fn labelled(&self, line: &str, rest: impl Fn(&str) -> String) -> String {
+        match line.split_once("  ") {
+            Some((label, tail)) => {
+                format!("{}  {}", self.paint(self.heading, label), rest(tail))
+            }
+            None => self.paint(self.heading, line),
+        }
+    }
+}
+
+/// Where [`dress`] is in the template.
+#[derive(Clone, Copy)]
+enum Block {
+    Prose,
+    Examples,
+    Groups,
+}
+
+fn dress(template: &str, dress: &Dress) -> String {
+    let mut block = Block::Prose;
+    let lines: Vec<String> = template
+        .lines()
+        .map(|line| match (block, line) {
+            (Block::Prose, "Getting started") => {
+                block = Block::Examples;
+                dress.paint(dress.heading, line)
+            }
+            (Block::Examples, "") => {
+                block = Block::Groups;
+                String::new()
+            }
+            (Block::Groups, "") => {
+                block = Block::Prose;
+                String::new()
+            }
+            (Block::Examples, _) => match line.strip_prefix("  shep ") {
+                Some(rest) => {
+                    let (verb, tail) = rest.split_once(' ').unwrap_or((rest, ""));
+                    let tail = if tail.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {tail}")
+                    };
+                    format!("  shep {}{tail}", dress.paint(dress.verb, verb))
+                }
+                None => line.to_string(),
+            },
+            // A dog line: the name sits under the verbs, its description is prose.
+            (Block::Groups, _) if line.starts_with(' ') => {
+                let name = line.trim_start();
+                let indent = &line[..line.len() - name.len()];
+                match name.split_once("  ") {
+                    Some((name, description)) => {
+                        format!("{indent}{}  {description}", dress.paint(dress.verb, name))
+                    }
+                    None => format!("{indent}{}", dress.paint(dress.verb, name)),
+                }
+            }
+            (Block::Groups, _) => dress.labelled(line, |verbs| dress.verbs(verbs)),
+            (Block::Prose, _) if line.starts_with("Aliases  ") => {
+                dress.labelled(line, |rest| dress.verbs(rest))
+            }
+            (Block::Prose, _) if line.starts_with("Upgrading  ") => {
+                dress.labelled(line, str::to_string)
+            }
+            _ => line.to_string(),
+        })
+        .collect();
+    let mut dressed = lines.join("\n");
+    if template.ends_with('\n') {
+        dressed.push('\n');
+    }
+    dressed
+}
+
 /// `shep --version`'s extra line: the protocol this build speaks and accepts.
 ///
 /// `-V` still prints the bare crate version. clap's `long_version` wants a
@@ -552,6 +673,53 @@ mod tests {
             !help.contains("[`"),
             "Rust intra-doc-link syntax reached --help -- an aside meant for a reader of the \
              source, not the terminal, belongs on a `//` comment rather than a `///` one:\n{help}"
+        );
+    }
+
+    /// The listing clap cannot style is dressed by hand: every group heading
+    /// and verb, the example verbs, and the Aliases and Upgrading labels.
+    #[test]
+    fn the_hand_written_listing_is_painted_in_the_palette() {
+        use clap::CommandFactory;
+        let command = Cli::command()
+            .styles(crate::output::paint::help_styles(true))
+            .help_template(dress_help_template(HELP_TEMPLATE, true));
+        let ansi = command.clone().render_long_help().ansi().to_string();
+        let heading = |text: &str| format!("\x1b[1m\x1b[38;5;221m{text}\x1b[0m");
+        let verb = |text: &str| format!("\x1b[38;5;29m{text}\x1b[0m");
+        for expected in [
+            heading("Getting started"),
+            format!("shep {} server.js", verb("start")),
+            heading("Run things"),
+            verb("restart"),
+            heading("See what's up"),
+            heading("Help"),
+            heading("Aliases"),
+            format!("{}: {}, {}", verb("flock"), verb("list"), verb("ls")),
+            heading("Upgrading"),
+        ] {
+            assert!(ansi.contains(&expected), "missing {expected:?} in {ansi:?}");
+        }
+    }
+
+    #[test]
+    fn dressing_the_listing_leaves_its_plain_text_alone() {
+        use clap::CommandFactory;
+        let today = Cli::command().render_long_help().to_string();
+        let mut dressed = Cli::command().help_template(dress_help_template(HELP_TEMPLATE, true));
+        assert_eq!(dressed.render_long_help().to_string(), today);
+    }
+
+    #[test]
+    fn dressing_paints_an_adopted_dogs_name_and_not_its_description() {
+        let template = format!("{HELP_TEMPLATE}\n").replace(
+            "Dogs and agents  dogs adopt whistle",
+            "Dogs and agents  dogs adopt whistle\n                 otel  exports traces",
+        );
+        let dressed = dress(&template, &Dress::new(true));
+        assert!(
+            dressed.contains("                 \x1b[38;5;29motel\x1b[0m  exports traces"),
+            "got {dressed:?}"
         );
     }
 }
