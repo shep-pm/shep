@@ -191,6 +191,12 @@ async fn reload_with_wait(
     {
         match ask_fitness(client).await {
             Fitness::Carryable => {
+                // A failure, unlike a refused fitness: the successor would
+                // refuse such a sheep at adoption and strand the flock, and
+                // the stop arm would only trade that for a flock that is down.
+                if let Some(reason) = super::reload_sandbox::refusal(client).await {
+                    return streams.fail(ExitCode::InvalidConfig, &reason);
+                }
                 // Before the signal: the shepherd is about to replace its own
                 // image, and this connection would not survive it.
                 drop(connected);

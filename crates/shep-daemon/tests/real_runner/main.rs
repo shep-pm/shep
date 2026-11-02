@@ -6,7 +6,7 @@
 //! `signals` the signal paths, `channel` fd 3, `identity` the credentials a
 //! spawn asks the OS for, `listen` the descriptors a socket-activated sheep is born with,
 //! `environment` the `PATH` and stdin a child
-//! inherits, `sandbox` the crabpot wrapping, `launch` the sandbox dog's, `adoption` the seam a successor
+//! inherits, `launch` the sandbox dog's, `adoption` the seam a successor
 //! reaches a running sheep through.
 
 #![cfg(unix)]
@@ -35,7 +35,6 @@ mod identity;
 mod launch;
 mod listen;
 mod logs;
-mod sandbox;
 mod signals;
 
 pub(crate) use channel::*;

@@ -8,6 +8,8 @@ use super::adopt_fixtures::{
     without_handles,
 };
 use super::*;
+use crate::supervisor::error::AdoptError;
+use shep_core::config::NormalizeError;
 mod disabled;
 mod dogs;
 
@@ -382,5 +384,32 @@ async fn an_adopted_flock_announces_none_of_the_tables_it_carried() {
         announced,
         [("jobs".to_string(), "api".to_string())],
         "web's table crossed the handover and is not news"
+    );
+}
+
+/// A v0.22 shepherd handed over by a raw signal, past the CLI's check, carries
+/// a sheep whose config still sets `sandbox`. Fails if the successor adopts it
+/// and so runs a restart of it without the sandbox the operator asked for.
+#[cfg(unix)]
+#[tokio::test(start_paused = true)]
+async fn a_carried_sheep_that_sets_the_removed_sandbox_key_is_refused_not_unsandboxed() {
+    let mut blob = serde_json::to_value(carried("boxed", 0, Some(4242), |_| {})).unwrap();
+    blob["app"]["sandbox"] = serde_json::json!("box.json");
+    let crossed: CarriedSheep = serde_json::from_value(blob).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let (events, _rx) = crate::bus::test_bus(64);
+    let refused = SupervisorBuilder::new(AdoptingRunner, test_paths(&dir), events)
+        .spawn_adopted(vec![without_handles(crossed)], counters(1), Vec::new())
+        .expect_err("a carried sheep that sets the removed key must be refused");
+
+    assert!(
+        matches!(
+            &refused,
+            AdoptError::Spec { sheep, source }
+                if sheep == "boxed"
+                    && matches!(source, NormalizeError::SandboxKeyRemoved { .. })
+        ),
+        "{refused:?}"
     );
 }

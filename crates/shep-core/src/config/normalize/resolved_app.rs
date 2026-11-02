@@ -122,6 +122,8 @@ pub fn normalize_with_home(
     if app.name.contains(['/', '\\', ':']) || app.name == "." || app.name == ".." {
         return Err(NormalizeError::InvalidName(app.name));
     }
+    // First, so no later check can answer a removed key with another error.
+    validate::validate_sandbox_key(&app.name, app.sandbox.as_deref())?;
     if let Some(environment) = &app.environment
         && (environment == secrets::ALL_ENVIRONMENTS || !secrets::is_name(environment))
     {
@@ -267,17 +269,11 @@ pub fn normalize_with_home(
     if app.dogs.keys().any(String::is_empty) {
         return Err(NormalizeError::EmptyDogName { name: app.name });
     }
-    // Before the sandbox check: a Windows build refuses `sandbox` outright,
+    // Before the sandbox check: a Windows build refuses the table outright,
     // and `listen` with it should say so about `listen`.
-    let sandbox_table = app.dogs.contains_key("sandbox");
-    let sandboxed = app.sandbox.is_some() || sandbox_table;
+    let sandboxed = app.dogs.contains_key("sandbox");
     validate::validate_listen(&app.name, &app.listen, sandboxed, cfg!(windows))?;
-    validate::validate_sandbox(
-        &app.name,
-        app.sandbox.as_deref(),
-        sandbox_table,
-        cfg!(windows),
-    )?;
+    validate::validate_sandbox(&app.name, sandboxed, cfg!(windows))?;
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(app.depends_on.len());
     for target in &app.depends_on {

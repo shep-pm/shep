@@ -97,12 +97,12 @@ pub fn expand_home_tilde(value: &str, home: Option<&Path>) -> Result<String, Til
 /// Every field of an [`AppConfig`] that carries a filesystem path.
 ///
 /// Named once, and walked by [`expand_paths`] and by its own test, so a
-/// sixth path field added later fails that test until it is handled.
+/// fifth path field added later fails that test until it is handled.
 /// Expanding `~/` in some path fields and not others would be worse than
 /// expanding in none: it teaches that tildes work and then fails somewhere
 /// the operator has no reason to suspect.
 #[cfg(test)]
-const PATH_FIELDS: &[&str] = &["script", "cwd", "out_file", "err_file", "sandbox"];
+const PATH_FIELDS: &[&str] = &["script", "cwd", "out_file", "err_file"];
 
 /// Expands `~/` in every path field of `app`, in place.
 ///
@@ -115,7 +115,6 @@ pub(super) fn expand_paths(app: &mut AppConfig, home: Option<&Path>) -> Result<(
         ("cwd", &mut app.cwd),
         ("out_file", &mut app.out_file),
         ("err_file", &mut app.err_file),
-        ("sandbox", &mut app.sandbox),
     ] {
         if let Some(value) = slot {
             *slot = Some(expand_tilde(value, home, &name, field)?);
@@ -397,7 +396,7 @@ mod tests {
         assert!(err.to_string().contains("slot"), "{err}");
     }
 
-    /// All five path fields expand `~/`, and expanding some but not others
+    /// All four path fields expand `~/`, and expanding some but not others
     /// would be worse than expanding none: it teaches that tildes work and
     /// then fails where the operator has no reason to suspect it.
     #[test]
@@ -407,10 +406,8 @@ mod tests {
         app.cwd = Some("~/app".to_string());
         app.out_file = Some("~/logs/out.log".to_string());
         app.err_file = Some("~/logs/err.log".to_string());
-        app.sandbox = Some("~/box.json".to_string());
 
-        // Not `normalize_with_home`: Windows refuses `sandbox` there.
-        expand_paths(&mut app, Some(home)).expect("all five expand");
+        expand_paths(&mut app, Some(home)).expect("all four expand");
         let c = &app;
         // Expectations are built with `join` rather than written as literals:
         // the separator is `/` here and `\` on Windows, and hardcoding one
@@ -420,12 +417,11 @@ mod tests {
         assert_eq!(c.cwd.as_deref(), Some(expect("app").as_str()));
         assert_eq!(c.out_file.as_deref(), Some(expect("logs/out.log").as_str()));
         assert_eq!(c.err_file.as_deref(), Some(expect("logs/err.log").as_str()));
-        assert_eq!(c.sandbox.as_deref(), Some(expect("box.json").as_str()));
     }
 
-    /// The anti-drift half. A sixth path field added to `AppConfig` fails
+    /// The anti-drift half. A fifth path field added to `AppConfig` fails
     /// here until `expand_paths` handles it, which is the only thing keeping
-    /// the "all five or none" rule true over time.
+    /// the "all four or none" rule true over time.
     #[test]
     fn the_path_field_list_matches_what_expand_paths_walks() {
         let home = Path::new("/home/ada");
@@ -433,7 +429,6 @@ mod tests {
         app.cwd = Some("~/c".to_string());
         app.out_file = Some("~/o".to_string());
         app.err_file = Some("~/e".to_string());
-        app.sandbox = Some("~/b".to_string());
 
         expand_paths(&mut app, Some(home)).expect("expands");
         let c = &app;
@@ -442,7 +437,6 @@ mod tests {
             ("cwd", c.cwd.as_deref()),
             ("out_file", c.out_file.as_deref()),
             ("err_file", c.err_file.as_deref()),
-            ("sandbox", c.sandbox.as_deref()),
         ];
         assert_eq!(
             expanded.len(),

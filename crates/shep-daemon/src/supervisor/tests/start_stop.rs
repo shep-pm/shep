@@ -444,17 +444,25 @@ async fn restarting_a_stopped_sheep_resets_the_budget() {
     );
 }
 
-// `normalize` refuses `sandbox` on Windows.
+// `normalize` refuses a sandbox dog table on Windows.
 #[cfg(unix)]
 #[tokio::test(start_paused = true)]
-async fn a_sandboxed_sheep_exiting_125_errors_once_without_a_restart() {
+async fn a_sheep_with_a_sandbox_table_exiting_125_errors_once_without_a_restart() {
     let (events, mut rx) = crate::bus::test_bus(256);
     // The second script is a restart's, which must never be taken.
     let runner = ScriptedRunner::new(vec![ProcScript::const_exit(125), ProcScript::never_exits()]);
     let dir = tempfile::tempdir().unwrap();
-    let handle = spawn_supervisor(runner, test_paths(&dir), events);
+    let handle = SupervisorBuilder::new(runner, test_paths(&dir), events)
+        .dog_binaries(BTreeMap::from([(
+            "sandbox".to_owned(),
+            "/opt/dogs/box".to_owned(),
+        )]))
+        .spawn();
     let mut app = AppConfig::minimal("jailed", "./srv");
-    app.sandbox = Some("sandbox.json".to_owned());
+    app.dogs.insert(
+        "sandbox".to_owned(),
+        serde_json::from_value(serde_json::json!({})).unwrap(),
+    );
     handle.start(vec![normalize(app).unwrap()]).await.unwrap();
 
     let manually = await_event(&mut rx, 0, ProcessEventKind::SandboxRefused).await;
@@ -499,6 +507,6 @@ async fn an_unsandboxed_sheep_exiting_125_is_restarted_like_any_exit() {
     await_event(&mut rx, 0, ProcessEventKind::Restart).await;
     assert!(
         !drained_process_kinds(&mut rx).contains(&ProcessEventKind::SandboxRefused),
-        "a sheep without `sandbox` has nothing to refuse"
+        "a sheep without a sandbox table has nothing to refuse"
     );
 }

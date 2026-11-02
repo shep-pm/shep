@@ -101,22 +101,31 @@ pub(super) fn validate_probe(
     Ok(())
 }
 
-/// Validates `sandbox` and the `dogs.sandbox` table, if the app sets either.
+/// Refuses the removed `sandbox` key, whatever its value.
+///
+/// A path that ignored the key would run the sheep unsandboxed.
+pub(super) fn validate_sandbox_key(
+    name: &str,
+    sandbox: Option<&str>,
+) -> Result<(), NormalizeError> {
+    if sandbox.is_some() {
+        return Err(NormalizeError::SandboxKeyRemoved {
+            name: name.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validates the `dogs.sandbox` table, if the app sets one.
 ///
 /// `dog_table` is whether the app holds a `dogs.sandbox` table. `windows` is passed in rather than read from `cfg!` so both answers are
 /// testable on one host.
 pub(super) fn validate_sandbox(
     name: &str,
-    sandbox: Option<&str>,
     dog_table: bool,
     windows: bool,
 ) -> Result<(), NormalizeError> {
-    if sandbox.is_some_and(str::is_empty) {
-        return Err(NormalizeError::EmptySandbox {
-            name: name.to_string(),
-        });
-    }
-    if windows && (sandbox.is_some() || dog_table) {
+    if windows && dog_table {
         // crabpot's Windows sandbox cannot start from session 0, where the
         // shepherd runs as a service.
         return Err(NormalizeError::SandboxOnWindows {
@@ -417,43 +426,31 @@ target = "http://127.0.0.1:8080/healthz"
     }
 
     #[test]
-    fn a_sandbox_file_is_accepted_off_windows() {
-        assert_eq!(
-            validate_sandbox("web", Some("sandbox.json"), false, false),
-            Ok(())
-        );
-        assert_eq!(validate_sandbox("web", None, false, false), Ok(()));
-    }
-
-    #[test]
-    fn an_empty_sandbox_is_refused() {
-        let err = validate_sandbox("web", Some(""), false, false).unwrap_err();
+    fn a_sheep_that_sets_the_sandbox_key_is_refused_naming_the_dog() {
+        let err = validate_sandbox_key("web", Some("sandbox.json")).unwrap_err();
         assert_eq!(
             err,
-            NormalizeError::EmptySandbox {
+            NormalizeError::SandboxKeyRemoved {
                 name: "web".to_string()
             }
         );
-        assert!(err.to_string().contains("sandbox"), "{err}");
+        assert!(err.to_string().contains("sandbox dog"), "{err}");
+        assert!(err.to_string().contains("[app.dogs.sandbox]"), "{err}");
+        let empty = validate_sandbox_key("web", Some("")).unwrap_err();
+        assert_eq!(empty, err);
+        assert_eq!(validate_sandbox_key("web", None), Ok(()));
     }
 
     #[test]
-    fn the_sandbox_key_is_refused_on_windows() {
-        let err = validate_sandbox("web", Some("sandbox.json"), false, true).unwrap_err();
-        assert_eq!(
-            err,
-            NormalizeError::SandboxOnWindows {
-                name: "web".to_string()
-            }
-        );
-        assert!(err.to_string().contains("Windows"), "{err}");
-        assert_eq!(validate_sandbox("web", None, false, true), Ok(()));
+    fn a_sheep_with_a_sandbox_dog_table_is_not_refused_off_windows() {
+        assert_eq!(validate_sandbox("web", true, false), Ok(()));
+        assert_eq!(validate_sandbox("web", false, false), Ok(()));
     }
 
     #[test]
     fn a_sandbox_dog_table_is_refused_on_windows_and_accepted_elsewhere() {
-        assert_eq!(validate_sandbox("web", None, true, false), Ok(()));
-        let err = validate_sandbox("web", None, true, true).unwrap_err();
+        assert_eq!(validate_sandbox("web", true, false), Ok(()));
+        let err = validate_sandbox("web", true, true).unwrap_err();
         assert_eq!(
             err,
             NormalizeError::SandboxOnWindows {
@@ -464,17 +461,29 @@ target = "http://127.0.0.1:8080/healthz"
     }
 
     #[test]
-    fn normalize_applies_the_sandbox_checks_for_this_platform() {
+    fn normalize_refuses_the_removed_key_on_every_platform() {
         let mut app = AppConfig::minimal("web", "./srv");
-        app.sandbox = Some(String::new());
-        assert_eq!(
-            normalize(app.clone()).unwrap_err(),
-            NormalizeError::EmptySandbox {
-                name: "web".to_string()
-            }
-        );
+        for value in ["", "sandbox.json", "~other/box.json"] {
+            app.sandbox = Some(value.to_string());
+            assert_eq!(
+                normalize(app.clone()).unwrap_err(),
+                NormalizeError::SandboxKeyRemoved {
+                    name: "web".to_string()
+                },
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_removed_key_is_named_before_a_listen_conflict() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.listen = listen(&[("http", "0.0.0.0:8080")]);
         app.sandbox = Some("sandbox.json".to_string());
-        assert_eq!(normalize(app).is_err(), cfg!(windows));
+        assert!(matches!(
+            normalize(app).unwrap_err(),
+            NormalizeError::SandboxKeyRemoved { .. }
+        ));
     }
 
     #[test]
@@ -582,7 +591,10 @@ target = "http://127.0.0.1:8080/healthz"
         let mut app = AppConfig::minimal("web", "./srv");
         app.listen = listen(&[("http", "0.0.0.0:8080")]);
         assert_eq!(normalize(app.clone()).is_err(), cfg!(windows));
-        app.sandbox = Some("sandbox.json".to_string());
+        app.dogs.insert(
+            "sandbox".to_string(),
+            crate::config::DogTable::from(serde_json::Map::new()),
+        );
         assert!(matches!(
             normalize(app).unwrap_err(),
             NormalizeError::ListenWithSandbox { .. }
