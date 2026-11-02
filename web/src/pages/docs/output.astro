@@ -531,6 +531,12 @@ notice[style]: plain (from shep.toml)`}</CodeBlock>
     </div>
     <CodeBlock label="a higher layer says so">{`$ SHEP_STYLE=full shep style
 notice[style]: full (from $SHEP_STYLE)`}</CodeBlock>
+    <p>
+      <code>--help</code> reads the same four places. It colours headings,
+      flags and placeholders at <code>full</code> and <code>plain</code>, and
+      prints plain at <code>bare</code>, under <code>NO_COLOR</code> and into a
+      pipe. A usage error is always plain.
+    </p>
 
     <details>
       <summary><h3 id="no-color">NO_COLOR</h3></summary>
