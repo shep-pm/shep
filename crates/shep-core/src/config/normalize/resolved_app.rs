@@ -267,6 +267,10 @@ pub fn normalize_with_home(
     if app.dogs.keys().any(String::is_empty) {
         return Err(NormalizeError::EmptyDogName { name: app.name });
     }
+    // Before the sandbox check: a Windows build refuses `sandbox` outright,
+    // and `listen` with it should say so about `listen`.
+    let sandboxed = app.sandbox.is_some() || app.dogs.contains_key("sandbox");
+    validate::validate_listen(&app.name, &app.listen, sandboxed, cfg!(windows))?;
     validate::validate_sandbox(&app.name, app.sandbox.as_deref(), cfg!(windows))?;
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(app.depends_on.len());

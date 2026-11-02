@@ -789,6 +789,7 @@ expression: replies
             "stdin": false,
             "wait_ready": false,
             "reuse_port": false,
+            "listen": {},
             "readiness_probe": null,
             "liveness_probe": null,
             "watch_options": [],

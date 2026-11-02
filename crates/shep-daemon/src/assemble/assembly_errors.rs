@@ -1,3 +1,4 @@
+use crate::listen::ListenError;
 use core::fmt;
 use shep_core::config::template::RenderError;
 
@@ -24,6 +25,8 @@ pub enum AssembleError {
         /// The dog's name.
         dog: String,
     },
+    /// The sheep's `listen` sockets could not be bound.
+    Listen(ListenError),
 }
 
 impl AssembleError {
@@ -38,6 +41,9 @@ impl AssembleError {
         match self {
             Self::Template { source, .. } => source.is_retriable(),
             Self::DogMissing { .. } => false,
+            // A held port may free up, but nothing here can tell when, and a
+            // crash loop on it would only hide the address in the log.
+            Self::Listen(_) => false,
         }
     }
 }
@@ -50,6 +56,7 @@ impl fmt::Display for AssembleError {
                 f,
                 "the `{dog}` dog is not adopted or is disabled, and this sheep does not run without it"
             ),
+            Self::Listen(source) => source.fmt(f),
         }
     }
 }
@@ -59,6 +66,7 @@ impl core::error::Error for AssembleError {
         match self {
             Self::Template { source, .. } => Some(source),
             Self::DogMissing { .. } => None,
+            Self::Listen(source) => Some(source),
         }
     }
 }

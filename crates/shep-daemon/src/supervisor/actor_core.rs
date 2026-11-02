@@ -79,6 +79,7 @@ impl<R: ProcessRunner> Actor<R> {
             // that registers, deletes or edits a sheep can forget it.
             self.announce_dog_tables(&mut announced);
             self.prune_disabled();
+            self.prune_listeners();
             if should_break {
                 break;
             }

@@ -4,7 +4,8 @@
 //! Runs on the real, unpaused clock, in a separate binary from the
 //! paused-clock unit tests. The cases live one module per what it proves: `logs` the log plane,
 //! `signals` the signal paths, `channel` fd 3, `identity` the credentials a
-//! spawn asks the OS for, `environment` the `PATH` and stdin a child
+//! spawn asks the OS for, `listen` the descriptors a socket-activated sheep is born with,
+//! `environment` the `PATH` and stdin a child
 //! inherits, `sandbox` the crabpot wrapping, `launch` the sandbox dog's, `adoption` the seam a successor
 //! reaches a running sheep through.
 
@@ -32,6 +33,7 @@ mod dog_link;
 mod environment;
 mod identity;
 mod launch;
+mod listen;
 mod logs;
 mod sandbox;
 mod signals;

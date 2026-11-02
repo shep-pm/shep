@@ -51,6 +51,7 @@ mod flush;
 mod handover;
 mod interleaving;
 mod lamb_sweep;
+mod listen;
 mod readiness;
 mod reload_bus;
 mod reload_drain;
@@ -153,6 +154,8 @@ fn test_actor(
         reloads: HashMap::new(),
         smits: Smits::new(),
         disabled: BTreeSet::new(),
+        listeners: BTreeMap::new(),
+        listeners_before: BTreeMap::new(),
     }
 }
 

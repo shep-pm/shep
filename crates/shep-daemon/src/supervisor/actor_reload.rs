@@ -294,12 +294,21 @@ impl<R: ProcessRunner> Actor<R> {
         // abandons the reload rather than reaching for a restart ladder: the
         // drainee is still up and still serving, which beats either status
         // `refuse_spawn` could leave behind.
-        let spec = SpawnSpec {
-            dog_link: dog.is_some(),
-            ..self
-                .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
-                .map_err(|err| err.to_string())?
-        };
+        let name = app.config().name.clone();
+        let held_before = self.listeners.get(&name).cloned();
+        let spec = self
+            .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
+            .and_then(|spec| {
+                Ok(SpawnSpec {
+                    dog_link: dog.is_some(),
+                    // Bound ahead of the replacement. The old set stays with the
+                    // drainee until it exits.
+                    listen: self.listen_for(app.config())?,
+                    ..spec
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        self.listeners_before.insert(name.clone(), held_before);
         let out_file = spec.out_file.clone();
         let err_file = spec.err_file.clone();
         let source = ReadinessSource::of_normalized(app.config());
@@ -395,6 +404,7 @@ impl<R: ProcessRunner> Actor<R> {
                     drainee.entry.status = restored_status(drainee);
                     drainee.entry.reload = ReloadState::None;
                 }
+                self.restore_listeners(&name);
                 Err(error.to_string())
             }
         }
@@ -475,6 +485,8 @@ impl<R: ProcessRunner> Actor<R> {
         };
         job.swap.phase = ReloadPhase::DrainOld;
         let old_id = job.swap.old_id;
+        // Committed: the drainee is on its way out, so no set to go back to.
+        self.listeners_before.remove(name);
 
         if !self.sheep.contains_key(&old_id) {
             // The drainee went on its own while the replacement was still

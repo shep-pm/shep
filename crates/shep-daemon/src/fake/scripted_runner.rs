@@ -64,6 +64,9 @@ struct SpawnedProc {
     /// The arguments this spawn was asked to run with, copied off
     /// [`SpawnSpec::args`], read back via [`ScriptedRunner::spawned_args`].
     args: Vec<String>,
+    /// The sockets this spawn was handed, off [`SpawnSpec::listen`], read
+    /// back via [`ScriptedRunner::spawned_listen`].
+    listen: Option<Arc<crate::listen::ListenSockets>>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -279,6 +282,19 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_args(&self, spawn_index: usize) -> Vec<String> {
         self.spawned.lock().unwrap()[spawn_index].args.clone()
+    }
+
+    /// The listen sockets the spawn at `spawn_index` was handed, or `None`.
+    ///
+    /// Spawns that share sockets return the same `Arc`: [`Arc::ptr_eq`] tells
+    /// a shared set from a fresh bind.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_listen(&self, spawn_index: usize) -> Option<Arc<crate::listen::ListenSockets>> {
+        self.spawned.lock().unwrap()[spawn_index].listen.clone()
     }
 
     /// How many spawns this runner has been asked for.
@@ -646,6 +662,7 @@ impl ProcessRunner for ScriptedRunner {
             credentials: spec.credentials,
             program: spec.program.clone(),
             args: spec.args.clone(),
+            listen: spec.listen.clone(),
         });
         drop(spawned);
 

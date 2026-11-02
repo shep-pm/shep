@@ -417,6 +417,61 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             sheep(|a| a.sandbox = Some("sandbox.json".to_owned())),
             |e| matches!(e, NormalizeError::SandboxOnWindows { .. }),
         ),
+        refused(
+            "listen",
+            "an address that does not parse",
+            sheep(|a| {
+                a.listen
+                    .insert("http".to_owned(), "localhost:80".to_owned());
+            }),
+            |e| matches!(e, NormalizeError::InvalidListenAddress { .. }),
+        ),
+        refused(
+            "listen",
+            "the same address twice",
+            sheep(|a| {
+                a.listen.insert("a".to_owned(), "0.0.0.0:80".to_owned());
+                a.listen.insert("b".to_owned(), "0.0.0.0:80".to_owned());
+            }),
+            |e| matches!(e, NormalizeError::DuplicateListenAddress { .. }),
+        ),
+        refused(
+            "listen",
+            "a name outside the accepted set",
+            sheep(|a| {
+                a.listen.insert("a:b".to_owned(), "0.0.0.0:80".to_owned());
+            }),
+            |e| matches!(e, NormalizeError::InvalidListenName { .. }),
+        ),
+        refused_on_windows(
+            "listen",
+            "any value on Windows",
+            sheep(|a| {
+                a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
+            }),
+            |e| matches!(e, NormalizeError::ListenOnWindows { .. }),
+        ),
+        refused(
+            "listen",
+            "a value together with sandbox",
+            sheep(|a| {
+                a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
+                a.sandbox = Some("sandbox.json".to_owned());
+            }),
+            |e| matches!(e, NormalizeError::ListenWithSandbox { .. }),
+        ),
+        refused(
+            "listen",
+            "a value together with the sandbox dog",
+            sheep(|a| {
+                a.listen.insert("http".to_owned(), "0.0.0.0:80".to_owned());
+                a.dogs.insert(
+                    "sandbox".to_owned(),
+                    crate::config::DogTable::from(serde_json::Map::new()),
+                );
+            }),
+            |e| matches!(e, NormalizeError::ListenWithSandbox { .. }),
+        ),
         elsewhere(
             "user",
             "a name with no passwd entry",

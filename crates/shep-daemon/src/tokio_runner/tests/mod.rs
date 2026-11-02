@@ -30,6 +30,8 @@ use super::log_file::{LogSink, PipeFds};
 use super::pump::spawn_log_pump;
 
 mod handover;
+#[cfg(unix)]
+mod listen_layout;
 mod log_io;
 mod spawn_io;
 #[cfg(unix)]

@@ -128,11 +128,19 @@ impl<R: ProcessRunner> Actor<R> {
         let dog_link = slot.entry.dog.is_some();
         // Computed ahead of the mutable borrow below.
         let next_epoch = slot.epoch + 1;
-        let spec =
-            match self.assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app)) {
-                Ok(spec) => SpawnSpec { dog_link, ..spec },
-                Err(err) => return self.refuse_spawn(id, manually, &err),
-            };
+        let assembled = self
+            .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
+            .and_then(|spec| {
+                Ok(SpawnSpec {
+                    dog_link,
+                    listen: self.listen_for(app.config())?,
+                    ..spec
+                })
+            });
+        let spec = match assembled {
+            Ok(spec) => spec,
+            Err(err) => return self.refuse_spawn(id, manually, &err),
+        };
         let source = ReadinessSource::of_normalized(app.config());
         let gated = !matches!(source, ReadinessSource::Heuristic);
         // Read before the move below: a gated app's readiness task wants the

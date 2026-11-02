@@ -10,9 +10,9 @@ use super::config::{ConfiguredReadiness, reload_mode};
 use super::*;
 
 #[test]
-fn a_sheep_pane_has_forty_five_fields_in_nine_groups() {
+fn a_sheep_pane_has_forty_six_fields_in_nine_groups() {
     let pane = ConfigPane::sheep(web());
-    assert_eq!(pane.fields().len(), 45);
+    assert_eq!(pane.fields().len(), 46);
     let mut groups: Vec<&str> = Vec::new();
     for field in pane.fields().fields() {
         let group = field.group.as_deref().expect("every field carries a group");
@@ -125,6 +125,30 @@ fn a_pane_reads_its_reload_kind_off_the_three_fields_it_turns_on() {
         ReloadKind::Overlap,
         "no probe, so nothing an outgoing instance could answer"
     );
+}
+
+#[test]
+fn a_probed_pane_with_a_listen_table_overlaps() {
+    let probed = |listen: &[(&str, &str)]| {
+        let config = AppConfig {
+            name: "web".into(),
+            listen: listen
+                .iter()
+                .map(|(name, address)| ((*name).into(), (*address).into()))
+                .collect(),
+            readiness_probe: Some(ProbeConfig {
+                kind: ProbeKind::Tcp,
+                target: "127.0.0.1:8080".into(),
+                interval: UpDuration::from_millis(10_000),
+                timeout: UpDuration::from_millis(5_000),
+                failure_threshold: 3,
+            }),
+            ..AppConfig::default()
+        };
+        ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new())).reload_kind()
+    };
+    assert_eq!(probed(&[("http", "0.0.0.0:8080")]), ReloadKind::Overlap);
+    assert_eq!(probed(&[]), ReloadKind::Serial);
 }
 
 #[test]
@@ -435,6 +459,6 @@ fn the_panes_debug_names_no_value_it_holds() {
     let pane = ConfigPane::sheep(SheepConfigView::new(config, Vec::new(), Vec::new()));
     assert_eq!(
         format!("{pane:?}"),
-        r#"ConfigPane { target: Sheep { name: "web" }, fields: 45, env_keys: 1, armed: false, cursor: 0 }"#
+        r#"ConfigPane { target: Sheep { name: "web" }, fields: 46, env_keys: 1, armed: false, cursor: 0 }"#
     );
 }

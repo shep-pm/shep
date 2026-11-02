@@ -609,10 +609,11 @@ impl ProcessRunner for TokioRunner {
         if let Some(cwd) = &spec.cwd {
             command.current_dir(cwd);
         }
-        // `SpawnSpec::env` promises no daemon-env leakage beyond this map, and
-        // `Command` inherits the daemon's ambient env without the clear.
-        command.env_clear();
-        command.envs(&spec.env);
+        // Collected here and applied once, after every variable below is
+        // known: `SpawnSpec::env` promises no daemon-env leakage beyond this
+        // map, and a listen sheep's block must be the only thing that sets
+        // the child's environment (see `crate::sys::ListenEnv`).
+        let mut env = spec.env.clone();
         // `/dev/null` unless the app asked for a pipe: many programs decide
         // they are non-interactive from a closed fd 0. See `AppConfig::stdin`.
         command.stdin(if spec.stdin {
@@ -676,8 +677,11 @@ impl ProcessRunner for TokioRunner {
             // any local account and the `accept` below authenticates nobody,
             // so the descriptor is what refuses a second account (#350).
             let (pipe, mut listener) = windows_pipe::bind("channel", "shepherd channel pipe")?;
-            command.env("SHEP_CHANNEL_PIPE", &pipe);
-            command.env("SHEP_CHANNEL_VERSION", CHANNEL_VERSION);
+            env.insert("SHEP_CHANNEL_PIPE".to_string(), pipe.display().to_string());
+            env.insert(
+                "SHEP_CHANNEL_VERSION".to_string(),
+                CHANNEL_VERSION.to_string(),
+            );
 
             // On a task, since `spawn` is synchronous and the child cannot
             // connect until it is started below. The `closed()` arm bounds
@@ -709,7 +713,7 @@ impl ProcessRunner for TokioRunner {
         #[cfg(windows)]
         if spec.dog_link {
             let (pipe, listener) = windows_pipe::bind("dog", "dog connection pipe")?;
-            command.env(DOG_LINK_PIPE_VAR, &pipe);
+            env.insert(DOG_LINK_PIPE_VAR.to_string(), pipe.display().to_string());
             dog_pipe = Some(listener);
         }
 
@@ -721,12 +725,50 @@ impl ProcessRunner for TokioRunner {
         // warn against calling it twice on one command.
         #[cfg(unix)]
         let mut mappings: Vec<FdMapping> = Vec::new();
+        // Systemd's layout: the listeners take fd 3 upward in name order and
+        // the channel follows them, so a sheep with none keeps the channel on
+        // fd 3.
+        #[cfg(unix)]
+        let mut channel_child_fd: RawFd = 3;
+        #[cfg(unix)]
+        let listening = match &spec.listen {
+            Some(sockets) if !sockets.is_empty() => Some(sockets),
+            _ => None,
+        };
+        #[cfg(unix)]
+        if let Some(sockets) = listening {
+            if spec.dog_link {
+                return Err(RunnerError::SpawnFailed(
+                    "a dog's connection and listen sockets both claim fd 4".to_string(),
+                ));
+            }
+            let duplicates = sockets.duplicates().map_err(|error| {
+                RunnerError::SpawnFailed(format!("listen socket duplicate: {error}"))
+            })?;
+            for parent_fd in duplicates {
+                mappings.push(FdMapping {
+                    parent_fd,
+                    child_fd: channel_child_fd,
+                });
+                channel_child_fd += 1;
+            }
+            // Ours, not the operator's: a stale `LISTEN_*` in the sheep's own
+            // env would name descriptors this layout does not have.
+            env.insert("LISTEN_FDS".to_string(), sockets.len().to_string());
+            env.insert(
+                "LISTEN_FDNAMES".to_string(),
+                sockets.names().collect::<Vec<_>>().join(":"),
+            );
+        }
         #[cfg(unix)]
         if spec.channel {
-            command.env("SHEP_CHANNEL_FD", "3");
+            env.insert("SHEP_CHANNEL_FD".to_string(), channel_child_fd.to_string());
             // Not negotiation: an app cannot be asked what it speaks, but one
             // that wants to be defensive can check what it is given.
-            command.env("SHEP_CHANNEL_VERSION", CHANNEL_VERSION);
+            env.insert(
+                "SHEP_CHANNEL_VERSION".to_string(),
+                CHANNEL_VERSION.to_string(),
+            );
             let (daemon_end, child_end) = UnixStream::pair().map_err(|error| {
                 RunnerError::SpawnFailed(format!("shepherd channel socketpair: {error}"))
             })?;
@@ -743,7 +785,7 @@ impl ProcessRunner for TokioRunner {
             let child_fd = OwnedFd::from(std_child_end);
             mappings.push(FdMapping {
                 parent_fd: child_fd,
-                child_fd: 3,
+                child_fd: channel_child_fd,
             });
             channel_fd = Some(daemon_end.as_raw_fd());
             spawn_channel_pumps(daemon_end, from_child_tx, to_child_rx);
@@ -761,7 +803,7 @@ impl ProcessRunner for TokioRunner {
         #[cfg(unix)]
         if spec.dog_link {
             let (daemon_end, mapping) = dog_link::pair()?;
-            command.env(DOG_LINK_FD_VAR, DOG_LINK_FD.to_string());
+            env.insert(DOG_LINK_FD_VAR.to_string(), DOG_LINK_FD.to_string());
             mappings.push(mapping);
             dog_end = Some(daemon_end);
         }
@@ -771,6 +813,24 @@ impl ProcessRunner for TokioRunner {
                 .as_std_mut()
                 .fd_mappings(mappings)
                 .map_err(|error| RunnerError::SpawnFailed(format!("fd mapping: {error}")))?;
+        }
+
+        #[cfg(unix)]
+        if listening.is_some() {
+            // `LISTEN_PID` is the child's own pid, which only the child can
+            // write, after the fork. The block replaces `environ` there, so
+            // the command's own env must stay untouched.
+            let block = crate::sys::ListenEnv::new(&env)
+                .map_err(|error| RunnerError::SpawnFailed(format!("environment: {error}")))?;
+            crate::sys::set_listen_env(command.as_std_mut(), block);
+        } else {
+            command.env_clear();
+            command.envs(&env);
+        }
+        #[cfg(windows)]
+        {
+            command.env_clear();
+            command.envs(&env);
         }
 
         let mut child = command

@@ -70,6 +70,8 @@ const FIELDS: &[FieldRow] = &[
     // Read fresh per command.
     FieldRow { field: "fold",                       group: ApplyGroup::Live,          reaches_running: true  },
     FieldRow { field: "reuse_port",                 group: ApplyGroup::Live,          reaches_running: true  },
+    // Bound by the shepherd and handed to the child at exec as fds 3 and up.
+    FieldRow { field: "listen",                     group: ApplyGroup::NeedsRespawn,  reaches_running: false },
     // Never read by a spawn at all: it rides `ProcessInfo` to whichever
     // client is classifying this sheep's log lines, so the next listing
     // carries it.
@@ -282,12 +284,12 @@ mod tests {
 
     /// fails if the split drifts unnoticed.
     #[test]
-    fn the_split_is_21_5_17_2() {
+    fn the_split_is_21_5_18_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
         assert_eq!(count(ApplyGroup::Live), 21, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
-        assert_eq!(count(ApplyGroup::NeedsRespawn), 17, "NeedsRespawn");
+        assert_eq!(count(ApplyGroup::NeedsRespawn), 18, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 2, "Structural");
     }
 
