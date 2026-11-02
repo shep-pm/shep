@@ -113,3 +113,14 @@ fn a_dog_with_no_schema_prints_a_manifest_without_settings_and_an_empty_schema_a
     assert_eq!(manifest.settings, None);
     assert_eq!(probe.reply(Some(SCHEMA_FLAG), || None).unwrap(), "");
 }
+
+#[test]
+fn a_probe_that_declares_launch_prints_it_in_the_manifest() {
+    let text = reply(&Probe::new("shep-sandbox", "0.1.0").launch(), MANIFEST_FLAG);
+    let manifest: Manifest = serde_json::from_str(&text).unwrap();
+
+    let mut expected = Manifest::new("shep-sandbox", "0.1.0", crate::PROTOCOL_VERSION);
+    expected.settings = fixture_schema();
+    expected.launch = true;
+    assert_eq!(manifest, expected);
+}

@@ -788,6 +788,21 @@ shep needs 8 or newer; reinstall the dog without --locked so it builds
 against the current shep-core, or run a shep that accepts protocol 6
 ```
 
+A dog adopted as `sandbox` is refused unless its manifest declares `launch`,
+whether the manifest is missing, unreadable or says `launch: false`. It
+runs sheep as `<path> launch <sheep> -- <cmd>`, so a binary that does not
+declare it is refused before its path can be recorded. The refusal comes before
+`--version` and `--schema` are asked, so the candidate is not run again,
+and it names both ways out:
+
+```
+the dog `sandbox` runs a sheep's command as `<path> launch <sheep> -- <cmd>`,
+and this binary's manifest does not declare `launch`; declare `launch` in the
+manifest, or adopt the binary under another name
+```
+
+A dog adopted under any other name is never asked for `launch`.
+
 Only a stated protocol can refuse an adopt. The version is never compared
 with anything, because a third-party dog's crate version has no
 relationship to shep's own: `shep-log-rotate` 0.1.3 against shep 0.1.24 is
@@ -1021,6 +1036,7 @@ manifest.
 | `verb` | `description`, and `subcommands` each with `name` and `about`. |
 | `depends` | `dogs`, each with `name` and a version range `version`; `shep`, the oldest shep supported. |
 | `validate` | Whether the dog validates a proposed settings table over its channel, through `shep.validate`. Needs `channel`: `shep adopt` refuses a manifest declaring it without. |
+| `launch` | Whether the dog runs a sheep's command, as `<path> launch <sheep> -- <cmd>`. A dog adopted as `sandbox` needs it: `shep adopt` refuses one without. |
 
 `manifest`, `name`, `version` and `protocol` are required; the rest default
 to nothing declared. A reader ignores a field it does not know, so a later
@@ -1063,7 +1079,7 @@ digit. A dog named `$(touch>x)` stays in `shep --help` and still runs, and is
 not completed.
 
 `Probe` builds it from what the dog already gives it. `permission`, `verb`,
-`depends_on_dog`, `depends_on_shep`, `defaults` and `validate` add what it
+`depends_on_dog`, `depends_on_shep`, `defaults`, `validate` and `launch` add what it
 declares:
 
 ```rust

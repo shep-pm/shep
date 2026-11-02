@@ -105,6 +105,7 @@ fn a_manifest_that_declares_nothing_prints_only_who_the_dog_is() {
             "protocol": 11,
             "channel": false,
             "validate": false,
+            "launch": false,
         })
     );
 }
@@ -119,4 +120,27 @@ fn version_zero_is_not_a_manifest_and_a_later_version_still_reads() {
 
     assert!(with(0).is_err());
     assert_eq!(with(2).unwrap().manifest, 2);
+}
+
+#[test]
+fn a_manifest_that_declares_launch_reads_it_and_round_trips() {
+    let text = r#"{"manifest": 1, "name": "shep-sandbox", "version": "0.1.0", "protocol": 11, "launch": true}"#;
+
+    let manifest: Manifest = serde_json::from_str(text).unwrap();
+
+    let mut expected = Manifest::new("shep-sandbox", "0.1.0", 11);
+    expected.launch = true;
+    assert_eq!(manifest, expected);
+    let again = serde_json::to_string(&manifest).unwrap();
+    assert_eq!(serde_json::from_str::<Manifest>(&again).unwrap(), expected);
+}
+
+#[test]
+fn a_manifest_without_launch_reads_it_as_false() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+    )
+    .unwrap();
+
+    assert!(!manifest.launch);
 }
