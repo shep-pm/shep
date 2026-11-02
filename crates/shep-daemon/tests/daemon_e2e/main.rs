@@ -52,6 +52,7 @@ mod dog_grants;
 mod dog_tables;
 mod harness;
 mod lifecycle;
+#[cfg(unix)]
 mod listen_reload;
 mod probed_reload;
 mod protocol;
