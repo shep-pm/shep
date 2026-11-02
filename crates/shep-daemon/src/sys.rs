@@ -142,7 +142,37 @@ pub(crate) fn duplicate_fd(fd: RawFd) -> io::Result<RawFd> {
 /// a socket at all, which is how a number the kernel recycled into something
 /// else reads.
 pub(crate) fn is_listening_socket(socket: &impl AsFd) -> bool {
-    nix::sys::socket::getsockopt(socket, nix::sys::socket::sockopt::AcceptConn).unwrap_or(false)
+    // Darwin's `getsockopt` refuses `SO_ACCEPTCONN` with `ENOPROTOOPT`, so
+    // there the TCP state is read instead.
+    #[cfg(target_vendor = "apple")]
+    {
+        use std::os::fd::AsRawFd;
+
+        // `TCPS_LISTEN` in xnu's `bsd/netinet/tcp_fsm.h`; libc does not export it.
+        const TCPS_LISTEN: u8 = 1;
+
+        let mut info = core::mem::MaybeUninit::<nix::libc::tcp_connection_info>::zeroed();
+        let mut len = nix::libc::socklen_t::try_from(size_of::<nix::libc::tcp_connection_info>())
+            .unwrap_or(nix::libc::socklen_t::MAX);
+        // SAFETY: `socket` keeps the descriptor open for the call, and `info`
+        // and `len` describe a writable `tcp_connection_info` the kernel fills.
+        let read = unsafe {
+            nix::libc::getsockopt(
+                socket.as_fd().as_raw_fd(),
+                nix::libc::IPPROTO_TCP,
+                nix::libc::TCP_CONNECTION_INFO,
+                info.as_mut_ptr().cast(),
+                &raw mut len,
+            )
+        };
+        // SAFETY: the buffer was zeroed, which is a valid `tcp_connection_info`
+        // (plain integers), and the kernel only overwrites it.
+        read == 0 && unsafe { info.assume_init() }.tcpi_state == TCPS_LISTEN
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        nix::sys::socket::getsockopt(socket, nix::sys::socket::sockopt::AcceptConn).unwrap_or(false)
+    }
 }
 
 /// Opens `path` through `openat2` with `RESOLVE_NO_SYMLINKS`, so no component
@@ -371,6 +401,31 @@ mod tests {
         let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
 
         assert!(is_listening_socket(&listening));
+    }
+
+    #[test]
+    fn a_bound_tcp_socket_that_never_listened_does_not_read_as_one() {
+        use nix::sys::socket::{
+            AddressFamily, SockFlag, SockType, SockaddrIn, bind, socket as open_socket,
+        };
+
+        let bound = open_socket(
+            AddressFamily::Inet,
+            SockType::Stream,
+            SockFlag::empty(),
+            None,
+        )
+        .unwrap();
+        bind(
+            bound.as_raw_fd(),
+            &SockaddrIn::from(std::net::SocketAddrV4::new(
+                std::net::Ipv4Addr::LOCALHOST,
+                0,
+            )),
+        )
+        .unwrap();
+
+        assert!(!is_listening_socket(&bound));
     }
 
     #[test]
