@@ -84,8 +84,9 @@ pub struct AppConfig {
     /// Removed. The sandbox dog replaced it, so any value is refused.
     ///
     /// Configure the dog in an `[app.dogs.sandbox]` table. The field stays
-    /// deserialize-only so a client that still sends the key is told, not
-    /// ignored. It is never serialized and the schema does not list it.
+    /// deserialize-only so a peer that still sends the key is told, not
+    /// ignored: `Flockfile::parse` and `normalize` both refuse it. It is never
+    /// serialized and the schema does not list it.
     #[serde(skip_serializing)]
     #[cfg_attr(feature = "schema", schemars(skip))]
     pub sandbox: Option<String>,

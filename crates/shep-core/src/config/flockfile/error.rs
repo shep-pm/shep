@@ -32,6 +32,15 @@ pub enum FlockfileError {
         /// Every key the document named that no field claimed.
         keys: Vec<String>,
     },
+    /// An `app` entry sets `sandbox`, to any value.
+    ///
+    /// The sandbox dog replaced the key. [`AppConfig`](crate::config::AppConfig)
+    /// no longer serializes it, so a client that sent the app on would drop
+    /// it silently and the sheep would run unsandboxed.
+    SandboxKeyRemoved {
+        /// The first sheep that set it.
+        name: String,
+    },
 }
 
 impl FlockfileError {
@@ -57,6 +66,10 @@ impl fmt::Display for FlockfileError {
                 }
                 write!(f, ": {}", keys.join(", "))
             }
+            Self::SandboxKeyRemoved { name } => write!(
+                f,
+                "sheep `{name}` sets sandbox, which the sandbox dog replaced: remove the key and configure the dog in an [app.dogs.sandbox] table"
+            ),
             Self::Parse { format, message } => {
                 let label = match format {
                     FlockFormat::Toml => "TOML",
