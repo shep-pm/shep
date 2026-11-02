@@ -2,12 +2,15 @@
 
 use super::*;
 
+#[cfg(unix)]
 const DOG_PATH: &str = "/opt/dogs/box";
 
+#[cfg(unix)]
 fn sandbox_dog() -> BTreeMap<String, String> {
     BTreeMap::from([("sandbox".to_owned(), DOG_PATH.to_owned())])
 }
 
+#[cfg(unix)]
 fn jailed_sheep() -> ResolvedApp {
     let mut app = AppConfig::minimal("jailed", "./srv");
     app.args = vec!["--port".to_owned(), "8080".to_owned()];
@@ -18,6 +21,7 @@ fn jailed_sheep() -> ResolvedApp {
     normalize(app).unwrap()
 }
 
+#[cfg(unix)]
 fn through_the_dog() -> Vec<String> {
     ["launch", "jailed", "--", "./srv", "--port", "8080"]
         .map(String::from)
@@ -53,6 +57,7 @@ async fn a_refused_sandboxed_sheep_reports_the_refusal() {
     assert_eq!(wait_errored(&handle).await.sandbox_refused, Some(true));
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_refused_sheep_with_a_sandbox_dog_table_reports_the_refusal() {
     let (events, _rx) = crate::bus::test_bus(64);
@@ -109,6 +114,7 @@ async fn a_running_sheep_has_no_refusal_to_report() {
     assert_eq!(handle.list().await[0].sandbox_refused, None);
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_sandboxed_sheep_spawns_through_the_dog_the_builder_was_given() {
     let dir = tempfile::tempdir().unwrap();
@@ -125,6 +131,7 @@ async fn a_sandboxed_sheep_spawns_through_the_dog_the_builder_was_given() {
     assert_eq!(runner.spawned_args(0), through_the_dog());
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_sandboxed_sheep_with_no_dog_lands_errored_and_never_spawns() {
     let dir = tempfile::tempdir().unwrap();
@@ -145,6 +152,7 @@ async fn a_sandboxed_sheep_with_no_dog_lands_errored_and_never_spawns() {
     assert_eq!(runner.spawn_count(), 0, "nothing ran, sandboxed or not");
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_disabled_sandbox_dog_counts_as_missing() {
     let dir = tempfile::tempdir().unwrap();
@@ -169,6 +177,7 @@ async fn a_disabled_sandbox_dog_counts_as_missing() {
     assert_eq!(runner.spawn_count(), spawned_before);
 }
 
+#[cfg(unix)]
 fn adopted(path: &str) -> DogSource {
     DogSource::Adopted {
         path: path.to_owned(),
@@ -177,6 +186,7 @@ fn adopted(path: &str) -> DogSource {
     }
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_dog_started_after_boot_is_used_by_the_next_spawn() {
     let dir = tempfile::tempdir().unwrap();
@@ -204,6 +214,7 @@ async fn a_dog_started_after_boot_is_used_by_the_next_spawn() {
     assert_eq!(runner.spawned_args(sheep), through_the_dog());
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_restart_and_a_reload_spawn_through_the_dog_too() {
     let dir = tempfile::tempdir().unwrap();
@@ -234,6 +245,7 @@ async fn a_restart_and_a_reload_spawn_through_the_dog_too() {
     }
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_start_dog_that_loses_the_name_to_a_running_sheep_records_no_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -261,6 +273,7 @@ async fn a_start_dog_that_loses_the_name_to_a_running_sheep_records_no_path() {
     assert_eq!(runner.spawn_count(), spawned_before);
 }
 
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 #[tokio::test(start_paused = true)]
 async fn a_second_start_dog_on_a_running_dog_leaves_its_path_alone() {
     let dir = tempfile::tempdir().unwrap();

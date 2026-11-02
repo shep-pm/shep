@@ -1,5 +1,7 @@
+use super::assemble;
+#[cfg(unix)]
+use super::describe;
 use super::testing::*;
-use super::{assemble, describe};
 use shep_core::config::{AppConfig, DogTable, normalize};
 
 /// `normalize` refuses `sandbox` on Windows, so the tests that set it are Unix only.
@@ -110,6 +112,7 @@ fn table(value: serde_json::Value) -> DogTable {
 }
 
 #[test]
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 fn a_sheep_with_a_sandbox_dog_table_stops_by_its_leader_alone() {
     let spec = sandboxed(|c| {
         c.dogs
@@ -133,6 +136,7 @@ fn a_sheep_with_a_table_for_another_dog_stops_by_its_group() {
 }
 
 #[test]
+#[cfg(unix)] // normalize refuses a sandbox dog table on Windows.
 fn describe_and_assemble_agree_on_the_leader_only_stop_for_a_sandbox_table() {
     let mut config = AppConfig::minimal("app", "/opt/bin/server");
     config
