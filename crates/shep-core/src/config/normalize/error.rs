@@ -259,6 +259,48 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
+    /// A `listen` name is empty or holds a character outside ASCII letters,
+    /// digits, `_` and `-`, which `LISTEN_FDNAMES` cannot carry.
+    InvalidListenName {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// The `listen` name as written.
+        listener: String,
+    },
+    /// A `listen` address is not a `host:port` socket address with a literal
+    /// IP, like `0.0.0.0:8080` or `[::1]:8080`.
+    InvalidListenAddress {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// The `listen` name the address belongs to.
+        listener: String,
+        /// The address as written.
+        address: String,
+    },
+    /// Two `listen` names hold the same address, so the second bind would
+    /// fail.
+    DuplicateListenAddress {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+        /// The first `listen` name holding the address, in name order.
+        first: String,
+        /// The later `listen` name holding it.
+        second: String,
+        /// The address as the second wrote it.
+        address: String,
+    },
+    /// `listen` is set together with `sandbox` or a `dogs.sandbox` table, and
+    /// nothing yet shows crabpot passes the descriptors through.
+    ListenWithSandbox {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `listen` is set on Windows, which has no descriptor numbers to pass
+    /// sockets by.
+    ListenOnWindows {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
 }
 
 impl fmt::Display for NormalizeError {
@@ -405,6 +447,35 @@ impl fmt::Display for NormalizeError {
             Self::SandboxOnWindows { name } => write!(
                 f,
                 "sheep `{name}` sets sandbox, which Windows does not support: crabpot's Windows sandbox cannot start from session 0, where the shepherd runs"
+            ),
+            Self::InvalidListenName { name, listener } => write!(
+                f,
+                "sheep `{name}` has a listen name `{listener}` that is not made of ASCII letters, digits, `_` and `-`"
+            ),
+            Self::InvalidListenAddress {
+                name,
+                listener,
+                address,
+            } => write!(
+                f,
+                "sheep `{name}` has listen `{listener}` = \"{address}\", which is not an IP address and port like \"0.0.0.0:8080\" or \"[::1]:8080\""
+            ),
+            Self::DuplicateListenAddress {
+                name,
+                first,
+                second,
+                address,
+            } => write!(
+                f,
+                "sheep `{name}` has listen `{first}` and `{second}` on the same address \"{address}\""
+            ),
+            Self::ListenWithSandbox { name } => write!(
+                f,
+                "sheep `{name}` sets listen and sandbox together, which is not supported: nothing yet shows crabpot passes the shepherd's sockets through to the sandboxed command"
+            ),
+            Self::ListenOnWindows { name } => write!(
+                f,
+                "sheep `{name}` sets listen, which Windows does not support: the sockets are passed to the sheep as file descriptors"
             ),
         }
     }

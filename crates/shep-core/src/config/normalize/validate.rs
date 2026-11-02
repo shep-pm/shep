@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::path::Path;
 
 use globset::Glob;
@@ -120,6 +122,59 @@ pub(super) fn validate_sandbox(
         // crabpot's Windows sandbox cannot start from session 0, where the
         // shepherd runs as a service.
         return Err(NormalizeError::SandboxOnWindows {
+            name: name.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validates `listen`, if the app sets any.
+///
+/// `windows` is passed in rather than read from `cfg!` so both answers are
+/// testable on one host. It is checked last so every other refusal is the
+/// same on every platform.
+pub(super) fn validate_listen(
+    name: &str,
+    listen: &BTreeMap<String, String>,
+    sandboxed: bool,
+    windows: bool,
+) -> Result<(), NormalizeError> {
+    if listen.is_empty() {
+        return Ok(());
+    }
+    if sandboxed {
+        return Err(NormalizeError::ListenWithSandbox {
+            name: name.to_string(),
+        });
+    }
+    let mut seen: BTreeMap<SocketAddr, &str> = BTreeMap::new();
+    for (listener, address) in listen {
+        let in_set = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+        if listener.is_empty() || !listener.chars().all(in_set) {
+            return Err(NormalizeError::InvalidListenName {
+                name: name.to_string(),
+                listener: listener.clone(),
+            });
+        }
+        let parsed: SocketAddr =
+            address
+                .parse()
+                .map_err(|_| NormalizeError::InvalidListenAddress {
+                    name: name.to_string(),
+                    listener: listener.clone(),
+                    address: address.clone(),
+                })?;
+        if let Some(first) = seen.insert(parsed, listener) {
+            return Err(NormalizeError::DuplicateListenAddress {
+                name: name.to_string(),
+                first: first.to_string(),
+                second: listener.clone(),
+                address: address.clone(),
+            });
+        }
+    }
+    if windows {
+        return Err(NormalizeError::ListenOnWindows {
             name: name.to_string(),
         });
     }
@@ -406,5 +461,107 @@ target = "http://127.0.0.1:8080/healthz"
         );
         app.sandbox = Some("sandbox.json".to_string());
         assert_eq!(normalize(app).is_err(), cfg!(windows));
+    }
+
+    fn listen(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn listen_tables_of_named_tcp_addresses_are_accepted() {
+        let table = listen(&[("http", "0.0.0.0:8080"), ("admin_2-b", "[::1]:9090")]);
+        assert_eq!(validate_listen("web", &table, false, false), Ok(()));
+        assert_eq!(validate_listen("web", &listen(&[]), true, true), Ok(()));
+    }
+
+    #[test]
+    fn a_listen_address_that_does_not_parse_is_refused() {
+        for bad in ["8080", "localhost:8080", "0.0.0.0", "0.0.0.0:99999", ""] {
+            let err = validate_listen("web", &listen(&[("http", bad)]), false, false).unwrap_err();
+            assert_eq!(
+                err,
+                NormalizeError::InvalidListenAddress {
+                    name: "web".to_string(),
+                    listener: "http".to_string(),
+                    address: bad.to_string(),
+                },
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_same_listen_address_twice_is_refused_by_what_it_parses_to() {
+        let table = listen(&[("a", "0.0.0.0:8080"), ("b", "0.0.0.0:08080")]);
+        let err = validate_listen("web", &table, false, false).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::DuplicateListenAddress {
+                name: "web".to_string(),
+                first: "a".to_string(),
+                second: "b".to_string(),
+                address: "0.0.0.0:08080".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_listen_name_outside_letters_digits_underscore_and_dash_is_refused() {
+        for bad in ["", "a:b", "a b", "h\u{e9}", "a.b"] {
+            let err =
+                validate_listen("web", &listen(&[(bad, "0.0.0.0:80")]), false, false).unwrap_err();
+            assert_eq!(
+                err,
+                NormalizeError::InvalidListenName {
+                    name: "web".to_string(),
+                    listener: bad.to_string(),
+                },
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn listen_with_a_sandbox_is_refused() {
+        let table = listen(&[("http", "0.0.0.0:8080")]);
+        let err = validate_listen("web", &table, true, false).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::ListenWithSandbox {
+                name: "web".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn listen_is_refused_on_windows_after_every_other_check() {
+        let table = listen(&[("http", "0.0.0.0:8080")]);
+        let err = validate_listen("web", &table, false, true).unwrap_err();
+        assert_eq!(
+            err,
+            NormalizeError::ListenOnWindows {
+                name: "web".to_string()
+            }
+        );
+        let bad = listen(&[("http", "nope")]);
+        assert!(matches!(
+            validate_listen("web", &bad, false, true),
+            Err(NormalizeError::InvalidListenAddress { .. })
+        ));
+    }
+
+    #[test]
+    fn normalize_applies_the_listen_checks_for_this_platform() {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.listen = listen(&[("http", "0.0.0.0:8080")]);
+        assert_eq!(normalize(app.clone()).is_err(), cfg!(windows));
+        app.sandbox = Some("sandbox.json".to_string());
+        assert!(matches!(
+            normalize(app).unwrap_err(),
+            NormalizeError::ListenWithSandbox { .. }
+        ));
     }
 }

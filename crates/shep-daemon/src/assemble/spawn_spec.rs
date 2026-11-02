@@ -201,6 +201,8 @@ pub(super) fn build<E>(
         credentials,
         dog_link: false,
         leader_only_stop: is_sandboxed(config),
+        // Bound by the supervisor, which owns the sockets across instances.
+        listen: None,
     })
 }
 

@@ -240,6 +240,28 @@ pub(crate) fn reuse_port_sheep() -> std::path::PathBuf {
 /// completes, the replacement answers the port, and the instance it replaced
 /// is gone. The counting is the caller's.
 pub(crate) async fn reload_under_load(name: &str, defiant: bool) -> Vec<Attempt> {
+    reload_under_load_sharing(name, defiant, Sharing::ReusePort).await
+}
+
+#[cfg(unix)]
+/// How the fixture comes to hold its port.
+#[derive(Clone, Copy)]
+pub(crate) enum Sharing {
+    /// Each instance binds the port itself with `SO_REUSEPORT`.
+    ReusePort,
+    /// The shepherd binds it from the sheep's `listen` table and passes it on
+    /// fd 3.
+    Listen,
+}
+
+#[cfg(unix)]
+/// [`reload_under_load`] for a fixture that gets its port the way `sharing`
+/// says.
+pub(crate) async fn reload_under_load_sharing(
+    name: &str,
+    defiant: bool,
+    sharing: Sharing,
+) -> Vec<Attempt> {
     let _port_guard = RELOAD_PORT_LOCK.lock().await;
     let port = free_port();
 
@@ -249,8 +271,16 @@ pub(crate) async fn reload_under_load(name: &str, defiant: bool) -> Vec<Attempt>
 
     let mut app = AppConfig::minimal(name, &reuse_port_sheep().display().to_string());
     app.interpreter = Some("none".to_string());
-    app.env
-        .insert("SHEEP_PORT_BASE".to_string(), port.to_string());
+    match sharing {
+        Sharing::ReusePort => {
+            app.env
+                .insert("SHEEP_PORT_BASE".to_string(), port.to_string());
+        }
+        Sharing::Listen => {
+            app.listen
+                .insert("http".to_string(), format!("127.0.0.1:{port}"));
+        }
+    }
     app.env
         .insert("SHEEP_HOLD_MS".to_string(), HOLD_MS.to_string());
     if defiant {

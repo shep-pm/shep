@@ -15,6 +15,7 @@ shep lookout   /home/ada/.shep                                            6 in t
    group                      (unset)                                         respawn   
  = instances                  1                                               read-only 
    interpreter                (unset)                                         respawn   
+   listen                     {}                                              respawn   
  = name                       api                                             read-only 
    reuse_port                 false                                           now       
    sandbox                    (unset)                                         respawn   
@@ -27,7 +28,6 @@ shep lookout   /home/ada/.shep                                            6 in t
    + add a key                                                                          
   ──────────────────────────────────────────────────────────────────────────────────────
   = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits …
-                                                                                        
                                                                                         
                                                                                         
                                                                                         

@@ -44,8 +44,11 @@ amendment; vcs metadata (git
 revision shown in describe — `vcs` feature, off by default); `shep web`
 JSON status endpoint (if demand — metrics dog covers observability).
 
-**v1.2 candidate:** fd-passing/LISTEN_FDS true cluster parity (the maintainer: "v1.1 or
-v1.2 even").
+**Shipped (was the v1.2 candidate):** fd-passing/LISTEN_FDS true cluster parity
+(the maintainer: "v1.1 or v1.2 even"). A sheep's `listen` table names TCP
+addresses the shepherd binds once and hands to every instance at fd 3 upward,
+as systemd's socket activation does. See the 2026 amendment under §3's reload
+paragraph, and `docs/decisions.md`.
 
 **Amendment, 2026-08-15:** the line above used to split Windows into a v1.0
 "functional tier" (named pipes, Job Objects, start/stop/list/logs) and a
@@ -205,10 +208,33 @@ log carries the reason. The event stream carries only the abandonment status,
 not the reason.
 
 `reuse_port` is the app's own claim that it sets `SO_REUSEPORT` before its
-own `bind()`. shep never binds a listen socket on an app's behalf and cannot
-check the claim in advance. `SO_REUSEADDR`, which far more frameworks set by
+own `bind()`. shep cannot check the claim in advance. (An app that would
+rather not bind at all lists its addresses in `listen`, below, and shep binds
+them on its behalf.) `SO_REUSEADDR`, which far more frameworks set by
 default, is not sufficient, and a mixed pair — one process with the option,
 one without — is refused by the kernel on both tier-1 platforms.
+
+**Amendment: `listen`.** A sheep may name TCP addresses in a `listen` table,
+`listen = { http = "0.0.0.0:8080" }`. The shepherd binds each once, with
+`SO_REUSEADDR`, when the sheep's first instance starts, and every instance
+gets the same open sockets, so a reload overlaps on one socket with no
+`reuse_port`, on macOS too, where Node's `reusePort` is `ENOTSUP`. The layout
+is systemd's: listeners sit at fd 3 upward in name order, `LISTEN_FDS` counts
+them, `LISTEN_FDNAMES` lists the names colon-separated, and `LISTEN_PID` is the
+child's own pid. The shepherd channel moves to the next fd and
+`SHEP_CHANNEL_FD` names it; a sheep without `listen` keeps the channel on fd 3
+and gets no `LISTEN_*`. A reload that changes `listen` binds only the
+addresses it adds, before it spawns the replacement, and keeps the socket of
+every address it still names, by address and not by name, so a renamed entry
+keeps its socket. The sockets of an address it drops close once the drainee is
+reaped, and an abandoned reload leaves the old set held. A reload that leaves
+`listen` alone never closes a socket. A bind failure
+fails the start, naming the address. Stopping or deleting the sheep closes the
+sockets, and the next start binds them again. Refused at load: an address that
+does not parse, a duplicate address, a name outside ASCII letters, digits, `_`
+and `-`, any `listen` on Windows, and `listen` together with `sandbox`. TCP
+only. `PROTOCOL_VERSION` moves to 15, and a client refuses a `listen` to an
+older shepherd, which would drop it.
 
 Reload proceeds instance-by-instance; failure of the new instance aborts the
 rest. What that leaves running depends on the mode and on HOW it failed.

@@ -64,7 +64,7 @@ import VerbSignature from "../../components/docs/VerbSignature.astro";
       <li><code>shutdown_with_message = true</code>: also implies a channel, for the same reason in the other direction.</li>
     </ul>
     <p>
-      Leave all three unset and your app gets no fd 3 at all. This is
+      Leave all three unset and your app gets no channel at all. This is
       opt-in on purpose: a channel is a socketpair plus two pump tasks
       running for the life of the process, and shep would rather not pay
       that for an app that never uses it.
@@ -74,11 +74,12 @@ name = "web"
 script = "./server"
 channel = true`}</CodeBlock>
     <p class="fine">
-      <strong>On unix</strong> the descriptor is <strong>fd 3</strong>, also
-      exported as the{" "}
+      <strong>On unix</strong> the descriptor is usually <strong>fd 3</strong>,
+      also exported as the{" "}
       <code>SHEP_CHANNEL_FD</code> environment variable: read that instead
-      of hardcoding <code>3</code> if you want to be robust to it changing
-      later. It's a normal <em>blocking</em> file descriptor: a plain{" "}
+      of hardcoding <code>3</code>. A{" "}
+      <a href="/docs/lifecycle/#overlap-on-a-socket-shep-holds"><code>listen</code></a>{" "}
+      table moves it past the sockets. It's a normal <em>blocking</em> file descriptor: a plain{" "}
       <code>read()</code> parks your process until the daemon has something
       to say, exactly like any other pipe. No event loop, non-blocking I/O,
       or polling required: a shell script doing{" "}

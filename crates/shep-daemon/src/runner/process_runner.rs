@@ -229,6 +229,14 @@ pub struct SpawnSpec {
     /// [`RunningProcess::kill_tree`] stays group-wide, and `max_memory`
     /// still counts the whole tree.
     pub leader_only_stop: bool,
+    /// The sockets the shepherd bound for this sheep's `listen` table, passed
+    /// to the child from fd 3 upward in name order. `None`, and an empty set,
+    /// give the child neither the descriptors nor any `LISTEN_*` variable.
+    ///
+    /// Shared by every instance of the sheep and held by the supervisor, so
+    /// the sockets outlive any one child. Unix only: `normalize` refuses
+    /// `listen` on Windows.
+    pub listen: Option<std::sync::Arc<crate::listen::ListenSockets>>,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,

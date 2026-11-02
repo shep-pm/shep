@@ -449,8 +449,8 @@ pub struct AppConfig {
         "blurb": "Wait for the app to say it is ready on the channel"
     })))]
     pub wait_ready: bool,
-    /// Whether the app itself sets `SO_REUSEPORT` before it binds. shep binds
-    /// nothing, so it cannot set the option for the app.
+    /// Whether the app itself sets `SO_REUSEPORT` before it binds. shep cannot
+    /// set the option for a socket the app binds; `listen` is how shep binds one.
     ///
     /// Read by one thing: which reload the daemon runs. Set, and the
     /// replacement is spawned alongside the instance it replaces. An app that
@@ -461,6 +461,27 @@ pub struct AppConfig {
         "blurb": "The app sets SO_REUSEPORT itself, so reload may overlap the two instances"
     })))]
     pub reuse_port: bool,
+    /// TCP addresses the shepherd binds for this sheep, by name.
+    ///
+    /// Bound once, when the first instance starts, and passed to every instance
+    /// the systemd way: fd 3 upward in name order, with `LISTEN_FDS`,
+    /// `LISTEN_FDNAMES` and `LISTEN_PID`. The shepherd channel moves to the fd
+    /// after the last socket, named by `SHEP_CHANNEL_FD`. A reload overlaps on
+    /// the same sockets. Not supported on Windows, or together with `sandbox`.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": { "http": "0.0.0.0:8080" },
+        "group": "process",
+        "blurb": "TCP addresses shep binds and hands to every instance as LISTEN_FDS sockets",
+        "accepts": ["a table of name to ip:port, such as 0.0.0.0:8080",
+                    "a name of ASCII letters, digits, _ and -"],
+        "refuses": ["an address that does not parse", "the same address twice",
+                    "a name outside the accepted set", "any value on Windows",
+                    "a value together with sandbox",
+                    "a value together with the sandbox dog"],
+        "neighbours": [{"field": "reuse_port", "note": "needed for overlap only when listen is unset"},
+                       {"field": "channel",    "note": "moves to the fd after the last socket"}]
+    })))]
+    pub listen: BTreeMap<String, String>,
     /// Readiness probe — gates reload's AwaitReady (spec §7)
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": { "kind": "http", "target": "http://127.0.0.1:8080/ready" },

@@ -14,17 +14,17 @@ shep lookout   /home/ada/.shep                                                  
    group                      (unset)                                         respawn     now     (unset)                                                       
  = instances                  1                                               read-only   default (none)                                                        
    interpreter                (unset)                                         respawn     example /srv/app                                                      
- = name                       api                                             read-only                                                                         
-   reuse_port                 false                                           now         ▲ respawn  the sheep must stop and start again                        
-   sandbox                    (unset)                                         respawn                                    pick the timing when you close the pane
-   script                     ./api/server.js                                 respawn                                                                           
-   user                       (unset)                                         respawn     ──────────────────────────────────────────────────────────────────────
-                                                                                          VALIDATION                                                            
-  env                                                                                     █ an absolute or relative path, expanded from cwd                     
-   DATABASE_URL               (set)                                                       █ ~ expands, $VARS do not                                             
-   NODE_ENV                   (set)                                                       █ a directory that does not exist yet: warned                         
-   + add a key                                                                                                                                                  
-                                                                                          NEIGHBOURS                                                            
+   listen                     {}                                              respawn                                                                           
+ = name                       api                                             read-only   ▲ respawn  the sheep must stop and start again                        
+   reuse_port                 false                                           now                                        pick the timing when you close the pane
+   sandbox                    (unset)                                         respawn                                                                           
+   script                     ./api/server.js                                 respawn     ──────────────────────────────────────────────────────────────────────
+   user                       (unset)                                         respawn     VALIDATION                                                            
+                                                                                          █ an absolute or relative path, expanded from cwd                     
+  env                                                                                     █ ~ expands, $VARS do not                                             
+   DATABASE_URL               (set)                                                       █ a directory that does not exist yet: warned                         
+   NODE_ENV                   (set)                                                                                                                             
+   + add a key                                                                            NEIGHBOURS                                                            
                                                                                           script  resolved against this cwd                                     
                                                                                           out_file  relative paths follow it too                                
                                                                                           watch_options  globs are rooted here                                  

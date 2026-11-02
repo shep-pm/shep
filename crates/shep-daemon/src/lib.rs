@@ -167,6 +167,9 @@ pub mod channel;
 // construction.
 pub mod dogs;
 pub mod limits;
+// A `SpawnSpec` carries one, so `tests/real_runner` binds the sockets it hands a
+// child and names the type.
+pub mod listen;
 pub mod privilege;
 pub mod probes;
 pub mod rpc;

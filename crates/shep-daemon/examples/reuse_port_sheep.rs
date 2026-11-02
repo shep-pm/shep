@@ -1,10 +1,11 @@
 //! A sheep serving one TCP port with `SO_REUSEPORT`, and able to ignore its
 //! stop signal. Used by `daemon_e2e.rs`'s reload measurement, since `/bin/sh`
-//! cannot set a socket option.
+//! cannot set a socket option. With `LISTEN_FDS` set it serves fd 3 instead.
 //!
-//! Env, read once at startup: `SHEEP_PORT_BASE` + `SHEP_INSTANCE` (required,
-//! bind port); `SHEEP_HOLD_MS` (default 40, reply delay); `SHEEP_DEFIANT=1`
-//! (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (if present, bind nothing).
+//! Env, read once: `SHEEP_PORT_BASE` + `SHEP_INSTANCE` (bind port, required
+//! without `LISTEN_FDS`); `SHEEP_HOLD_MS` (default 40, reply delay);
+//! `SHEEP_DEFIANT=1` (ignore `SIGTERM`); `SHEEP_MUTE_FILE` (bind nothing if it
+//! exists).
 //!
 //! Protocol: the server writes `<pid>\n` and closes.
 
@@ -19,7 +20,7 @@ fn main() {
 mod unix {
     use std::io::Write as _;
     use std::net::{TcpListener, TcpStream};
-    use std::os::fd::AsRawFd as _;
+    use std::os::fd::{AsRawFd as _, FromRawFd as _};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
@@ -46,7 +47,12 @@ mod unix {
 
     /// Binds, serves, and drains on `SIGTERM` unless told to be defiant.
     pub fn serve() {
-        let port = required("SHEEP_PORT_BASE") + required("SHEP_INSTANCE");
+        let inherited = std::env::var("LISTEN_FDS").is_ok_and(|count| count == "1");
+        let port = if inherited {
+            0
+        } else {
+            required("SHEEP_PORT_BASE") + required("SHEP_INSTANCE")
+        };
         let hold = Duration::from_millis(
             std::env::var("SHEEP_HOLD_MS")
                 .ok()
@@ -90,7 +96,11 @@ mod unix {
             }
         }
 
-        let listener = bind_reuse_port(port);
+        let listener = if inherited {
+            inherited_listener()
+        } else {
+            bind_reuse_port(port)
+        };
         listener
             .set_nonblocking(true)
             .expect("a listener must accept O_NONBLOCK");
@@ -126,6 +136,14 @@ mod unix {
         for handle in in_flight {
             let _ = handle.join();
         }
+    }
+
+    /// The listening socket the shepherd passed on fd 3, the first of
+    /// systemd's layout.
+    fn inherited_listener() -> TcpListener {
+        // SAFETY: `LISTEN_FDS=1` says the shepherd left a listening socket on
+        // fd 3, and nothing else in this process owns it.
+        unsafe { TcpListener::from_raw_fd(3) }
     }
 
     /// A listening socket on `127.0.0.1:port` with `SO_REUSEPORT` set before
