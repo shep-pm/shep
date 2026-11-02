@@ -2739,7 +2739,7 @@ With the `vcs` feature on, `Describe` fills `ProcessInfo::vcs` from the revision
 
 ### A `dogs.sandbox` table is gated at protocol 15 and refused on Windows like the `sandbox` key
 
-`Request::gated_key_dropped_at` also names `dogs.sandbox` for a `Start`, `Add`, `ConfigDrift` or `ApplyConfig` app holding the table and for a `SetSheepDogSettings` that sets one, below `SANDBOX_DOG_SINCE` (15, replacing `SANDBOX_SINCE`). The old `sandbox` key shares the gate, so a client keeps failing closed until the key is removed. `validate_sandbox` refuses the table on Windows with `SandboxOnWindows`.
+`Request::gated_key_dropped_at` also names `dogs.sandbox` for a `Start`, `Add`, `ConfigDrift` or `ApplyConfig` app holding the table and for a `SetSheepDogSettings` that sets one, below `SANDBOX_DOG_SINCE` (15, replacing `SANDBOX_SINCE`). The old `sandbox` key is its own gate at the same version, named `sandbox`, so a client keeps failing closed until the key is removed. `validate_sandbox` refuses the table on Windows with `SandboxOnWindows`.
 
 **Why:** a shepherd that does not spawn through the sandbox dog starts a sheep with the table unsandboxed and says nothing. Protocol 15 is the version `listen` already moved to, so no bump is added: this assumes no release is cut between the dog spawn and this gate.
 
