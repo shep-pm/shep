@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refuse an in-place reload while a running sheep sets the removed sandbox key
 - Hide the sandbox key from the Flockfile schema, the wire and lookout **(BREAKING)**
+- Refuse a sheep that sets the sandbox key and remove the crabpot wrap **(BREAKING)**
 
 
 ## [0.22.0] - 2026-11-02
