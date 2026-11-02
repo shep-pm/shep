@@ -790,8 +790,8 @@ against the current shep-core, or run a shep that accepts protocol 6
 
 A dog adopted as `sandbox` is refused unless its manifest declares `launch`,
 whether the manifest is missing, unreadable or says `launch: false`. It
-runs sheep as `<path> launch <sheep> -- <cmd>`, and a binary that cannot
-would be recorded with no way to find out. The refusal comes before
+runs sheep as `<path> launch <sheep> -- <cmd>`, so a binary that does not
+declare it is refused before its path can be recorded. The refusal comes before
 `--version` and `--schema` are asked, so the candidate is not run again,
 and it names both ways out:
 

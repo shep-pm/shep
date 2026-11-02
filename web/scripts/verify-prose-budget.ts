@@ -138,8 +138,8 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 5490 on #1400 for `launch`: a dog adopted as `sandbox` is
   // refused without it, and an author has to know the manifest field is what
-  // that refusal asks for.
-  "writing-a-dog": 5511,
+  // that refusal asks for. The ceiling sits about 30 words above the page.
+  "writing-a-dog": 5540,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
