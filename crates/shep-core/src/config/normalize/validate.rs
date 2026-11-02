@@ -463,7 +463,7 @@ target = "http://127.0.0.1:8080/healthz"
     #[test]
     fn normalize_refuses_the_removed_key_on_every_platform() {
         let mut app = AppConfig::minimal("web", "./srv");
-        for value in ["", "sandbox.json"] {
+        for value in ["", "sandbox.json", "~other/box.json"] {
             app.sandbox = Some(value.to_string());
             assert_eq!(
                 normalize(app.clone()).unwrap_err(),

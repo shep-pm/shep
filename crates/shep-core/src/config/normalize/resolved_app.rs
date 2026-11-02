@@ -122,6 +122,8 @@ pub fn normalize_with_home(
     if app.name.contains(['/', '\\', ':']) || app.name == "." || app.name == ".." {
         return Err(NormalizeError::InvalidName(app.name));
     }
+    // First, so no later check can answer a removed key with another error.
+    validate::validate_sandbox_key(&app.name, app.sandbox.as_deref())?;
     if let Some(environment) = &app.environment
         && (environment == secrets::ALL_ENVIRONMENTS || !secrets::is_name(environment))
     {
@@ -267,7 +269,6 @@ pub fn normalize_with_home(
     if app.dogs.keys().any(String::is_empty) {
         return Err(NormalizeError::EmptyDogName { name: app.name });
     }
-    validate::validate_sandbox_key(&app.name, app.sandbox.as_deref())?;
     // Before the sandbox check: a Windows build refuses the table outright,
     // and `listen` with it should say so about `listen`.
     let sandboxed = app.dogs.contains_key("sandbox");
