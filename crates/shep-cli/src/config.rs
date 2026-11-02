@@ -59,15 +59,13 @@ fn resolve_style_with_env(
     )
 }
 
-/// Whether clap may colour its help for this `argv`, decided before clap
-/// parses it.
+/// Whether clap may colour its help for this `argv`, decided before the parse.
 ///
 /// clap renders `--help` inside the parse, ahead of [`resolve_style`], so
-/// this reads `--style` and `--home` off the raw tokens
-/// ([`style_before`], [`home_before`]) and then asks the same layers
-/// [`resolve_style`] does. `bare` is [`ColorChoice::Never`]; every other
-/// level is [`ColorChoice::Auto`], which already drops colour for `NO_COLOR`
-/// and a pipe.
+/// `--style` and `--home` are read off the raw tokens ([`style_before`],
+/// [`home_before`]) and the same layers answer. `bare` is
+/// [`ColorChoice::Never`]; any other level is [`ColorChoice::Auto`], which
+/// drops colour for `NO_COLOR` and a pipe.
 pub(crate) fn help_colour_choice(argv: &[OsString], shep_style: Option<&str>) -> ColorChoice {
     let rest = argv.get(1..).unwrap_or_default();
     let global = GlobalArgs {
@@ -269,10 +267,7 @@ mod tests {
     fn help_colour_lets_the_flag_beat_the_environment() {
         let (_home, home) = empty_home();
         let tokens = argv(&["shep", &home, "--style=full", "--help"]);
-        assert_eq!(
-            help_colour_choice(&tokens, Some("bare")),
-            ColorChoice::Auto
-        );
+        assert_eq!(help_colour_choice(&tokens, Some("bare")), ColorChoice::Auto);
     }
 
     #[test]

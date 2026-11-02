@@ -44,8 +44,6 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     // bare `shep` and `shep help` could not carry a status line. The command
     // is built here because adopted dogs join the hand-written `--help`
     // listing, and clap bakes that render into its `--help` error.
-    // Colour is chosen here, ahead of the parse: clap renders `--help`
-    // inside it, before `resolve_style` could run.
     let mut command = Cli::command()
         .styles(output::paint::help_styles(style::deep_colour_terminal(
             std::env::var_os("TERM").as_deref(),
@@ -55,6 +53,7 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
             &argv,
             std::env::var("SHEP_STYLE").ok().as_deref(),
         ));
+    // Help colour is chosen above, ahead of the parse and `resolve_style`.
     if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)
     {

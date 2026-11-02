@@ -274,7 +274,13 @@ mod tests {
     #[test]
     fn style_before_finds_the_flag_after_the_verb_and_past_other_flags() {
         assert_eq!(
-            style_before(&argv(&["shep", "flock", "--format", "json", "--style=bare"])),
+            style_before(&argv(&[
+                "shep",
+                "flock",
+                "--format",
+                "json",
+                "--style=bare"
+            ])),
             Some(StyleLevel::Bare)
         );
     }
