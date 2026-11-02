@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-02
+
+### Added
+
+- Refuse a sheep that sets the sandbox key and remove the crabpot wrap **(BREAKING)**
+- Refuse an in-place reload while a running sheep sets the removed sandbox key
+
+### Fixed
+
+- Adopt a carried sheep that still sets the removed sandbox key
+
+
 ## [0.22.0] - 2026-11-02
 
 ### Added

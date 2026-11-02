@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-02
+
+### Added
+
+- Refuse a sheep that sets the sandbox key and remove the crabpot wrap **(BREAKING)**
+- Hide the sandbox key from the Flockfile schema, the wire and lookout **(BREAKING)**
+
+### Fixed
+
+- Refuse the removed sandbox key before path expansion
+- Refuse the removed sandbox key when a Flockfile is parsed
+
+
 ## [0.22.0] - 2026-11-02
 
 ### Added
