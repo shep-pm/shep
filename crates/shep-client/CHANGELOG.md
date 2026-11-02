@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-02
+
+### Added
+
+- Hide the sandbox key from the Flockfile schema, the wire and lookout **(BREAKING)**
+
+
 ## [0.22.0] - 2026-11-02
 
 ### Added
