@@ -49,7 +49,13 @@ async fn a_second_subscribe_replaces_the_first() {
 fn a_resumed_connection_starts_with_what_its_predecessor_recorded() {
     let links = DogLinks::default();
     let stream = socket();
-    let _lease = links.register("metrics", None, 41, &stream, Some(vec!["bark.*".to_owned()]));
+    let _lease = links.register(
+        "metrics",
+        None,
+        41,
+        &stream,
+        Some(vec!["bark.*".to_owned()]),
+    );
 
     assert_eq!(links.snapshot()[0].topics, Some(vec!["bark.*".to_owned()]));
 }

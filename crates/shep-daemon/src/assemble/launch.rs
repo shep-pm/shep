@@ -71,7 +71,12 @@ mod tests {
 
     #[test]
     fn a_launched_sheep_gets_a_link_on_fd_4() {
-        let wrapped = through_dog(plain(), "/opt/dogs/box", Path::new("/home/ada/.shep"), "web");
+        let wrapped = through_dog(
+            plain(),
+            "/opt/dogs/box",
+            Path::new("/home/ada/.shep"),
+            "web",
+        );
 
         assert_eq!(wrapped.name, "web");
         assert_eq!(wrapped.launch_link.as_deref(), Some("sandbox"));

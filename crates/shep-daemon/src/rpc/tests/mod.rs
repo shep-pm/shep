@@ -208,9 +208,7 @@ async fn a_launch_link_reads_its_own_sheeps_table() {
 
     assert_eq!(
         reply.result,
-        Ok(Response::SheepDogTable {
-            table: Some(jobs)
-        })
+        Ok(Response::SheepDogTable { table: Some(jobs) })
     );
     let subscribe = Request::Subscribe {
         topics: vec!["config.sheep.jobs".to_string()],
@@ -284,7 +282,10 @@ async fn a_launch_link_is_refused_another_sheeps_table_and_every_other_request()
         let reply = on_launch_link(&h, "jobs", "web", request).await;
         let err = reply.result.expect_err(kind);
         assert_eq!(err.code, RpcErrorCode::Forbidden, "{kind}");
-        assert!(err.message.contains(&format!("`{kind}`")), "{kind}: {err:?}");
+        assert!(
+            err.message.contains(&format!("`{kind}`")),
+            "{kind}: {err:?}"
+        );
     }
     assert_eq!(list_flock(&h.ctx, 9).await.len(), 2, "nothing was touched");
 }

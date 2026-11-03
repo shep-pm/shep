@@ -114,13 +114,10 @@ impl Handover {
     /// answers by falling back to the control socket.
     pub fn carry_dog_links(&mut self, links: &[DogConnection]) {
         for sheep in &mut self.sheep {
-            let Some(link) = links
-                .iter()
-                .find(|link| {
-                    sheep.pid() == Some(link.pid)
-                        && sheep.name() == link.launch_for.as_deref().unwrap_or(&link.name)
-                })
-            else {
+            let Some(link) = links.iter().find(|link| {
+                sheep.pid() == Some(link.pid)
+                    && sheep.name() == link.launch_for.as_deref().unwrap_or(&link.name)
+            }) else {
                 continue;
             };
             sheep.carry_dog_link(link.fd.as_raw_fd(), link.topics.clone());

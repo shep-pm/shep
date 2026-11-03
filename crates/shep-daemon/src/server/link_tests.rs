@@ -1,5 +1,5 @@
 //! A dog's own connection: the identity it carries, and that a claim on it
-//! changes nothing.
+//! changes nothing. A launch link is here too, for what it hears.
 
 use super::conn_protocol::serve_conn;
 use super::origin::Origin;
@@ -10,7 +10,8 @@ use crate::rpc::RpcContext;
 use crate::testing::harness;
 use futures_util::StreamExt;
 use shep_core::protocol::{
-    Envelope, Hello, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, Request, Response, ServerFrame,
+    BusEvent, Envelope, Hello, HelloReply, MIN_SUPPORTED, PROTOCOL_VERSION, Request, Response,
+    ServerFrame,
 };
 use tokio_util::codec::Framed;
 
@@ -148,5 +149,43 @@ async fn a_link_is_contact_once_the_dog_sends_a_frame() {
     assert_eq!(
         h.ctx.peer_contacts.from_pid(Some(FIRST_SCRIPTED_PID)),
         Contact::Named
+    );
+}
+
+#[tokio::test]
+async fn a_launch_link_hears_only_its_own_sheeps_table_changes() {
+    let h = harness(vec![]);
+    let (server, client) = shep_core::transport::connected_pair().await.unwrap();
+    let origin = Origin::untracked_launch("sandbox", "web");
+    let ctx = h.ctx.clone();
+    tokio::spawn(async move {
+        let _ = serve_conn(server, ctx, origin).await;
+    });
+    let mut client = Client {
+        frames: Framed::new(client, shep_core::protocol::codec()),
+    };
+    client.handshake().await;
+    client.subscribe(&["config.sheep.sandbox"]).await;
+
+    let changed = |dog: &str, sheep: &str| {
+        BusEvent::DogSheepSettingsChanged {
+            dog: dog.to_string(),
+            sheep: sheep.to_string(),
+        }
+        .into()
+    };
+    h.ctx.events.send(changed("sandbox", "api")).unwrap();
+    h.ctx.events.send(changed("jobs", "web")).unwrap();
+    h.ctx.events.send(changed("sandbox", "web")).unwrap();
+
+    // Back-to-back arrival is the filtering assertion: no negative wait.
+    let heard: ServerFrame = client.recv().await;
+    assert!(
+        matches!(
+            &heard,
+            ServerFrame::Event(BusEvent::DogSheepSettingsChanged { dog, sheep })
+                if dog == "sandbox" && sheep == "web"
+        ),
+        "{heard:?}"
     );
 }

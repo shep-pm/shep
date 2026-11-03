@@ -591,8 +591,8 @@ impl<R: ProcessRunner> Actor<R> {
 
         // A link on a sheep that is no dog is the one a dog launched it
         // holding.
-        let launch_dog = (dog_link.is_some() && carried.dog().is_none())
-            .then(|| SANDBOX_DOG.to_string());
+        let launch_dog =
+            (dog_link.is_some() && carried.dog().is_none()).then(|| SANDBOX_DOG.to_string());
         let (proc, io) = self
             .runner
             .adopt(AdoptSpec {
