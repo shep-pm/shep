@@ -523,13 +523,20 @@ impl Client {
     ///
     /// Same as [`Self::request`].
     pub async fn subscribe(&self, topics: Vec<String>) -> Result<EventStream, RequestError> {
-        let (reply_to, reply_rx) = oneshot::channel();
-        self.send_command(Command::Subscribe { reply_to }).await?;
-        let receiver = reply_rx.await.map_err(|_recv_error| RequestError::Closed)?;
+        let events = self.events().await?;
 
         // reply is `Response::Subscribed`; unchecked, since interpreting
         // `Response` variants is shep-cli's job, not this crate's
         self.request(Request::Subscribe { topics }).await?;
+        Ok(events)
+    }
+
+    /// A stream of what this connection is already being sent, with no
+    /// `Subscribe` to change what that is.
+    pub(crate) async fn events(&self) -> Result<EventStream, RequestError> {
+        let (reply_to, reply_rx) = oneshot::channel();
+        self.send_command(Command::Subscribe { reply_to }).await?;
+        let receiver = reply_rx.await.map_err(|_recv_error| RequestError::Closed)?;
         Ok(EventStream::new(receiver))
     }
 

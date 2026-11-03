@@ -18,6 +18,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 use shep_core::protocol::{ActionOutcome, BusEvent, Request, Response, RpcErrorCode, SelectorSpec};
 
+use crate::reconnect::Covered;
 use crate::{EventStream, Lagged, ReconnectingClient, RequestError, TRIGGER_DEADLINE};
 
 #[cfg(doc)]
@@ -184,12 +185,14 @@ pub(super) fn done_payload(id: &ActionId, outcome: Result<Value, String>) -> Val
 /// The result topics a dog's waits are listening on.
 ///
 /// A connection holds one topic filter and a `Subscribe` replaces it, so
-/// waits on different callees must send the union of their topics.
+/// waits on different callees must send the union of their topics. A
+/// `Subscribe` also costs the shepherd's old forwarder the event it holds in
+/// flight, so one is sent only when the union grows.
 #[derive(Debug, Default)]
 pub(super) struct Waits {
-    /// Held across a `Subscribe`, so the filters reach the shepherd in the
-    /// order their unions were made.
-    order: tokio::sync::Mutex<()>,
+    /// What the connection's filter holds. Held across a `Subscribe`, so the
+    /// filters reach the shepherd in the order their unions were made.
+    covered: tokio::sync::Mutex<Covered>,
     /// Waiting count per topic. Never held across an await.
     topics: Mutex<BTreeMap<String, usize>>,
 }
@@ -207,10 +210,11 @@ impl Waits {
         client: &ReconnectingClient,
         topic: String,
     ) -> Result<(EventStream, Listening<'a>), RequestError> {
-        let _order = self.order.lock().await;
+        let mut covered = self.covered.lock().await;
         let listening = self.claim(topic);
-        let topics = self.topics();
-        let events = client.subscribe(topics).await?;
+        let events = client
+            .subscribe_covered(self.topics(), &mut covered)
+            .await?;
         Ok((events, listening))
     }
 

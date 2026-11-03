@@ -130,10 +130,10 @@ impl DogRuntime {
     /// the result of the long action it answers with.
     ///
     /// Subscribes to `callee`'s results before it triggers, so a result
-    /// published at once is not missed. Waits running at once share one
-    /// subscription, which replaces any other this connection holds. The
-    /// caller needs `events:dog.<callee>` and `dogs.trigger:<callee>`. The
-    /// timeout starts once the callee has answered with its id.
+    /// published at once is not missed. Waits share one subscription, sent
+    /// only when a callee joins it, which replaces any other this connection
+    /// holds. The caller needs `events:dog.<callee>` and
+    /// `dogs.trigger:<callee>`. The timeout starts once the callee answers.
     ///
     /// # Errors
     ///
@@ -318,6 +318,77 @@ mod tests {
             trigger.deadline_ms,
             Some(u64::try_from(crate::TRIGGER_DEADLINE.as_millis()).unwrap())
         );
+    }
+
+    /// How many `Subscribe`s each generation of `shepherd` was sent.
+    fn subscribes(shepherd: &crate::testing::Handovers) -> Vec<u32> {
+        shepherd
+            .envelopes()
+            .into_iter()
+            .filter(|(_, envelope)| matches!(envelope.body, Request::Subscribe { .. }))
+            .map(|(generation, _)| generation)
+            .collect()
+    }
+
+    /// A second `Subscribe` makes the shepherd replace the first one's
+    /// forwarder and drop the event it holds in flight, so a wait whose topic
+    /// the connection already hears does not send one.
+    #[tokio::test]
+    async fn a_wait_on_a_topic_the_connection_already_hears_sends_no_subscribe() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd =
+            fake_daemon_across_handovers(&paths.socket, vec![Handshake::Accept(sample_ack())]);
+        let runtime = DogRuntime::start(DogIdentity::named("bark"), paths)
+            .await
+            .unwrap();
+        let wait = || runtime.trigger_and_wait("builder", "build", None, Duration::from_millis(50));
+
+        let _ = tokio::join!(wait(), wait());
+        let _ = wait().await;
+
+        assert_eq!(subscribes(&shepherd), [1]);
+    }
+
+    /// The shepherd's filter belongs to a connection, so a successor starts
+    /// with none and the next wait has to ask again.
+    #[tokio::test]
+    async fn a_wait_after_a_handover_subscribes_again() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd = fake_daemon_across_handovers(
+            &paths.socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let runtime = DogRuntime::start(DogIdentity::named("bark"), paths)
+            .await
+            .unwrap();
+        let wait = || runtime.trigger_and_wait("builder", "build", None, Duration::from_millis(50));
+        let _ = wait().await;
+
+        shepherd.cut().await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while shepherd.accepted() < 2 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            runtime
+                .client()
+                .connected_within(Duration::from_secs(5))
+                .await
+        })
+        .await
+        .expect("the client reconnects")
+        .unwrap();
+        let _ = wait().await;
+
+        assert_eq!(subscribes(&shepherd), [1, 2]);
     }
 
     #[tokio::test]
