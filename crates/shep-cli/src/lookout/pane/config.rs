@@ -22,6 +22,7 @@ use super::entries::{EntryBody, EntryRows};
 use super::entry_remove::Reshape;
 use super::fields::{entries_text, render_json, resolved_by_kind, resolved_display, sheep_fields};
 use super::sheep_dog::SheepDogTable;
+use crate::dog_settings::standard::dog_wide_keys;
 
 // Link-only (IR-32): the unit grammars a row's resolved display goes
 // through, the field kind a locked row reports, and the group order this
@@ -50,6 +51,9 @@ pub(super) struct DogSection {
     /// The dog's answer to the schema flag, probed at open and kept nowhere
     /// else.
     pub(super) schema: Value,
+    /// The root-level keys the schema marks dog-wide: set here for every
+    /// sheep, and out of reach of a sheep's own table.
+    pub(super) dog_wide: BTreeSet<String>,
 }
 
 impl core::fmt::Debug for DogSection {
@@ -246,6 +250,7 @@ impl ConfigPane {
             dogs_tab: Box::default(),
             section: Some(Box::new(DogSection {
                 toml: section,
+                dog_wide: dog_wide_keys(&schema),
                 schema,
             })),
             dog_table: None,
@@ -383,6 +388,7 @@ impl ConfigPane {
     pub(super) fn stored_of(&self, key: &str) -> Option<&Value> {
         self.values
             .get(key)
+            .filter(|_| !self.is_inherited(key))
             .or_else(|| self.entries.leaf(key).map(|leaf| leaf.stored))
             .or_else(|| self.arm_value(key))
     }
@@ -466,16 +472,32 @@ impl ConfigPane {
         else {
             return None;
         };
+        if value.as_value().is_null()
+            && let Some(text) = self.inherited_text(key)
+        {
+            return Some(format!("{text} (inherited)"));
+        }
         if let Some(text) = self.union_text(key) {
             return Some(text);
         }
-        let raw = if self.entries_field(key).is_some() {
-            entries_text(Some(value.as_value()))
+        Some(self.filed_text(key, value.as_value()))
+    }
+
+    /// `value` as a row for `key` draws it: an entries field as a count, so
+    /// no leaf inside an entry is ever spelled out.
+    pub(super) fn filed_text(&self, key: &str, value: &Value) -> String {
+        let counted = !matches!(self.target, PaneTarget::Sheep { .. })
+            && matches!(
+                self.fields.by_key(key).map(|field| &field.kind),
+                Some(FieldKind::Entries(_))
+            );
+        let raw = if counted {
+            entries_text(Some(value))
         } else {
-            self.checklist_text(key, Some(value.as_value()))
-                .unwrap_or_else(|| render_json(value.as_value()))
+            self.checklist_text(key, Some(value))
+                .unwrap_or_else(|| render_json(value))
         };
-        Some(self.resolved(key, &raw))
+        self.resolved(key, &raw)
     }
 
     /// [`Self::value`], resolved through its own grammar for a
@@ -487,7 +509,7 @@ impl ConfigPane {
         self.resolved(key, &self.value(key))
     }
 
-    fn resolved(&self, key: &str, raw: &str) -> String {
+    pub(super) fn resolved(&self, key: &str, raw: &str) -> String {
         match (self.entries.leaf(key), self.arm_field_of(key)) {
             (Some(leaf), _) => resolved_by_kind(leaf.field.value_kind, raw),
             (None, Some(arm)) => resolved_by_kind(arm.value_kind, raw),

@@ -14,6 +14,7 @@ use shep_core::protocol::{Response, RpcError, RpcErrorCode};
 use crate::commands::settings::load_settings;
 use crate::commands::shep_toml::ShepToml;
 use crate::lookout::app::{ActionVerb, App, Effect, KeyPress, Msg, RevealedValue, RowKey, Sent};
+use crate::lookout::frames::build::standard;
 use crate::lookout::frames::fixtures::{
     close_dialog_config_view, dogs_listing, edit_pane_config_view, flock_without_api, jobs_entry,
     kelpie_config_view, kelpie_entry, move_settings_cursor_to, restarted_api,
@@ -326,6 +327,9 @@ pub(super) fn apply_post_tick_scene(app: &mut App, which: Scene) {
             app.update(Msg::Key(KeyPress::Confirm));
             app.update(Msg::Key(KeyPress::SelectDown));
             app.update(Msg::Key(KeyPress::SelectDown));
+        }
+        Scene::SheepDogInherited | Scene::SheepDogEverySheep => {
+            standard::open_standard_dog(app, which);
         }
         Scene::DogEntries
         | Scene::DogEntriesNarrow

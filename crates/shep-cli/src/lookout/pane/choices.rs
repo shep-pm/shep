@@ -522,7 +522,7 @@ mod tests {
         pane.open_table();
         let table: Map<String, Value> =
             json!({ "kinds": ["b", "c"] }).as_object().cloned().unwrap();
-        pane.adopt_table(table);
+        pane.adopt_table(Some(table));
         assert_eq!(checklist(&pane), ["[ ] a", "[x] b", "[x] c"]);
     }
 

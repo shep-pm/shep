@@ -190,6 +190,10 @@ pub(crate) async fn copy(
         }
     };
 
+    if let Some(refusal) = dog_wide::refusal(paths, &from, &to.sheep, &except, &source) {
+        return refusal.report(streams);
+    }
+
     let path = from.path.dotted();
     let mut report = report_for(&from, &to, &plan, ReportState::preview(args.dry_run));
 
@@ -495,6 +499,9 @@ async fn write_plan(
     }
 }
 
+mod dog_wide;
+#[cfg(all(test, unix))]
+mod dog_wide_tests;
 #[cfg(test)]
 mod validate_tests;
 #[cfg(test)]

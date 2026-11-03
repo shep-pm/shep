@@ -58,6 +58,7 @@ fn app_in_kinds_table() -> App {
                 name: "jobs".into(),
                 adopted_path: Some("/opt/jobs".into()),
                 schema: Some(kinds_schema()),
+                standard: None,
             },
             asked: true,
         }],

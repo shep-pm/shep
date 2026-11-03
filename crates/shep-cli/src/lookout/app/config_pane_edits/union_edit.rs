@@ -69,6 +69,7 @@ fn app_on_retro() -> App {
                 name: "kelpie".into(),
                 adopted_path: Some("/opt/kelpie".into()),
                 schema: Some(step_schema()),
+                standard: None,
             },
             asked: true,
         }],
