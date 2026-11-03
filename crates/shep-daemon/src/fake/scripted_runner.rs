@@ -67,6 +67,9 @@ struct SpawnedProc {
     /// The sockets this spawn was handed, off [`SpawnSpec::listen`], read
     /// back via [`ScriptedRunner::spawned_listen`].
     listen: Option<Arc<crate::listen::ListenSockets>>,
+    /// The cgroup this spawn was asked to join, off [`SpawnSpec::cgroup`],
+    /// read back via [`ScriptedRunner::spawned_cgroup`].
+    cgroup: Option<std::path::PathBuf>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -295,6 +298,16 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_listen(&self, spawn_index: usize) -> Option<Arc<crate::listen::ListenSockets>> {
         self.spawned.lock().unwrap()[spawn_index].listen.clone()
+    }
+
+    /// The cgroup the spawn at `spawn_index` was asked to join, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_cgroup(&self, spawn_index: usize) -> Option<std::path::PathBuf> {
+        self.spawned.lock().unwrap()[spawn_index].cgroup.clone()
     }
 
     /// How many spawns this runner has been asked for.
@@ -663,6 +676,7 @@ impl ProcessRunner for ScriptedRunner {
             program: spec.program.clone(),
             args: spec.args.clone(),
             listen: spec.listen.clone(),
+            cgroup: spec.cgroup.clone(),
         });
         drop(spawned);
 

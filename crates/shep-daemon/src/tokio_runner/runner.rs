@@ -826,12 +826,23 @@ impl ProcessRunner for TokioRunner {
             mappings.push(mapping);
             dog_end = Some(daemon_end);
         }
+        // Before `fd_mappings`, whose hook could otherwise dup2 over the
+        // descriptor this one writes through.
+        #[cfg(target_os = "linux")]
+        if let Some(dir) = &spec.cgroup {
+            crate::cgroup::join_on_exec(command.as_std_mut(), dir)
+                .map_err(|error| crate::cgroup::spawn_failed(&spec.name, dir, &error))?;
+        }
         #[cfg(unix)]
         if !mappings.is_empty() {
             command
                 .as_std_mut()
                 .fd_mappings(mappings)
-                .map_err(|error| RunnerError::SpawnFailed(format!("fd mapping: {error}")))?;
+                .map_err(|error| {
+                    #[cfg(target_os = "linux")]
+                    crate::cgroup::release(spec.cgroup.as_deref());
+                    RunnerError::SpawnFailed(format!("fd mapping: {error}"))
+                })?;
         }
 
         #[cfg(unix)]
@@ -839,8 +850,11 @@ impl ProcessRunner for TokioRunner {
             // `LISTEN_PID` is the child's own pid, which only the child can
             // write, after the fork. The block replaces `environ` there, so
             // the command's own env must stay untouched.
-            let block = crate::sys::ListenEnv::new(&env)
-                .map_err(|error| RunnerError::SpawnFailed(format!("environment: {error}")))?;
+            let block = crate::sys::ListenEnv::new(&env).map_err(|error| {
+                #[cfg(target_os = "linux")]
+                crate::cgroup::release(spec.cgroup.as_deref());
+                RunnerError::SpawnFailed(format!("environment: {error}"))
+            })?;
             crate::sys::set_listen_env(command.as_std_mut(), block);
         } else {
             command.env_clear();
@@ -852,9 +866,13 @@ impl ProcessRunner for TokioRunner {
             command.envs(&env);
         }
 
-        let mut child = command
-            .spawn()
-            .map_err(|error| RunnerError::SpawnFailed(error.to_string()))?;
+        let mut child = command.spawn().map_err(|error| {
+            #[cfg(target_os = "linux")]
+            if let Some(dir) = &spec.cgroup {
+                return crate::cgroup::spawn_failed(&spec.name, dir, &error);
+            }
+            RunnerError::SpawnFailed(error.to_string())
+        })?;
         // Closes the parent's copy of the fd-3 socketpair end here rather
         // than at the end of the scope, so the daemon's end sees a clean EOF.
         drop(command);

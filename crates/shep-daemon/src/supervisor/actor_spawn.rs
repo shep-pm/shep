@@ -106,6 +106,21 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
+    /// The cgroup the sheep `id` in slot `instance` spawns into, or `None` when
+    /// this shepherd has no delegated subtree to give it one from.
+    pub(super) fn cgroup_for(&self, id: u32, instance: u32) -> Option<PathBuf> {
+        #[cfg(target_os = "linux")]
+        return self
+            .cgroup_base
+            .as_deref()
+            .map(|base| crate::cgroup::sheep_dir(base, id, instance));
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (id, instance, &self.cgroup_base);
+            None
+        }
+    }
+
     /// The secret view one spawn, or one batch of instances, resolves against.
     ///
     /// The store is read here rather than inside [`assemble`], the same way
@@ -258,6 +273,7 @@ impl<R: ProcessRunner> Actor<R> {
                 Ok(SpawnSpec {
                     dog_link: dog.is_some(),
                     listen: self.listen_for(app.config())?,
+                    cgroup: self.cgroup_for(id, instance),
                     ..spec
                 })
             });

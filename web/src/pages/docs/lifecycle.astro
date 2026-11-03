@@ -231,6 +231,11 @@ ID  NAME    STATUS    PID    RESTARTS  EXIT  CFG  CPU   MEM   UPTIME  FOLD  SMIT
       crash is swept too. Only then does the stop return.
     </p>
     <p>
+      On Linux, when the shepherd has a delegated cgroup v2 subtree, each
+      sheep runs in its own cgroup, joined before its exec, so every lamb it
+      forks is inside. It is removed once the sheep is reaped.
+    </p>
+    <p>
       The grace period is where the two verbs that also drive a reload
       diverge from the two that don't. <code>stop</code>, <code>restart</code>{" "}
       and <code>delete</code> wait <code>kill_timeout</code>, 1.6 seconds by
