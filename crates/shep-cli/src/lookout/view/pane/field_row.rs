@@ -26,9 +26,8 @@ pub(super) fn section_header(label: &str, palette: Palette) -> Line<'static> {
 ///
 /// The flag matches `shep flock`'s CFG column: `!` for a field parked until
 /// a respawn, `*` for one an operator has overridden. Pending wins when both
-/// apply. `^` is a value the sheep's dog gives every sheep, which the sheep's
-/// own table does not set. `@` is a key a dog's section sets for every sheep. The lock is a glyph, not a style, since a style says nothing in
-/// `plain`.
+/// apply. `^` is a value the dog's section gives, `@` a key it sets for every
+/// sheep. The lock is a glyph, not a style: a style says nothing in `plain`.
 pub(super) fn field_line(
     pane: &ConfigPane,
     index: usize,
