@@ -208,7 +208,7 @@ See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs install adopt whistle
+Dogs and agents  dogs install upgrade adopt whistle
 Foreground runs  runtime dev
 Coming from pm2  import
 Help             welcome init help completions style

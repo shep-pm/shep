@@ -64,6 +64,7 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Dogs(_)
         | Commands::Adopt(_)
         | Commands::Install(_)
+        | Commands::Upgrade(_)
         | Commands::Rehome(_)
         | Commands::Whistle
         | Commands::Reopen(_)
@@ -246,6 +247,7 @@ mod tests {
         &["enable", "metrics"],
         &["disable", "metrics"],
         &["install", "web"],
+        &["upgrade", "otel"],
         &["adopt", "/bin/true"],
         &["rehome", "metrics"],
         &["describe", "web"],

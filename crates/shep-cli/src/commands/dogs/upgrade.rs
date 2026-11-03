@@ -179,25 +179,26 @@ pub(crate) fn upgrade_grants(paths: &ShepPaths) -> Result<Vec<String>, ShepTomlE
 }
 
 /// [`upgrade_grants`] for one dog, for `shep enable` and `shep dogs grant`,
-/// which look at a dog's build the moment the operator acts on it.
+/// which look at a dog's build the moment the operator acts on it. `true`
+/// when its record changed.
 ///
 /// # Errors
 /// [`ShepTomlError`] when `shep.toml` cannot be read or written.
-pub(super) fn upgrade_one(paths: &ShepPaths, name: &str) -> Result<(), ShepTomlError> {
+pub(super) fn upgrade_one(paths: &ShepPaths, name: &str) -> Result<bool, ShepTomlError> {
     let cfg = ShepToml::read_only(&paths.daemon_config)?;
     let known = crate::dog::BUILT_IN_DOGS.contains(&name) || cfg.adopted_dog_path(name).is_some();
     if !known {
-        return Ok(());
+        return Ok(false);
     }
     let examined = vec![(name.to_owned(), declaration_of(&cfg, &paths.home, name))];
     if changes(&cfg, &examined).is_empty() {
-        return Ok(());
+        return Ok(false);
     }
     ShepToml::try_edit(&paths.daemon_config, |cfg| {
         for (name, record) in changes(cfg, &examined) {
             cfg.set_grant_record(&name, &record)?;
         }
-        Ok(())
+        Ok(true)
     })
 }
 

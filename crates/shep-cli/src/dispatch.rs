@@ -523,6 +523,7 @@ pub(crate) async fn run(
         }
         Commands::Adopt(ref args) => dogs::adopt(&mut streams, &paths, args).await,
         Commands::Install(ref args) => dogs::install(&mut streams, &paths, args).await,
+        Commands::Upgrade(ref args) => dogs::upgrade(&mut streams, &paths, args).await,
         Commands::Rehome(ref args) => dogs::rehome(&mut streams, &paths, &args.name).await,
         Commands::Describe(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {
