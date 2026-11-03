@@ -23,6 +23,9 @@ use crate::fetch::RedirectPolicy;
 
 pub(super) const MANIFEST: &str = r#"{"manifest":1,"name":"otel","version":"0.2.4","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock to report on it"}]}"#;
 
+/// The commit the stub cargo says it built.
+pub(super) const COMMIT: &str = "3f9c2a1b7d4e5f60718293a4b5c6d7e8f9012345";
+
 pub(super) const REPO: &str = "https://github.com/shep-pm/shep-otel";
 
 /// The publisher the row's own repo names.
@@ -47,6 +50,16 @@ impl Fixture {
         self.dir.path().join("argv")
     }
 
+    /// Where the stub cargo appends one line per run.
+    pub(super) fn attempts(&self) -> PathBuf {
+        self.dir.path().join("attempts")
+    }
+
+    /// Makes the stub cargo find this tag.
+    pub(super) fn has_tag(&self, tag: &str) {
+        std::fs::write(self.dir.path().join("tags"), format!("{tag}\n")).unwrap();
+    }
+
     /// A directory holding a `cargo` that records its arguments and builds
     /// the dog into the `--root` it is given, named for the last argument.
     fn stub_cargo(&self) -> PathBuf {
@@ -58,10 +71,40 @@ impl Fixture {
             format!("#!/bin/sh\nif [ \"$1\" = --shep-manifest ]; then cat <<'EOF'\n{MANIFEST}\nEOF\nfi\nexit 0\n"),
         )
         .unwrap();
+        // Every run is appended to `attempts`; `argv` holds the last. A `--tag`
+        // succeeds only for a name listed in `tags`. A `--git` install writes
+        // the `.crates2.json` cargo would.
         let script = format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {argv}\nprev=\nfor a in \"$@\"; do\n  [ \"$prev\" = --root ] && root=\"$a\"\n  prev=\"$a\"\n  last=\"$a\"\ndone\nmkdir -p \"$root/bin\"\ncp {dog} \"$root/bin/$last\"\nchmod 755 \"$root/bin/$last\"\n",
+            r#"#!/bin/sh
+printf '%s\n' "$@" > {argv}
+printf '%s\n' "$*" >> {attempts}
+prev=
+for a in "$@"; do
+  [ "$prev" = --root ] && root="$a"
+  [ "$prev" = --tag ] && tag="$a"
+  [ "$prev" = --branch ] && kind=branch && wanted="$a"
+  [ "$prev" = --rev ] && kind=rev && wanted="$a"
+  [ "$a" = --git ] && git=1
+  prev="$a"
+  last="$a"
+done
+if [ -n "$tag" ]; then
+  grep -qx "$tag" {tags} 2>/dev/null || exit 101
+  kind=tag; wanted="$tag"
+fi
+mkdir -p "$root/bin"
+cp {dog} "$root/bin/$last"
+chmod 755 "$root/bin/$last"
+if [ -n "$git" ]; then
+  printf '{{"installs":{{"%s 0.2.4 (git+{repo}?%s=%s#{commit})":{{"bins":["%s"]}}}}}}' "$last" "$kind" "$wanted" "$last" > "$root/.crates2.json"
+fi
+"#,
             argv = self.argv().display(),
+            attempts = self.attempts().display(),
+            tags = self.dir.path().join("tags").display(),
             dog = dog.display(),
+            repo = REPO,
+            commit = COMMIT,
         );
         let cargo = bin.join("cargo");
         std::fs::write(&cargo, script).unwrap();
@@ -139,6 +182,7 @@ pub(super) fn args(yes: bool, no_enable: bool) -> InstallArgs {
         no_enable,
         refresh: false,
         cargo: false,
+        git_ref: None,
     }
 }
 

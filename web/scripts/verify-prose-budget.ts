@@ -490,7 +490,11 @@ export const BUDGETS: Record<string, number> = {
   // reads the page body as words a reader wades through.
   // Raised from 320 for the index cache and the two `cargo` fields a
   // contributor can set. Raised again for what `shep install` does.
-  "community-dogs": 520,
+  // Raised from 520 for `--ref`, which is new content: what it builds, how a
+  // ref is read, where it lands and that the index has not reviewed it.
+  // Raised from 600 for the lede, which says `--ref` also installs a cargo row
+  // with no approved version.
+  "community-dogs": 610,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

@@ -76,7 +76,13 @@ async fn gather_below(
     fetched: &mut Vec<Fetched>,
 ) -> Result<(), ExitCode> {
     let (args, reach, catalog, adopted) = *settings;
-    let here = fetch_dog(streams, paths, args, reach, dog).await?;
+    // `--ref` builds the dog asked for; what it needs comes from the index.
+    let git_ref = if trail.is_empty() {
+        args.git_ref.as_deref()
+    } else {
+        None
+    };
+    let here = fetch_dog(streams, paths, args, reach, dog, git_ref).await?;
     trail.push(dog.adopt_as.clone());
     if let Some(manifest) = &here.manifest {
         let wanted = depends::missing(manifest, &dog.adopt_as, trail, adopted, catalog.dogs)

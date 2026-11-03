@@ -1,13 +1,13 @@
 //! `shep install <dog>`: installs the version the community index approves,
 //! records a receipt, and hands the binary to `adopt`.
 //!
-//! A row that hashes a binary for this target is downloaded and must match
-//! the hash ([`install_download`](super::install_download)). Otherwise, or
-//! with `--cargo`, cargo builds it, once crates.io names the row's repository
-//! as the publisher. The grant question and the enable are `adopt`'s own.
+//! A row that hashes a binary for this target is downloaded and must match the hash
+//! ([`install_download`](super::install_download)). Otherwise, or with `--cargo`, cargo builds
+//! it, once crates.io names the row's repository as the publisher. `--ref` builds the row's
+//! repository at a ref instead ([`install_ref`]). The grant question and the enable are `adopt`'s.
 //!
-//! Any other row kind prints its instructions and installs nothing, and a
-//! dog the index does not carry is `shep adopt <path>`.
+//! Any other row kind prints its instructions and installs nothing, and a dog the index does not
+//! carry is `shep adopt <path>`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -29,7 +29,8 @@ use super::consent::Input;
 use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
-use super::receipt::{self, Installer, Receipt};
+use super::install_ref;
+use super::receipt::{self, Installer, Pinned, Receipt};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
 
 /// Where crates.io's API is, when nothing says otherwise.
@@ -215,13 +216,14 @@ pub(super) struct Fetched {
     binary: PathBuf,
     sha256: String,
     installed: Installed,
+    landed: Landed,
     token_publish: bool,
     kept: Kept,
     _held: FileLock,
 }
 
-/// Fetches `dog`'s binary into `$SHEP_HOME/dogs` and reads its manifest,
-/// leaving everything else for [`adopt_fetched`].
+/// Fetches `dog`'s binary into `$SHEP_HOME/dogs`, built at `git_ref` when one
+/// is given, and reads its manifest, leaving the rest for [`adopt_fetched`].
 ///
 /// # Errors
 /// The [`ExitCode`] already reported to `streams`.
@@ -231,38 +233,60 @@ pub(super) async fn fetch_dog(
     args: &InstallArgs,
     reach: &Reach,
     dog: &AvailableDog,
+    git_ref: Option<&str>,
 ) -> Result<Fetched, ExitCode> {
-    let DogSourceKind::Cargo {
-        version: Some(version),
-        ..
-    } = &dog.source
-    else {
-        // The instructions `shep dogs --available <name>` prints, and nothing
-        // installed. Only a table has room for the detail; JSON gets the
-        // error envelope every other refusal does.
-        if matches!(streams.fmt, Format::Table) {
-            let _ = crate::commands::query::render_detail(&mut *streams.out, dog);
-            return Err(ExitCode::Failure);
+    let wanted = match (&dog.source, git_ref) {
+        (DogSourceKind::Cargo { .. }, Some(git_ref)) => Wanted::Ref(git_ref),
+        (
+            DogSourceKind::Cargo {
+                version: Some(version),
+                ..
+            },
+            None,
+        ) => Wanted::Approved(version),
+        _ => {
+            // The instructions `shep dogs --available <name>` prints, and
+            // nothing installed. Only a table has room for the detail; JSON
+            // gets the error envelope every other refusal does.
+            if matches!(streams.fmt, Format::Table) {
+                let _ = crate::commands::query::render_detail(&mut *streams.out, dog);
+                return Err(ExitCode::Failure);
+            }
+            let instruction = crate::commands::query::install_instruction(dog);
+            return Err(streams.fail(
+                ExitCode::Failure,
+                &format!(
+                    "`{}` is not a cargo row with an approved version, so shep cannot install \
+                     it: {instruction}",
+                    dog.adopt_as
+                ),
+            ));
         }
-        let instruction = crate::commands::query::install_instruction(dog);
-        return Err(streams.fail(
-            ExitCode::Failure,
-            &format!(
-                "`{}` is not a cargo row with an approved version, so shep cannot install it: \
-                 {instruction}",
-                dog.adopt_as
-            ),
-        ));
     };
     let name = dog.adopt_as.as_str();
     let package = dog.package.as_str();
-    for (what, text) in [("name", name), ("package", package), ("version", version)] {
+    let mut checked = vec![("name", name), ("package", package)];
+    if let Wanted::Approved(version) = wanted {
+        checked.push(("version", version));
+    }
+    for (what, text) in checked {
         if !is_path_safe(text) {
             return Err(streams.fail(
                 ExitCode::InvalidConfig,
                 &format!("the index row's {what} {text:?} is not one this shep will build"),
             ));
         }
+    }
+    if let Wanted::Ref(git_ref) = wanted
+        && !install_ref::is_acceptable(git_ref)
+    {
+        return Err(streams.fail(
+            ExitCode::InvalidConfig,
+            &format!(
+                "`--ref {git_ref:?}` is not a branch, tag or commit cargo can take: it is empty, \
+                 starts with `-` or holds whitespace"
+            ),
+        ));
     }
     // Before building: `adopt` refuses the same name, and only after the
     // build has been paid for.
@@ -275,33 +299,47 @@ pub(super) async fn fetch_dog(
             ),
         ));
     }
-    let download_from = if args.cargo { None } else { dog.prebuilt() };
-    let plan = match (download_from, &reach.cargo) {
-        (Some(prebuilt), _) => Plan::Download(prebuilt),
-        (None, Some(cargo)) => Plan::Build(cargo),
-        (None, None) => {
-            let why = if args.cargo {
-                format!("`--cargo` builds {package} with cargo")
-            } else {
-                format!("{package} {version} has no prebuilt binary for {BUILD_TARGET}")
-            };
+    let plan = match (wanted, &reach.cargo) {
+        (Wanted::Ref(git_ref), Some(cargo)) => Plan::BuildRef { cargo, git_ref },
+        (Wanted::Ref(_), None) => {
             return Err(streams.fail(
                 ExitCode::Failure,
                 &format!(
-                    "{why}, and there is no `cargo` on PATH. Install a Rust toolchain from \
-                     https://rustup.rs and run it again; shep never installs one"
+                    "`--ref` builds {package} with cargo, and there is no `cargo` on PATH. \
+                     Install a Rust toolchain from https://rustup.rs and run it again; shep \
+                     never installs one"
                 ),
             ));
         }
+        (Wanted::Approved(version), cargo) => {
+            let download_from = if args.cargo { None } else { dog.prebuilt() };
+            match (download_from, cargo) {
+                (Some(prebuilt), _) => Plan::Download { prebuilt, version },
+                (None, Some(cargo)) => Plan::Build { cargo, version },
+                (None, None) => {
+                    let why = if args.cargo {
+                        format!("`--cargo` builds {package} with cargo")
+                    } else {
+                        format!("{package} {version} has no prebuilt binary for {BUILD_TARGET}")
+                    };
+                    return Err(streams.fail(
+                        ExitCode::Failure,
+                        &format!(
+                            "{why}, and there is no `cargo` on PATH. Install a Rust toolchain \
+                             from https://rustup.rs and run it again; shep never installs one"
+                        ),
+                    ));
+                }
+            }
+        }
     };
 
-    let token_publish = if matches!(plan, Plan::Build(_)) {
-        match check_publisher(streams, reach, dog, version).await {
+    let token_publish = match &plan {
+        Plan::Build { version, .. } => match check_publisher(streams, reach, dog, version).await {
             Ok(token_publish) => token_publish,
             Err(code) => return Err(code),
-        }
-    } else {
-        false
+        },
+        Plan::Download { .. } | Plan::BuildRef { .. } => false,
     };
 
     if let Err(err) = std::fs::create_dir_all(&paths.dogs_dir) {
@@ -315,7 +353,7 @@ pub(super) async fn fetch_dog(
     let lock =
         tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, lock_wait))
             .await;
-    let held = match lock {
+    let _held = match lock {
         Ok(Ok(Some(held))) => held,
         Ok(Ok(None)) => {
             return Err(streams.fail(
@@ -337,31 +375,55 @@ pub(super) async fn fetch_dog(
         }
     };
 
-    let root = paths.dogs_dir.join(name).join(version);
-    let binary = root
-        .join("bin")
-        .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
-    // Copies, so the installed dog stays in place until it is replaced; a
-    // refusal before `adopt` registers the new binary puts them back.
     let receipt_file = receipt::receipt_path(paths, name);
-    let kept = match Kept::park(&[&binary, &receipt_file]) {
-        Ok(kept) => kept,
-        Err(err) => {
-            return Err(streams.fail(
-                ExitCode::Failure,
-                &format!("setting aside the installed {name}: {err}"),
-            ));
+    let (root, binary, kept, installed, landed) = match plan {
+        Plan::BuildRef { cargo, git_ref } => {
+            let got = match install_ref::acquire(streams, paths, cargo, dog, git_ref).await {
+                Ok(got) => got,
+                Err(code) => return Err(code),
+            };
+            let landed = Landed::Ref {
+                git_ref: git_ref.to_owned(),
+                commit: got.commit,
+            };
+            let installed = Installed::Command(got.command);
+            (got.root, got.binary, got.kept, installed, landed)
         }
-    };
-    let installed = match plan {
-        Plan::Download(prebuilt) => {
+        Plan::Download { prebuilt, version } => {
+            let (root, binary) = version_paths(paths, name, package, version);
+            let kept = match park(streams, name, &binary, &receipt_file) {
+                Ok(kept) => kept,
+                Err(code) => return Err(code),
+            };
             download(streams, paths, &reach.assets, &prebuilt, &binary).await?;
-            Installed::Url(prebuilt.url)
+            let installed = Installed::Url(prebuilt.url);
+            (
+                root,
+                binary,
+                kept,
+                installed,
+                Landed::Version(version.to_owned()),
+            )
         }
-        Plan::Build(cargo) => match build(streams, cargo, &root, package, version).await {
-            Ok(command) => Installed::Command(command),
-            Err(code) => return Err(code),
-        },
+        Plan::Build { cargo, version } => {
+            let (root, binary) = version_paths(paths, name, package, version);
+            let kept = match park(streams, name, &binary, &receipt_file) {
+                Ok(kept) => kept,
+                Err(code) => return Err(code),
+            };
+            let command = match build(streams, cargo, &root, package, version).await {
+                Ok(command) => command,
+                Err(code) => return Err(code),
+            };
+            let installed = Installed::Command(command);
+            (
+                root,
+                binary,
+                kept,
+                installed,
+                Landed::Version(version.to_owned()),
+            )
+        }
     };
     let Some(sha256) = sha256_hex(&binary) else {
         return Err(streams.fail(
@@ -384,15 +446,15 @@ pub(super) async fn fetch_dog(
         binary,
         sha256,
         installed,
+        landed,
         token_publish,
         kept,
-        _held: held,
+        _held,
     })
 }
 
-/// Records `fetched`'s receipt and adopts it, asking the grant question.
-///
-/// `said_no` is set when the operator answered no.
+/// Records `fetched`'s receipt and adopts it, as `shep install` does for the
+/// dog asked for. `said_no` is set when the grant question was declined.
 pub(super) async fn adopt_fetched(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -408,18 +470,12 @@ pub(super) async fn adopt_fetched(
         binary,
         sha256,
         installed,
+        landed,
         token_publish,
         kept,
         _held,
     } = fetched;
     let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
-    let DogSourceKind::Cargo {
-        version: Some(version),
-        ..
-    } = &dog.source
-    else {
-        return ExitCode::Internal;
-    };
     let written = receipt::write(
         paths,
         name,
@@ -427,7 +483,10 @@ pub(super) async fn adopt_fetched(
             index: fetch::url_for_message(index_url),
             row: &dog,
             package,
-            version,
+            pinned: match &landed {
+                Landed::Version(version) => Pinned::Version { version },
+                Landed::Ref { git_ref, commit } => Pinned::Ref { git_ref, commit },
+            },
             installer: match &installed {
                 Installed::Command(command) => Installer::Command(command),
                 Installed::Url(url) => Installer::Url(url),
@@ -449,13 +508,18 @@ pub(super) async fn adopt_fetched(
     }
 
     // One line at the end of the grant listing, above the question.
-    let note = token_publish.then(|| {
-        format!(
-            "crates.io lists {package} {version} as published with an API token, not from \
-             {}'s CI, so the build is not tied to that repository",
-            dog.repo
-        )
-    });
+    let note = match &landed {
+        Landed::Ref { git_ref, commit } => Some(format!(
+            "built from {git_ref} at {commit}, which the index has not reviewed"
+        )),
+        Landed::Version(version) => token_publish.then(|| {
+            format!(
+                "crates.io lists {package} {version} as published with an API token, not from \
+                 {}'s CI, so the build is not tied to that repository",
+                dog.repo
+            )
+        }),
+    };
     let adopting = AdoptArgs {
         path: binary,
         name: Some(name.to_owned()),
@@ -483,12 +547,63 @@ pub(super) async fn adopt_fetched(
     code
 }
 
+/// What the operator asked to install.
+#[derive(Clone, Copy)]
+enum Wanted<'a> {
+    /// The version the index approves.
+    Approved(&'a str),
+    /// This branch, tag or commit of the row's repository.
+    Ref(&'a str),
+}
+
 /// How `install` gets the binary.
 enum Plan<'a> {
     /// The prebuilt binary the index hashes for this target.
-    Download(Prebuilt),
+    Download {
+        prebuilt: Prebuilt,
+        version: &'a str,
+    },
     /// This `cargo`, building the row's version.
-    Build(&'a Path),
+    Build { cargo: &'a Path, version: &'a str },
+    /// This `cargo`, building a ref of the row's repository.
+    BuildRef { cargo: &'a Path, git_ref: &'a str },
+}
+
+/// What was installed, kept until the receipt is written.
+enum Landed {
+    /// The index's version.
+    Version(String),
+    /// The ref asked for and the commit it built.
+    Ref { git_ref: String, commit: String },
+}
+
+/// Where an index install of `version` goes, and its binary.
+fn version_paths(
+    paths: &ShepPaths,
+    name: &str,
+    package: &str,
+    version: &str,
+) -> (PathBuf, PathBuf) {
+    let root = paths.dogs_dir.join(name).join(version);
+    let binary = root
+        .join("bin")
+        .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
+    (root, binary)
+}
+
+/// Copies the installed dog's binary and receipt aside; see [`Kept`].
+fn park(
+    streams: &mut Streams<'_>,
+    name: &str,
+    binary: &Path,
+    receipt_file: &Path,
+) -> Result<Kept, ExitCode> {
+    Kept::park(&[binary, receipt_file]).map_err(|err| {
+        streams.fail(
+            ExitCode::Failure,
+            &format!("setting aside the installed {name}: {err}"),
+        )
+    })
 }
 
 /// What put the binary on disk, kept until the receipt is written.
