@@ -491,7 +491,7 @@ pub(crate) async fn run(
                 )
                 .await
             }
-            (None, true) => query::available_dogs(&mut streams, args).await,
+            (None, true) => query::available_dogs(&mut streams, &paths, args).await,
             (None, false) => {
                 with_client(&mut streams, &link, guard, async |client, streams| {
                     query::dogs(client, streams, &paths, args).await
@@ -522,6 +522,7 @@ pub(crate) async fn run(
             toggle(&mut streams, &paths, Toggle::Disable, &args.name, false).await
         }
         Commands::Adopt(ref args) => dogs::adopt(&mut streams, &paths, args).await,
+        Commands::Install(ref args) => dogs::install(&mut streams, &paths, args).await,
         Commands::Rehome(ref args) => dogs::rehome(&mut streams, &paths, &args.name).await,
         Commands::Describe(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {

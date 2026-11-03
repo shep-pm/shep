@@ -63,19 +63,24 @@ export const CATEGORIES = [
 export type DogCategory = typeof CATEGORIES[number]
 
 /**
- * Installable with `cargo install <package>` from crates.io. Carries no
- * fields of its own: the package name is already the entry's `package`, and
- * a source that could spell it a second way would eventually spell it
- * differently.
+ * Installable from crates.io. The package name is already the entry's
+ * `package`, and a source that could spell it a second way would eventually
+ * spell it differently.
  */
 export interface CargoSource {
   kind: "cargo";
   /**
-   * The exact version to name, for a dog that needs one. cargo resolves `*`
-   * by default and `*` never matches a pre-release, so an alpha that omits
-   * this ships a command that cannot resolve it. Omit for a normal release.
+   * The exact version this index approves. shep installs this version and
+   * no other. A row without one is listed but cannot be installed.
    */
   version?: string;
+  /**
+   * Hex sha256 of the prebuilt binary, keyed by exact target triple. The
+   * download URL is built, never stored:
+   * `<repo>/releases/download/v<version>/<package>-<version>-<target>`, plus
+   * `.exe` on Windows. The release workflow writes these. Needs `version`.
+   */
+  sha256?: Record<string, string>;
 }
 
 /** Installable with `cargo install --git <url>`, for a dog not on crates.io. */
@@ -216,6 +221,30 @@ function requireRepoUrl(repo: string, label: string): string {
   return repo;
 }
 
+const TARGET_TRIPLE = /^[a-z0-9._-]+$/;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/** A `sha256` map: exact target triples to lowercase 64-digit hex, or `undefined` when absent. */
+function validateHashes(hashes: unknown, label: string): Record<string, string> | undefined {
+  if (hashes === undefined) {
+    return undefined;
+  }
+  if (!isRecord(hashes)) {
+    fail(label, `a "cargo" source's "sha256" must map target triples to hashes`);
+  }
+  const result: Record<string, string> = {};
+  for (const [target, hash] of Object.entries(hashes)) {
+    if (!TARGET_TRIPLE.test(target)) {
+      fail(label, `"sha256" key "${target}" is not a target triple like "x86_64-unknown-linux-gnu"`);
+    }
+    if (typeof hash !== "string" || !SHA256_HEX.test(hash)) {
+      fail(label, `"sha256" for "${target}" must be 64 lowercase hex digits`);
+    }
+    result[target] = hash;
+  }
+  return result;
+}
+
 function validateSource(source: unknown, label: string): DogSource {
   if (!isRecord(source)) {
     fail(label, `"source" must be an object`);
@@ -230,16 +259,21 @@ function validateSource(source: unknown, label: string): DogSource {
 
   switch (kind) {
     case "cargo": {
-      // Optional, but not lax: absent means a normal release, while present
-      // and unusable is a malformed entry like any other here.
+      // Both optional, but not lax: absent is a row that lists and cannot be
+      // installed, while present and unusable is a malformed entry.
       const version = source.version;
-      if (version === undefined) {
-        return { kind };
-      }
-      if (typeof version !== "string" || version.trim() === "") {
+      if (version !== undefined && (typeof version !== "string" || version.trim() === "")) {
         fail(label, `a "cargo" source with a "version" needs it non-empty`);
       }
-      return { kind, version };
+      const sha256 = validateHashes(source.sha256, label);
+      if (sha256 !== undefined && version === undefined) {
+        fail(label, `a "cargo" source with "sha256" needs a "version" to build the download URL from`);
+      }
+      return {
+        kind,
+        ...(version === undefined ? {} : { version }),
+        ...(sha256 === undefined ? {} : { sha256 }),
+      };
     }
     case "cargo-git": {
       const url = source.url;

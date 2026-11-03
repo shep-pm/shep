@@ -1,4 +1,5 @@
 use super::schema::AppConfig;
+use crate::config::MemoryEnforce;
 use core::fmt;
 use std::collections::BTreeMap;
 // use schemars::generate
@@ -13,6 +14,12 @@ impl fmt::Debug for AppConfig {
             .field("env", &format_args!("<{} vars>", self.env.len()))
             .finish_non_exhaustive()
     }
+}
+
+impl AppConfig {
+    /// The largest `max_tasks` a cgroup's `pids.max` accepts: the kernel's
+    /// `PID_MAX_LIMIT` on a 64-bit host. A larger write fails with `EINVAL`.
+    pub const MAX_TASKS_LIMIT: u32 = 4_194_304;
 }
 
 impl Default for AppConfig {
@@ -43,6 +50,9 @@ impl Default for AppConfig {
             graceful_timeout: UpDuration::from_millis(8000),
             action_timeout: UpDuration::from_millis(3000),
             max_memory: None,
+            memory_enforce: MemoryEnforce::Poll,
+            max_cpu_cores: None,
+            max_tasks: None,
             watch: false,
             ignore_watch: Vec::new(),
             watch_delay: None,

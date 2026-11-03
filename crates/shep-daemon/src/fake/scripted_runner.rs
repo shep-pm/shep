@@ -67,6 +67,21 @@ struct SpawnedProc {
     /// The sockets this spawn was handed, off [`SpawnSpec::listen`], read
     /// back via [`ScriptedRunner::spawned_listen`].
     listen: Option<Arc<crate::listen::ListenSockets>>,
+    /// The cgroup this spawn was asked to join, off [`SpawnSpec::cgroup`],
+    /// read back via [`ScriptedRunner::spawned_cgroup`].
+    cgroup: Option<std::path::PathBuf>,
+    /// The `memory.max` this spawn was asked to set, off
+    /// [`SpawnSpec::memory_max`], read back via
+    /// [`ScriptedRunner::spawned_memory_max`].
+    memory_max: Option<u64>,
+    /// The `cpu.max` quota this spawn was asked to set, off
+    /// [`SpawnSpec::cpu_quota`], read back via
+    /// [`ScriptedRunner::spawned_cpu_quota`].
+    cpu_quota: Option<u64>,
+    /// The `pids.max` limit this spawn was asked to set, off
+    /// [`SpawnSpec::pids_max`], read back via
+    /// [`ScriptedRunner::spawned_pids_max`].
+    pids_max: Option<u32>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -295,6 +310,46 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_listen(&self, spawn_index: usize) -> Option<Arc<crate::listen::ListenSockets>> {
         self.spawned.lock().unwrap()[spawn_index].listen.clone()
+    }
+
+    /// The cgroup the spawn at `spawn_index` was asked to join, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_cgroup(&self, spawn_index: usize) -> Option<std::path::PathBuf> {
+        self.spawned.lock().unwrap()[spawn_index].cgroup.clone()
+    }
+
+    /// The `memory.max` the spawn at `spawn_index` was asked to set, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_memory_max(&self, spawn_index: usize) -> Option<u64> {
+        self.spawned.lock().unwrap()[spawn_index].memory_max
+    }
+
+    /// The `cpu.max` quota the spawn at `spawn_index` was asked to set, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_cpu_quota(&self, spawn_index: usize) -> Option<u64> {
+        self.spawned.lock().unwrap()[spawn_index].cpu_quota
+    }
+
+    /// The `pids.max` limit the spawn at `spawn_index` was asked to set, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_pids_max(&self, spawn_index: usize) -> Option<u32> {
+        self.spawned.lock().unwrap()[spawn_index].pids_max
     }
 
     /// How many spawns this runner has been asked for.
@@ -663,6 +718,10 @@ impl ProcessRunner for ScriptedRunner {
             program: spec.program.clone(),
             args: spec.args.clone(),
             listen: spec.listen.clone(),
+            cgroup: spec.cgroup.clone(),
+            memory_max: spec.memory_max,
+            cpu_quota: spec.cpu_quota,
+            pids_max: spec.pids_max,
         });
         drop(spawned);
 

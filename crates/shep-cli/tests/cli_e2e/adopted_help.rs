@@ -71,7 +71,7 @@ fn shep_help_lists_an_adopted_dog_with_its_description() {
     assert_eq!(
         help.lines().skip(group).take(2).collect::<Vec<_>>(),
         vec![
-            "Dogs and agents  dogs adopt whistle",
+            "Dogs and agents  dogs install adopt whistle",
             "                 otel  exports traces to an OTLP collector",
         ],
         "the dog joins the group it belongs to: {help}"

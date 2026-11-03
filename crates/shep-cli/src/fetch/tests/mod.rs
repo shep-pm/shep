@@ -9,6 +9,7 @@ use tokio::io::AsyncWriteExt;
 
 use super::*;
 
+mod asset;
 mod tls;
 
 /// Serves one canned response on an ephemeral port, then stops.
@@ -351,6 +352,20 @@ fn no_fragment_reaches_the_request_line() {
         "{request}"
     );
     assert!(!request.contains("sentinelfragment"), "{request}");
+}
+
+/// crates.io answers 403 to a request with no `User-Agent`.
+#[test]
+fn a_get_names_shep_as_its_user_agent() {
+    let target = parse_url("https://crates.io/api/v1/crates/serde").expect("parses");
+    let request = build_get_request(&target);
+    assert!(
+        request.contains(&format!(
+            "\r\nUser-Agent: shep/{}",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "{request}"
+    );
 }
 
 /// A Discord webhook URL is a bearer credential and carries its token

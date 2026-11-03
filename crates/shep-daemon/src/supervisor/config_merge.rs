@@ -10,12 +10,13 @@ use super::*;
 /// The `AppConfig` fields a lifecycle extra reads when it is armed, rather
 /// than at each decision.
 ///
-/// All eight are [`ApplyGroup::Live`], but a worker already armed against the
+/// All nine are [`ApplyGroup::Live`], but a worker already armed against the
 /// old value keeps it, so changing one needs [`ExtrasRegistry::rearm_name`] on
 /// top of the spec write. Not derivable from [`apply_group`]: `fold` and
 /// `action_timeout` are Live too and need no re-arm.
 pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "max_memory",
+    "memory_enforce",
     "watch",
     "ignore_watch",
     "watch_delay",
@@ -24,6 +25,14 @@ pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "cron_timezone",
     "liveness_probe",
 ];
+
+/// The `AppConfig` fields the shepherd writes into a running sheep's cgroup
+/// as they change, rather than leaving for its next spawn.
+///
+/// Not in [`EXTRAS_FIELDS`]: no lifecycle extra reads them, so a re-arm would
+/// rebuild workers for nothing.
+#[cfg(target_os = "linux")]
+pub(super) const CGROUP_FIELDS: &[&str] = &["max_cpu_cores", "max_tasks"];
 
 /// Records what a load's `env` branch merged. The file's env keys are
 /// established from here, and an override of one is spent. A tombstone is

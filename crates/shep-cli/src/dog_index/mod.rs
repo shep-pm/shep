@@ -9,6 +9,7 @@
 //! [`IndexError::InsecureUrl`] names the URL. [`parse`] owns the document
 //! grammar; this file owns the types, the URL policy and the fetch.
 use core::fmt;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -17,9 +18,13 @@ use serde_json::Value;
 use crate::fetch::{self, FetchError};
 use crate::terminal_safe::sanitise;
 
+mod cache;
 mod parse;
+mod prebuilt;
 
+pub use cache::{Origin, cached_index, describe_age};
 pub use parse::parse_index;
+pub use prebuilt::{BUILD_TARGET, Prebuilt};
 
 /// Where the index lives when nothing overrides it. An exact file path, so
 /// it answers 200 rather than redirecting: [`crate::fetch::get`] refuses
@@ -108,10 +113,12 @@ pub enum DogSourceKind {
     /// Installable with `cargo install <package>` from crates.io. The
     /// package name is [`AvailableDog::package`], not a field here.
     Cargo {
-        /// The exact version to name, for a dog that needs one. cargo
-        /// resolves an absent version as `*`, and `*` never matches a
-        /// pre-release. Absent for a dog on a normal release.
+        /// The exact version the index approves. A row without one is
+        /// listed but cannot be installed.
         version: Option<String>,
+        /// Hex sha256 of the prebuilt binary, keyed by exact target
+        /// triple. Empty when the index hashes none.
+        sha256: BTreeMap<String, String>,
     },
     /// Installable with `cargo install --git <url>`, for a dog that is not
     /// on crates.io.
@@ -235,23 +242,20 @@ pub fn index_url() -> String {
     std::env::var(INDEX_URL_ENV).unwrap_or_else(|_err| DEFAULT_INDEX_URL.to_owned())
 }
 
-/// Fetches the index at `url` and parses it.
+/// Fetches the index document at `url`, unparsed.
 ///
 /// The `https://` policy lives here rather than in [`crate::fetch::get`],
 /// which speaks either scheme so a test can bind a plain-HTTP port. The
-/// refusal happens before a packet is sent.
+/// refusal happens before a packet is sent. Callers go through
+/// [`cached_index`], which parses what this returns.
 ///
 /// # Errors
 /// - [`IndexError::InsecureUrl`] if `url` is `http://` and not loopback.
 /// - [`IndexError::Fetch`] if the request failed; see [`crate::fetch`].
-/// - [`IndexError::Malformed`], [`IndexError::NotAnObject`],
-///   [`IndexError::UnsupportedVersion`], [`IndexError::MissingDogsArray`]
-///   as [`parse_index`].
-pub async fn fetch_index(url: &str) -> Result<Index, IndexError> {
+async fn fetch_index_document(url: &str) -> Result<Vec<u8>, IndexError> {
     let target = fetch::parse_url(url)?;
     require_secure_url(url, &target)?;
-    let bytes = fetch::get(&target, SIZE_LIMIT, TIMEOUT).await?;
-    parse_index(&bytes)
+    Ok(fetch::get(&target, SIZE_LIMIT, TIMEOUT).await?)
 }
 
 /// Refuses a plaintext index URL, unless it points at this machine.
@@ -463,7 +467,7 @@ mod tests {
     /// name a host it never reaches.
     #[tokio::test]
     async fn a_plain_http_index_url_is_refused_before_it_connects() {
-        let err = fetch_index("http://example.com/dogs.json")
+        let err = fetch_index_document("http://example.com/dogs.json")
             .await
             .expect_err("refused");
         let IndexError::InsecureUrl(url) = err else {
@@ -479,7 +483,10 @@ mod tests {
             "http://localhost.example.com/dogs.json",
         ] {
             assert!(
-                matches!(fetch_index(url).await, Err(IndexError::InsecureUrl(_))),
+                matches!(
+                    fetch_index_document(url).await,
+                    Err(IndexError::InsecureUrl(_))
+                ),
                 "{url} was not refused"
             );
         }
@@ -491,7 +498,7 @@ mod tests {
     /// [`require_secure_url`] ever sees a host to compare.
     #[tokio::test]
     async fn a_loopback_literal_behind_a_userinfo_prefix_is_refused_at_parse_time() {
-        let err = fetch_index("http://evil.com@127.0.0.1/dogs.json")
+        let err = fetch_index_document("http://evil.com@127.0.0.1/dogs.json")
             .await
             .expect_err("refused");
         assert!(
@@ -500,13 +507,14 @@ mod tests {
         );
     }
 
-    /// The await's forcing mechanism is `fetch_index`'s own ten second
+    /// The await's forcing mechanism is `fetch_index_document`'s own ten second
     /// budget: a server that never answers fails this test rather than
     /// hanging it.
     #[tokio::test]
     async fn a_loopback_http_index_is_read_because_that_is_how_a_local_one_is_served() {
         let url = serve_index(one_entry_with_description("clean\u{1b}[2Jhere")).await;
-        let index = fetch_index(&url).await.expect("read");
+        let bytes = fetch_index_document(&url).await.expect("read");
+        let index = parse_index(&bytes).expect("parses");
         assert_eq!(index.dogs.len(), 1);
         assert_eq!(index.sanitised, 1);
         assert!(!index.dogs[0].description.contains('\u{1b}'));

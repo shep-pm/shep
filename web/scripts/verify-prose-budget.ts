@@ -148,7 +148,21 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 5575 on #1431 for `Probe::action` and `on_action_with_caller`:
   // an author has to know where a dog declares its actions and how a handler
   // learns which dog called. The ceiling sits about 5 words above the page.
-  "writing-a-dog": 5640,
+  //
+  // Raised from 5640 on #1447 for "Releasing a dog": the calling job, the tag
+  // and release it needs, the token it takes and the dry run. A dog author has
+  // no other page that says how the index row and the prebuilt binaries get
+  // made. The ceiling sits about 7 words above the page.
+  //
+  // Raised from 5835 on #1447 review for why the workflow is pinned by commit:
+  // the job holds a write token and the index token, so a moving ref is a
+  // real risk to say out loud. The ceiling sits about 5 words above the page.
+  //
+  // Raised from 5894 on #1447 review for a dog's first release: the workflow
+  // updates a row and never adds one, so an author has to know to add it by
+  // hand and that shep builds from source until hashes arrive. The ceiling
+  // sits about 5 words above the page.
+  "writing-a-dog": 5918,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -364,7 +378,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 2350 for #1402: `listen` is a third way a reload overlaps,
   // and the page has to say what shep binds and where the sockets land.
-  lifecycle: 2510,
+  //
+  // Raised from 2510 for #1437: each Linux sheep now runs in its own cgroup,
+  // which changes what a stop sweeps, and the page has to say when.
+  lifecycle: 2550,
   // Cut from 1900 for the stamps-off tail sentence: the page has to say a
   // sheep with `log_timestamps = false` carries no stamp for `bleats` to
   // strip, and it paid for that line by tightening the sentences around it
@@ -485,7 +502,9 @@ export const BUDGETS: Record<string, number> = {
   // what it costs is not prose: the branch that decides whether a row gets a
   // link sits in the page body rather than in frontmatter, and this counter
   // reads the page body as words a reader wades through.
-  "community-dogs": 320,
+  // Raised from 320 for the index cache and the two `cargo` fields a
+  // contributor can set. Raised again for what `shep install` does.
+  "community-dogs": 520,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

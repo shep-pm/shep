@@ -25,6 +25,11 @@ mod post;
 #[cfg(feature = "otel")]
 pub use post::post_json;
 
+/// The GET that follows the one redirect a release asset needs.
+mod asset;
+
+pub use asset::{RedirectPolicy, get_asset};
+
 /// Connect, TLS handshake, write and flush: the half every request here shares.
 mod transport;
 
@@ -362,6 +367,10 @@ async fn get_inner(target: &Target, limit: usize) -> Result<Vec<u8>, FetchError>
     read_response(stream, limit).await
 }
 
+/// Who a GET says it is. crates.io refuses a request that names no
+/// `User-Agent`, and asks for a way to find out who is calling.
+const USER_AGENT: &str = concat!("shep/", env!("CARGO_PKG_VERSION"), " (https://shep-pm.com)");
+
 /// The request line and headers [`get_inner`] sends. `Host` names the port
 /// only when it is off the scheme's own default (443/80), and there is no
 /// `Accept-Encoding`.
@@ -373,7 +382,7 @@ fn build_get_request(target: &Target) -> String {
         format!("{}:{}", target.host, target.port)
     };
     format!(
-        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n",
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {USER_AGENT}\r\nConnection: close\r\n\r\n",
         path = target.path,
     )
 }

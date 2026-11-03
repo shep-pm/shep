@@ -299,12 +299,13 @@ impl<R: ProcessRunner> Actor<R> {
         let spec = self
             .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
             .and_then(|spec| {
+                let placement = self.cgroup_placement(app.config(), new_id, instance)?;
                 Ok(SpawnSpec {
                     dog_link: dog.is_some(),
                     // Bound ahead of the replacement. The old set stays with the
                     // drainee until it exits.
                     listen: self.listen_for(app.config())?,
-                    ..spec
+                    ..placement.into_spec(spec)
                 })
             })
             .map_err(|err| err.to_string())?;

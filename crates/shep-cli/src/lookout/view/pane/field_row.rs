@@ -452,11 +452,11 @@ mod tests {
         };
         assert_eq!(flagged('*'), ["reuse_port", "max_restarts"]);
         assert_eq!(flagged('!'), ["kill_signal"]);
-        // 43, not 45: `env` is folded into the env rows below the field
+        // 46, not 48: `env` is folded into the env rows below the field
         // list, and `dogs` draws its tab's own rows.
         assert_eq!(
             rows_of(&text).len(),
-            43,
+            46,
             "every field but env and dogs is drawn at 89"
         );
     }
@@ -480,8 +480,8 @@ mod tests {
             glyphed('~'),
             ["level_rules", "liveness_probe", "readiness_probe"]
         );
-        // 43, not 45: `env` and `dogs` draw no field row.
-        assert_eq!(glyphed(' ').len(), 43 - 2 - 3);
+        // 46, not 48: `env` and `dogs` draw no field row.
+        assert_eq!(glyphed(' ').len(), 46 - 2 - 3);
     }
 
     /// `kill_timeout` and `exp_backoff_restart_delay` default to 1600ms

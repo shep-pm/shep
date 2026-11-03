@@ -17,6 +17,9 @@ mod resolved_app;
 mod tilde;
 mod validate;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::NormalizeError;
 pub use resolved_app::{ResolvedApp, normalize, normalize_all, normalize_with_home};
 pub use tilde::{TildeError, expand_home_tilde};

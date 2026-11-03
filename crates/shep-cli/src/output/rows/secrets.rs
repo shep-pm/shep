@@ -233,6 +233,16 @@ pub struct DescribedSecret {
 #[serde(transparent)]
 pub struct AvailableDogRows(pub Vec<AvailableDog>);
 
+/// The DESCRIPTION cell: the description, and for a `cargo` row the index
+/// approves no version of, a note that shep cannot install it.
+fn describe_for_row(dog: &AvailableDog) -> String {
+    if dog.is_unversioned_cargo() {
+        format!("{} (not installable: no version approved)", dog.description)
+    } else {
+        dog.description.clone()
+    }
+}
+
 /// No colour: a catalogue of dogs an operator could adopt, with no signal
 /// column for chrome such as CATEGORY to recede behind.
 impl Render for AvailableDogRows {
@@ -248,7 +258,7 @@ impl Render for AvailableDogRows {
                     dog.name.clone(),
                     dog.package.clone(),
                     dog.category.clone(),
-                    dog.description.clone(),
+                    describe_for_row(dog),
                 ]
             })
             .collect()
@@ -399,13 +409,38 @@ mod tests {
 
     /// `adopt_as`/`repo`/`license`/`source` serialize but are covered by
     /// `JSON_ONLY` rather than a column. The four real columns are plain
-    /// strings, so `formatted` is empty.
+    /// strings, except DESCRIPTION, which can carry a not-installable note.
     #[test]
     fn available_dog_rows_do_not_drift() {
         assert_no_drift(
             &AvailableDogRows(vec![sample_available_dog()]),
             |j| &j[0],
-            &[],
+            &["DESCRIPTION"],
+        );
+    }
+
+    fn cargo_dog(version: Option<&str>) -> AvailableDog {
+        AvailableDog {
+            source: crate::dog_index::DogSourceKind::Cargo {
+                version: version.map(str::to_owned),
+                sha256: std::collections::BTreeMap::new(),
+            },
+            ..sample_available_dog()
+        }
+    }
+
+    #[test]
+    fn a_cargo_row_with_no_approved_version_says_so_on_its_row() {
+        let rows = AvailableDogRows(vec![cargo_dog(None), cargo_dog(Some("0.2.4"))]).rows();
+
+        assert_eq!(
+            rows[0][3],
+            "Rotates grown log files and asks the shepherd to reopen them. \
+             (not installable: no version approved)"
+        );
+        assert_eq!(
+            rows[1][3],
+            "Rotates grown log files and asks the shepherd to reopen them."
         );
     }
 
