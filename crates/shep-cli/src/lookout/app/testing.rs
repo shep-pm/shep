@@ -265,6 +265,7 @@ pub(super) fn jobs_entry() -> SheepDogEntry {
         name: "jobs".into(),
         adopted_path: Some("/opt/jobs".into()),
         schema: Some(jobs_schema()),
+        standard: None,
     }
 }
 
@@ -275,6 +276,7 @@ pub(super) fn listing() -> Vec<ListedDog> {
             name: name.into(),
             adopted_path: Some(format!("/opt/{name}").into()),
             schema: None,
+            standard: None,
         },
         asked: false,
     };

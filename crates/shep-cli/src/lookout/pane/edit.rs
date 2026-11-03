@@ -139,7 +139,18 @@ impl ConfigPane {
             },
             None => None,
         };
-        let current = filed_here.or_else(|| self.stored_of(&field.key));
+        // A filed clear shows the section's value, which is where the cycle
+        // starts, not at the `null` that clears it.
+        let filed_here = filed_here.map(|value| {
+            if value.is_null() {
+                self.inherited_value(&field.key).unwrap_or(value)
+            } else {
+                value
+            }
+        });
+        let current = filed_here
+            .or_else(|| self.stored_of(&field.key))
+            .or_else(|| self.values.get(&field.key));
         let next = match &field.kind {
             FieldKind::Bool => Value::Bool(!current.and_then(Value::as_bool).unwrap_or(false)),
             FieldKind::Choice(names) | FieldKind::Suggested(names) if !names.is_empty() => {

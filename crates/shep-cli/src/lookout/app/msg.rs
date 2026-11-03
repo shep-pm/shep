@@ -376,6 +376,15 @@ pub enum Msg {
         /// What the dog answered.
         entry: SheepDogEntry,
     },
+    /// An [`Effect::RefreshSheepDogSections`] has answered: each standard
+    /// dog's entry, read again. Dropped unless the pane that asked is still
+    /// up on that sheep.
+    SheepDogSections {
+        /// The sheep whose `dogs` tab asked.
+        sheep: String,
+        /// One entry per dog asked, in no particular order.
+        entries: Vec<SheepDogEntry>,
+    },
     /// An [`Effect::WriteDog`] has landed. `Ok` carries the [`DogEntry`] the
     /// write resolved, which [`Sent::Dog`] then rides to the shepherd, so the
     /// request cannot disagree with the file.
@@ -570,6 +579,18 @@ pub enum Effect {
         dog: String,
         /// The adopted binary, or [`None`] for a built-in.
         adopted_path: Option<PathBuf>,
+    },
+    /// Read each of a sheep's standard dogs again, so a re-read of the sheep
+    /// pane shows `dogs.toml` as it is now; the answer lands as
+    /// [`Msg::SheepDogSections`]. Raised when a re-read rebuilds a pane whose
+    /// `dogs` tab is already listed.
+    ///
+    /// `spawn_blocking`, for [`Self::LoadDogPane`]'s reason.
+    RefreshSheepDogSections {
+        /// The sheep whose `dogs` tab asked.
+        sheep: String,
+        /// Each dog, with its adopted binary or [`None`] for a built-in.
+        dogs: Vec<(String, Option<PathBuf>)>,
     },
     /// Apply one dog's file half; the result lands as [`Msg::DogWritten`].
     ///

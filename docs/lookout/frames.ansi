@@ -7,9 +7,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all sixty-nine scenes through the same coloured
+frames.ansi renders all seventy-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same sixty-nine scenes through the flattened NO_COLOR palette
+renders the same seventy-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -46,6 +46,13 @@ removal armed. And `jobs`'s own table pane, its nested `hours` and
 `models.worker` tables flattened into dotted rows, with
 `models.worker.token` drawn `<set>` and no value from any of the four
 frames anywhere on screen.
+
+Two more show a dog that follows the settings standard, opened on the same
+tab. One is an opted-in dog on a sheep whose own table sets one key: that
+row reads plain, the others show the dog's value with a `^` mark and the foot
+says where it comes from, and the dog-wide key has no row. The other is a dog
+serving every sheep, on a sheep with no table at all, where every row is
+inherited.
 
 The last eight are the keymap overlay, `h` or `?` from any body. Boxed and
 centred at the 160x48 target, at 130 where the border only just fits,
@@ -1889,6 +1896,112 @@ kelpie opened inline on the dogs tab over a recorded copy of its schema, skills 
                                                                                         [0m[38;5;245m  example [0m(none)                                                        [0m
 [0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 [0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit  [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== sheep_dog_inherited  (160x48) ===
+jobs, a dog that follows the settings standard, opened inline on api's dogs tab. limit is api's own table and reads plain; model and merge are not set there, so they show the value from [jobs] with a ^ mark, and the foot says ^ comes from [jobs]. jobs's dog-wide poll key has no row at all.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+ ▾ jobs              set        limit                                                   [0m[7m[38;5;221m FOCUSED [0m model[0m[38;5;245m  text[0m                                                   [0m
+     limit                      9                                                         model                                                                 [0m
+    ^merge                      ask                                                                                                                             [0m
+[0m[38;5;221m[48;5;235m>[0m  [0m[48;5;235m ^model                      sonnet                                                  [0m[38;5;245m  now     [0msonnet                                                        [0m
+[0m[38;5;245m  ^ comes from [jobs]; d on a value you set returns it to [jobs]                          default [0m(none)                                                        [0m
+                                                                                        [0m[38;5;245m  example [0m(none)                                                        [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
+[0m[38;5;221m[48;5;235mesc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d back to default   u undo   h help   * yours   ! parked   q quit  [0m[38;5;245m[48;5;235m control enabled[0m
+
+
+=== sheep_dog_every_sheep  (160x48) ===
+jobs, a standard dog that serves every sheep, opened inline on api's dogs tab where api has no jobs table: all three rows are inherited, each with a ^ mark and the value from [jobs], and the same dog-wide poll key has no row.
+
+[0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                                                                    6 in the flock[0m
+                                                                                                                                                                [0m
+[0m[7m[38;5;221m ██ api  (sheep config)                                                                                                                                         [0m
+  [0m[38;5;245m process   logging   inputs   restart   readiness   shutdown   watch   cron  [0m[48;5;235m dogs [0m[38;5;245m    tab/S-tab next / prev group   1…9 jump                                 [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  FIELD                       VALUE                                           LANDS     [0m                                                                        [0m
+[0m[38;5;245m ▾ jobs              -          (no table)                                             [0m [0m[7m[38;5;221m FOCUSED [0m model[0m[38;5;245m  text[0m                                                   [0m
+    ^limit                      3                                                         model                                                                 [0m
+    ^merge                      ask                                                                                                                             [0m
+[0m[38;5;221m[48;5;235m>[0m  [0m[48;5;235m ^model                      sonnet                                                  [0m[38;5;245m  now     [0msonnet                                                        [0m
+[0m[38;5;245m  ^ comes from [jobs]; d on a value you set returns it to [jobs]                          default [0m(none)                                                        [0m
+                                                                                        [0m[38;5;245m  example [0m(none)                                                        [0m
+[0m[38;5;238m  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;245m  = read-only, set it in the Flockfile   ~ no widget for this shape   ! parked, awaits a respawn   * yours   -> changed by you, not yet written                 [0m
+                                                                                                                                                                [0m
+                                                                                                                                                                [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m
                                                                                                                                                                 [0m

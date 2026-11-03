@@ -147,6 +147,7 @@ fn a_sheep_dog_table_holds_a_value_the_schema_refuses_and_still_writes_it() {
                         "token": { "type": "string", "x-shep-secret": true },
                     },
                 })),
+                standard: None,
             },
         }],
     );
