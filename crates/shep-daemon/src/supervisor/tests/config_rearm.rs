@@ -851,3 +851,42 @@ async fn leaving_and_entering_kernel_enforcement_live_lifts_and_sets_the_cap() {
         "104857600"
     );
 }
+
+/// No spawn follows a live switch, so the switch has to take the `oom_kill`
+/// reading the exit compares against, or the first kill goes uncharged.
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_live_switch_to_kernel_takes_the_oom_baseline_and_a_switch_back_drops_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let poll = app_with("web", |app| {
+        app.max_memory = Some(MemSize::from_bytes(100 << 20));
+    });
+    let (mut actor, _enforcer) = actor_over(&dir, &[poll]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    std::fs::write(
+        cgroup.join("memory.events.local"),
+        "low 0\nhigh 0\nmax 0\noom 3\noom_kill 3\n",
+    )
+    .unwrap();
+    let memory_enforce = |value| {
+        let mut file = AppConfig::minimal("web", "./srv");
+        file.memory_enforce = value;
+        declared_app(file, &["name", "script", "memory_enforce"])
+    };
+
+    apply_config(
+        &mut actor,
+        vec![memory_enforce(shep_core::config::MemoryEnforce::Kernel)],
+        ResetDepth::File,
+    )
+    .await;
+    assert_eq!(actor.oom_baselines.get(&0), Some(&3));
+
+    apply_config(
+        &mut actor,
+        vec![memory_enforce(shep_core::config::MemoryEnforce::Poll)],
+        ResetDepth::File,
+    )
+    .await;
+    assert_eq!(actor.oom_baselines.get(&0), None);
+}
