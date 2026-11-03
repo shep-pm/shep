@@ -24,8 +24,8 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                                     
   [dogs]                                                                                                                                                                            
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   
-  ▸ bark                                                                                                                        no       built-in                  not running      
-  ▸ metrics                                                                                                                     yes      built-in                  not running      
+  ▸ bark                                                                                                          no       built-in              1.0.0             not running      
+  ▸ metrics                                                                                                       yes      built-in              1.0.0             not running      
                                                                                                                                                                                     
   set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   
                                                                                                                                                                                     

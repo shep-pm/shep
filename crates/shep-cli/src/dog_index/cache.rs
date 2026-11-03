@@ -70,6 +70,14 @@ pub async fn cached_index(
     .await
 }
 
+/// The cached index for `url`, of any age, and no fetch.
+///
+/// `None` when there is no copy, it was written for another url, or it no
+/// longer parses. For a listing that must never wait on the network.
+pub fn cached_only(paths: &ShepPaths, url: &str) -> Option<Index> {
+    read_cache(&paths.dog_index_cache, url, SystemTime::now()).map(|(index, _age)| index)
+}
+
 async fn load<F, Fut>(
     cache: &Path,
     url: &str,
@@ -134,7 +142,7 @@ fn read_cache(cache: &Path, url: &str, now: SystemTime) -> Option<(Index, Durati
 ///
 /// Staged in a sibling file and renamed, so a reader never sees half a
 /// file.
-fn write_cache(cache: &Path, url: &str, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_cache(cache: &Path, url: &str, bytes: &[u8]) -> std::io::Result<()> {
     let document: Value = serde_json::from_slice(bytes)?;
     let envelope = json!({ "source": url_key(url), "document": document });
     let dir = cache.parent().unwrap_or_else(|| Path::new("."));
@@ -450,5 +458,19 @@ mod tests {
         ] {
             assert_eq!(describe_age(Duration::from_secs(secs)), expected);
         }
+    }
+
+    #[tokio::test]
+    async fn the_cache_only_read_returns_a_stale_copy_and_never_fetches() {
+        let old = SystemTime::now() - Duration::from_secs(10 * 24 * 60 * 60);
+        let (home, _cache) = home_cached_at(document("Ancient"), old).await;
+        let paths = ShepPaths::at(home.path().to_path_buf());
+
+        let index = cached_only(&paths, URL).expect("a stale copy is still a copy");
+
+        assert_eq!(index.dogs[0].name, "Ancient");
+        assert!(cached_only(&paths, "https://other.test/dogs.json").is_none());
+        let empty = ShepPaths::at(TempDir::new().unwrap().path().to_path_buf());
+        assert!(cached_only(&empty, URL).is_none());
     }
 }

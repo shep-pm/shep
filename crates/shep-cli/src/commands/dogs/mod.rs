@@ -70,6 +70,8 @@ mod install_ref_tests;
 mod install_tests;
 #[cfg(all(test, unix))]
 mod manifest_adoption_tests;
+#[cfg(all(test, unix))]
+mod remove_install_tests;
 #[cfg(test)]
 mod second_look_race_tests;
 #[cfg(test)]
@@ -90,6 +92,7 @@ pub(crate) use entry_drift::{
 };
 pub(crate) use grant::{Change, GrantRefusal, change, record_change};
 pub use install::install;
+pub(crate) use receipt::installed;
 pub use remove::rehome;
 pub(crate) use remove::{Removal, remove_dog};
 pub(crate) use upgrade::{upgrade_grants, upgrade_notice};
@@ -99,6 +102,8 @@ pub use vet::{DogSchema, warn_of_a_dog_a_restart_would_break};
 // already owns. Both reach this directory's own machinery.
 pub(crate) use adopt::collides_with_a_verb;
 pub(crate) use vet::cached_manifest;
+#[cfg(test)]
+pub(crate) use vet::sha256_hex;
 
 // `pub(crate)` re-exports: reached from other modules by their original
 // `dogs::<name>` path, so the split stays invisible to every caller outside

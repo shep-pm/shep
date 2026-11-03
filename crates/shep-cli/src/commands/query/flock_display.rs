@@ -3,12 +3,15 @@ use super::secret_inspection::describe_selector;
 use super::terminal_fitting::fit_rows;
 use crate::cli::{FoldArgs, Format};
 use crate::commands::rpc::typed_request_error;
+use crate::dog_index;
+use crate::dog_origin::{DogOrigins, Origins};
 use crate::exit::ExitCode;
 use crate::flourish;
 use crate::host;
 use crate::lookout::term;
 use crate::output::{
-    RolledSheep, RolledSheepRows, Streams, emit, emit_flock, emit_origin_flock, write_outcome,
+    RolledSheep, RolledSheepRows, Streams, emit, emit_flock, emit_flock_with_origins,
+    emit_origin_flock, write_outcome,
 };
 use crate::remote::interrupt_within_grace;
 use crate::shutdown::Interrupt;
@@ -144,7 +147,9 @@ pub async fn flock_from(
                 let _ = write!(streams.out, "{art}");
             }
             let host = host_usage(client).await;
-            write_outcome(print_listing(streams, procs, host, origin))
+            let origins =
+                marks.map_or_else(DogOrigins::default, |paths| local_origins(paths, &procs));
+            write_outcome(print_listing(streams, procs, host, origin, origins))
         }
         Err(err) => typed_request_error(streams, &err),
     }
@@ -162,6 +167,7 @@ pub(super) fn print_listing(
     procs: Vec<ProcessInfo>,
     host: Option<Option<HostUsage>>,
     origin: Option<&str>,
+    origins: DogOrigins,
 ) -> io::Result<()> {
     if let (Format::Json, Some(origin)) = (streams.fmt, origin) {
         emit_origin_flock(&mut *streams.out, "flock", origin, &procs, host)?;
@@ -176,14 +182,21 @@ pub(super) fn print_listing(
         let strip = host::strip(usage, streams.style, streams.style.width);
         writeln!(streams.out, "{strip}\n")?;
     }
-    emit_flock(
+    emit_flock_with_origins(
         &mut *streams.out,
         streams.fmt,
         "flock",
         procs,
         host,
         streams.style,
+        origins,
     )
+}
+
+/// What this machine's disk says of the dogs in `procs`: their receipts, and
+/// the cached index. Never the network.
+pub(super) fn local_origins(paths: &ShepPaths, procs: &[ProcessInfo]) -> DogOrigins {
+    Origins::read(paths, &dog_index::index_url()).of_listing(procs)
 }
 
 /// What the shepherd says the machine is doing, or `None` where it will not

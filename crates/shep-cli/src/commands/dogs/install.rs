@@ -177,7 +177,7 @@ fn list(streams: &mut Streams<'_>, dogs: Vec<AvailableDog>) -> ExitCode {
 /// Whether `text` may be one component of a path under `$SHEP_HOME/dogs`
 /// and of a crates.io URL: crate-name and semver characters, and no leading
 /// dot, so `..` and hidden names are out.
-fn is_path_safe(text: &str) -> bool {
+pub(super) fn is_path_safe(text: &str) -> bool {
     !text.is_empty()
         && !text.starts_with('.')
         && text
