@@ -186,6 +186,12 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     //    what closes the concurrent-boot race a bare probe-then-recover
     //    sequence cannot. Held for the rest of this daemon's life.
     init_dirs(&paths)?;
+    // Once, here, since it moves this process into its leaf cgroup. The
+    // result is held for the spawn path, which does not read it yet.
+    #[cfg(target_os = "linux")]
+    let cgroups = crate::cgroup::detect();
+    #[cfg(target_os = "linux")]
+    tracing::info!(%cgroups, "cgroup detection");
     let socket = socket_path(&paths, options.socket.as_deref());
     // A successor takes neither the lock nor the address: it inherited both,
     // still held. Rebinding would race the predecessor's own socket file, and
@@ -508,6 +514,8 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         signals,
         pidfile_lock,
         delete_flock_on_shutdown,
+        #[cfg(target_os = "linux")]
+        cgroups,
     })
 }
 

@@ -544,6 +544,54 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash -n benches/versus-pm2/versus-pm2.sh
       - run: python3 -m unittest discover --start-directory benches/versus-pm2 --verbose
+  # `cgroup::tests::a_real_delegated_subtree_moves_the_shepherd_into_its_leaf`
+  # needs a cgroup v2 subtree this user may write, which only a systemd scope
+  # with `Delegate=yes` gives. It moves the test process, so it is off unless
+  # `SHEP_TEST_CGROUPS` is set; elsewhere it skips and still reports passed.
+  #
+  # Built outside the scope, and the test binary run inside it directly: under
+  # `cargo test`, cargo stays in the scope's cgroup as the binary's parent,
+  # and the kernel refuses controllers on a cgroup that holds a process.
+  #
+  # The scope is made by root and `--uid` only drops privileges afterwards. A
+  # scope unit has no `User=`, so systemd does not chown its cgroup the way it
+  # does a service's. The wrapper chowns the cgroup and the two files a
+  # non-root user writes, then drops to the runner user as the scope's only
+  # process.
+  #
+  # The grep floor is for both ways this can verify nothing: a filter that
+  # matches nothing, and a skip.
+  cgroups:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - shell: bash
+        run: |
+          cargo test -p shep-daemon --lib --locked --all-features --no-run \
+            --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "shep_daemon" and (.target.kind | index("lib"))) | .executable' \
+            > test-binary.path
+          test -x "$(cat test-binary.path)"
+      - shell: bash
+        run: |
+          sudo --preserve-env=PATH,HOME,RUSTUP_HOME,CARGO_HOME \
+            systemd-run --scope --quiet -p Delegate=yes \
+            bash -euc '
+              dir=/sys/fs/cgroup$(sed -n "s/^0:://p" /proc/self/cgroup)
+              chown "$0:$1" "$dir" "$dir/cgroup.procs" "$dir/cgroup.subtree_control"
+              ls -ld "$dir"
+              exec setpriv --reuid "$0" --regid "$1" --clear-groups \
+                env SHEP_TEST_CGROUPS=1 "$2" --nocapture --exact "$3"
+            ' "$(id -u)" "$(id -g)" "$(cat test-binary.path)" \
+            cgroup::tests::a_real_delegated_subtree_moves_the_shepherd_into_its_leaf \
+            | tee cgroups.out
+          grep -q 'test result: ok. 1 passed' cgroups.out
+          if grep -q '^skipped:' cgroups.out; then exit 1; fi
   privileged:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
