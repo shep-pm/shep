@@ -134,6 +134,7 @@ fn shepherd_messages_match_their_fixtures() {
             ShepherdMessage::Action {
                 name: "gc".into(),
                 params: None,
+                caller: None,
                 id: 7,
             },
         ),
@@ -142,7 +143,17 @@ fn shepherd_messages_match_their_fixtures() {
             ShepherdMessage::Action {
                 name: "set-log-level".into(),
                 params: Some("debug".into()),
+                caller: None,
                 id: 8,
+            },
+        ),
+        (
+            "shepherd-action-caller",
+            ShepherdMessage::Action {
+                name: "gc".into(),
+                params: Some("now".into()),
+                caller: Some("janitor".into()),
+                id: 9,
             },
         ),
         (

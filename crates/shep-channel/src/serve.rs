@@ -112,6 +112,25 @@ impl Shepherd {
         self
     }
 
+    /// Registers a handler for one action name that also reads who triggered
+    /// it, replacing any prior one.
+    ///
+    /// Like [`Shepherd::on_action`], with the caller's name as a third
+    /// argument: the dog that sent the trigger, as the shepherd vouches for
+    /// it. `None` when the operator triggered the action, and when the
+    /// shepherd is older than the field.
+    pub fn on_action_with_caller<H>(&self, name: impl AsRef<str>, handler: H) -> &Self
+    where
+        H: Fn(Option<&str>, &str, Option<&str>) -> String + Send + Sync + 'static,
+    {
+        self.0
+            .dispatch
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .register_caller_action(name.as_ref().to_string(), Box::new(handler));
+        self
+    }
+
     /// Registers the handler run when the shepherd asks this app to stop.
     ///
     /// Without one, a shutdown message warns and nothing else happens. This

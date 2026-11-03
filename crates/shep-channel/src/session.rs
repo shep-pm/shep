@@ -125,6 +125,7 @@ mod tests {
             Some(ShepherdMessage::Action {
                 name: "gc".into(),
                 params: None,
+                caller: None,
                 id: 7
             })
         );
@@ -387,6 +388,7 @@ mod tests {
             Some(ShepherdMessage::Action {
                 name: "gc".into(),
                 params: None,
+                caller: None,
                 id: 7
             })
         );
