@@ -470,7 +470,9 @@ export const BUDGETS: Record<string, number> = {
   // what it costs is not prose: the branch that decides whether a row gets a
   // link sits in the page body rather than in frontmatter, and this counter
   // reads the page body as words a reader wades through.
-  "community-dogs": 320,
+  // Raised from 320 for the index cache and the two `cargo` fields a
+  // contributor can set.
+  "community-dogs": 400,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

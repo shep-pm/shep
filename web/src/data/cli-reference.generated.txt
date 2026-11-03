@@ -648,6 +648,9 @@ Options:
           List the dogs published in the community index instead of the ones this shepherd is
           running. Needs no shepherd
 
+      --refresh
+          Fetch the community index even when the copy cached in the last day is still fresh
+
   -h, --help
           Print help (see a summary with '-h')
 

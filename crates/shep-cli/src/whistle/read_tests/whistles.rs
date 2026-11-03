@@ -31,6 +31,7 @@ fn test_paths(
         secrets: std::path::PathBuf::new(),
         secrets_cache: std::path::PathBuf::new(),
         dog_defaults: std::path::PathBuf::new(),
+        dog_index_cache: std::path::PathBuf::new(),
     }
 }
 

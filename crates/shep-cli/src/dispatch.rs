@@ -491,7 +491,7 @@ pub(crate) async fn run(
                 )
                 .await
             }
-            (None, true) => query::available_dogs(&mut streams, args).await,
+            (None, true) => query::available_dogs(&mut streams, &paths, args).await,
             (None, false) => {
                 with_client(&mut streams, &link, guard, async |client, streams| {
                     query::dogs(client, streams, &paths, args).await
