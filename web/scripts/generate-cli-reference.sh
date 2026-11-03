@@ -74,6 +74,9 @@ VERBS=(
   # so what is committed here changes only when the CLI surface itself does.
   echo "@@TOPLEVEL@@"
   shep --help
+  # The global flags' long text is on no verb's page, so it is here once.
+  echo "@@FLAGS@@"
+  shep help flags
   for v in "${VERBS[@]}"; do
     echo "@@VERB:$v@@"
     # shellcheck disable=SC2086 -- word-splitting is the point: a

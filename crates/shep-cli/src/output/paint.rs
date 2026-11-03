@@ -61,22 +61,32 @@ mod tests {
 
     use crate::cli::Cli;
 
+    /// `bleats`' help, which owns a flag and a placeholder: the global flags
+    /// are off every verb's page.
+    fn verb_help(styles: clap::builder::Styles) -> clap::builder::StyledStr {
+        Cli::command()
+            .find_subcommand("bleats")
+            .expect("bleats is a verb")
+            .clone()
+            .styles(styles)
+            .render_help()
+    }
+
     /// The sequences are the 256-colour palette's own indices, written out
     /// rather than derived from `style_for`.
     #[test]
     fn coloured_help_paints_headings_flags_and_placeholders_in_the_palette() {
-        let coloured = Cli::command().styles(help_styles(true)).render_help();
-        let ansi = coloured.ansi().to_string();
+        let ansi = verb_help(help_styles(true)).ansi().to_string();
         assert!(
             ansi.contains("\x1b[1m\x1b[38;5;221mUsage:\x1b[0m"),
             "bold butter heading, got {ansi:?}"
         );
         assert!(
-            ansi.contains("\x1b[38;5;29m--format\x1b[0m"),
+            ansi.contains("\x1b[38;5;29m--lines\x1b[0m"),
             "meadow flag, got {ansi:?}"
         );
         assert!(
-            ansi.contains("\x1b[38;5;74m<FORMAT>\x1b[0m"),
+            ansi.contains("\x1b[38;5;74m<N>\x1b[0m"),
             "sky placeholder, got {ansi:?}"
         );
     }
@@ -91,12 +101,8 @@ mod tests {
 
     #[test]
     fn the_sixteen_colour_tier_uses_named_colours() {
-        let ansi = Cli::command()
-            .styles(help_styles(false))
-            .render_help()
-            .ansi()
-            .to_string();
-        assert!(ansi.contains("\x1b[32m--format\x1b[0m"), "got {ansi:?}");
+        let ansi = verb_help(help_styles(false)).ansi().to_string();
+        assert!(ansi.contains("\x1b[32m--lines\x1b[0m"), "got {ansi:?}");
     }
 
     /// No "off" case: `NO_COLOR` is vetoed upstream, in
