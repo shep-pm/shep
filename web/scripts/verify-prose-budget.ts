@@ -253,7 +253,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 4450, for when the section shows: an opted-in sheep with
   // no table shows nothing from it.
-  "lookout-config": 4450,
+  //
+  // Raised again, to 4455, on #1451 for the dogs pane's SOURCE and VERSION
+  // columns, which no other page describes in lookout's terms.
+  "lookout-config": 4455,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line

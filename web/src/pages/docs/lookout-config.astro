@@ -289,9 +289,11 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
     <CodeBlock label="120×30, every dog folded">{settingsDogs}</CodeBlock>
     <p>
       A dog's row is the one place SOURCE isn't the whole story: IN FILE says
-      whether <code>[daemon] enabled_dogs</code> names the dog, SOURCE says
-      whether it's built in or adopted from a path, and RUNNING joins both
-      against the live flock. The three can disagree: <code>otel</code> above
+      whether <code>[daemon] enabled_dogs</code> names the dog, SOURCE is{" "}
+      <code>built-in</code>, <code>installed</code>,{" "}
+      <code>installed, community</code> or <code>adopted</code>, VERSION adds{" "}
+      <code>→ &lt;new&gt;</code> from the cached index, and RUNNING reads
+      the live flock. IN FILE and RUNNING can disagree: <code>otel</code> above
       is running with nothing enabling it, <code>ledger</code> is enabled and
       not running, and <code>bark</code> is enabled, running, and still{" "}
       <code>silent</code> because it never finished a handshake.{" "}
