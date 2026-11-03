@@ -301,7 +301,8 @@ pub(super) async fn install_dog(
     let binary = root
         .join("bin")
         .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
-    // A refusal before `adopt` registers the new binary puts these back.
+    // Copies, so the installed dog stays in place until it is replaced; a
+    // refusal before `adopt` registers the new binary puts them back.
     let receipt_file = receipt::receipt_path(paths, name);
     let kept = match Kept::park(&[&binary, &receipt_file]) {
         Ok(kept) => kept,
