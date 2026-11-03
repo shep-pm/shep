@@ -90,9 +90,9 @@ pub struct CarriedSheep {
     pub(super) credentials: SpawnIdentity,
     /// The descriptor numbers this instance's output travels on.
     pub(super) fds: CarriedFds,
-    /// What the dog's carried connection had said by the time the predecessor
+    /// What the carried connection had said by the time the predecessor
     /// handed over, or `None` for an instance without one
-    /// ([`CarriedFds::dog_link`]) and for one whose dog had not yet sent its
+    /// ([`CarriedFds::dog_link`]) and for one whose peer had not yet sent its
     /// `Hello`.
     ///
     /// `Some` is the topic patterns it had subscribed to, empty for none. The
@@ -229,7 +229,8 @@ impl CarriedSheep {
         self
     }
 
-    /// Has this row carry the dog's own connection.
+    /// Has this row carry its connection: the dog's own, or the launch link
+    /// of a sheep sandboxed by a dog.
     ///
     /// Separate from [`Self::from_entry`] because the connection is held by
     /// the server that serves it and not by the log pump `fds` is reported
@@ -524,11 +525,11 @@ pub struct CarriedFds {
     /// `None` for a sheep whose app set none of `channel`, `wait_ready` or
     /// `shutdown_with_message`, and for one that is not running.
     pub channel: Option<RawFd>,
-    /// The daemon's end of the dog's own connection, whose other end is the
-    /// child's fd 4.
+    /// The daemon's end of the child's fd 4: a dog's own connection, or a
+    /// launched sheep's launch link.
     ///
     /// One number for both directions, served by the same task that served it
-    /// before the exec. `None` for a sheep that is not a dog, for a dog
+    /// before the exec. `None` for a sheep with neither, for a dog
     /// that is not running, and for one whose connection had already closed.
     /// An absent field loads as `None`.
     pub dog_link: Option<RawFd>,
