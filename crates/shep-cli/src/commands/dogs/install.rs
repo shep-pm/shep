@@ -1,13 +1,13 @@
 //! `shep install <dog>`: installs the version the community index approves,
 //! records a receipt, and hands the binary to `adopt`.
 //!
-//! A row that hashes a binary for this target is downloaded and must match
-//! the hash ([`install_download`](super::install_download)). Otherwise, or
-//! with `--cargo`, cargo builds it, once crates.io names the row's repository
-//! as the publisher. `--ref` builds the row's repository at a ref instead
-//! ([`install_ref`]). The grant question and the enable are `adopt`'s own.
+//! A row that hashes a binary for this target is downloaded and must match the hash
+//! ([`install_download`](super::install_download)). Otherwise, or with `--cargo`, cargo builds
+//! it, once crates.io names the row's repository as the publisher. `--ref` builds the row's
+//! repository at a ref instead ([`install_ref`]). The grant question and the enable are `adopt`'s.
 //!
-//! Any other row kind prints its instructions and installs nothing.
+//! Any other row kind prints its instructions and installs nothing, and a dog the index does not
+//! carry is `shep adopt <path>`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

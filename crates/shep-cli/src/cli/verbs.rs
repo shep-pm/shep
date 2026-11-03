@@ -246,10 +246,10 @@ pub enum Commands {
     /// Install a dog from the community index, then adopt and enable it.
     /// With no name, lists the index.
     ///
-    /// Downloads the prebuilt binary the index hashes for this target, or
-    /// with `--cargo` builds the approved version with `cargo install
-    /// --locked`. `--ref` builds an unreviewed branch, tag or commit. Then it
-    /// asks `shep adopt`'s grant question.
+    /// Downloads the prebuilt binary the index hashes for this target, and
+    /// refuses it on a sha256 mismatch. Otherwise, or with `--cargo`, builds
+    /// the approved version with `cargo install --locked`. Then it asks
+    /// `shep adopt`'s grant question. Any other row exits 1.
     Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,

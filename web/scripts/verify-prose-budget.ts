@@ -474,7 +474,9 @@ export const BUDGETS: Record<string, number> = {
   // contributor can set. Raised again for what `shep install` does.
   // Raised from 520 for `--ref`, which is new content: what it builds, how a
   // ref is read, where it lands and that the index has not reviewed it.
-  "community-dogs": 600,
+  // Raised from 600 for the lede, which says `--ref` also installs a cargo row
+  // with no approved version.
+  "community-dogs": 610,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is
