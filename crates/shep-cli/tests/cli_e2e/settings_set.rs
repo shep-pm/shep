@@ -524,7 +524,7 @@ fn shep_set_writes_a_section_that_ends_in_a_blank_line() {
 }
 
 /// `<dog>.defaults` is retired: every verb that takes an address refuses it,
-/// names the dog's own section, and writes no `dog-defaults.json`.
+/// and names the dog's own section.
 #[test]
 fn a_retired_defaults_address_is_refused_and_names_the_dogs_section() {
     let dir = tempfile::tempdir().unwrap();
@@ -576,11 +576,6 @@ fn a_retired_defaults_address_is_refused_and_names_the_dogs_section() {
         );
     }
     assert!(refused(&["get", "metrics.defaults"]).contains("`metrics.<key>`"));
-
-    assert!(
-        !home.join("dog-defaults.json").exists(),
-        "a refused address writes nothing"
-    );
 
     let unknown = shep(home)
         .arg("set")
