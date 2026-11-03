@@ -96,6 +96,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # dog-release.yml builds a dog for these same targets and keeps its own
+        # copy of this list, since a matrix cannot cross files.
+        # scripts/test_dog_release_targets.py fails until a change to the
+        # targets, hosts or packages here is made there too.
         include:
           # macos-latest is arm64, so the Intel leg cross-compiles. Xcode's
           # clang covers both, which matters because `ring` runs a `cc` build

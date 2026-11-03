@@ -1,0 +1,317 @@
+name: Dog release
+# A dog repository calls this on release. It builds the dog's bare binary for
+# every target shep itself ships for, uploads each to the dog's own release
+# as `<package>-<version>-<target>` (plus `.exe` on Windows, no archive), and
+# opens a pull request on shep-pm/shep that sets the index row's `version` and
+# per-target sha256. A person merging that pull request is the review the
+# index stands for; nothing here approves a version by itself.
+#
+# The asset name and the tag are not free: `shep install` builds
+# `<repo>/releases/download/v<version>/<package>-<version>-<target>` from the
+# index row, so the tag has to be `v<version>`. See the "Releasing a dog"
+# section of web/src/pages/docs/writing-a-dog.astro for the calling job.
+#
+# Run by hand with `workflow_dispatch` it is a dry run against any public
+# dog repository: it builds every target and prints the hashes, and uploads
+# and opens nothing.
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: The cargo package name, which is also the index row's `package`
+        type: string
+        required: true
+      tag:
+        description: The release tag to build, `v<version>`
+        type: string
+        required: true
+      bin:
+        description: The binary to ship, when it is not named after the package
+        type: string
+        default: ""
+      repository:
+        description: The repository to build, when it is not the calling one
+        type: string
+        default: ""
+      dry-run:
+        description: Build and print the hashes, but upload nothing and open nothing
+        type: boolean
+        default: false
+    secrets:
+      index-token:
+        description: >-
+          A GitHub App installation token or a PAT that can push a branch and
+          open a pull request on shep-pm/shep. The default token cannot write
+          to another repository. Not needed for a dry run.
+        required: false
+  workflow_dispatch:
+    inputs:
+      package:
+        description: The cargo package name, e.g. shep-log-rotate
+        required: true
+      tag:
+        description: An existing tag of the dog, e.g. v0.2.4
+        required: true
+      repository:
+        description: The dog's repository, e.g. shep-pm/shep-log-rotate
+        required: true
+      bin:
+        description: The binary to ship, when it is not named after the package
+        default: ""
+      dry-run:
+        description: Must stay on here; a real release is the dog repository's own call
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  # Everything the later jobs would otherwise find out an hour into a build:
+  # the tag is `v<version>`, it is the version Cargo.toml carries at that tag,
+  # the binary exists, and the release already exists to take the assets.
+  resolve:
+    name: Resolve the tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      bin: ${{ steps.check.outputs.bin }}
+      repository: ${{ steps.check.outputs.repository }}
+      dry-run: ${{ steps.check.outputs.dry-run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - id: check
+        env:
+          # Through the environment, not spliced into the script: these come
+          # from another repository's workflow.
+          PACKAGE: ${{ inputs.package }}
+          TAG: ${{ inputs.tag }}
+          BIN: ${{ inputs.bin }}
+          REPOSITORY: ${{ inputs.repository || github.repository }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]+$ ]] || fail "package '$PACKAGE' is not a cargo package name"
+          [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "repository '$REPOSITORY' is not owner/name"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]] \
+            || fail "tag '$TAG' is not v<version>. The index builds its download URL from v<version>, so any other tag cannot be installed from."
+          version="${TAG#v}"
+          bin="${BIN:-$PACKAGE}"
+          dry_run=false
+          if [ "$DRY_RUN" = true ]; then dry_run=true; fi
+
+          # A dispatch runs in this repository's token, which cannot upload to
+          # a dog's release. Refuse here rather than after the builds.
+          if [ "$dry_run" = false ] && [ "$REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            fail "a real release runs from the dog's own repository, not from $GITHUB_REPOSITORY. Call this workflow from $REPOSITORY, or run a dry run."
+          fi
+
+          manifest="$(cargo metadata --no-deps --format-version 1)"
+          found="$(jq -r --arg p "$PACKAGE" '[.packages[] | select(.name == $p) | .version][0] // empty' <<< "$manifest")"
+          [ -n "$found" ] || fail "$REPOSITORY has no package named $PACKAGE at $TAG"
+          [ "$found" = "$version" ] \
+            || fail "$PACKAGE is $found in Cargo.toml at $TAG, so the tag would approve $version for a binary that says $found. Tag the commit that bumps the version."
+          jq -e --arg p "$PACKAGE" --arg b "$bin" '
+            [.packages[] | select(.name == $p) | .targets[]
+              | select(.name == $b and (.kind | index("bin")))] | length > 0
+          ' <<< "$manifest" > /dev/null \
+            || fail "$PACKAGE has no binary named $bin. Pass 'bin' when it is not named after the package."
+
+          if [ "$dry_run" = false ]; then
+            gh release view "$TAG" --repo "$REPOSITORY" > /dev/null \
+              || fail "$REPOSITORY has no release for $TAG yet. Create the release first; the binaries are attached to it."
+          fi
+
+          {
+            echo "version=${version}"
+            echo "bin=${bin}"
+            echo "repository=${REPOSITORY}"
+            echo "dry-run=${dry_run}"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.target }}
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        # The targets, hosts and packages of `upload` in release-artifacts.yml,
+        # copied: GitHub gives a matrix no way to cross from one workflow file
+        # into another. scripts/test_dog_release_targets.py fails when the two
+        # lists differ, so adding a target there fails until it is added here.
+        # `build_tool` is left out: that is an input of the action
+        # release-artifacts.yml builds with, and this job calls cargo itself.
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            packages: musl-tools
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            packages: musl-tools
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    # Needs write to attach assets to the calling repository's release, so a
+    # caller must grant `contents: write` on its job. A dry run uploads
+    # nothing and the token is passed only to the one step that uploads.
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+      - if: matrix.packages != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - name: Build
+        env:
+          PACKAGE: ${{ inputs.package }}
+          BIN: ${{ needs.resolve.outputs.bin }}
+          TARGET: ${{ matrix.target }}
+        # `--locked`: the hash approved in the index is of a build from the
+        # lockfile at the tag, not of whatever resolves on the day.
+        run: cargo build --release --locked --package "$PACKAGE" --bin "$BIN" --target "$TARGET"
+      - name: Stage the bare binary under its release name
+        id: stage
+        env:
+          PACKAGE: ${{ inputs.package }}
+          BIN: ${{ needs.resolve.outputs.bin }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          exe=''
+          case "$TARGET" in *-windows-*) exe=.exe ;; esac
+          asset="${PACKAGE}-${VERSION}-${TARGET}${exe}"
+          mkdir dist
+          cp "target/${TARGET}/release/${BIN}${exe}" "dist/${asset}"
+          echo "asset=${asset}" >> "$GITHUB_OUTPUT"
+          # `sha256sum` where there is one (Linux, Git for Windows), else the
+          # macOS spelling. Both print `<hash>  <name>`, the line
+          # scripts/dog-index-update.py reads back.
+          cd dist
+          if command -v sha256sum > /dev/null; then sum=(sha256sum); else sum=(shasum -a 256); fi
+          line="$("${sum[@]}" -- "$asset")"
+          echo "$line"
+          {
+            echo '```'
+            echo "$line"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Attach it to the release
+        if: needs.resolve.outputs.dry-run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ needs.resolve.outputs.repository }}
+          TAG: ${{ inputs.tag }}
+          ASSET: ${{ steps.stage.outputs.asset }}
+        # `--clobber`: a re-run replaces the asset, and the next job hashes
+        # what the release holds, not what this leg built.
+        run: gh release upload "$TAG" "dist/${ASSET}" --clobber
+
+  # Hashes what the release serves rather than what the legs built, since
+  # that is the file `shep install` downloads and checks.
+  index-pr:
+    name: Open the index pull request
+    needs: [resolve, build]
+    if: needs.resolve.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    env:
+      INDEX_TOKEN: ${{ secrets.index-token }}
+    steps:
+      - name: Require the index token
+        run: |
+          if [ -z "$INDEX_TOKEN" ]; then
+            echo "::error::the index-token secret is empty. The binaries are on the release; pass a token that can open a pull request on shep-pm/shep, and re-run this job."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shep-pm/shep
+          ref: main
+          path: shep
+          persist-credentials: false
+      - name: Hash the release's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ needs.resolve.outputs.repository }}
+          TAG: ${{ inputs.tag }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir assets
+          gh release download "$TAG" --dir assets --pattern "${PACKAGE}-${VERSION}-*"
+          (cd assets && sha256sum -- *) | tee sums.txt
+      - name: Write the row
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: python3 shep/scripts/dog-index-update.py shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.index-token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          REPOSITORY: ${{ needs.resolve.outputs.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd shep
+          if git diff --quiet -- web/public/dogs.json; then
+            echo "The index already approves ${PACKAGE} ${VERSION} with these hashes. Nothing to open."
+            exit 0
+          fi
+          branch="dog-release/${PACKAGE}-${VERSION}"
+          title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
+          git checkout -b "$branch"
+          git add web/public/dogs.json
+          git -c user.name='shep dog release' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "$title"
+          git remote set-url origin "https://x-access-token:${INDEX_TOKEN}@github.com/shep-pm/shep.git"
+          # Forced: the branch is this workflow's own, and a re-run should
+          # replace its hashes rather than stop on the old ones.
+          git push --force origin "HEAD:refs/heads/${branch}"
+
+          if [ "$(gh pr list --repo shep-pm/shep --head "$branch" --state open --json number --jq length)" != 0 ]; then
+            echo "A pull request for ${branch} is open already. Its branch now carries these hashes."
+            exit 0
+          fi
+          {
+            echo "Approves \`${PACKAGE}\` ${VERSION} and its prebuilt binaries in the dog index."
+            echo
+            echo "- Release: https://github.com/${REPOSITORY}/releases/tag/${TAG}"
+            echo "- Built by: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Changes only this row's \`version\` and \`sha256\`"
+            echo
+            echo "Merging this is the review: \`shep install ${PACKAGE}\` will install this version and no other."
+          } > body.md
+          gh pr create --repo shep-pm/shep --base main --head "$branch" \
+            --title "$title" --body-file body.md
