@@ -36,7 +36,8 @@ fn example() -> PathBuf {
         .join("long_action_dog");
     assert!(
         path.is_file(),
-        "{} must exist: `cargo test --examples` builds it",
+        "{} must exist: run `cargo build -p shep-client --examples`, or a plain \
+         `cargo test -p shep-client`; `--test long_action` alone does not build it",
         path.display()
     );
     path
