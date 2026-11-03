@@ -235,6 +235,14 @@ pub fn normalize_with_home(
             return Err(NormalizeError::MaxCpuCoresUnsupported { name: app.name });
         }
     }
+    if let Some(tasks) = app.max_tasks {
+        if !(1..=AppConfig::MAX_TASKS_LIMIT).contains(&tasks) {
+            return Err(NormalizeError::MaxTasksOutOfRange { name: app.name });
+        }
+        if !cfg!(target_os = "linux") {
+            return Err(NormalizeError::MaxTasksUnsupported { name: app.name });
+        }
+    }
     if let Some(name) = &app.kill_signal
         && KillSignal::parse(name).is_none()
     {

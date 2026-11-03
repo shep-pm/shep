@@ -32,7 +32,7 @@ pub(super) const EXTRAS_FIELDS: &[&str] = &[
 /// Not in [`EXTRAS_FIELDS`]: no lifecycle extra reads them, so a re-arm would
 /// rebuild workers for nothing.
 #[cfg(target_os = "linux")]
-pub(super) const CGROUP_FIELDS: &[&str] = &["max_cpu_cores"];
+pub(super) const CGROUP_FIELDS: &[&str] = &["max_cpu_cores", "max_tasks"];
 
 /// Records what a load's `env` branch merged. The file's env keys are
 /// established from here, and an override of one is spent. A tombstone is
