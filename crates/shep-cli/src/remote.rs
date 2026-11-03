@@ -41,7 +41,6 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Delete(_)
         | Commands::Disable(_)
         | Commands::Stock(_)
-        | Commands::Trigger(_)
         | Commands::Signal(_)
         | Commands::Whisper(_)
         | Commands::Bleats(_)
@@ -50,6 +49,10 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         // machine's `shep.toml`.
         Commands::Enable(args) if args.exec.is_some() => HostScope::LocalOnly,
         Commands::Enable(_) => HostScope::Reaches,
+        // With no action it lists a dog's manifest, which is read on this
+        // machine.
+        Commands::Trigger(args) if args.action.is_none() => HostScope::LocalOnly,
+        Commands::Trigger(_) => HostScope::Reaches,
         // Reaches for a sheep name only. A token cannot be classed until the
         // remote's flock is listed, so the load path refuses the rest.
         Commands::Start(_) => HostScope::Reaches,
@@ -399,6 +402,14 @@ mod tests {
     fn lookout_reaches_a_host() {
         let cli = parsed_with_host(&["lookout"]);
         assert_eq!(host_scope(&cli.command), HostScope::Reaches);
+    }
+
+    #[test]
+    fn trigger_lists_a_dog_on_this_machine_only() {
+        let listing = parsed_with_host(&["trigger", "janitor"]);
+        assert_eq!(host_scope(&listing.command), HostScope::LocalOnly);
+        let action = parsed_with_host(&["trigger", "web", "run"]);
+        assert_eq!(host_scope(&action.command), HostScope::Reaches);
     }
 
     #[test]

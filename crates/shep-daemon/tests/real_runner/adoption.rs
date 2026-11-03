@@ -246,6 +246,7 @@ async fn an_adopted_channel_reaches_a_real_child_that_blocks_on_fd_3() {
         .send(ShepherdMessage::Action {
             name: "round-1".to_string(),
             params: None,
+            caller: None,
             id: 1,
         })
         .await

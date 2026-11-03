@@ -22,7 +22,10 @@ const FIXTURE: &str = r#"{
     "shep": "0.9.0"
   },
   "validate": true,
-  "serves": "every_sheep"
+  "serves": "every_sheep",
+  "actions": [
+    {"name": "export-now", "description": "Export without waiting for the interval"}
+  ]
 }"#;
 
 fn fixture() -> Manifest {
@@ -38,6 +41,10 @@ fn fixture() -> Manifest {
     manifest.depends.shep = Some("0.9.0".to_string());
     manifest.validate = true;
     manifest.serves = Serves::EverySheep;
+    manifest.actions = vec![Action::new(
+        "export-now",
+        "Export without waiting for the interval",
+    )];
     manifest
 }
 
@@ -64,6 +71,7 @@ fn a_field_this_shep_does_not_know_is_ignored_at_every_level() {
     value["verb"]["subcommands"][0]["hidden"] = serde_json::json!(true);
     value["depends"]["os"] = serde_json::json!("later");
     value["depends"]["dogs"][0]["optional"] = serde_json::json!(true);
+    value["actions"][0]["hidden"] = serde_json::json!(true);
 
     let manifest: Manifest = serde_json::from_value(value).unwrap();
 
@@ -109,6 +117,35 @@ fn a_manifest_that_declares_nothing_prints_only_who_the_dog_is() {
             "validate": false,
             "launch": false,
         })
+    );
+}
+
+#[test]
+fn a_manifest_without_actions_reads_with_none_declared() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+    )
+    .unwrap();
+
+    assert!(manifest.actions.is_empty());
+}
+
+#[test]
+fn declared_actions_read_from_their_documented_names_and_round_trip() {
+    let text = r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
+        "actions": [{"name": "export-now", "description": "Export at once"}, {"name": "pause", "description": "Stop exporting"}]}"#;
+
+    let manifest: Manifest = serde_json::from_str(text).unwrap();
+
+    let expected = vec![
+        Action::new("export-now", "Export at once"),
+        Action::new("pause", "Stop exporting"),
+    ];
+    assert_eq!(manifest.actions, expected);
+    let again = serde_json::to_string(&manifest).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Manifest>(&again).unwrap().actions,
+        expected
     );
 }
 

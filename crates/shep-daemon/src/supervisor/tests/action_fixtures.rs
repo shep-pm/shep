@@ -49,7 +49,12 @@ pub(super) fn trigger_action(
         .to_child
         .clone()
         .expect("the fixture's sheep holds the daemon's end of a channel");
-    actor.arm_action(0, to_child, action.to_string(), None, ACTION_TIMEOUT)
+    actor.arm_action(
+        0,
+        to_child,
+        (action.to_string(), None, None),
+        ACTION_TIMEOUT,
+    )
 }
 
 /// Drives the one message an action wait sends home and applies it,

@@ -790,6 +790,7 @@ impl SupervisorHandle {
     /// `AppConfig::action_timeout`; the waits run alongside each other, so a
     /// flock costs the longest of them. A sheep that cannot be reached is
     /// refused in its own row, and `action` and `params` reach it verbatim.
+    /// `caller` names the dog the trigger came from, when one did.
     ///
     /// # Errors
     ///
@@ -800,11 +801,13 @@ impl SupervisorHandle {
         selector: ProcessSelector,
         action: String,
         params: Option<String>,
+        caller: Option<String>,
     ) -> Result<Vec<ActionReply>, SupervisorError> {
         self.call(|reply| Command::Trigger {
             selector,
             action,
             params,
+            caller,
             reply,
         })
         .await?

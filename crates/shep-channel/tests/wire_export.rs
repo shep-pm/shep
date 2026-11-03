@@ -123,6 +123,7 @@ fn shepherd_samples() -> Vec<ShepherdMessage> {
         ShepherdMessage::Action {
             name: "gc".into(),
             params: Some("now".into()),
+            caller: Some("janitor".into()),
             id: 7,
         },
         ShepherdMessage::LambSignalled {
@@ -156,6 +157,7 @@ const SHEPHERD_FIELDS: &[Field] = &[
     Field { ident: "Kind",   ty: "string",  tag: "kind",              kinds: &["shutdown", "action", "lamb-signalled"] },
     Field { ident: "Name",   ty: "*string", tag: "name,omitempty",    kinds: &["action"] },
     Field { ident: "Params", ty: "*string", tag: "params,omitempty",  kinds: &["action"] },
+    Field { ident: "Caller", ty: "*string", tag: "caller,omitempty",  kinds: &["action"] },
     Field { ident: "ID",     ty: "*uint64", tag: "id,omitempty",      kinds: &["action"] },
     Field { ident: "PID",    ty: "*uint32", tag: "pid,omitempty",     kinds: &["lamb-signalled"] },
     Field { ident: "Signal", ty: "*string", tag: "signal,omitempty",  kinds: &["lamb-signalled"] },
@@ -386,11 +388,13 @@ fn an_absent_params_and_an_empty_one_encode_differently() {
     let absent = ShepherdMessage::Action {
         name: "gc".into(),
         params: None,
+        caller: None,
         id: 7,
     };
     let empty = ShepherdMessage::Action {
         name: "gc".into(),
         params: Some(String::new()),
+        caller: None,
         id: 7,
     };
     let absent_encoded = serde_json::to_string(&absent).expect("encode");

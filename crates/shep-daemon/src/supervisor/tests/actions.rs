@@ -46,6 +46,7 @@ async fn a_triggered_action_answers_with_the_apps_reply() {
                 ProcessSelector::Name("web".to_string()),
                 "gc".to_string(),
                 Some("--full".to_string()),
+                None,
             )
             .await
     });
@@ -55,6 +56,7 @@ async fn a_triggered_action_answers_with_the_apps_reply() {
         ShepherdMessage::Action {
             name: "gc".to_string(),
             params: Some("--full".to_string()),
+            caller: None,
             // `next_action_stamp` is read before it is incremented, so a
             // freshly-built actor's first dispatch is always stamp 0.
             id: 0,
@@ -223,6 +225,7 @@ async fn a_triggered_action_times_out_when_the_app_never_answers() {
                 ProcessSelector::Name("api".to_string()),
                 "stats".to_string(),
                 None,
+                None,
             )
             .await,
         Ok(vec![ActionReply {
@@ -237,6 +240,7 @@ async fn a_triggered_action_times_out_when_the_app_never_answers() {
         ShepherdMessage::Action {
             name: "stats".to_string(),
             params: None,
+            caller: None,
             // The actor's first and only dispatch carries stamp 0.
             id: 0,
         },

@@ -80,13 +80,14 @@ pub(super) async fn trigger(
     spec: SelectorSpec,
     action: String,
     params: Option<String>,
+    caller: Option<String>,
     ctx: &RpcContext,
 ) -> Outcome {
     let result = match selector_of(spec) {
         Err(err) => Err(err),
         Ok(selector) => ctx
             .supervisor
-            .trigger(selector, action, params)
+            .trigger(selector, action, params, caller)
             .await
             .map(Response::Triggered)
             .map_err(|err| rpc_error(&err)),

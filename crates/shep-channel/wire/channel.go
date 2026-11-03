@@ -59,6 +59,7 @@ type ShepherdMessage struct {
 	Kind   string  `json:"kind"`
 	Name   *string `json:"name,omitempty"`
 	Params *string `json:"params,omitempty"`
+	Caller *string `json:"caller,omitempty"`
 	ID     *uint64 `json:"id,omitempty"`
 	PID    *uint32 `json:"pid,omitempty"`
 	Signal *string `json:"signal,omitempty"`
