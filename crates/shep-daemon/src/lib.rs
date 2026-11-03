@@ -134,6 +134,10 @@ pub(crate) mod bus;
 // more: the module stays crate-private so its forwarders and topic
 // bookkeeping never become API.
 pub use bus::{Bus, SharedEvent, new_bus};
+// Linux only: cgroups are a Linux kernel interface. macOS and Windows have no
+// counterpart for this module to compile against.
+#[cfg(target_os = "linux")]
+pub(crate) mod cgroup;
 pub(crate) mod cron;
 pub(crate) mod entry;
 pub(crate) mod extras;
