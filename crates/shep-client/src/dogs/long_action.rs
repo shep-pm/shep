@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 use shep_core::protocol::{ActionOutcome, BusEvent, Request, Response, RpcErrorCode, SelectorSpec};
 
-use crate::{EventStream, Lagged, ReconnectingClient, RequestError};
+use crate::{EventStream, Lagged, ReconnectingClient, RequestError, TRIGGER_DEADLINE};
 
 #[cfg(doc)]
 use super::DogRuntime;
@@ -267,19 +267,21 @@ pub(super) async fn trigger_and_wait(
     }
 }
 
-/// Sends the trigger and reads the id out of the callee's reply.
+/// Sends the trigger, waiting as long as any trigger does for a callee that
+/// is slow to answer, and reads the id out of the callee's reply.
 async fn trigger(
     client: &ReconnectingClient,
     callee: &str,
     action: &str,
     params: Option<&str>,
 ) -> Result<ActionId, LongActionError> {
+    let request = Request::Trigger {
+        selector: SelectorSpec::Name(callee.to_owned()),
+        action: action.to_owned(),
+        params: params.map(str::to_owned),
+    };
     let reply = client
-        .request(Request::Trigger {
-            selector: SelectorSpec::Name(callee.to_owned()),
-            action: action.to_owned(),
-            params: params.map(str::to_owned),
-        })
+        .request_with_deadline(request, Some(TRIGGER_DEADLINE))
         .await
         .map_err(|error| refused(error, format!("dogs.trigger:{callee}")))?;
     let Response::Triggered(rows) = reply else {

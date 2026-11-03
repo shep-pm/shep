@@ -187,7 +187,7 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use shep_core::protocol::{Request, Response};
+    use shep_core::protocol::{Request, Response, SelectorSpec};
 
     use super::*;
     use crate::testing::{control_address, fake_daemon, sample_ack, serve_one_request};
@@ -273,6 +273,50 @@ mod tests {
                 payload
             }),
             "{sent:?}"
+        );
+    }
+
+    /// A callee's `action_timeout` reaches 58s, so a trigger sent with the
+    /// client's 5s default would abandon an id the callee is still minting.
+    #[tokio::test]
+    async fn the_trigger_waits_as_long_as_any_other_trigger_does() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd =
+            fake_daemon_across_handovers(&paths.socket, vec![Handshake::Accept(sample_ack())]);
+        let runtime = tokio::time::timeout(
+            Duration::from_secs(5),
+            DogRuntime::start(DogIdentity::named("bark"), paths),
+        )
+        .await
+        .expect("DogRuntime::start hung instead of connecting")
+        .unwrap();
+
+        // The fake answers `Pong`, which is no list of replies: the result
+        // is beside the point, the envelope is the subject.
+        let _ = runtime
+            .trigger_and_wait("builder", "build", Some("p"), Duration::from_millis(50))
+            .await;
+
+        let trigger = shepherd
+            .envelopes()
+            .into_iter()
+            .map(|(_, envelope)| envelope)
+            .find(|envelope| matches!(envelope.body, Request::Trigger { .. }))
+            .expect("the shepherd was sent a Trigger");
+        assert_eq!(
+            trigger.body,
+            Request::Trigger {
+                selector: SelectorSpec::Name("builder".to_owned()),
+                action: "build".to_owned(),
+                params: Some("p".to_owned()),
+            }
+        );
+        assert_eq!(
+            trigger.deadline_ms,
+            Some(u64::try_from(crate::TRIGGER_DEADLINE.as_millis()).unwrap())
         );
     }
 

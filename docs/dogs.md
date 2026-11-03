@@ -165,8 +165,10 @@ cover `dog.otel2.*`.
 trigger's reply waits at most the callee's `action_timeout`, so a build or a
 model call does not run inside it. The callee mints an id and replies at once
 (`ActionId::accept` builds the body). When the work ends it publishes the kind
-`action.done` through `DogRuntime::finish_action`, with a payload of
-`{"id", "result"}` or `{"id", "error"}`. Shep holds no state for it. The kind
+`action.done` through `DogRuntime::finish_action`. The payload is
+`{"id": "18e4a019b13a0ff8-14e1b-0", "result": {"built": 3}}` on success and
+`{"id": "18e4a019b13a0ff8-14e1b-0", "error": "disk full"}` on failure, where
+`result` is any JSON value and `error` is text. Shep holds no state for it. The kind
 is fixed so one caller helper works against any dog, and the callee declares
 it in its manifest `events` like any other (`DONE_KIND`). Every holder of
 `events:dog.<callee>` hears every result, so the id correlates and keeps
