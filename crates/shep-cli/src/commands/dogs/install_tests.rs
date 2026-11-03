@@ -427,6 +427,38 @@ async fn a_row_that_is_not_a_versioned_cargo_row_prints_its_instructions_and_ins
 }
 
 #[tokio::test]
+async fn a_row_that_cannot_install_answers_json_with_an_error_envelope_and_no_table() {
+    let fixture = Fixture::new();
+    let reach = fixture.reach(from_the_row());
+    let dog = row(DogSourceKind::GoInstall {
+        module: "example.com/otel".to_owned(),
+    });
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut streams = crate::output::Streams::bare(&mut out, &mut err, crate::cli::Format::Json);
+
+    let code = install_dog(
+        &mut streams,
+        &fixture.paths,
+        &args(true, false),
+        &reach,
+        &mut typing(None),
+        &dog,
+        "https://shep-pm.com/dogs.json",
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Failure);
+    assert!(out.is_empty(), "{}", String::from_utf8_lossy(&out));
+    let envelope: serde_json::Value = serde_json::from_slice(&err).unwrap();
+    let message = envelope["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("go install example.com/otel@latest"),
+        "{envelope}"
+    );
+    assert!(!fixture.paths.dogs_dir.exists());
+}
+
+#[tokio::test]
 async fn a_row_whose_name_would_climb_out_of_the_dogs_directory_is_refused() {
     let fixture = Fixture::new();
     let reach = fixture.reach(from_the_row());

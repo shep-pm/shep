@@ -197,9 +197,21 @@ pub(super) async fn install_dog(
     } = &dog.source
     else {
         // The instructions `shep dogs --available <name>` prints, and nothing
-        // installed.
-        let _ = crate::commands::query::render_detail(&mut *streams.out, dog);
-        return ExitCode::Failure;
+        // installed. Only a table has room for the detail; JSON gets the
+        // error envelope every other refusal does.
+        if matches!(streams.fmt, Format::Table) {
+            let _ = crate::commands::query::render_detail(&mut *streams.out, dog);
+            return ExitCode::Failure;
+        }
+        let instruction = crate::commands::query::install_instruction(dog);
+        return streams.fail(
+            ExitCode::Failure,
+            &format!(
+                "`{}` is not a cargo row with an approved version, so shep cannot install it: \
+                 {instruction}",
+                dog.adopt_as
+            ),
+        );
     };
     let name = dog.adopt_as.as_str();
     let package = dog.package.as_str();

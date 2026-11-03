@@ -176,6 +176,13 @@ pub(crate) fn render_detail(
     )
 }
 
+/// How to build `dog` by hand, as one line with no indent: what `shep install`
+/// names when it refuses a row it cannot build, in a format that has no
+/// table to print the detail into.
+pub(crate) fn install_instruction(dog: &AvailableDog) -> String {
+    install_line(&dog.source, &dog.package).trim().to_owned()
+}
+
 /// The `$ ...` line [`render_detail`] prints for how to build `source`'s
 /// binary. [`DogSourceKind::Manual`] carries prose instead of a command, so
 /// it prints with no `$`, just the two-space indent the command lines share.
