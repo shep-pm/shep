@@ -587,7 +587,7 @@ jobs:
               chown "$0:$1" "$dir" "$dir/cgroup.procs" "$dir/cgroup.subtree_control"
               ls -ld "$dir"
               exec setpriv --reuid "$0" --regid "$1" --clear-groups \
-                env SHEP_TEST_CGROUPS=1 "$2" --nocapture --test-threads=1 --exact "$3" "$4" "$5" "$6" "$7" "$8"
+                env SHEP_TEST_CGROUPS=1 "$2" --nocapture --test-threads=1 --exact "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}"
             ' "$(id -u)" "$(id -g)" "$(cat test-binary.path)" \
             cgroup::tests::a_real_delegated_subtree_moves_the_shepherd_into_its_leaf \
             cgroup::tests::a_sheep_that_forks_before_exec_has_every_pid_in_its_cgroup \
@@ -595,8 +595,10 @@ jobs:
             cgroup::tests::a_kernel_enforced_sheep_gets_memory_max_and_a_live_change_rewrites_it \
             cgroup::tests::an_oom_inside_the_sheeps_own_cgroup_is_recorded_and_counts_against_max_restarts \
             cgroup::tests::a_live_change_rewrites_cpu_max \
+            cgroup::tests::a_sheep_cannot_fork_past_max_tasks \
+            cgroup::tests::a_live_change_rewrites_pids_max \
             | tee cgroups.out
-          grep -q 'test result: ok. 6 passed' cgroups.out
+          grep -q 'test result: ok. 8 passed' cgroups.out
           if grep -q '^skipped:' cgroups.out; then exit 1; fi
   privileged:
     needs: changes

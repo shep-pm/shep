@@ -539,7 +539,7 @@ impl<R: ProcessRunner> Actor<R> {
         }
         #[cfg(target_os = "linux")]
         if !park_all && group == ApplyGroup::Live && CGROUP_FIELDS.contains(&key) {
-            self.rewrite_cpu_max(name);
+            self.rewrite_cgroup_limits(name);
         }
 
         // `reaches_running` owns the `autostart`/`depends_on` carve-out now,

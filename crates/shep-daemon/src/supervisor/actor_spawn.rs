@@ -126,7 +126,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// `memory.max` is `Some` only for `memory_enforce = "kernel"`, and that
     /// sheep also has its cgroup's `oom_kill` count read here, before the
     /// spawn, for [`Self::take_oom`] to compare at its exit. `cpu.max` is
-    /// `Some` only for `max_cpu_cores`.
+    /// `Some` only for `max_cpu_cores`, and `pids.max` only for `max_tasks`.
     ///
     /// # Errors
     /// - [`AssembleError::CgroupUnavailable`] if the sheep wants the kernel to
@@ -144,11 +144,14 @@ impl<R: ProcessRunner> Actor<R> {
             "memory_enforce = \"kernel\""
         } else if config.max_cpu_cores.is_some() {
             "max_cpu_cores"
+        } else if config.max_tasks.is_some() {
+            "max_tasks"
         } else {
             return Ok(CgroupPlacement {
                 cgroup,
                 memory_max: None,
                 cpu_quota: None,
+                pids_max: None,
             });
         };
         let Some(dir) = cgroup else {
@@ -169,6 +172,7 @@ impl<R: ProcessRunner> Actor<R> {
             cgroup: Some(dir),
             memory_max: config.max_memory.filter(|_| kernel).map(MemSize::bytes),
             cpu_quota: cpu_quota_of(config),
+            pids_max: config.max_tasks,
         })
     }
 
@@ -838,6 +842,7 @@ pub(super) struct CgroupPlacement {
     cgroup: Option<PathBuf>,
     memory_max: Option<u64>,
     cpu_quota: Option<u64>,
+    pids_max: Option<u32>,
 }
 
 impl CgroupPlacement {
@@ -847,6 +852,7 @@ impl CgroupPlacement {
             cgroup: self.cgroup,
             memory_max: self.memory_max,
             cpu_quota: self.cpu_quota,
+            pids_max: self.pids_max,
             ..spec
         }
     }

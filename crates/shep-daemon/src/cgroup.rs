@@ -6,8 +6,8 @@
 //!
 //! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
 //! which [`join_on_exec`] creates and the child joins before its exec, with
-//! `memory.max` ([`write_memory_max`]) and `cpu.max` ([`write_cpu_max`]) set
-//! first and [`oom_kills`] read at the exit. [`remove_stale`] drops it.
+//! `memory.max` ([`write_memory_max`]), `cpu.max` ([`write_cpu_max`]) and
+//! `pids.max` ([`write_pids_max`]) set first and [`oom_kills`] read at the exit. [`remove_stale`] drops it.
 
 use core::fmt;
 use std::ffi::OsStr;
@@ -185,22 +185,23 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`. `memory_max` and `cpu_quota` are written first, by
-/// [`write_memory_max`] and [`write_cpu_max`].
+/// `memory.oom.group`. `memory_max`, `cpu_quota` and `pids_max` are written first, by
+/// [`write_memory_max`], [`write_cpu_max`] and [`write_pids_max`].
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
 /// cgroup, and a new sheep with the same id must not share it.
 ///
 /// # Errors
-/// What creating the directory, writing `memory.oom.group` or `memory.max`
-/// or opening `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
+/// What creating the directory, writing `memory.oom.group`, `memory.max`,
+/// `cpu.max` or `pids.max`, or opening `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
 /// already holds a process. A directory this call made is removed again.
 pub(crate) fn join_on_exec(
     command: &mut std::process::Command,
     dir: &Path,
     memory_max: Option<u64>,
     cpu_quota: Option<u64>,
+    pids_max: Option<u32>,
 ) -> io::Result<()> {
     let created = match fs::create_dir(dir) {
         Ok(()) => true,
@@ -213,6 +214,7 @@ pub(crate) fn join_on_exec(
         fs::write(dir.join("memory.oom.group"), "1")
             .and_then(|()| memory_max.map_or(Ok(()), |limit| write_memory_max(dir, Some(limit))))
             .and_then(|()| cpu_quota.map_or(Ok(()), |quota| write_cpu_max(dir, Some(quota))))
+            .and_then(|()| pids_max.map_or(Ok(()), |limit| write_pids_max(dir, Some(limit))))
             .and_then(|()| {
                 fs::OpenOptions::new()
                     .write(true)
@@ -262,6 +264,17 @@ pub(crate) fn cpu_quota(cores: CpuCores) -> u64 {
 pub(crate) fn write_cpu_max(dir: &Path, quota: Option<u64>) -> io::Result<()> {
     let quota = quota.map_or_else(|| "max".to_string(), |micros| micros.to_string());
     fs::write(dir.join("cpu.max"), format!("{quota} {CPU_PERIOD_US}"))
+}
+
+/// Writes `limit` to `dir`'s `pids.max`, or `max` (no limit) for `None`. A fork
+/// past it fails with `EAGAIN` inside the sheep; nothing is killed.
+///
+/// # Errors
+/// What the `pids.max` write reported, such as a cgroup the `pids` controller
+/// is not enabled for, or a limit above the kernel's own ceiling.
+pub(crate) fn write_pids_max(dir: &Path, limit: Option<u32>) -> io::Result<()> {
+    let limit = limit.map_or_else(|| "max".to_string(), |tasks| tasks.to_string());
+    fs::write(dir.join("pids.max"), limit)
 }
 
 /// How many of the cgroup's own processes the kernel's OOM killer has killed,

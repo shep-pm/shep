@@ -285,7 +285,7 @@ impl<R: ProcessRunner> Actor<R> {
                 .iter()
                 .any(|field| CGROUP_FIELDS.contains(&field.as_str()))
         {
-            self.rewrite_cpu_max(&name);
+            self.rewrite_cgroup_limits(&name);
         }
 
         // `autostart` and `depends_on` are the two `NextSpawn` fields that
@@ -473,31 +473,35 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
-    /// Writes `name`'s `max_cpu_cores` to each running instance's `cpu.max`,
-    /// and lifts the quota from one that has dropped the key, so a live change
-    /// reaches the kernel at once. An instance not running takes the new value
-    /// at its next spawn.
+    /// Writes `name`'s `max_cpu_cores` to each running instance's `cpu.max`
+    /// and its `max_tasks` to `pids.max`, and lifts the limit from one that
+    /// has dropped the key, so a live change reaches the kernel at once. An
+    /// instance not running takes the new value at its next spawn.
     #[cfg(target_os = "linux")]
-    pub(super) fn rewrite_cpu_max(&mut self, name: &str) {
+    pub(super) fn rewrite_cgroup_limits(&mut self, name: &str) {
         for (id, slot) in &self.sheep {
             let config = slot.entry.spec.config();
             if config.name != name || slot.entry.pid.is_none() {
                 continue;
             }
             let quota = cpu_quota_of(config);
+            let tasks = config.max_tasks;
             let Some(dir) = self.cgroup_for(*id, slot.entry.instance) else {
-                if quota.is_some() {
+                if quota.is_some() || tasks.is_some() {
                     tracing::warn!(
                         id,
                         name,
-                        "max_cpu_cores changed live on a shepherd with no cgroup: nothing \
-                         throttles this sheep until it restarts, and its restart will refuse"
+                        "max_cpu_cores or max_tasks changed live on a shepherd with no cgroup: \
+                         nothing limits this sheep until it restarts, and its restart will refuse"
                     );
                 }
                 continue;
             };
             if let Err(error) = crate::cgroup::write_cpu_max(&dir, quota) {
                 tracing::warn!(id, name, %error, cgroup = %dir.display(), "cpu.max not written");
+            }
+            if let Err(error) = crate::cgroup::write_pids_max(&dir, tasks) {
+                tracing::warn!(id, name, %error, cgroup = %dir.display(), "pids.max not written");
             }
         }
     }
