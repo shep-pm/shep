@@ -19,11 +19,12 @@ fn record(granted: &[&str], waiting: &[&str], revoked: &[&str], reviewed: bool) 
         waiting: grants(waiting),
         revoked: grants(revoked),
         reviewed,
+        events: Vec::new(),
     }
 }
 
 fn declares(names: &[&str]) -> Declaration {
-    Declaration::Declares(grants(names))
+    Declaration::Declares(grants(names), Vec::new())
 }
 
 #[test]
@@ -34,6 +35,36 @@ fn an_enabled_dog_with_a_manifest_and_no_record_is_granted_its_list_not_reviewed
         planned,
         Some(record(&["flock.read", "logs.read"], &[], &[], false))
     );
+}
+
+#[test]
+fn a_new_record_carries_the_declared_event_kinds() {
+    let declaration = Declaration::Declares(grants(&[]), vec!["exported".to_string()]);
+
+    let planned = plan(None, true, &declaration).unwrap();
+
+    assert_eq!(planned.events, ["exported".to_string()]);
+}
+
+#[test]
+fn a_rebuilt_dog_that_declares_other_event_kinds_has_them_follow_with_no_approval() {
+    let before = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+    let declaration = Declaration::Declares(grants(&["flock.read"]), vec!["new".to_string()]);
+
+    let planned = plan(Some(&before), true, &declaration).unwrap();
+
+    assert_eq!(planned.events, ["new".to_string()]);
+    assert_eq!(planned.granted, before.granted);
+    assert!(planned.waiting.names().next().is_none());
+    assert!(planned.reviewed);
+}
+
+#[test]
+fn a_dog_declaring_the_event_kinds_it_has_recorded_changes_nothing() {
+    let before = record(&["flock.read"], &[], &[], true).with_events(vec!["same".to_string()]);
+    let declaration = Declaration::Declares(grants(&["flock.read"]), vec!["same".to_string()]);
+
+    assert_eq!(plan(Some(&before), true, &declaration), None);
 }
 
 #[test]

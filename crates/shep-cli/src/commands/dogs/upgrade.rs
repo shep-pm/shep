@@ -6,6 +6,8 @@
 //!   manifest declares, marked not reviewed, once.
 //! - A dog whose manifest declares a permission it holds neither as granted
 //!   nor as revoked has it put in `waiting`, and keeps running on what it had.
+//! - A dog's declared event kinds follow its manifest, with no approval: they
+//!   are not permissions.
 //! - A dog with no manifest is left alone: undeclared, with full access.
 
 use std::path::Path;
@@ -23,8 +25,9 @@ use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest};
 pub(super) enum Declaration {
     /// No manifest: the dog declares nothing and keeps full access.
     Undeclared,
-    /// The permissions in its manifest that this shep knows.
-    Declares(Grants),
+    /// The permissions in its manifest that this shep knows, and the event
+    /// kinds it declares.
+    Declares(Grants, Vec<String>),
     /// The manifest could not be read, or requires a permission this shep
     /// does not know. Nothing is changed on a guess.
     Unknown,
@@ -39,7 +42,7 @@ pub(super) fn plan(
     enabled: bool,
     declaration: &Declaration,
 ) -> Option<GrantRecord> {
-    let Declaration::Declares(declared) = declaration else {
+    let Declaration::Declares(declared, events) = declaration else {
         return None;
     };
     let Some(record) = current else {
@@ -47,11 +50,14 @@ pub(super) fn plan(
             return None;
         }
         // A dog that asks for nothing has nothing to review.
-        return Some(if declared.names().next().is_none() {
-            GrantRecord::reviewed(declared.clone())
-        } else {
-            GrantRecord::at_upgrade(declared.clone())
-        });
+        return Some(
+            if declared.names().next().is_none() {
+                GrantRecord::reviewed(declared.clone())
+            } else {
+                GrantRecord::at_upgrade(declared.clone())
+            }
+            .with_events(events.clone()),
+        );
     };
     let held = |name: &&str| record.granted.names().any(|g| g == *name);
     let revoked = |name: &&str| record.revoked.names().any(|r| r == *name);
@@ -70,9 +76,12 @@ pub(super) fn plan(
             .filter(|name| declared.names().any(|d| d == *name))
             .map(str::to_owned),
     );
+    // Event kinds are no permission, so they follow the build with no
+    // approval: the dog may publish what it declares, under its own name.
     let next = GrantRecord {
         waiting,
         revoked,
+        events: events.clone(),
         ..record.clone()
     };
     (next != *record).then_some(next)
@@ -91,9 +100,10 @@ pub(super) fn declaration_of(cfg: &ShepToml, home: &Path, name: &str) -> Declara
     };
     match review(manifest.as_ref()) {
         Ok(Review::Undeclared) => Declaration::Undeclared,
-        Ok(Review::Declared { listed, .. }) => Declaration::Declares(Grants::from_names(
-            listed.iter().map(|entry| entry.name.clone()),
-        )),
+        Ok(Review::Declared { listed, events, .. }) => Declaration::Declares(
+            Grants::from_names(listed.iter().map(|entry| entry.name.clone())),
+            events,
+        ),
         Err(_) => Declaration::Unknown,
     }
 }

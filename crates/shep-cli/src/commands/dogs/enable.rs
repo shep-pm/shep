@@ -5,11 +5,10 @@ use std::path::Path;
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
-use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, Request, Response};
 
 use crate::commands::rpc::{client_error, unexpected_response};
-use crate::commands::shep_toml::{ShepToml, ShepTomlError};
+use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
@@ -76,15 +75,15 @@ pub(crate) fn enable_in_config(path: &Path, name: &str) -> Result<DogEntry, Enab
 fn enable_granting(
     path: &Path,
     name: &str,
-    grants: Option<&Grants>,
+    record: Option<&GrantRecord>,
 ) -> Result<DogEntry, EnableRefusal> {
     ShepToml::try_edit(path, |cfg| {
-        // `grants` answers a question asked against a read taken before this
+        // `record` answers a question asked against a read taken before this
         // write. A grant another shep wrote since stands.
-        if let Some(grants) = grants
+        if let Some(record) = record
             && cfg.granted(name)?.is_none()
         {
-            cfg.set_granted(name, grants)?;
+            cfg.set_grant_record(name, record)?;
         }
         let entry = dog_entry(cfg, name, cfg.granted(name)?);
         if matches!(entry.source, DogSource::BuiltIn { .. })
@@ -151,7 +150,7 @@ pub(super) async fn enable_asking(
 /// one an operator declined at `shep adopt`, hand-wrote into
 /// `[daemon.adopted_dogs]`, or a built-in nobody has enabled.
 ///
-/// `Ok` holds the grants to record with the enable; `Ok(None)` is nothing to
+/// `Ok` holds the record to write with the enable; `Ok(None)` is nothing to
 /// record, either because no question was due or because the dog is
 /// undeclared and keeps full access.
 ///
@@ -163,7 +162,7 @@ fn ask_before_first_enable(
     name: &str,
     yes: bool,
     input: &mut Input,
-) -> Result<Option<Grants>, ExitCode> {
+) -> Result<Option<GrantRecord>, ExitCode> {
     let cfg =
         ShepToml::read_only(&paths.daemon_config).map_err(|err| fail_config(streams, &err))?;
     let binary = cfg.adopted_dog_path(name);
@@ -185,7 +184,9 @@ fn ask_before_first_enable(
     let reviewed =
         review(manifest.as_ref()).map_err(|refusal| refusal.report(streams, name, "enabled"))?;
     match consent_from(streams, name, "enable", &reviewed, yes, input)? {
-        Verdict::Grant(grants) => Ok(grants),
+        Verdict::Grant(grants) => {
+            Ok(grants.map(|grants| GrantRecord::reviewed(grants).with_events(reviewed.events())))
+        }
         Verdict::Declined => {
             let source = dog_source(&cfg, name, None);
             Err(emit_dog_action(

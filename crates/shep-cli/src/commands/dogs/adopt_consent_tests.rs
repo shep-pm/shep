@@ -122,6 +122,44 @@ async fn answering_yes_grants_the_declared_list_and_enables_the_dog() {
     );
 }
 
+const DECLARES_AN_EVENT: &str = r#"{"manifest":2,"name":"otel","version":"0.2.0","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock"}],"events":[{"kind":"exported","description":"a batch was sent"}]}"#;
+
+/// The event kinds `shep.toml` records for `otel`.
+fn recorded_events(paths: &ShepPaths) -> Vec<String> {
+    ShepToml::read_only(&paths.daemon_config)
+        .unwrap()
+        .grant_record("otel")
+        .unwrap()
+        .map(|record| record.events)
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn adopting_a_dog_records_the_event_kinds_its_manifest_declares() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let binary = write_dog(dir.path(), DECLARES_AN_EVENT);
+
+    let (code, _) = adopt_otel(&paths, &binary, true, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(recorded_events(&paths), ["exported".to_string()]);
+}
+
+#[tokio::test]
+async fn the_first_enable_of_a_declined_dog_records_its_event_kinds_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let binary = write_dog(dir.path(), DECLARES_AN_EVENT);
+    adopt_otel(&paths, &binary, false, typing(Some("n\n"))).await;
+    assert_eq!(recorded_events(&paths), Vec::<String>::new());
+
+    let (code, _) = enable_otel(&paths, true, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(recorded_events(&paths), ["exported".to_string()]);
+}
+
 #[tokio::test]
 async fn yes_grants_without_asking_even_with_no_terminal() {
     let dir = tempfile::tempdir().unwrap();

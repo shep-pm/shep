@@ -53,7 +53,21 @@ pub(super) enum Review {
         listed: Vec<Listed>,
         /// Optional permissions this shep does not know, dropped.
         dropped: Vec<String>,
+        /// The event kinds the manifest declares it publishes. Not asked
+        /// about: they are not permissions, and the dog may publish only
+        /// these, under its own name.
+        events: Vec<String>,
     },
+}
+
+impl Review {
+    /// The event kinds the manifest declares; none for an undeclared dog.
+    pub(super) fn events(&self) -> Vec<String> {
+        match self {
+            Self::Undeclared => Vec::new(),
+            Self::Declared { events, .. } => events.clone(),
+        }
+    }
 }
 
 /// A dog that requires permissions this shep does not know.
@@ -118,7 +132,16 @@ pub(super) fn review(manifest: Option<&Manifest>) -> Result<Review, UnknownRequi
         }
     }
     if unknown_required.is_empty() {
-        Ok(Review::Declared { listed, dropped })
+        let events = manifest
+            .events
+            .iter()
+            .map(|event| event.kind.clone())
+            .collect();
+        Ok(Review::Declared {
+            listed,
+            dropped,
+            events,
+        })
     } else {
         Err(UnknownRequired(unknown_required))
     }
@@ -153,7 +176,9 @@ pub(super) fn consent(
             ),
             format!("{verb} {name} with full access? [y/N] "),
         ),
-        Review::Declared { listed, dropped } => {
+        Review::Declared {
+            listed, dropped, ..
+        } => {
             for dropped in dropped {
                 streams.aside(
                     PERMISSION_DROPPED_NOTICE,

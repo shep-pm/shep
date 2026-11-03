@@ -275,23 +275,23 @@ pub(crate) fn dog_spec(config: &DaemonConfig, name: &str) -> DogSpec {
         .dog_grants
         .get(name)
         .map(|section| section.granted.clone());
+    let events = config
+        .daemon
+        .dog_grants
+        .get(name)
+        .map(|section| section.events.clone())
+        .unwrap_or_default();
     let (source, env) = match config.daemon.adopted_dogs.get(name) {
         Some(entry) => (
             DogSource::Adopted {
                 grants,
                 path: entry.path.display().to_string(),
                 channel: config.daemon.channel_dogs.iter().any(|dog| dog == name),
-                events: Vec::new(),
+                events,
             },
             entry.env.clone(),
         ),
-        None => (
-            DogSource::BuiltIn {
-                grants,
-                events: Vec::new(),
-            },
-            BTreeMap::new(),
-        ),
+        None => (DogSource::BuiltIn { grants, events }, BTreeMap::new()),
     };
     DogSpec {
         name: name.to_string(),
@@ -372,6 +372,27 @@ mod tests {
         assert_eq!(
             cfg.daemon.max_cron_sleep,
             Some(UpDuration::from_millis(120_000))
+        );
+    }
+
+    #[test]
+    fn a_dog_spec_carries_the_event_kinds_recorded_beside_its_grants() {
+        let config = DaemonConfig::load_layered(
+            Some(
+                "[daemon.adopted_dogs]\notel = \"/bin/shep-otel\"\n\n\
+                 [daemon.dog_grants.otel]\ngranted = []\nevents = [\"exported\"]\n",
+            ),
+            &|_| None,
+            &daemon_overrides(&args()),
+        )
+        .unwrap();
+
+        let spec = dog_spec(&config, "otel");
+
+        assert_eq!(spec.source.events(), ["exported".to_string()]);
+        assert_eq!(
+            dog_spec(&config, "bark").source.events(),
+            Vec::<String>::new()
         );
     }
 

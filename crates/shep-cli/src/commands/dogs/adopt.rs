@@ -15,7 +15,7 @@ use crate::commands::dog_migration::{
     DefaultsOutcome, DogMigrationError, migrate_dog_sections, seed_dog_defaults,
 };
 use crate::commands::rpc::{client_error, unexpected_response};
-use crate::commands::shep_toml::ShepToml;
+use crate::commands::shep_toml::{GrantRecord, ShepToml};
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
@@ -103,7 +103,10 @@ pub(super) async fn adopt_asking(
         let mut declined = false;
         match &verdict {
             Some(_) if decided_meanwhile => {}
-            Some(Verdict::Grant(Some(grants))) => cfg.set_granted(&name, grants)?,
+            Some(Verdict::Grant(Some(grants))) => cfg.set_grant_record(
+                &name,
+                &GrantRecord::reviewed(grants.clone()).with_events(reviewed.events()),
+            )?,
             // `adopt_dog` enables; a no leaves the dog adopted and off.
             Some(Verdict::Declined) => {
                 cfg.disable_dog(&name);
