@@ -22,7 +22,7 @@ mod cache;
 mod parse;
 mod prebuilt;
 
-pub use cache::{Origin, cached_index, describe_age};
+pub use cache::{LoadedIndex, Origin, cached_index, describe_age};
 pub use parse::parse_index;
 pub use prebuilt::{BUILD_TARGET, Prebuilt};
 

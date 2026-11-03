@@ -29,6 +29,16 @@ impl<'a> Catalog<'a> {
     pub(super) fn new(url: &'a str, dogs: &'a [AvailableDog]) -> Self {
         Self { url, dogs }
     }
+
+    /// Where the index was read from.
+    pub(super) fn url(&self) -> &'a str {
+        self.url
+    }
+
+    /// The row the index has for the dog adopted as `name`.
+    pub(super) fn row(&self, name: &str) -> Option<&'a AvailableDog> {
+        self.dogs.iter().find(|dog| dog.adopt_as == name)
+    }
 }
 
 /// Fetches `dog` and every dependency of it that is not adopted into

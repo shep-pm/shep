@@ -48,6 +48,7 @@ async fn adopt_asks_the_shepherd_to_start_that_dog_with_its_adopted_source() {
             },
             &BTreeMap::new(),
             Some(&client),
+            false,
         )
         .await;
 
@@ -153,6 +154,7 @@ async fn adopt_reports_whether_a_shepherd_acted() {
             },
             &BTreeMap::new(),
             client,
+            false,
         )
         .await;
 
@@ -423,5 +425,46 @@ fn collides_with_a_verb_covers_names_and_visible_aliases() {
     assert!(
         !collides_with_a_verb("watchdog"),
         "an arbitrary name must not collide"
+    );
+}
+
+/// `EnableDog` leaves a dog that is running as it is, so an upgrade that
+/// records a new binary must stop the old process first.
+#[tokio::test]
+async fn a_restart_stops_the_dog_before_it_asks_for_it_to_start_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = shep_client::testing::control_address(dir.path());
+    let (client, mut envelopes) = fake_client_capturing_envelopes(&path).await;
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+
+    let _ = adopt_after_config(
+        &mut streams(&mut out, &mut err),
+        "upgrade",
+        "otel",
+        DogSource::Adopted {
+            grants: None,
+            path: "/usr/local/bin/shep-otel".to_string(),
+            channel: false,
+            events: Vec::new(),
+        },
+        &BTreeMap::new(),
+        Some(&client),
+        true,
+    )
+    .await;
+
+    let first = envelopes.recv().await.unwrap();
+    assert_eq!(
+        first.body,
+        Request::DisableDog {
+            name: "otel".to_string()
+        }
+    );
+    let second = envelopes.recv().await.unwrap();
+    assert!(
+        matches!(second.body, Request::EnableDog { ref name, .. } if name == "otel"),
+        "{:?}",
+        second.body
     );
 }

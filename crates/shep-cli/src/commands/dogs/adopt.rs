@@ -52,6 +52,9 @@ pub(super) struct Flow {
     /// --no-enable` stops after adopting, which leaves the grant recorded and
     /// the dog off.
     pub(super) enable: bool,
+    /// Whether a dog already running is stopped and started again, so it runs
+    /// the binary just recorded. `shep upgrade` sets it.
+    pub(super) restart: bool,
 }
 
 impl Flow {
@@ -59,6 +62,7 @@ impl Flow {
     pub(super) const ADOPT: Self = Self {
         verb: "adopt",
         enable: true,
+        restart: false,
     };
 }
 
@@ -246,7 +250,16 @@ pub(super) async fn adopt_noting(
         channel,
         events,
     };
-    adopt_after_config(streams, flow.verb, &name, source, &env, client.as_ref()).await
+    adopt_after_config(
+        streams,
+        flow.verb,
+        &name,
+        source,
+        &env,
+        client.as_ref(),
+        flow.restart,
+    )
+    .await
 }
 
 /// A declined adopt's daemon half: the config now has the dog disabled, so a
@@ -570,10 +583,26 @@ async fn adopt_after_config(
     source: DogSource,
     env: &BTreeMap<String, String>,
     client: Option<&Client>,
+    restart: bool,
 ) -> ExitCode {
     let Some(client) = client else {
         return emit_dog_action(streams, verb, name, source, NO_SHEPHERD_ENABLE_STATUS);
     };
+    // `EnableDog` leaves a dog that is running as it is, so a new binary needs
+    // the old process stopped first. The config already names the new one.
+    if restart {
+        match client
+            .request(Request::DisableDog {
+                name: name.to_string(),
+            })
+            .await
+        {
+            Ok(_) => {}
+            // Nothing was running to stop.
+            Err(RequestError::Rpc(rpc)) if rpc.code == RpcErrorCode::NotFound => {}
+            Err(err) => return client_error(streams, &err),
+        }
+    }
     let request = Request::EnableDog {
         name: name.to_string(),
         source: source.clone(),

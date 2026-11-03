@@ -170,6 +170,39 @@ pub struct InstallArgs {
     pub git_ref: Option<String>,
 }
 
+/// Arguments to `shep upgrade`.
+#[derive(Debug, clap::Args)]
+pub struct UpgradeArgs {
+    /// The installed dog to upgrade. With none and no `--dogs`, `shep upgrade`
+    /// would upgrade shep itself, which it does not do yet.
+    #[arg(conflicts_with = "all")]
+    pub dog: Option<String>,
+    /// Upgrade every installed dog in turn. A dog adopted from a path has no
+    /// receipt and is skipped, with a line saying so.
+    #[arg(long = "dogs", id = "all")]
+    pub all: bool,
+    /// Switch to this branch, tag or commit of the dog's own repository,
+    /// which the index has not reviewed. Needs a dog name.
+    #[arg(
+        long = "ref",
+        value_name = "REF",
+        requires = "dog",
+        conflicts_with_all = ["release", "rollback"]
+    )]
+    pub git_ref: Option<String>,
+    /// Return a dog installed from a ref to the version the index approves.
+    #[arg(long, requires = "dog", conflicts_with = "rollback")]
+    pub release: bool,
+    /// Put back the install the last upgrade replaced, and its receipt. The
+    /// upgrade it undoes becomes the one to roll back to.
+    #[arg(long, requires = "dog")]
+    pub rollback: bool,
+    /// Fetch the community index even when the copy cached in the last day
+    /// is still fresh.
+    #[arg(long)]
+    pub refresh: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cli::{Cli, Commands};

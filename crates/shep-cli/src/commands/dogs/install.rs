@@ -30,7 +30,7 @@ use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::install_ref;
-use super::receipt::{self, Installer, Pinned, Receipt};
+use super::receipt::{self, HeldPin, Installer, Pinned, Receipt};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
 
 /// Where crates.io's API is, when nothing says otherwise.
@@ -82,7 +82,7 @@ impl Lookup {
 
 impl Reach {
     /// The real `cargo` on this process's `PATH` and the real crates.io.
-    fn real() -> Self {
+    pub(super) fn real() -> Self {
         Self {
             cargo: lookup_on_path(Path::new("cargo"), std::env::var_os("PATH").as_deref()),
             lookup: Lookup::CratesIo(CRATES_IO.to_owned()),
@@ -98,27 +98,10 @@ impl Reach {
 /// that can be installed. With one, builds it, records its receipt and
 /// adopts it; see the module doc.
 pub async fn install(streams: &mut Streams<'_>, paths: &ShepPaths, args: &InstallArgs) -> ExitCode {
-    let url = dog_index::index_url();
-    let loaded = match dog_index::cached_index(paths, &url, args.refresh).await {
+    let (url, loaded) = match load_index(streams, paths, args.refresh).await {
         Ok(loaded) => loaded,
-        Err(err) => {
-            let message = format!(
-                "reading the dog index from {}: {err}",
-                fetch::url_for_message(&url)
-            );
-            return streams.fail(ExitCode::Failure, &message);
-        }
+        Err(code) => return code,
     };
-    if let Origin::Stale { age, cause } = &loaded.origin {
-        streams.aside(
-            "dogs_index_stale",
-            &format!(
-                "could not read the dog index from {}: {cause}; using the copy cached {} ago",
-                fetch::url_for_message(&url),
-                dog_index::describe_age(*age)
-            ),
-        );
-    }
     let Some(wanted) = &args.dog else {
         return list(streams, loaded.index.dogs);
     };
@@ -141,6 +124,40 @@ pub async fn install(streams: &mut Streams<'_>, paths: &ShepPaths, args: &Instal
         &Catalog::new(&url, &loaded.index.dogs),
     )
     .await
+}
+
+/// Reads the community index, from the cache when it is fresh, and says so
+/// when it fell back to a stale copy.
+///
+/// # Errors
+/// The [`ExitCode`] already reported to `streams`.
+pub(super) async fn load_index(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    refresh: bool,
+) -> Result<(String, dog_index::LoadedIndex), ExitCode> {
+    let url = dog_index::index_url();
+    let loaded = match dog_index::cached_index(paths, &url, refresh).await {
+        Ok(loaded) => loaded,
+        Err(err) => {
+            let message = format!(
+                "reading the dog index from {}: {err}",
+                fetch::url_for_message(&url)
+            );
+            return Err(streams.fail(ExitCode::Failure, &message));
+        }
+    };
+    if let Origin::Stale { age, cause } = &loaded.origin {
+        streams.aside(
+            "dogs_index_stale",
+            &format!(
+                "could not read the dog index from {}: {cause}; using the copy cached {} ago",
+                fetch::url_for_message(&url),
+                dog_index::describe_age(*age)
+            ),
+        );
+    }
+    Ok((url, loaded))
 }
 
 /// Bare `shep install`: what `shep dogs --available` lists, and under each
@@ -177,7 +194,7 @@ fn list(streams: &mut Streams<'_>, dogs: Vec<AvailableDog>) -> ExitCode {
 /// Whether `text` may be one component of a path under `$SHEP_HOME/dogs`
 /// and of a crates.io URL: crate-name and semver characters, and no leading
 /// dot, so `..` and hidden names are out.
-fn is_path_safe(text: &str) -> bool {
+pub(super) fn is_path_safe(text: &str) -> bool {
     !text.is_empty()
         && !text.starts_with('.')
         && text
@@ -220,6 +237,40 @@ pub(super) struct Fetched {
     token_publish: bool,
     kept: Kept,
     _held: FileLock,
+    /// Set by `shep upgrade`: how this adopt differs from a first install.
+    pub(super) upgrading: Option<Upgrading>,
+}
+
+/// How adopting a fetched dog differs when it replaces an installed one.
+#[derive(Debug, Clone)]
+pub(super) struct Upgrading {
+    /// The install directory the new receipt keeps for `--rollback`.
+    pub(super) previous: Option<PathBuf>,
+    /// Whether the dog is on. One that was off stays off.
+    pub(super) enable: bool,
+}
+
+impl Fetched {
+    /// The binary that was fetched.
+    pub(super) fn binary(&self) -> &Path {
+        &self.binary
+    }
+
+    /// What was fetched, as the receipt will name it.
+    pub(super) fn lands_as(&self) -> HeldPin {
+        match &self.landed {
+            Landed::Version(version) => HeldPin::Version(version.clone()),
+            Landed::Ref { git_ref, commit } => HeldPin::Ref {
+                git_ref: git_ref.clone(),
+                commit: commit.clone(),
+            },
+        }
+    }
+
+    /// Whether cargo built the binary, as opposed to a download.
+    pub(super) fn built_by_cargo(&self) -> bool {
+        matches!(self.installed, Installed::Command(_))
+    }
 }
 
 /// Fetches `dog`'s binary into `$SHEP_HOME/dogs`, built at `git_ref` when one
@@ -348,32 +399,7 @@ pub(super) async fn fetch_dog(
             &format!("making {}: {err}", paths.dogs_dir.display()),
         ));
     }
-    let lock_target = paths.dogs_dir.join(name);
-    let lock_wait = reach.lock_wait;
-    let lock =
-        tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, lock_wait))
-            .await;
-    let _held = match lock {
-        Ok(Ok(Some(held))) => held,
-        Ok(Ok(None)) => {
-            return Err(streams.fail(
-                ExitCode::Failure,
-                &format!(
-                    "another `shep install {name}` is running: {} is held. Wait for it to finish",
-                    paths.dogs_dir.join(format!("{name}.lock")).display()
-                ),
-            ));
-        }
-        Ok(Err(err)) => {
-            return Err(streams.fail(
-                ExitCode::Failure,
-                &format!("locking the install of {name}: {err}"),
-            ));
-        }
-        Err(err) => {
-            return Err(streams.fail(ExitCode::Internal, &format!("locking the install: {err}")));
-        }
-    };
+    let _held = lock_dog(streams, paths, name, reach.lock_wait).await?;
 
     let receipt_file = receipt::receipt_path(paths, name);
     let (root, binary, kept, installed, landed) = match plan {
@@ -450,6 +476,7 @@ pub(super) async fn fetch_dog(
         token_publish,
         kept,
         _held,
+        upgrading: None,
     })
 }
 
@@ -474,6 +501,7 @@ pub(super) async fn adopt_fetched(
         token_publish,
         kept,
         _held,
+        upgrading,
     } = fetched;
     let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
     let written = receipt::write(
@@ -495,6 +523,9 @@ pub(super) async fn adopt_fetched(
             sha256: &sha256,
             manifest: manifest.as_ref(),
             installed_at: receipt::now(),
+            previous: upgrading
+                .as_ref()
+                .and_then(|upgrading| upgrading.previous.as_deref()),
         },
     );
     if let Err(err) = written {
@@ -525,9 +556,17 @@ pub(super) async fn adopt_fetched(
         name: Some(name.to_owned()),
         yes: args.yes,
     };
-    let flow = Flow {
-        verb: "install",
-        enable: !args.no_enable,
+    let flow = match &upgrading {
+        Some(upgrading) => Flow {
+            verb: "upgrade",
+            enable: upgrading.enable,
+            restart: true,
+        },
+        None => Flow {
+            verb: "install",
+            enable: !args.no_enable,
+            restart: false,
+        },
     };
     let config_before = std::fs::read(&paths.daemon_config).ok();
     let code = adopt_noting(
@@ -545,6 +584,39 @@ pub(super) async fn adopt_fetched(
         kept.commit();
     }
     code
+}
+
+/// Takes the lock that keeps a second install or upgrade of `name` out,
+/// waiting up to `wait` for the first.
+///
+/// # Errors
+/// The [`ExitCode`] already reported to `streams`, naming the lock file when
+/// it stayed held.
+pub(super) async fn lock_dog(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    name: &str,
+    wait: Duration,
+) -> Result<FileLock, ExitCode> {
+    let lock_target = paths.dogs_dir.join(name);
+    let lock =
+        tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, wait)).await;
+    match lock {
+        Ok(Ok(Some(held))) => Ok(held),
+        Ok(Ok(None)) => Err(streams.fail(
+            ExitCode::Failure,
+            &format!(
+                "another `shep install {name}` or `shep upgrade {name}` is running: {} is held. \
+                 Wait for it to finish",
+                paths.dogs_dir.join(format!("{name}.lock")).display()
+            ),
+        )),
+        Ok(Err(err)) => Err(streams.fail(
+            ExitCode::Failure,
+            &format!("locking the install of {name}: {err}"),
+        )),
+        Err(err) => Err(streams.fail(ExitCode::Internal, &format!("locking the install: {err}"))),
+    }
 }
 
 /// What the operator asked to install.

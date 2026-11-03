@@ -26,6 +26,9 @@ pub(super) const MANIFEST: &str = r#"{"manifest":1,"name":"otel","version":"0.2.
 /// The commit the stub cargo says it built.
 pub(super) const COMMIT: &str = "3f9c2a1b7d4e5f60718293a4b5c6d7e8f9012345";
 
+/// A newer commit, for a test that moves a ref.
+pub(super) const NEWER_COMMIT: &str = "9a8b7c6d5e4f30211203948576a6b5c4d3e2f101";
+
 pub(super) const REPO: &str = "https://github.com/shep-pm/shep-otel";
 
 /// The publisher the row's own repo names.
@@ -60,17 +63,31 @@ impl Fixture {
         std::fs::write(self.dir.path().join("tags"), format!("{tag}\n")).unwrap();
     }
 
+    /// Makes the stub cargo report a `--git` build at `commit`.
+    pub(super) fn builds_commit(&self, commit: &str) {
+        std::fs::write(self.dir.path().join("commit"), commit).unwrap();
+    }
+
+    /// Makes the stub cargo build a dog whose `--shep-manifest` prints `manifest`.
+    pub(super) fn builds_manifest(&self, manifest: &str) {
+        let dog = self.dir.path().join("built-dog");
+        std::fs::write(
+            &dog,
+            format!("#!/bin/sh\nif [ \"$1\" = --shep-manifest ]; then cat <<'EOF'\n{manifest}\nEOF\nfi\nexit 0\n"),
+        )
+        .unwrap();
+    }
+
     /// A directory holding a `cargo` that records its arguments and builds
     /// the dog into the `--root` it is given, named for the last argument.
     fn stub_cargo(&self) -> PathBuf {
         let bin = self.dir.path().join("stub-bin");
         std::fs::create_dir_all(&bin).unwrap();
         let dog = self.dir.path().join("built-dog");
-        std::fs::write(
-            &dog,
-            format!("#!/bin/sh\nif [ \"$1\" = --shep-manifest ]; then cat <<'EOF'\n{MANIFEST}\nEOF\nfi\nexit 0\n"),
-        )
-        .unwrap();
+        // A test that chose what the build declares keeps it across `reach`es.
+        if !dog.exists() {
+            self.builds_manifest(MANIFEST);
+        }
         // Every run is appended to `attempts`; `argv` holds the last. A `--tag`
         // succeeds only for a name listed in `tags`. A `--git` install writes
         // the `.crates2.json` cargo would.
@@ -78,6 +95,7 @@ impl Fixture {
             r#"#!/bin/sh
 printf '%s\n' "$@" > {argv}
 printf '%s\n' "$*" >> {attempts}
+commit=$(cat {commit_file} 2>/dev/null || echo {commit})
 prev=
 for a in "$@"; do
   [ "$prev" = --root ] && root="$a"
@@ -96,7 +114,7 @@ mkdir -p "$root/bin"
 cp {dog} "$root/bin/$last"
 chmod 755 "$root/bin/$last"
 if [ -n "$git" ]; then
-  printf '{{"installs":{{"%s 0.2.4 (git+{repo}?%s=%s#{commit})":{{"bins":["%s"]}}}}}}' "$last" "$kind" "$wanted" "$last" > "$root/.crates2.json"
+  printf '{{"installs":{{"%s 0.2.4 (git+{repo}?%s=%s#%s)":{{"bins":["%s"]}}}}}}' "$last" "$kind" "$wanted" "$commit" "$last" > "$root/.crates2.json"
 fi
 "#,
             argv = self.argv().display(),
@@ -105,6 +123,7 @@ fi
             dog = dog.display(),
             repo = REPO,
             commit = COMMIT,
+            commit_file = self.dir.path().join("commit").display(),
         );
         let cargo = bin.join("cargo");
         std::fs::write(&cargo, script).unwrap();

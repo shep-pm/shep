@@ -1,0 +1,507 @@
+//! `shep upgrade <dog>`: moves an installed dog to what its receipt says it
+//! follows, and `--rollback` moves it back.
+//!
+//! An index install moves to the index's version and a ref install rebuilds
+//! its ref at the newest commit, both through [`fetch_dog`] and
+//! [`adopt_fetched`], so an upgrade is checked and recorded exactly as an
+//! install is. Each lands in a new directory under `$SHEP_HOME/dogs/<name>`.
+//! The directory it replaced is kept with a copy of its receipt, and the new
+//! receipt names it, so `--rollback` can put both back. The directory before
+//! that one is removed, so at most one is kept.
+//!
+//! A permission the new build declares is put in `waiting` by
+//! [`upgrade_one`] once the new path is recorded, and the dog keeps the
+//! grants it held. `--rollback` swaps rather than discards: the build rolled
+//! away from becomes the one a second `--rollback` returns to.
+
+use std::path::Path;
+
+use shep_core::paths::ShepPaths;
+
+use crate::cli::{AdoptArgs, InstallArgs, UpgradeArgs};
+use crate::commands::shep_toml::ShepToml;
+use crate::dog_index::DogSourceKind;
+use crate::exit::ExitCode;
+use crate::output::{DogActionStatus, Streams};
+
+use super::adopt::{Flow, adopt_noting};
+use super::consent::Input;
+use super::install::{Reach, Upgrading, adopt_fetched, fetch_dog, load_index, lock_dog};
+use super::install_depends::Catalog;
+use super::install_keep::Kept;
+use super::receipt::{self, Held, HeldPin};
+use super::upgrade::{upgrade_notice, upgrade_one};
+use super::{adopted_source, emit_dog_action, fail_config};
+
+/// [`DogActionRow`](crate::output::DogActionRow)'s status for a dog already at
+/// what it follows.
+const CURRENT_STATUS: DogActionStatus =
+    DogActionStatus::NoShepherd("already current; nothing changed");
+
+/// Where an upgrade is headed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Goal {
+    /// What the receipt follows: the index's version, or the ref's newest commit.
+    Follow,
+    /// This ref of the row's repository.
+    Ref(String),
+    /// The index's version, for a dog installed from a ref.
+    Release,
+    /// The install the last upgrade replaced.
+    Rollback,
+}
+
+/// `shep upgrade [<dog>]`.
+pub async fn upgrade(streams: &mut Streams<'_>, paths: &ShepPaths, args: &UpgradeArgs) -> ExitCode {
+    let goal = match (&args.git_ref, args.release, args.rollback) {
+        (Some(git_ref), _, _) => Goal::Ref(git_ref.clone()),
+        (None, true, _) => Goal::Release,
+        (None, false, true) => Goal::Rollback,
+        (None, false, false) => Goal::Follow,
+    };
+    if args.dog.is_none() && !args.all {
+        return streams.fail(
+            ExitCode::Failure,
+            "bare `shep upgrade`, which would upgrade shep itself, is not implemented yet. \
+             `shep upgrade <dog>` upgrades one installed dog and `shep upgrade --dogs` every one",
+        );
+    }
+    // A rollback reads no index: nothing it needs is on the network.
+    let (url, rows) = if goal == Goal::Rollback {
+        (String::new(), Vec::new())
+    } else {
+        match load_index(streams, paths, args.refresh).await {
+            Ok((url, loaded)) => (url, loaded.index.dogs),
+            Err(code) => return code,
+        }
+    };
+    let catalog = Catalog::new(&url, &rows);
+    let reach = Reach::real();
+    let mut input = Input::stdin();
+    if let Some(name) = &args.dog {
+        return upgrade_dog(streams, paths, &reach, &mut input, &catalog, name, &goal).await;
+    }
+    upgrade_all(streams, paths, &reach, &mut input, &catalog).await
+}
+
+/// `--dogs`: every adopted dog with a receipt, in turn. One that fails does
+/// not stop the rest, and the first failure is the exit code.
+pub(super) async fn upgrade_all(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    reach: &Reach,
+    input: &mut Input,
+    catalog: &Catalog<'_>,
+) -> ExitCode {
+    let cfg = match ShepToml::read_only(&paths.daemon_config) {
+        Ok(cfg) => cfg,
+        Err(err) => return fail_config(streams, &err),
+    };
+    let mut first_failure = ExitCode::Success;
+    let mut upgraded = 0;
+    for name in cfg.adopted_dog_names() {
+        if !matches!(receipt::read(paths, &name), Ok(Some(_))) {
+            // A receipt that is there and unreadable is reported by the
+            // upgrade itself, which the skip below would hide.
+            if !receipt::receipt_path(paths, &name).exists() {
+                streams.aside(
+                    "upgrade",
+                    &format!("skipping {name}: it has no receipt, so `shep adopt` put it there"),
+                );
+                continue;
+            }
+        }
+        upgraded += 1;
+        let code = upgrade_dog(streams, paths, reach, input, catalog, &name, &Goal::Follow).await;
+        if first_failure == ExitCode::Success {
+            first_failure = code;
+        }
+    }
+    if upgraded == 0 {
+        streams.aside("upgrade", "no installed dog to upgrade");
+    }
+    first_failure
+}
+
+/// Upgrades the one dog adopted as `name` towards `goal`.
+pub(super) async fn upgrade_dog(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    reach: &Reach,
+    input: &mut Input,
+    catalog: &Catalog<'_>,
+    name: &str,
+    goal: &Goal,
+) -> ExitCode {
+    let cfg = match ShepToml::read_only(&paths.daemon_config) {
+        Ok(cfg) => cfg,
+        Err(err) => return fail_config(streams, &err),
+    };
+    if cfg.adopted_dog_path(name).is_none() {
+        return if crate::dog::BUILT_IN_DOGS.contains(&name) {
+            streams.fail(
+                ExitCode::Failure,
+                &format!("`{name}` is built in to shep and upgrades with it"),
+            )
+        } else {
+            streams.fail(
+                ExitCode::NotFound,
+                &format!("`{name}` is not an adopted dog; `shep dogs` lists them"),
+            )
+        };
+    }
+    let held = match receipt::read(paths, name) {
+        Ok(Some(held)) => held,
+        Ok(None) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!(
+                    "`{name}` has no receipt, so shep did not install it: it came from `shep \
+                     adopt <path>`. `shep upgrade` follows what `shep install` put on disk. \
+                     Rebuild it and `shep adopt` it again, or `shep install {name}` to take it \
+                     from the index"
+                ),
+            );
+        }
+        Err(err) => return fail_receipt(streams, paths, name, &err),
+    };
+    let enabled = cfg.enabled_dog_names().iter().any(|dog| dog == name);
+    if *goal == Goal::Rollback {
+        return rollback(streams, paths, reach, input, name, &held, enabled).await;
+    }
+
+    let Some(row) = catalog.row(name) else {
+        return streams.fail(
+            ExitCode::NotFound,
+            &format!(
+                "the dog index has no dog called `{name}` now, so there is nothing to upgrade it \
+                 to; `--rollback` still works"
+            ),
+        );
+    };
+    // What to build: a ref, or the index's version. A ref install follows its ref.
+    let git_ref = match (goal, &held.pinned) {
+        (Goal::Ref(git_ref), _) => Some(git_ref.clone()),
+        (Goal::Follow, HeldPin::Ref { git_ref, .. }) => Some(git_ref.clone()),
+        _ => None,
+    };
+    if git_ref.is_none()
+        && let (
+            DogSourceKind::Cargo {
+                version: Some(approved),
+                ..
+            },
+            HeldPin::Version(held_version),
+        ) = (&row.source, &held.pinned)
+        && approved == held_version
+    {
+        return current(streams, &cfg, name, &held.pinned);
+    }
+
+    let install_args = InstallArgs {
+        dog: Some(name.to_owned()),
+        yes: false,
+        no_enable: false,
+        refresh: false,
+        cargo: false,
+        git_ref: None,
+    };
+    let mut fetched = match fetch_dog(
+        streams,
+        paths,
+        &install_args,
+        reach,
+        row,
+        git_ref.as_deref(),
+    )
+    .await
+    {
+        Ok(fetched) => fetched,
+        Err(code) => return code,
+    };
+    // The lock is held now: what is on disk is what this upgrade replaces.
+    let held = match receipt::read(paths, name) {
+        Ok(Some(held)) => held,
+        Ok(None) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("`{name}` lost its receipt while it was being upgraded"),
+            );
+        }
+        Err(err) => return fail_receipt(streams, paths, name, &err),
+    };
+    let lands = fetched.lands_as();
+    if lands == held.pinned {
+        return current(streams, &cfg, name, &held.pinned);
+    }
+    let new_root = receipt::root_of(fetched.binary()).map(Path::to_path_buf);
+    let old_root = held.root().map(Path::to_path_buf);
+    // A ref switched to a name for the commit it already runs lands in the
+    // directory it is in: nothing is replaced, and what it kept stays kept.
+    let same_root = new_root == old_root;
+    let previous = if same_root {
+        held.previous.clone()
+    } else {
+        old_root
+            .clone()
+            .filter(|root| receipt::is_install_dir(paths, name, root))
+    };
+    if !same_root
+        && let Some(root) = &previous
+        && let Err(err) =
+            receipt::write_document(&root.join("receipt.json"), &held.with_previous(None))
+    {
+        return streams.fail(
+            ExitCode::Failure,
+            &format!(
+                "keeping the receipt of the install it replaces in {}: {err}",
+                root.display()
+            ),
+        );
+    }
+    if fetched.built_by_cargo()
+        && let (HeldPin::Version(old), HeldPin::Version(new)) = (&held.pinned, &lands)
+    {
+        streams.aside(
+            "upgrade_diff",
+            &format!("what changed: https://diff.rs/{}/{old}/{new}", row.package),
+        );
+    }
+    fetched.upgrading = Some(Upgrading {
+        previous,
+        enable: enabled,
+    });
+    let before = waiting_of(paths, name);
+    let mut said_no = false;
+    let code = adopt_fetched(
+        streams,
+        paths,
+        &install_args,
+        input,
+        fetched,
+        catalog.url(),
+        &mut said_no,
+    )
+    .await;
+    if code != ExitCode::Success {
+        return code;
+    }
+    // The install before the replaced one is no longer kept.
+    if let (Some(older), Some(new_root)) = (&held.previous, &new_root)
+        && !same_root
+        && Some(older) != old_root.as_ref()
+        && older != new_root
+        && receipt::is_install_dir(paths, name, older)
+    {
+        let _ = std::fs::remove_dir_all(older);
+    }
+    streams.aside(
+        "upgrade",
+        &format!(
+            "upgraded {name} from {} to {}",
+            describe(&held.pinned),
+            describe(&lands)
+        ),
+    );
+    report_waiting(streams, paths, name, &before);
+    ExitCode::Success
+}
+
+/// `--rollback`: puts back the install the last upgrade replaced, and its receipt.
+async fn rollback(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    reach: &Reach,
+    input: &mut Input,
+    name: &str,
+    seen: &Held,
+    enabled: bool,
+) -> ExitCode {
+    let _held = match lock_dog(streams, paths, name, reach.lock_wait).await {
+        Ok(held) => held,
+        Err(code) => return code,
+    };
+    // Read again under the lock.
+    let current = match receipt::read(paths, name) {
+        Ok(Some(current)) => current,
+        Ok(None) => seen.clone(),
+        Err(err) => return fail_receipt(streams, paths, name, &err),
+    };
+    let nothing = |streams: &mut Streams<'_>, why: &str| {
+        streams.fail(
+            ExitCode::Failure,
+            &format!("nothing to roll `{name}` back to: {why}"),
+        )
+    };
+    let Some(previous) = current.previous.clone() else {
+        return nothing(streams, "the last install replaced nothing");
+    };
+    if !receipt::is_install_dir(paths, name, &previous) {
+        return nothing(
+            streams,
+            &format!(
+                "its receipt names {}, which is not one of its install directories",
+                previous.display()
+            ),
+        );
+    }
+    let prior = match receipt::read_file(&previous.join("receipt.json")) {
+        Ok(Some(prior)) => prior,
+        Ok(None) => return nothing(streams, &format!("{} holds no receipt", previous.display())),
+        Err(err) => {
+            return nothing(
+                streams,
+                &format!("{}'s receipt does not read: {err}", previous.display()),
+            );
+        }
+    };
+    if !prior.binary.is_file() {
+        return nothing(streams, &format!("{} is gone", prior.binary.display()));
+    }
+    let Some(current_root) = current
+        .root()
+        .filter(|root| receipt::is_install_dir(paths, name, root))
+        .map(Path::to_path_buf)
+    else {
+        return nothing(
+            streams,
+            "the install it runs is not one of its install directories",
+        );
+    };
+    if let Err(err) = receipt::write_document(
+        &current_root.join("receipt.json"),
+        &current.with_previous(None),
+    ) {
+        return streams.fail(
+            ExitCode::Failure,
+            &format!(
+                "keeping the receipt of the install it leaves in {}: {err}",
+                current_root.display()
+            ),
+        );
+    }
+    let receipt_file = receipt::receipt_path(paths, name);
+    let kept = match Kept::park(&[&receipt_file]) {
+        Ok(kept) => kept,
+        Err(err) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("setting aside the receipt of {name}: {err}"),
+            );
+        }
+    };
+    if let Err(err) =
+        receipt::write_document(&receipt_file, &prior.with_previous(Some(&current_root)))
+    {
+        return streams.fail(
+            ExitCode::Failure,
+            &format!("writing {}: {err}", receipt_file.display()),
+        );
+    }
+    let before = waiting_of(paths, name);
+    let adopting = AdoptArgs {
+        path: prior.binary.clone(),
+        name: Some(name.to_owned()),
+        yes: false,
+    };
+    let flow = Flow {
+        verb: "upgrade",
+        enable: enabled,
+        restart: true,
+    };
+    let config_before = std::fs::read(&paths.daemon_config).ok();
+    let code = adopt_noting(streams, paths, &adopting, input, flow, None, &mut false).await;
+    if code == ExitCode::Success || std::fs::read(&paths.daemon_config).ok() != config_before {
+        kept.commit();
+    }
+    if code == ExitCode::Success {
+        streams.aside(
+            "upgrade",
+            &format!(
+                "rolled {name} back from {} to {}",
+                describe(&current.pinned),
+                describe(&prior.pinned)
+            ),
+        );
+        report_waiting(streams, paths, name, &before);
+    }
+    code
+}
+
+/// The reply for a dog that is already at what it follows.
+fn current(streams: &mut Streams<'_>, cfg: &ShepToml, name: &str, at: &HeldPin) -> ExitCode {
+    streams.aside(
+        "upgrade",
+        &format!("{name} is already at {}; nothing to do", describe(at)),
+    );
+    emit_dog_action(
+        streams,
+        "upgrade",
+        name,
+        adopted_source(cfg, name, None),
+        CURRENT_STATUS,
+    )
+}
+
+/// A version, or a ref and the commit it was built at.
+fn describe(pinned: &HeldPin) -> String {
+    match pinned {
+        HeldPin::Version(version) => version.clone(),
+        HeldPin::Ref { git_ref, commit } => {
+            format!("{git_ref} at {}", commit.get(..12).unwrap_or(commit))
+        }
+    }
+}
+
+/// The permissions `name`'s record holds waiting.
+fn waiting_of(paths: &ShepPaths, name: &str) -> Vec<String> {
+    ShepToml::read_only(&paths.daemon_config)
+        .ok()
+        .and_then(|cfg| cfg.grant_record(name).ok().flatten())
+        .map(|record| record.waiting.names().map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// Puts a permission the new build declares in `waiting` and says so. The dog
+/// has been restarted on the grants it already held.
+fn report_waiting(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str, before: &[String]) {
+    match upgrade_one(paths, name) {
+        Ok(true) => {
+            let now = waiting_of(paths, name);
+            let new: Vec<_> = now
+                .iter()
+                .filter(|p| !before.contains(p))
+                .cloned()
+                .collect();
+            let detail = if new.is_empty() {
+                String::new()
+            } else {
+                format!(" ({} waiting)", new.join(", "))
+            };
+            streams.aside(
+                "upgrade_waiting",
+                &format!("{}{detail}", upgrade_notice(&[name.to_owned()])),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            let _ = fail_config(streams, &err);
+        }
+    }
+}
+
+/// The refusal for a receipt that is there and does not read.
+fn fail_receipt(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    name: &str,
+    err: &receipt::HeldError,
+) -> ExitCode {
+    streams.fail(
+        ExitCode::Failure,
+        &format!(
+            "reading {}: {err}",
+            receipt::receipt_path(paths, name).display()
+        ),
+    )
+}

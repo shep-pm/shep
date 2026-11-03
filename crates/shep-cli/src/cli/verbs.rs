@@ -11,7 +11,7 @@ use super::{
     DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
     ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs,
     SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs,
-    TriggerArgs, UnsetArgs, WhisperArgs,
+    TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -251,6 +251,26 @@ pub enum Commands {
     /// the approved version with `cargo install --locked`. Then it asks
     /// `shep adopt`'s grant question. Any other row exits 1.
     Install(InstallArgs),
+    /// Upgrade an installed dog to what its receipt says it follows, with a
+    /// way back.
+    ///
+    /// An index install moves to the index's current version, as `shep
+    /// install` chooses between a prebuilt binary and cargo. A dog installed
+    /// with `--ref` rebuilds that ref at its newest commit. `--ref <ref>`
+    /// switches to another ref, `--release` returns a ref install to the
+    /// index's version, and `--rollback` puts back the install the last
+    /// upgrade replaced. A dog already current is left alone and the reply
+    /// says so.
+    ///
+    /// Each upgrade installs into a new directory under `$SHEP_HOME/dogs`,
+    /// points the adopted path there, writes a new receipt and restarts the
+    /// dog. The directory it replaced is kept, and the one before that is
+    /// removed. A permission the new build declares waits for review while
+    /// the dog keeps its old grants. A dog adopted from a path has no
+    /// receipt, and is refused. `--dogs` upgrades every installed dog. With
+    /// no name and no `--dogs`, the verb is reserved for upgrading shep
+    /// itself and exits 1.
+    Upgrade(UpgradeArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
     /// and starts it now if a shepherd is running.
@@ -764,6 +784,7 @@ mod tests {
             "enable",
             "disable",
             "install",
+            "upgrade",
             "adopt",
             "kv",
             "get",
