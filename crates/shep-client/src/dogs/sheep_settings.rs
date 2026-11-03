@@ -168,7 +168,7 @@ impl DogRuntime {
     ///
     /// `serves` is what the dog declared with [`Probe::serves`](super::Probe::serves).
     /// A `#[shep(dog_wide)]` field needs a default; read it with
-    /// [`Self::config`].
+    /// [`Self::config`]. The operator's `<dog>.defaults` is not layered in.
     ///
     /// # Errors
     ///
@@ -210,7 +210,7 @@ impl DogRuntime {
         let dog = self.identity().section();
         let dog_wide = super::dog_wide::dog_wide_keys::<T>();
         let section = super::section::section_table(dog, self.section().as_str())?;
-        let tables = self.tables_of_every_sheep().await?;
+        let carrying = self.sheep_with_a_table().await?;
         let sheep = match serves {
             Serves::EverySheep => self
                 .client()
@@ -220,45 +220,99 @@ impl DogRuntime {
                 .filter(|entry| entry.dog.is_none())
                 .map(|entry| entry.name)
                 .collect(),
-            _ => tables.keys().cloned().collect::<BTreeSet<_>>(),
+            _ => carrying.clone(),
         };
         let mut settings = BTreeMap::new();
         for name in sheep {
-            let own = match tables.get(&name) {
-                Some(table) if !table.references().is_empty() => {
-                    match self.client().sheep_dog_table(&name, dog).await {
-                        Ok(resolved) => resolved,
-                        Err(err) => {
-                            let fault = ServedSheepError::Unresolved {
-                                sheep: name.clone(),
-                                reason: err.to_string(),
-                            };
-                            settings.insert(name, Err(fault));
-                            continue;
-                        }
+            if !carrying.contains(&name) {
+                settings.insert(
+                    name.clone(),
+                    settings_for(dog, &dog_wide, &section, &name, None),
+                );
+                continue;
+            }
+            let mut own = self.own_table(&name).await?;
+            if own.as_ref().is_some_and(|own| !own.references().is_empty()) {
+                match self.client().sheep_dog_table(&name, dog).await {
+                    Ok(resolved) => {
+                        own = own.map(|own| resolved_like(&own, resolved.as_ref()));
+                    }
+                    Err(err) => {
+                        let fault = ServedSheepError::Unresolved {
+                            sheep: name.clone(),
+                            reason: err.to_string(),
+                        };
+                        settings.insert(name, Err(fault));
+                        continue;
                     }
                 }
-                other => other.cloned(),
-            };
+            }
             let one = settings_for(dog, &dog_wide, &section, &name, own.as_ref());
             settings.insert(name, one);
         }
         Ok(settings)
     }
 
-    /// Every sheep's `[app.dogs.<dog>]` table, references unresolved.
-    async fn tables_of_every_sheep(&self) -> Result<BTreeMap<String, DogTable>, RequestError> {
+    /// The sheep carrying an `[app.dogs.<dog>]` table.
+    ///
+    /// The shepherd lays the operator's `<dog>.defaults` under each table it
+    /// sends, so only the names are read from this reply.
+    async fn sheep_with_a_table(&self) -> Result<BTreeSet<String>, RequestError> {
         let asked = Request::DogSheepSettings {
             dog: self.identity().section().to_owned(),
         };
         match self.client().request(asked).await? {
-            Response::DogSheepSettings { tables } => Ok(tables),
+            Response::DogSheepSettings { tables } => Ok(tables.into_keys().collect()),
             other => Err(RequestError::UnexpectedReply {
                 asked: "DogSheepSettings",
                 answered: other.name(),
             }),
         }
     }
+
+    /// `sheep`'s own `[app.dogs.<dog>]` table as the sheep's config holds it:
+    /// no operator default under it, references unresolved.
+    async fn own_table(&self, sheep: &str) -> Result<Option<DogTable>, RequestError> {
+        let asked = Request::SheepConfig {
+            name: sheep.to_owned(),
+        };
+        match self.client().request(asked).await? {
+            Response::SheepConfig(view) => {
+                Ok(view.config.dogs.get(self.identity().section()).cloned())
+            }
+            other => Err(RequestError::UnexpectedReply {
+                asked: "SheepConfig",
+                answered: other.name(),
+            }),
+        }
+    }
+}
+
+/// `own` with each leaf replaced by the value `resolved` holds at the same
+/// path.
+///
+/// `resolved` is `own` under the operator's default with every reference
+/// replaced, and `own` wins at every leaf it sets, so the default's keys
+/// are left behind.
+fn resolved_like(own: &DogTable, resolved: Option<&DogTable>) -> DogTable {
+    fn walk(
+        own: &serde_json::Map<String, serde_json::Value>,
+        resolved: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> serde_json::Map<String, serde_json::Value> {
+        own.iter()
+            .map(|(key, value)| {
+                let there = resolved.and_then(|resolved| resolved.get(key));
+                let value = match value {
+                    serde_json::Value::Object(inner) => {
+                        serde_json::Value::Object(walk(inner, there.and_then(|v| v.as_object())))
+                    }
+                    other => there.cloned().unwrap_or_else(|| other.clone()),
+                };
+                (key.clone(), value)
+            })
+            .collect()
+    }
+    DogTable::from(walk(own.as_map(), resolved.map(DogTable::as_map)))
 }
 
 #[cfg(test)]
