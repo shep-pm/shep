@@ -10,7 +10,6 @@ use crate::commands::standard_dog_testing::{adopt_jobs, shepherd};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
-#[cfg(unix)]
 async fn set(address: &str, value: &str) -> (ExitCode, String, Vec<Request>) {
     let dir = tempfile::tempdir().unwrap();
     adopt_jobs(dir.path(), Serves::OptedIn);
@@ -41,7 +40,6 @@ async fn set(address: &str, value: &str) -> (ExitCode, String, Vec<Request>) {
     (code, String::from_utf8_lossy(&err).to_string(), sent)
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_dog_wide_key_on_a_sheep_is_refused_before_a_write_is_sent() {
     let (code, said, sent) = set("api.dogs.jobs.poll", "5m").await;
@@ -56,7 +54,6 @@ async fn a_dog_wide_key_on_a_sheep_is_refused_before_a_write_is_sent() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_key_the_sheep_may_override_is_written() {
     let (code, said, sent) = set("api.dogs.jobs.model", "haiku").await;

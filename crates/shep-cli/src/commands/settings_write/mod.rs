@@ -41,7 +41,7 @@ mod defaults;
 #[cfg(test)]
 mod defaults_routing_tests;
 mod dog_wide;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod dog_wide_flow_tests;
 mod edit;
 mod flow;

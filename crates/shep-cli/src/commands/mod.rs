@@ -42,7 +42,7 @@ pub(crate) mod settings_read;
 pub(crate) mod settings_write;
 pub(crate) mod shep_toml;
 pub mod signal;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) mod standard_dog_testing;
 // `shep startup` installs a boot-time unit on unix: systemd, launchd, openrc,
 // or a BSD `rc.d` script. On Windows it registers a logon task instead, in
