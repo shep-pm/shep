@@ -38,6 +38,8 @@ pub mod secret;
 pub(crate) mod selector;
 pub mod serve;
 pub(crate) mod settings;
+#[cfg(test)]
+pub(crate) mod standard_dog_testing;
 pub(crate) mod settings_read;
 pub(crate) mod settings_write;
 pub(crate) mod shep_toml;

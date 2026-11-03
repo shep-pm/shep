@@ -71,7 +71,7 @@ pub(super) fn dog_schema_serving(name: &str, paths: &ShepPaths) -> Option<(Json,
 }
 
 /// `name`'s schema and the standard it follows, for a dog that follows it.
-pub(super) fn dog_standard(name: &str, paths: &ShepPaths) -> Option<(Json, Standard)> {
+pub(crate) fn dog_standard(name: &str, paths: &ShepPaths) -> Option<(Json, Standard)> {
     let (schema, serves) = dog_schema_serving(name, paths)?;
     let standard = Standard::recognise(&schema, serves)?;
     Some((schema, standard))

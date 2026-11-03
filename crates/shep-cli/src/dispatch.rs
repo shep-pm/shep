@@ -596,7 +596,7 @@ pub(crate) async fn run(
         // the shepherd: a Flockfile on disk is not what a sheep is running.
         Commands::Get(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {
-                commands::settings_read::get(client, streams, args).await
+                commands::settings_read::get(client, streams, &paths, args).await
             })
             .await
         }

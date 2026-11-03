@@ -21,7 +21,7 @@ use shep_core::protocol::Request;
 use toml_edit::DocumentMut;
 
 use self::plan::{field_changes, plan_dog_table, plan_section};
-use self::schema::{dog_schema, dog_standard, known_dogs};
+use self::schema::{dog_schema, known_dogs};
 use self::value::value_of;
 use crate::cli::SetArgs;
 use crate::commands::copy;
@@ -57,6 +57,7 @@ mod unset_plan_tests;
 pub(crate) mod value;
 
 use self::flow::run;
+pub(crate) use self::schema::dog_standard;
 pub(crate) use self::unset::unset;
 
 /// Which of the two verbs this run is, for the words it prints.

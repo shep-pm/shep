@@ -23,6 +23,11 @@ pub struct SettingsAnswer {
     pub path: String,
     /// The answer, as TOML text.
     pub toml: String,
+    /// The top-level keys of a dog's table on a sheep that the sheep leaves to
+    /// the dog's own section, for a dog that follows the dog settings
+    /// standard. Left out when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub inherited: Vec<String>,
 }
 
 impl fmt::Debug for SettingsAnswer {
@@ -59,7 +64,7 @@ impl Render for SettingsAnswer {
 
     // The answer itself: a TOML document has no columns, and a cell would
     // flatten the newlines that make it one.
-    const JSON_ONLY: &'static [&'static str] = &["toml"];
+    const JSON_ONLY: &'static [&'static str] = &["toml", "inherited"];
 
     // NAME is the identity the address named; the two describing it drop
     // first.
@@ -78,6 +83,7 @@ mod tests {
             name: "api".to_string(),
             path: "max_memory".to_string(),
             toml: "max_memory = 1073741824\n".to_string(),
+            inherited: vec!["max_memory".to_string()],
         };
         assert_no_drift(&answer, |json| json, &[]);
     }
@@ -92,6 +98,7 @@ mod tests {
             name: "kelpie".to_string(),
             path: "worker".to_string(),
             toml: "[worker]\ntoken = \"hunter2\"\n".to_string(),
+            inherited: Vec::new(),
         };
         assert_eq!(
             format!("{answer:?}"),
