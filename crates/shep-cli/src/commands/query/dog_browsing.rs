@@ -159,10 +159,11 @@ fn install_line(source: &DogSourceKind, package: &str) -> String {
     match source {
         DogSourceKind::Cargo {
             version: Some(version),
+            ..
         } => {
             format!("  $ cargo install {package} --version {version}")
         }
-        DogSourceKind::Cargo { version: None } => format!("  $ cargo install {package}"),
+        DogSourceKind::Cargo { version: None, .. } => format!("  $ cargo install {package}"),
         DogSourceKind::CargoGit { url } => format!("  $ cargo install --git {url}"),
         DogSourceKind::GoInstall { module } => format!("  $ go install {module}@latest"),
         DogSourceKind::Manual { instructions } => format!("  {instructions}"),

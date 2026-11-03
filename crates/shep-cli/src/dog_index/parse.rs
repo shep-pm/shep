@@ -5,6 +5,9 @@ use serde_json::{Map, Value};
 
 use super::*;
 
+/// The length of a sha256 digest in hex.
+const SHA256_HEX_LEN: usize = 64;
+
 /// Whether `version` spells [`SUPPORTED_INDEX_VERSION`], as either a JSON
 /// integer or a JSON float.
 ///
@@ -121,7 +124,11 @@ fn validate_source(source: &Value, sanitised: &mut bool) -> Option<DogSourceKind
                 None => None,
                 Some(_) => Some(field(source, "version", sanitised)?),
             };
-            Some(DogSourceKind::Cargo { version })
+            let sha256 = match source.get("sha256") {
+                None => BTreeMap::new(),
+                Some(hashes) => validate_hashes(hashes)?,
+            };
+            Some(DogSourceKind::Cargo { version, sha256 })
         }
         "cargo-git" => {
             let url = field(source, "url", sanitised)?;
@@ -138,6 +145,29 @@ fn validate_source(source: &Value, sanitised: &mut bool) -> Option<DogSourceKind
         }),
         _ => None,
     }
+}
+
+/// A `sha256` map, or `None` when it is not an object or any pair breaks
+/// the grammar: a triple of lowercase letters, digits, `.`, `_` and `-`
+/// mapped to exactly 64 lowercase hex digits.
+///
+/// Strict because a hash is compared byte for byte later. Nothing here is
+/// printed raw, so nothing is sanitised.
+fn validate_hashes(hashes: &Value) -> Option<BTreeMap<String, String>> {
+    hashes
+        .as_object()?
+        .iter()
+        .map(|(target, hash)| {
+            let hash = hash.as_str()?;
+            let target_ok = !target.is_empty()
+                && target
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b));
+            let hash_ok = hash.len() == SHA256_HEX_LEN
+                && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            (target_ok && hash_ok).then(|| (target.clone(), hash.to_owned()))
+        })
+        .collect()
 }
 
 /// `object[name]` as a sanitised, non-empty string, or `None` when the field
@@ -434,7 +464,10 @@ pub(super) mod tests {
         let index = parse_index(document.as_bytes()).expect("parses");
         assert_eq!(index.skipped, 0);
         assert_eq!(index.dogs.len(), 1);
-        assert_eq!(index.dogs[0].source, DogSourceKind::Cargo { version: None });
+        assert_eq!(index.dogs[0].source, DogSourceKind::Cargo {
+                version: None,
+                sha256: BTreeMap::new()
+            });
     }
 
     /// `repo` is a link; a `cargo-git` `url` is pasted into a shell, so it
@@ -486,7 +519,8 @@ pub(super) mod tests {
         assert_eq!(
             index.dogs[0].source,
             DogSourceKind::Cargo {
-                version: Some("0.1.0-alpha.1".to_string())
+                version: Some("0.1.0-alpha.1".to_string()),
+                sha256: BTreeMap::new()
             }
         );
     }
@@ -519,5 +553,91 @@ pub(super) mod tests {
                 "source.kind {kind:?} is listed as supported but its entry was skipped"
             );
         }
+    }
+
+    const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn cargo_entry(source: serde_json::Value) -> String {
+        let mut entry = valid_entry();
+        entry["source"] = source;
+        wrap_index(vec![entry])
+    }
+
+    /// The listing's whole point for an unversioned row: it is there, and
+    /// it is not installable.
+    #[test]
+    fn a_cargo_row_without_a_version_parses_lists_and_is_not_installable() {
+        let index = parse_index(cargo_entry(serde_json::json!({ "kind": "cargo" })).as_bytes())
+            .expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(index.dogs.len(), 1);
+        assert!(index.dogs[0].is_unversioned_cargo());
+    }
+
+    #[test]
+    fn a_cargo_row_with_a_version_is_installable() {
+        let source = serde_json::json!({ "kind": "cargo", "version": "0.2.4" });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert!(!index.dogs[0].is_unversioned_cargo());
+    }
+
+    #[test]
+    fn a_row_with_a_version_and_a_hash_for_a_target_yields_the_url_and_the_hash() {
+        let source = serde_json::json!({
+            "kind": "cargo",
+            "version": "0.2.4",
+            "sha256": { "aarch64-apple-darwin": HASH }
+        });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        let prebuilt = index.dogs[0]
+            .prebuilt_for("aarch64-apple-darwin")
+            .expect("hashed");
+        assert_eq!(
+            prebuilt.url,
+            "https://github.com/shep-pm/shep-log-rotate/releases/download/v0.2.4/\
+             shep-log-rotate-0.2.4-aarch64-apple-darwin"
+        );
+        assert_eq!(prebuilt.sha256, HASH);
+        assert_eq!(index.dogs[0].prebuilt_for("x86_64-unknown-linux-gnu"), None);
+    }
+
+    #[test]
+    fn a_hash_that_is_not_sixty_four_lowercase_hex_digits_skips_the_entry() {
+        for bad in [
+            "abc",
+            &HASH.to_uppercase(),
+            &format!("{HASH}0"),
+            &HASH.replace('0', "g"),
+        ] {
+            let source = serde_json::json!({
+                "kind": "cargo",
+                "version": "0.2.4",
+                "sha256": { "aarch64-apple-darwin": bad }
+            });
+            let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+            assert_eq!(index.skipped, 1, "{bad:?} was accepted");
+        }
+    }
+
+    #[test]
+    fn a_sha256_that_is_not_an_object_skips_the_entry() {
+        let source = serde_json::json!({ "kind": "cargo", "version": "0.2.4", "sha256": [HASH] });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 1);
+    }
+
+    /// A shep from before the hashes read the new document by ignoring
+    /// them: the parse is by hand, so an unknown key is not an error.
+    #[test]
+    fn an_unknown_key_on_a_cargo_source_is_ignored() {
+        let source = serde_json::json!({ "kind": "cargo", "version": "0.2.4", "future": 1 });
+        let index = parse_index(cargo_entry(source).as_bytes()).expect("parses");
+
+        assert_eq!(index.dogs.len(), 1);
+        assert_eq!(index.skipped, 0);
     }
 }

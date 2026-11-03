@@ -9,6 +9,7 @@
 //! [`IndexError::InsecureUrl`] names the URL. [`parse`] owns the document
 //! grammar; this file owns the types, the URL policy and the fetch.
 use core::fmt;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -18,6 +19,7 @@ use crate::fetch::{self, FetchError};
 use crate::terminal_safe::sanitise;
 
 mod parse;
+mod prebuilt;
 
 pub use parse::parse_index;
 
@@ -108,10 +110,12 @@ pub enum DogSourceKind {
     /// Installable with `cargo install <package>` from crates.io. The
     /// package name is [`AvailableDog::package`], not a field here.
     Cargo {
-        /// The exact version to name, for a dog that needs one. cargo
-        /// resolves an absent version as `*`, and `*` never matches a
-        /// pre-release. Absent for a dog on a normal release.
+        /// The exact version the index approves. A row without one is
+        /// listed but cannot be installed.
         version: Option<String>,
+        /// Hex sha256 of the prebuilt binary, keyed by exact target
+        /// triple. Empty when the index hashes none.
+        sha256: BTreeMap<String, String>,
     },
     /// Installable with `cargo install --git <url>`, for a dog that is not
     /// on crates.io.

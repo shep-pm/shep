@@ -173,6 +173,10 @@ pub struct ShepPaths {
     ///
     /// Written by the shepherd; see [`crate::dog_defaults`].
     pub dog_defaults: PathBuf,
+    /// The community dog index as last fetched: `cache/dogs.json`
+    ///
+    /// Derived and safe to delete: the next read fetches it again.
+    pub dog_index_cache: PathBuf,
 }
 
 /// FNV-1a, 64-bit, over `bytes`
@@ -245,6 +249,7 @@ impl ShepPaths {
             secrets: home.join("secrets.json"),
             secrets_cache: home.join("secrets-cache.json"),
             dog_defaults: home.join("dog-defaults.json"),
+            dog_index_cache: home.join("cache").join("dogs.json"),
             run,
             home,
         };
@@ -391,6 +396,10 @@ mod tests {
         assert_eq!(
             p.dog_defaults,
             Path::new("/home/ada/.shep/dog-defaults.json")
+        );
+        assert_eq!(
+            p.dog_index_cache,
+            Path::new("/home/ada/.shep/cache/dogs.json")
         );
     }
 
