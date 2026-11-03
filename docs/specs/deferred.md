@@ -74,7 +74,8 @@ sheep is reaped. `memory_enforce = "kernel"` is built: it writes `max_memory` to
 that cgroup's `memory.max` and charges a rise in `memory.events.local`'s
 `oom_kill` to `max_restarts`. `max_cpu_cores` is built: it writes
 `<cores x 100000> 100000` to `cpu.max` at spawn and on a live change, and
-`normalize` refuses it on macOS and Windows.
+`normalize` refuses it on macOS and Windows. `max_tasks` is built the same
+way for `pids.max`, as docker's `--pids-limit`.
 
 Sized against the code, not built. The shape is two config fields carrying
 docker's semantics, chosen deliberately so nobody has to learn a shep-specific
