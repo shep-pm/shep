@@ -566,7 +566,7 @@ mod tests {
         assert_eq!(
             format!("{spec:?}"),
             "DogSpec { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
-             channel: false, grants: None }, env: <1 keys> }"
+             channel: false, grants: None, events: [] }, env: <1 keys> }"
         );
     }
 

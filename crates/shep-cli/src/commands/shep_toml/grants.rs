@@ -162,7 +162,7 @@ impl ShepToml {
     ///
     /// # Errors
     /// As [`Self::set_grant_record`].
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn set_granted(&mut self, name: &str, grants: &Grants) -> Result<(), ShepTomlError> {
         self.set_grant_record(name, &GrantRecord::reviewed(grants.clone()))
     }
