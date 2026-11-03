@@ -162,6 +162,16 @@ reviewed = false`}</CodeBlock>
     </p>
     <CodeBlock>{`dog \`otel\` was refused \`stop\`: it needs \`flock.control\`, which was not granted to it`}</CodeBlock>
 
+    <h2 id="launched-sheep">A launched sheep</h2>
+    <p>
+      A sheep sandboxed by a dog gets a link of its own, opened before it
+      drops to its <code>user</code>. The link reads only that sheep's table
+      for the dog and hears only that sheep's{" "}
+      <code>config.sheep.&lt;dog&gt;</code> events. Anything else is{" "}
+      <code>forbidden</code>, naming the request. The control socket still
+      refuses the sheep.
+    </p>
+
     <h2 id="older-shepherds">Older shepherds</h2>
     <p>
       A shepherd older than protocol 12 records grants and enforces nothing.{" "}

@@ -10,7 +10,7 @@ use crate::dogs::Contact;
 use crate::fake::{FIRST_SCRIPTED_PID, ProcScript};
 use crate::runner::DogLink;
 use crate::testing::harness;
-use shep_core::protocol::{BusEvent, Envelope, Request, Response, ServerFrame};
+use shep_core::protocol::{BusEvent, Envelope, Request, Response, RpcErrorCode, ServerFrame};
 use tokio::sync::{mpsc, watch};
 use tokio_util::codec::Framed;
 
@@ -29,6 +29,16 @@ pub(super) async fn serve(
     name: &str,
     resumed: Option<Vec<String>>,
 ) -> Served {
+    serve_link(ctx, name, None, resumed).await
+}
+
+/// [`serve`], for the link `name` launched `launch_for` when that is set.
+async fn serve_link(
+    ctx: &crate::rpc::RpcContext,
+    name: &str,
+    launch_for: Option<&str>,
+    resumed: Option<Vec<String>>,
+) -> Served {
     let (server, client) = shep_core::transport::connected_pair().await.unwrap();
     let (links, links_rx) = mpsc::unbounded_channel();
     let (shutdown, shutdown_rx) = watch::channel(false);
@@ -42,6 +52,7 @@ pub(super) async fn serve(
     links
         .send(DogLink {
             name: name.to_string(),
+            launch_for: launch_for.map(str::to_string),
             pid: FIRST_SCRIPTED_PID,
             stream: server,
             resumed,
@@ -195,4 +206,80 @@ async fn a_link_leaves_the_table_when_the_dog_hangs_up() {
     })
     .await
     .expect("a closed connection must not be carried");
+}
+
+/// The sheep's own table, then another sheep's, over a link with no `Hello`.
+async fn read_table(client: &mut Client, id: u64, sheep: &str) -> ServerFrame {
+    client
+        .send(&Envelope {
+            id,
+            deadline_ms: None,
+            body: Request::SheepDogSettingsResolved {
+                name: sheep.to_string(),
+                dog: "jobs".to_string(),
+            },
+        })
+        .await;
+    client.recv().await
+}
+
+#[tokio::test]
+async fn a_launch_link_survives_a_handover() {
+    let h = harness(vec![ProcScript::never_exits(); 2]);
+    let table = shep_core::config::DogTable::from(serde_json::Map::from_iter([(
+        "concurrency".to_string(),
+        serde_json::json!(2),
+    )]));
+    let web = crate::testing::app_with("web", |app| {
+        app.dogs.insert("jobs".to_string(), table);
+    });
+    h.ctx.supervisor.start(vec![web]).await.unwrap();
+    let topics = vec!["config.sheep.jobs".to_string()];
+    let mut served = serve_link(&h.ctx, "jobs", Some("web"), Some(topics.clone())).await;
+
+    let carried = served.table.snapshot();
+    assert_eq!(carried.len(), 1);
+    assert_eq!(carried[0].name, "jobs");
+    assert_eq!(carried[0].launch_for.as_deref(), Some("web"));
+    assert_eq!(
+        carried[0].topics,
+        Some(topics),
+        "what the next handover carries"
+    );
+
+    let notice: BusEvent = served.client.recv().await;
+    assert!(
+        matches!(notice, BusEvent::Dropped { count } if count >= 1),
+        "{notice:?}"
+    );
+    let own = read_table(&mut served.client, 1, "web").await;
+    assert!(
+        matches!(&own, ServerFrame::Reply(reply) if reply.id == 1 && reply.result.is_ok()),
+        "{own:?}"
+    );
+    let other = read_table(&mut served.client, 2, "api").await;
+    assert!(
+        matches!(&other, ServerFrame::Reply(reply)
+            if reply.id == 2 && matches!(&reply.result, Err(err) if err.code == RpcErrorCode::Forbidden)),
+        "{other:?}"
+    );
+
+    let changed = |sheep: &str| {
+        BusEvent::DogSheepSettingsChanged {
+            dog: "jobs".to_string(),
+            sheep: sheep.to_string(),
+        }
+        .into()
+    };
+    h.ctx.events.send(changed("api")).unwrap();
+    h.ctx.events.send(changed("web")).unwrap();
+    let heard: BusEvent = served.client.recv().await;
+    assert_eq!(
+        heard,
+        BusEvent::DogSheepSettingsChanged {
+            dog: "jobs".to_string(),
+            sheep: "web".to_string()
+        },
+        "the re-armed subscription is still scoped to the sheep"
+    );
 }

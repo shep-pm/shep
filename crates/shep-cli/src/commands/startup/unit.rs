@@ -36,9 +36,9 @@ pub(crate) struct UnitSpec {
 ///
 /// No `TimeoutStartSec`: systemd's default applies, and the shepherd sends
 /// `EXTEND_TIMEOUT_USEC` around each muster-restore stage, so the deadline
-/// follows the walk rather than a fixed sum. `RestartPreventExitStatus` is
-/// [`ExitCode::DaemonAlreadyRunning`]: a hand-started shepherd holds the
-/// home lock.
+/// follows the walk. `RestartPreventExitStatus` is [`ExitCode::DaemonAlreadyRunning`]:
+/// a hand-started shepherd holds the home lock. `Delegate=memory cpu pids` chowns
+/// the service cgroup to `User=` with only those controllers; `yes` grants all.
 pub(crate) fn systemd_unit(spec: &UnitSpec) -> String {
     let home = systemd_environment_value(&spec.home.display().to_string());
     let path = systemd_environment_value(&spec.path.to_string_lossy());
@@ -60,6 +60,7 @@ pub(crate) fn systemd_unit(spec: &UnitSpec) -> String {
          Restart=on-failure\n\
          RestartSec=5\n\
          RestartPreventExitStatus={already_running}\n\
+         Delegate=memory cpu pids\n\
          \n\
          [Install]\n\
          WantedBy=multi-user.target\n",
@@ -373,6 +374,7 @@ mod tests {
              Restart=on-failure\n\
              RestartSec=5\n\
              RestartPreventExitStatus=10\n\
+             Delegate=memory cpu pids\n\
              \n\
              [Install]\n\
              WantedBy=multi-user.target\n",
@@ -434,6 +436,23 @@ mod tests {
         );
         assert!(unit.contains("ExecStop=/usr/local/bin/shep kill"), "{unit}");
         assert!(unit.contains("WantedBy=multi-user.target"), "{unit}");
+    }
+
+    /// fails if the unit stops delegating, or widens to `Delegate=yes`. The
+    /// shepherd runs as `User=`, so it can write its own cgroup subtree only
+    /// once systemd chowns it; the three controllers are all it uses.
+    #[test]
+    fn the_unit_delegates_memory_cpu_and_pids() {
+        let unit = systemd_unit(&spec());
+        let service = unit
+            .split("[Service]\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\n[").next())
+            .unwrap_or_default();
+        assert!(
+            service.lines().any(|l| l == "Delegate=memory cpu pids"),
+            "{unit}"
+        );
     }
 
     /// fails if an Environment value stops being quoted, or a `%` stops

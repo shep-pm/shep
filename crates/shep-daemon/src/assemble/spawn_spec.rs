@@ -182,6 +182,7 @@ pub(super) fn build<E>(
         stdin: config.stdin,
         credentials,
         dog_link: false,
+        launch_link: None,
         leader_only_stop: is_sandboxed(config),
         // Bound by the supervisor, which owns the sockets across instances.
         listen: None,

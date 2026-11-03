@@ -42,6 +42,53 @@ async fn a_dog_is_spawned_holding_a_connection_to_the_shepherd() {
     await_file_contents(&dir.path().join("out.log"), "4\n").await;
 }
 
+/// fails if a launched sheep's fd 4 is not a live socket to the shepherd, or the
+/// link does not name the dog that launches it, the sheep and the pid.
+#[tokio::test]
+async fn a_launched_sheep_is_spawned_holding_a_link_named_for_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut spec = spec_for(
+        &dir,
+        "/bin/sh",
+        &["-c", r#"echo "$SHEP_DOG_FD"; printf hello >&4"#],
+    );
+    spec.name = "web".to_string();
+    spec.launch_link = Some("sandbox".to_string());
+    let runner = TokioRunner::new();
+    let mut links = runner.dog_links().expect("the first call takes the links");
+
+    let (proc, _io) = runner.spawn(&spec).unwrap();
+    let mut link = next_link(&mut links).await;
+
+    assert_eq!(link.name, "sandbox");
+    assert_eq!(link.launch_for.as_deref(), Some("web"));
+    assert_eq!(link.pid, proc.pid());
+    let mut heard = [0u8; 5];
+    tokio::time::timeout(LONG_DEADLINE, link.stream.read_exact(&mut heard))
+        .await
+        .expect("the sheep wrote to its fd 4")
+        .unwrap();
+    assert_eq!(&heard, b"hello");
+    await_file_contents(&dir.path().join("out.log"), "4\n").await;
+}
+
+/// fails if a dog's own link is mistaken for a launch link.
+#[tokio::test]
+async fn a_dogs_own_link_is_not_scoped_to_a_sheep() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut spec = spec_for(&dir, "/bin/sh", &["-c", "sleep 5"]);
+    spec.name = "metrics".to_string();
+    spec.dog_link = true;
+    spec.launch_link = Some("sandbox".to_string());
+    let runner = TokioRunner::new();
+    let mut links = runner.dog_links().unwrap();
+
+    let (_proc, _io) = runner.spawn(&spec).unwrap();
+    let link = next_link(&mut links).await;
+
+    assert_eq!((link.name.as_str(), link.launch_for), ("metrics", None));
+}
+
 /// fails if the links can be taken twice, which would give one runner two
 /// servers.
 #[tokio::test]

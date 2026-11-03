@@ -390,6 +390,7 @@ fn adopt_spec(
         channel,
         dog_link: None,
         dog_topics: None,
+        launch_dog: None,
         reaper: Arc::new(crate::runner::AdoptedReaper::new()),
     }
 }

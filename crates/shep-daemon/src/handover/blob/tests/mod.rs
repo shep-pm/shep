@@ -11,7 +11,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 
-use super::{Handover, VERSION};
+use super::{Handover, OLDEST_READABLE, VERSION};
 use crate::entry::ProcessEntry;
 use crate::handover::fixtures::{carried, entry_fixture};
 use crate::testing::test_paths;
@@ -194,4 +194,26 @@ fn a_blob_from_a_future_version_is_refused_not_guessed_at() {
     let mut v = serde_json::to_value(sample_handover()).unwrap();
     v["version"] = serde_json::json!(u32::MAX);
     assert!(Handover::load_value(v).is_err());
+}
+
+#[test]
+fn a_blob_from_the_format_before_launch_links_still_loads() {
+    let mut v = serde_json::to_value(sample_handover()).unwrap();
+    v["version"] = serde_json::json!(OLDEST_READABLE);
+    assert!(Handover::load_value(v).is_ok());
+}
+
+#[test]
+fn a_blob_older_than_any_this_image_wrote_is_refused() {
+    let mut v = serde_json::to_value(sample_handover()).unwrap();
+    v["version"] = serde_json::json!(OLDEST_READABLE - 1);
+    assert!(Handover::load_value(v).is_err());
+}
+
+#[test]
+fn a_blob_is_written_in_the_current_version() {
+    use shep_handover::State as _;
+    let v = serde_json::to_value(sample_handover()).unwrap();
+    assert_eq!(v["version"], serde_json::json!(VERSION));
+    assert!(!Handover::reads(OLDEST_READABLE - 1));
 }

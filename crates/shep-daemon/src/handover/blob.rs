@@ -19,12 +19,30 @@ use serde::{Deserialize, Serialize};
 use super::{CarriedListener, CarriedSheep, DogConnection, HeldListener};
 use crate::supervisor::CarriedReload;
 
-/// The blob format this daemon writes, and the only one it can read.
+/// The blob format this daemon writes.
+///
+/// Version 2 may carry a launched sheep's link in a sheep's
+/// [`CarriedFds::dog_link`](super::CarriedFds::dog_link), which a version 1
+/// image would adopt as a dog's own link, and a dog's link is held to its
+/// grants, not to one sheep's table. Moving the number makes such an image
+/// refuse the handover at the probe, with the predecessor still running.
+pub const VERSION: u32 = 2;
+
+/// The oldest blob format this daemon still reads.
+///
+/// Version 1 differs only in never carrying a launch link, so a predecessor
+/// from before the move can still hand over to this image.
+pub const OLDEST_READABLE: u32 = 1;
+
+/// Whether this daemon can read a blob written in `version`.
 ///
 /// [`Handover::load_value`] refuses any other number outright: an image that
 /// cannot understand the blob must not adopt a partial picture of a live
 /// flock.
-pub const VERSION: u32 = 1;
+#[must_use]
+pub const fn reads_version(version: u32) -> bool {
+    OLDEST_READABLE <= version && version <= VERSION
+}
 
 /// The file name a release before the envelope wrote its blob under, inside
 /// `$SHEP_HOME/run`.
@@ -104,19 +122,19 @@ impl Handover {
         &self.sheep
     }
 
-    /// Names each of `links` against the dog whose connection it is.
+    /// Names each of `links` against the dog, or for a launch link the sheep,
+    /// whose connection it is.
     ///
-    /// Matched on name and pid together: a dog respawned since its connection
-    /// was opened is a different process on a different connection, and the
-    /// old one must not be handed to it. A link matching no sheep is left out
-    /// and closes at the exec, which the dog meets as a lost connection and
-    /// answers by falling back to the control socket.
+    /// Matched on name and pid together: a respawned process is on a
+    /// different connection. A link matching no sheep is left out and closes
+    /// at the exec, which the dog meets as a lost connection and answers by
+    /// falling back to the control socket.
     pub fn carry_dog_links(&mut self, links: &[DogConnection]) {
         for sheep in &mut self.sheep {
-            let Some(link) = links
-                .iter()
-                .find(|link| sheep.pid() == Some(link.pid) && sheep.name() == link.name)
-            else {
+            let Some(link) = links.iter().find(|link| {
+                sheep.pid() == Some(link.pid)
+                    && sheep.name() == link.launch_for.as_deref().unwrap_or(&link.name)
+            }) else {
                 continue;
             };
             sheep.carry_dog_link(link.fd.as_raw_fd(), link.topics.clone());
@@ -264,11 +282,11 @@ impl Handover {
     ///
     /// # Errors
     ///
-    /// `value` carries no `version`, carries one other than [`VERSION`], or
-    /// is not a handover blob.
+    /// `value` carries no `version`, carries one outside
+    /// [`OLDEST_READABLE`] to [`VERSION`], or is not a handover blob.
     pub fn load_value(value: serde_json::Value) -> Result<Self, LoadError> {
         match value.get("version").and_then(serde_json::Value::as_u64) {
-            Some(found) if found == u64::from(VERSION) => {}
+            Some(found) if u32::try_from(found).is_ok_and(reads_version) => {}
             Some(found) => return Err(LoadError::UnsupportedVersion { found }),
             None => return Err(LoadError::MissingVersion),
         }
@@ -279,6 +297,10 @@ impl Handover {
 impl shep_handover::State for Handover {
     /// The blob's own [`VERSION`], so one number answers both gates.
     const FORMAT: u32 = VERSION;
+
+    fn reads(format: u32) -> bool {
+        reads_version(format)
+    }
 }
 
 /// Why a handover blob could not be loaded.
@@ -311,7 +333,7 @@ impl core::fmt::Display for LoadError {
             Self::UnsupportedVersion { found } => write!(
                 f,
                 "the handover blob is format version {found}, and this shep implements \
-                 version {VERSION}"
+                 versions {OLDEST_READABLE} to {VERSION}"
             ),
             Self::Malformed(err) => write!(f, "the handover blob is not readable: {err}"),
         }

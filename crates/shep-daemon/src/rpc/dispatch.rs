@@ -27,36 +27,42 @@ use super::enrichment::{
     dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats,
 };
 use super::error::{invalid_config, no_sheep, rpc_error};
-use super::gate::{check, pin_grants};
+use super::gate::{Link, check, check_launch, pin_grants};
 use super::selector_verbs::{
     matching_rows, not_found, selector_call, selector_of, signal_request, trigger,
 };
 use super::walk::{reload_request, restart_request};
 
-/// Dispatches one request envelope against `ctx`, returning what the
-/// connection layer must do with the result.
+/// Dispatches one request envelope against `ctx`, returning the connection's next step.
 ///
-/// The deadline [`budget`] computes bounds the reply, not the actor's work:
-/// dropping the work future only stops the daemon waiting on the supervisor.
-/// A `DeadlineExceeded` reply to `Start` means no answer within the budget,
-/// not that nothing happened; a client that retries must reconcile with `ListFlock`.
+/// `link` is the connection a dog or a launched sheep was spawned holding,
+/// which bounds what it may send. `None` is the control socket.
+///
+/// The deadline [`budget`] bounds the reply, not the actor's work: a
+/// `DeadlineExceeded` to `Start` does not mean nothing happened.
 pub(crate) async fn dispatch(
     envelope: Envelope,
     conn: ConnId,
-    dog: Option<&str>,
+    link: Option<Link<'_>>,
     ctx: &RpcContext,
 ) -> Outcome {
     let id = envelope.id;
     let work = async {
         let mut body = envelope.body;
-        if let Some(dog) = dog {
-            if let Err(err) = check(ctx, dog, &body).await {
-                return Outcome::Reply(Reply {
-                    id,
-                    result: Err(err),
-                });
+        let refusal = match link {
+            None => None,
+            Some(Link::Dog(dog)) => {
+                let refusal = check(ctx, dog, &body).await.err();
+                body = pin_grants(ctx, body);
+                refusal
             }
-            body = pin_grants(ctx, body);
+            Some(Link::Launch { dog, sheep }) => check_launch(dog, sheep, &body).err(),
+        };
+        if let Some(err) = refusal {
+            return Outcome::Reply(Reply {
+                id,
+                result: Err(err),
+            });
         }
         run(id, conn, body, ctx).await
     };
