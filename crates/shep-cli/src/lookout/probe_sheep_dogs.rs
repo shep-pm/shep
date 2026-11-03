@@ -5,45 +5,41 @@
 //! spawned with the schema flag when its row is opened, never before.
 //! Nothing here is stored.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{Map, Value};
+use shep_core::config::DogsConfig;
 use shep_core::dogs::SHEEP_SCHEMA_KEY;
+use shep_core::dogs::manifest::Serves;
+use shep_core::paths::ShepPaths;
 
-use super::pane::{ListedDog, SheepDogEntry};
-use crate::commands::dogs::{DogSchema, ask_schema};
+use super::pane::{ListedDog, SheepDogEntry, StandardSection};
 use crate::commands::settings::dog_candidates;
+use crate::commands::settings_write::{asked_schema_serving, builtin_schema_serving};
 use crate::commands::shep_toml::ShepToml;
+use crate::dog_settings::standard::Standard;
 
-/// One entry per dog `daemon_config` names or shep builds in. A built-in
-/// answers with its per-sheep schema where it publishes one; an adopted
-/// dog is named and left unasked, for [`probe_sheep_dog`].
+/// One entry per dog `paths.daemon_config` names or shep builds in. A
+/// built-in answers with its per-sheep schema where it publishes one; an
+/// adopted dog is named and left unasked, for [`probe_sheep_dog`].
 ///
 /// A `shep.toml` that cannot be read lists no dog, which leaves every table
 /// the sheep carries read-only: without a schema nothing is edited.
-pub(super) fn list_sheep_dogs(daemon_config: &Path) -> Vec<ListedDog> {
-    let Ok(doc) = ShepToml::read_only(daemon_config) else {
+pub(super) fn list_sheep_dogs(paths: &ShepPaths) -> Vec<ListedDog> {
+    let Ok(doc) = ShepToml::read_only(&paths.daemon_config) else {
         return Vec::new();
     };
     dog_candidates(&doc)
         .into_iter()
-        .map(|dog| match crate::dog::builtin_schema(&dog.name) {
-            Some(schema) => ListedDog {
-                entry: SheepDogEntry {
-                    schema: sheep_schema(&schema),
-                    name: dog.name,
-                    adopted_path: dog.adopted_path,
-                },
+        .map(|dog| match builtin_schema_serving(&dog.name) {
+            Some(answer) => ListedDog {
+                entry: entry_of(paths, dog.name, dog.adopted_path, Some(answer)),
                 asked: true,
             },
             None => ListedDog {
                 asked: dog.adopted_path.is_none(),
-                entry: SheepDogEntry {
-                    name: dog.name,
-                    adopted_path: dog.adopted_path,
-                    schema: None,
-                },
+                entry: entry_of(paths, dog.name, dog.adopted_path, None),
             },
         })
         .collect()
@@ -53,24 +49,67 @@ pub(super) fn list_sheep_dogs(daemon_config: &Path) -> Vec<ListedDog> {
 /// binary has `budget` to answer, `VERSION_BUDGET` outside a test. A dog
 /// that stays silent, or answers something unreadable, has none.
 pub(super) fn probe_sheep_dog(
-    home: &Path,
+    paths: &ShepPaths,
     dog: &str,
     adopted_path: Option<PathBuf>,
     budget: Duration,
 ) -> SheepDogEntry {
-    let answer = match (crate::dog::builtin_schema(dog), &adopted_path) {
-        (Some(schema), _) => Some(schema),
-        (None, Some(path)) => match ask_schema(path, home, dog, budget) {
-            DogSchema::Published(schema) => Some(schema),
-            DogSchema::Silent | DogSchema::Unreadable => None,
-        },
-        (None, None) => None,
+    let answer = builtin_schema_serving(dog).or_else(|| {
+        adopted_path
+            .as_deref()
+            .and_then(|path| asked_schema_serving(path, &paths.home, dog, budget))
+    });
+    entry_of(paths, dog.to_owned(), adopted_path, answer)
+}
+
+/// What a dog answered, as the entry the tab lists.
+///
+/// A dog that follows the settings standard has one schema: the entry holds
+/// it without the dog-wide fields, and the section every sheep shares. Any
+/// other dog's entry holds its `x-shep-sheep` schema, as before.
+fn entry_of(
+    paths: &ShepPaths,
+    name: String,
+    adopted_path: Option<PathBuf>,
+    answer: Option<(Value, Serves)>,
+) -> SheepDogEntry {
+    let Some((root, serves)) = answer else {
+        return SheepDogEntry {
+            name,
+            adopted_path,
+            schema: None,
+            standard: None,
+        };
     };
-    SheepDogEntry {
-        schema: answer.as_ref().and_then(sheep_schema),
-        name: dog.to_owned(),
-        adopted_path,
+    match Standard::recognise(&root, serves) {
+        Some(standard) => SheepDogEntry {
+            schema: Some(standard.sheep_form(&root)),
+            standard: Some(StandardSection {
+                serves,
+                shared: standard.shared(&section_of(paths, &name)),
+            }),
+            name,
+            adopted_path,
+        },
+        None => SheepDogEntry {
+            schema: sheep_schema(&root),
+            standard: None,
+            name,
+            adopted_path,
+        },
     }
+}
+
+/// `name`'s `[<dog>]` table in `dogs.toml`. Empty when the file, or the
+/// table, is missing or does not parse: a pane then shows nothing inherited.
+fn section_of(paths: &ShepPaths, name: &str) -> Map<String, Value> {
+    let source = std::fs::read_to_string(&paths.dogs_config).ok();
+    DogsConfig::load(source.as_deref())
+        .ok()
+        .and_then(|config| config.dog.get(name).cloned())
+        .and_then(|table| serde_json::to_value(table).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default()
 }
 
 /// `pub(crate)`: `shep set` validates a dog's table on a sheep against the
@@ -139,7 +178,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("shep.toml");
         std::fs::write(&config, "[daemon\n").unwrap();
-        assert!(list_sheep_dogs(&config).is_empty());
+        assert!(list_sheep_dogs(&ShepPaths::at(dir.path().to_path_buf())).is_empty());
     }
 
     /// An adopted dog is listed unasked: its binary is not run to list it.
@@ -166,7 +205,7 @@ mod tests {
         )
         .unwrap();
 
-        let dogs = list_sheep_dogs(&config);
+        let dogs = list_sheep_dogs(&ShepPaths::at(dir.path().to_path_buf()));
         let jobs = dogs
             .iter()
             .find(|dog| dog.entry.name == "jobs")
@@ -212,7 +251,12 @@ mod tests {
         // Thirty seconds, not the real one: a first spawn of a new script
         // on a loaded machine outruns a second, and this is not the bound.
         let budget = Duration::from_secs(30);
-        let jobs = probe_sheep_dog(dir.path(), "jobs", Some(script.clone()), budget);
+        let jobs = probe_sheep_dog(
+            &ShepPaths::at(dir.path().to_path_buf()),
+            "jobs",
+            Some(script.clone()),
+            budget,
+        );
         assert_eq!(jobs.adopted_path.as_deref(), Some(script.as_path()));
         assert_eq!(
             jobs.schema,
@@ -222,8 +266,65 @@ mod tests {
             }))
         );
         for (name, bin) in [("quiet", quiet), ("broken", broken)] {
-            let dog = probe_sheep_dog(dir.path(), name, Some(bin), budget);
+            let dog = probe_sheep_dog(
+                &ShepPaths::at(dir.path().to_path_buf()),
+                name,
+                Some(bin),
+                budget,
+            );
             assert_eq!(dog.schema, None, "{name} answers no schema");
         }
+    }
+
+    /// A dog that marks a field dog-wide is listed with its one schema
+    /// minus that field, and with the section every sheep shares.
+    #[cfg(unix)]
+    #[test]
+    fn a_standard_dog_is_probed_into_its_sheep_form_and_its_shared_section() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::commands::standard_dog_testing::adopt_jobs(dir.path(), Serves::OptedIn);
+        std::fs::write(
+            dir.path().join("dogs.toml"),
+            "[jobs]\npoll = \"5m\"\nmodel = \"sonnet\"\n[other]\nmodel = \"x\"\n",
+        )
+        .unwrap();
+        let paths = ShepPaths::at(dir.path().to_path_buf());
+        let script = dir.path().join("shep-jobs");
+
+        let jobs = probe_sheep_dog(&paths, "jobs", Some(script), Duration::from_secs(30));
+
+        let schema = jobs.schema.expect("a schema");
+        assert!(schema["properties"].get("poll").is_none(), "{schema}");
+        assert!(schema["properties"].get("model").is_some(), "{schema}");
+        let section = jobs.standard.expect("a standard dog");
+        assert_eq!(section.serves, Serves::OptedIn);
+        assert_eq!(Value::Object(section.shared), json!({ "model": "sonnet" }));
+    }
+
+    /// A dog with its own `x-shep-sheep` schema is not the standard, whatever
+    /// its manifest says it serves.
+    #[cfg(unix)]
+    #[test]
+    fn a_dog_with_a_second_sheep_schema_is_probed_as_before() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("shep-jobs");
+        let schema = json!({
+            "properties": { "poll": { "x-shep-dog-wide": true } },
+            "x-shep-sheep": { "type": "object" },
+        });
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\n[ \"$1\" = --schema ] && echo '{schema}'\nexit 0\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let paths = ShepPaths::at(dir.path().to_path_buf());
+
+        let jobs = probe_sheep_dog(&paths, "jobs", Some(script), Duration::from_secs(30));
+
+        assert_eq!(jobs.schema, Some(json!({ "type": "object" })));
+        assert_eq!(jobs.standard, None);
     }
 }

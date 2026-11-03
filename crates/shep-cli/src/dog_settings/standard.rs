@@ -63,15 +63,20 @@ impl Standard {
         self.dog_wide.contains(key)
     }
 
+    /// What every sheep shares: `section` without its dog-wide keys.
+    pub(crate) fn shared(&self, section: &Map<String, Value>) -> Map<String, Value> {
+        section
+            .iter()
+            .filter(|(key, _)| !self.dog_wide.contains(*key))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect()
+    }
+
     /// What the dog reads for a sheep: `section` without its dog-wide keys,
     /// with `own` layered over it, and the top-level keys `own` leaves to the
     /// section.
     pub(crate) fn layer(&self, section: &Map<String, Value>, own: &Map<String, Value>) -> Layered {
-        let shared: Map<String, Value> = section
-            .iter()
-            .filter(|(key, _)| !self.dog_wide.contains(*key))
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
+        let shared = self.shared(section);
         let inherited = shared
             .keys()
             .filter(|key| own.get(*key).is_none_or(Value::is_null))

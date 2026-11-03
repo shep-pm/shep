@@ -243,6 +243,7 @@ mod tests {
                 name: name.to_owned(),
                 adopted_path: None,
                 schema,
+                standard: None,
             },
             asked: true,
         }

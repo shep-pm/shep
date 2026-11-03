@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value};
 use shep_core::config::DogTable;
+use shep_core::dogs::manifest::Serves;
 use shep_core::protocol::SheepConfigView;
 
 use super::{ConfigPane, PaneRow, PaneTarget};
@@ -30,16 +31,47 @@ pub struct SheepDogEntry {
     /// Its `x-shep-sheep` value with the root's `$defs` attached, or
     /// [`None`] for a dog that publishes no per-sheep schema.
     pub schema: Option<Value>,
+    /// The dog's section, for a dog that follows the settings standard. Its
+    /// [`Self::schema`] is then the dog's one schema without the dog-wide
+    /// fields.
+    pub standard: Option<StandardSection>,
 }
 
 impl core::fmt::Debug for SheepDogEntry {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "SheepDogEntry {{ name: {:?}, adopted_path: {:?}, schema: {} }}",
+            "SheepDogEntry {{ name: {:?}, adopted_path: {:?}, schema: {}",
             self.name,
             self.adopted_path,
             self.schema.as_ref().map_or("None", |_| "Some(..)")
+        )?;
+        if self.standard.is_some() {
+            write!(f, ", standard: Some(..)")?;
+        }
+        write!(f, " }}")
+    }
+}
+
+/// What a dog that follows the settings standard gives every sheep.
+///
+/// `Debug` is manual (IR-41): a section can hold a credential, so it prints
+/// which sheep the dog serves and how many keys there are.
+#[derive(Clone, PartialEq, Eq)]
+pub struct StandardSection {
+    /// Which sheep the dog serves.
+    pub serves: Serves,
+    /// The dog's `[<dog>]` section without its dog-wide keys.
+    pub shared: Map<String, Value>,
+}
+
+impl core::fmt::Debug for StandardSection {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "StandardSection {{ serves: {:?}, keys: {} }}",
+            self.serves,
+            self.shared.len()
         )
     }
 }
@@ -327,6 +359,7 @@ impl DogsTab {
                     name: name.clone(),
                     adopted_path: None,
                     schema: None,
+                    standard: None,
                 },
                 asked: Asked::Yes,
                 keys: Some(key_names(table)),

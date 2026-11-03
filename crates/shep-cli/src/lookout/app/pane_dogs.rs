@@ -555,6 +555,7 @@ mod tests {
                 name: "deploy".into(),
                 adopted_path: Some("/opt/deploy".into()),
                 schema: None,
+                standard: None,
             },
         });
         assert!(!row(&app, "deploy").is_open());
@@ -763,6 +764,7 @@ mod tests {
             name: "jobs".into(),
             adopted_path: None,
             schema: Some(json!({ "default": TOKEN })),
+            standard: None,
         };
         let listed = Msg::SheepDogNames {
             sheep: "web".into(),

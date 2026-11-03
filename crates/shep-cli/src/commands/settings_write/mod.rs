@@ -57,7 +57,7 @@ mod unset_plan_tests;
 pub(crate) mod value;
 
 use self::flow::run;
-pub(crate) use self::schema::dog_standard;
+pub(crate) use self::schema::{asked_schema_serving, builtin_schema_serving, dog_standard};
 pub(crate) use self::unset::unset;
 
 /// Which of the two verbs this run is, for the words it prints.

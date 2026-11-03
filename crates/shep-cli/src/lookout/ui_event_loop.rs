@@ -412,9 +412,9 @@ where
             // that panicked lists no dog, which leaves every table read-only
             // rather than editable through a schema nobody read.
             Effect::ListSheepDogs { sheep, ask } => {
-                let config = paths.daemon_config.clone();
+                let paths = paths.clone();
                 let handle = tokio::task::spawn_blocking(move || {
-                    super::probe_sheep_dogs::list_sheep_dogs(&config)
+                    super::probe_sheep_dogs::list_sheep_dogs(&paths)
                 });
                 inflight.push(Box::pin(async move {
                     let dogs = handle.await.unwrap_or_default();
@@ -428,18 +428,19 @@ where
                 dog,
                 adopted_path,
             } => {
-                let home = paths.home.clone();
+                let paths = paths.clone();
                 let name = dog.clone();
                 let path = adopted_path.clone();
                 let handle = tokio::task::spawn_blocking(move || {
                     let budget = crate::commands::dogs::VERSION_BUDGET;
-                    super::probe_sheep_dogs::probe_sheep_dog(&home, &name, path, budget)
+                    super::probe_sheep_dogs::probe_sheep_dog(&paths, &name, path, budget)
                 });
                 inflight.push(Box::pin(async move {
                     let entry = handle.await.unwrap_or(SheepDogEntry {
                         name: dog,
                         adopted_path,
                         schema: None,
+                        standard: None,
                     });
                     Msg::SheepDog { sheep, entry }
                 }));

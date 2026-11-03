@@ -2,6 +2,8 @@
 //! a section for, and which schema speaks for one.
 
 use std::collections::BTreeSet;
+use std::path::Path;
+use std::time::Duration;
 
 use serde_json::Value as Json;
 use shep_core::dogs::manifest::Serves;
@@ -50,21 +52,35 @@ pub(super) fn dog_schema(name: &str, paths: &ShepPaths) -> Option<Json> {
 /// A dog without a manifest, and one probed for its schema alone, serves
 /// [`Serves::OptedIn`].
 pub(super) fn dog_schema_serving(name: &str, paths: &ShepPaths) -> Option<(Json, Serves)> {
-    if let Some(schema) = builtin_schema(name) {
-        let serves = builtin_manifest(name).map_or(Serves::OptedIn, |manifest| manifest.serves);
-        return Some((schema, serves));
+    if let Some(answer) = builtin_schema_serving(name) {
+        return Some(answer);
     }
     let adopted = ShepToml::read_only(&paths.daemon_config)
         .ok()
         .and_then(|doc| doc.adopted_dog_path(name));
-    let path = adopted?;
-    if let Ok(ManifestRead::Read(manifest)) =
-        read_manifest(&path, &paths.home, name, VERSION_BUDGET)
-    {
+    asked_schema_serving(&adopted?, &paths.home, name, VERSION_BUDGET)
+}
+
+/// [`dog_schema_serving`] for a dog built into this binary.
+pub(crate) fn builtin_schema_serving(name: &str) -> Option<(Json, Serves)> {
+    let schema = builtin_schema(name)?;
+    let serves = builtin_manifest(name).map_or(Serves::OptedIn, |manifest| manifest.serves);
+    Some((schema, serves))
+}
+
+/// [`dog_schema_serving`] for the adopted dog at `path`, which has `budget`
+/// to answer each question it is asked.
+pub(crate) fn asked_schema_serving(
+    path: &Path,
+    home: &Path,
+    name: &str,
+    budget: Duration,
+) -> Option<(Json, Serves)> {
+    if let Ok(ManifestRead::Read(manifest)) = read_manifest(path, home, name, budget) {
         let serves = manifest.serves;
         return manifest.settings.map(|schema| (schema, serves));
     }
-    match ask_schema(&path, &paths.home, name, VERSION_BUDGET) {
+    match ask_schema(path, home, name, budget) {
         DogSchema::Published(schema) => Some((schema, Serves::OptedIn)),
         DogSchema::Silent | DogSchema::Unreadable => None,
     }

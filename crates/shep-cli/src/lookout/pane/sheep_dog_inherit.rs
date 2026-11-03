@@ -12,16 +12,20 @@ use std::sync::Arc;
 use serde_json::{Map, Value};
 use shep_core::config::DogTable;
 use shep_core::dog_defaults::layered;
+use shep_core::dogs::manifest::Serves;
 
 use super::super::field::flatten_values;
 use super::sheep_dog::SheepDogTable;
-use super::{ConfigPane, PaneTarget};
+use super::{ConfigPane, PaneTarget, StandardSection};
 
 /// The section a sheep's table sits over, and the rows it fills.
 #[derive(Clone)]
 pub(super) struct Inherits {
     /// The dog's section without its dog-wide keys.
     shared: Map<String, Value>,
+    /// Which sheep the dog serves: an opted-in dog reads the section for a
+    /// sheep only once the sheep carries a table.
+    serves: Serves,
     /// `shared` by row key, what a cleared row goes back to.
     shared_values: Map<String, Value>,
     /// The rows the sheep's own table leaves to the section.
@@ -32,7 +36,11 @@ impl SheepDogTable {
     /// What the rows show, and which of them the section fills.
     pub(super) fn displayed(&self) -> (Map<String, Value>, BTreeSet<String>) {
         let own = flatten_values(&self.table, &self.paths);
-        let Some(inherits) = &self.inherits else {
+        let Some(inherits) = self
+            .inherits
+            .as_ref()
+            .filter(|inherits| inherits.serves == Serves::EverySheep || !self.table.is_empty())
+        else {
             return (own, BTreeSet::new());
         };
         let table = layered(&[
@@ -60,22 +68,23 @@ impl ConfigPane {
     /// A pane over `dog`'s table on `sheep` with `shared` under it.
     ///
     /// `schema` is the dog's one schema without its dog-wide properties.
-    /// `shared` is the dog's section without its dog-wide keys. A row the
-    /// table lacks and the section has shows the section's value, and
-    /// [`Self::is_inherited`] says so.
+    /// A row the table lacks and the section has shows the section's value,
+    /// and [`Self::is_inherited`] says so. A dog serving opted-in sheep
+    /// shows none for a sheep with no table, since the dog reads none there.
     #[must_use]
     pub fn sheep_dog_inheriting(
         sheep: String,
         dog: String,
         schema: &Value,
         table: Map<String, Value>,
-        shared: Map<String, Value>,
+        section: &StandardSection,
     ) -> Self {
         let mut pane = Self::sheep_dog(sheep, dog, schema, table);
         if let Some(state) = pane.dog_table.as_mut() {
-            let shared_values = flatten_values(&shared, &state.paths);
+            let shared_values = flatten_values(&section.shared, &state.paths);
             state.inherits = Some(Inherits {
-                shared,
+                shared: section.shared.clone(),
+                serves: section.serves,
                 shared_values,
                 inherited: BTreeSet::new(),
             });
@@ -149,13 +158,20 @@ mod tests {
         value.as_object().cloned().expect("a table")
     }
 
+    fn section(serves: Serves, shared: Value) -> StandardSection {
+        StandardSection {
+            serves,
+            shared: table(shared),
+        }
+    }
+
     fn pane(own: Value) -> ConfigPane {
         ConfigPane::sheep_dog_inheriting(
             "web".into(),
             "jobs".into(),
             &sheep_form(),
             table(own),
-            table(json!({ "model": "sonnet", "limit": 3 })),
+            &section(Serves::EverySheep, json!({ "model": "sonnet", "limit": 3 })),
         )
     }
 
@@ -179,6 +195,24 @@ mod tests {
         let pane = pane(json!({}));
         assert!(pane.is_inherited("model") && pane.is_inherited("limit"));
         assert_eq!(pane.value("limit"), "3");
+    }
+
+    #[test]
+    fn an_opted_in_dog_shows_the_section_only_once_the_sheep_has_a_table() {
+        let section = section(Serves::OptedIn, json!({ "model": "sonnet" }));
+        let mut pane = ConfigPane::sheep_dog_inheriting(
+            "web".into(),
+            "jobs".into(),
+            &sheep_form(),
+            Map::new(),
+            &section,
+        );
+        assert!(!pane.is_inherited("model"));
+        assert_eq!(pane.value("model"), "(unset)");
+
+        pane.adopt_table(table(json!({ "limit": 9 })));
+        assert!(pane.is_inherited("model"));
+        assert_eq!(pane.value("model"), "sonnet");
     }
 
     #[test]
@@ -256,7 +290,7 @@ mod tests {
             "jobs".into(),
             &schema,
             Map::new(),
-            table(json!({ "auto": true })),
+            &section(Serves::EverySheep, json!({ "auto": true })),
         );
         pane.move_to_key("auto");
         pane.cycle();
