@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::Request;
 use crate::config::AppConfig;
-use crate::protocol::{LISTEN_SINCE, SANDBOX_DOG_SINCE};
+use crate::protocol::{LISTEN_SINCE, MEMORY_ENFORCE_SINCE, SANDBOX_DOG_SINCE};
 
 /// An `AppConfig` key that a shepherd below [`GatedKey::since`] ignores,
 /// running the sheep without what the key asked for.
@@ -34,7 +34,7 @@ struct Gate {
 ///
 /// The old `sandbox` key is not here: a shepherd refuses it, and a client no
 /// longer serializes it.
-const GATES: [Gate; 2] = [
+const GATES: [Gate; 3] = [
     Gate {
         key: GatedKey {
             key: "dogs.sandbox",
@@ -54,6 +54,16 @@ const GATES: [Gate; 2] = [
         dog: None,
         in_app: |app| !app.listen.is_empty(),
         sets: |value| !value.is_null() && value.as_object().is_none_or(|table| !table.is_empty()),
+    },
+    Gate {
+        key: GatedKey {
+            key: "memory_enforce",
+            since: MEMORY_ENFORCE_SINCE,
+        },
+        field: Some("memory_enforce"),
+        dog: None,
+        in_app: |app| app.memory_enforce.is_kernel(),
+        sets: |value| value == "kernel",
     },
 ];
 
@@ -112,6 +122,13 @@ mod tests {
         app
     }
 
+    fn kernel_enforced() -> AppConfig {
+        let mut app = AppConfig::minimal("web", "./srv");
+        app.max_memory = Some("512M".parse().unwrap());
+        app.memory_enforce = crate::config::MemoryEnforce::Kernel;
+        app
+    }
+
     fn declared(config: AppConfig) -> DeclaredApp {
         DeclaredApp {
             config,
@@ -129,9 +146,18 @@ mod tests {
         since: LISTEN_SINCE,
     };
 
+    const MEMORY_ENFORCE: GatedKey = GatedKey {
+        key: "memory_enforce",
+        since: MEMORY_ENFORCE_SINCE,
+    };
+
     #[test]
     fn a_load_of_a_gated_app_names_its_key() {
-        for (app, key) in [(sandboxed(), SANDBOX), (listening(), LISTEN)] {
+        for (app, key) in [
+            (sandboxed(), SANDBOX),
+            (listening(), LISTEN),
+            (kernel_enforced(), MEMORY_ENFORCE),
+        ] {
             for request in [
                 Request::Start {
                     apps: vec![app.clone()],
@@ -150,7 +176,11 @@ mod tests {
 
     #[test]
     fn a_merge_of_a_gated_app_names_its_key() {
-        for (app, key) in [(sandboxed(), SANDBOX), (listening(), LISTEN)] {
+        for (app, key) in [
+            (sandboxed(), SANDBOX),
+            (listening(), LISTEN),
+            (kernel_enforced(), MEMORY_ENFORCE),
+        ] {
             let request = Request::ApplyConfig {
                 apps: vec![declared(app)],
                 reset: Default::default(),
@@ -172,6 +202,28 @@ mod tests {
         );
         assert_eq!(set(json!({})).gated_key_dropped_at(0), None);
         assert_eq!(set(json!(null)).gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn setting_memory_enforce_to_kernel_names_it_and_setting_poll_does_not() {
+        let set = |value| Request::SetSheepField {
+            name: "web".to_string(),
+            key: "memory_enforce".to_string(),
+            value,
+        };
+        assert_eq!(
+            set(json!("kernel")).gated_key_dropped_at(0),
+            Some(MEMORY_ENFORCE)
+        );
+        assert_eq!(set(json!("poll")).gated_key_dropped_at(0), None);
+    }
+
+    #[test]
+    fn a_poll_app_names_no_memory_enforce_key() {
+        let request = Request::Start {
+            apps: vec![AppConfig::minimal("web", "./srv")],
+        };
+        assert_eq!(request.gated_key_dropped_at(MEMORY_ENFORCE_SINCE - 1), None);
     }
 
     #[test]

@@ -3,7 +3,7 @@ use super::env_value::deserialize_env;
 use super::probe::ProbeConfig;
 use std::collections::BTreeMap;
 // use schemars::generate
-use crate::config::LevelRule;
+use crate::config::{LevelRule, MemoryEnforce};
 use crate::values::{MemSize, UpDuration};
 use serde::{Deserialize, Serialize};
 
@@ -251,6 +251,19 @@ pub struct AppConfig {
         "blurb": "Restart the app if it climbs above this much memory"
     })))]
     pub max_memory: Option<MemSize>,
+    /// Who enforces `max_memory`: `"poll"` (shep samples) or `"kernel"` (cgroup `memory.max`)
+    ///
+    /// `"kernel"` needs `max_memory`, Linux and a delegated cgroup v2 subtree. An
+    /// OOM kill counts against `max_restarts`, unlike a polled restart.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "kernel",
+        "group": "restart",
+        "blurb": "Let the kernel cap memory at the moment of allocation instead of shep sampling it",
+        "accepts": ["poll, the default", "kernel, on Linux with cgroup v2 delegated"],
+        "refuses": ["kernel without max_memory", "kernel on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the limit it enforces"}]
+    })))]
+    pub memory_enforce: MemoryEnforce,
     /// Watch files and restart on change
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",

@@ -7,7 +7,7 @@ use super::probe::{
 use super::schema::AppConfig;
 // use schemars::generate
 use crate::config::LevelRule;
-use crate::config::{LineLevel, NormalizeError};
+use crate::config::{LineLevel, MemoryEnforce, NormalizeError};
 use crate::values::UpDuration;
 
 /// Where a per-field `refuses` clause is enforced.
@@ -339,6 +339,17 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
                 a.liveness_probe = Some(p);
             }),
             |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
+        ),
+        refused(
+            "memory_enforce",
+            "kernel without max_memory",
+            sheep(|a| a.memory_enforce = MemoryEnforce::Kernel),
+            |e| matches!(e, NormalizeError::MemoryEnforceNeedsMaxMemory { .. }),
+        ),
+        elsewhere(
+            "memory_enforce",
+            "kernel on macOS or Windows",
+            "normalize, off Linux only: normalize::tests",
         ),
         refused(
             "name",

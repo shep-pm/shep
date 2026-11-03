@@ -11,6 +11,7 @@ pub mod graph;
 pub mod key_path;
 pub mod kill_signal;
 pub mod level;
+mod memory_enforce;
 pub mod normalize;
 pub mod probe;
 #[cfg(feature = "schema")]
@@ -36,6 +37,7 @@ pub use flockfile::{flockfile_schema_json, flockfile_schema_string};
 pub use graph::{BootNode, BootPlan, NodeKind, Unresolved, plan, render_cycle};
 pub use kill_signal::KillSignal;
 pub use level::{LevelMatcher, LevelRule, LevelRuleError, LineLevel};
+pub use memory_enforce::MemoryEnforce;
 pub use normalize::{
     NormalizeError, ResolvedApp, TildeError, expand_home_tilde, normalize, normalize_all,
 };

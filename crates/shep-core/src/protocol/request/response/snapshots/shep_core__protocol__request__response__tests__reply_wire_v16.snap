@@ -770,6 +770,7 @@ expression: replies
             "graceful_timeout": "8s",
             "action_timeout": "3s",
             "max_memory": null,
+            "memory_enforce": "poll",
             "watch": false,
             "ignore_watch": [],
             "watch_delay": null,

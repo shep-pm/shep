@@ -634,6 +634,30 @@
           },
           "minimum": 0
         },
+        "memory_enforce": {
+          "description": "Who enforces `max_memory`: `\"poll\"` (shep samples) or `\"kernel\"` (cgroup `memory.max`)\n\n`\"kernel\"` needs `max_memory`, Linux and a delegated cgroup v2 subtree. An\nOOM kill counts against `max_restarts`, unlike a polled restart.",
+          "$ref": "#/$defs/MemoryEnforce",
+          "default": "poll",
+          "init": {
+            "accepts": [
+              "poll, the default",
+              "kernel, on Linux with cgroup v2 delegated"
+            ],
+            "blurb": "Let the kernel cap memory at the moment of allocation instead of shep sampling it",
+            "example": "kernel",
+            "group": "restart",
+            "neighbours": [
+              {
+                "field": "max_memory",
+                "note": "the limit it enforces"
+              }
+            ],
+            "refuses": [
+              "kernel without max_memory",
+              "kernel on macOS or Windows"
+            ]
+          }
+        },
         "merge_logs": {
           "description": "Merge instance logs into one file pair",
           "type": "boolean",
@@ -979,6 +1003,21 @@
       "description": "A byte quantity: digits, optionally suffixed G, M or K (binary units).",
       "type": "string",
       "pattern": "^\\d+(G|M|K)?$"
+    },
+    "MemoryEnforce": {
+      "description": "How `max_memory` is enforced.\n\n`Kernel` writes the limit to the sheep's cgroup `memory.max`, so the\nkernel caps the whole tree at the moment of allocation. It needs Linux with\na delegated cgroup v2 subtree, and an OOM kill counts against\n`max_restarts`. `Poll` samples the tree and restarts it above the limit,\nwhich does not count against `max_restarts`.",
+      "oneOf": [
+        {
+          "description": "The shepherd samples the tree and restarts it above `max_memory`",
+          "type": "string",
+          "const": "poll"
+        },
+        {
+          "description": "The kernel caps the tree through the cgroup's `memory.max`",
+          "type": "string",
+          "const": "kernel"
+        }
+      ]
     },
     "ProbeConfig": {
       "description": "Readiness/liveness probe configuration (spec §7)",
