@@ -201,6 +201,44 @@ $ shep disable metrics`}</CodeBlock>
       not installed.
     </p>
 
+    <h2 id="upgrading-a-dog">Upgrading a dog</h2>
+    <p>
+      <code>shep upgrade &lt;dog&gt;</code> follows the dog's{" "}
+      <code>receipt.json</code>. A dog installed from the index moves to the
+      index's current version, a prebuilt binary or cargo as{" "}
+      <code>shep install</code> chooses. A dog installed with{" "}
+      <code>--ref</code> rebuilds that ref at its newest commit. One already
+      current is left alone, and the reply says so. A dog adopted from a path
+      has no receipt and is refused: <code>shep adopt</code> is how it got
+      there, and it is how you move it.
+    </p>
+    <CodeBlock>{`$ shep upgrade otel
+$ shep upgrade otel --ref fix-flush
+$ shep upgrade otel --release
+$ shep upgrade otel --rollback
+$ shep upgrade --dogs`}</CodeBlock>
+    <p>
+      <code>--ref</code> switches to another ref, <code>--release</code>{" "}
+      returns a ref install to the version the index approves, and{" "}
+      <code>--dogs</code> upgrades every installed dog in turn, skipping a
+      dog with no receipt. Bare <code>shep upgrade</code> is reserved for
+      shep itself and exits 1.
+    </p>
+    <p>
+      An upgrade installs into a new directory, points the adopted path
+      there, writes a new receipt and restarts the dog. A dog that was
+      disabled stays disabled. The cargo path prints a{" "}
+      <code>diff.rs</code> link between the two versions. A permission the
+      new build declares waits for review while the dog keeps the grants it
+      has: <code>shep dogs</code> shows it.
+    </p>
+    <p>
+      The directory the upgrade replaced is kept, with its receipt, and the
+      new receipt names it. <code>--rollback</code> puts both back and keeps
+      the build it leaves, so a second rollback undoes the first. Only one
+      replaced directory is kept: a second upgrade removes the older one.
+    </p>
+
     <h2 id="when-a-dog-starts">When a dog starts</h2>
     <p>
       After the flock, by default. A metrics dog that came up first would

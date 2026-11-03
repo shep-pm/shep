@@ -331,7 +331,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 4490 for "Dependencies": what `shep install` does with the
   // dogs a manifest names, and the three refusals and the no that stop it.
   // An operator whose install stops needs to know what stays on disk.
-  dogs: 4570,
+  //
+  // Raised from 4570 for "Upgrading a dog": what an upgrade follows, the
+  // four flags, and which directory a rollback can still reach.
+  dogs: 5120,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.

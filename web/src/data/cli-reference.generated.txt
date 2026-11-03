@@ -14,7 +14,7 @@ See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs install adopt whistle
+Dogs and agents  dogs install upgrade adopt whistle
 Foreground runs  runtime dev
 Coming from pm2  import
 Help             welcome init help completions style
@@ -788,6 +788,51 @@ Options:
           Build the dog from this branch, tag or commit of its own repository instead of the version
           the index approves. A 7 to 40 character hex string is a commit; anything else is tried as
           a tag, then a branch. The index has not reviewed it, and the grant question says so
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
+@@VERB:upgrade@@
+Upgrade an installed dog to what its receipt says it follows, with a way back.
+
+An index install moves to the index's current version, as `shep install` chooses between a prebuilt
+binary and cargo. A dog installed with `--ref` rebuilds that ref at its newest commit. `--ref <ref>`
+switches to another ref, `--release` returns a ref install to the index's version, and `--rollback`
+puts back the install the last upgrade replaced. A dog already current is left alone and the reply
+says so.
+
+Each upgrade installs into a new directory under `$SHEP_HOME/dogs`, points the adopted path there,
+writes a new receipt and restarts the dog. The directory it replaced is kept, and the one before
+that is removed. A permission the new build declares waits for review while the dog keeps its old
+grants. A dog adopted from a path has no receipt, and is refused. `--dogs` upgrades every installed
+dog. With no name and no `--dogs`, the verb is reserved for upgrading shep itself and exits 1.
+
+Usage: shep upgrade [OPTIONS] [DOG]
+
+Arguments:
+  [DOG]
+          The installed dog to upgrade. With none and no `--dogs`, `shep upgrade` would upgrade shep
+          itself, which it does not do yet
+
+Options:
+      --dogs
+          Upgrade every installed dog in turn. A dog adopted from a path has no receipt and is
+          skipped, with a line saying so
+
+      --ref <REF>
+          Switch to this branch, tag or commit of the dog's own repository, which the index has not
+          reviewed. Needs a dog name
+
+      --release
+          Return a dog installed from a ref to the version the index approves
+
+      --rollback
+          Put back the install the last upgrade replaced, and its receipt. The upgrade it undoes
+          becomes the one to roll back to
+
+      --refresh
+          Fetch the community index even when the copy cached in the last day is still fresh
 
   -h, --help
           Print help (see a summary with '-h')
