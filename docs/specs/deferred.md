@@ -65,6 +65,11 @@ feature on 2026-10-28, and each entry moved to "Not deferred" in
 
 ### Per-sheep resource limits, and where `enforce = "kernel"`'s cost sits, sized 2026-09-06
 
+Phase 0 is underway ([#344](https://github.com/shep-pm/shep/issues/344)). The
+shepherd now detects a delegated cgroup v2 subtree at boot, moves itself into a
+`shepherd` leaf and logs the result, or why there is none (`crates/shep-daemon/src/cgroup.rs`). A sheep
+still joins no cgroup, and neither field exists.
+
 Sized against the code, not built. The shape is two config fields carrying
 docker's semantics, chosen deliberately so nobody has to learn a shep-specific
 model:

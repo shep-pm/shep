@@ -47,6 +47,9 @@ pub struct RunningDaemon {
     // `PidfileLock::acquire` succeed.
     pub(super) pidfile_lock: PidfileLock,
     pub(super) delete_flock_on_shutdown: bool,
+    // What `boot` found, for the spawn path to give each sheep a cgroup from.
+    #[cfg(target_os = "linux")]
+    pub(super) cgroups: crate::cgroup::Cgroups,
 }
 
 impl RunningDaemon {
@@ -91,6 +94,8 @@ impl RunningDaemon {
             signals: _signals,
             pidfile_lock: _pidfile_lock,
             delete_flock_on_shutdown,
+            #[cfg(target_os = "linux")]
+                cgroups: _cgroups,
         } = self;
 
         // The receiver `boot` kept alive, reused rather than a fresh
