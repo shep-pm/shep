@@ -39,6 +39,9 @@ pub(crate) enum Reason {
     /// The shepherd's own cgroup refused a write: it is not delegated to this
     /// user.
     NotDelegated,
+    /// The shepherd's cgroup holds a process other than the shepherd, such as
+    /// the CLI that started it, so v2 refuses controllers on it.
+    Busy,
     /// A read or write failed for a reason other than permission, such as a
     /// controller the parent does not offer.
     Setup(io::ErrorKind),
@@ -49,6 +52,7 @@ impl fmt::Display for Reason {
         match self {
             Self::NotV2 => f.write_str("this host is not on cgroup v2 alone"),
             Self::NotDelegated => f.write_str("the shepherd's cgroup is not delegated to it"),
+            Self::Busy => f.write_str("the shepherd's cgroup holds another process"),
             Self::Setup(kind) => write!(f, "setting up the shepherd's cgroup failed: {kind}"),
         }
     }
@@ -98,17 +102,45 @@ fn try_detect(proc_cgroup: &Path, mount: &Path, pid: u32) -> Result<Cgroups, Rea
     let base = if own_dir.file_name().is_some_and(|name| name == LEAF) {
         own_dir.parent().unwrap_or(mount).to_path_buf()
     } else {
-        let leaf = own_dir.join(LEAF);
-        match fs::create_dir(&leaf) {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(err) => return Err(classify(&err)),
+        if holds_another_process(&own_dir, pid) {
+            return Err(Reason::Busy);
         }
-        fs::write(leaf.join("cgroup.procs"), pid.to_string()).map_err(|err| classify(&err))?;
+        move_into_leaf(&own_dir.join(LEAF), pid)?;
         own_dir
     };
-    fs::write(base.join("cgroup.subtree_control"), CONTROLLERS).map_err(|err| classify(&err))?;
+    fs::write(base.join("cgroup.subtree_control"), CONTROLLERS).map_err(|err| {
+        match err.kind() {
+            io::ErrorKind::ResourceBusy => Reason::Busy,
+            _ => classify(&err),
+        }
+    })?;
     Ok(Cgroups::Available { base })
+}
+
+/// Whether `dir`'s `cgroup.procs` lists a pid other than `pid`. An unreadable
+/// file is none: the write that follows reports the real error.
+fn holds_another_process(dir: &Path, pid: u32) -> bool {
+    fs::read_to_string(dir.join("cgroup.procs")).is_ok_and(|procs| {
+        procs
+            .split_whitespace()
+            .any(|listed| listed.parse::<u32>().is_ok_and(|listed| listed != pid))
+    })
+}
+
+/// Creates `leaf` and writes `pid` into it, removing a leaf this call made
+/// if the write fails.
+fn move_into_leaf(leaf: &Path, pid: u32) -> Result<(), Reason> {
+    let created = match fs::create_dir(leaf) {
+        Ok(()) => true,
+        Err(err) if err.kind() == io::ErrorKind::AlreadyExists => false,
+        Err(err) => return Err(classify(&err)),
+    };
+    fs::write(leaf.join("cgroup.procs"), pid.to_string()).map_err(|err| {
+        if created {
+            let _ = fs::remove_dir(leaf);
+        }
+        classify(&err)
+    })
 }
 
 /// The path on the only line of a v2-only `/proc/self/cgroup`: a v1 line

@@ -101,6 +101,44 @@ fn a_read_only_cgroup_is_not_delegated() {
 }
 
 #[test]
+fn a_cgroup_holding_another_process_is_busy_and_the_shepherd_stays_put() {
+    let host = host("0::/shep.slice\n");
+    let own = host.mount.join("shep.slice");
+    fs::create_dir(&own).expect("the shepherd's own cgroup");
+    // The shepherd and the CLI that started it, as in `shep start`.
+    fs::write(own.join("cgroup.procs"), format!("{FAKE_PID}\n999\n")).expect("cgroup.procs");
+
+    assert_eq!(detect_on(&host), Cgroups::Unavailable(Reason::Busy));
+    assert!(!own.join("shepherd").exists(), "the shepherd is not moved");
+}
+
+#[test]
+fn a_cgroup_holding_only_the_shepherd_is_not_busy() {
+    let host = host("0::/shep.slice\n");
+    let own = host.mount.join("shep.slice");
+    fs::create_dir(&own).expect("the shepherd's own cgroup");
+    fs::write(own.join("cgroup.procs"), format!("{FAKE_PID}\n")).expect("cgroup.procs");
+
+    assert_eq!(detect_on(&host), Cgroups::Available { base: own });
+}
+
+#[test]
+fn a_leaf_that_was_already_there_is_not_removed_when_the_move_fails() {
+    let host = host("0::/shep.slice\n");
+    let own = host.mount.join("shep.slice");
+    let leaf = own.join("shepherd");
+    fs::create_dir_all(&leaf).expect("an existing leaf");
+    fs::set_permissions(&leaf, fs::Permissions::from_mode(0o555)).expect("make it read-only");
+    if fs::write(leaf.join("probe"), "").is_ok() {
+        println!("skipped: this user can write a 0555 directory, so it is root or the like");
+        return;
+    }
+
+    assert_eq!(detect_on(&host), Cgroups::Unavailable(Reason::NotDelegated));
+    assert!(leaf.is_dir(), "a leaf this call did not create stays");
+}
+
+#[test]
 fn a_shepherd_already_in_its_leaf_finds_the_same_base() {
     let host = host("0::/shep.slice\n");
     let own = host.mount.join("shep.slice");
