@@ -175,8 +175,9 @@ timeout)` subscribes before it triggers, so a result published at once is
 not missed, then waits for the event with that id; the timeout starts when
 the callee has answered. The caller needs `events:dog.<callee>` as well as
 `dogs.trigger:<callee>`, and `LongActionError::NotGranted` names the one it
-lacks. The subscription replaces any other on the caller's connection.
-`web/src/pages/docs/writing-a-dog.astro` has a worked example.
+lacks. Waits running at once share one subscription, which replaces any
+other on the caller's connection. A callee with a dot in its name cannot
+publish, so it cannot finish a long action. `web/src/pages/docs/writing-a-dog.astro` has a worked example.
 
 **A dog that restarts itself on a config change has to say so in its own
 log.** Nothing else can tell that apart from a crash loop, and the restart

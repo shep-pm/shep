@@ -2,8 +2,10 @@
 //! two roles chosen by `LONG_ACTION_ROLE`.
 //!
 //! `callee` answers `build` with an id and publishes the result later.
-//! `caller` triggers it once `$SHEP_HOME/go` exists and writes what
-//! `trigger_and_wait` returned to `$SHEP_HOME/<dog>.out`.
+//! `caller` triggers it on every dog `LONG_ACTION_CALLEE` lists (commas
+//! between names) at once, once `$SHEP_HOME/go` exists, and writes what each
+//! `trigger_and_wait` returned, a line per callee in the order listed, to
+//! `$SHEP_HOME/<dog>.out`.
 
 #[cfg(unix)]
 mod dog {
@@ -76,15 +78,18 @@ mod dog {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let env = |key: &str| std::env::var(key).ok();
-        let callee = env("LONG_ACTION_CALLEE").expect("LONG_ACTION_CALLEE");
+        let callees = env("LONG_ACTION_CALLEE").expect("LONG_ACTION_CALLEE");
         let params = env("LONG_ACTION_PARAMS");
-        let outcome = runtime
-            .trigger_and_wait(&callee, "build", params.as_deref(), Duration::from_secs(20))
-            .await;
-        let line = match outcome {
-            Ok(done) => format!("ok {} {}", done.id, done.result),
-            Err(error) => format!("err {error}"),
-        };
+        let waits = callees.split(',').map(|callee| async {
+            let outcome = runtime
+                .trigger_and_wait(callee, "build", params.as_deref(), Duration::from_secs(20))
+                .await;
+            match outcome {
+                Ok(done) => format!("ok {} {}", done.id, done.result),
+                Err(error) => format!("err {error}"),
+            }
+        });
+        let line = futures_util::future::join_all(waits).await.join("\n");
         let out = home.join(format!("{name}.out"));
         std::fs::write(out.with_extension("tmp"), line).expect("write");
         std::fs::rename(out.with_extension("tmp"), out).expect("publish the outcome");

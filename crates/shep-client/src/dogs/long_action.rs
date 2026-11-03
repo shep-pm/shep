@@ -11,7 +11,8 @@
 
 use core::fmt;
 use core::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -66,10 +67,12 @@ impl ActionId {
         Self(format!("{start:x}-{:x}-{count}", std::process::id()))
     }
 
-    /// The id a reply body carries, `None` for a body that is not one.
+    /// The id a reply body carries, `None` for a body that is not one or
+    /// whose id is empty.
     fn from_reply(body: &str) -> Option<Self> {
         let value: Value = serde_json::from_str(body).ok()?;
-        value.get("id")?.as_str().map(|id| Self(id.to_owned()))
+        let id = value.get("id")?.as_str().filter(|id| !id.is_empty())?;
+        Some(Self(id.to_owned()))
     }
 }
 
@@ -119,6 +122,14 @@ pub enum LongActionError {
         /// What the callee said went wrong.
         error: String,
     },
+    /// The callee published an event for this action that is neither a
+    /// result nor an error.
+    Malformed {
+        /// The action the event names.
+        id: ActionId,
+        /// The event's payload as the callee sent it.
+        payload: String,
+    },
     /// No result arrived within the caller's timeout. The work may still
     /// be running.
     TimedOut {
@@ -142,6 +153,9 @@ impl fmt::Display for LongActionError {
             Self::NotDelivered(why) => write!(f, "the action was not delivered: {why}"),
             Self::NoId { body } => write!(f, "the callee did not answer with an action id: {body}"),
             Self::Failed { id, error } => write!(f, "action {id} failed: {error}"),
+            Self::Malformed { id, payload } => {
+                write!(f, "action {id} ended with an unreadable event: {payload}")
+            }
             Self::TimedOut { id, after } => {
                 write!(f, "action {id} sent no result within {after:?}")
             }
@@ -167,12 +181,72 @@ pub(super) fn done_payload(id: &ActionId, outcome: Result<Value, String>) -> Val
     }
 }
 
+/// The result topics a dog's waits are listening on.
+///
+/// A connection holds one topic filter and a `Subscribe` replaces it, so
+/// waits on different callees must send the union of their topics.
+#[derive(Debug, Default)]
+pub(super) struct Waits {
+    /// Held across a `Subscribe`, so the filters reach the shepherd in the
+    /// order their unions were made.
+    order: tokio::sync::Mutex<()>,
+    /// Waiting count per topic. Never held across an await.
+    topics: Mutex<BTreeMap<String, usize>>,
+}
+
+/// One wait's claim on a topic, released when the wait ends.
+struct Listening<'a> {
+    waits: &'a Waits,
+    topic: String,
+}
+
+impl Waits {
+    /// Starts hearing `topic` alongside every other topic being waited on.
+    async fn listen<'a>(
+        &'a self,
+        client: &ReconnectingClient,
+        topic: String,
+    ) -> Result<(EventStream, Listening<'a>), RequestError> {
+        let _order = self.order.lock().await;
+        let listening = self.claim(topic);
+        let topics = self.topics();
+        let events = client.subscribe(topics).await?;
+        Ok((events, listening))
+    }
+
+    fn claim(&self, topic: String) -> Listening<'_> {
+        *self.lock().entry(topic.clone()).or_insert(0) += 1;
+        Listening { waits: self, topic }
+    }
+
+    fn topics(&self) -> Vec<String> {
+        self.lock().keys().cloned().collect()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, usize>> {
+        self.topics.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Drop for Listening<'_> {
+    fn drop(&mut self) {
+        let mut topics = self.waits.lock();
+        if let Some(count) = topics.get_mut(&self.topic) {
+            *count -= 1;
+            if *count == 0 {
+                topics.remove(&self.topic);
+            }
+        }
+    }
+}
+
 /// Subscribes to `callee`'s results, triggers `action`, and waits for the
 /// result carrying the id it answered with.
 ///
 /// Subscribing first is what stops a result published before the trigger's
 /// reply arrives from passing unheard.
 pub(super) async fn trigger_and_wait(
+    waits: &Waits,
     client: &ReconnectingClient,
     callee: &str,
     action: &str,
@@ -180,8 +254,8 @@ pub(super) async fn trigger_and_wait(
     timeout: Duration,
 ) -> Result<ActionDone, LongActionError> {
     let topic = format!("dog.{callee}.{DONE_KIND}");
-    let mut events = client
-        .subscribe(vec![topic])
+    let (mut events, _listening) = waits
+        .listen(client, topic)
         .await
         .map_err(|error| refused(error, format!("events:dog.{callee}")))?;
 
@@ -252,16 +326,28 @@ async fn result_for(
                 if payload.get("id").and_then(Value::as_str) != Some(id.as_str()) {
                     continue;
                 }
-                return match payload.get("error").and_then(Value::as_str) {
-                    Some(error) => Err(LongActionError::Failed {
-                        id: id.clone(),
-                        error: error.to_owned(),
-                    }),
-                    None => Ok(payload.get("result").cloned().unwrap_or(Value::Null)),
-                };
+                return outcome_of(id, &payload);
             }
             Some(Ok(_other)) => {}
         }
+    }
+}
+
+/// What a result event for `id` says: its `error` when it has one, else its
+/// `result`. An `error` that is not text, or an event with neither, is
+/// [`LongActionError::Malformed`], so a callee's slip is not read as success.
+fn outcome_of(id: &ActionId, payload: &Value) -> Result<Value, LongActionError> {
+    let malformed = || LongActionError::Malformed {
+        id: id.clone(),
+        payload: payload.to_string(),
+    };
+    match payload.get("error") {
+        Some(Value::String(error)) => Err(LongActionError::Failed {
+            id: id.clone(),
+            error: error.clone(),
+        }),
+        Some(_) => Err(malformed()),
+        None => payload.get("result").cloned().ok_or_else(malformed),
     }
 }
 
@@ -294,7 +380,7 @@ mod tests {
 
     #[test]
     fn a_reply_that_is_not_an_id_is_not_taken_for_one() {
-        for body in ["swept", "{}", r#"{"id":7}"#, ""] {
+        for body in ["swept", "{}", r#"{"id":7}"#, r#"{"id":""}"#, ""] {
             assert_eq!(ActionId::from_reply(body), None, "{body:?}");
         }
     }
@@ -310,5 +396,43 @@ mod tests {
             done_payload(&id, Err("disk full".to_owned())),
             json!({ "id": "abc", "error": "disk full" })
         );
+    }
+
+    #[test]
+    fn an_event_that_is_neither_a_result_nor_an_error_is_not_a_success() {
+        let id = ActionId("abc".to_owned());
+        assert_eq!(
+            outcome_of(&id, &json!({ "id": "abc", "result": null })).unwrap(),
+            Value::Null
+        );
+        for payload in [
+            json!({ "id": "abc" }),
+            json!({ "id": "abc", "error": 7 }),
+            json!({ "id": "abc", "error": null, "result": 1 }),
+        ] {
+            let error = outcome_of(&id, &payload).unwrap_err();
+            assert!(
+                matches!(error, LongActionError::Malformed { .. }),
+                "{payload}"
+            );
+        }
+        let error = outcome_of(&id, &json!({ "id": "abc", "error": "disk full" })).unwrap_err();
+        assert!(matches!(error, LongActionError::Failed { error, .. } if error == "disk full"));
+    }
+
+    #[test]
+    fn waits_on_two_topics_listen_to_both_until_each_ends() {
+        let waits = Waits::default();
+
+        let first = waits.claim("dog.a.action.done".to_owned());
+        let second = waits.claim("dog.b.action.done".to_owned());
+        let again = waits.claim("dog.a.action.done".to_owned());
+        assert_eq!(waits.topics(), ["dog.a.action.done", "dog.b.action.done"]);
+
+        drop(first);
+        assert_eq!(waits.topics(), ["dog.a.action.done", "dog.b.action.done"]);
+        drop(again);
+        drop(second);
+        assert!(waits.topics().is_empty());
     }
 }

@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::DogSectionToml;
 
-use super::long_action::{self, ActionDone, ActionId, LongActionError};
+use super::long_action::{self, ActionDone, ActionId, LongActionError, Waits};
 use super::{DogIdentity, SectionError, ShepherdError, link, parse_section};
 use crate::ReconnectingClient;
 
@@ -42,6 +42,7 @@ pub struct DogRuntime {
     section: DogSectionToml,
     paths: ShepPaths,
     identity: DogIdentity,
+    waits: Waits,
 }
 
 impl DogRuntime {
@@ -66,6 +67,7 @@ impl DogRuntime {
             section,
             paths,
             identity,
+            waits: Waits::default(),
         })
     }
 
@@ -109,6 +111,8 @@ impl DogRuntime {
     /// Holders of `events:dog.<name>` all hear it, and the caller picks its
     /// own out by id. The dog declares [`DONE_KIND`](super::DONE_KIND) with
     /// [`Probe::event`](super::Probe::event) first, or the shepherd refuses.
+    /// So does a dog whose name contains a dot: it cannot publish at all, so
+    /// no caller will hear its results.
     ///
     /// # Errors
     ///
@@ -126,10 +130,10 @@ impl DogRuntime {
     /// the result of the long action it answers with.
     ///
     /// Subscribes to `callee`'s results before it triggers, so a result
-    /// published at once is not missed. That subscription replaces any other
-    /// this connection holds. The caller needs `events:dog.<callee>` as well
-    /// as `dogs.trigger:<callee>`. The timeout starts once the callee has
-    /// answered with its id.
+    /// published at once is not missed. Waits running at once share one
+    /// subscription, which replaces any other this connection holds. The
+    /// caller needs `events:dog.<callee>` and `dogs.trigger:<callee>`. The
+    /// timeout starts once the callee has answered with its id.
     ///
     /// # Errors
     ///
@@ -142,7 +146,8 @@ impl DogRuntime {
         params: Option<&str>,
         timeout: Duration,
     ) -> Result<ActionDone, LongActionError> {
-        long_action::trigger_and_wait(&self.client, callee, action, params, timeout).await
+        long_action::trigger_and_wait(&self.waits, &self.client, callee, action, params, timeout)
+            .await
     }
 
     /// The connection, which re-establishes itself across a handover.

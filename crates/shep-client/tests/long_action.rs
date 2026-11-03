@@ -44,14 +44,23 @@ fn example() -> PathBuf {
 
 /// The callee: speaks the channel and declares the one kind it publishes.
 fn callee() -> DogSpec {
-    spec("callee", "callee", &[], true, true)
+    callee_named("callee")
+}
+
+fn callee_named(name: &str) -> DogSpec {
+    spec(name, "callee", &[], true, true)
 }
 
 /// A caller holding `grants`.
 fn caller(name: &str, grants: &[&str], params: &str) -> DogSpec {
+    caller_of(name, "callee", grants, params)
+}
+
+/// A caller of every dog in `callees`, commas between names.
+fn caller_of(name: &str, callees: &str, grants: &[&str], params: &str) -> DogSpec {
     let mut dog = spec(name, "caller", grants, false, false);
     dog.env
-        .insert("LONG_ACTION_CALLEE".to_owned(), "callee".to_owned());
+        .insert("LONG_ACTION_CALLEE".to_owned(), callees.to_owned());
     dog.env
         .insert("LONG_ACTION_PARAMS".to_owned(), params.to_owned());
     dog
@@ -133,7 +142,14 @@ impl Shepherd {
 
     /// Lets the callers start, once the callee is answering triggers.
     async fn go(&self) {
-        self.read("callee.ready").await;
+        self.go_after(&["callee"]).await;
+    }
+
+    /// Lets the callers start, once each of `callees` is answering triggers.
+    async fn go_after(&self, callees: &[&str]) {
+        for callee in callees {
+            self.read(&format!("{callee}.ready")).await;
+        }
         std::fs::write(self.home.join("go"), "").unwrap();
     }
 
@@ -222,5 +238,34 @@ async fn a_caller_without_the_events_grant_is_told_which_grant_it_lacks() {
 
     assert!(outcome.starts_with("err "), "{outcome}");
     assert!(outcome.contains("`events:dog.callee`"), "{outcome}");
+    shepherd.shutdown().await;
+}
+
+/// One connection holds one topic filter, so a second wait must add its
+/// callee's topic to the first's rather than replace it.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_caller_waiting_on_two_callees_at_once_hears_both() {
+    let grants = [
+        "dogs.trigger:callee",
+        "events:dog.callee",
+        "dogs.trigger:other",
+        "events:dog.other",
+    ];
+    let shepherd = Shepherd::boot(vec![
+        callee(),
+        callee_named("other"),
+        caller_of("caller", "callee,other", &grants, "600:both"),
+    ])
+    .await;
+    shepherd.go_after(&["callee", "other"]).await;
+
+    let outcome = shepherd.read("caller.out").await;
+
+    let lines: Vec<&str> = outcome.lines().collect();
+    assert_eq!(lines.len(), 2, "{outcome}");
+    for line in &lines {
+        assert!(line.starts_with("ok "), "{outcome}");
+        assert!(line.ends_with(r#"{"built":"both"}"#), "{outcome}");
+    }
     shepherd.shutdown().await;
 }

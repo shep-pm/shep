@@ -71,7 +71,9 @@ shepherd.on_action("build", move |_params, _name| {
     let runtime = Arc::clone(&runtime);
     handle.spawn(async move {
         let outcome = run_build().await.map_err(|err| err.to_string());
-        let _ = runtime.finish_action(&id, outcome).await;
+        if let Err(err) = runtime.finish_action(&id, outcome).await {
+            eprintln!("build result not published: {err}");
+        }
     });
     reply
 });`;
@@ -676,7 +678,8 @@ shep-channel: true`}</CodeBlock>
       <code>dogs.trigger:&lt;callee&gt;</code>, and the error names the one
       it lacks. Every holder of <code>events:dog.&lt;callee&gt;</code> hears
       every result, so the id correlates and keeps nothing private. The
-      subscription replaces any other the caller's connection holds.
+      subscription replaces any other the caller's connection holds. A callee
+      with a dot in its name cannot publish, so it cannot finish a long action.
     </p>
 
     <h3 id="being-asked-about-its-settings">Being asked about a write to its settings</h3>
