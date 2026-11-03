@@ -139,7 +139,12 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 5490 on #1400 for `launch`: a dog adopted as `sandbox` is
   // refused without it, and an author has to know the manifest field is what
   // that refusal asks for. The ceiling sits about 30 words above the page.
-  "writing-a-dog": 5540,
+  //
+  // Raised from 5540 on #1428 for the dog settings standard: "Reading a
+  // sheep's own table" now teaches one type, `#[shep(dog_wide)]`, `serves`
+  // and `sheep_settings`, and keeps the older two-type form in a line. The
+  // ceiling sits about 5 words above the page.
+  "writing-a-dog": 5570,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

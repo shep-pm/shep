@@ -4,6 +4,9 @@
 //! dog's default; a sheep with no table for the dog gets none. The shepherd
 //! layers at read time and holds nothing of it in `AppConfig::dogs`.
 //!
+//! A dog on the one-type standard layers its own section the same way,
+//! in `shep-client`, through [`DogDefaults::layered`].
+//!
 //! Same on-disk shape as [`crate::overrides`]: a read-modify-rename under a
 //! [`crate::file_lock`].
 
