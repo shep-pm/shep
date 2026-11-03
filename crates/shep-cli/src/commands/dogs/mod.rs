@@ -33,6 +33,7 @@ mod grant;
 mod grants;
 mod install;
 mod install_download;
+mod install_keep;
 mod receipt;
 mod remove;
 mod second_look;

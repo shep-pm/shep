@@ -316,3 +316,50 @@ async fn the_cargo_flag_builds_even_when_a_prebuilt_exists() {
     assert_eq!(receipt["command"][0], "cargo");
     assert!(receipt.get("url").is_none(), "{receipt}");
 }
+
+#[tokio::test]
+async fn a_reinstall_that_adopt_refuses_leaves_the_enabled_dogs_binary_and_receipt_as_they_were() {
+    let fixture = Fixture::new();
+    let reach = fixture.reach(from_the_row());
+    let row = row(DogSourceKind::Cargo {
+        version: Some("0.2.4".to_owned()),
+        sha256: BTreeMap::new(),
+    });
+    let (code, _out, err) = run(&fixture, &row, &args(true, false), &reach, typing(None)).await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let (binary, receipt_file) = (
+        installed_binary(&fixture),
+        fixture.paths.dogs_dir.join("otel/receipt.json"),
+    );
+    let (kept_binary, kept_receipt) = (
+        std::fs::read(&binary).unwrap(),
+        std::fs::read(&receipt_file).unwrap(),
+    );
+
+    // A different build this time, one that requires a permission this shep
+    // does not know, which `adopt` refuses.
+    let unknown = MANIFEST.replace(
+        "\"permissions\":[",
+        "\"permissions\":[{\"name\":\"future.thing\",\"required\":true,\"reason\":\"x\"},",
+    );
+    let rebuilt = String::from_utf8(dog_binary())
+        .unwrap()
+        .replace(MANIFEST, &unknown);
+    std::fs::write(fixture.dir.path().join("built-dog"), rebuilt).unwrap();
+    let (code, _out, _err) = run(&fixture, &row, &args(true, false), &reach, typing(None)).await;
+
+    assert_ne!(code, ExitCode::Success);
+    assert_eq!(std::fs::read(&binary).unwrap(), kept_binary);
+    assert_eq!(std::fs::read(&receipt_file).unwrap(), kept_receipt);
+    assert!(enabled(&fixture));
+    let parked: Vec<_> = std::fs::read_dir(fixture.paths.dogs_dir.join("otel"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert!(
+        parked
+            .iter()
+            .all(|name| !name.to_string_lossy().contains("kept")),
+        "{parked:?}"
+    );
+}

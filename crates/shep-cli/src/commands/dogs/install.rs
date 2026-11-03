@@ -26,6 +26,7 @@ use crate::output::{AvailableDogRows, Streams, emit, write_outcome};
 use super::adopt::{Flow, adopt_with, collides_with_a_verb, lookup_on_path};
 use super::consent::Input;
 use super::install_download::download;
+use super::install_keep::Kept;
 use super::receipt::{self, Installer, Receipt};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
 
@@ -300,6 +301,17 @@ pub(super) async fn install_dog(
     let binary = root
         .join("bin")
         .join(format!("{package}{}", std::env::consts::EXE_SUFFIX));
+    // A refusal before `adopt` registers the new binary puts these back.
+    let receipt_file = receipt::receipt_path(paths, name);
+    let kept = match Kept::park(&[&binary, &receipt_file]) {
+        Ok(kept) => kept,
+        Err(err) => {
+            return streams.fail(
+                ExitCode::Failure,
+                &format!("setting aside the installed {name}: {err}"),
+            );
+        }
+    };
     let installed = match plan {
         Plan::Download(prebuilt) => {
             if let Err(code) = download(streams, paths, &reach.assets, &prebuilt, &binary).await {
@@ -372,7 +384,13 @@ pub(super) async fn install_dog(
         verb: "install",
         enable: !args.no_enable,
     };
-    adopt_with(streams, paths, &adopting, input, flow, note.as_deref()).await
+    let config_before = std::fs::read(&paths.daemon_config).ok();
+    let code = adopt_with(streams, paths, &adopting, input, flow, note.as_deref()).await;
+    // Once `shep.toml` has changed the new binary is what was adopted.
+    if code == ExitCode::Success || std::fs::read(&paths.daemon_config).ok() != config_before {
+        kept.commit();
+    }
+    code
 }
 
 /// How `install` gets the binary.

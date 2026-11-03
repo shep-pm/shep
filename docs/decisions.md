@@ -2835,10 +2835,10 @@ The successor takes each descriptor back, checks that it is a listening TCP sock
 
 ### `shep install` downloads the prebuilt binary first and follows one redirect for it
 
-With no flag, `shep install` downloads the binary a row hashes for the triple shep was built for, and builds with cargo only when the row hashes none or `--cargo` is given. The download must hash to the row's sha256 before it is moved into `$SHEP_HOME/dogs/<name>/<version>/`; a mismatch refuses, names both hashes and leaves nothing behind. The asset fetch follows exactly one redirect, from `github.com` to GitHub's release asset host, over HTTPS. A second hop, another host and plain HTTP refuse. The index fetch still refuses every redirect. The receipt records the download URL where a build records its command line.
+With no flag, `shep install` downloads the binary a row hashes for the triple shep was built for, and builds with cargo only when the row hashes none or `--cargo` is given. The download must hash to the row's sha256 before it is moved into `$SHEP_HOME/dogs/<name>/<version>/`; a mismatch refuses, names both hashes and leaves nothing behind. The asset fetch follows exactly one redirect, from `github.com` to GitHub's release asset host, over HTTPS. A second hop, another host and plain HTTP refuse. The index fetch still refuses every redirect. The receipt records the download URL where a build records its command line. A reinstall parks the dog's old receipt and same-version binary first, and puts them back when `adopt` refuses before it changes `shep.toml`.
 
 **Why:** #1448, under #1075. A cargo build is slow, and the row's hash already pins the bytes, so the crates.io publisher check has nothing to add on this path and is skipped. GitHub answers a release asset URL with a redirect, so a client that refuses every redirect cannot fetch it.
 
 **What it costs:** the allowed asset hosts are a list in `crates/shep-cli/src/fetch/asset.rs`, and a host GitHub starts serving assets from is refused until the list gains it. A download is read whole into memory, capped at 128 MiB.
 
-`verified crates/shep-cli/src/fetch/asset.rs, crates/shep-cli/src/commands/dogs/install_download.rs, crates/shep-cli/src/commands/dogs/install_download_tests.rs`
+`verified crates/shep-cli/src/fetch/asset.rs, crates/shep-cli/src/commands/dogs/install_download.rs, crates/shep-cli/src/commands/dogs/install_download_tests.rs, crates/shep-cli/src/commands/dogs/install_keep.rs`
