@@ -7,8 +7,7 @@
 //!
 //! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
 //! which [`join_on_exec`] creates and the child joins before its exec.
-//! [`remove_if_empty`] drops it once the sheep is reaped, and [`remove_stale`]
-//! drops what a crash left.
+//! [`remove_if_empty`] and [`remove_stale`] drop it after the sheep or a crash.
 
 use core::fmt;
 use std::ffi::OsStr;
