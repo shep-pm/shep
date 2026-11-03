@@ -215,6 +215,11 @@ mod tests {
                     "normalize, off Linux only: normalize::tests",
                 ),
                 (
+                    "max_cpu_cores",
+                    "any value on macOS or Windows",
+                    "normalize, off Linux only: normalize::tests",
+                ),
+                (
                     "user",
                     "a name with no passwd entry",
                     "shep-daemon's privilege::resolve, at spawn",

@@ -26,6 +26,14 @@ pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "liveness_probe",
 ];
 
+/// The `AppConfig` fields the shepherd writes into a running sheep's cgroup
+/// as they change, rather than leaving for its next spawn.
+///
+/// Not in [`EXTRAS_FIELDS`]: no lifecycle extra reads them, so a re-arm would
+/// rebuild workers for nothing.
+#[cfg(target_os = "linux")]
+pub(super) const CGROUP_FIELDS: &[&str] = &["max_cpu_cores"];
+
 /// Records what a load's `env` branch merged. The file's env keys are
 /// established from here, and an override of one is spent. A tombstone is
 /// spent by nothing a load can do: it means a key is absent.

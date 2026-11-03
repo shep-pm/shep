@@ -2825,6 +2825,16 @@ The shepherd reads `oom_kill` from `memory.events.local` before the spawn (and w
 
 `verified crates/shep-core/src/config/memory_enforce.rs, crates/shep-core/src/protocol/mod.rs (MEMORY_ENFORCE_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_exit.rs, crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/extras/mod.rs`
 
+### `max_cpu_cores` is a `cpu.max` quota on Linux and is refused elsewhere
+
+`max_cpu_cores` takes a positive decimal and the shepherd writes `<cores x 100000> 100000` to the sheep's `cpu.max` at spawn, and again on a live change. It is docker's `--cpus`: a quota, never affinity, and nothing is killed. `normalize` refuses it on macOS and Windows. On Linux a shepherd with no cgroup refuses the start and names the reason.
+
+**Why:** a quota needs no placement decision, and the kernel throttles the tree wherever it runs. A Windows job-object CPU rate limit is a separate change, so Windows refuses the key for now. `LimitEnforcer` is unchanged because a quota has no breach to report.
+
+**What it costs:** `normalize` refuses a quota under 0.01 cores, the kernel's 1000 microsecond minimum, so a write cannot fail on the value. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/cpu_cores.rs, crates/shep-core/src/protocol/mod.rs (MAX_CPU_CORES_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
+
 ## Installing a dog
 
 ### `shep install` runs the installer, reversing "print, never execute"

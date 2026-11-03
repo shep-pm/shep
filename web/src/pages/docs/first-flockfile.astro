@@ -127,6 +127,7 @@ const fieldGroups: FieldGroup[] = [
     fields: [
       { name: "max_memory", type: "size?", default: "none", does: "Memory ceiling: the polling enforcer restarts the sheep above it." },
       { name: "memory_enforce", type: "\"poll\" | \"kernel\"", default: "poll", does: "Who enforces max_memory. poll samples the sheep and restarts it above the ceiling, which resets max_restarts. kernel writes the ceiling to the sheep's cgroup memory.max, so the kernel caps the whole tree at the moment of allocation (it also sets memory.swap.max to 0, so swap does not stretch the ceiling), and an OOM kill counts against max_restarts until the sheep parks. kernel needs max_memory, Linux and a delegated cgroup v2 subtree; macOS, Windows and a host with no cgroup are refused, never polled in silence." },
+      { name: "max_cpu_cores", type: "number?", default: "none", does: "CPU quota in cores, as docker run --cpus: 1.5 lets the sheep and its lambs use one and a half cores' worth of CPU time. A quota, not affinity: the tree is throttled through the cgroup cpu.max, never killed, and a change reaches a running sheep at once. Needs Linux and a delegated cgroup v2 subtree; macOS, Windows and a host with no cgroup refuse it. Values under 0.01, which the kernel cannot hold, are refused." },
       { name: "fold", type: "string?", default: "none", does: "Names the fold (group) this sheep belongs to." },
       { name: "depends_on", type: "string[]", default: "[]", does: "Sheep to start before this one, when shep is starting more than one thing at once. Naming a dog only warns and this app starts anyway; [daemon] boot_first_dogs is the only lever that moves a dog. Ordering, not a guarantee: a dependency with no readiness signal is waited out rather than waited for, and one that is missing or sets autostart = false warns and lets this app start anyway. Names, never name:slot. Read once when a batch is ordered, so an edit reaches the next boot, muster, staged start, restart or reload rather than the running child." },
       { name: "user", type: "string?", default: "none", does: "Run as this user (unix)." },
@@ -203,7 +204,7 @@ script = "./server"`}</CodeBlock>
     </p>
     <p>
       <code>--all</code> writes every field the grammar has instead of the
-      handful worth meeting on day one, which is 96 lines of TOML against
+      handful worth meeting on day one, which is 98 lines of TOML against
       the 12 above. <code>--force</code> replaces a Flockfile that is
       already there, keeping <em>that</em> file's format rather than the
       default one, so forcing over a <code>.yaml</code> writes YAML instead

@@ -117,6 +117,20 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
+    /// `max_cpu_cores` is below 0.01, negative or not a finite number: a quota
+    /// `cpu.max` cannot hold, since the kernel refuses under 1000 microseconds
+    /// per period, and zero would stall the sheep outright. Carries the app
+    /// name.
+    MaxCpuCoresOutOfRange {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_cpu_cores` on a platform with no cgroups: anything but Linux.
+    /// Carries the app name.
+    MaxCpuCoresUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
     /// `action_timeout` is above `normalize`'s own ceiling: a wait no
     /// RPC caller could ever be given enough deadline to outlast, since the
     /// daemon clamps every deadline a caller can ask for. Carries the app
@@ -384,6 +398,19 @@ impl fmt::Display for NormalizeError {
                     f,
                     "sheep `{name}` has memory_enforce = \"kernel\", which needs Linux cgroups; \
                      use \"poll\" on this platform"
+                )
+            }
+            Self::MaxCpuCoresOutOfRange { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has a max_cpu_cores below 0.01 cores, or not a number"
+                )
+            }
+            Self::MaxCpuCoresUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has max_cpu_cores, which needs Linux cgroups; \
+                     remove it on this platform"
                 )
             }
             Self::ActionTimeoutTooLong { name, value, max } => {

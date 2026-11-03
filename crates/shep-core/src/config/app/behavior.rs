@@ -45,6 +45,7 @@ impl Default for AppConfig {
             action_timeout: UpDuration::from_millis(3000),
             max_memory: None,
             memory_enforce: MemoryEnforce::Poll,
+            max_cpu_cores: None,
             watch: false,
             ignore_watch: Vec::new(),
             watch_delay: None,
