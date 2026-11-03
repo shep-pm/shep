@@ -21,7 +21,7 @@ use shep_core::protocol::Request;
 use toml_edit::DocumentMut;
 
 use self::plan::{field_changes, plan_dog_table, plan_section};
-use self::schema::{dog_schema, known_dogs};
+use self::schema::{dog_schema, dog_standard, known_dogs};
 use self::value::value_of;
 use crate::cli::SetArgs;
 use crate::commands::copy;
@@ -38,6 +38,9 @@ mod default_dog_tests;
 #[cfg(test)]
 mod default_refusal_tests;
 mod defaults;
+mod dog_wide;
+#[cfg(test)]
+mod dog_wide_flow_tests;
 #[cfg(test)]
 mod defaults_routing_tests;
 mod edit;
@@ -334,14 +337,25 @@ async fn set_sheep(
             return CopyRefusal::Refused(address::ENV_NOT_WRITTEN.to_string()).report(streams);
         }
         ConfigPath::Dog { dog, keys } => {
+            let standard = dog_standard(dog, ask.paths);
+            if let Some((_, standard)) = &standard {
+                if let Some(refusal) =
+                    dog_wide::dog_wide_refusal(standard, name, dog, keys, &ask.value)
+                {
+                    return refusal.report(streams);
+                }
+            }
             let plan = match plan_dog_table(name, dog, keys, &config, &ask.value) {
                 Ok(plan) => plan,
                 Err(refusal) => return refusal.report(streams),
             };
-            // The per-sheep half of the dog's schema, the same one lookout
-            // builds its rows from, and the only schema that speaks for a
-            // sheep's table for a dog.
-            let schema = dog_schema(dog, ask.paths).and_then(|root| sheep_schema(&root));
+            // The schema lookout builds this table's rows from: the dog's one
+            // schema without its dog-wide keys for a dog that follows the
+            // standard, the per-sheep half of two schemas otherwise.
+            let schema = match standard {
+                Some((root, standard)) => Some(standard.sheep_form(&root)),
+                None => dog_schema(dog, ask.paths).and_then(|root| sheep_schema(&root)),
+            };
             Plan { schema, ..plan }
         }
     };

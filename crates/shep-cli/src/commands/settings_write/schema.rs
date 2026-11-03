@@ -4,11 +4,13 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value as Json;
+use shep_core::dogs::manifest::Serves;
 use shep_core::paths::ShepPaths;
 
 use crate::commands::dogs::{DogSchema, ManifestRead, VERSION_BUDGET, ask_schema, read_manifest};
 use crate::commands::shep_toml::ShepToml;
-use crate::dog::builtin_schema;
+use crate::dog::{builtin_manifest, builtin_schema};
+use crate::dog_settings::standard::Standard;
 
 /// A dog the shepherd knows, which is a wider set than the dogs it runs.
 ///
@@ -40,8 +42,17 @@ pub(super) fn known_dogs(paths: &ShepPaths) -> BTreeSet<String> {
 /// "without a schema nothing is edited": shep is not the authority on a dog's
 /// config beyond what that dog printed.
 pub(super) fn dog_schema(name: &str, paths: &ShepPaths) -> Option<Json> {
+    dog_schema_serving(name, paths).map(|(schema, _)| schema)
+}
+
+/// [`dog_schema`], and which sheep the dog's manifest says it serves.
+///
+/// A dog without a manifest, and one probed for its schema alone, serves
+/// [`Serves::OptedIn`].
+pub(super) fn dog_schema_serving(name: &str, paths: &ShepPaths) -> Option<(Json, Serves)> {
     if let Some(schema) = builtin_schema(name) {
-        return Some(schema);
+        let serves = builtin_manifest(name).map_or(Serves::OptedIn, |manifest| manifest.serves);
+        return Some((schema, serves));
     }
     let adopted = ShepToml::read_only(&paths.daemon_config)
         .ok()
@@ -50,10 +61,18 @@ pub(super) fn dog_schema(name: &str, paths: &ShepPaths) -> Option<Json> {
     if let Ok(ManifestRead::Read(manifest)) =
         read_manifest(&path, &paths.home, name, VERSION_BUDGET)
     {
-        return manifest.settings;
+        let serves = manifest.serves;
+        return manifest.settings.map(|schema| (schema, serves));
     }
     match ask_schema(&path, &paths.home, name, VERSION_BUDGET) {
-        DogSchema::Published(schema) => Some(schema),
+        DogSchema::Published(schema) => Some((schema, Serves::OptedIn)),
         DogSchema::Silent | DogSchema::Unreadable => None,
     }
+}
+
+/// `name`'s schema and the standard it follows, for a dog that follows it.
+pub(super) fn dog_standard(name: &str, paths: &ShepPaths) -> Option<(Json, Standard)> {
+    let (schema, serves) = dog_schema_serving(name, paths)?;
+    let standard = Standard::recognise(&schema, serves)?;
+    Some((schema, standard))
 }
