@@ -76,7 +76,6 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         overrides: dir.path().join("overrides.json"),
         secrets: dir.path().join("secrets.json"),
         secrets_cache: dir.path().join("secrets-cache.json"),
-        dog_defaults: dir.path().join("dog-defaults.json"),
         dog_index_cache: dir.path().join("cache/dogs.json"),
         dogs_dir: dir.path().join("dogs"),
     };

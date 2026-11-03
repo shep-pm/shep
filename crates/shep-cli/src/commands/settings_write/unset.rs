@@ -23,7 +23,7 @@ use super::value::table_json;
 use super::{Flags, Plan, Verb, Write, WriteRefusal, defaults_in, path_in, resolve_dog, run};
 use crate::cli::UnsetArgs;
 use crate::commands::copy;
-use crate::commands::copy::address::{self, ConfigPath, DEFAULTS, FlockNames};
+use crate::commands::copy::address::{self, ConfigPath, FlockNames};
 use crate::commands::copy::plan::{Change, ChangeKind, collect_changes, walk};
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::settings_read;
@@ -57,14 +57,9 @@ pub(crate) async fn unset(
         dry_run: args.dry_run,
     };
     // Before any sheep name: a sheep named like a dog does not take the dog's
-    // defaults address.
+    // retired defaults address.
     if let Some(defaults) = defaults_in(&segments, &flock, paths) {
-        return WriteRefusal::Refused(format!(
-            "`shep unset` does not remove a key of `{dog}`'s defaults: `shep set {dog}.{DEFAULTS} \
-             <table>` writes the whole default, and `shep set {dog}.{DEFAULTS} {{}}` removes it",
-            dog = defaults.dog
-        ))
-        .report(streams);
+        return WriteRefusal::Refused(address::retired_defaults(&defaults)).report(streams);
     }
     if let Some(name) = address::longest_in(&segments, &flock.sheep) {
         return unset_sheep(client, streams, paths, &name, &segments, &flock, flags).await;

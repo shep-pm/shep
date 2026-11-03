@@ -5,11 +5,11 @@
 //! belongs to neither: the cron-sleep default, and the one case that drives
 //! `boot`'s own extras reporter over the whole production chain.
 
-mod dog_defaults;
 mod dog_names;
 mod dogs;
 mod dogs_at_rest;
 mod readiness;
+mod retired_files;
 
 use crate::boot::*;
 use crate::fake::{FIRST_SCRIPTED_PID, ProcScript, ScriptedRunner, ScriptedSweep};

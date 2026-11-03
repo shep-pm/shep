@@ -169,10 +169,6 @@ pub struct ShepPaths {
     /// Derived and safe to delete, unlike [`Self::secrets`]: a provider dog
     /// rewrites it on its next push.
     pub secrets_cache: PathBuf,
-    /// Operator-set defaults for a dog's per-sheep tables: `dog-defaults.json`
-    ///
-    /// Written by the shepherd; see [`crate::dog_defaults`].
-    pub dog_defaults: PathBuf,
     /// The community dog index as last fetched: `cache/dogs.json`
     ///
     /// Derived and safe to delete: the next read fetches it again.
@@ -254,7 +250,6 @@ impl ShepPaths {
             overrides: home.join("overrides.json"),
             secrets: home.join("secrets.json"),
             secrets_cache: home.join("secrets-cache.json"),
-            dog_defaults: home.join("dog-defaults.json"),
             dog_index_cache: home.join("cache").join("dogs.json"),
             dogs_dir: home.join("dogs"),
             run,
@@ -399,10 +394,6 @@ mod tests {
         assert_eq!(
             p.secrets_cache,
             Path::new("/home/ada/.shep/secrets-cache.json")
-        );
-        assert_eq!(
-            p.dog_defaults,
-            Path::new("/home/ada/.shep/dog-defaults.json")
         );
         assert_eq!(
             p.dog_index_cache,

@@ -9,9 +9,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value, json};
 
-use shep_core::config::DogTable;
-
-use super::table::{default_refusals, table_refusal, touched_refusal};
+use super::table::{table_refusal, touched_refusal};
 
 /// A dog's own section schema: a bounded integer, a list whose item schema
 /// publishes `minLength`, a closed set, a nested table with a `pattern`, an
@@ -790,113 +788,5 @@ fn a_touched_union_missing_a_required_field_is_refused_and_an_untouched_one_is_n
         touched_refusal(&schema(), &proposed, &touched(&[&["keep"]])),
         None,
         "an untouched union keeps its own business"
-    );
-}
-
-/// A default's value is judged by the sheep that read it: `a` and `c` read
-/// the bad `keep` and are named in name order, `b` holds its own good one and
-/// is not, and the default's own value is reported once, against the default,
-/// only when no sheep already names it.
-#[test]
-fn a_default_is_checked_against_the_layered_table_of_every_sheep_it_reaches() {
-    let default = DogTable::from(table(json!({ "keep": 100, "merge": "ask" })));
-    let sheep = std::collections::BTreeMap::from([
-        ("a".to_string(), DogTable::from(table(json!({})))),
-        ("b".to_string(), DogTable::from(table(json!({ "keep": 4 })))),
-        (
-            "c".to_string(),
-            DogTable::from(table(json!({ "merge": "auto" }))),
-        ),
-    ]);
-
-    let refused = default_refusals(&schema(), &default, &sheep, &touched(&[&["keep"]]));
-    assert_eq!(
-        refused
-            .sheep
-            .iter()
-            .map(|(name, refusal)| (name.as_str(), refusal.path.clone()))
-            .collect::<Vec<_>>(),
-        [
-            ("a", vec!["keep".to_string()]),
-            ("c", vec!["keep".to_string()])
-        ]
-    );
-    assert!(
-        refused.sheep[0].1.text.contains("keep"),
-        "{}",
-        refused.sheep[0].1.text
-    );
-    assert_eq!(refused.default, None, "a sheep already names that value");
-
-    assert!(
-        default_refusals(&schema(), &default, &sheep, &BTreeSet::new()).is_empty(),
-        "a default that puts no value anywhere is checked against nothing"
-    );
-
-    let reaches_nobody = std::collections::BTreeMap::new();
-    assert!(
-        default_refusals(&schema(), &default, &reaches_nobody, &touched(&[&["keep"]])).is_empty()
-    );
-}
-
-/// A sheep that holds its own `keep` hides the default's from the dog today,
-/// but resetting that `keep` exposes it again, so the default is judged on
-/// its own value and reported once, against the default.
-#[test]
-fn a_default_a_sheep_shadows_is_still_judged_by_its_own_value() {
-    let default = DogTable::from(table(json!({ "keep": 100 })));
-    let sheep = std::collections::BTreeMap::from([
-        ("a".to_string(), DogTable::from(table(json!({ "keep": 4 })))),
-        ("b".to_string(), DogTable::from(table(json!({ "keep": 5 })))),
-    ]);
-
-    let refused = default_refusals(&schema(), &default, &sheep, &touched(&[&["keep"]]));
-    assert_eq!(refused.sheep, []);
-    let by_default = refused.default.expect("the default's own keep is over 64");
-    assert_eq!(by_default.path, ["keep"]);
-    assert!(by_default.text.contains("keep"), "{}", by_default.text);
-
-    let reaches_nobody = std::collections::BTreeMap::new();
-    assert!(
-        default_refusals(&schema(), &default, &reaches_nobody, &touched(&[&["keep"]])).is_empty(),
-        "a default that reaches no sheep is checked against nothing"
-    );
-    assert!(
-        default_refusals(&schema(), &default, &sheep, &touched(&[&["merge"]])).is_empty(),
-        "a path the write did not touch is not asked about"
-    );
-}
-
-/// A sheep naming the first bad path does not hide a later bad path no sheep
-/// names: `a` reads the bad `keep`, and both sheep hold their own `rate`, so
-/// only the default's `rate` is bad unnamed.
-#[test]
-fn a_default_refusal_a_sheep_does_not_name_is_kept_beside_one_it_does() {
-    let default = DogTable::from(table(json!({ "keep": 100, "rate": -1 })));
-    let sheep = std::collections::BTreeMap::from([
-        ("a".to_string(), DogTable::from(table(json!({ "rate": 2 })))),
-        (
-            "b".to_string(),
-            DogTable::from(table(json!({ "keep": 5, "rate": 3 }))),
-        ),
-    ]);
-
-    let refused = default_refusals(
-        &schema(),
-        &default,
-        &sheep,
-        &touched(&[&["keep"], &["rate"]]),
-    );
-    assert_eq!(
-        refused
-            .sheep
-            .iter()
-            .map(|(n, r)| (n.as_str(), r.path.clone()))
-            .collect::<Vec<_>>(),
-        [("a", vec!["keep".to_string()])]
-    );
-    assert_eq!(
-        refused.default.map(|r| r.path),
-        Some(vec!["rate".to_string()])
     );
 }
