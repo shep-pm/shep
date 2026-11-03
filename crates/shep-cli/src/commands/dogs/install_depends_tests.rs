@@ -193,7 +193,7 @@ async fn a_cycle_refuses_naming_the_dependency_before_anything_is_adopted() {
 }
 
 #[tokio::test]
-async fn a_no_at_the_dependencys_prompt_stops_the_install_and_leaves_it_disabled() {
+async fn a_no_at_the_prompt_of_a_dependency_stops_the_install_and_leaves_it_disabled() {
     let rotate = plain_log_rotate();
     let world = World::new(&[("shep-otel", OTEL), ("shep-log-rotate", &rotate)]);
     let index = [otel_row(), log_rotate_row("0.2.0")];
