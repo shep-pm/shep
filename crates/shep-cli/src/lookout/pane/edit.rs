@@ -139,7 +139,9 @@ impl ConfigPane {
             },
             None => None,
         };
-        let current = filed_here.or_else(|| self.stored_of(&field.key));
+        let current = filed_here
+            .or_else(|| self.stored_of(&field.key))
+            .or_else(|| self.values.get(&field.key));
         let next = match &field.kind {
             FieldKind::Bool => Value::Bool(!current.and_then(Value::as_bool).unwrap_or(false)),
             FieldKind::Choice(names) | FieldKind::Suggested(names) if !names.is_empty() => {

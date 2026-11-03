@@ -383,6 +383,7 @@ impl ConfigPane {
     pub(super) fn stored_of(&self, key: &str) -> Option<&Value> {
         self.values
             .get(key)
+            .filter(|_| !self.is_inherited(key))
             .or_else(|| self.entries.leaf(key).map(|leaf| leaf.stored))
             .or_else(|| self.arm_value(key))
     }
@@ -466,6 +467,11 @@ impl ConfigPane {
         else {
             return None;
         };
+        if value.as_value().is_null()
+            && let Some(text) = self.inherited_text(key)
+        {
+            return Some(format!("{text} (inherited)"));
+        }
         if let Some(text) = self.union_text(key) {
             return Some(text);
         }
@@ -487,7 +493,7 @@ impl ConfigPane {
         self.resolved(key, &self.value(key))
     }
 
-    fn resolved(&self, key: &str, raw: &str) -> String {
+    pub(super) fn resolved(&self, key: &str, raw: &str) -> String {
         match (self.entries.leaf(key), self.arm_field_of(key)) {
             (Some(leaf), _) => resolved_by_kind(leaf.field.value_kind, raw),
             (None, Some(arm)) => resolved_by_kind(arm.value_kind, raw),

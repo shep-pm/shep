@@ -77,7 +77,10 @@ async fn a_dog_serving_every_sheep_answers_for_a_sheep_with_no_table() {
 
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(out.contains("limit = 3 # inherited from [jobs]"), "{out}");
-    assert!(!out.contains("poll"), "a dog-wide key is not the sheep's: {out}");
+    assert!(
+        !out.contains("poll"),
+        "a dog-wide key is not the sheep's: {out}"
+    );
 }
 
 #[tokio::test]

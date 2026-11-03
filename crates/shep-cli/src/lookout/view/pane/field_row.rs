@@ -26,7 +26,8 @@ pub(super) fn section_header(label: &str, palette: Palette) -> Line<'static> {
 ///
 /// The flag matches `shep flock`'s CFG column: `!` for a field parked until
 /// a respawn, `*` for one an operator has overridden. Pending wins when both
-/// apply. The lock is a glyph, not a style, since a style says nothing in
+/// apply. `^` is a value the sheep's dog gives every sheep, which the sheep's
+/// own table does not set. The lock is a glyph, not a style, since a style says nothing in
 /// `plain`.
 pub(super) fn field_line(
     pane: &ConfigPane,
@@ -58,6 +59,7 @@ pub(super) fn leaf_line(
     let flag = match (pane.is_pending(&field.key), pane.is_overridden(&field.key)) {
         (true, _) => '!',
         (false, true) => '*',
+        (false, false) if pane.is_inherited(&field.key) => '^',
         (false, false) => ' ',
     };
     // A secret's value is never rendered, only whether there is one. A

@@ -30,6 +30,7 @@ mod section_write;
 #[cfg(test)]
 mod section_write_entries;
 mod sheep_dog;
+mod sheep_dog_inherit;
 mod tree;
 mod types;
 mod union;

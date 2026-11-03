@@ -38,12 +38,12 @@ pub mod secret;
 pub(crate) mod selector;
 pub mod serve;
 pub(crate) mod settings;
-#[cfg(test)]
-pub(crate) mod standard_dog_testing;
 pub(crate) mod settings_read;
 pub(crate) mod settings_write;
 pub(crate) mod shep_toml;
 pub mod signal;
+#[cfg(test)]
+pub(crate) mod standard_dog_testing;
 // `shep startup` installs a boot-time unit on unix: systemd, launchd, openrc,
 // or a BSD `rc.d` script. On Windows it registers a logon task instead, in
 // `logon_task`, whose rendering compiles everywhere so its tests run there.

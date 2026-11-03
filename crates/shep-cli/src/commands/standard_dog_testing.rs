@@ -10,7 +10,7 @@ use shep_client::testing::{control_address, fake_client_answering_refusals};
 use shep_core::config::AppConfig;
 use shep_core::dogs::manifest::{Manifest, Serves};
 use shep_core::protocol::{
-    DogSource, DogSectionToml, Envelope, ProcessInfo, Request, Response, SheepConfigView,
+    DogSectionToml, DogSource, Envelope, ProcessInfo, Request, Response, SheepConfigView,
 };
 use shep_core::status::ProcStatus;
 use tokio::sync::mpsc::UnboundedReceiver;

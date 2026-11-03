@@ -14,6 +14,7 @@ use super::super::edits::{EditKey, Edits};
 use super::super::field::{Flattened, flatten_values, flattened};
 use super::super::viewport::Viewport;
 use super::entries::EntryRows;
+use super::sheep_dog_inherit::Inherits;
 use super::union::arm_fields;
 use super::{ConfigPane, PaneEdit, PaneTarget};
 
@@ -30,7 +31,10 @@ pub(in crate::lookout) struct SheepDogTable {
     pub(super) paths: BTreeMap<String, Vec<String>>,
     /// The table as the shepherd holds it, keys the schema does not name
     /// included.
-    table: Map<String, Value>,
+    pub(super) table: Map<String, Value>,
+    /// What the dog's section gives every sheep, when the dog follows the
+    /// standard. See [`super::sheep_dog_inherit`].
+    pub(super) inherits: Option<Inherits>,
     /// The dog's `x-shep-sheep` answer, kept so a write can be checked
     /// against it. See [`crate::dog_settings::touched_refusal`].
     pub(super) schema: Value,
@@ -89,6 +93,7 @@ impl ConfigPane {
             dog_table: Some(Box::new(SheepDogTable {
                 paths,
                 table,
+                inherits: None,
                 schema: schema.clone(),
             })),
             reshapes: Arc::default(),
@@ -141,8 +146,10 @@ impl ConfigPane {
         let Some(state) = self.dog_table.as_mut() else {
             return;
         };
-        self.values = flatten_values(&table, &state.paths);
         state.table = table;
+        let (values, inherited) = state.displayed();
+        self.values = values;
+        state.set_inherited(inherited);
         self.entries = Arc::new(
             self.entries
                 .rebuilt(&self.fields, &state.paths, &self.values),

@@ -38,11 +38,11 @@ mod default_dog_tests;
 #[cfg(test)]
 mod default_refusal_tests;
 mod defaults;
+#[cfg(test)]
+mod defaults_routing_tests;
 mod dog_wide;
 #[cfg(test)]
 mod dog_wide_flow_tests;
-#[cfg(test)]
-mod defaults_routing_tests;
 mod edit;
 mod flow;
 #[cfg(test)]
