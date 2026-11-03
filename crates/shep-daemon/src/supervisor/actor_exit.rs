@@ -291,11 +291,25 @@ impl<R: ProcessRunner> Actor<R> {
         false
     }
 
+    /// Removes the cgroup of the sheep `id`, whose process and lambs are gone.
+    /// One that still holds a process stays, for the next boot to find.
+    #[cfg(target_os = "linux")]
+    fn remove_cgroup(&self, id: u32) {
+        if let Some(slot) = self.sheep.get(&id)
+            && let Some(dir) = self.cgroup_for(id, slot.entry.instance)
+            && let Err(error) = crate::cgroup::remove_if_empty(&dir)
+        {
+            tracing::warn!(id, %error, cgroup = %dir.display(), "sheep cgroup not removed");
+        }
+    }
+
     /// Handles one sheep's terminal exit: computes uptime, consults
     /// `decide_on_exit`, applies the resulting transition, and resolves any
     /// deferred reply waiting on this id. Returns `true` iff this exit just
     /// completed a `Shutdown`'s aggregation (the actor loop should break).
     pub(super) fn handle_exited(&mut self, id: u32, outcome: ExitOutcome) -> bool {
+        #[cfg(target_os = "linux")]
+        self.remove_cgroup(id);
         let Some(slot) = self.sheep.get_mut(&id) else {
             tracing::warn!(id, "Msg::Exited for an unregistered id");
             return false;
