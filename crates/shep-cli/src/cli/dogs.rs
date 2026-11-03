@@ -23,6 +23,10 @@ pub struct DogsArgs {
     /// this shepherd is running. Needs no shepherd.
     #[arg(long)]
     pub available: bool,
+    /// Fetch the community index even when the copy cached in the last day
+    /// is still fresh.
+    #[arg(long, requires = "available")]
+    pub refresh: bool,
     /// Narrow the listing to entries whose name, package or description
     /// contains this text, case-insensitively.
     #[arg(value_name = "FILTER")]
