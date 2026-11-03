@@ -859,3 +859,21 @@ async fn an_oom_inside_the_sheeps_own_cgroup_is_recorded_and_counts_against_max_
         "the kernel's kill"
     );
 }
+
+#[test]
+fn a_reused_cgroup_loses_the_limits_the_new_sheep_does_not_ask_for() {
+    let base = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(base.path(), 1, 0);
+    fs::create_dir(&cgroup).expect("the cgroup a restart reuses");
+    fs::write(cgroup.join("cgroup.procs"), "").expect("an empty cgroup.procs");
+    fs::write(cgroup.join("memory.max"), "1048576").expect("the old memory.max");
+    fs::write(cgroup.join("cpu.max"), "50000 100000").expect("the old cpu.max");
+    fs::write(cgroup.join("pids.max"), "5").expect("the old pids.max");
+    let mut command = std::process::Command::new("/bin/true");
+
+    super::join_on_exec(&mut command, &cgroup, Limits::default()).expect("the join");
+
+    assert_eq!(read(&cgroup, "memory.max"), "max");
+    assert_eq!(read(&cgroup, "cpu.max"), "max 100000");
+    assert_eq!(read(&cgroup, "pids.max"), "max");
+}

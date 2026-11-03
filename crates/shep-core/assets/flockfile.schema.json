@@ -665,7 +665,7 @@
           "minimum": 0
         },
         "max_tasks": {
-          "description": "How many processes the sheep and its lambs may run at once\n\nWritten to the cgroup's `pids.max`, like `docker run --pids-limit`. A\nfork past it fails with `EAGAIN` inside the sheep and nothing is\nkilled, so a fork bomb stops at the limit instead of exhausting the\nuser's process limit for every sheep that shares its uid. Needs Linux\nand a delegated cgroup v2 subtree.",
+          "description": "How many tasks, processes and threads, the sheep and its lambs may run at once\n\nWritten to the cgroup's `pids.max`, like `docker run --pids-limit`. A\nthread counts as a task, so leave headroom above the healthy count. A\nfork or thread past it fails with `EAGAIN` and nothing is killed, so a\nfork bomb stops there instead of exhausting the user's process limit\nfor every sheep that shares its uid. Needs Linux and a delegated\ncgroup v2 subtree.",
           "type": [
             "integer",
             "null"
@@ -676,7 +676,7 @@
             "accepts": [
               "a whole number from 1 to 4194304"
             ],
-            "blurb": "Cap how many processes the app and its children can run at once",
+            "blurb": "Cap how many tasks, processes and threads, the app and its children can run",
             "example": 256,
             "group": "restart",
             "neighbours": [

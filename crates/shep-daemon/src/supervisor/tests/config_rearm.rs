@@ -815,6 +815,52 @@ async fn a_live_max_memory_change_rewrites_a_kernel_enforced_sheeps_memory_max()
 }
 
 #[cfg(target_os = "linux")]
+fn max_tasks_file(tasks: u32) -> DeclaredApp {
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.max_tasks = Some(tasks);
+    declared_app(file, &["name", "script", "max_tasks"])
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_live_max_tasks_change_rewrites_pids_max_and_reports_it_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut actor, _enforcer) =
+        actor_over(&dir, &[app_with("web", |app| app.max_tasks = Some(64))]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+
+    let applied = apply_config(&mut actor, vec![max_tasks_file(128)], ResetDepth::None).await;
+
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("pids.max")).unwrap(),
+        "128"
+    );
+    assert_eq!(applied[0].applied, ["max_tasks"]);
+    assert!(applied[0].pending.is_empty());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_max_tasks_the_kernel_did_not_take_is_reported_pending_not_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut actor, _enforcer) =
+        actor_over(&dir, &[app_with("web", |app| app.max_tasks = Some(64))]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    // A write to a directory fails, as a cgroup without the `pids` controller would.
+    std::fs::create_dir(cgroup.join("pids.max")).unwrap();
+
+    let applied = apply_config(&mut actor, vec![max_tasks_file(128)], ResetDepth::None).await;
+
+    assert!(applied[0].applied.is_empty(), "{:?}", applied[0].applied);
+    assert_eq!(
+        applied[0].pending,
+        ["max_tasks"],
+        "the next spawn writes it"
+    );
+    assert!(applied[0].refused.is_none(), "stored, not refused");
+}
+
+#[cfg(target_os = "linux")]
 #[tokio::test(start_paused = true)]
 async fn leaving_and_entering_kernel_enforcement_live_lifts_and_sets_the_cap() {
     let dir = tempfile::tempdir().unwrap();

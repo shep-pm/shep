@@ -212,7 +212,9 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
-/// cgroup, and a new sheep with the same id must not share it.
+/// cgroup, and a new sheep with the same id must not share it. Its old limits
+/// are lifted for every key `limits` leaves `None`, so a sheep that dropped
+/// `max_tasks` does not inherit the last one's `pids.max`.
 ///
 /// # Errors
 /// What creating the directory, writing `memory.oom.group`, `memory.max`,
@@ -233,20 +235,10 @@ pub(crate) fn join_on_exec(
     } else {
         fs::write(dir.join("memory.oom.group"), "1")
             .and_then(|()| {
-                limits
-                    .memory_max
-                    .map_or(Ok(()), |limit| write_memory_max(dir, Some(limit)))
+                write_unless_fresh(created, limits.memory_max, |l| write_memory_max(dir, l))
             })
-            .and_then(|()| {
-                limits
-                    .cpu_quota
-                    .map_or(Ok(()), |quota| write_cpu_max(dir, Some(quota)))
-            })
-            .and_then(|()| {
-                limits
-                    .pids_max
-                    .map_or(Ok(()), |limit| write_pids_max(dir, Some(limit)))
-            })
+            .and_then(|()| write_unless_fresh(created, limits.cpu_quota, |l| write_cpu_max(dir, l)))
+            .and_then(|()| write_unless_fresh(created, limits.pids_max, |l| write_pids_max(dir, l)))
             .and_then(|()| {
                 fs::OpenOptions::new()
                     .write(true)
@@ -260,6 +252,22 @@ pub(crate) fn join_on_exec(
     })?;
     crate::sys::join_cgroup_on_exec(command, procs);
     Ok(())
+}
+
+/// Writes one of [`Limits`] through `write`. A limit of `None` is written, as
+/// the lifted value, only into a cgroup that already existed: it may carry the
+/// limit of the sheep that held it before, and a directory this call made
+/// holds the kernel's defaults already.
+fn write_unless_fresh<T>(
+    created: bool,
+    limit: Option<T>,
+    write: impl FnOnce(Option<T>) -> io::Result<()>,
+) -> io::Result<()> {
+    if limit.is_none() && created {
+        Ok(())
+    } else {
+        write(limit)
+    }
 }
 
 /// Writes `limit` bytes to `dir`'s `memory.max`, or `max` (no cap) for `None`.
