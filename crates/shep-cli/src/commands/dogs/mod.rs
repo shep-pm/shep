@@ -27,6 +27,7 @@ mod barks;
 mod consent;
 mod depends;
 mod disable;
+mod dog_rollback;
 mod dog_upgrade;
 mod enable;
 mod entry_drift;

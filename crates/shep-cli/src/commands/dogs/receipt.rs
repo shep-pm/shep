@@ -147,7 +147,7 @@ impl core::fmt::Display for HeldError {
             Self::Io(err) => write!(f, "{err}"),
             Self::Malformed => write!(
                 f,
-                "it names no version or ref, or no binary, so it is not a receipt `shep install`                  wrote"
+                "it names no version or ref, or no binary, so it is not a receipt `shep install` wrote"
             ),
         }
     }
@@ -245,4 +245,79 @@ pub(super) fn is_install_dir(paths: &ShepPaths, name: &str, dir: &Path) -> bool 
             .file_name()
             .and_then(|file| file.to_str())
             .is_some_and(super::install::is_path_safe)
+}
+
+#[cfg(test)]
+mod held_tests {
+    use super::*;
+
+    const VERSION: &[u8] =
+        br#"{"version":"0.2.4","binary":"/h/dogs/otel/0.2.4/bin/shep-otel","sha256":"ab","future":1}"#;
+    const REF: &[u8] = br#"{"ref":"main","commit":"3f9c2a1b7d4e","binary":"/h/dogs/otel/ref-3f9c2a1/bin/shep-otel","previous":"/h/dogs/otel/0.2.4"}"#;
+
+    #[test]
+    fn a_version_receipt_reads_as_a_version_and_its_install_directory() {
+        let held = Held::parse(VERSION).unwrap();
+
+        assert_eq!(held.pinned, HeldPin::Version("0.2.4".to_owned()));
+        assert_eq!(held.root(), Some(Path::new("/h/dogs/otel/0.2.4")));
+        assert_eq!(held.previous, None);
+    }
+
+    #[test]
+    fn a_ref_receipt_reads_as_a_ref_with_its_commit_and_the_directory_it_replaced() {
+        let held = Held::parse(REF).unwrap();
+
+        assert_eq!(
+            held.pinned,
+            HeldPin::Ref {
+                git_ref: "main".to_owned(),
+                commit: "3f9c2a1b7d4e".to_owned()
+            }
+        );
+        assert_eq!(held.previous, Some(PathBuf::from("/h/dogs/otel/0.2.4")));
+    }
+
+    #[test]
+    fn setting_previous_keeps_every_other_field_and_none_removes_it() {
+        let held = Held::parse(VERSION).unwrap();
+
+        let with = held.with_previous(Some(Path::new("/h/dogs/otel/0.2.3")));
+        assert_eq!(with["previous"], "/h/dogs/otel/0.2.3");
+        assert_eq!(with["future"], 1);
+        assert_eq!(with["sha256"], "ab");
+
+        let without = Held::parse(&serde_json::to_vec(&with).unwrap())
+            .unwrap()
+            .with_previous(None);
+        assert!(without.get("previous").is_none());
+    }
+
+    #[test]
+    fn a_document_without_a_version_or_ref_and_a_binary_is_not_a_receipt() {
+        for bytes in [
+            &b"[]"[..],
+            b"not json",
+            br#"{"binary":"/b/bin/x"}"#,
+            br#"{"version":"1.0.0"}"#,
+            br#"{"ref":"main","binary":"/b/bin/x"}"#,
+        ] {
+            assert!(
+                matches!(Held::parse(bytes), Err(HeldError::Malformed)),
+                "{}",
+                String::from_utf8_lossy(bytes)
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_file_is_no_receipt_and_a_corrupt_one_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipt.json");
+        assert!(read_file(&path).unwrap().is_none());
+
+        std::fs::write(&path, "{").unwrap();
+
+        assert!(matches!(read_file(&path), Err(HeldError::Malformed)));
+    }
 }
