@@ -229,7 +229,13 @@ jobs:
           case "$TARGET" in *-windows-*) exe=.exe ;; esac
           asset="${PACKAGE}-${VERSION}-${TARGET}${exe}"
           mkdir dist
-          cp "target/${TARGET}/release/${BIN}${exe}" "dist/${asset}"
+          # Where cargo wrote it, not an assumed `target/`: a dog's
+          # `.cargo/config.toml` `build.target-dir` or a `CARGO_TARGET_DIR`
+          # moves it, and `cargo metadata` reads both.
+          target_dir="$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)"
+          # Git for Windows' bash wants `/d/a/...`, not `D:\a\...`.
+          if command -v cygpath > /dev/null; then target_dir="$(cygpath -u "$target_dir")"; fi
+          cp "${target_dir}/${TARGET}/release/${BIN}${exe}" "dist/${asset}"
           # `sha256sum` where there is one (Linux, Git for Windows), else the
           # macOS spelling. Both print `<hash>  <name>`, the line
           # scripts/dog-index-update.py reads back.
