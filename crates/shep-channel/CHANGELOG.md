@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Tell an action handler which dog triggered it **(BREAKING)**
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
 
 
 ## [0.23.0] - 2026-11-02

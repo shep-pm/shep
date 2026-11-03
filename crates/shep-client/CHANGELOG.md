@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Declare a dog's events on the probe and publish them from the runtime
 - A long dog action answers with an id and reports its result as an event
 - Retire the <dog>.defaults operator default **(BREAKING)**
+- One dog settings type, set per dog in the section and per sheep in its table
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
 
 ### Fixed
 

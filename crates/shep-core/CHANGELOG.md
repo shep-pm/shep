@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add max_tasks, a process limit refused off Linux
 - Carry a dog's declared event kinds on its source and in dog_grants
 - Retire the <dog>.defaults operator default **(BREAKING)**
+- One dog settings type, set per dog in the section and per sheep in its table
+- A sheep spawned through the sandbox dog holds a link scoped to its own table
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Approve an exact dog version, hash prebuilt binaries, cache the index for a day
+- Shep install builds a dog with cargo and records a receipt
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
 
 ### Fixed
 

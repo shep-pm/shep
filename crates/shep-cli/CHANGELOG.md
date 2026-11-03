@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shep delete removes the directory install wrote
 - Shep upgrade follows the receipt, with --ref, --release and --rollback
 - SOURCE and VERSION columns in the dogs pane
+- Show a verb's own help with the global flags in one footer line
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Approve an exact dog version, hash prebuilt binaries, cache the index for a day
+- Shep install builds a dog with cargo and records a receipt
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- Lookout and shep get/set show a dog's settings at the dog level and per sheep
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
+- SOURCE and VERSION columns for dogs, and delete removes what install wrote
 
 ### Changed
 
