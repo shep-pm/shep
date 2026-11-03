@@ -1,9 +1,9 @@
-//! [`get_asset`]: [`get`](super::get) for a release asset, which GitHub
+//! [`get_asset`]: [`get`](crate::fetch::get) for a release asset, which GitHub
 //! answers with one redirect to its asset host.
 //!
 //! Exactly one redirect is followed, and only from the policy's host to one
 //! of its asset hosts over https. A second hop, any other host and plain
-//! http all refuse. The index fetch keeps using [`get`](super::get), which
+//! http all refuse. The index fetch keeps using [`get`](crate::fetch::get), which
 //! refuses every redirect.
 
 use core::fmt;
@@ -156,13 +156,13 @@ impl From<FetchError> for AssetError {
     }
 }
 
-/// Fetches `url` with [`get`](super::get)'s refusals, except that one
+/// Fetches `url` with [`get`](crate::fetch::get)'s refusals, except that one
 /// redirect `policy` admits is followed. `timeout` bounds both requests
 /// together.
 ///
 /// # Errors
 /// The [`AssetError`] variant for each refusal named in the module doc, and
-/// [`AssetError::Fetch`] for everything [`get`](super::get) refuses.
+/// [`AssetError::Fetch`] for everything [`get`](crate::fetch::get) refuses.
 pub async fn get_asset(
     url: &str,
     policy: &RedirectPolicy,
