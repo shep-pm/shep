@@ -583,7 +583,13 @@ this side:
   cross workflow files, so `scripts/test_dog_release_targets.py` fails
   `manifests` until a target added to one is added to the other.
 - **Dry run:** Actions, "Dog release", Run workflow, with the dog's package,
-  an existing tag and its `owner/name`. It builds every target and prints
-  each hash in the log and the job summary. It uploads and opens nothing,
-  and refuses a real run from here since this repository's token cannot
-  write to the dog's.
+  an existing tag and its `owner/name`. The dog's repository has to be
+  public, since the checkout uses this repository's token. It builds every
+  target and prints each hash in the log and the job summary. It uploads
+  and opens nothing, and refuses a real run from here since this
+  repository's token cannot write to the dog's.
+- **The row has to match the release.** The script refuses a row whose
+  `repo` is not the repository the release was built from, and one whose
+  `source.kind` is not `cargo`. It hashes only the files named
+  `<package>-<version>-<triple>`, plus `.exe`, so a sidecar on the release is
+  skipped.

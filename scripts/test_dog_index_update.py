@@ -34,6 +34,7 @@ HASH_A = "a" * 64
 HASH_B = "b" * 64
 LINUX = "x86_64-unknown-linux-gnu"
 WINDOWS = "x86_64-pc-windows-msvc"
+REPOSITORY = "shep-pm/shep-example"
 
 
 def row(package: str = "shep-example", source: dict | None = None) -> dict:
@@ -59,8 +60,15 @@ def sums(package: str, version: str, files: dict[str, str]) -> str:
 
 
 class ApplyTests(unittest.TestCase):
-    def apply(self, text: str, version: str, hashes: str, package: str = "shep-example") -> dict:
-        return json.loads(dog_index_update.apply(text, package, version, hashes))
+    def apply(
+        self,
+        text: str,
+        version: str,
+        hashes: str,
+        package: str = "shep-example",
+        repository: str = REPOSITORY,
+    ) -> dict:
+        return json.loads(dog_index_update.apply(text, package, version, hashes, repository))
 
     def source_of(self, doc: dict, package: str = "shep-example") -> dict:
         return next(r for r in doc["dogs"] if r["package"] == package)["source"]
@@ -84,7 +92,7 @@ class ApplyTests(unittest.TestCase):
 
     def test_targets_are_written_sorted(self) -> None:
         hashes = sums("shep-example", "0.2.0", {WINDOWS: HASH_B, LINUX: HASH_A})
-        out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes)
+        out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertLess(out.index(WINDOWS), out.index(LINUX))  # pc < unknown
 
     def test_other_rows_and_the_wrapper_are_untouched(self) -> None:
@@ -98,12 +106,12 @@ class ApplyTests(unittest.TestCase):
 
     def test_a_second_run_with_the_same_hashes_changes_nothing(self) -> None:
         hashes = sums("shep-example", "0.2.0", {LINUX: HASH_A})
-        once = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes)
-        twice = dog_index_update.apply(once, "shep-example", "0.2.0", hashes)
+        once = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
+        twice = dog_index_update.apply(once, "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertEqual(once, twice)
 
     def test_output_ends_in_one_newline_and_indents_by_two(self) -> None:
-        out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+        out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}), REPOSITORY)
         self.assertTrue(out.endswith("}\n") and not out.endswith("\n\n"))
         self.assertIn('\n  "dogs": [', out)
 
@@ -133,6 +141,27 @@ class ApplyTests(unittest.TestCase):
         for target in ("", "Linux", "x86 64"):
             with self.subTest(target=target), self.assertRaises(dog_index_update.IndexUpdateError):
                 self.apply(index_text(row()), "0.2.0", f"{HASH_A}  shep-example-0.2.0-{target}\n")
+
+    def test_a_suffix_that_is_not_a_triple_is_refused(self) -> None:
+        # A checksum sidecar or a signature shares the release's name prefix.
+        for target in (f"{LINUX}.sha256", f"{LINUX}.sig", "linux", "x86_64-linux"):
+            with self.subTest(target=target), self.assertRaises(dog_index_update.IndexUpdateError):
+                self.apply(index_text(row()), "0.2.0", f"{HASH_A}  shep-example-0.2.0-{target}\n")
+
+    def test_a_release_from_another_repository_is_refused(self) -> None:
+        with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "someone-else/shep-example"):
+            self.apply(
+                index_text(row()),
+                "0.2.0",
+                sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+                repository="someone-else/shep-example",
+            )
+
+    def test_the_repository_compares_without_case_slash_or_dot_git(self) -> None:
+        shouty = row()
+        shouty["repo"] = "https://github.com/Shep-PM/Shep-Example.git/"
+        doc = self.apply(index_text(shouty), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+        self.assertEqual(self.source_of(doc)["version"], "0.2.0")
 
     def test_the_same_target_twice_is_refused(self) -> None:
         hashes = (
@@ -168,7 +197,7 @@ class CommandLineTests(unittest.TestCase):
             index.write_text(index_text(row()))
             hashes = Path(tmp) / "sums.txt"
             hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
-            code, out, _ = self.run_main(str(index), "shep-example", "0.2.0", str(hashes))
+            code, out, _ = self.run_main(str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY)
             self.assertEqual(code, 0)
             self.assertIn("shep-example 0.2.0", out)
             self.assertEqual(json.loads(index.read_text())["dogs"][0]["source"]["sha256"], {LINUX: HASH_A})
@@ -180,7 +209,7 @@ class CommandLineTests(unittest.TestCase):
             index.write_text(before)
             hashes = Path(tmp) / "sums.txt"
             hashes.write_text("hello\n")
-            code, _, err = self.run_main(str(index), "shep-example", "0.2.0", str(hashes))
+            code, _, err = self.run_main(str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY)
             self.assertEqual(code, 1)
             self.assertIn("not a sha256sum line", err)
             self.assertEqual(index.read_text(), before)

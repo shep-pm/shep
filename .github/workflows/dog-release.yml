@@ -79,6 +79,9 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       bin: ${{ steps.check.outputs.bin }}
       repository: ${{ steps.check.outputs.repository }}
+      # The commit the tag named when it was checked. Later jobs build this,
+      # not the tag, which a force-push could move under a running release.
+      sha: ${{ steps.check.outputs.sha }}
       dry-run: ${{ steps.check.outputs.dry-run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,6 +98,7 @@ jobs:
           BIN: ${{ inputs.bin }}
           REPOSITORY: ${{ inputs.repository || github.repository }}
           DRY_RUN: ${{ inputs.dry-run }}
+          INDEX_TOKEN: ${{ secrets.index-token }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -126,6 +130,13 @@ jobs:
           ' <<< "$manifest" > /dev/null \
             || fail "$PACKAGE has no binary named $bin. Pass 'bin' when it is not named after the package."
 
+          # Before the builds, not after: without it the whole matrix would run
+          # and upload, and only then find there is no way to open the pull
+          # request.
+          if [ "$dry_run" = false ] && [ -z "$INDEX_TOKEN" ]; then
+            fail "the index-token secret is empty. Pass a token that can open a pull request on shep-pm/shep, or run with dry-run."
+          fi
+
           if [ "$dry_run" = false ]; then
             gh release view "$TAG" --repo "$REPOSITORY" > /dev/null \
               || fail "$REPOSITORY has no release for $TAG yet. Create the release first; the binaries are attached to it."
@@ -133,6 +144,7 @@ jobs:
 
           {
             echo "version=${version}"
+          echo "sha=$(git rev-parse HEAD)"
             echo "bin=${bin}"
             echo "repository=${REPOSITORY}"
             echo "dry-run=${dry_run}"
@@ -181,9 +193,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.resolve.outputs.repository }}
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
-      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+      # The target goes on whichever toolchain `cargo` will pick in this
+      # checkout, so a dog's rust-toolchain.toml gets it too. Installing it on
+      # `stable` alone would leave a pinned toolchain without the standard
+      # library for the target.
+      - run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
       - if: matrix.packages != ''
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
       - name: Build
@@ -245,12 +263,6 @@ jobs:
     env:
       INDEX_TOKEN: ${{ secrets.index-token }}
     steps:
-      - name: Require the index token
-        run: |
-          if [ -z "$INDEX_TOKEN" ]; then
-            echo "::error::the index-token secret is empty. The binaries are on the release; pass a token that can open a pull request on shep-pm/shep, and re-run this job."
-            exit 1
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shep-pm/shep
@@ -268,12 +280,26 @@ jobs:
           set -euo pipefail
           mkdir assets
           gh release download "$TAG" --dir assets --pattern "${PACKAGE}-${VERSION}-*"
-          (cd assets && sha256sum -- *) | tee sums.txt
+          # Only the binaries. A name that is not <package>-<version>-<triple>,
+          # with `.exe` allowed, is a sidecar or a signature the dog attached
+          # itself and is not an approved target.
+          binary="^$(printf '%s' "${PACKAGE}-${VERSION}-" | sed 's/[.+]/\\&/g')[a-z0-9_]+(-[a-z0-9_]+){2,}(\\.exe)?\$"
+          : > sums.txt
+          for file in assets/*; do
+            name="$(basename "$file")"
+            if printf '%s' "$name" | grep -Eq "$binary"; then
+              (cd assets && sha256sum -- "$name") >> sums.txt
+            else
+              echo "skipping $name: not a binary asset"
+            fi
+          done
+          cat sums.txt
       - name: Write the row
         env:
           PACKAGE: ${{ inputs.package }}
+          REPOSITORY: ${{ needs.resolve.outputs.repository }}
           VERSION: ${{ needs.resolve.outputs.version }}
-        run: python3 shep/scripts/dog-index-update.py shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt
+        run: python3 shep/scripts/dog-index-update.py shep/web/public/dogs.json "$PACKAGE" "$VERSION" sums.txt "$REPOSITORY"
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ secrets.index-token }}
@@ -284,11 +310,20 @@ jobs:
         run: |
           set -euo pipefail
           cd shep
+          branch="dog-release/${PACKAGE}-${VERSION}"
+          open_prs() {
+            gh pr list --repo shep-pm/shep --head "$branch" --state open --json number --jq length
+          }
           if git diff --quiet -- web/public/dogs.json; then
             echo "The index already approves ${PACKAGE} ${VERSION} with these hashes. Nothing to open."
+            # An earlier run's pull request would now change nothing, or
+            # worse, carry other hashes. Close it rather than leave it to merge.
+            if [ "$(open_prs)" != 0 ]; then
+              gh pr close "$branch" --repo shep-pm/shep --delete-branch \
+                --comment "main already approves ${PACKAGE} ${VERSION} with the hashes of the latest run, so this pull request has nothing to change."
+            fi
             exit 0
           fi
-          branch="dog-release/${PACKAGE}-${VERSION}"
           title="chore(web): approve ${PACKAGE} ${VERSION} in the dog index"
           git checkout -b "$branch"
           git add web/public/dogs.json
@@ -300,7 +335,7 @@ jobs:
           # replace its hashes rather than stop on the old ones.
           git push --force origin "HEAD:refs/heads/${branch}"
 
-          if [ "$(gh pr list --repo shep-pm/shep --head "$branch" --state open --json number --jq length)" != 0 ]; then
+          if [ "$(open_prs)" != 0 ]; then
             echo "A pull request for ${branch} is open already. Its branch now carries these hashes."
             exit 0
           fi

@@ -11,12 +11,15 @@ The hashes file is `sha256sum` output over the release's assets, named
 exactly the targets in that file: a target the new release no longer builds
 drops out rather than keeping a stale hash.
 
+The row's `repo` must name the repository the release was built from, so a
+release elsewhere cannot approve another dog's row.
+
 Exits 0 on success, 1 when it refuses; a refusal leaves the index unwritten.
 
 Usage:
 
     python3 scripts/dog-index-update.py web/public/dogs.json \\
-        shep-log-rotate 0.2.5 sums.txt
+        shep-log-rotate 0.2.5 sums.txt shep-pm/shep-log-rotate
 """
 
 from __future__ import annotations
@@ -33,8 +36,10 @@ class IndexUpdateError(Exception):
 
 SUM_LINE = re.compile(r"^(?P<digest>\S+) [ *](?P<name>\S+)$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
-# The same grammar as `propertyNames` in web/public/dogs.schema.json.
-TARGET = re.compile(r"^[a-z0-9._-]+$")
+# A triple is at least arch-vendor-os, with no dot: stricter than `propertyNames`
+# in web/public/dogs.schema.json on purpose, so a `.sha256` or `.sig` sitting
+# beside the binaries on the release is refused instead of becoming a target.
+TARGET = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+){2,}$")
 
 
 def parse_hashes(package: str, version: str, hashes: str) -> dict[str, str]:
@@ -63,8 +68,18 @@ def parse_hashes(package: str, version: str, hashes: str) -> dict[str, str]:
     return dict(sorted(found.items()))
 
 
-def apply(index: str, package: str, version: str, hashes: str) -> str:
-    """The index text with `package`'s cargo row approving `version` and `hashes`."""
+def same_repository(url: str, repository: str) -> bool:
+    """Whether a row's `repo` URL names `owner/name` on GitHub, ignoring case, `.git` and a slash."""
+    path = url.removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
+    return url.startswith("https://github.com/") and path.lower() == repository.lower()
+
+
+def apply(index: str, package: str, version: str, hashes: str, repository: str) -> str:
+    """The index text with `package`'s cargo row approving `version` and `hashes`.
+
+    `repository` is the `owner/name` the release was built from; the row's
+    `repo` has to name it, so a release elsewhere cannot approve this row.
+    """
     if not version.strip():
         raise IndexUpdateError("version is empty")
     digests = parse_hashes(package, version, hashes)
@@ -73,6 +88,10 @@ def apply(index: str, package: str, version: str, hashes: str) -> str:
     if not rows:
         raise IndexUpdateError(
             f"no row for package {package!r}: adding a dog to the index is a pull request of its own"
+        )
+    if not same_repository(rows[0]["repo"], repository):
+        raise IndexUpdateError(
+            f"{package!r} lists {rows[0]['repo']} as its repo, but the release was built from {repository}"
         )
     source = rows[0]["source"]
     if source["kind"] != "cargo":
@@ -83,13 +102,16 @@ def apply(index: str, package: str, version: str, hashes: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 4:
-        print("usage: dog-index-update.py <dogs.json> <package> <version> <sha256sum file>", file=sys.stderr)
+    if len(argv) != 5:
+        print(
+            "usage: dog-index-update.py <dogs.json> <package> <version> <sha256sum file> <owner/name>",
+            file=sys.stderr,
+        )
         return 1
-    path, package, version, hashes = argv
+    path, package, version, hashes, repository = argv
     try:
         sums = Path(hashes).read_text()
-        updated = apply(Path(path).read_text(), package, version, sums)
+        updated = apply(Path(path).read_text(), package, version, sums, repository)
         count = len(parse_hashes(package, version, sums))
     except IndexUpdateError as err:
         print(f"dog-index-update: {err}", file=sys.stderr)
