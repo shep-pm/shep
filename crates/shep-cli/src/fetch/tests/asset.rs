@@ -112,7 +112,7 @@ async fn a_redirect_off_the_asset_host_is_refused_without_connecting() {
 }
 
 #[tokio::test]
-async fn a_redirect_from_a_host_other_than_the_policys_is_refused() {
+async fn a_redirect_from_a_host_other_than_the_policy_host_is_refused() {
     let (port, _served) =
         serve_in_order(vec![leak(redirect_to("http://localhost:{port}/asset"))]).await;
     let policy = RedirectPolicy::loopback("github.example", &["localhost"]);
@@ -188,7 +188,7 @@ async fn plain_http_is_refused_under_the_github_policy_before_any_connection() {
 }
 
 #[tokio::test]
-async fn a_plain_answer_needs_no_redirect_and_a_bad_status_is_the_fetchs() {
+async fn a_plain_answer_needs_no_redirect_and_a_bad_status_is_left_to_the_fetch() {
     let (port, _served) =
         serve_in_order(vec!["HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"]).await;
 
