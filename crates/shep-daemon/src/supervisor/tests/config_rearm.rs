@@ -826,10 +826,12 @@ async fn leaving_and_entering_kernel_enforcement_live_lifts_and_sets_the_cap() {
         declared_app(file, &["name", "script", "memory_enforce"])
     };
 
+    // `File`, not `None`: a load at `None` only appends a key nobody has
+    // established, so the second one would change nothing.
     apply_config(
         &mut actor,
         vec![memory_enforce(shep_core::config::MemoryEnforce::Poll)],
-        ResetDepth::None,
+        ResetDepth::File,
     )
     .await;
     assert_eq!(
@@ -841,7 +843,7 @@ async fn leaving_and_entering_kernel_enforcement_live_lifts_and_sets_the_cap() {
     apply_config(
         &mut actor,
         vec![memory_enforce(shep_core::config::MemoryEnforce::Kernel)],
-        ResetDepth::None,
+        ResetDepth::File,
     )
     .await;
     assert_eq!(
