@@ -1,4 +1,4 @@
-//! The client<->daemon wire protocol (version 16).
+//! The client<->daemon wire protocol (version 18).
 //!
 //! Typed request/response enums plus bus events. Framing lives in
 //! [`wire`]; a serialized shape change bumps [`PROTOCOL_VERSION`].
@@ -6,7 +6,7 @@
 //! An additive change keeps the version: an older peer decodes
 //! [`Request::Unrecognized`] and refuses by name. `AppConfig` always bumps.
 //!
-//! A `*_wire_v16` test pins today's shape. A
+//! A `*_wire_v18` test pins today's shape. A
 //! `v1_*_fixture_still_deserializes` test pins an old peer's payload.
 
 pub mod events;
@@ -44,7 +44,7 @@ pub mod channel {
 /// renaming, or retyping anything serialized bumps it, recorded in the
 /// CHANGELOG. `AppConfig` is the exception: an older peer ignores a key
 /// it does not know, so it runs a config the operator did not write.
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 18;
 
 /// The first protocol version whose shepherd reads `lamb` on `Request::Signal`.
 ///
@@ -71,6 +71,18 @@ pub const LISTEN_SINCE: u32 = 15;
 /// client must not send `"kernel"` to it.
 pub const MEMORY_ENFORCE_SINCE: u32 = 16;
 
+/// The first protocol version whose shepherd reads `max_cpu_cores`.
+///
+/// An older shepherd drops the key and runs the sheep uncapped, so a client
+/// must not send one to it.
+pub const MAX_CPU_CORES_SINCE: u32 = 17;
+
+/// The first protocol version whose shepherd reads `max_tasks`.
+///
+/// An older shepherd drops the key and runs the sheep with no process limit,
+/// so a client must not send one to it.
+pub const MAX_TASKS_SINCE: u32 = 18;
+
 /// The oldest protocol this build accepts from a peer.
 ///
 /// The handshake compares against this rather than [`PROTOCOL_VERSION`],
@@ -86,11 +98,11 @@ mod tests {
 
     // Fails whenever `PROTOCOL_VERSION` moves, so a bump is a deliberate
     // edit. A shape change that forgot to bump shows up in the
-    // `*_wire_v16` snapshots instead. A bump moves the constant, this
+    // `*_wire_v18` snapshots instead. A bump moves the constant, this
     // literal, this test's name, the doc header and the snapshots.
     #[test]
-    fn the_protocol_version_is_16() {
-        assert_eq!(PROTOCOL_VERSION, 16);
+    fn the_protocol_version_is_18() {
+        assert_eq!(PROTOCOL_VERSION, 18);
     }
 
     #[test]

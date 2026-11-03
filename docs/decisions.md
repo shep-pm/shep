@@ -2825,6 +2825,26 @@ The shepherd reads `oom_kill` from `memory.events.local` before the spawn (and w
 
 `verified crates/shep-core/src/config/memory_enforce.rs, crates/shep-core/src/protocol/mod.rs (MEMORY_ENFORCE_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_exit.rs, crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/extras/mod.rs`
 
+### `max_cpu_cores` is a `cpu.max` quota on Linux and is refused elsewhere
+
+`max_cpu_cores` takes a positive decimal and the shepherd writes `<cores x 100000> 100000` to the sheep's `cpu.max` at spawn, and again on a live change. It is docker's `--cpus`: a quota, never affinity, and nothing is killed. `normalize` refuses it on macOS and Windows. On Linux a shepherd with no cgroup refuses the start and names the reason.
+
+**Why:** a quota needs no placement decision, and the kernel throttles the tree wherever it runs. A Windows job-object CPU rate limit is a separate change, so Windows refuses the key for now. `LimitEnforcer` is unchanged because a quota has no breach to report.
+
+**What it costs:** `normalize` refuses a quota under 0.01 cores, the kernel's 1000 microsecond minimum, so a write cannot fail on the value. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/cpu_cores.rs, crates/shep-core/src/protocol/mod.rs (MAX_CPU_CORES_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
+
+### `max_tasks` is a `pids.max` limit on Linux and is refused elsewhere
+
+`max_tasks` takes a whole number from 1 to 4194304 and the shepherd writes it to the sheep's `pids.max` at spawn, and again on a live change. It is docker's `--pids-limit`: a fork or a new thread past it fails with `EAGAIN` inside the sheep, and nothing is killed. The kernel counts a thread as a task, so the limit is tasks, not processes. `normalize` refuses it on macOS and Windows. On Linux a shepherd with no cgroup refuses the start and names the reason.
+
+**Why:** a fork bomb in one sheep exhausts the user's process limit for every sheep that shares its uid, the sandboxed ones included, and `pids.max` is one more file write once each sheep has its own cgroup. The ceiling is the kernel's `PID_MAX_LIMIT` on a 64-bit host: `pids.max` refuses a larger value with `EINVAL`, so `normalize` refuses it first rather than let a live change report applied while the old limit stayed.
+
+**What it costs:** a threaded runtime spends the limit on its worker threads, so an operator sets it well above the healthy count. The 32-bit kernel ceiling is 32768, so a value between that and 4194304 passes `normalize` there and fails at the write. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/app/behavior.rs (MAX_TASKS_LIMIT), crates/shep-core/src/protocol/mod.rs (MAX_TASKS_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
+
 ## Installing a dog
 
 ### `shep install` runs the installer, reversing "print, never execute"

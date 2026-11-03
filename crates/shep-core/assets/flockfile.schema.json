@@ -606,6 +606,36 @@
             ]
           }
         },
+        "max_cpu_cores": {
+          "description": "CPU quota in cores: `1.5` caps the sheep and its lambs at one and a half cores\n\nA quota, not affinity, like `docker run --cpus`: the tree is throttled,\nnever killed. Needs Linux and a delegated cgroup v2 subtree.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CpuCores"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "init": {
+            "accepts": [
+              "a number of cores of 0.01 or more, such as 0.5 or 2.5"
+            ],
+            "blurb": "Throttle the app and its children to this many cores' worth of CPU time",
+            "example": 1.5,
+            "group": "restart",
+            "neighbours": [
+              {
+                "field": "max_memory",
+                "note": "the memory ceiling beside it"
+              }
+            ],
+            "refuses": [
+              "below 0.01, zero or a negative number",
+              "any value on macOS or Windows"
+            ]
+          }
+        },
         "max_memory": {
           "description": "Memory ceiling — polling enforcer restarts above this",
           "anyOf": [
@@ -633,6 +663,35 @@
             "group": "restart"
           },
           "minimum": 0
+        },
+        "max_tasks": {
+          "description": "How many tasks, processes and threads, the sheep and its lambs may run at once\n\nWritten to the cgroup's `pids.max`, like `docker run --pids-limit`. A\nthread counts as a task, so leave headroom above the healthy count. A\nfork or thread past it fails with `EAGAIN` and nothing is killed, so a\nfork bomb stops there. Needs Linux and a delegated cgroup v2 subtree.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "default": null,
+          "init": {
+            "accepts": [
+              "a whole number from 1 to 4194304"
+            ],
+            "blurb": "Cap how many tasks, processes and threads, the app and its children can run",
+            "example": 256,
+            "group": "restart",
+            "neighbours": [
+              {
+                "field": "max_memory",
+                "note": "the memory ceiling beside it"
+              }
+            ],
+            "refuses": [
+              "zero or a number above 4194304",
+              "any value on macOS or Windows"
+            ]
+          },
+          "maximum": 4194304,
+          "minimum": 1
         },
         "memory_enforce": {
           "description": "Who enforces `max_memory`: `\"poll\"` (shep samples) or `\"kernel\"` (cgroup `memory.max`)\n\n`\"kernel\"` needs `max_memory`, Linux and a delegated cgroup v2 subtree. An\nOOM kill counts against `max_restarts`, unlike a polled restart.",
@@ -944,6 +1003,12 @@
         }
       },
       "additionalProperties": false
+    },
+    "CpuCores": {
+      "description": "A CPU quota in cores: `1.5` lets a sheep's tree use one and a half cores'\nworth of time, across however many cores it runs on.\n\nHolds whatever number the Flockfile wrote. `normalize` refuses a value\nunder 0.01 and any that is not a finite number, so a config that reaches\nthe shepherd has already passed. Equality compares bits, so `NaN` equals itself and\nthe type is `Eq` like the `AppConfig` it sits in.",
+      "type": "number",
+      "format": "double",
+      "minimum": 0.01
     },
     "DogTable": {
       "description": "A dog's own settings for this sheep. shep stores it and never reads a key inside.",

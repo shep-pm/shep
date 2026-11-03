@@ -25,9 +25,11 @@ pub enum AssembleError {
         /// The dog's name.
         dog: String,
     },
-    /// The sheep has `memory_enforce = "kernel"` and this shepherd has no
-    /// cgroup to enforce it in.
+    /// The sheep has `memory_enforce = "kernel"` or `max_cpu_cores`, and this
+    /// shepherd has no cgroup to enforce it in.
     CgroupUnavailable {
+        /// The setting that needs the cgroup, as an operator writes it.
+        setting: &'static str,
         /// Why `detect` found none, in its own words.
         reason: String,
     },
@@ -64,9 +66,9 @@ impl fmt::Display for AssembleError {
                 f,
                 "the `{dog}` dog is not adopted or is disabled, and this sheep does not run without it"
             ),
-            Self::CgroupUnavailable { reason } => write!(
+            Self::CgroupUnavailable { setting, reason } => write!(
                 f,
-                "`memory_enforce = \"kernel\"` needs a cgroup for this sheep, and this shepherd has none: {reason}"
+                "`{setting}` needs a cgroup for this sheep, and this shepherd has none: {reason}"
             ),
             Self::Listen(source) => source.fmt(f),
         }

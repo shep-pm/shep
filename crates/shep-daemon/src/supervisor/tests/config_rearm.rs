@@ -815,6 +815,52 @@ async fn a_live_max_memory_change_rewrites_a_kernel_enforced_sheeps_memory_max()
 }
 
 #[cfg(target_os = "linux")]
+fn max_tasks_file(tasks: u32) -> DeclaredApp {
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.max_tasks = Some(tasks);
+    declared_app(file, &["name", "script", "max_tasks"])
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_live_max_tasks_change_rewrites_pids_max_and_reports_it_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut actor, _enforcer) =
+        actor_over(&dir, &[app_with("web", |app| app.max_tasks = Some(64))]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+
+    let applied = apply_config(&mut actor, vec![max_tasks_file(128)], ResetDepth::None).await;
+
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("pids.max")).unwrap(),
+        "128"
+    );
+    assert_eq!(applied[0].applied, ["max_tasks"]);
+    assert!(applied[0].pending.is_empty());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_max_tasks_the_kernel_did_not_take_is_reported_pending_not_applied() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut actor, _enforcer) =
+        actor_over(&dir, &[app_with("web", |app| app.max_tasks = Some(64))]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    // A write to a directory fails, as a cgroup without the `pids` controller would.
+    std::fs::create_dir(cgroup.join("pids.max")).unwrap();
+
+    let applied = apply_config(&mut actor, vec![max_tasks_file(128)], ResetDepth::None).await;
+
+    assert!(applied[0].applied.is_empty(), "{:?}", applied[0].applied);
+    assert_eq!(
+        applied[0].pending,
+        ["max_tasks"],
+        "the next spawn writes it"
+    );
+    assert!(applied[0].refused.is_none(), "stored, not refused");
+}
+
+#[cfg(target_os = "linux")]
 #[tokio::test(start_paused = true)]
 async fn leaving_and_entering_kernel_enforcement_live_lifts_and_sets_the_cap() {
     let dir = tempfile::tempdir().unwrap();
@@ -889,4 +935,58 @@ async fn a_live_switch_to_kernel_takes_the_oom_baseline_and_a_switch_back_drops_
     )
     .await;
     assert_eq!(actor.oom_baselines.get(&0), None);
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_live_max_cpu_cores_change_rewrites_a_running_sheeps_cpu_max() {
+    let dir = tempfile::tempdir().unwrap();
+    let throttled = app_with("web", |app| {
+        app.max_cpu_cores = Some(shep_core::config::CpuCores::from_cores(0.5));
+    });
+    let (mut actor, _enforcer) = actor_over(&dir, &[throttled]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    std::fs::write(cgroup.join("cpu.max"), "50000 100000").unwrap();
+
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.max_cpu_cores = Some(shep_core::config::CpuCores::from_cores(2.5));
+    apply_config(
+        &mut actor,
+        vec![declared_app(file, &["name", "script", "max_cpu_cores"])],
+        ResetDepth::None,
+    )
+    .await;
+
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("cpu.max")).unwrap(),
+        "250000 100000"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_pane_edit_of_max_cpu_cores_rewrites_a_running_sheeps_cpu_max() {
+    let dir = tempfile::tempdir().unwrap();
+    let throttled = app_with("web", |app| {
+        app.max_cpu_cores = Some(shep_core::config::CpuCores::from_cores(0.5));
+    });
+    let (mut actor, _enforcer) = actor_over(&dir, &[throttled]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    std::fs::write(cgroup.join("cpu.max"), "50000 100000").unwrap();
+
+    actor
+        .write_sheep_field("web", "max_cpu_cores", &serde_json::json!(2.5))
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("cpu.max")).unwrap(),
+        "250000 100000"
+    );
+
+    actor
+        .write_sheep_field("web", "max_cpu_cores", &serde_json::Value::Null)
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("cpu.max")).unwrap(),
+        "max 100000"
+    );
 }

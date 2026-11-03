@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod apply;
+mod cpu_cores;
 pub mod cron;
 pub mod daemon;
 pub mod dogs;
@@ -21,6 +22,7 @@ pub mod template;
 
 pub use app::{AppConfig, DogTable, ProbeConfig, ProbeKind};
 pub use apply::{ApplyGroup, ResetDepth, apply_group, reaches_running};
+pub use cpu_cores::CpuCores;
 pub use cron::{CronParseError, CronSchedule, CronScheduleError};
 #[cfg(feature = "schema")]
 pub use daemon::{

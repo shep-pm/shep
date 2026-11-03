@@ -227,6 +227,22 @@ pub fn normalize_with_home(
             return Err(NormalizeError::MemoryEnforceKernelUnsupported { name: app.name });
         }
     }
+    if let Some(cores) = app.max_cpu_cores {
+        if !cores.is_enforceable() {
+            return Err(NormalizeError::MaxCpuCoresOutOfRange { name: app.name });
+        }
+        if !cfg!(target_os = "linux") {
+            return Err(NormalizeError::MaxCpuCoresUnsupported { name: app.name });
+        }
+    }
+    if let Some(tasks) = app.max_tasks {
+        if !(1..=AppConfig::MAX_TASKS_LIMIT).contains(&tasks) {
+            return Err(NormalizeError::MaxTasksOutOfRange { name: app.name });
+        }
+        if !cfg!(target_os = "linux") {
+            return Err(NormalizeError::MaxTasksUnsupported { name: app.name });
+        }
+    }
     if let Some(name) = &app.kill_signal
         && KillSignal::parse(name).is_none()
     {

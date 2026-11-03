@@ -11,18 +11,18 @@ shep lookout   /home/ada/.shep                                                  
    autorestart                true                                            now        FOCUSED  max_memory  memory size                                       
    autostart                  true                                            next start  Restart the app if it climbs above this much memory                   
    exp_backoff_restart_delay  100ms                                           now                                                                               
->  max_memory                 (unset) -> 256 B                                now         now     (unset)                                                       
-   max_restarts               32                                              now         default (none)                                                        
-   memory_enforce             poll                                            now         example 512M                                                          
-   min_uptime                 1s                                              now                                                                               
-   restart_delay              (unset)                                         now         ● now  the running sheep picks it up without stopping                 
-   stop_exit_codes            []                                              now                                        pick the timing when you close the pane
-                                                                                                                                                                
-  pending edits                                                                           ──────────────────────────────────────────────────────────────────────
-    cwd  (unset) -> /srv/api                                                              VALIDATION                                                            
-    max_memory  (unset) -> 256 B                                                          █ 512M, 2G                                                            
-                                                                                          █ a bare number is bytes                                              
-                                                                                          █ refused: a two-letter unit                                          
+   max_cpu_cores              (unset)                                         now         now     (unset)                                                       
+>  max_memory                 (unset) -> 256 B                                now         default (none)                                                        
+   max_restarts               32                                              now         example 512M                                                          
+   max_tasks                  (unset)                                         now                                                                               
+   memory_enforce             poll                                            now         ● now  the running sheep picks it up without stopping                 
+   min_uptime                 1s                                              now                                        pick the timing when you close the pane
+   restart_delay              (unset)                                         now                                                                               
+   stop_exit_codes            []                                              now         ──────────────────────────────────────────────────────────────────────
+                                                                                          VALIDATION                                                            
+  pending edits                                                                           █ 512M, 2G                                                            
+    cwd  (unset) -> /srv/api                                                              █ a bare number is bytes                                              
+    max_memory  (unset) -> 256 B                                                          █ refused: a two-letter unit                                          
                                                                                           █ refused: a lowercase unit                                           
                                                                                           █ refused: a fraction                                                 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

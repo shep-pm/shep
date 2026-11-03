@@ -13,8 +13,8 @@ use shep_core::values::{MemSize, UpDuration};
 use tokio::time::timeout;
 
 use super::{
-    Cgroups, Reason, detect, detect_at, oom_kills, remove_if_empty, remove_stale, sheep_dir,
-    write_memory_max,
+    Cgroups, Limits, Reason, detect, detect_at, oom_kills, remove_if_empty, remove_stale,
+    sheep_dir, write_memory_max,
 };
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::runner::{ProcessRunner, RunnerError, RunningProcess, SpawnSpec};
@@ -218,7 +218,7 @@ fn a_real_delegated_subtree_moves_the_shepherd_into_its_leaf() {
 
 /// How long a real child gets to do what the test waits for: slack for a
 /// loaded runner, not an expected duration.
-const DEADLINE: Duration = Duration::from_secs(10);
+pub(super) const DEADLINE: Duration = Duration::from_secs(10);
 
 /// A spawn of `sh -c script` logging under `dir`, joining `cgroup`.
 fn sh(dir: &Path, script: &str, cgroup: Option<PathBuf>) -> SpawnSpec {
@@ -238,7 +238,7 @@ fn sh(dir: &Path, script: &str, cgroup: Option<PathBuf>) -> SpawnSpec {
 ///
 /// Gated like `a_real_delegated_subtree_moves_the_shepherd_into_its_leaf`,
 /// whose reason holds here: `detect` moves the test process.
-fn delegated_base() -> Option<PathBuf> {
+pub(super) fn delegated_base() -> Option<PathBuf> {
     if std::env::var_os("SHEP_TEST_CGROUPS").is_none() {
         println!("skipped: SHEP_TEST_CGROUPS is not set, so this would move the test process");
         return None;
@@ -252,7 +252,7 @@ fn delegated_base() -> Option<PathBuf> {
     }
 }
 
-fn pids(procs: &Path) -> Vec<u32> {
+pub(super) fn pids(procs: &Path) -> Vec<u32> {
     fs::read_to_string(procs)
         .unwrap_or_default()
         .split_whitespace()
@@ -559,7 +559,7 @@ fn kernel_app(name: &str, program: &str, limit: u64) -> AppConfig {
 }
 
 /// What a sheep's cgroup file holds, trailing newline off.
-fn read(dir: &Path, file: &str) -> String {
+pub(super) fn read(dir: &Path, file: &str) -> String {
     fs::read_to_string(dir.join(file))
         .unwrap_or_else(|error| panic!("{file}: {error}"))
         .trim_end()
@@ -619,14 +619,18 @@ fn a_cap_is_written_before_the_child_joins() {
     fs::write(cgroup.join("cgroup.procs"), "").expect("an empty cgroup.procs");
     let mut command = std::process::Command::new("/bin/true");
 
-    super::join_on_exec(&mut command, &cgroup, Some(1 << 20)).expect("the join");
+    let limits = Limits {
+        memory_max: Some(1 << 20),
+        ..Limits::default()
+    };
+    super::join_on_exec(&mut command, &cgroup, limits).expect("the join");
 
     assert_eq!(read(&cgroup, "memory.max"), "1048576");
 }
 
 /// Starts `app` on a supervisor over a plain directory standing in for the
 /// delegated base, so a file the test writes is what the kernel would.
-async fn start_over(
+pub(super) async fn start_over(
     cgroups: Cgroups,
     runner: Arc<ScriptedRunner>,
     app: AppConfig,
@@ -854,4 +858,22 @@ async fn an_oom_inside_the_sheeps_own_cgroup_is_recorded_and_counts_against_max_
         Some(9),
         "the kernel's kill"
     );
+}
+
+#[test]
+fn a_reused_cgroup_loses_the_limits_the_new_sheep_does_not_ask_for() {
+    let base = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(base.path(), 1, 0);
+    fs::create_dir(&cgroup).expect("the cgroup a restart reuses");
+    fs::write(cgroup.join("cgroup.procs"), "").expect("an empty cgroup.procs");
+    fs::write(cgroup.join("memory.max"), "1048576").expect("the old memory.max");
+    fs::write(cgroup.join("cpu.max"), "50000 100000").expect("the old cpu.max");
+    fs::write(cgroup.join("pids.max"), "5").expect("the old pids.max");
+    let mut command = std::process::Command::new("/bin/true");
+
+    super::join_on_exec(&mut command, &cgroup, Limits::default()).expect("the join");
+
+    assert_eq!(read(&cgroup, "memory.max"), "max");
+    assert_eq!(read(&cgroup, "cpu.max"), "max 100000");
+    assert_eq!(read(&cgroup, "pids.max"), "max");
 }

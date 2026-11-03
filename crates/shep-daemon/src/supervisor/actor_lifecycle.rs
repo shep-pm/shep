@@ -131,13 +131,11 @@ impl<R: ProcessRunner> Actor<R> {
         let assembled = self
             .assemble_for_spawn(&app, instance, credentials, &self.secret_view(&app))
             .and_then(|spec| {
-                let (cgroup, memory_max) = self.cgroup_placement(app.config(), id, instance)?;
+                let placement = self.cgroup_placement(app.config(), id, instance)?;
                 Ok(SpawnSpec {
                     dog_link,
                     listen: self.listen_for(app.config())?,
-                    cgroup,
-                    memory_max,
-                    ..spec
+                    ..placement.into_spec(spec)
                 })
             });
         let spec = match assembled {

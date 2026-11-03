@@ -260,6 +260,18 @@ pub struct SpawnSpec {
     ///
     /// Read only with [`Self::cgroup`] set, and only on Linux.
     pub memory_max: Option<u64>,
+    /// Microseconds of CPU time per 100 ms period to write to the cgroup's
+    /// `cpu.max` before the child joins it, for a sheep with `max_cpu_cores`.
+    /// `None` leaves the cgroup unthrottled.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub cpu_quota: Option<u64>,
+    /// The task limit (processes and threads) to write to the cgroup's `pids.max` before the child
+    /// joins it, for a sheep with `max_tasks`. `None` leaves the cgroup
+    /// unlimited.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub pids_max: Option<u32>,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,

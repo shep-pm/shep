@@ -279,6 +279,20 @@ impl<R: ProcessRunner> Actor<R> {
         {
             self.apply_extras_change(&name);
         }
+        // The keys whose kernel limit did not take. Their value is stored, so
+        // the next spawn writes it: they are reported pending, not applied.
+        #[cfg(target_os = "linux")]
+        let unwritten: Vec<&str> = if !park_all
+            && live
+                .iter()
+                .any(|field| CGROUP_FIELDS.contains(&field.as_str()))
+        {
+            self.rewrite_cgroup_limits(&name)
+        } else {
+            Vec::new()
+        };
+        #[cfg(not(target_os = "linux"))]
+        let unwritten: Vec<&str> = Vec::new();
 
         // `autostart` and `depends_on` are the two `NextSpawn` fields that
         // report as applied: neither is read at a spawn. `restorable()` reads
@@ -393,6 +407,11 @@ impl<R: ProcessRunner> Actor<R> {
         if instances && count != running.instances {
             applied.push("instances".to_string());
         }
+        for key in unwritten {
+            if let Some(at) = applied.iter().position(|field| field == key) {
+                pending.push(applied.remove(at));
+            }
+        }
         applied.sort_unstable();
         pending.sort_unstable();
 
@@ -463,6 +482,54 @@ impl<R: ProcessRunner> Actor<R> {
                 }
             }
         }
+    }
+
+    /// Writes `name`'s `max_cpu_cores` to each running instance's `cpu.max`
+    /// and its `max_tasks` to `pids.max`, and lifts the limit from one that
+    /// has dropped the key. An instance not running takes it at its next
+    /// spawn.
+    ///
+    /// Returns the keys whose limit did not reach some running instance: the
+    /// caller reports them pending, since the next spawn writes the stored value.
+    #[cfg(target_os = "linux")]
+    pub(super) fn rewrite_cgroup_limits(&mut self, name: &str) -> Vec<&'static str> {
+        let mut unwritten: Vec<&'static str> = Vec::new();
+        for (id, slot) in &self.sheep {
+            let config = slot.entry.spec.config();
+            if config.name != name || slot.entry.pid.is_none() {
+                continue;
+            }
+            let quota = cpu_quota_of(config);
+            let tasks = config.max_tasks;
+            let Some(dir) = self.cgroup_for(*id, slot.entry.instance) else {
+                if quota.is_some() || tasks.is_some() {
+                    tracing::warn!(
+                        id,
+                        name,
+                        "max_cpu_cores or max_tasks changed live on a shepherd with no cgroup: \
+                         nothing limits this sheep until it restarts, and its restart will refuse"
+                    );
+                }
+                if quota.is_some() {
+                    unwritten.push("max_cpu_cores");
+                }
+                if tasks.is_some() {
+                    unwritten.push("max_tasks");
+                }
+                continue;
+            };
+            if let Err(error) = crate::cgroup::write_cpu_max(&dir, quota) {
+                tracing::warn!(id, name, %error, cgroup = %dir.display(), "cpu.max not written");
+                unwritten.push("max_cpu_cores");
+            }
+            if let Err(error) = crate::cgroup::write_pids_max(&dir, tasks) {
+                tracing::warn!(id, name, %error, cgroup = %dir.display(), "pids.max not written");
+                unwritten.push("max_tasks");
+            }
+        }
+        unwritten.sort_unstable();
+        unwritten.dedup();
+        unwritten
     }
 
     /// Rebuilds every lifecycle extra armed for `name`, so a changed
