@@ -1619,13 +1619,14 @@ reply, naming the same fields.
 `action` and any `params` are free-form and unvalidated here — sent to the app verbatim, on its own
 shepherd-channel wire, for the app itself to recognize or refuse.
 
-Usage: shep trigger [OPTIONS] <SELECTOR> <ACTION> [PARAMS]
+Usage: shep trigger [OPTIONS] <SELECTOR> [ACTION] [PARAMS]
 
 Arguments:
   <SELECTOR>
-          name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`
+          name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`. With no action, the name of a
+          dog, whose declared actions are listed
 
-  <ACTION>
+  [ACTION]
           Action name — free-form, defined by the app
 
   [PARAMS]
