@@ -177,7 +177,20 @@ pub(super) fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<S
     else {
         return None;
     };
-    (body_budget > 0).then(|| format!("shep publishes the change; {name} decides what to reload"))
+    // A standard dog's note replaces the reload line: it is the one that
+    // changes what an edit does.
+    let note = match pane.target() {
+        PaneTarget::Dog { .. } if pane.applies_to_every_sheep() => Some(format!(
+            "[{name}] values apply to every sheep; @ marks a key no sheep can override"
+        )),
+        PaneTarget::SheepDog { .. } if pane.inherits_section() => Some(format!(
+            "^ comes from [{name}]; d on a value you set returns it to [{name}]"
+        )),
+        _ => None,
+    };
+    (body_budget > 0).then(|| {
+        note.unwrap_or_else(|| format!("shep publishes the change; {name} decides what to reload"))
+    })
 }
 
 /// Pushes `footer`'s line onto `lines`, muted and fit to `width`: the tail

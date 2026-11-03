@@ -116,6 +116,29 @@ impl ConfigPane {
                 .is_some_and(|state| state.inherits.is_some())
     }
 
+    /// Whether `key` is dog-wide on a dog's own pane: the section sets it
+    /// for every sheep, and no sheep's table can hold its own.
+    #[must_use]
+    pub fn is_dog_wide(&self, key: &str) -> bool {
+        self.section.as_ref().is_some_and(|section| {
+            section.dog_wide.iter().any(|wide| {
+                key == wide
+                    || key
+                        .strip_prefix(wide.as_str())
+                        .is_some_and(|rest| rest.starts_with('.'))
+            })
+        })
+    }
+
+    /// Whether this is a dog's pane over a dog that follows the standard,
+    /// whose values every sheep shares.
+    #[must_use]
+    pub fn applies_to_every_sheep(&self) -> bool {
+        self.section
+            .as_ref()
+            .is_some_and(|section| !section.dog_wide.is_empty())
+    }
+
     /// What `key` goes back to when its own value is cleared: the section's
     /// value, rendered like a stored one. [`None`] when the section has none.
     pub(super) fn inherited_text(&self, key: &str) -> Option<String> {
@@ -303,6 +326,53 @@ mod tests {
         );
     }
 
+    fn jobs_dog_pane() -> ConfigPane {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "poll": { "type": "string", "x-shep-dog-wide": true },
+                "model": { "type": "string" },
+            },
+        });
+        ConfigPane::dog(
+            "jobs".into(),
+            None,
+            schema,
+            "poll = \"5m\"\nmodel = \"sonnet\"\n".into(),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn the_dog_pane_marks_a_dog_wide_row_and_says_its_values_reach_every_sheep() {
+        let pane = jobs_dog_pane();
+        assert!(pane.applies_to_every_sheep());
+        assert!(pane.is_dog_wide("poll") && !pane.is_dog_wide("model"));
+
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        let row = |key: &str| {
+            text.lines()
+                .find(|line| line.trim_start_matches(['>', ' ', '@']).starts_with(key))
+                .unwrap_or_else(|| panic!("no {key} row in {text}"))
+                .to_owned()
+        };
+        assert!(row("poll").contains("@poll"), "{}", row("poll"));
+        assert!(!row("model").contains('@'), "{}", row("model"));
+        assert!(text.contains("apply to every sheep"), "{text}");
+    }
+
+    #[test]
+    fn a_dog_pane_marking_nothing_dog_wide_draws_as_before() {
+        let schema = json!({ "type": "object", "properties": { "model": { "type": "string" } } });
+        let pane = ConfigPane::dog("jobs".into(), None, schema, String::new(), Vec::new());
+        assert!(!pane.applies_to_every_sheep());
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        assert!(
+            !text.contains("every sheep") && !text.contains('@'),
+            "{text}"
+        );
+    }
+
     #[test]
     fn the_pane_marks_an_inherited_row_and_draws_no_dog_wide_row() {
         let text = render_all(&pane_lines(&pane(json!({ "limit": 9 })), plain(), 120, 0));
@@ -316,5 +386,6 @@ mod tests {
         assert!(row("model").contains("sonnet"));
         assert!(row("limit").contains(" limit") && !row("limit").contains("^limit"));
         assert!(!text.contains("poll"), "{text}");
+        assert!(text.contains("^ comes from [jobs]"), "{text}");
     }
 }

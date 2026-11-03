@@ -22,6 +22,7 @@ use super::entries::{EntryBody, EntryRows};
 use super::entry_remove::Reshape;
 use super::fields::{entries_text, render_json, resolved_by_kind, resolved_display, sheep_fields};
 use super::sheep_dog::SheepDogTable;
+use crate::dog_settings::standard::dog_wide_keys;
 
 // Link-only (IR-32): the unit grammars a row's resolved display goes
 // through, the field kind a locked row reports, and the group order this
@@ -50,6 +51,9 @@ pub(super) struct DogSection {
     /// The dog's answer to the schema flag, probed at open and kept nowhere
     /// else.
     pub(super) schema: Value,
+    /// The root-level keys the schema marks dog-wide: set here for every
+    /// sheep, and out of reach of a sheep's own table.
+    pub(super) dog_wide: BTreeSet<String>,
 }
 
 impl core::fmt::Debug for DogSection {
@@ -246,6 +250,7 @@ impl ConfigPane {
             dogs_tab: Box::default(),
             section: Some(Box::new(DogSection {
                 toml: section,
+                dog_wide: dog_wide_keys(&schema),
                 schema,
             })),
             dog_table: None,
