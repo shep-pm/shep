@@ -9,9 +9,9 @@
 use super::{
     AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs, DialStdioArgs,
     DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
-    ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs,
-    ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs, TriggerArgs,
-    UnsetArgs, WhisperArgs,
+    ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs,
+    SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs,
+    TriggerArgs, UnsetArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.

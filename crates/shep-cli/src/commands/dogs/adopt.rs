@@ -27,8 +27,8 @@ use super::vet::{
     warn_unreadable_schema,
 };
 use super::{
-    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS, connect_or_absent,
-    emit_dog_action, fail_config,
+    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS,
+    connect_or_absent, emit_dog_action, fail_config,
 };
 
 /// `shep adopt <path> [--name <name>]`: vets a binary shep has never seen,
@@ -125,42 +125,43 @@ pub(super) async fn adopt_with(
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
-    let (adopted, grants, declined, held_back, env) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
-        cfg.adopt_dog(&name, &path, channel)?;
-        // The answer was asked against a read taken before the question. A
-        // grant another shep wrote since was decided by someone with the
-        // same say, and stands.
-        let decided_meanwhile = cfg.granted(&name)?.is_some();
-        // Whether a no is what this write left: the daemon half follows the
-        // file, not the raw answer, so a dog granted meanwhile is not stopped.
-        let mut declined = false;
-        match &verdict {
-            Some(_) if decided_meanwhile => {}
-            Some(Verdict::Grant(Some(grants))) => cfg.set_granted(&name, grants)?,
-            // `adopt_dog` enables; a no leaves the dog adopted and off.
-            Some(Verdict::Declined) => {
-                cfg.disable_dog(&name);
-                declined = true;
+    let (adopted, grants, declined, held_back, env) =
+        match ShepToml::try_edit(&paths.daemon_config, |cfg| {
+            cfg.adopt_dog(&name, &path, channel)?;
+            // The answer was asked against a read taken before the question. A
+            // grant another shep wrote since was decided by someone with the
+            // same say, and stands.
+            let decided_meanwhile = cfg.granted(&name)?.is_some();
+            // Whether a no is what this write left: the daemon half follows the
+            // file, not the raw answer, so a dog granted meanwhile is not stopped.
+            let mut declined = false;
+            match &verdict {
+                Some(_) if decided_meanwhile => {}
+                Some(Verdict::Grant(Some(grants))) => cfg.set_granted(&name, grants)?,
+                // `adopt_dog` enables; a no leaves the dog adopted and off.
+                Some(Verdict::Declined) => {
+                    cfg.disable_dog(&name);
+                    declined = true;
+                }
+                Some(Verdict::Grant(None)) | None => {}
             }
-            Some(Verdict::Grant(None)) | None => {}
-        }
-        // `adopt_dog` enables; `--no-enable` takes that back, and says so
-        // only when it is the reason the dog is off.
-        let held_back = !flow.enable && !declined;
-        if held_back {
-            cfg.disable_dog(&name);
-        }
-        Ok((
-            cfg.adopted_dog_names(),
-            cfg.granted(&name)?,
-            declined,
-            held_back,
-            cfg.adopted_dog_env(&name),
-        ))
-    }) {
-        Ok(recorded) => recorded,
-        Err(err) => return fail_config(streams, &err),
-    };
+            // `adopt_dog` enables; `--no-enable` takes that back, and says so
+            // only when it is the reason the dog is off.
+            let held_back = !flow.enable && !declined;
+            if held_back {
+                cfg.disable_dog(&name);
+            }
+            Ok((
+                cfg.adopted_dog_names(),
+                cfg.granted(&name)?,
+                declined,
+                held_back,
+                cfg.adopted_dog_env(&name),
+            ))
+        }) {
+            Ok(recorded) => recorded,
+            Err(err) => return fail_config(streams, &err),
+        };
     // The registration is in, so the defaults half is the last config write
     // `adopt` makes and it still precedes any socket: a dog adopted against
     // no shepherd gets its section too.

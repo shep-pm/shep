@@ -179,7 +179,14 @@ async fn it_runs_the_exact_cargo_command_records_a_receipt_and_adopts_under_adop
     let fixture = Fixture::new();
     let reach = fixture.reach(from_the_row());
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
     let root = fixture.paths.dogs_dir.join("otel").join("0.2.4");
@@ -228,7 +235,14 @@ async fn a_publisher_other_than_the_rows_repo_refuses_before_cargo_runs() {
     let fixture = Fixture::new();
     let reach = fixture.reach(Published::From("someone-else/shep-otel".to_owned()));
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Failure);
     assert!(err.contains("someone-else/shep-otel"), "{err}");
@@ -243,10 +257,20 @@ async fn a_token_publish_adds_one_line_to_the_prompt_and_still_installs() {
     let fixture = Fixture::new();
     let reach = fixture.reach(Published::ByToken);
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
-    let lines: Vec<_> = err.lines().filter(|line| line.contains("API token")).collect();
+    let lines: Vec<_> = err
+        .lines()
+        .filter(|line| line.contains("API token"))
+        .collect();
     assert_eq!(lines.len(), 1, "{err}");
     assert!(fixture.argv().exists());
 }
@@ -256,7 +280,14 @@ async fn a_response_without_trustpub_data_skips_the_check_and_adds_no_line() {
     let fixture = Fixture::new();
     let reach = fixture.reach(Published::Unreported);
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(!err.contains("API token"), "{err}");
@@ -274,7 +305,14 @@ async fn no_cargo_on_path_refuses_naming_cargo_and_rustup() {
         lock_wait: Duration::from_millis(100),
     };
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Failure);
     assert!(err.contains("cargo"), "{err}");
@@ -287,8 +325,14 @@ async fn a_no_at_the_grant_prompt_leaves_the_dog_installed_adopted_and_disabled(
     let fixture = Fixture::new();
     let reach = fixture.reach(from_the_row());
 
-    let (code, _out, err) =
-        run(&fixture, &cargo_row(), &args(false, false), &reach, typing(Some("n\n"))).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(false, false),
+        &reach,
+        typing(Some("n\n")),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(err.contains("flock.read"), "{err}");
@@ -302,7 +346,14 @@ async fn no_enable_adopts_and_grants_but_never_enables() {
     let fixture = Fixture::new();
     let reach = fixture.reach(from_the_row());
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, true), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, true),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
     let cfg = config(&fixture);
@@ -318,7 +369,14 @@ async fn a_second_install_while_the_lock_is_held_refuses_naming_the_lock() {
     std::fs::create_dir_all(&fixture.paths.dogs_dir).unwrap();
     let _held = FileLock::acquire(&fixture.paths.dogs_dir.join("otel")).unwrap();
 
-    let (code, _out, err) = run(&fixture, &cargo_row(), &args(true, false), &reach, typing(None)).await;
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Failure);
     assert!(err.contains("otel.lock"), "{err}");

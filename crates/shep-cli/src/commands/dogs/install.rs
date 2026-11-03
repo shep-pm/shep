@@ -81,10 +81,7 @@ impl Reach {
     /// The real `cargo` on this process's `PATH` and the real crates.io.
     fn real() -> Self {
         Self {
-            cargo: lookup_on_path(
-                Path::new("cargo"),
-                std::env::var_os("PATH").as_deref(),
-            ),
+            cargo: lookup_on_path(Path::new("cargo"), std::env::var_os("PATH").as_deref()),
             lookup: Lookup::CratesIo(CRATES_IO.to_owned()),
             lock_wait: LOCK_WAIT,
         }
@@ -96,11 +93,7 @@ impl Reach {
 /// With no `<dog>`, lists the index with an install line under each dog
 /// that can be installed. With one, builds it, records its receipt and
 /// adopts it; see the module doc.
-pub async fn install(
-    streams: &mut Streams<'_>,
-    paths: &ShepPaths,
-    args: &InstallArgs,
-) -> ExitCode {
+pub async fn install(streams: &mut Streams<'_>, paths: &ShepPaths, args: &InstallArgs) -> ExitCode {
     let url = dog_index::index_url();
     let loaded = match dog_index::cached_index(paths, &url, args.refresh).await {
         Ok(loaded) => loaded,
@@ -270,8 +263,9 @@ pub(super) async fn install_dog(
     }
     let lock_target = paths.dogs_dir.join(name);
     let lock_wait = reach.lock_wait;
-    let lock = tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, lock_wait))
-        .await;
+    let lock =
+        tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, lock_wait))
+            .await;
     let _held = match lock {
         Ok(Ok(Some(held))) => held,
         Ok(Ok(None)) => {
@@ -305,7 +299,10 @@ pub(super) async fn install_dog(
         root.display().to_string(),
         package.to_owned(),
     ];
-    streams.aside("install", &format!("building {package} {version} with cargo"));
+    streams.aside(
+        "install",
+        &format!("building {package} {version} with cargo"),
+    );
     let status = tokio::process::Command::new(cargo)
         .args(&command[1..])
         .stdin(Stdio::null())
@@ -319,7 +316,9 @@ pub(super) async fn install_dog(
         Ok(status) => {
             return streams.fail(
                 ExitCode::Failure,
-                &format!("`cargo install` for {package} {version} failed ({status}); nothing was adopted"),
+                &format!(
+                    "`cargo install` for {package} {version} failed ({status}); nothing was adopted"
+                ),
             );
         }
         Err(err) => {
@@ -378,8 +377,9 @@ pub(super) async fn install_dog(
             TOKEN_PUBLISH_NOTICE,
             &format!(
                 "crates.io lists {package} {version} as published with an API token, not from \
-                 {}'s CI, so the build is not tied to that repository"
-            , dog.repo),
+                 {}'s CI, so the build is not tied to that repository",
+                dog.repo
+            ),
         );
     }
     let adopting = AdoptArgs {
@@ -411,15 +411,17 @@ pub(super) enum Published {
 /// # Errors
 /// The message to refuse with: crates.io could not be reached, has no such
 /// version, or answered something that is not JSON.
-pub(super) async fn published_from(base: &str, package: &str, version: &str) -> Result<Published, String> {
+pub(super) async fn published_from(
+    base: &str,
+    package: &str,
+    version: &str,
+) -> Result<Published, String> {
     let url = format!("{base}/api/v1/crates/{package}/{version}");
     let target = fetch::parse_url(&url).map_err(|err| format!("{err}"))?;
     let body = fetch::get(&target, LOOKUP_LIMIT, LOOKUP_TIMEOUT)
         .await
         .map_err(|err| {
-            format!(
-                "asking crates.io who published {package} {version}: {err}; nothing was built"
-            )
+            format!("asking crates.io who published {package} {version}: {err}; nothing was built")
         })?;
     parse_published(&body).map_err(|err| {
         format!("crates.io's answer for {package} {version} was not JSON: {err}; nothing was built")
@@ -492,7 +494,10 @@ mod tests {
         let token = br#"{"version":{"trustpub_data":null}}"#;
         let silent = br#"{"version":{"num":"0.2.4"}}"#;
 
-        assert_eq!(parse_published(from).unwrap(), Published::From("o/r".into()));
+        assert_eq!(
+            parse_published(from).unwrap(),
+            Published::From("o/r".into())
+        );
         assert_eq!(parse_published(token).unwrap(), Published::ByToken);
         assert_eq!(parse_published(silent).unwrap(), Published::Unreported);
     }

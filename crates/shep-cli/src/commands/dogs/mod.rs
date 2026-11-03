@@ -73,13 +73,13 @@ pub use adopt::adopt;
 pub use barks::barks;
 pub use disable::disable;
 pub use enable::enable;
-pub use install::install;
 #[cfg(test)]
 pub(crate) use entry_drift::test_support as entry_drift_support;
 pub(crate) use entry_drift::{
     DOG_ENTRY_KEPT_NOTICE, kept_entries, kept_entries_among, kept_entry_report,
 };
 pub(crate) use grant::{Change, GrantRefusal, change, record_change};
+pub use install::install;
 pub use remove::rehome;
 pub(crate) use remove::{Removal, remove_dog};
 pub(crate) use upgrade::{upgrade_grants, upgrade_notice};
