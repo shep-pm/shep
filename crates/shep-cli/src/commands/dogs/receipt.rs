@@ -1,4 +1,4 @@
-//! `$SHEP_HOME/dogs/<name>/receipt.json`: what `shep install` built, from
+//! `$SHEP_HOME/dogs/<name>/receipt.json`: what `shep install` put on disk, from
 //! which approval, and how.
 //!
 //! A record, never a cache. Nothing reads a schema from the manifest it
@@ -28,13 +28,14 @@ pub(super) struct Receipt<'a> {
     pub(super) index: &'a str,
     /// The row exactly as the index approved it.
     pub(super) row: &'a AvailableDog,
-    /// The crate that was built.
+    /// The crate the binary comes from.
     pub(super) package: &'a str,
-    /// The exact version that was built.
+    /// The exact version installed.
     pub(super) version: &'a str,
-    /// The installer's whole command line, program first.
-    pub(super) command: &'a [String],
-    /// Where the build put the binary.
+    /// How the binary got there.
+    #[serde(flatten)]
+    pub(super) installer: Installer<'a>,
+    /// Where the install put the binary.
     pub(super) binary: &'a Path,
     /// Lowercase hex sha256 of that binary.
     pub(super) sha256: &'a str,
@@ -42,6 +43,16 @@ pub(super) struct Receipt<'a> {
     pub(super) manifest: Option<&'a Manifest>,
     /// When the receipt was written, as UTC RFC 3339.
     pub(super) installed_at: String,
+}
+
+/// What put the binary on disk, written as `command` or `url` in the receipt.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum Installer<'a> {
+    /// The installer's whole command line, program first.
+    Command(&'a [String]),
+    /// The URL the binary was downloaded from.
+    Url(&'a str),
 }
 
 /// The time a receipt written now carries.

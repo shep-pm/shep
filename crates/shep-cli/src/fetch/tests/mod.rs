@@ -9,6 +9,7 @@ use tokio::io::AsyncWriteExt;
 
 use super::*;
 
+mod asset;
 mod tls;
 
 /// Serves one canned response on an ephemeral port, then stops.

@@ -25,6 +25,11 @@ mod post;
 #[cfg(feature = "otel")]
 pub use post::post_json;
 
+/// The GET that follows the one redirect a release asset needs.
+mod asset;
+
+pub use asset::{RedirectPolicy, get_asset};
+
 /// Connect, TLS handshake, write and flush: the half every request here shares.
 mod transport;
 

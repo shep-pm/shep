@@ -32,6 +32,8 @@ mod entry_drift;
 mod grant;
 mod grants;
 mod install;
+mod install_download;
+mod install_keep;
 mod receipt;
 mod remove;
 mod second_look;
@@ -56,6 +58,8 @@ mod grant_builtin_tests;
 mod grant_record_tests;
 #[cfg(all(test, unix))]
 mod grant_tests;
+#[cfg(all(test, unix))]
+mod install_download_tests;
 #[cfg(all(test, unix))]
 mod install_tests;
 #[cfg(all(test, unix))]

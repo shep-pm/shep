@@ -141,11 +141,11 @@ pub struct InstallArgs {
     /// installed.
     pub dog: Option<String>,
     /// Grant the dog everything it declares without asking. With no
-    /// terminal and no `--yes`, install builds the dog and then refuses at
+    /// terminal and no `--yes`, install fetches the dog and then refuses at
     /// the grant question.
     #[arg(long)]
     pub yes: bool,
-    /// Stop after adopting: the dog is built, recorded and granted, and left
+    /// Stop after adopting: the dog is installed, recorded and granted, and left
     /// disabled until `shep enable`.
     #[arg(long)]
     pub no_enable: bool,
@@ -153,6 +153,10 @@ pub struct InstallArgs {
     /// is still fresh.
     #[arg(long)]
     pub refresh: bool,
+    /// Build the index's version with cargo, even when the index hashes a
+    /// prebuilt binary for this target.
+    #[arg(long)]
+    pub cargo: bool,
 }
 
 #[cfg(test)]
