@@ -190,6 +190,7 @@ pub(super) fn build<E>(
         cgroup: None,
         // Set by the supervisor, with `cgroup`.
         memory_max: None,
+        cpu_quota: None,
     })
 }
 

@@ -890,3 +890,29 @@ async fn a_live_switch_to_kernel_takes_the_oom_baseline_and_a_switch_back_drops_
     .await;
     assert_eq!(actor.oom_baselines.get(&0), None);
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test(start_paused = true)]
+async fn a_live_max_cpu_cores_change_rewrites_a_running_sheeps_cpu_max() {
+    let dir = tempfile::tempdir().unwrap();
+    let throttled = app_with("web", |app| {
+        app.max_cpu_cores = Some(shep_core::config::CpuCores::from_cores(0.5));
+    });
+    let (mut actor, _enforcer) = actor_over(&dir, &[throttled]);
+    let (_base, cgroup) = capped_cgroup(&mut actor, "max");
+    std::fs::write(cgroup.join("cpu.max"), "50000 100000").unwrap();
+
+    let mut file = AppConfig::minimal("web", "./srv");
+    file.max_cpu_cores = Some(shep_core::config::CpuCores::from_cores(2.5));
+    apply_config(
+        &mut actor,
+        vec![declared_app(file, &["name", "script", "max_cpu_cores"])],
+        ResetDepth::None,
+    )
+    .await;
+
+    assert_eq!(
+        std::fs::read_to_string(cgroup.join("cpu.max")).unwrap(),
+        "250000 100000"
+    );
+}

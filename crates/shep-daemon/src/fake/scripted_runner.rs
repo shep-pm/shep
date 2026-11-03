@@ -74,6 +74,10 @@ struct SpawnedProc {
     /// [`SpawnSpec::memory_max`], read back via
     /// [`ScriptedRunner::spawned_memory_max`].
     memory_max: Option<u64>,
+    /// The `cpu.max` quota this spawn was asked to set, off
+    /// [`SpawnSpec::cpu_quota`], read back via
+    /// [`ScriptedRunner::spawned_cpu_quota`].
+    cpu_quota: Option<u64>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -322,6 +326,16 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_memory_max(&self, spawn_index: usize) -> Option<u64> {
         self.spawned.lock().unwrap()[spawn_index].memory_max
+    }
+
+    /// The `cpu.max` quota the spawn at `spawn_index` was asked to set, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_cpu_quota(&self, spawn_index: usize) -> Option<u64> {
+        self.spawned.lock().unwrap()[spawn_index].cpu_quota
     }
 
     /// How many spawns this runner has been asked for.
@@ -692,6 +706,7 @@ impl ProcessRunner for ScriptedRunner {
             listen: spec.listen.clone(),
             cgroup: spec.cgroup.clone(),
             memory_max: spec.memory_max,
+            cpu_quota: spec.cpu_quota,
         });
         drop(spawned);
 

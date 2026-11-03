@@ -6,14 +6,16 @@
 //!
 //! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
 //! which [`join_on_exec`] creates and the child joins before its exec, with
-//! `memory.max` set first ([`write_memory_max`]) and [`oom_kills`] read at the
-//! exit. [`remove_if_empty`] and [`remove_stale`] drop it.
+//! `memory.max` ([`write_memory_max`]) and `cpu.max` ([`write_cpu_max`]) set
+//! first and [`oom_kills`] read at the exit. [`remove_stale`] drops it.
 
 use core::fmt;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use shep_core::config::CpuCores;
 
 use crate::runner::RunnerError;
 
@@ -23,6 +25,10 @@ const MOUNT: &str = "/sys/fs/cgroup";
 /// The leaf the shepherd lives in, since v2 refuses controllers on a cgroup
 /// that holds processes.
 const LEAF: &str = "shepherd";
+
+/// The scheduling period in microseconds that `cpu.max` quotas are measured
+/// against: the kernel's own default, and what `docker run --cpus` uses.
+const CPU_PERIOD_US: u64 = 100_000;
 
 /// Written to `cgroup.subtree_control`: the controllers a sheep's limits use.
 const CONTROLLERS: &str = "+memory +cpu +pids";
@@ -181,7 +187,8 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`. `memory_max` is written first, by [`write_memory_max`].
+/// `memory.oom.group`. `memory_max` and `cpu_quota` are written first, by
+/// [`write_memory_max`] and [`write_cpu_max`].
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
@@ -195,6 +202,7 @@ pub(crate) fn join_on_exec(
     command: &mut std::process::Command,
     dir: &Path,
     memory_max: Option<u64>,
+    cpu_quota: Option<u64>,
 ) -> io::Result<()> {
     let created = match fs::create_dir(dir) {
         Ok(()) => true,
@@ -206,6 +214,7 @@ pub(crate) fn join_on_exec(
     } else {
         fs::write(dir.join("memory.oom.group"), "1")
             .and_then(|()| memory_max.map_or(Ok(()), |limit| write_memory_max(dir, Some(limit))))
+            .and_then(|()| cpu_quota.map_or(Ok(()), |quota| write_cpu_max(dir, Some(quota))))
             .and_then(|()| {
                 fs::OpenOptions::new()
                     .write(true)
@@ -238,6 +247,25 @@ pub(crate) fn write_memory_max(dir: &Path, limit: Option<u64>) -> io::Result<()>
     fs::write(dir.join("memory.max"), max)?;
     let _ = fs::write(dir.join("memory.swap.max"), swap);
     Ok(())
+}
+
+/// The microseconds of CPU time per [`CPU_PERIOD_US`] that `cores` allows,
+/// rounded to the nearest microsecond.
+pub(crate) fn cpu_quota(cores: CpuCores) -> u64 {
+    // Saturating: a quota past `u64` is far above any kernel ceiling, which
+    // then refuses the write by name.
+    (cores.cores() * CPU_PERIOD_US as f64).round() as u64
+}
+
+/// Writes `<quota> <period>` to `dir`'s `cpu.max`, or `max <period>` (no cap)
+/// for `None`. The tree is throttled, never killed.
+///
+/// # Errors
+/// What the `cpu.max` write reported, such as a cgroup the `cpu` controller
+/// is not enabled for, or a quota under the kernel's one-millisecond minimum.
+pub(crate) fn write_cpu_max(dir: &Path, quota: Option<u64>) -> io::Result<()> {
+    let quota = quota.map_or_else(|| "max".to_string(), |micros| micros.to_string());
+    fs::write(dir.join("cpu.max"), format!("{quota} {CPU_PERIOD_US}"))
 }
 
 /// How many of the cgroup's own processes the kernel's OOM killer has killed,

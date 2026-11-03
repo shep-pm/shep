@@ -103,10 +103,14 @@ mod tasks;
 mod types;
 mod wire;
 
+#[cfg(target_os = "linux")]
+use actor_spawn::cpu_quota_of;
 pub(crate) use builder::SupervisorBuilder;
 pub use builder::spawn_supervisor;
 use command::ReplyKind;
 pub(crate) use command::{Command, Msg};
+#[cfg(target_os = "linux")]
+use config_merge::CGROUP_FIELDS;
 use config_merge::{
     EXTRAS_FIELDS, dog_config_refusal, env_override_map, merge_declared, pending_fields,
     reached_spec, try_with_count, with_count,

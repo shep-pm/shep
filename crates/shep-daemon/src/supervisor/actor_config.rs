@@ -279,6 +279,14 @@ impl<R: ProcessRunner> Actor<R> {
         {
             self.apply_extras_change(&name);
         }
+        #[cfg(target_os = "linux")]
+        if !park_all
+            && live
+                .iter()
+                .any(|field| CGROUP_FIELDS.contains(&field.as_str()))
+        {
+            self.rewrite_cpu_max(&name);
+        }
 
         // `autostart` and `depends_on` are the two `NextSpawn` fields that
         // report as applied: neither is read at a spawn. `restorable()` reads
@@ -461,6 +469,35 @@ impl<R: ProcessRunner> Actor<R> {
                 None => {
                     self.oom_baselines.remove(&id);
                 }
+            }
+        }
+    }
+
+    /// Writes `name`'s `max_cpu_cores` to each running instance's `cpu.max`,
+    /// and lifts the quota from one that has dropped the key, so a live change
+    /// reaches the kernel at once. An instance not running takes the new value
+    /// at its next spawn.
+    #[cfg(target_os = "linux")]
+    fn rewrite_cpu_max(&mut self, name: &str) {
+        for (id, slot) in &self.sheep {
+            let config = slot.entry.spec.config();
+            if config.name != name || slot.entry.pid.is_none() {
+                continue;
+            }
+            let quota = cpu_quota_of(config);
+            let Some(dir) = self.cgroup_for(*id, slot.entry.instance) else {
+                if quota.is_some() {
+                    tracing::warn!(
+                        id,
+                        name,
+                        "max_cpu_cores changed live on a shepherd with no cgroup: nothing \
+                         throttles this sheep until it restarts, and its restart will refuse"
+                    );
+                }
+                continue;
+            };
+            if let Err(error) = crate::cgroup::write_cpu_max(&dir, quota) {
+                tracing::warn!(id, name, %error, cgroup = %dir.display(), "cpu.max not written");
             }
         }
     }
