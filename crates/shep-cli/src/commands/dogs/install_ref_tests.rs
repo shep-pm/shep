@@ -309,3 +309,11 @@ fn ref_parses_into_the_install_args() {
     };
     assert_eq!(args.git_ref.as_deref(), Some("main"));
 }
+
+#[test]
+fn ref_without_a_dog_is_a_usage_error() {
+    let err = Cli::try_parse_from(["shep", "install", "--ref", "main"]).unwrap_err();
+
+    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    assert_eq!(err.exit_code(), 2);
+}

@@ -161,7 +161,12 @@ pub struct InstallArgs {
     /// instead of the version the index approves. A 7 to 40 character hex
     /// string is a commit; anything else is tried as a tag, then a branch.
     /// The index has not reviewed it, and the grant question says so.
-    #[arg(long = "ref", value_name = "REF", conflicts_with = "cargo")]
+    #[arg(
+        long = "ref",
+        value_name = "REF",
+        requires = "dog",
+        conflicts_with = "cargo"
+    )]
     pub git_ref: Option<String>,
 }
 
