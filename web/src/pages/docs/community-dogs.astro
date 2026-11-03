@@ -90,7 +90,8 @@ function adoptLine(dog: Dog): string {
       <code>metrics</code> and <code>bark</code> ship inside the{" "}
       <code>shep</code> binary. Everything below is a separate binary.{" "}
       <code>shep install &lt;name&gt;</code> installs the ones with an
-      approved version; the rest you install yourself and hand to{" "}
+      approved version, and with <code>--ref</code> any cargo one; the rest
+      you install yourself and hand to{" "}
       <code>shep adopt &lt;path&gt;</code>. Some are ours and some are not;
       the repository link says which.
     </p>
@@ -195,6 +196,17 @@ function adoptLine(dog: Dog): string {
       no leaves it disabled, and <code>--no-enable</code> skips the enable. <code>receipt.json</code> records what was approved and the
       URL or command. Other rows print instructions.
       With no name, <code>shep install</code> lists the index.
+    </p>
+    <p>
+      <code>shep install &lt;name&gt; --ref &lt;ref&gt;</code> builds the
+      dog's own repository at a branch, tag or commit, for a fix not yet
+      released. Seven to 40 hex characters is a commit; anything else is tried
+      as a tag, then a branch. It lands in{" "}
+      <code>$SHEP_HOME/dogs/&lt;name&gt;/ref-&lt;sha&gt;/</code>, and the
+      receipt records the ref and commit in place of a version. The grant
+      question says the index has not reviewed it. It takes no{" "}
+      <code>--cargo</code>; another repository is{" "}
+      <code>shep adopt &lt;path&gt;</code>.
     </p>
 
     <h2 id="add-a-dog">Add a dog</h2>

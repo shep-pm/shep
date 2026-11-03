@@ -2886,3 +2886,13 @@ With no flag, `shep install` downloads the binary a row hashes for the triple sh
 **What it costs:** the allowed asset hosts are a list in `crates/shep-cli/src/fetch/asset.rs`, and a host GitHub starts serving assets from is refused until the list gains it. A download is read whole into memory, capped at 128 MiB.
 
 `verified crates/shep-cli/src/fetch/asset.rs, crates/shep-cli/src/commands/dogs/install_download.rs, crates/shep-cli/src/commands/dogs/install_download_tests.rs, crates/shep-cli/src/commands/dogs/install_keep.rs`
+
+### `shep install --ref` builds the row's own repository at a branch, tag or commit
+
+`shep install <dog> --ref <ref>` runs `cargo install --locked --git <row's repo> --tag|--branch|--rev <ref> --root <staging> <package>` for any `cargo` row, with or without an approved version. A 7 to 40 character hex string is a commit and goes to cargo as `--rev`. Anything else is tried as `--tag`, and if cargo fails, as `--branch`. The commit is read from the `.crates2.json` cargo writes into the staging root, the build moves to `$SHEP_HOME/dogs/<name>/ref-<sha>/`, and a `ref-<sha>` that already holds the binary is kept. The grant prompt gains one line: built from `<ref>` at `<sha>`, which the index has not reviewed. The receipt records `ref` and `commit` in place of `version`. `--ref` conflicts with `--cargo`, and a ref that is empty, starts with `-` or holds whitespace is refused.
+
+**Why:** #1449, under #1075. An operator who wants a fix before it is released needs it from the dog's own repository, and a build from anywhere else is `shep adopt <path>`. Trying a name as a tag and then a branch costs a second cargo run only when the name is not a tag, and keeps shep from needing `git` to ask the remote which it is. A failed fetch of a missing tag stops before any compile.
+
+**What it costs:** the index approves nothing for a ref, so the prompt line is the only control and it never refuses. A tag build that fails to compile for another reason is retried as a branch and reports both tries. Whether cargo's `--rev` takes a bare branch or tag name was not checked, so shep does not rely on it.
+
+`verified crates/shep-cli/src/commands/dogs/install_ref.rs, crates/shep-cli/src/commands/dogs/install_ref_tests.rs, crates/shep-cli/src/commands/dogs/receipt.rs`
