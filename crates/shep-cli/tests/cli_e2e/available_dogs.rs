@@ -204,3 +204,119 @@ fn available_dogs_reports_a_truncated_body_naming_the_url() {
     );
     assert!(stderr.contains("truncated"), "stderr: {stderr}");
 }
+
+/// The server answers once and is gone, so a second run that lists anyway
+/// is reading the cache the first one wrote.
+#[test]
+fn available_dogs_reads_a_fresh_cache_without_fetching_again() {
+    let home = TempDir::new().unwrap();
+    let url = serve_dog_index(&two_entry_index_json());
+    assert_success(&available_dogs(home.path(), &url, &[]));
+
+    let output = available_dogs(home.path(), &url, &[]);
+
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("shep-watchdog"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("cached"),
+        "a fresh cache is not news: {stderr}"
+    );
+    assert!(
+        home.path().join("cache").join("dogs.json").is_file(),
+        "the cache lives at $SHEP_HOME/cache/dogs.json"
+    );
+}
+
+#[test]
+fn available_dogs_refresh_with_the_server_gone_lists_the_cache_and_says_so_once() {
+    let home = TempDir::new().unwrap();
+    let url = serve_dog_index(&two_entry_index_json());
+    assert_success(&available_dogs(home.path(), &url, &[]));
+
+    let output = available_dogs(home.path(), &url, &["--refresh"]);
+
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("shep-watchdog"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let lines: Vec<&str> = stderr
+        .lines()
+        .filter(|line| line.contains("cached"))
+        .collect();
+    assert_eq!(lines.len(), 1, "stderr: {stderr}");
+    assert!(
+        lines[0].contains(" ago"),
+        "the line names the copy's age: {stderr}"
+    );
+}
+
+#[test]
+fn available_dogs_with_no_cache_and_no_server_refuses() {
+    let home = TempDir::new().unwrap();
+    // Bound then dropped, so nothing listens on the port.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let url = format!("http://127.0.0.1:{port}/dogs.json");
+
+    let output = available_dogs(home.path(), &url, &[]);
+
+    assert!(!output.status.success(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("reading the dog index from {url}")),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn available_dogs_says_a_cargo_row_without_a_version_is_not_installable() {
+    let home = TempDir::new().unwrap();
+    let index = serde_json::json!({
+        "version": 1,
+        "dogs": [
+            {
+                "name": "Bella", "package": "shep-log-rotate", "adopt_as": "log-rotate",
+                "description": "Rotates logs.", "repo": "https://github.com/shep-pm/shep-log-rotate",
+                "license": "MIT", "category": "logs", "source": { "kind": "cargo" }
+            },
+            {
+                "name": "Moon", "package": "shep-deploy", "adopt_as": "deploy",
+                "description": "Deploys.", "repo": "https://github.com/shep-pm/shep-deploy",
+                "license": "MIT", "category": "deploy",
+                "source": { "kind": "cargo", "version": "0.6.6" }
+            }
+        ]
+    })
+    .to_string();
+    let url = serve_dog_index(&index);
+
+    let output = available_dogs(home.path(), &url, &[]);
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let bella = stdout
+        .lines()
+        .find(|l| l.contains("Bella"))
+        .expect("Bella listed");
+    assert!(bella.contains("not installable"), "{stdout}");
+    let moon = stdout
+        .lines()
+        .find(|l| l.contains("Moon"))
+        .expect("Moon listed");
+    assert!(!moon.contains("not installable"), "{stdout}");
+}
+
+#[test]
+fn dogs_refresh_without_available_is_refused() {
+    let home = TempDir::new().unwrap();
+
+    let output = shep(home.path())
+        .args(["dogs", "--refresh"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success(), "{output:?}");
+}

@@ -191,3 +191,48 @@ test("a source that is missing entirely is refused", () => {
   delete entry.source;
   assert.throws(() => validate([entry]), /source/);
 });
+
+// --- The cargo source's two optional fields -----------------------------
+
+const HASH = "0123456789abcdef".repeat(4);
+
+function cargo(source: Record<string, unknown>): Record<string, unknown> {
+  return { ...good(), source: { kind: "cargo", ...source } };
+}
+
+test("a cargo source with no version still validates", () => {
+  assert.equal(validate([cargo({})]).length, 1);
+});
+
+test("a cargo source keeps its version and its hashes", () => {
+  const [dog] = validate([cargo({ version: "0.2.4", sha256: { "aarch64-apple-darwin": HASH } })]);
+  assert.deepEqual(dog.source, {
+    kind: "cargo",
+    version: "0.2.4",
+    sha256: { "aarch64-apple-darwin": HASH },
+  });
+});
+
+test("hashes without a version are refused", () => {
+  assert.throws(() => validate([cargo({ sha256: { "aarch64-apple-darwin": HASH } })]), /version/);
+});
+
+test("a hash that is not 64 lowercase hex digits is refused, naming the target", () => {
+  for (const bad of ["abc", HASH.toUpperCase(), `${HASH}0`]) {
+    assert.throws(
+      () => validate([cargo({ version: "0.2.4", sha256: { "aarch64-apple-darwin": bad } })]),
+      /aarch64-apple-darwin/,
+    );
+  }
+});
+
+test("a target that is not a triple is refused", () => {
+  assert.throws(() => validate([cargo({ version: "0.2.4", sha256: { "Mac OS": HASH } })]), /Mac OS/);
+});
+
+test("the schema describes both cargo fields", async () => {
+  const schema = JSON.parse(await readFile(new URL("../public/dogs.schema.json", import.meta.url), "utf8"));
+  const cargoSchema = schema.properties.dogs.items.properties.source.oneOf[0];
+  assert.deepEqual(Object.keys(cargoSchema.properties).sort(), ["kind", "sha256", "version"]);
+  assert.deepEqual(cargoSchema.dependentRequired, { sha256: ["version"] });
+});
