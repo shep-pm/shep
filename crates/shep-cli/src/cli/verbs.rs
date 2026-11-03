@@ -9,9 +9,9 @@
 use super::{
     AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs, DialStdioArgs,
     DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
-    ImportArgs, InitArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs,
-    ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs, TriggerArgs,
-    UnsetArgs, WhisperArgs,
+    ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs,
+    SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs,
+    TriggerArgs, UnsetArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -243,6 +243,14 @@ pub enum Commands {
     /// own configuration in `dogs.toml` survives a disable/enable cycle;
     /// `shep delete` forgets the adoption as well.
     Disable(DisableArgs),
+    /// Build a dog from the community index with cargo, then adopt and
+    /// enable it. With no name, lists the index.
+    ///
+    /// Builds the version the index approves with `cargo install
+    /// --locked`, after checking who published it. Then it asks the grant
+    /// question `shep adopt` asks; a no leaves the dog adopted and
+    /// disabled. Any other row prints its instructions and exits 1.
+    Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
     /// and starts it now if a shepherd is running.
@@ -755,6 +763,7 @@ mod tests {
             "whisper",
             "enable",
             "disable",
+            "install",
             "adopt",
             "kv",
             "get",

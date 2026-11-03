@@ -2810,3 +2810,25 @@ The successor takes each descriptor back, checks that it is a listening TCP sock
 **What it costs:** the set a reload had replaced (`listeners_before`) is not carried. A handover during a reload leaves the successor holding the set the reload bound, so if that reload is then abandoned the drainee's set is not restored, and a later bind of an address only the drainee's set held fails until the drainee exits. The TCP cases bind real ports, which the sandbox the change was written in forbids, so they run in CI only.
 
 `verified crates/shep-daemon/src/handover/blob.rs, crates/shep-daemon/src/handover/carried.rs, crates/shep-daemon/src/handover/adopt/adopt_listeners.rs, crates/shep-daemon/src/supervisor/handover.rs, crates/shep-daemon/src/supervisor/builder.rs, crates/shep-daemon/src/listen.rs, crates/shep-daemon/src/sys.rs`
+
+## Installing a dog
+
+### `shep install` runs the installer, reversing "print, never execute"
+
+`shep install <dog>` runs `cargo install --locked --version <version> --root $SHEP_HOME/dogs/<name>/<version>/ <package>` for a `cargo` row of the community index that carries an exact version, then hands the binary to the paths `shep adopt` and `shep enable` already use. Any other row kind prints its instructions and installs nothing. With no `cargo` on `PATH` it refuses, naming cargo and linking rustup: shep never installs a toolchain. Before it builds, it asks crates.io for that version's `trustpub_data` through the CLI's `fetch` module, which refuses redirects. A `repository` other than the row's refuses and names both. `null`, a token publish, adds one line to the grant prompt. A response without the field skips the check, because crates.io marks it unstable. A lock file per dog name under `$SHEP_HOME/dogs/` makes a second install wait up to 30 seconds, then refuse naming the lock. A no at the grant prompt leaves the dog installed, adopted and disabled; `--no-enable` stops after adopting.
+
+**Why:** #1446, under #1075, replacing #357. The deferred entry refused `shep install` because an index built from strangers' pull requests was trusted to print and not to execute. That stands as a fact about the index, and what changed is the controls around it: a row approves one exact version, `--locked` pins the build, crates.io's provenance is checked before cargo runs, and the grant prompt gates what the dog may do. Every dog still prompts. The prompt is the control; the install adds none of its own.
+
+**What it costs:** shep now builds and runs code a stranger published, on the strength of one reviewed row. The provenance check covers a crate published from another repository and not one a repository's owner publishes badly. Confinement is not planned. The binary name is assumed to equal the package name, so a crate whose binary differs is not installable yet. The CLI reaches crates.io, and the daemon still never touches the network.
+
+`verified crates/shep-cli/src/commands/dogs/install.rs, crates/shep-cli/src/commands/dogs/install_tests.rs, crates/shep-core/src/file_lock.rs (FileLock::acquire_within)`
+
+### The receipt keeps the manifest as a record, narrowing "asked fresh, never stored"
+
+`$SHEP_HOME/dogs/<name>/receipt.json` holds the index URL and the row as approved, the package, the version, the full installer command line, the binary's sha256, the manifest as installed, and the time. It is written atomically after the build and before the grant prompt.
+
+**Why:** #1446. Rule 7 of the dog config spec says a dog's manifest is asked fresh and never stored. A later upgrade needs to compare what was approved with what a new version declares, and the columns need a version without running the binary. A record of what the operator was shown answers both. Nothing that acts on a schema reads it: the config pane, enable and the grant prompt still ask the binary.
+
+**What it costs:** two copies of a manifest can disagree, the receipt's and the one the binary reports now. The receipt is the older and is never the one acted on. An adopted dog has no receipt.
+
+`verified crates/shep-cli/src/commands/dogs/receipt.rs`

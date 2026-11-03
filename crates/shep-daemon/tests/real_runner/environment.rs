@@ -78,6 +78,7 @@ async fn a_bare_interpreter_resolves_via_the_seeded_path() {
         secrets_cache: dir.path().join("secrets-cache.json"),
         dog_defaults: dir.path().join("dog-defaults.json"),
         dog_index_cache: dir.path().join("cache/dogs.json"),
+        dogs_dir: dir.path().join("dogs"),
     };
     let app_config = AppConfig {
         name: "bare".to_string(),
