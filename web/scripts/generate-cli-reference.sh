@@ -30,8 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # `shep` on unix, `shep.exe` on Windows: checked in that order rather than
 # branching on `$OSTYPE`, since this runs under Git Bash and WSL too.
-# SHEP_BIN names another build, for a target dir outside the checkout.
-BIN="${SHEP_BIN:-$REPO_ROOT/target/release/shep}"
+BIN="$REPO_ROOT/target/release/shep"
 if [[ ! -x "$BIN" && -x "$BIN.exe" ]]; then
   BIN="$BIN.exe"
 fi
