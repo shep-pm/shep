@@ -79,11 +79,20 @@ fn enable_granting(
 ) -> Result<DogEntry, EnableRefusal> {
     ShepToml::try_edit(path, |cfg| {
         // `record` answers a question asked against a read taken before this
-        // write. A grant another shep wrote since stands.
-        if let Some(record) = record
-            && cfg.granted(name)?.is_none()
-        {
-            cfg.set_grant_record(name, record)?;
+        // write. A grant another shep wrote since stands, and the kinds the
+        // answer carries are merged into it, not dropped.
+        if let Some(record) = record {
+            match cfg.grant_record(name)? {
+                None => cfg.set_grant_record(name, record)?,
+                Some(held) if held.events != record.events => cfg.set_grant_record(
+                    name,
+                    &GrantRecord {
+                        events: record.events.clone(),
+                        ..held
+                    },
+                )?,
+                Some(_) => {}
+            }
         }
         let entry = dog_entry(cfg, name, cfg.granted(name)?);
         if matches!(entry.source, DogSource::BuiltIn { .. })
@@ -346,6 +355,36 @@ mod tests {
             },
             env: BTreeMap::default(),
         }
+    }
+
+    /// An answer given while another shep wrote a grant: that grant stands,
+    /// and the kinds the answer carries are merged in rather than dropped.
+    #[test]
+    fn a_grant_written_while_the_prompt_was_open_stands_and_takes_the_event_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shep.toml");
+        std::fs::write(
+            &path,
+            "[daemon.adopted_dogs]\notel = \"/bin/otel\"\n\n\
+             [daemon.dog_grants.otel]\ngranted = [\"flock.read\"]\n",
+        )
+        .unwrap();
+        let asked =
+            GrantRecord::reviewed(shep_core::permissions::Grants::parse(["logs.read"]).unwrap())
+                .with_events(vec!["exported".to_string()]);
+
+        enable_granting(&path, "otel", Some(&asked)).unwrap();
+
+        let held = ShepToml::read_only(&path)
+            .unwrap()
+            .grant_record("otel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            held.granted,
+            shep_core::permissions::Grants::parse(["flock.read"]).unwrap()
+        );
+        assert_eq!(held.events, ["exported".to_string()]);
     }
 
     // The fake shepherd's socket needs wall-clock I/O deadlines.
