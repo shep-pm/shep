@@ -27,7 +27,6 @@ use shep_core::config::{
     AppConfig, ApplyGroup, DeclaredApp, DogTable, NormalizeError, ResetDepth, ResolvedApp,
     apply_group, normalize, reaches_running,
 };
-use shep_core::dog_defaults::{self, DogDefaults};
 use shep_core::overrides::{self, AppOverrides};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{
@@ -204,10 +203,6 @@ struct Actor<R: ProcessRunner> {
     /// The environment a sheep that sets no `environment` of its own
     /// resolves its `{{secret:...}}` references in; see [`Self::secret_view`].
     host_environment: String,
-    /// Each dog's operator-set default table, layered under every table a
-    /// sheep carries for that dog; see [`Actor::dog_tables`]. Loaded once
-    /// and kept in step by [`Actor::handle_set_dog_defaults`].
-    dog_defaults: DogDefaults,
     /// The binary of each adopted dog the shepherd knows, by dog name: from
     /// boot, then from every `StartDog` handed an adopted source. A sheep
     /// holding a `dogs.sandbox` table spawns through the `sandbox` entry.

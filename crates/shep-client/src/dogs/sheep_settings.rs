@@ -9,7 +9,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::DeserializeOwned;
 use shep_core::config::DogTable;
-use shep_core::dog_defaults::layered;
 use shep_core::dogs::manifest::Serves;
 use shep_core::protocol::{Request, Response};
 
@@ -150,7 +149,7 @@ fn settings_for<T: DeserializeOwned>(
     shared.retain(|key, _| !dog_wide.contains(key));
     let shared = DogTable::from(shared);
     let merged = match own {
-        Some(own) => layered(&[&shared, own]),
+        Some(own) => DogTable::layered(&[&shared, own]),
         None => shared,
     };
     serde_json::from_value(serde_json::Value::Object(merged.into_map())).map_err(|_| {
@@ -168,7 +167,7 @@ impl DogRuntime {
     ///
     /// `serves` is what the dog declared with [`Probe::serves`](super::Probe::serves).
     /// A `#[shep(dog_wide)]` field needs a default; read it with
-    /// [`Self::config`]. The operator's `<dog>.defaults` is not layered in.
+    /// [`Self::config`].
     ///
     /// # Errors
     ///
@@ -255,8 +254,8 @@ impl DogRuntime {
 
     /// The sheep carrying an `[app.dogs.<dog>]` table.
     ///
-    /// The shepherd lays the operator's `<dog>.defaults` under each table it
-    /// sends, so only the names are read from this reply.
+    /// Only the names are read from this reply: each sheep's own table comes
+    /// from its config.
     async fn sheep_with_a_table(&self) -> Result<BTreeSet<String>, RequestError> {
         let asked = Request::DogSheepSettings {
             dog: self.identity().section().to_owned(),

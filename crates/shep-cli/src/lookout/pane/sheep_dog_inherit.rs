@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value};
 use shep_core::config::DogTable;
-use shep_core::dog_defaults::layered;
 use shep_core::dogs::manifest::Serves;
 
 use super::super::field::{flatten_values, segment};
@@ -48,7 +47,7 @@ impl SheepDogTable {
         let Some(inherits) = self.layering() else {
             return (own, BTreeSet::new());
         };
-        let table = layered(&[
+        let table = DogTable::layered(&[
             &DogTable::from(inherits.shared.clone()),
             &DogTable::from(self.table.clone()),
         ])

@@ -5,11 +5,9 @@ use std::io::IsTerminal as _;
 
 use serde_json::{Map, Value as Json};
 use shep_client::Client;
-use shep_core::dog_defaults::layered;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{DogSectionToml, Request, Response};
 
-use super::defaults;
 use super::plan::schema_refusal;
 use super::{Flags, Plan, Verb, Write, WriteRefusal};
 use crate::cli::Format;
@@ -129,14 +127,8 @@ pub(super) async fn run(
             match ask_dog(client, paths, dog, table, sheep.as_deref()).await {
                 Ok(()) => {}
                 Err(AskFailure::Refused { reason }) => {
-                    return WriteRefusal::ByDog(dog_refused(
-                        name,
-                        dog,
-                        &plan.write,
-                        sheep.as_deref(),
-                        &reason,
-                    ))
-                    .report(streams);
+                    return WriteRefusal::ByDog(dog_refused(name, dog, &plan.write, &reason))
+                        .report(streams);
                 }
                 // No dog said this one: shep could not read whether the dog
                 // wanted to be asked, or could not read what it answered.
@@ -253,10 +245,6 @@ async fn send(
             name: name.to_string(),
             key: key.clone(),
         },
-        Write::DogDefaults { dog, table, .. } => Request::SetDogDefaults {
-            dog: dog.clone(),
-            table: Some(table.clone()),
-        },
         Write::DogSection { toml, .. } => Request::SetDogConfig {
             name: name.to_string(),
             toml: DogSectionToml::from(toml.clone()),
@@ -292,9 +280,7 @@ async fn send(
             );
             Ok(pending.then_some(pending_key).into_iter().collect())
         }
-        Ok(Response::SheepDogSettingsSet { .. })
-        | Ok(Response::DogConfigSet { .. })
-        | Ok(Response::DogDefaultsSet { .. }) => Ok(Vec::new()),
+        Ok(Response::SheepDogSettingsSet { .. } | Response::DogConfigSet { .. }) => Ok(Vec::new()),
         Ok(_other) => Err(unexpected_response(streams)),
         Err(err) => Err(client_error(streams, &err)),
     }
@@ -352,10 +338,6 @@ pub(super) async fn holder_unchanged(
                 Err(code) => return Err(code),
             }
         }
-        Write::DogDefaults { dog, before, .. } => {
-            let now = defaults::read_default(client, streams, dog).await?;
-            !table_moved(before, &now)
-        }
         Write::SheepDogTable { dog, before, .. } | Write::DropSheepDogTable { dog, before } => {
             let config = match copy::read_config(client, streams, name).await {
                 Ok(config) => config,
@@ -410,7 +392,7 @@ pub(super) fn holder_moved(verb: Verb, name: &str, path: &str, write: &Write) ->
 /// write stands in for is what decides whether `name` is a dog or a sheep.
 fn holder_of(write: &Write) -> Holder {
     match write {
-        Write::DogSection { .. } | Write::DogDefaults { .. } => Holder::Dog,
+        Write::DogSection { .. } => Holder::Dog,
         _other => Holder::Sheep,
     }
 }
@@ -425,11 +407,7 @@ struct DogAsk<'a> {
 
 /// The questions a write puts to the dog whose settings it carries.
 ///
-/// A sheep's own field is no dog's settings, so it asks nothing. A dog's
-/// defaults are no table the dog reads whole: it is asked once per sheep the
-/// default reaches, about the table that sheep would read, so a dog turns a
-/// default down for the same reason it turns down the same value written on
-/// one sheep. A default no sheep carries a table for asks nothing.
+/// A sheep's own field is no dog's settings, so it asks nothing.
 fn dog_asks<'a>(plan: &'a Plan, name: &'a str) -> Vec<DogAsk<'a>> {
     let one = |dog: &'a str, sheep: Option<&str>| {
         vec![DogAsk {
@@ -443,16 +421,6 @@ fn dog_asks<'a>(plan: &'a Plan, name: &'a str) -> Vec<DogAsk<'a>> {
             one(dog.as_str(), Some(name))
         }
         Write::DogSection { .. } => one(name, None),
-        Write::DogDefaults {
-            dog, table, sheep, ..
-        } => sheep
-            .iter()
-            .map(|(reached, own)| DogAsk {
-                dog: dog.as_str(),
-                sheep: Some(reached.clone()),
-                table: layered(&[table, own]).into_map(),
-            })
-            .collect(),
         Write::SheepField { .. } | Write::ResetSheepField { .. } => Vec::new(),
     }
 }
@@ -461,7 +429,6 @@ fn dog_asks<'a>(plan: &'a Plan, name: &'a str) -> Vec<DogAsk<'a>> {
 fn holder_phrase(name: &str, write: &Write) -> String {
     match write {
         Write::DogSection { .. } => format!("`{name}`'s section"),
-        Write::DogDefaults { dog, .. } => format!("`{dog}`'s defaults"),
         Write::SheepDogTable { dog, .. } | Write::DropSheepDogTable { dog, .. } => {
             format!("`{name}`'s table for `{dog}`")
         }
@@ -475,14 +442,9 @@ fn holder_phrase(name: &str, write: &Write) -> String {
 ///
 /// The dog's own words are the whole remedy: it is the only party that knows
 /// what its settings have to hold.
-fn dog_refused(name: &str, dog: &str, write: &Write, sheep: Option<&str>, reason: &str) -> String {
+fn dog_refused(name: &str, dog: &str, write: &Write, reason: &str) -> String {
     let holder = holder_phrase(name, write);
-    match (write, sheep) {
-        (Write::DogDefaults { .. }, Some(sheep)) => format!(
-            "nothing was written: `{dog}` refused {holder} as `{sheep}` would read them: {reason}"
-        ),
-        _other => format!("nothing was written: `{dog}` refused {holder}: {reason}"),
-    }
+    format!("nothing was written: `{dog}` refused {holder}: {reason}")
 }
 
 /// The report a plan renders, before or after the write.

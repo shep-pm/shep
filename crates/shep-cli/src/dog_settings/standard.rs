@@ -9,7 +9,6 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 use shep_core::config::DogTable;
-use shep_core::dog_defaults::layered;
 use shep_core::dogs::manifest::Serves;
 use shep_core::dogs::{DOG_WIDE_KEY, SHEEP_SCHEMA_KEY};
 
@@ -116,7 +115,7 @@ impl Standard {
         let shared = self.shared(section);
         let mut inherited = BTreeSet::new();
         inherited_paths(&shared, own, &mut Vec::new(), &mut inherited);
-        let table = layered(&[&DogTable::from(shared), &DogTable::from(own.clone())]);
+        let table = DogTable::layered(&[&DogTable::from(shared), &DogTable::from(own.clone())]);
         Layered {
             table: table.into_map(),
             inherited,

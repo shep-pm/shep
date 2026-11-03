@@ -209,7 +209,6 @@ mod tests {
             overrides: home.join("overrides.json"),
             secrets: home.join("secrets.json"),
             secrets_cache: home.join("secrets-cache.json"),
-            dog_defaults: home.join("dog-defaults.json"),
             dog_index_cache: home.join("cache/dogs.json"),
             dogs_dir: home.join("dogs"),
             home,
