@@ -527,10 +527,9 @@ pub enum Request {
     /// Publish one event on the bus as the dog that sent this, under
     /// `dog.<name>.<kind>`.
     ///
-    /// Accepted on a dog's own connection only: the control socket has no dog
-    /// to publish as. The shepherd checks that `event` is a kind the dog
-    /// declared in its manifest and never reads `payload`. Answers
-    /// [`Response::EventPublished`]. Additive: an older daemon decodes
+    /// Accepted on a dog's own connection only. The shepherd checks that
+    /// `event` is a kind the dog declared and never reads `payload`. Answers
+    /// [`Response::EventPublished`]. An older daemon decodes
     /// [`Self::Unrecognized`] and refuses by name.
     PublishEvent {
         /// A kind from the dog's manifest `events` list. Named `event` because

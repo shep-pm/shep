@@ -6,8 +6,7 @@
 //!   manifest declares, marked not reviewed, once.
 //! - A dog whose manifest declares a permission it holds neither as granted
 //!   nor as revoked has it put in `waiting`, and keeps running on what it had.
-//! - A dog's declared event kinds follow its manifest, with no approval: they
-//!   are not permissions.
+//! - A dog's event kinds follow its manifest with no approval.
 //! - A dog with no manifest is left alone: undeclared, with full access.
 
 use std::path::Path;

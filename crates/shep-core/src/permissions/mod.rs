@@ -206,13 +206,10 @@ impl Grants {
     /// Whether a subscription to the topic glob `pattern` stays inside a
     /// granted `events:` prefix.
     ///
-    /// Judged on the pattern's literal head, the part before its first glob
-    /// character: `process.*` can only reach topics beginning `process.`, so
-    /// a grant of `process.` covers it and a grant of `process.exit` does not.
-    ///
-    /// A prefix that begins `dog.` names a dog and covers that dog's topics
-    /// alone: `dog.otel` is read as `dog.otel.`, so it does not reach
-    /// `dog.otel-2.exported`.
+    /// Judged on the pattern's literal head, before its first glob character:
+    /// `process.*` is covered by a grant of `process.`, not `process.exit`.
+    /// A prefix beginning `dog.` names one dog: `dog.otel` covers `dog.otel.`
+    /// and not `dog.otel-2.x`.
     #[must_use]
     pub fn allows_topic(&self, pattern: &str) -> bool {
         let head = pattern
