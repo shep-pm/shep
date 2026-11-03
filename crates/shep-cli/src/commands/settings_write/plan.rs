@@ -2,7 +2,7 @@
 //! keys a value lands on, the one request that writes them, and what the value
 //! has to pass first.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use serde_json::{Map, Value as Json};
 use shep_core::config::DogTable;
@@ -11,9 +11,9 @@ use toml_edit::DocumentMut;
 use super::edit::{document_of, dotted, set_toml};
 use super::value::table_json;
 use super::{Plan, Write, WriteRefusal};
-use crate::commands::copy::address::{self, DEFAULTS};
+use crate::commands::copy::address;
 use crate::commands::copy::plan::{Change, ChangeKind, collect_changes, set_path, walk};
-use crate::dog_settings::table::{default_refusals, table_refusal, touched_refusal};
+use crate::dog_settings::table::{table_refusal, touched_refusal};
 
 /// The plan for one dog's table on one sheep.
 ///
@@ -48,52 +48,6 @@ pub(super) fn plan_dog_table(
         schema: None,
         touched: touched_paths(keys, value),
     })
-}
-
-/// The plan for one dog's defaults.
-///
-/// `held` is the default as the shepherd answered it, and `sheep` is each
-/// sheep carrying a table for the dog, by its own table: the schema check
-/// layers the new default under each, as the dog reads it.
-///
-/// # Errors
-/// As [`plan_dog_table`].
-pub(super) fn plan_dog_defaults(
-    dog: &str,
-    keys: &[String],
-    held: Json,
-    sheep: BTreeMap<String, DogTable>,
-    value: &Json,
-) -> Result<Plan, WriteRefusal> {
-    let edit = plan_table(&format!("{dog}.{DEFAULTS}"), held, keys, value)?;
-    // A default replaced whole answers for the leaves the new default holds,
-    // not for what a sheep holds itself, and clearing it answers for none.
-    let touched = if keys.is_empty() {
-        default_leaves(&edit.table)
-    } else {
-        touched_paths(keys, value)
-    };
-    Ok(Plan {
-        changes: edit.changes,
-        write: Write::DogDefaults {
-            dog: dog.to_string(),
-            table: DogTable::from(edit.table.clone()),
-            before: edit.before,
-            sheep,
-        },
-        table: edit.table,
-        schema: None,
-        touched,
-    })
-}
-
-/// Every leaf path of a default table.
-fn default_leaves(table: &Map<String, Json>) -> BTreeSet<Vec<String>> {
-    let mut touched = BTreeSet::new();
-    for (key, value) in table {
-        leaves(vec![key.clone()], value, &mut touched);
-    }
-    touched
 }
 
 /// What writing `value` at `keys` does to one table.
@@ -291,9 +245,6 @@ fn leaves(path: Vec<String>, value: &Json, out: &mut BTreeSet<Vec<String>>) {
 /// the leaves under it.
 pub(super) fn schema_refusal(plan: &Plan, name: &str, path: &str) -> Option<WriteRefusal> {
     let schema = plan.schema.as_ref()?;
-    if let Write::DogDefaults { table, sheep, .. } = &plan.write {
-        return default_refusal(schema, table, sheep, &plan.touched, name, path);
-    }
     let table = &plan.table;
     let refused = if plan.touched.is_empty() {
         table_refusal(schema, table)
@@ -303,41 +254,5 @@ pub(super) fn schema_refusal(plan: &Plan, name: &str, path: &str) -> Option<Writ
     Some(WriteRefusal::Invalid(format!(
         "nothing was written: `{name}.{path}` is not a value the flock's schema takes. {}",
         refused.text
-    )))
-}
-
-/// The refusal for a default some sheep's layered table would break, or the
-/// default's own value would, naming each sheep and the rule it breaks, or
-/// `None` when every one is taken.
-///
-/// A default no sheep carries a table for has nothing to be checked against.
-fn default_refusal(
-    schema: &Json,
-    default: &DogTable,
-    sheep: &BTreeMap<String, DogTable>,
-    touched: &BTreeSet<Vec<String>>,
-    name: &str,
-    path: &str,
-) -> Option<WriteRefusal> {
-    let refused = default_refusals(schema, default, sheep, touched);
-    if refused.is_empty() {
-        return None;
-    }
-    let mut each: Vec<String> = refused
-        .sheep
-        .iter()
-        .map(|(sheep, refusal)| format!("`{sheep}` would hold {}", refusal.text))
-        .collect();
-    if let Some(own) = &refused.default {
-        each.push(format!("the default itself holds {}", own.text));
-    }
-    let reach = match refused.sheep.len() {
-        0 => "and a reset of a sheep's own value would expose it".to_string(),
-        count => format!("for {count} of the sheep it reaches"),
-    };
-    Some(WriteRefusal::Invalid(format!(
-        "nothing was written: `{name}.{path}` is not a default the flock's schema takes, \
-         {reach}: {}",
-        each.join("; ")
     )))
 }

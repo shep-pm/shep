@@ -19,9 +19,9 @@ use super::CopyRefusal;
 /// The one path root that is not an `AppConfig` field name.
 const DOGS: &str = "dogs";
 
-/// The segment after a dog's name that addresses the dog's defaults, not
-/// a key of its own section.
-pub(crate) const DEFAULTS: &str = "defaults";
+/// The segment after a dog's name that once addressed the dog's operator
+/// default. Retired: [`retired_defaults`] answers it.
+const DEFAULTS: &str = "defaults";
 
 /// The `AppConfig` field a copy takes through the shepherd, not through the
 /// config a client reads.
@@ -66,17 +66,17 @@ pub(crate) enum ConfigPath {
     },
 }
 
-/// A dog's defaults, or a key inside them: `<dog>.defaults[.<key>]`.
+/// A retired address: `<dog>.defaults[.<key>]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DefaultsAddress {
     /// The dog's name, dotted where the dog is.
     pub(crate) dog: String,
-    /// The segments after `defaults`, not yet joined into the keys a table
-    /// holds: [`resolve_keys`] does that against the defaults themselves.
+    /// The segments after `defaults`.
     pub(crate) keys: Vec<String>,
 }
 
-/// Reads `segments` as a dog's defaults address, `None` when they are not one.
+/// Reads `segments` as a retired `<dog>.defaults` address, `None` when they
+/// are not one.
 ///
 /// The dog is the longest name in `dogs` that `segments` starts with and
 /// that `defaults` follows, so the address names no sheep and no dog beyond
@@ -371,15 +371,19 @@ fn longest_sheep<'a>(segments: &[&'a str], flock: &'a FlockNames) -> Option<&'a 
         .max_by_key(|name| name.split('.').count())
 }
 
-/// The refusal for a defaults address given to a verb that copies what a sheep
-/// holds.
-pub(crate) fn defaults_refusal(raw: &str, defaults: &DefaultsAddress) -> CopyRefusal {
-    CopyRefusal::Refused(format!(
-        "`{raw}` is a dog's defaults, not a sheep's setting: a copy moves what a sheep holds, \
-         and copying the layered result would pin inherited values into the target. `shep set \
-         {}.{DEFAULTS}.<key> <value>` writes one",
-        defaults.dog
-    ))
+/// The refusal every verb gives a retired `<dog>.defaults` address, naming
+/// the address in the dog's own section that replaces it.
+pub(crate) fn retired_defaults(defaults: &DefaultsAddress) -> String {
+    let dog = &defaults.dog;
+    let key = if defaults.keys.is_empty() {
+        "<key>".to_string()
+    } else {
+        defaults.keys.join(".")
+    };
+    format!(
+        "`{dog}.{DEFAULTS}` is retired: `{dog}`'s own section of `dogs.toml` is the value for \
+         every sheep, and `{dog}.{key}` addresses it, as in `shep set {dog}.{key} <value>`"
+    )
 }
 
 /// The refusal for a name no sheep in the flock answers, naming it.
@@ -810,9 +814,8 @@ mod tests {
         );
     }
 
-    /// A defaults address names a dog and its defaults, never a sheep: the
-    /// flock's dogs decide it, and a copy refuses it with the verb that
-    /// writes it.
+    /// A retired defaults address names a dog, never a sheep: the flock's dogs
+    /// decide it, and every verb refuses it with the section address.
     #[test]
     fn a_defaults_address_names_a_dog_and_never_a_sheep() {
         let flock = flock();
@@ -843,12 +846,16 @@ mod tests {
             "the longest dog name the address starts with"
         );
 
-        let whole = defaults_of(&strings("metrics.defaults.model"), &flock.dogs).unwrap();
-        let CopyRefusal::Refused(message) = defaults_refusal("metrics.defaults.model", &whole)
-        else {
-            panic!("expected a refusal");
-        };
-        assert!(message.contains("`metrics.defaults.model`"), "{message}");
-        assert!(message.contains("shep set metrics.defaults"), "{message}");
+        let key = defaults_of(&strings("metrics.defaults.model.name"), &flock.dogs).unwrap();
+        let message = retired_defaults(&key);
+        assert!(message.contains("`metrics.model.name`"), "{message}");
+        assert!(
+            message.contains("shep set metrics.model.name <value>"),
+            "{message}"
+        );
+
+        let whole = defaults_of(&strings("metrics.defaults"), &flock.dogs).unwrap();
+        let message = retired_defaults(&whole);
+        assert!(message.contains("`metrics.<key>`"), "{message}");
     }
 }

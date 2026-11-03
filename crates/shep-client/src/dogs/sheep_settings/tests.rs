@@ -39,19 +39,6 @@ async fn started(
     flock: &[&str],
     tables: &[(&str, serde_json::Value)],
 ) -> (DogRuntime, Handovers) {
-    started_under(dir, section, None, flock, tables).await
-}
-
-/// [`started`], with the operator's `jobs.defaults` set to `default`. The
-/// shepherd lays it under every table it sends in `DogSheepSettings` and
-/// keeps each sheep's own table apart in its config.
-async fn started_under(
-    dir: &Path,
-    section: &str,
-    default: Option<serde_json::Value>,
-    flock: &[&str],
-    tables: &[(&str, serde_json::Value)],
-) -> (DogRuntime, Handovers) {
     let socket = control_address(dir);
     let shepherd = fake_daemon_across_handovers(&socket, vec![Handshake::Accept(sample_ack())]);
     shepherd.reply_to_dog_config(section);
@@ -62,16 +49,10 @@ async fn started_under(
             .map(|(name, id)| sheep(id, name))
             .collect(),
     );
-    let default = default.map_or_else(|| table(json!({})), table);
     shepherd.reply_to_dog_sheep_settings(
         tables
             .iter()
-            .map(|(name, value)| {
-                (
-                    (*name).to_owned(),
-                    layered(&[&default, &table(value.clone())]),
-                )
-            })
+            .map(|(name, value)| ((*name).to_owned(), table(value.clone())))
             .collect(),
     );
     shepherd.reply_to_sheep_config(
@@ -327,49 +308,6 @@ async fn a_secret_the_shepherd_cannot_resolve_is_that_sheeps_error_alone() {
         settings["web"]
     );
     assert_eq!(settings["api"], Ok(jobs("haiku", 0)));
-}
-
-#[tokio::test]
-async fn an_operator_default_for_the_dog_reaches_no_sheep_with_or_without_a_table() {
-    let dir = tempfile::tempdir().unwrap();
-    let (runtime, _shepherd) = started_under(
-        dir.path(),
-        "model = \"opus\"\n",
-        Some(json!({ "model": "haiku" })),
-        &["web", "api"],
-        &[("web", json!({ "concurrency": 3 }))],
-    )
-    .await;
-
-    let settings = read(&runtime, Serves::EverySheep).await;
-
-    assert_eq!(settings["web"], Ok(jobs("opus", 3)));
-    assert_eq!(
-        settings["api"],
-        Ok(jobs("opus", 0)),
-        "both sheep read the section, whether or not they carry a table"
-    );
-}
-
-#[tokio::test]
-async fn a_dog_wide_key_only_in_the_operator_default_is_no_sheeps_error() {
-    let dir = tempfile::tempdir().unwrap();
-    let (runtime, _shepherd) = started_under(
-        dir.path(),
-        "poll = \"1m\"\n",
-        Some(json!({ "poll": "5s" })),
-        &["web", "api"],
-        &[
-            ("web", json!({ "concurrency": 3 })),
-            ("api", json!({ "model": "sonnet" })),
-        ],
-    )
-    .await;
-
-    let settings = read(&runtime, Serves::OptedIn).await;
-
-    assert_eq!(settings["web"], Ok(jobs("", 3)));
-    assert_eq!(settings["api"], Ok(jobs("sonnet", 0)));
 }
 
 #[test]
