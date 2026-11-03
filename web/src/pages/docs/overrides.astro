@@ -573,6 +573,20 @@ const store = `$ cat $SHEP_HOME/overrides.json
       <code>shep copy</code> refuses its address.
     </p>
 
+    <h2 id="a-dogs-section-and-a-sheeps-table">A dog's section and a sheep's table</h2>
+    <p>
+      A dog that follows the settings standard has its keys at two levels.{" "}
+      <code>shep set jobs.model opus</code> writes <code>[jobs]</code>, the
+      value for every sheep, and{" "}
+      <code>shep set api.dogs.jobs.model haiku</code> writes{" "}
+      <code>api</code>'s own table, which wins there. A dog-wide key has one
+      value per dog: setting it on a sheep is refused, and the error names{" "}
+      <code>shep set jobs.poll</code>. <code>shep get api.dogs.jobs</code>{" "}
+      prints the table the dog reads and marks each inherited key{" "}
+      <code># inherited from [jobs]</code>. <code>--format json</code> adds an{" "}
+      <code>inherited</code> list.
+    </p>
+
     <details>
       <summary><h2 id="a-template-may-add-never-overwrite">A template may add, never overwrite</h2></summary>
     <p>
