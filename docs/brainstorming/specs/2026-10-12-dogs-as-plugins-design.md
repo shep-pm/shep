@@ -172,7 +172,8 @@ On main at `d2483f10` (v0.12.5).
   styling, so a dog's pane feels like the rest of lookout.
 - A new kind of section gets added only when a real dog needs one.
 - The pane code lookout and dogs share moves out of `shep-cli` into a
-  crate of its own, giving Rust dogs typed builders.
+  crate of its own, giving Rust dogs typed builders. Amended by step 5a:
+  no new crate, the types live in shep-core and the builder in shep-client.
 - A pane only shows what the dog's grants let it read.
 
 ```rust
@@ -250,8 +251,8 @@ execute", rule 7 of the dog config spec ("asked fresh, never stored"), and
 | 2 | Manifest and grants | Probe flag, manifest v1, per-dog connection, the permission table, prompts, the upgrade path | #1073, #356, #350 |
 | 3 | [Install, upgrade, receipts](2026-11-02-dogs-step-3-install-design.md) | Prebuilt downloads, `shep install`, `shep upgrade`, receipts, SOURCE tiers, VERSION column | #357 |
 | 4 | Calls and events | Triggers between dogs, `dog.<name>.*` topics | #1074 |
-| 5 | Panes, then the catalogue | Pane sections over the channel, the shared crate, browse and install in lookout | #566 |
-| 6 | Spec 2, spec 5 | The on-ramp (welcome, hints, docs reorder), shep upgrading itself | #660 |
+| 5 | [The catalogue](2026-11-03-dogs-step-5b-catalogue-design.md), then [panes](2026-11-03-dogs-step-5a-panes-design.md) | Browse and install in lookout, pane sections over the channel | #566 |
+| 6 | [On-ramp and self-upgrade](2026-11-03-dogs-step-6-on-ramp-design.md) | The on-ramp (welcome, hints, docs reorder), shep upgrading itself | #660, #1434 |
 | 7 | A dog's `env` | An operator-set `env` for an adopted dog, beside its `path` in `[daemon.adopted_dogs]` | #1250, #1192 |
 
 Progress is tracked in #1075.
