@@ -23,6 +23,18 @@ impl AvailableDog {
         matches!(&self.source, DogSourceKind::Cargo { version: None, .. })
     }
 
+    /// Whether `shep install` can build this row: a `cargo` row with an
+    /// approved version.
+    pub fn is_installable(&self) -> bool {
+        matches!(
+            &self.source,
+            DogSourceKind::Cargo {
+                version: Some(_),
+                ..
+            }
+        )
+    }
+
     /// The prebuilt binary for the triple this binary was compiled for, or
     /// `None` when the index hashes none for it.
     #[cfg_attr(not(test), expect(dead_code, reason = "the install verb reads this"))]

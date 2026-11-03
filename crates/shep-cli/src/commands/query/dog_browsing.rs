@@ -160,7 +160,10 @@ fn note_index_costs(streams: &mut Streams<'_>, skipped: usize, sanitised: usize)
 ///
 /// # Errors
 /// The underlying write failed.
-fn render_detail(out: &mut dyn std::io::Write, dog: &AvailableDog) -> std::io::Result<()> {
+pub(crate) fn render_detail(
+    out: &mut dyn std::io::Write,
+    dog: &AvailableDog,
+) -> std::io::Result<()> {
     writeln!(out, "{} . {} . {}", dog.name, dog.package, dog.category)?;
     writeln!(out, "{}", dog.description)?;
     writeln!(out, "{} . {}", dog.license, dog.repo)?;
@@ -171,6 +174,13 @@ fn render_detail(out: &mut dyn std::io::Write, dog: &AvailableDog) -> std::io::R
         "{}",
         adopt_line(&dog.source, &dog.adopt_as, &dog.package)
     )
+}
+
+/// How to build `dog` by hand, as one line with no indent: what `shep install`
+/// names when it refuses a row it cannot build, in a format that has no
+/// table to print the detail into.
+pub(crate) fn install_instruction(dog: &AvailableDog) -> String {
+    install_line(&dog.source, &dog.package).trim().to_owned()
 }
 
 /// The `$ ...` line [`render_detail`] prints for how to build `source`'s

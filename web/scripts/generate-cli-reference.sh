@@ -60,7 +60,7 @@ fi
 VERBS=(
   start add serve stop restart reset reload delete stock flock dogs "dogs grant"
   "dogs revoke" enable disable
-  adopt describe trigger signal whisper fold bleats lookout whistle
+  install adopt describe trigger signal whisper fold bleats lookout whistle
   reopen flush barks kv "kv get" "kv set" "kv unset" secret "secret set"
   "secret get" "secret unset" "secret list" host "host add" "host remove"
   "host list" copy get set unset

@@ -184,7 +184,7 @@ fn ask_before_first_enable(
     };
     let reviewed =
         review(manifest.as_ref()).map_err(|refusal| refusal.report(streams, name, "enabled"))?;
-    match consent_from(streams, name, "enable", &reviewed, yes, input)? {
+    match consent_from(streams, name, "enable", &reviewed, None, yes, input)? {
         Verdict::Grant(grants) => Ok(grants),
         Verdict::Declined => {
             let source = dog_source(&cfg, name, None);

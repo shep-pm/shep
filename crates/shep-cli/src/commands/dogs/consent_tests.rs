@@ -43,6 +43,7 @@ fn run(
         "otel",
         "adopt",
         &reviewed,
+        None,
         mode,
         &mut Cursor::new(typed.as_bytes()),
     );
