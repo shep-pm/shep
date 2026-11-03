@@ -21,6 +21,8 @@ pub(super) fn test_paths() -> ShepPaths {
         secrets: PathBuf::from("/home/ada/.shep/secrets.json"),
         secrets_cache: PathBuf::from("/home/ada/.shep/secrets-cache.json"),
         dog_defaults: PathBuf::from("/home/ada/.shep/dog-defaults.json"),
+        dog_index_cache: PathBuf::from("/home/ada/.shep/cache/dogs.json"),
+        dogs_dir: PathBuf::from("/home/ada/.shep/dogs"),
     }
 }
 

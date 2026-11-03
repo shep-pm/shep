@@ -350,6 +350,49 @@ pub(crate) fn set_listen_env(command: &mut std::process::Command, mut env: Liste
     unsafe { command.pre_exec(move || env.install()) };
 }
 
+/// Makes `command`'s child write `0` to `procs`, an open `cgroup.procs`, so it
+/// joins that cgroup between the fork and the exec.
+///
+/// Joined before the exec rather than after the spawn: a cgroup accounts only
+/// for a process that was inside it before it forked. `procs` must be opened
+/// before the spawn, as the child may have dropped privilege by then, and the
+/// hook must be added before any fd mapping, which can overwrite its number.
+#[cfg(target_os = "linux")]
+pub(crate) fn join_cgroup_on_exec(command: &mut std::process::Command, procs: File) {
+    use std::os::fd::AsRawFd as _;
+    use std::os::unix::process::CommandExt as _;
+    let fd = procs.as_raw_fd();
+    // SAFETY: `pre_exec` requires the closure to be async-signal-safe. This one
+    // only calls `write(2)` on `fd`, which `procs` keeps open and the closure
+    // owns, and builds an `io::Error` from an errno without allocating.
+    unsafe {
+        command.pre_exec(move || {
+            let _keep_open = &procs;
+            write_zero(fd)
+        });
+    }
+}
+
+/// Writes one `0` to `fd`, retrying on `EINTR`.
+#[cfg(target_os = "linux")]
+fn write_zero(fd: RawFd) -> io::Result<()> {
+    loop {
+        // SAFETY: `fd` is open for the whole call, as `join_cgroup_on_exec`'s
+        // closure owns it, and the buffer is one byte that outlives the call.
+        let written = unsafe { nix::libc::write(fd, b"0".as_ptr().cast(), 1) };
+        match written {
+            1 => return Ok(()),
+            -1 => {
+                let error = io::Error::last_os_error();
+                if error.kind() != io::ErrorKind::Interrupted {
+                    return Err(error);
+                }
+            }
+            _ => return Err(io::Error::from_raw_os_error(nix::libc::EIO)),
+        }
+    }
+}
+
 /// Errors adopting an inherited descriptor.
 ///
 /// `#[non_exhaustive]`: a future adoption check would need its own variant

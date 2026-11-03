@@ -23,6 +23,10 @@ pub struct DogsArgs {
     /// this shepherd is running. Needs no shepherd.
     #[arg(long)]
     pub available: bool,
+    /// Fetch the community index even when the copy cached in the last day
+    /// is still fresh.
+    #[arg(long, requires = "available")]
+    pub refresh: bool,
     /// Narrow the listing to entries whose name, package or description
     /// contains this text, case-insensitively.
     #[arg(value_name = "FILTER")]
@@ -126,6 +130,29 @@ pub struct AdoptArgs {
     /// terminal and no `--yes`, adopt refuses rather than granting.
     #[arg(long)]
     pub yes: bool,
+}
+
+/// Arguments to `shep install`.
+#[derive(Debug, clap::Args)]
+pub struct InstallArgs {
+    /// The dog to install: its `adopt_as` name in the community index, as
+    /// `shep install` with no name lists it. With none, lists what `shep dogs
+    /// --available` lists, with the install line under each dog that can be
+    /// installed.
+    pub dog: Option<String>,
+    /// Grant the dog everything it declares without asking. With no
+    /// terminal and no `--yes`, install builds the dog and then refuses at
+    /// the grant question.
+    #[arg(long)]
+    pub yes: bool,
+    /// Stop after adopting: the dog is built, recorded and granted, and left
+    /// disabled until `shep enable`.
+    #[arg(long)]
+    pub no_enable: bool,
+    /// Fetch the community index even when the copy cached in the last day
+    /// is still fresh.
+    #[arg(long)]
+    pub refresh: bool,
 }
 
 #[cfg(test)]

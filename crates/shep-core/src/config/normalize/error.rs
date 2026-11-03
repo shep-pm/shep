@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::config::KillSignal;
+use crate::config::{AppConfig, KillSignal};
 use crate::paths::{HOME_DIR_VAR, SHEP_HOME_VAR};
 use crate::secrets;
 use crate::values::UpDuration;
@@ -102,6 +102,45 @@ pub enum NormalizeError {
     /// the enforcer would restart the sheep on every poll forever. Carries
     /// the app name.
     ZeroMaxMemory {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `memory_enforce = "kernel"` with no `max_memory`, so there is no value
+    /// to write into `memory.max`. Carries the app name.
+    MemoryEnforceNeedsMaxMemory {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `memory_enforce = "kernel"` on a platform with no cgroups: anything but
+    /// Linux. Carries the app name.
+    MemoryEnforceKernelUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_cpu_cores` is below 0.01, negative or not a finite number: a quota
+    /// `cpu.max` cannot hold, since the kernel refuses under 1000 microseconds
+    /// per period, and zero would stall the sheep outright. Carries the app
+    /// name.
+    MaxCpuCoresOutOfRange {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_cpu_cores` on a platform with no cgroups: anything but Linux.
+    /// Carries the app name.
+    MaxCpuCoresUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_tasks` is zero or above [`AppConfig::MAX_TASKS_LIMIT`]: zero would
+    /// let the sheep run nothing, not even its own process, and `pids.max`
+    /// refuses a larger value. Carries the app name.
+    MaxTasksOutOfRange {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_tasks` on a platform with no cgroups: anything but Linux. Carries
+    /// the app name.
+    MaxTasksUnsupported {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
@@ -359,6 +398,46 @@ impl fmt::Display for NormalizeError {
                 write!(
                     f,
                     "sheep `{name}` has max_memory = 0, a limit nothing can stay under"
+                )
+            }
+            Self::MemoryEnforceNeedsMaxMemory { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has memory_enforce = \"kernel\" but no max_memory to enforce"
+                )
+            }
+            Self::MemoryEnforceKernelUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has memory_enforce = \"kernel\", which needs Linux cgroups; \
+                     use \"poll\" on this platform"
+                )
+            }
+            Self::MaxCpuCoresOutOfRange { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has a max_cpu_cores below 0.01 cores, or not a number"
+                )
+            }
+            Self::MaxCpuCoresUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has max_cpu_cores, which needs Linux cgroups; \
+                     remove it on this platform"
+                )
+            }
+            Self::MaxTasksOutOfRange { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has a max_tasks outside 1 to {}",
+                    AppConfig::MAX_TASKS_LIMIT
+                )
+            }
+            Self::MaxTasksUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has max_tasks, which needs Linux cgroups; \
+                     remove it on this platform"
                 )
             }
             Self::ActionTimeoutTooLong { name, value, max } => {

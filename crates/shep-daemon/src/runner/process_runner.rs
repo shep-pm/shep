@@ -248,6 +248,30 @@ pub struct SpawnSpec {
     /// the sockets outlive any one child. Unix only: `normalize` refuses
     /// `listen` on Windows.
     pub listen: Option<std::sync::Arc<crate::listen::ListenSockets>>,
+    /// The cgroup this sheep's child joins before it execs, so everything it
+    /// forks is accounted there. The runner creates it.
+    ///
+    /// `None` on a host with no delegated cgroup v2 subtree, and on every
+    /// platform but Linux, where the runner ignores it.
+    pub cgroup: Option<PathBuf>,
+    /// Bytes to write to the cgroup's `memory.max` before the child joins it,
+    /// for a sheep with `memory_enforce = "kernel"`. `None` leaves the cgroup
+    /// uncapped.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub memory_max: Option<u64>,
+    /// Microseconds of CPU time per 100 ms period to write to the cgroup's
+    /// `cpu.max` before the child joins it, for a sheep with `max_cpu_cores`.
+    /// `None` leaves the cgroup unthrottled.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub cpu_quota: Option<u64>,
+    /// The task limit (processes and threads) to write to the cgroup's `pids.max` before the child
+    /// joins it, for a sheep with `max_tasks`. `None` leaves the cgroup
+    /// unlimited.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub pids_max: Option<u32>,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,

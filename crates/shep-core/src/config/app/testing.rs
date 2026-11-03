@@ -7,7 +7,7 @@ use super::probe::{
 use super::schema::AppConfig;
 // use schemars::generate
 use crate::config::LevelRule;
-use crate::config::{LineLevel, NormalizeError};
+use crate::config::{CpuCores, LineLevel, MemoryEnforce, NormalizeError};
 use crate::values::UpDuration;
 
 /// Where a per-field `refuses` clause is enforced.
@@ -339,6 +339,39 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
                 a.liveness_probe = Some(p);
             }),
             |e| matches!(e, NormalizeError::IntervalBelowMinimum { .. }),
+        ),
+        refused(
+            "memory_enforce",
+            "kernel without max_memory",
+            sheep(|a| a.memory_enforce = MemoryEnforce::Kernel),
+            |e| matches!(e, NormalizeError::MemoryEnforceNeedsMaxMemory { .. }),
+        ),
+        elsewhere(
+            "memory_enforce",
+            "kernel on macOS or Windows",
+            "normalize, off Linux only: normalize::tests",
+        ),
+        refused(
+            "max_cpu_cores",
+            "below 0.01, zero or a negative number",
+            sheep(|a| a.max_cpu_cores = Some(CpuCores::from_cores(0.0))),
+            |e| matches!(e, NormalizeError::MaxCpuCoresOutOfRange { .. }),
+        ),
+        elsewhere(
+            "max_cpu_cores",
+            "any value on macOS or Windows",
+            "normalize, off Linux only: normalize::tests",
+        ),
+        refused(
+            "max_tasks",
+            "zero or a number above 4194304",
+            sheep(|a| a.max_tasks = Some(0)),
+            |e| matches!(e, NormalizeError::MaxTasksOutOfRange { .. }),
+        ),
+        elsewhere(
+            "max_tasks",
+            "any value on macOS or Windows",
+            "normalize, off Linux only: normalize::tests",
         ),
         refused(
             "name",

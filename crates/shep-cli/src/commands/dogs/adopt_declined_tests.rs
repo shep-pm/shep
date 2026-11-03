@@ -32,6 +32,7 @@ async fn a_no_asks_the_shepherd_to_stop_the_dog_it_may_be_running() {
 
     declined_after_config(
         &mut streams(&mut out, &mut err),
+        "adopt",
         "otel",
         otel(),
         Some(&client),
@@ -57,7 +58,7 @@ async fn a_no_reports_the_dog_stopped_when_a_shepherd_answered() {
     let mut streams = streams(&mut out, &mut err);
     streams.fmt = Format::Json;
 
-    let code = declined_after_config(&mut streams, "otel", otel(), Some(&client)).await;
+    let code = declined_after_config(&mut streams, "adopt", "otel", otel(), Some(&client)).await;
 
     assert_eq!(code, ExitCode::Success);
     let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
@@ -72,7 +73,7 @@ async fn a_no_with_no_shepherd_reports_nothing_was_granted() {
     let mut streams = streams(&mut out, &mut err);
     streams.fmt = Format::Json;
 
-    let code = declined_after_config(&mut streams, "otel", otel(), None).await;
+    let code = declined_after_config(&mut streams, "adopt", "otel", otel(), None).await;
 
     assert_eq!(code, ExitCode::Success);
     let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
@@ -93,7 +94,7 @@ async fn a_no_for_a_dog_the_shepherd_never_registered_is_not_an_error() {
     let mut streams = streams(&mut out, &mut err);
     streams.fmt = Format::Json;
 
-    let code = declined_after_config(&mut streams, "otel", otel(), Some(&client)).await;
+    let code = declined_after_config(&mut streams, "adopt", "otel", otel(), Some(&client)).await;
 
     assert_eq!(code, ExitCode::Success, "{}", String::from_utf8_lossy(&err));
     let json: serde_json::Value = serde_json::from_slice(&out).unwrap();

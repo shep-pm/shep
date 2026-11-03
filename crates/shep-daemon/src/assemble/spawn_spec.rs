@@ -186,6 +186,12 @@ pub(super) fn build<E>(
         leader_only_stop: is_sandboxed(config),
         // Bound by the supervisor, which owns the sockets across instances.
         listen: None,
+        // Set by the supervisor, which knows the sheep's id.
+        cgroup: None,
+        // Set by the supervisor, with `cgroup`.
+        memory_max: None,
+        cpu_quota: None,
+        pids_max: None,
     })
 }
 

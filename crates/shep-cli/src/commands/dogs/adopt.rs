@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use shep_client::{Client, RequestError};
 use shep_core::paths::{ShepPaths, user_home};
-use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, EnvValue, Request, Response, RpcErrorCode};
 
 use crate::cli::AdoptArgs;
@@ -27,8 +26,8 @@ use super::vet::{
     warn_unreadable_schema,
 };
 use super::{
-    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, connect_or_absent,
-    emit_dog_action, fail_config,
+    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS,
+    connect_or_absent, emit_dog_action, fail_config, recorded_events,
 };
 
 /// `shep adopt <path> [--name <name>]`: vets a binary shep has never seen,
@@ -42,12 +41,46 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
     adopt_asking(streams, paths, args, &mut Input::stdin()).await
 }
 
+/// What the caller of [`adopt_with`] reports itself as, and whether the dog
+/// ends up running.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Flow {
+    /// The `command` of the reply: `adopt`, or `install` when `shep install`
+    /// hands its build over.
+    pub(super) verb: &'static str,
+    /// Whether a dog the operator granted is enabled. `shep install
+    /// --no-enable` stops after adopting, which leaves the grant recorded and
+    /// the dog off.
+    pub(super) enable: bool,
+}
+
+impl Flow {
+    /// `shep adopt`: adopt, then enable.
+    pub(super) const ADOPT: Self = Self {
+        verb: "adopt",
+        enable: true,
+    };
+}
+
 /// [`adopt`], asking at `input` rather than at this process's stdin.
 pub(super) async fn adopt_asking(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     args: &AdoptArgs,
     input: &mut Input,
+) -> ExitCode {
+    adopt_with(streams, paths, args, input, Flow::ADOPT, None).await
+}
+
+/// [`adopt_asking`], reporting as `flow.verb` and enabling only if
+/// `flow.enable`.
+pub(super) async fn adopt_with(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &AdoptArgs,
+    input: &mut Input,
+    flow: Flow,
+    note: Option<&str>,
 ) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
@@ -88,42 +121,52 @@ pub(super) async fn adopt_asking(
         Ok(reviewed) => reviewed,
         Err(refusal) => return refusal.report(streams, &name, "adopted"),
     };
-    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, args.yes, input) {
+    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, note, args.yes, input)
+    {
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
-    let (adopted, grants, declined, env) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
-        cfg.adopt_dog(&name, &path, channel)?;
-        // The answer was asked against a read taken before the question. A
-        // grant another shep wrote since was decided by someone with the
-        // same say, and stands.
-        let decided_meanwhile = cfg.granted(&name)?.is_some();
-        // Whether a no is what this write left: the daemon half follows the
-        // file, not the raw answer, so a dog granted meanwhile is not stopped.
-        let mut declined = false;
-        match &verdict {
-            Some(_) if decided_meanwhile => {}
-            Some(Verdict::Grant(Some(grants))) => cfg.set_grant_record(
-                &name,
-                &GrantRecord::reviewed(grants.clone()).with_events(reviewed.events()),
-            )?,
-            // `adopt_dog` enables; a no leaves the dog adopted and off.
-            Some(Verdict::Declined) => {
-                cfg.disable_dog(&name);
-                declined = true;
+    let (adopted, grants, declined, held_back, env, events) =
+        match ShepToml::try_edit(&paths.daemon_config, |cfg| {
+            cfg.adopt_dog(&name, &path, channel)?;
+            // The answer was asked against a read taken before the question. A
+            // grant another shep wrote since was decided by someone with the
+            // same say, and stands.
+            let decided_meanwhile = cfg.granted(&name)?.is_some();
+            // Whether a no is what this write left: the daemon half follows the
+            // file, not the raw answer, so a dog granted meanwhile is not stopped.
+            let mut declined = false;
+            match &verdict {
+                Some(_) if decided_meanwhile => {}
+                Some(Verdict::Grant(Some(grants))) => cfg.set_grant_record(
+                    &name,
+                    &GrantRecord::reviewed(grants.clone()).with_events(reviewed.events()),
+                )?,
+                // `adopt_dog` enables; a no leaves the dog adopted and off.
+                Some(Verdict::Declined) => {
+                    cfg.disable_dog(&name);
+                    declined = true;
+                }
+                Some(Verdict::Grant(None)) | None => {}
             }
-            Some(Verdict::Grant(None)) | None => {}
-        }
-        Ok((
-            cfg.adopted_dog_names(),
-            cfg.granted(&name)?,
-            declined,
-            cfg.adopted_dog_env(&name),
-        ))
-    }) {
-        Ok(recorded) => recorded,
-        Err(err) => return fail_config(streams, &err),
-    };
+            // `adopt_dog` enables; `--no-enable` takes that back, and says so
+            // only when it is the reason the dog is off.
+            let held_back = !flow.enable && !declined;
+            if held_back {
+                cfg.disable_dog(&name);
+            }
+            Ok((
+                cfg.adopted_dog_names(),
+                cfg.granted(&name)?,
+                declined,
+                held_back,
+                cfg.adopted_dog_env(&name),
+                recorded_events(cfg, &name),
+            ))
+        }) {
+            Ok(recorded) => recorded,
+            Err(err) => return fail_config(streams, &err),
+        };
     // The registration is in, so the defaults half is the last config write
     // `adopt` makes and it still precedes any socket: a dog adopted against
     // no shepherd gets its section too.
@@ -168,18 +211,24 @@ pub(super) async fn adopt_asking(
             channel,
             events: Vec::new(),
         };
-        return declined_after_config(streams, &name, source, client.as_ref()).await;
+        return declined_after_config(streams, flow.verb, &name, source, client.as_ref()).await;
     }
-    adopt_after_config(
-        streams,
-        &name,
-        &path,
-        channel,
+    if held_back {
+        let source = DogSource::Adopted {
+            grants,
+            path: path.display().to_string(),
+            channel,
+            events,
+        };
+        return held_back_after_config(streams, flow.verb, &name, source, client.as_ref()).await;
+    }
+    let source = DogSource::Adopted {
         grants,
-        &env,
-        client.as_ref(),
-    )
-    .await
+        path: path.display().to_string(),
+        channel,
+        events,
+    };
+    adopt_after_config(streams, flow.verb, &name, source, &env, client.as_ref()).await
 }
 
 /// A declined adopt's daemon half: the config now has the dog disabled, so a
@@ -187,12 +236,38 @@ pub(super) async fn adopt_asking(
 /// to stop it. With no shepherd there is nothing running to stop.
 pub(super) async fn declined_after_config(
     streams: &mut Streams<'_>,
+    verb: &str,
     name: &str,
     source: DogSource,
     client: Option<&Client>,
 ) -> ExitCode {
+    off_after_config(streams, verb, name, source, client, DECLINED_STATUS).await
+}
+
+/// `--no-enable`'s daemon half: the config has the dog adopted and granted
+/// but disabled, so a shepherd already running it is told to stop it.
+async fn held_back_after_config(
+    streams: &mut Streams<'_>,
+    verb: &str,
+    name: &str,
+    source: DogSource,
+    client: Option<&Client>,
+) -> ExitCode {
+    off_after_config(streams, verb, name, source, client, NOT_ENABLED_STATUS).await
+}
+
+/// The daemon half of an adopt that leaves the dog off, told in `idle` when
+/// no shepherd was running or the shepherd had no such dog.
+async fn off_after_config(
+    streams: &mut Streams<'_>,
+    verb: &str,
+    name: &str,
+    source: DogSource,
+    client: Option<&Client>,
+    idle: DogActionStatus,
+) -> ExitCode {
     let Some(client) = client else {
-        return emit_dog_action(streams, "adopt", name, source, DECLINED_STATUS);
+        return emit_dog_action(streams, verb, name, source, idle);
     };
     match client
         .request(Request::DisableDog {
@@ -201,11 +276,11 @@ pub(super) async fn declined_after_config(
         .await
     {
         Ok(Response::Deleted(_ids)) => {
-            emit_dog_action(streams, "adopt", name, source, DISABLED_STATUS)
+            emit_dog_action(streams, verb, name, source, DISABLED_STATUS)
         }
         // The shepherd holds no such dog: nothing was running to stop.
         Err(RequestError::Rpc(rpc)) if rpc.code == RpcErrorCode::NotFound => {
-            emit_dog_action(streams, "adopt", name, source, DECLINED_STATUS)
+            emit_dog_action(streams, verb, name, source, idle)
         }
         Ok(_unrecognised) => unexpected_response(streams),
         Err(err) => client_error(streams, &err),
@@ -226,6 +301,7 @@ fn ask_before_adopting(
     paths: &ShepPaths,
     name: &str,
     reviewed: &Review,
+    note: Option<&str>,
     yes: bool,
     input: &mut Input,
 ) -> Result<Option<Verdict>, ExitCode> {
@@ -238,7 +314,7 @@ fn ask_before_adopting(
     {
         return Ok(None);
     }
-    consent_from(streams, name, "adopt", reviewed, yes, input).map(Some)
+    consent_from(streams, name, "adopt", reviewed, note, yes, input).map(Some)
 }
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
@@ -287,7 +363,7 @@ fn expand_tilde_candidate(value: &str, home: Option<&Path>) -> Option<PathBuf> {
 /// not `./shep-log-rotate`), and only a hit with an execute bit set for
 /// someone, so a same-named non-executable file earlier on `$PATH` does not
 /// block the real binary further down it.
-fn lookup_on_path(name: &Path, path_var: Option<&OsStr>) -> Option<PathBuf> {
+pub(super) fn lookup_on_path(name: &Path, path_var: Option<&OsStr>) -> Option<PathBuf> {
     let is_bare = name
         .parent()
         .is_some_and(|parent| parent.as_os_str().is_empty());
@@ -444,26 +520,19 @@ fn fail_dogs_config(streams: &mut Streams<'_>, err: &DogMigrationError) -> ExitC
 }
 
 /// `adopt`'s daemon half; see enable_after_config for the split and for
-/// what `client: None` means. `channel` is the binary's own ask, `grants`
-/// what `shep.toml` records for the dog, and `env` the `env` that entry holds
-/// after the adopt wrote it, which a re-adopt keeps.
+/// what `client: None` means. `source` is the adopted source with the
+/// binary's own channel ask and the grants `shep.toml` records, and `env` the
+/// `env` that entry holds after the adopt wrote it, which a re-adopt keeps.
 async fn adopt_after_config(
     streams: &mut Streams<'_>,
+    verb: &str,
     name: &str,
-    path: &Path,
-    channel: bool,
-    grants: Option<Grants>,
+    source: DogSource,
     env: &BTreeMap<String, String>,
     client: Option<&Client>,
 ) -> ExitCode {
-    let source = DogSource::Adopted {
-        grants,
-        path: path.display().to_string(),
-        channel,
-        events: Vec::new(),
-    };
     let Some(client) = client else {
-        return emit_dog_action(streams, "adopt", name, source, NO_SHEPHERD_ENABLE_STATUS);
+        return emit_dog_action(streams, verb, name, source, NO_SHEPHERD_ENABLE_STATUS);
     };
     let request = Request::EnableDog {
         name: name.to_string(),
@@ -478,7 +547,7 @@ async fn adopt_after_config(
             warn_if_unenforced(streams, name, &source, client.daemon().protocol);
             emit_dog_action(
                 streams,
-                "adopt",
+                verb,
                 name,
                 source,
                 DogActionStatus::Acted(info.status.into()),
@@ -531,10 +600,14 @@ mod tests {
             let binary = PathBuf::from("/usr/local/bin/shep-otel");
             let _ = adopt_after_config(
                 &mut streams(&mut out, &mut err),
+                "adopt",
                 "otel",
-                &binary,
-                channel,
-                None,
+                DogSource::Adopted {
+                    grants: None,
+                    path: binary.display().to_string(),
+                    channel,
+                    events: Vec::new(),
+                },
                 &BTreeMap::new(),
                 Some(&client),
             )
@@ -632,10 +705,14 @@ mod tests {
 
             let code = adopt_after_config(
                 &mut streams,
+                "adopt",
                 "otel",
-                &binary,
-                false,
-                None,
+                DogSource::Adopted {
+                    grants: None,
+                    path: binary.display().to_string(),
+                    channel: false,
+                    events: Vec::new(),
+                },
                 &BTreeMap::new(),
                 client,
             )

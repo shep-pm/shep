@@ -53,11 +53,11 @@ const built = builtDogPages((await getCollection("dog-readme")).map((entry) => e
 function installLine(dog: Dog): string {
   switch (dog.source.kind) {
     case "cargo":
-      // The version is part of the command for a pre-release: cargo
-      // resolves `*` otherwise, and `*` never matches one.
+      // The index approves one exact version; a row without one is listed
+      // but not installable.
       return dog.source.version
         ? `$ cargo install ${dog.package} --version ${dog.source.version}`
-        : `$ cargo install ${dog.package}`;
+        : "Not installable yet: the index approves no version of this dog.";
     case "cargo-git":
       return `$ cargo install --git ${dog.source.url}`;
     case "go-install":
@@ -88,9 +88,11 @@ function adoptLine(dog: Dog): string {
     <ReferencePills slug="community-dogs" />
     <p class="lede">
       <code>metrics</code> and <code>bark</code> ship inside the{" "}
-      <code>shep</code> binary. Everything below is a separate binary you
-      install yourself and hand to <code>shep adopt &lt;path&gt;</code>.
-      Some are ours and some are not; the repository link says which.
+      <code>shep</code> binary. Everything below is a separate binary.{" "}
+      <code>shep install &lt;name&gt;</code> builds the ones with an approved
+      version; the rest you install yourself and hand to{" "}
+      <code>shep adopt &lt;path&gt;</code>. Some are ours and some are not;
+      the repository link says which.
     </p>
 
     <ShortVersion>
@@ -98,8 +100,10 @@ function adoptLine(dog: Dog): string {
     </ShortVersion>
 
     <p>
-      That prints the install and adopt commands below, narrowed with an
-      optional filter.
+      That prints the install commands below, narrowed with an optional
+      filter. The index is cached for a day; <code>--refresh</code>{" "}
+      fetches it anyway. If a fetch fails, shep lists the cached copy and
+      says how old it is.
     </p>
 
     <Callout variant="careful">
@@ -153,7 +157,11 @@ function adoptLine(dog: Dog): string {
                     Repository
                   </a>
                 </p>
-                {dog.source.kind === "manual" ? (
+                {dog.source.kind === "cargo" && dog.source.version ? (
+                  <CodeBlock label="install" iconCopy>
+                    {`$ shep install ${dog.adopt_as}`}
+                  </CodeBlock>
+                ) : dog.source.kind === "manual" ? (
                   <>
                     <p>
                       <strong>Install:</strong> {dog.source.instructions}
@@ -174,6 +182,22 @@ function adoptLine(dog: Dog): string {
       ))
     }
 
+    <h2 id="installing-one">What install does</h2>
+    <p>
+      <code>shep install &lt;name&gt;</code> needs <code>cargo</code> on{" "}
+      <code>PATH</code>. It builds the one version the index approves with{" "}
+      <code>cargo install --locked</code> into{" "}
+      <code>$SHEP_HOME/dogs/&lt;name&gt;/&lt;version&gt;/</code>, after
+      asking crates.io which repository published it. A repository other than
+      the row's refuses. Then it asks the same grant question{" "}
+      <code>shep adopt</code> asks and enables the dog. A no leaves it
+      adopted and disabled, and <code>--no-enable</code> stops after
+      adopting. <code>receipt.json</code> beside the build records what was
+      approved and how it was built. A row that is not a <code>cargo</code>{" "}
+      row with a version prints its instructions and installs nothing. With
+      no name, <code>shep install</code> lists the index.
+    </p>
+
     <h2 id="add-a-dog">Add a dog</h2>
     <p>
       Add yours by editing <code>web/public/dogs.json</code> and opening a
@@ -183,6 +207,17 @@ function adoptLine(dog: Dog): string {
       validator over every entry before the site ships, and a test keeps the
       two in step, so a pull request that satisfies the schema will not
       surprise you in CI.
+    </p>
+    <p>
+      A <code>cargo</code> source takes two optional fields.{" "}
+      <code>version</code> is the one exact version the index approves;
+      without it the row is listed but cannot be installed.{" "}
+      <code>sha256</code> maps each target triple to the hash of its
+      prebuilt binary and needs <code>version</code>. The download URL is
+      built, never written:{" "}
+      <code>&lt;repo&gt;/releases/download/v&lt;version&gt;/&lt;package&gt;-&lt;version&gt;-&lt;target&gt;</code>,
+      plus <code>.exe</code> on Windows. The release workflow writes the
+      hashes.
     </p>
   </article>
 </DocsLayout>

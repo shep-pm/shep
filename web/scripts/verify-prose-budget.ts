@@ -350,7 +350,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 2350 for #1402: `listen` is a third way a reload overlaps,
   // and the page has to say what shep binds and where the sockets land.
-  lifecycle: 2510,
+  //
+  // Raised from 2510 for #1437: each Linux sheep now runs in its own cgroup,
+  // which changes what a stop sweeps, and the page has to say when.
+  lifecycle: 2550,
   // Cut from 1900 for the stamps-off tail sentence: the page has to say a
   // sheep with `log_timestamps = false` carries no stamp for `bleats` to
   // strip, and it paid for that line by tightening the sentences around it
@@ -471,7 +474,9 @@ export const BUDGETS: Record<string, number> = {
   // what it costs is not prose: the branch that decides whether a row gets a
   // link sits in the page body rather than in frontmatter, and this counter
   // reads the page body as words a reader wades through.
-  "community-dogs": 320,
+  // Raised from 320 for the index cache and the two `cargo` fields a
+  // contributor can set. Raised again for what `shep install` does.
+  "community-dogs": 520,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

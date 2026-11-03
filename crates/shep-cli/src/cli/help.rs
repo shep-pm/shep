@@ -39,7 +39,7 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
             "host",
         ],
     ),
-    ("Dogs and agents", &["dogs", "adopt", "whistle"]),
+    ("Dogs and agents", &["dogs", "install", "adopt", "whistle"]),
     ("Foreground runs", &["runtime", "dev"]),
     ("Coming from pm2", &["import"]),
     ("Help", &["welcome", "init", "help", "completions", "style"]),
@@ -66,7 +66,7 @@ See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs adopt whistle
+Dogs and agents  dogs install adopt whistle
 Foreground runs  runtime dev
 Coming from pm2  import
 Help             welcome init help completions style
@@ -742,8 +742,8 @@ mod tests {
     #[test]
     fn dressing_paints_an_adopted_dogs_name_and_not_its_description() {
         let template = format!("{HELP_TEMPLATE}\n").replace(
-            "Dogs and agents  dogs adopt whistle",
-            "Dogs and agents  dogs adopt whistle\n                 otel  exports traces",
+            "Dogs and agents  dogs install adopt whistle",
+            "Dogs and agents  dogs install adopt whistle\n                 otel  exports traces",
         );
         let dressed = dress(&template, &Dress::new(true));
         assert!(

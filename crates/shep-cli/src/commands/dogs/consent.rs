@@ -150,10 +150,10 @@ pub(super) fn review(manifest: Option<&Manifest>) -> Result<Review, UnknownRequi
 /// Shows the operator what `name` declares and asks, or applies `--yes`, or
 /// refuses for want of a terminal.
 ///
-/// `verb` is what the operator ran, `adopt` or `enable`. The question goes to
-/// stderr with the list, so a piped stdout stays what it was. A dog whose
-/// manifest declares no permissions is granted nothing without a question:
-/// there is nothing to decide.
+/// `verb` is what the operator ran. The question goes to stderr with the
+/// list. A dog declaring no permissions is granted nothing without a question.
+/// `note` ends the listing, directly above the question, and is printed alone
+/// when no question is asked.
 ///
 /// # Errors
 /// The [`ExitCode`] already reported to `streams`: [`ExitCode::Usage`] with
@@ -164,6 +164,7 @@ pub(super) fn consent(
     name: &str,
     verb: &str,
     review: &Review,
+    note: Option<&str>,
     mode: Mode,
     reader: &mut dyn BufRead,
 ) -> Result<Verdict, ExitCode> {
@@ -190,6 +191,9 @@ pub(super) fn consent(
             }
             let grants = Grants::from_names(listed.iter().map(|entry| entry.name.clone()));
             if listed.is_empty() {
+                if let Some(note) = note {
+                    streams.aside(PERMISSIONS_NOTICE, note);
+                }
                 return Ok(Verdict::Grant(Some(grants)));
             }
             let lines = listed
@@ -230,6 +234,10 @@ pub(super) fn consent(
             ),
         ));
     }
+    let listing = match note {
+        Some(note) => format!("{listing}\n{note}"),
+        None => listing,
+    };
     streams.aside(PERMISSIONS_NOTICE, &listing);
     if go == Go::Ask {
         streams.aside("confirm", &question);
@@ -275,6 +283,7 @@ pub(super) fn consent_from(
     name: &str,
     verb: &str,
     review: &Review,
+    note: Option<&str>,
     yes: bool,
     input: &mut Input,
 ) -> Result<Verdict, ExitCode> {
@@ -282,7 +291,7 @@ pub(super) fn consent_from(
         yes,
         stdin_is_terminal: input.is_terminal,
     };
-    consent(streams, name, verb, review, mode, &mut input.reader)
+    consent(streams, name, verb, review, note, mode, &mut input.reader)
 }
 
 /// The sentence every prompt carries.

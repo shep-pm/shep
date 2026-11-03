@@ -3,7 +3,7 @@ use super::env_value::deserialize_env;
 use super::probe::ProbeConfig;
 use std::collections::BTreeMap;
 // use schemars::generate
-use crate::config::LevelRule;
+use crate::config::{CpuCores, LevelRule, MemoryEnforce};
 use crate::values::{MemSize, UpDuration};
 use serde::{Deserialize, Serialize};
 
@@ -251,6 +251,48 @@ pub struct AppConfig {
         "blurb": "Restart the app if it climbs above this much memory"
     })))]
     pub max_memory: Option<MemSize>,
+    /// Who enforces `max_memory`: `"poll"` (shep samples) or `"kernel"` (cgroup `memory.max`)
+    ///
+    /// `"kernel"` needs `max_memory`, Linux and a delegated cgroup v2 subtree. An
+    /// OOM kill counts against `max_restarts`, unlike a polled restart.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": "kernel",
+        "group": "restart",
+        "blurb": "Let the kernel cap memory at the moment of allocation instead of shep sampling it",
+        "accepts": ["poll, the default", "kernel, on Linux with cgroup v2 delegated"],
+        "refuses": ["kernel without max_memory", "kernel on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the limit it enforces"}]
+    })))]
+    pub memory_enforce: MemoryEnforce,
+    /// CPU quota in cores: `1.5` caps the sheep and its lambs at one and a half cores
+    ///
+    /// A quota, not affinity, like `docker run --cpus`: the tree is throttled,
+    /// never killed. Needs Linux and a delegated cgroup v2 subtree.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": 1.5,
+        "group": "restart",
+        "blurb": "Throttle the app and its children to this many cores' worth of CPU time",
+        "accepts": ["a number of cores of 0.01 or more, such as 0.5 or 2.5"],
+        "refuses": ["below 0.01, zero or a negative number", "any value on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
+    })))]
+    pub max_cpu_cores: Option<CpuCores>,
+    /// How many tasks, processes and threads, the sheep and its lambs may run at once
+    ///
+    /// Written to the cgroup's `pids.max`, like `docker run --pids-limit`. A
+    /// thread counts as a task, so leave headroom above the healthy count. A
+    /// fork or thread past it fails with `EAGAIN` and nothing is killed, so a
+    /// fork bomb stops there. Needs Linux and a delegated cgroup v2 subtree.
+    #[cfg_attr(feature = "schema", schemars(range(min = 1, max = 4_194_304)))]
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": 256,
+        "group": "restart",
+        "blurb": "Cap how many tasks, processes and threads, the app and its children can run",
+        "accepts": ["a whole number from 1 to 4194304"],
+        "refuses": ["zero or a number above 4194304", "any value on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
+    })))]
+    pub max_tasks: Option<u32>,
     /// Watch files and restart on change
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",
