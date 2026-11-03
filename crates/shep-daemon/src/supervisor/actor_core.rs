@@ -290,9 +290,10 @@ impl<R: ProcessRunner> Actor<R> {
                 selector,
                 action,
                 params,
+                caller,
                 reply,
             } => {
-                self.begin_action(&selector, action, params, reply);
+                self.begin_action(&selector, action, params, caller, reply);
                 false
             }
             Command::Signal {

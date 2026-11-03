@@ -321,6 +321,7 @@ mod sheep_dog_secrets;
 mod signal_lamb;
 mod start_add;
 mod stats;
+mod trigger_caller;
 mod trigger_signal;
 mod vcs;
 mod walk;
