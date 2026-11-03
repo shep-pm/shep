@@ -80,7 +80,7 @@ fn an_enable_dog_carries_its_env_and_hides_its_values() {
     assert_eq!(
         format!("{request:?}"),
         "EnableDog { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
-         channel: false, grants: None }, env: {\"PADDOCK_KEY\": EnvValue(<11 bytes>)} }"
+         channel: false, grants: None, events: [] }, env: {\"PADDOCK_KEY\": EnvValue(<11 bytes>)} }"
     );
 
     let bare = Request::EnableDog {
