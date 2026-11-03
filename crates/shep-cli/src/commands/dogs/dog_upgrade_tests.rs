@@ -409,3 +409,68 @@ async fn dogs_upgrades_each_installed_dog_and_skips_one_adopted_from_a_path() {
     assert!(receipt::read(&fixture.paths, "plain").unwrap().is_none());
     let _ = ShepToml::read_only(&fixture.paths.daemon_config).unwrap();
 }
+
+#[tokio::test]
+async fn dogs_in_json_answers_one_document_holding_each_dogs_row() {
+    let fixture = Fixture::new();
+    installed_at(&fixture, "0.2.4").await;
+    let reach = fixture.reach(from_the_row());
+    let mut second = at("0.2.4");
+    second.adopt_as = "second".to_owned();
+    let (code, _out, err) = run(&fixture, &second, &args(true, false), &reach, typing(None)).await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let mut newer = second.clone();
+    newer.source = at("0.3.0").source;
+    let rows = [at("0.3.0"), newer];
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut json = streams(&mut out, &mut err);
+    json.fmt = Format::Json;
+
+    let code = upgrade_all(
+        &mut json,
+        &fixture.paths,
+        &reach,
+        &mut typing(None),
+        &Catalog::new(URL, &rows),
+    )
+    .await;
+
+    let err = String::from_utf8(err).unwrap();
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let document: serde_json::Value = serde_json::from_slice(&out).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}): {}",
+            String::from_utf8_lossy(&out)
+        )
+    });
+    assert_eq!(document["command"], "upgrade");
+    let names: Vec<_> = document["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(names, ["otel", "second"]);
+}
+
+#[tokio::test]
+async fn dogs_in_json_with_no_installed_dog_answers_an_empty_list() {
+    let fixture = Fixture::new();
+    let reach = fixture.reach(from_the_row());
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut json = streams(&mut out, &mut err);
+    json.fmt = Format::Json;
+
+    let code = upgrade_all(
+        &mut json,
+        &fixture.paths,
+        &reach,
+        &mut typing(None),
+        &Catalog::new(URL, &[]),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success);
+    let document: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(document["data"], serde_json::json!([]));
+}

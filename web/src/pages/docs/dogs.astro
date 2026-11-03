@@ -221,8 +221,9 @@ $ shep upgrade --dogs`}</CodeBlock>
       <code>--ref</code> switches to another ref, <code>--release</code>{" "}
       returns a ref install to the version the index approves, and{" "}
       <code>--dogs</code> upgrades every installed dog in turn, skipping a
-      dog with no receipt. Bare <code>shep upgrade</code> is reserved for
-      shep itself and exits 1.
+      dog with no receipt. With <code>--format json</code> it answers one
+      document whose <code>data</code> lists each dog's row. Bare{" "}
+      <code>shep upgrade</code> is reserved for shep itself and exits 1.
     </p>
     <p>
       An upgrade installs into a new directory, points the adopted path

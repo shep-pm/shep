@@ -12,11 +12,11 @@ use std::path::Path;
 
 use shep_core::paths::ShepPaths;
 
-use crate::cli::{InstallArgs, UpgradeArgs};
+use crate::cli::{Format, InstallArgs, UpgradeArgs};
 use crate::commands::shep_toml::ShepToml;
 use crate::dog_index::DogSourceKind;
 use crate::exit::ExitCode;
-use crate::output::{DogActionStatus, Streams};
+use crate::output::{DogActionStatus, SCHEMA_VERSION, Streams, write_json_line};
 
 use super::consent::Input;
 use super::dog_rollback::rollback;
@@ -79,6 +79,9 @@ pub async fn upgrade(streams: &mut Streams<'_>, paths: &ShepPaths, args: &Upgrad
 
 /// `--dogs`: every adopted dog with a receipt, in turn. One that fails does
 /// not stop the rest, and the first failure is the exit code.
+///
+/// With `--format json` each dog's reply is held back and the rows leave as
+/// the `data` array of one document.
 pub(super) async fn upgrade_all(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -90,6 +93,8 @@ pub(super) async fn upgrade_all(
         Ok(cfg) => cfg,
         Err(err) => return fail_config(streams, &err),
     };
+    let json = streams.fmt == Format::Json;
+    let mut rows = Vec::new();
     let mut first_failure = ExitCode::Success;
     let mut upgraded = 0;
     for name in cfg.adopted_dog_names() {
@@ -102,7 +107,29 @@ pub(super) async fn upgrade_all(
             continue;
         }
         upgraded += 1;
-        let code = upgrade_dog(streams, paths, reach, input, catalog, &name, &Goal::Follow).await;
+        let code = if json {
+            let mut held = Vec::new();
+            let mut quiet = Streams {
+                out: &mut held,
+                err: &mut *streams.err,
+                style: streams.style,
+                fmt: streams.fmt,
+            };
+            let code = upgrade_dog(
+                &mut quiet,
+                paths,
+                reach,
+                input,
+                catalog,
+                &name,
+                &Goal::Follow,
+            )
+            .await;
+            rows.extend(replies_in(&held));
+            code
+        } else {
+            upgrade_dog(streams, paths, reach, input, catalog, &name, &Goal::Follow).await
+        };
         if first_failure == ExitCode::Success {
             first_failure = code;
         }
@@ -110,7 +137,27 @@ pub(super) async fn upgrade_all(
     if upgraded == 0 {
         streams.aside("upgrade", "no installed dog to upgrade");
     }
+    if json {
+        let document = serde_json::json!({
+            "schema_version": SCHEMA_VERSION,
+            "command": "upgrade",
+            "data": rows,
+        });
+        if write_json_line(&mut *streams.out, &document).is_err()
+            && first_failure == ExitCode::Success
+        {
+            first_failure = ExitCode::Failure;
+        }
+    }
     first_failure
+}
+
+/// The `data` of each envelope line in `held`, one dog's reply.
+fn replies_in(held: &[u8]) -> Vec<serde_json::Value> {
+    held.split(|byte| *byte == b'\n')
+        .filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
+        .filter_map(|mut envelope| envelope.get_mut("data").map(serde_json::Value::take))
+        .collect()
 }
 
 /// Upgrades the one dog adopted as `name` towards `goal`.
