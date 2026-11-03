@@ -103,6 +103,9 @@ tempfile.workspace = true
 # shep-daemon uses. The workspace default features already cover it.
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true
+# `tests/long_action.rs` boots a real shepherd around the `long_action_dog`
+# example. Path-only, with no version: see `scripts/check-dev-deps.py`.
+shep-daemon = { path = "../shep-daemon" }
 
 [lints]
 workspace = true

@@ -71,6 +71,7 @@ mod dog_wide;
 mod error;
 mod identity;
 mod link;
+mod long_action;
 mod probes;
 mod runtime;
 mod section;
@@ -82,6 +83,7 @@ mod validate;
 
 pub use error::ShepherdError;
 pub use identity::DogIdentity;
+pub use long_action::{ActionDone, ActionId, DONE_KIND, LongActionError};
 pub use probes::{Probe, probe, probe_with_sheep};
 pub use runtime::DogRuntime;
 pub use section::{SectionError, parse_section};

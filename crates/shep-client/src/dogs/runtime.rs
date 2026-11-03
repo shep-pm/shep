@@ -1,9 +1,12 @@
 //! [`DogRuntime`], the connection and configuration a dog starts with.
 
+use std::time::Duration;
+
 use serde::de::DeserializeOwned;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::DogSectionToml;
 
+use super::long_action::{self, ActionDone, ActionId, LongActionError};
 use super::{DogIdentity, SectionError, ShepherdError, link, parse_section};
 use crate::ReconnectingClient;
 
@@ -97,6 +100,50 @@ impl DogRuntime {
         payload: serde_json::Value,
     ) -> Result<(), ShepherdError> {
         Ok(self.client.publish_event(kind, payload).await?)
+    }
+
+    /// Reports the result of the long action `id` as this dog's
+    /// [`DONE_KIND`](super::DONE_KIND) event: `Ok` carries what the work
+    /// produced, `Err` what went wrong.
+    ///
+    /// Holders of `events:dog.<name>` all hear it, and the caller picks its
+    /// own out by id. The dog declares [`DONE_KIND`](super::DONE_KIND) with
+    /// [`Probe::event`](super::Probe::event) first, or the shepherd refuses.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::publish`].
+    pub async fn finish_action(
+        &self,
+        id: &ActionId,
+        outcome: Result<serde_json::Value, String>,
+    ) -> Result<(), ShepherdError> {
+        self.publish(super::DONE_KIND, long_action::done_payload(id, outcome))
+            .await
+    }
+
+    /// Triggers `action` on the dog `callee` and waits up to `timeout` for
+    /// the result of the long action it answers with.
+    ///
+    /// Subscribes to `callee`'s results before it triggers, so a result
+    /// published at once is not missed. That subscription replaces any other
+    /// this connection holds. The caller needs `events:dog.<callee>` as well
+    /// as `dogs.trigger:<callee>`. The timeout starts once the callee has
+    /// answered with its id, since the trigger has the callee's own
+    /// `action_timeout`.
+    ///
+    /// # Errors
+    ///
+    /// [`LongActionError::NotGranted`] names the missing grant. The other
+    /// variants say why no result arrived.
+    pub async fn trigger_and_wait(
+        &self,
+        callee: &str,
+        action: &str,
+        params: Option<&str>,
+        timeout: Duration,
+    ) -> Result<ActionDone, LongActionError> {
+        long_action::trigger_and_wait(&self.client, callee, action, params, timeout).await
     }
 
     /// The connection, which re-establishes itself across a handover.
