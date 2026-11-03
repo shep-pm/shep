@@ -2903,6 +2903,6 @@ With no flag, `shep install` downloads the binary a row hashes for the triple sh
 
 **Why:** #1452, under #1075. A way back that costs a build is no way back, and one kept directory bounds the disk an operator pays for it. A swap keeps `--rollback` from discarding the build it undoes. `--refresh` is accepted and `--yes` is not: an upgrade asks no question that a flag would answer, since an old grant stays and a new one waits.
 
-**What it costs:** a rollback goes back one step only. A second upgrade removes the directory a rollback would have used. The restart is tested at the adopt level, not against a live shepherd, because the test shepherd answers one request per connection.
+**What it costs:** a rollback goes back one step only. A second upgrade removes the directory a rollback would have used. The restart is tested against a fake shepherd that records the requests, so a test shows the stop and the start on the new path for `shep upgrade` and `--rollback`, but no live shepherd ever runs the dog.
 
 `verified crates/shep-cli/src/commands/dogs/dog_upgrade.rs, crates/shep-cli/src/commands/dogs/dog_upgrade_tests.rs, crates/shep-cli/src/commands/dogs/receipt.rs, crates/shep-cli/src/commands/dogs/adopt.rs`

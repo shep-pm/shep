@@ -9,11 +9,14 @@ use super::install_tests::{
     COMMIT, Fixture, NEWER_COMMIT, args, config, from_the_row, row, run, typing,
 };
 use super::receipt;
-use super::test_support::streams;
+use super::test_support::{streams, this_builds_ack};
 use crate::cli::{AdoptArgs, Format, UpgradeArgs};
 use crate::commands::shep_toml::ShepToml;
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
+use shep_client::testing::{fake_daemon_answering_with_ack, sample_info};
+use shep_core::protocol::{DogSource, Envelope, Request, Response};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 const URL: &str = "https://shep-pm.com/dogs.json";
 
@@ -473,4 +476,89 @@ async fn dogs_in_json_with_no_installed_dog_answers_an_empty_list() {
     assert_eq!(code, ExitCode::Success);
     let document: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(document["data"], serde_json::json!([]));
+}
+
+/// A shepherd listening on the fixture's socket, answering every request as
+/// a shepherd that has the dog running would.
+async fn shepherd(fixture: &Fixture) -> UnboundedReceiver<Envelope> {
+    std::fs::create_dir_all(&fixture.paths.run).unwrap();
+    fake_daemon_answering_with_ack(
+        &fixture.paths.socket,
+        this_builds_ack(),
+        |request| match request {
+            Request::EnableDog { .. } => Response::DogStarted(sample_info()),
+            _ => Response::Pong,
+        },
+    )
+    .await
+}
+
+/// What the shepherd was asked, in order, once the verb has returned.
+fn asked(requests: &mut UnboundedReceiver<Envelope>) -> Vec<Request> {
+    std::iter::from_fn(|| requests.try_recv().ok())
+        .map(|envelope| envelope.body)
+        .collect()
+}
+
+/// The adopted path an `EnableDog` carries.
+fn started_from(request: &Request) -> &str {
+    match request {
+        Request::EnableDog {
+            source: DogSource::Adopted { path, .. },
+            ..
+        } => path,
+        other => panic!("not an EnableDog from an adopted path: {other:?}"),
+    }
+}
+
+/// `EnableDog` leaves a running dog alone, so without the stop the old build
+/// would keep running after an upgrade that said it had moved.
+#[tokio::test]
+async fn an_upgrade_stops_the_running_dog_then_starts_it_on_the_new_build() {
+    let fixture = Fixture::new();
+    installed_at(&fixture, "0.2.4").await;
+    let mut requests = shepherd(&fixture).await;
+
+    let (code, _out, err) = upgraded(&fixture, &[at("0.3.0")], &Goal::Follow).await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let asked = asked(&mut requests);
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert_eq!(
+        asked[0],
+        Request::DisableDog {
+            name: "otel".to_owned()
+        }
+    );
+    let new_binary = otel(&fixture).join("0.3.0/bin/shep-otel");
+    assert_eq!(
+        started_from(&asked[1]),
+        new_binary.canonicalize().unwrap().to_str().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn a_rollback_stops_the_running_dog_then_starts_it_on_the_build_it_put_back() {
+    let fixture = Fixture::new();
+    installed_at(&fixture, "0.2.4").await;
+    let (code, _out, err) = upgraded(&fixture, &[at("0.3.0")], &Goal::Follow).await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let mut requests = shepherd(&fixture).await;
+
+    let (code, _out, err) = upgraded(&fixture, &[], &Goal::Rollback).await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let asked = asked(&mut requests);
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert_eq!(
+        asked[0],
+        Request::DisableDog {
+            name: "otel".to_owned()
+        }
+    );
+    let old_binary = otel(&fixture).join("0.2.4/bin/shep-otel");
+    assert_eq!(
+        started_from(&asked[1]),
+        old_binary.canonicalize().unwrap().to_str().unwrap()
+    );
 }
