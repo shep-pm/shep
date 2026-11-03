@@ -1,6 +1,8 @@
 //! A fixture dog's `Probe`, asked each of the three flags.
 
-use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Serves, Subcommand, Verb};
+use shep_core::dogs::manifest::{
+    Action, DogDependency, Manifest, Permission, Serves, Subcommand, Verb,
+};
 use shep_core::dogs::{MANIFEST_FLAG, SCHEMA_FLAG, VERSION_FLAG};
 
 use super::*;
@@ -33,6 +35,7 @@ fn fixture() -> Probe<'static> {
         .defaults("interval = \"1h\"\n")
         .validate()
         .serves_every_sheep()
+        .action("export-now", "Export without waiting for the interval")
 }
 
 fn reply(probe: &Probe<'_>, flag: &str) -> String {
@@ -61,6 +64,10 @@ fn the_manifest_parses_back_to_what_the_dog_declared() {
     expected.depends.shep = Some("0.9.0".to_string());
     expected.validate = true;
     expected.serves = Serves::EverySheep;
+    expected.actions = vec![Action::new(
+        "export-now",
+        "Export without waiting for the interval",
+    )];
     assert_eq!(manifest, expected);
 }
 

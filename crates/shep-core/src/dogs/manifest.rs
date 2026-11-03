@@ -67,6 +67,10 @@ pub struct Manifest {
     /// [`Serves::OptedIn`].
     #[serde(default, skip_serializing_if = "Serves::is_opted_in")]
     pub serves: Serves,
+    /// The actions the dog answers when triggered, which `shep trigger <dog>`
+    /// lists.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<Action>,
 }
 
 impl Manifest {
@@ -87,6 +91,27 @@ impl Manifest {
             validate: false,
             launch: false,
             serves: Serves::OptedIn,
+            actions: Vec::new(),
+        }
+    }
+}
+
+/// One action a dog answers when it is triggered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Action {
+    /// The name `shep trigger <dog> <name>` sends.
+    pub name: String,
+    /// One line saying what the action does.
+    pub description: String,
+}
+
+impl Action {
+    /// An action `name`, described by `description`.
+    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
         }
     }
 }

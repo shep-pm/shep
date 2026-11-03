@@ -40,6 +40,16 @@ fn main() {
     // ...the dog's own loop, watching \`stop\`.
 }`;
 
+const callerSnippet = `Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    .ask_for_channel()
+    .action("rotate", "rotates the signing key")
+    .answer::<MyDogConfig>();
+
+// ...later, once the channel is served:
+shepherd.on_action_with_caller("rotate", |_params, _name, caller| {
+    format!("rotated for {}", caller.unwrap_or("the operator"))
+});`;
+
 const validateSnippet = `use shep_client::dogs::{Probe, Stop, Verdict, validate_answer};
 
 fn main() {
@@ -562,6 +572,15 @@ shep-channel: true`}</CodeBlock>
       <code>shutdown</code> message with no signal behind it, so a dog that
       ignores it is killed once <code>kill_timeout</code> runs out.
     </p>
+
+    <h3 id="actions-and-callers">Declaring actions and reading the caller</h3>
+    <p>
+      <code>Probe::action</code> declares an action in the manifest, and{" "}
+      <code>shep trigger &lt;dog&gt;</code> lists them. A handler registered
+      with <code>on_action_with_caller</code> is told the dog that triggered
+      it, or <code>None</code> for an operator.
+    </p>
+    <CodeBlock label="main.rs">{callerSnippet}</CodeBlock>
 
     <h3 id="being-asked-about-its-settings">Being asked about a write to its settings</h3>
     <p>

@@ -3,7 +3,7 @@
 
 use std::io::Write as _;
 
-use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Serves, Verb};
+use shep_core::dogs::manifest::{Action, DogDependency, Manifest, Permission, Serves, Verb};
 use shep_core::dogs::{
     MANIFEST_FLAG, SCHEMA_FLAG, SHEP_CHANNEL_KEY, SHEP_PROTOCOL_KEY, VERSION_FLAG,
 };
@@ -117,6 +117,7 @@ pub struct Probe<'a> {
     validate: bool,
     launch: bool,
     serves: Serves,
+    actions: Vec<Action>,
 }
 
 impl<'a> Probe<'a> {
@@ -134,6 +135,7 @@ impl<'a> Probe<'a> {
             validate: false,
             launch: false,
             serves: Serves::OptedIn,
+            actions: Vec::new(),
         }
     }
 
@@ -205,6 +207,16 @@ impl<'a> Probe<'a> {
     /// the same value.
     pub const fn serves(mut self, serves: Serves) -> Self {
         self.serves = serves;
+        self
+    }
+
+    /// Declares an action the dog answers when triggered, with a one-line
+    /// description. `shep trigger <name>` with no action lists them.
+    ///
+    /// The dog still registers a handler for it with
+    /// `Shepherd::on_action`: this only says it exists.
+    pub fn action(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
+        self.actions.push(Action::new(name, description));
         self
     }
 
@@ -304,6 +316,7 @@ impl<'a> Probe<'a> {
         manifest.validate = self.validate;
         manifest.launch = self.launch;
         manifest.serves = self.serves;
+        manifest.actions.clone_from(&self.actions);
         manifest
     }
 

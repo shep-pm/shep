@@ -95,6 +95,7 @@ async fn channel_round_trip(io: &mut ProcIo, round: u32, err_file: &Path) -> Chi
         .send(ShepherdMessage::Action {
             name,
             params: None,
+            caller: None,
             // Derived from `round`: a distinct id per call keeps each
             // round's dispatch its own.
             id: u64::from(round),

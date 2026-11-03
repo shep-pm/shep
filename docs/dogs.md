@@ -893,6 +893,21 @@ handing it a `shep_client::dogs::StopRequest`. A stop is the `shutdown`
 message with no signal behind it, so a dog that asked and ignores the
 message is killed once `kill_timeout` runs out.
 
+A handler that needs to know who triggered the action registers with
+`on_action_with_caller`, which passes the caller's name as a third
+argument:
+
+```rust
+shepherd.on_action_with_caller("rotate", |_params, _name, caller| {
+    format!("rotated for {}", caller.unwrap_or("the operator"))
+});
+```
+
+The shepherd sets it, from the connection the trigger arrived on: the
+name of the dog that sent `Request::Trigger` on its own connection.
+`None` for an operator, for a dog that opened the control socket, and from
+an older shepherd. A dog cannot choose it, so a callee can act on it.
+
 `shep trigger` against a dog that did not ask answers `dog_no_channel`
 rather than `no_channel`, whose advice names Flockfile keys a dog does not
 have.
@@ -1037,6 +1052,7 @@ manifest.
 | `depends` | `dogs`, each with `name` and a version range `version`; `shep`, the oldest shep supported. |
 | `validate` | Whether the dog validates a proposed settings table over its channel, through `shep.validate`. Needs `channel`: `shep adopt` refuses a manifest declaring it without. |
 | `launch` | Whether the dog runs a sheep's command, as `<path> launch <sheep> -- <cmd>`. A dog adopted as `sandbox` needs it: `shep adopt` refuses one without. |
+| `actions` | The actions the dog answers on its channel, each with `name` and a one-line `description`. `shep trigger <dog>` with no action lists them. |
 
 `manifest`, `name`, `version` and `protocol` are required; the rest default
 to nothing declared. A reader ignores a field it does not know, so a later
@@ -1079,8 +1095,8 @@ digit. A dog named `$(touch>x)` stays in `shep --help` and still runs, and is
 not completed.
 
 `Probe` builds it from what the dog already gives it. `permission`, `verb`,
-`depends_on_dog`, `depends_on_shep`, `defaults`, `validate` and `launch` add what it
-declares:
+`depends_on_dog`, `depends_on_shep`, `defaults`, `validate`, `launch` and
+`action` add what it declares:
 
 ```rust
 use shep_client::dogs::{Permission, Probe};
@@ -1088,8 +1104,18 @@ use shep_client::dogs::{Permission, Probe};
 Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
     .ask_for_channel()
     .permission(Permission::new("flock.read", true, "lists the flock"))
+    .action("rotate", "rotates the signing key")
     .answer::<MyDogConfig>();
 ```
+
+`action` declares one action the dog answers on its channel, with a
+one-line description. `shep trigger <dog>` with no action reads the cached
+manifest the way `shep adopt` does and prints the list; a dog that declares
+none, or has no manifest, says so. The list is what the dog says about
+itself: shep never checks that a handler exists for a declared name, and an
+action the dog answers but does not declare still runs. Built-in dogs
+declare none. The listing reads manifests on this machine, so `--host`
+refuses it.
 
 ## Answering `--schema`
 

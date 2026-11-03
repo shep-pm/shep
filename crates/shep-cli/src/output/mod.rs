@@ -45,10 +45,10 @@ pub(crate) use flock::{HostListing, emit_fleet_flock, emit_origin_flock};
 // nothing names them and `unused_imports` still flags it there.
 #[cfg_attr(windows, allow(unused_imports))]
 pub use rows::{
-    AvailableDogRows, BarkRows, CopyChange, CopyReport, DeletedIds, DescribedSecret, DogActionRow,
-    DogActionStatus, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows, HostEntry,
-    HostRows, ImportEnvRow, ImportEnvRows, ImportRow, ImportRows, KillRow, KvEntry, KvRows,
-    KvUnsetRow, LabelledLambRows, LambRows, RolledSheep, RolledSheepRows, SavedRollRow,
+    AvailableDogRows, BarkRows, CopyChange, CopyReport, DeletedIds, DescribedSecret, DogActionList,
+    DogActionRow, DogActionStatus, DogRows, EmptiedFile, EmptiedFiles, FlockRows, FlushedRows,
+    HostEntry, HostRows, ImportEnvRow, ImportEnvRows, ImportRow, ImportRows, KillRow, KvEntry,
+    KvRows, KvUnsetRow, LabelledLambRows, LambRows, RolledSheep, RolledSheepRows, SavedRollRow,
     SecretKeyRow, SecretKeyRows, SecretSlotRow, SecretStatus, SecretValueRow, SentLineRows,
     SetReport, SettingsAnswer, SignalledRows, StartupStep, StartupSteps, TriggeredRows,
 };

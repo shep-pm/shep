@@ -22,6 +22,13 @@ use crate::{ChildMessage, ShepherdMessage};
 /// beside any other handler the same app has running.
 pub type ActionHandler = Box<dyn Fn(Option<&str>, &str) -> String + Send + Sync + 'static>;
 
+/// What an action handler is when it also wants to know who triggered
+/// the action: params, the action's own name, then the calling dog's name.
+/// The caller is `None` for the operator, and for a shepherd that predates
+/// the field.
+pub type CallerActionHandler =
+    Box<dyn Fn(Option<&str>, &str, Option<&str>) -> String + Send + Sync + 'static>;
+
 /// What a shutdown handler is.
 pub type ShutdownHandler = Box<dyn Fn() + Send + Sync + 'static>;
 
@@ -29,7 +36,7 @@ pub type ShutdownHandler = Box<dyn Fn() + Send + Sync + 'static>;
 /// callers register with. [`Dispatch::resolve`] clones a handle out and
 /// releases the registry's lock before the handler runs. Not part of the
 /// public API: `register_action` converts a `Box` on the way in.
-type ActionFn = dyn Fn(Option<&str>, &str) -> String + Send + Sync;
+type ActionFn = dyn Fn(Option<&str>, &str, Option<&str>) -> String + Send + Sync;
 
 /// The shutdown-handler equivalent of [`ActionFn`].
 type ShutdownFn = dyn Fn() + Send + Sync;
@@ -67,6 +74,8 @@ pub(crate) enum Resolved {
         name: String,
         /// The action's argument text, if the trigger carried any.
         params: Option<String>,
+        /// The dog that triggered the action, if one did.
+        caller: Option<String>,
         /// This action's correlation id, echoed into the reply.
         id: u64,
     },
@@ -108,6 +117,11 @@ impl core::fmt::Debug for Dispatch {
 
 impl Dispatch {
     pub(crate) fn register_action(&mut self, name: String, handler: ActionHandler) {
+        self.actions
+            .insert(name, Arc::new(move |params, name, _| handler(params, name)));
+    }
+
+    pub(crate) fn register_caller_action(&mut self, name: String, handler: CallerActionHandler) {
         self.actions.insert(name, Arc::from(handler));
     }
 
@@ -124,11 +138,17 @@ impl Dispatch {
                 Some(handler) => Resolved::Shutdown(Arc::clone(handler)),
                 None => Resolved::UnhandledShutdown,
             },
-            ShepherdMessage::Action { name, params, id } => match self.actions.get(&name) {
+            ShepherdMessage::Action {
+                name,
+                params,
+                caller,
+                id,
+            } => match self.actions.get(&name) {
                 Some(handler) => Resolved::Action {
                     handler: Arc::clone(handler),
                     name,
                     params,
+                    caller,
                     id,
                 },
                 None => Resolved::UnknownAction { name, id },
@@ -155,9 +175,12 @@ pub(crate) fn run(resolved: Resolved) -> Outcome {
             handler,
             name,
             params,
+            caller,
             id,
         } => {
-            let body = match catch_unwind(AssertUnwindSafe(|| handler(params.as_deref(), &name))) {
+            let body = match catch_unwind(AssertUnwindSafe(|| {
+                handler(params.as_deref(), &name, caller.as_deref())
+            })) {
                 Ok(body) => body,
                 Err(payload) => format!("action handler failed: {}", panic_text(&*payload)),
             };
@@ -202,6 +225,7 @@ mod tests {
         ShepherdMessage::Action {
             name: name.to_string(),
             params: params.map(str::to_string),
+            caller: None,
             id,
         }
     }
@@ -229,6 +253,31 @@ mod tests {
             Some(7),
             "the id must be echoed or the reply races the timeout"
         );
+    }
+
+    #[test]
+    fn a_caller_handler_reads_who_triggered_and_an_older_shepherd_gives_none() {
+        let mut dispatch = Dispatch::default();
+        dispatch.register_caller_action(
+            "gc".to_string(),
+            Box::new(|_, _, caller| format!("called by {caller:?}")),
+        );
+
+        let from_a_dog = ShepherdMessage::Action {
+            name: "gc".to_string(),
+            params: None,
+            caller: Some("janitor".to_string()),
+            id: 1,
+        };
+        let (_, body, _) = reply_of(dispatch.handle(from_a_dog));
+        assert_eq!(body, "called by Some(\"janitor\")");
+
+        // What a shepherd that predates `caller` sends.
+        let older: ShepherdMessage =
+            serde_json::from_str(r#"{"kind":"action","name":"gc","id":2}"#).unwrap();
+        let (_, body, id) = reply_of(dispatch.handle(older));
+        assert_eq!(body, "called by None");
+        assert_eq!(id, Some(2));
     }
 
     /// The contract calls this out: the operator waits out `action_timeout`

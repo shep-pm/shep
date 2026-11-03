@@ -219,6 +219,14 @@ pub enum ShepherdMessage {
         // version to announce one.
         #[serde(skip_serializing_if = "Option::is_none", default)]
         params: Option<String>,
+        /// The dog that triggered this action, set by the shepherd from the
+        /// connection the trigger arrived on. Omitted from the wire when
+        /// `None`: the operator triggered it, or the shepherd is older than
+        /// this field.
+        ///
+        /// A name the shepherd vouches for, not one the caller chose.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        caller: Option<String>,
         /// This dispatch's correlation id, unique for the life of the
         /// daemon. Echo it back as `id` on your
         /// [`ChildMessage::ActionReply`]. The daemon then matches your
@@ -360,6 +368,7 @@ mod tests {
         let bare_msg = ShepherdMessage::Action {
             name: "gc".to_string(),
             params: None,
+            caller: None,
             id: 7,
         };
         assert_round_trip(bare, &bare_msg);
@@ -368,9 +377,34 @@ mod tests {
         let with_params_msg = ShepherdMessage::Action {
             name: "set-log-level".to_string(),
             params: Some("debug".to_string()),
+            caller: None,
             id: 8,
         };
         assert_round_trip(with_params, &with_params_msg);
+    }
+
+    #[test]
+    fn an_action_carries_its_caller_after_params_and_omits_it_when_absent() {
+        let fixture = r#"{"kind":"action","name":"gc","params":"now","caller":"janitor","id":9}"#;
+        let msg = ShepherdMessage::Action {
+            name: "gc".to_string(),
+            params: Some("now".to_string()),
+            caller: Some("janitor".to_string()),
+            id: 9,
+        };
+        assert_round_trip(fixture, &msg);
+
+        let anonymous = ShepherdMessage::Action {
+            name: "gc".to_string(),
+            params: None,
+            caller: None,
+            id: 7,
+        };
+        assert_eq!(
+            serde_json::to_string(&anonymous).unwrap(),
+            r#"{"kind":"action","name":"gc","id":7}"#,
+            "an action with no caller must keep today's bytes"
+        );
     }
 
     #[test]
