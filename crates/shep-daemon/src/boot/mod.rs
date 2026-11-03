@@ -187,11 +187,16 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     //    sequence cannot. Held for the rest of this daemon's life.
     init_dirs(&paths)?;
     // Once, here, since it moves this process into its leaf cgroup. The
-    // result is held for the spawn path, which does not read it yet.
+    // sweep skips any cgroup that still holds a process, so a sheep carried
+    // across a reload keeps its own.
     #[cfg(target_os = "linux")]
     let cgroups = crate::cgroup::detect();
     #[cfg(target_os = "linux")]
     tracing::info!(%cgroups, "cgroup detection");
+    #[cfg(target_os = "linux")]
+    if let crate::cgroup::Cgroups::Available { base } = &cgroups {
+        crate::cgroup::remove_stale(base);
+    }
     let socket = socket_path(&paths, options.socket.as_deref());
     // A successor takes neither the lock nor the address: it inherited both,
     // still held. Rebinding would race the predecessor's own socket file, and
@@ -305,6 +310,10 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         .provider_secrets(Arc::clone(&provider_secrets))
         .dog_defaults(dog_defaults)
         .dog_binaries(adopted_dog_paths(&options.dogs));
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.cgroups(cgroups);
+    }
     // Cloned before the `take` below feeds the supervisor, and defaulted the
     // way the builder defaults it, so a dog and a sheep that name no
     // environment resolve in the same one.
@@ -514,8 +523,6 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         signals,
         pidfile_lock,
         delete_flock_on_shutdown,
-        #[cfg(target_os = "linux")]
-        cgroups,
     })
 }
 

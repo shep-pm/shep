@@ -304,6 +304,7 @@ impl<R: ProcessRunner> Actor<R> {
                     // Bound ahead of the replacement. The old set stays with the
                     // drainee until it exits.
                     listen: self.listen_for(app.config())?,
+                    cgroup: self.cgroup_for(new_id, instance),
                     ..spec
                 })
             })
