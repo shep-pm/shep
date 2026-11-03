@@ -18,6 +18,7 @@ pub const MANIFEST_VERSION: u32 = 2;
 /// output without them is not a manifest, and the asker falls back to the
 /// version and schema flags. Everything else defaults to nothing declared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Wire")]
 #[non_exhaustive]
 pub struct Manifest {
     /// The manifest's own version, [`MANIFEST_VERSION`] for this format.
@@ -25,8 +26,7 @@ pub struct Manifest {
     /// Reading refuses 0, which no format has. A higher one is read: later
     /// versions add fields and never change what an earlier field means, so
     /// what this shep knows of them stays true. A v1 manifest declares no
-    /// [`events`](Self::events).
-    #[serde(deserialize_with = "version_from_one")]
+    /// [`events`](Self::events), whatever it prints.
     pub manifest: u32,
     /// The dog's registered name.
     pub name: String,
@@ -99,6 +99,71 @@ impl Manifest {
             serves: Serves::OptedIn,
             actions: Vec::new(),
             events: Vec::new(),
+        }
+    }
+}
+
+/// The first manifest version that carries [`Manifest::events`].
+const EVENTS_SINCE: u32 = 2;
+
+/// What is read off the wire, before a field is held to the version that
+/// introduced it. The fields are [`Manifest`]'s, in the same order.
+#[derive(Deserialize)]
+struct Wire {
+    #[serde(deserialize_with = "version_from_one")]
+    manifest: u32,
+    name: String,
+    version: String,
+    protocol: u32,
+    #[serde(default)]
+    channel: bool,
+    #[serde(default)]
+    settings: Option<serde_json::Value>,
+    #[serde(default)]
+    defaults: Option<String>,
+    #[serde(default)]
+    permissions: Vec<Permission>,
+    #[serde(default)]
+    verb: Option<Verb>,
+    #[serde(default)]
+    depends: Depends,
+    #[serde(default)]
+    validate: bool,
+    #[serde(default)]
+    launch: bool,
+    #[serde(default)]
+    serves: Serves,
+    #[serde(default)]
+    actions: Vec<Action>,
+    #[serde(default)]
+    events: Vec<DogEvent>,
+}
+
+impl From<Wire> for Manifest {
+    fn from(wire: Wire) -> Self {
+        // A field is the version that added it: an older dog that prints it is
+        // not declaring it.
+        let events = if wire.manifest >= EVENTS_SINCE {
+            wire.events
+        } else {
+            Vec::new()
+        };
+        Self {
+            manifest: wire.manifest,
+            name: wire.name,
+            version: wire.version,
+            protocol: wire.protocol,
+            channel: wire.channel,
+            settings: wire.settings,
+            defaults: wire.defaults,
+            permissions: wire.permissions,
+            verb: wire.verb,
+            depends: wire.depends,
+            validate: wire.validate,
+            launch: wire.launch,
+            serves: wire.serves,
+            actions: wire.actions,
+            events,
         }
     }
 }

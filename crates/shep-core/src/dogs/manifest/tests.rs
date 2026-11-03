@@ -248,6 +248,23 @@ fn a_v1_manifest_reads_with_no_events_declared() {
     assert!(manifest.events.is_empty());
 }
 
+/// `events` is a v2 field: a v1 dog that prints one is not declaring it, and a
+/// later version keeps what v2 added.
+#[test]
+fn a_v1_manifest_carrying_events_declares_none_and_a_later_version_keeps_them() {
+    let with = |version: u32| {
+        serde_json::from_value::<Manifest>(serde_json::json!({
+            "manifest": version, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
+            "events": [{"kind": "exported", "description": "A batch left"}],
+        }))
+        .unwrap()
+    };
+
+    assert!(with(1).events.is_empty());
+    assert_eq!(with(2).events.len(), 1);
+    assert_eq!(with(3).events.len(), 1);
+}
+
 #[test]
 fn declared_events_read_from_their_documented_names_and_round_trip() {
     let text = r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
