@@ -177,6 +177,12 @@ pub struct ShepPaths {
     ///
     /// Derived and safe to delete: the next read fetches it again.
     pub dog_index_cache: PathBuf,
+    /// Where `shep install` puts what it builds: `dogs/`
+    ///
+    /// One directory per dog name, holding `<version>/` for each build, the
+    /// dog's `receipt.json`, and (beside it, as `<name>.lock`) the lock a
+    /// second install of the same dog waits on.
+    pub dogs_dir: PathBuf,
 }
 
 /// FNV-1a, 64-bit, over `bytes`
@@ -250,6 +256,7 @@ impl ShepPaths {
             secrets_cache: home.join("secrets-cache.json"),
             dog_defaults: home.join("dog-defaults.json"),
             dog_index_cache: home.join("cache").join("dogs.json"),
+            dogs_dir: home.join("dogs"),
             run,
             home,
         };
@@ -401,6 +408,7 @@ mod tests {
             p.dog_index_cache,
             Path::new("/home/ada/.shep/cache/dogs.json")
         );
+        assert_eq!(p.dogs_dir, Path::new("/home/ada/.shep/dogs"));
     }
 
     /// Asserted per-platform rather than skipped on Windows: a silent

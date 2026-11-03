@@ -103,10 +103,14 @@ mod tasks;
 mod types;
 mod wire;
 
+#[cfg(target_os = "linux")]
+use actor_spawn::cpu_quota_of;
 pub(crate) use builder::SupervisorBuilder;
 pub use builder::spawn_supervisor;
 use command::ReplyKind;
 pub(crate) use command::{Command, Msg};
+#[cfg(target_os = "linux")]
+use config_merge::CGROUP_FIELDS;
 use config_merge::{
     EXTRAS_FIELDS, dog_config_refusal, env_override_map, merge_declared, pending_fields,
     reached_spec, try_with_count, with_count,
@@ -263,6 +267,13 @@ struct Actor<R: ProcessRunner> {
     /// delegated subtree. `None` gives no sheep a cgroup: on every platform
     /// but Linux, and on a Linux host that offers none.
     cgroup_base: Option<PathBuf>,
+    /// Why [`Self::cgroup_base`] is `None` on a Linux host that looked for
+    /// one, as `detect` reported it. A sheep with `memory_enforce = "kernel"`
+    /// is refused with it.
+    cgroup_unavailable: Option<String>,
+    /// The `oom_kill` count each running kernel-enforced sheep's cgroup held
+    /// when it spawned, by id. Taken at its exit; see [`Actor::take_oom`].
+    oom_baselines: HashMap<u32, u64>,
 }
 
 #[cfg(test)]

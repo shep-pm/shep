@@ -193,7 +193,7 @@ pub(super) fn schema_of(manifest: &Manifest) -> DogSchema {
 
 /// The lowercase hex sha256 of the file at `path`, or `None` when it cannot
 /// be read.
-fn sha256_hex(path: &Path) -> Option<String> {
+pub(crate) fn sha256_hex(path: &Path) -> Option<String> {
     let mut file = std::fs::File::open(path).ok()?;
     let mut context = ring::digest::Context::new(&ring::digest::SHA256);
     let mut chunk = [0u8; 64 * 1024];

@@ -535,12 +535,26 @@ impl<R: ProcessRunner> Actor<R> {
         // at the next spawn, the same line `apply_one` runs for the same
         // set of fields.
         if !park_all && group == ApplyGroup::Live && EXTRAS_FIELDS.contains(&key) {
-            self.rearm_name(name);
+            self.apply_extras_change(name);
         }
+        // A kernel limit that did not take is stored all the same, so the
+        // next spawn writes it: the edit answers pending, with the reason.
+        #[cfg(target_os = "linux")]
+        let unwritten = !park_all
+            && group == ApplyGroup::Live
+            && CGROUP_FIELDS.contains(&key)
+            && self.rewrite_cgroup_limits(name).contains(&key);
+        #[cfg(not(target_os = "linux"))]
+        let unwritten = false;
+        let warning = warning.or_else(|| {
+            unwritten.then(|| {
+                format!("{key} is stored, but the kernel limit could not be written to a running instance; it applies at the next spawn")
+            })
+        });
 
         // `reaches_running` owns the `autostart`/`depends_on` carve-out now,
         // so the pane's prediction and this answer cannot drift.
-        let in_force = !park_all && reaches_running(key);
+        let in_force = !park_all && !unwritten && reaches_running(key);
         Ok(Some(FieldSet {
             app: parked.unwrap_or_else(|| next_spec.unwrap_or(merged)),
             value: value.clone(),

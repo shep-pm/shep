@@ -121,6 +121,61 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
+    /// The cgroup the sheep `id` spawns into and the limits to set in it.
+    ///
+    /// `memory.max` is `Some` only for `memory_enforce = "kernel"`, and that
+    /// sheep also has its cgroup's `oom_kill` count read here, before the
+    /// spawn, for [`Self::take_oom`] to compare at its exit. `cpu.max` is
+    /// `Some` only for `max_cpu_cores`, and `pids.max` only for `max_tasks`.
+    ///
+    /// # Errors
+    /// - [`AssembleError::CgroupUnavailable`] if the sheep wants the kernel to
+    ///   enforce a limit and this shepherd has no cgroup to do it in. Never a
+    ///   silent fall back to polling or to no cap.
+    pub(super) fn cgroup_placement(
+        &mut self,
+        config: &AppConfig,
+        id: u32,
+        instance: u32,
+    ) -> Result<CgroupPlacement, AssembleError> {
+        let cgroup = self.cgroup_for(id, instance);
+        let kernel = config.memory_enforce.is_kernel();
+        let setting = if kernel {
+            "memory_enforce = \"kernel\""
+        } else if config.max_cpu_cores.is_some() {
+            "max_cpu_cores"
+        } else if config.max_tasks.is_some() {
+            "max_tasks"
+        } else {
+            return Ok(CgroupPlacement {
+                cgroup,
+                memory_max: None,
+                cpu_quota: None,
+                pids_max: None,
+            });
+        };
+        let Some(dir) = cgroup else {
+            return Err(AssembleError::CgroupUnavailable {
+                setting,
+                reason: self
+                    .cgroup_unavailable
+                    .clone()
+                    .unwrap_or_else(|| "this host has no cgroup v2".to_string()),
+            });
+        };
+        #[cfg(target_os = "linux")]
+        if kernel {
+            self.oom_baselines
+                .insert(id, crate::cgroup::oom_kills(&dir));
+        }
+        Ok(CgroupPlacement {
+            cgroup: Some(dir),
+            memory_max: config.max_memory.filter(|_| kernel).map(MemSize::bytes),
+            cpu_quota: cpu_quota_of(config),
+            pids_max: config.max_tasks,
+        })
+    }
+
     /// The secret view one spawn, or one batch of instances, resolves against.
     ///
     /// The store is read here rather than inside [`assemble`], the same way
@@ -270,11 +325,11 @@ impl<R: ProcessRunner> Actor<R> {
         let assembled = self
             .assemble_for_spawn(app, instance, credentials, secrets)
             .and_then(|spec| {
+                let placement = self.cgroup_placement(app.config(), id, instance)?;
                 Ok(SpawnSpec {
                     dog_link: dog.is_some(),
                     listen: self.listen_for(app.config())?,
-                    cgroup: self.cgroup_for(id, instance),
-                    ..spec
+                    ..placement.into_spec(spec)
                 })
             });
         let spec = match assembled {
@@ -494,6 +549,16 @@ impl<R: ProcessRunner> Actor<R> {
             &self.secret_view(&app),
         );
         let id = carried.id();
+        // The predecessor's reading is gone with it, so the count it carries
+        // now is the baseline. Anything it killed before the handover is not
+        // charged to this life.
+        #[cfg(target_os = "linux")]
+        if app.config().memory_enforce.is_kernel()
+            && let Some(dir) = self.cgroup_for(id, carried.instance())
+        {
+            self.oom_baselines
+                .insert(id, crate::cgroup::oom_kills(&dir));
+        }
         let status = carried.status();
         // `None` for a blob written before this daemon carried a swap; see
         // `CarriedSheep::reload`.
@@ -768,5 +833,39 @@ impl<R: ProcessRunner> Actor<R> {
                 self.spawn_verify_task(&app, new_id, source);
             }
         }
+    }
+}
+
+/// Where a spawn's cgroup is and what to set in it, from
+/// [`Actor::cgroup_placement`].
+pub(super) struct CgroupPlacement {
+    cgroup: Option<PathBuf>,
+    memory_max: Option<u64>,
+    cpu_quota: Option<u64>,
+    pids_max: Option<u32>,
+}
+
+impl CgroupPlacement {
+    /// `spec` joining this cgroup under these limits.
+    pub(super) fn into_spec(self, spec: SpawnSpec) -> SpawnSpec {
+        SpawnSpec {
+            cgroup: self.cgroup,
+            memory_max: self.memory_max,
+            cpu_quota: self.cpu_quota,
+            pids_max: self.pids_max,
+            ..spec
+        }
+    }
+}
+
+/// `config`'s `max_cpu_cores` as the `cpu.max` quota that spells it, `None` off
+/// Linux, where `normalize` has already refused the key.
+pub(super) fn cpu_quota_of(config: &AppConfig) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    return config.max_cpu_cores.map(crate::cgroup::cpu_quota);
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = config;
+        None
     }
 }

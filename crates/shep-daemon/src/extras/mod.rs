@@ -431,7 +431,8 @@ fn arm_instance(
     liveness_epoch: u64,
 ) -> Option<InstanceExtras> {
     let config = entry.spec.config();
-    let wants_anything = config.max_memory.is_some() || config.liveness_probe.is_some();
+    let polls_memory = config.max_memory.is_some() && !config.memory_enforce.is_kernel();
+    let wants_anything = polls_memory || config.liveness_probe.is_some();
     let Some(pid) = entry.pid else {
         if wants_anything {
             // Unreachable from the transition this is called at: a sheep is
@@ -448,7 +449,9 @@ fn arm_instance(
     // every sheep.
     extras.stats.watch(entry.id, pid);
     let mut instance = InstanceExtras::watched_only(Arc::clone(&extras.stats));
-    if let Some(limit) = config.max_memory {
+    // A kernel-enforced sheep is capped by its cgroup's `memory.max`, written
+    // at spawn and on a live change, so no sampler is armed for it.
+    if let Some(limit) = config.max_memory.filter(|_| polls_memory) {
         extras.enforcer.arm(entry.id, pid, limit);
         instance.limit = Some(Arc::clone(&extras.enforcer));
     }

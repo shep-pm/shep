@@ -2810,3 +2810,59 @@ The successor takes each descriptor back, checks that it is a listening TCP sock
 **What it costs:** the set a reload had replaced (`listeners_before`) is not carried. A handover during a reload leaves the successor holding the set the reload bound, so if that reload is then abandoned the drainee's set is not restored, and a later bind of an address only the drainee's set held fails until the drainee exits. The TCP cases bind real ports, which the sandbox the change was written in forbids, so they run in CI only.
 
 `verified crates/shep-daemon/src/handover/blob.rs, crates/shep-daemon/src/handover/carried.rs, crates/shep-daemon/src/handover/adopt/adopt_listeners.rs, crates/shep-daemon/src/supervisor/handover.rs, crates/shep-daemon/src/supervisor/builder.rs, crates/shep-daemon/src/listen.rs, crates/shep-daemon/src/sys.rs`
+
+## Kernel-enforced memory
+
+### `memory_enforce = "kernel"` writes `memory.max` and charges a kernel OOM kill to `max_restarts`
+
+`memory_enforce` is `"poll"` (the default, the sampling enforcer) or `"kernel"`. `"kernel"` needs `max_memory`, and a load refuses it off Linux. On Linux the shepherd writes `max_memory` to the sheep's cgroup `memory.max` before the child execs, and again when a live change moves `max_memory`; lifting the cap writes `max`. Under a cap it also writes `memory.swap.max` as 0, best effort. A kernel sheep is not armed with the polling enforcer. A shepherd with no delegated cgroup refuses the start with the reason `detect` gave and never polls in its place; a live switch to `"kernel"` on such a shepherd only warns, and the refusal comes at the next spawn.
+
+The shepherd reads `oom_kill` from `memory.events.local` before the spawn (and when it adopts a sheep) and again at the exit. A rise charges the restart budget through `note_failed_start`, so a leak that ran longer than `min_uptime` still counts toward `max_restarts` and parks instead of looping, and an exit that is ambiguous with a clean one is charged too. The reason is a `warn!` in the daemon; `ExitInfo` is a wire struct and stays as it was. `PROTOCOL_VERSION` moves to 16 and the client refuses `memory_enforce` below it.
+
+**Why:** a poll every `MEMORY_POLL_INTERVAL` lets a fast leak take the host between two samples; `memory.max` caps the tree at the allocation. A polled breach restarts through the manual path and resets the budget, which is wrong for a kernel kill that arrives as an ordinary `SIGKILL` exit. `memory.events.local` is non-hierarchical, so an ancestor's or the host's OOM does not look like the sheep's own.
+
+**What it costs:** a poll sheep's OOM is not classified. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/memory_enforce.rs, crates/shep-core/src/protocol/mod.rs (MEMORY_ENFORCE_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_exit.rs, crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/extras/mod.rs`
+
+### `max_cpu_cores` is a `cpu.max` quota on Linux and is refused elsewhere
+
+`max_cpu_cores` takes a positive decimal and the shepherd writes `<cores x 100000> 100000` to the sheep's `cpu.max` at spawn, and again on a live change. It is docker's `--cpus`: a quota, never affinity, and nothing is killed. `normalize` refuses it on macOS and Windows. On Linux a shepherd with no cgroup refuses the start and names the reason.
+
+**Why:** a quota needs no placement decision, and the kernel throttles the tree wherever it runs. A Windows job-object CPU rate limit is a separate change, so Windows refuses the key for now. `LimitEnforcer` is unchanged because a quota has no breach to report.
+
+**What it costs:** `normalize` refuses a quota under 0.01 cores, the kernel's 1000 microsecond minimum, so a write cannot fail on the value. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/cpu_cores.rs, crates/shep-core/src/protocol/mod.rs (MAX_CPU_CORES_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
+
+### `max_tasks` is a `pids.max` limit on Linux and is refused elsewhere
+
+`max_tasks` takes a whole number from 1 to 4194304 and the shepherd writes it to the sheep's `pids.max` at spawn, and again on a live change. It is docker's `--pids-limit`: a fork or a new thread past it fails with `EAGAIN` inside the sheep, and nothing is killed. The kernel counts a thread as a task, so the limit is tasks, not processes. `normalize` refuses it on macOS and Windows. On Linux a shepherd with no cgroup refuses the start and names the reason.
+
+**Why:** a fork bomb in one sheep exhausts the user's process limit for every sheep that shares its uid, the sandboxed ones included, and `pids.max` is one more file write once each sheep has its own cgroup. The ceiling is the kernel's `PID_MAX_LIMIT` on a 64-bit host: `pids.max` refuses a larger value with `EINVAL`, so `normalize` refuses it first rather than let a live change report applied while the old limit stayed.
+
+**What it costs:** a threaded runtime spends the limit on its worker threads, so an operator sets it well above the healthy count. The 32-bit kernel ceiling is 32768, so a value between that and 4194304 passes `normalize` there and fails at the write. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/app/behavior.rs (MAX_TASKS_LIMIT), crates/shep-core/src/protocol/mod.rs (MAX_TASKS_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
+
+## Installing a dog
+
+### `shep install` runs the installer, reversing "print, never execute"
+
+`shep install <dog>` runs `cargo install --locked --version <version> --root $SHEP_HOME/dogs/<name>/<version>/ <package>` for a `cargo` row of the community index that carries an exact version, then hands the binary to the paths `shep adopt` and `shep enable` already use. Any other row kind prints its instructions and installs nothing. With no `cargo` on `PATH` it refuses, naming cargo and linking rustup: shep never installs a toolchain. Before it builds, it asks crates.io for that version's `trustpub_data` through the CLI's `fetch` module, which refuses redirects. A `repository` other than the row's refuses and names both. `null`, a token publish, adds one line to the grant prompt. A response without the field skips the check, because crates.io marks it unstable. A lock file per dog name under `$SHEP_HOME/dogs/` makes a second install wait up to 30 seconds, then refuse naming the lock. A no at the grant prompt leaves the dog installed, adopted and disabled; `--no-enable` stops after adopting.
+
+**Why:** #1446, under #1075, replacing #357. The deferred entry refused `shep install` because an index built from strangers' pull requests was trusted to print and not to execute. That stands as a fact about the index, and what changed is the controls around it: a row approves one exact version, `--locked` pins the build, crates.io's provenance is checked before cargo runs, and the grant prompt gates what the dog may do. Every dog still prompts. The prompt is the control; the install adds none of its own.
+
+**What it costs:** shep now builds and runs code a stranger published, on the strength of one reviewed row. The provenance check covers a crate published from another repository and not one a repository's owner publishes badly. Confinement is not planned. The binary name is assumed to equal the package name, so a crate whose binary differs is not installable yet. The CLI reaches crates.io, and the daemon still never touches the network.
+
+`verified crates/shep-cli/src/commands/dogs/install.rs, crates/shep-cli/src/commands/dogs/install_tests.rs, crates/shep-core/src/file_lock.rs (FileLock::acquire_within)`
+
+### The receipt keeps the manifest as a record, narrowing "asked fresh, never stored"
+
+`$SHEP_HOME/dogs/<name>/receipt.json` holds the index URL and the row as approved, the package, the version, the full installer command line, the binary's sha256, the manifest as installed, and the time. It is written atomically after the build and before the grant prompt.
+
+**Why:** #1446. Rule 7 of the dog config spec says a dog's manifest is asked fresh and never stored. A later upgrade needs to compare what was approved with what a new version declares, and the columns need a version without running the binary. A record of what the operator was shown answers both. Nothing that acts on a schema reads it: the config pane, enable and the grant prompt still ask the binary.
+
+**What it costs:** two copies of a manifest can disagree, the receipt's and the one the binary reports now. The receipt is the older and is never the one acted on. An adopted dog has no receipt.
+
+`verified crates/shep-cli/src/commands/dogs/receipt.rs`

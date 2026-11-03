@@ -1,13 +1,13 @@
 //! Whether this host can give every sheep its own cgroup
 //!
 //! [`detect`] runs once at boot. On cgroup v2 with a subtree the shepherd may
-//! write, it moves the shepherd into a `shepherd` leaf and enables the
-//! controllers a sheep's limits need on the parent, which becomes the
-//! [`Cgroups::Available`] base. Every other outcome names its [`Reason`].
+//! write, it moves itself into a `shepherd` leaf and enables the controllers a
+//! sheep's limits need: the [`Cgroups::Available`] base. Else it names a [`Reason`].
 //!
 //! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
-//! which [`join_on_exec`] creates and the child joins before its exec.
-//! [`remove_if_empty`] and [`remove_stale`] drop it after the sheep or a crash.
+//! which [`join_on_exec`] creates and the child joins before its exec, with
+//! `memory.max` ([`write_memory_max`]), `cpu.max` ([`write_cpu_max`]) and
+//! `pids.max` ([`write_pids_max`]) set first and [`oom_kills`] read at the exit. [`remove_stale`] drops it.
 
 use core::fmt;
 use std::ffi::OsStr;
@@ -15,7 +15,9 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::runner::RunnerError;
+use shep_core::config::CpuCores;
+
+use crate::runner::{RunnerError, SpawnSpec};
 
 /// The cgroup v2 mount point every unified hierarchy is read from.
 const MOUNT: &str = "/sys/fs/cgroup";
@@ -24,8 +26,32 @@ const MOUNT: &str = "/sys/fs/cgroup";
 /// that holds processes.
 const LEAF: &str = "shepherd";
 
+const CPU_PERIOD_US: u64 = CpuCores::PERIOD_US;
+
 /// Written to `cgroup.subtree_control`: the controllers a sheep's limits use.
 const CONTROLLERS: &str = "+memory +cpu +pids";
+
+/// What a sheep's cgroup is capped to before its child joins: `None` leaves
+/// that limit off.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Limits {
+    /// Bytes for `memory.max`.
+    pub memory_max: Option<u64>,
+    /// Microseconds per period for `cpu.max`.
+    pub cpu_quota: Option<u64>,
+    /// Processes for `pids.max`.
+    pub pids_max: Option<u32>,
+}
+
+impl From<&SpawnSpec> for Limits {
+    fn from(spec: &SpawnSpec) -> Self {
+        Self {
+            memory_max: spec.memory_max,
+            cpu_quota: spec.cpu_quota,
+            pids_max: spec.pids_max,
+        }
+    }
+}
 
 /// What [`detect`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,17 +207,22 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`.
+/// `memory.oom.group`. `limits` are written first; a key left `None` lifts the
+/// limit an earlier sheep left in a reused `dir`.
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
 /// cgroup, and a new sheep with the same id must not share it.
 ///
 /// # Errors
-/// What creating the directory, writing `memory.oom.group` or opening
-/// `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
+/// What creating the directory, writing `memory.oom.group` or a limit, or
+/// opening `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
 /// already holds a process. A directory this call made is removed again.
-pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> io::Result<()> {
+pub(crate) fn join_on_exec(
+    command: &mut std::process::Command,
+    dir: &Path,
+    limits: Limits,
+) -> io::Result<()> {
     let created = match fs::create_dir(dir) {
         Ok(()) => true,
         Err(err) if err.kind() == io::ErrorKind::AlreadyExists => false,
@@ -200,11 +231,17 @@ pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> i
     let procs = if is_occupied(dir) {
         Err(io::Error::from(io::ErrorKind::ResourceBusy))
     } else {
-        fs::write(dir.join("memory.oom.group"), "1").and_then(|()| {
-            fs::OpenOptions::new()
-                .write(true)
-                .open(dir.join("cgroup.procs"))
-        })
+        fs::write(dir.join("memory.oom.group"), "1")
+            .and_then(|()| {
+                write_unless_fresh(created, limits.memory_max, |l| write_memory_max(dir, l))
+            })
+            .and_then(|()| write_unless_fresh(created, limits.cpu_quota, |l| write_cpu_max(dir, l)))
+            .and_then(|()| write_unless_fresh(created, limits.pids_max, |l| write_pids_max(dir, l)))
+            .and_then(|()| {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(dir.join("cgroup.procs"))
+            })
     }
     .inspect_err(|_| {
         if created {
@@ -213,6 +250,88 @@ pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> i
     })?;
     crate::sys::join_cgroup_on_exec(command, procs);
     Ok(())
+}
+
+/// Writes one of [`Limits`] through `write`. A limit of `None` is written, as
+/// the lifted value, only into a cgroup that already existed: it may carry the
+/// limit of the sheep that held it before, and a directory this call made
+/// holds the kernel's defaults already.
+fn write_unless_fresh<T>(
+    created: bool,
+    limit: Option<T>,
+    write: impl FnOnce(Option<T>) -> io::Result<()>,
+) -> io::Result<()> {
+    if limit.is_none() && created {
+        Ok(())
+    } else {
+        write(limit)
+    }
+}
+
+/// Writes `limit` bytes to `dir`'s `memory.max`, or `max` (no cap) for `None`.
+///
+/// `memory.swap.max` follows, best effort: `0` under a cap, so a sheep over it
+/// is killed rather than pushed to swap, and `max` again without one. A host
+/// with no swap accounting has no such file, and the cap holds without it.
+///
+/// # Errors
+/// What the `memory.max` write reported, such as a cgroup the `memory`
+/// controller is not enabled for.
+pub(crate) fn write_memory_max(dir: &Path, limit: Option<u64>) -> io::Result<()> {
+    let (max, swap) = match limit {
+        Some(bytes) => (bytes.to_string(), "0"),
+        None => ("max".to_string(), "max"),
+    };
+    fs::write(dir.join("memory.max"), max)?;
+    let _ = fs::write(dir.join("memory.swap.max"), swap);
+    Ok(())
+}
+
+/// The microseconds of CPU time per [`CPU_PERIOD_US`] that `cores` allows,
+/// rounded to the nearest microsecond.
+pub(crate) fn cpu_quota(cores: CpuCores) -> u64 {
+    cores.quota_us()
+}
+
+/// Writes `<quota> <period>` to `dir`'s `cpu.max`, or `max <period>` (no cap)
+/// for `None`. The tree is throttled, never killed.
+///
+/// # Errors
+/// What the `cpu.max` write reported, such as a cgroup the `cpu` controller
+/// is not enabled for, or a quota under the kernel's one-millisecond minimum.
+pub(crate) fn write_cpu_max(dir: &Path, quota: Option<u64>) -> io::Result<()> {
+    let quota = quota.map_or_else(|| "max".to_string(), |micros| micros.to_string());
+    fs::write(dir.join("cpu.max"), format!("{quota} {CPU_PERIOD_US}"))
+}
+
+/// Writes `limit` to `dir`'s `pids.max`, or `max` (no limit) for `None`. A fork
+/// past it fails with `EAGAIN` inside the sheep; nothing is killed.
+///
+/// # Errors
+/// What the `pids.max` write reported, such as a cgroup the `pids` controller
+/// is not enabled for, or a limit above the kernel's own ceiling.
+pub(crate) fn write_pids_max(dir: &Path, limit: Option<u32>) -> io::Result<()> {
+    let limit = limit.map_or_else(|| "max".to_string(), |tasks| tasks.to_string());
+    fs::write(dir.join("pids.max"), limit)
+}
+
+/// How many of the cgroup's own processes the kernel's OOM killer has killed,
+/// off `memory.events.local`. `0` when the file is absent or unreadable, as for
+/// a cgroup not made yet.
+///
+/// Local, not `memory.events`: the latter also counts kills anywhere below
+/// `dir`, so an ancestor's OOM could pass for this sheep's own. The counter is
+/// cumulative, so a caller compares two readings.
+pub(crate) fn oom_kills(dir: &Path) -> u64 {
+    fs::read_to_string(dir.join("memory.events.local")).map_or(0, |text| parse_oom_kill(&text))
+}
+
+/// The `oom_kill` line's value in a `memory.events` listing, `0` without one.
+fn parse_oom_kill(text: &str) -> u64 {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("oom_kill "))
+        .find_map(|value| value.trim().parse().ok())
+        .unwrap_or(0)
 }
 
 /// Whether `dir`'s `cgroup.procs` lists a process. A listing is `<pid>\n` per
@@ -276,5 +395,9 @@ pub(crate) fn remove_stale(base: &Path) {
     }
 }
 
+#[cfg(test)]
+mod cpu_tests;
+#[cfg(test)]
+mod task_tests;
 #[cfg(test)]
 mod tests;
