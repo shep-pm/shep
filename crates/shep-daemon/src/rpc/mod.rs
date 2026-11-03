@@ -43,6 +43,8 @@ use dispatch::with_deadline;
 
 mod batch;
 
+mod dog_events;
+
 mod dog_secrets;
 
 mod enrichment;

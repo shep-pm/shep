@@ -306,6 +306,7 @@ mod dog_disable;
 mod dog_enable_grants;
 mod dog_entry_drift;
 mod dog_env;
+mod dog_events;
 mod dog_fields;
 mod dog_lifecycle;
 mod dog_secrets;
