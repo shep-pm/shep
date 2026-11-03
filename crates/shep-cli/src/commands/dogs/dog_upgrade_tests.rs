@@ -126,7 +126,7 @@ async fn a_newer_index_version_installs_into_its_own_directory_and_writes_a_new_
 }
 
 #[tokio::test]
-async fn a_dog_at_the_indexs_version_is_left_alone_and_says_so() {
+async fn a_dog_at_the_index_version_is_left_alone_and_says_so() {
     let fixture = Fixture::new();
     installed_at(&fixture, "0.2.4").await;
     let before = std::fs::read(otel(&fixture).join("receipt.json")).unwrap();
@@ -195,7 +195,7 @@ async fn a_ref_with_no_new_commit_is_already_current() {
 }
 
 #[tokio::test]
-async fn ref_switches_to_another_ref_and_release_returns_to_the_indexs_version() {
+async fn ref_switches_to_another_ref_and_release_returns_to_the_index_version() {
     let fixture = Fixture::new();
     installed_at(&fixture, "0.2.4").await;
     fixture.builds_commit(NEWER_COMMIT);
