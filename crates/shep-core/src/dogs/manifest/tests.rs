@@ -3,7 +3,7 @@ use super::*;
 /// A manifest as a dog written against this format prints it. A literal, so
 /// a rename of a field fails here instead of passing by construction.
 const FIXTURE: &str = r#"{
-  "manifest": 1,
+  "manifest": 2,
   "name": "shep-otel",
   "version": "0.1.3",
   "protocol": 11,
@@ -25,6 +25,9 @@ const FIXTURE: &str = r#"{
   "serves": "every_sheep",
   "actions": [
     {"name": "export-now", "description": "Export without waiting for the interval"}
+  ],
+  "events": [
+    {"kind": "exported", "description": "A batch left for the collector"}
   ]
 }"#;
 
@@ -45,11 +48,12 @@ fn fixture() -> Manifest {
         "export-now",
         "Export without waiting for the interval",
     )];
+    manifest.events = vec![DogEvent::new("exported", "A batch left for the collector")];
     manifest
 }
 
 #[test]
-fn every_v1_field_reads_from_its_documented_name() {
+fn every_field_reads_from_its_documented_name() {
     assert_eq!(
         serde_json::from_str::<Manifest>(FIXTURE).unwrap(),
         fixture()
@@ -72,6 +76,7 @@ fn a_field_this_shep_does_not_know_is_ignored_at_every_level() {
     value["depends"]["os"] = serde_json::json!("later");
     value["depends"]["dogs"][0]["optional"] = serde_json::json!(true);
     value["actions"][0]["hidden"] = serde_json::json!(true);
+    value["events"][0]["hidden"] = serde_json::json!(true);
 
     let manifest: Manifest = serde_json::from_value(value).unwrap();
 
@@ -81,7 +86,7 @@ fn a_field_this_shep_does_not_know_is_ignored_at_every_level() {
 #[test]
 fn a_manifest_that_declares_nothing_reads_with_nothing_declared() {
     let manifest: Manifest = serde_json::from_str(
-        r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+        r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
     )
     .unwrap();
 
@@ -109,7 +114,7 @@ fn a_manifest_that_declares_nothing_prints_only_who_the_dog_is() {
     assert_eq!(
         value,
         serde_json::json!({
-            "manifest": 1,
+            "manifest": 2,
             "name": "shep-otel",
             "version": "0.1.3",
             "protocol": 11,
@@ -163,7 +168,7 @@ fn version_zero_is_not_a_manifest_and_a_later_version_still_reads() {
 
 #[test]
 fn a_manifest_that_declares_launch_reads_it_and_round_trips() {
-    let text = r#"{"manifest": 1, "name": "shep-sandbox", "version": "0.1.0", "protocol": 11, "launch": true}"#;
+    let text = r#"{"manifest": 2, "name": "shep-sandbox", "version": "0.1.0", "protocol": 11, "launch": true}"#;
 
     let manifest: Manifest = serde_json::from_str(text).unwrap();
 
@@ -231,4 +236,40 @@ fn a_dog_serving_every_sheep_prints_it_and_one_opted_in_prints_nothing() {
             .get("serves"),
         None
     );
+}
+
+#[test]
+fn a_v1_manifest_reads_with_no_events_declared() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+    )
+    .unwrap();
+
+    assert!(manifest.events.is_empty());
+}
+
+#[test]
+fn declared_events_read_from_their_documented_names_and_round_trip() {
+    let text = r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
+        "events": [{"kind": "exported", "description": "A batch left"}, {"kind": "failed", "description": "A batch was dropped"}]}"#;
+
+    let manifest: Manifest = serde_json::from_str(text).unwrap();
+
+    let expected = vec![
+        DogEvent::new("exported", "A batch left"),
+        DogEvent::new("failed", "A batch was dropped"),
+    ];
+    assert_eq!(manifest.manifest, 2);
+    assert_eq!(manifest.events, expected);
+    let again = serde_json::to_string(&manifest).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Manifest>(&again).unwrap().events,
+        expected
+    );
+}
+
+#[test]
+fn a_new_manifest_is_version_two() {
+    assert_eq!(MANIFEST_VERSION, 2);
+    assert_eq!(Manifest::new("shep-otel", "0.1.3", 11).manifest, 2);
 }
