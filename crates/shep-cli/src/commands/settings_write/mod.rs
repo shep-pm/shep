@@ -3,13 +3,13 @@
 //!
 //! The address is `copy`'s and `get`'s, and each kind is written through the
 //! request the shepherd already answers: [`Request::SetSheepField`],
-//! [`Request::SetSheepDogSettings`], [`Request::SetDogConfig`] or
-//! [`Request::SetDogDefaults`], so everything those refuse this refuses.
+//! [`Request::SetSheepDogSettings`] or [`Request::SetDogConfig`], so everything
+//! those refuse this refuses.
 //!
 //! The order is `copy`'s: resolve, read, plan, print the change list, ask,
 //! write. Nothing is sent until the operator has seen every key it touches.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt;
 
 use serde_json::{Map, Value as Json};
@@ -33,11 +33,6 @@ use crate::exit::ExitCode;
 use crate::lookout::probe_sheep_dogs::sheep_schema;
 use crate::output::Streams;
 
-#[cfg(test)]
-mod default_dog_tests;
-#[cfg(test)]
-mod default_refusal_tests;
-mod defaults;
 #[cfg(test)]
 mod defaults_routing_tests;
 pub(crate) mod dog_wide;
@@ -194,22 +189,6 @@ pub(super) enum Write {
         /// [`flow::holder_unchanged`] checks the sheep still holds.
         before: Json,
     },
-    /// One dog's whole default table, through [`Request::SetDogDefaults`].
-    ///
-    /// The whole table, as with a sheep's: the request replaces it.
-    DogDefaults {
-        /// The dog's name.
-        dog: String,
-        /// The default the dog holds afterwards.
-        table: DogTable,
-        /// The default the shepherd answered when this plan was built, which
-        /// is what [`flow::holder_unchanged`] checks it still answers.
-        before: Json,
-        /// Each sheep carrying a table for the dog, by that sheep's own
-        /// table: what the schema check layers `table` under. Empty when the
-        /// dog publishes no per-sheep schema, which asks nothing.
-        sheep: BTreeMap<String, DogTable>,
-    },
     /// One `AppConfig` field's override, dropped through
     /// [`Request::ResetSheepField`].
     ResetSheepField {
@@ -297,9 +276,9 @@ pub(crate) async fn set(
         paths,
     };
     // Before any sheep name: a sheep named like a dog does not take the dog's
-    // defaults address.
+    // retired defaults address.
     if let Some(defaults) = defaults_in(&segments, &flock, paths) {
-        return defaults::set_defaults(client, streams, &defaults, &ask).await;
+        return WriteRefusal::Refused(address::retired_defaults(&defaults)).report(streams);
     }
     if let Some(name) = address::longest_in(&segments, &flock.sheep) {
         return set_sheep(client, streams, &name, &segments, &ask).await;
@@ -463,12 +442,12 @@ async fn set_dog(
     }
 }
 
-/// The defaults address `segments` spell, if they spell one.
+/// The retired defaults address `segments` spell, if they spell one.
 ///
 /// Read off the dogs the flock runs and the ones the shepherd knows, before
-/// any sheep name or dog's own section is walked. `pub(crate)`: `shep copy`
-/// refuses the same addresses `shep set` writes. An address with an empty
-/// segment spells none, so each verb reports it as the malformed address it is.
+/// any sheep name or dog's own section is walked. `pub(crate)`: every verb
+/// that takes an address refuses it. An address with an empty segment spells
+/// none, so each verb reports it as the malformed address it is.
 pub(crate) fn defaults_in(
     segments: &[String],
     flock: &FlockNames,

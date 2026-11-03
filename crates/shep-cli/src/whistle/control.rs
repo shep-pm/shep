@@ -238,7 +238,6 @@ mod tests {
             overrides: std::path::PathBuf::new(),
             secrets: std::path::PathBuf::new(),
             secrets_cache: std::path::PathBuf::new(),
-            dog_defaults: std::path::PathBuf::new(),
             dog_index_cache: std::path::PathBuf::new(),
             dogs_dir: std::path::PathBuf::new(),
         };

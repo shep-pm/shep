@@ -1,5 +1,6 @@
-//! Where a defaults address goes when a sheep or an unrun dog shares its name:
-//! to the dog's defaults, by `set`, `unset` and `copy` alike.
+//! The retired `<dog>.defaults` address: `get`, `set`, `unset` and `copy` all
+//! refuse it, name the dog's own section, and send nothing that writes, also
+//! when a sheep or an unrun dog shares the dog's name.
 
 use std::path::Path;
 
@@ -10,13 +11,12 @@ use shep_core::protocol::{DogSource, Envelope, ProcessInfo, Request, Response};
 use shep_core::status::ProcStatus;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::cli::{CopyArgs, Format, SetArgs, UnsetArgs};
-use crate::commands::copy;
+use crate::cli::{CopyArgs, Format, GetArgs, SetArgs, UnsetArgs};
+use crate::commands::{copy, settings_read};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
-/// A shepherd running `names` as sheep and `dogs` as dogs, which answers a
-/// sheep's config with a failure the verbs cannot carry on past.
+/// A shepherd running `sheep` as sheep and `dogs` as dogs.
 async fn shepherd(
     dir: &Path,
     sheep: &[&str],
@@ -39,7 +39,6 @@ async fn shepherd(
         Request::DogConfig { .. } => Ok(Response::DogSection {
             toml: String::new().into(),
         }),
-        Request::DogDefaults { .. } => Ok(Response::DogDefaults { table: None }),
         Request::DogSheepSettings { .. } => Ok(Response::DogSheepSettings {
             tables: Default::default(),
         }),
@@ -83,10 +82,13 @@ async fn outcome(
     }
 }
 
-/// A sheep named after a dog does not take the dog's defaults address: the
-/// write is the dog's.
+/// The text every verb says of the retired address.
+const SECTION_ADDRESS: &str = "`metrics.otlp_timeout`";
+
+/// `set` refuses the address and names the dog's own section, though a sheep
+/// has the dog's name: the sheep's config is not read, and nothing is written.
 #[tokio::test]
-async fn set_writes_a_dogs_default_when_a_sheep_has_the_dogs_name() {
+async fn set_refuses_a_defaults_address_and_names_the_dogs_section() {
     let dir = tempfile::tempdir().unwrap();
     let paths = ShepPaths::resolve(&|_| None, dir.path());
     let (client, envelopes) = shepherd(dir.path(), &["metrics"], &["metrics"]).await;
@@ -105,27 +107,21 @@ async fn set_writes_a_dogs_default_when_a_sheep_has_the_dogs_name() {
     )
     .await;
 
-    assert_eq!(ran.code, ExitCode::Success, "{}", ran.said);
+    assert_eq!(ran.code, ExitCode::InvalidConfig, "{}", ran.said);
+    assert!(ran.said.contains("is retired"), "{}", ran.said);
+    assert!(ran.said.contains(SECTION_ADDRESS), "{}", ran.said);
     assert!(
         ran.sent
             .iter()
-            .any(|request| matches!(request, Request::DogDefaults { dog } if dog == "metrics")),
-        "the dog's default was read: {:?}",
-        ran.sent
-    );
-    assert!(
-        !ran.sent
-            .iter()
-            .any(|request| matches!(request, Request::SheepConfig { .. })),
-        "the sheep was not read: {:?}",
+            .all(|request| matches!(request, Request::ListFlock)),
+        "only the flock was read: {:?}",
         ran.sent
     );
 }
 
-/// `unset` answers a defaults address with the defaults refusal, not a sheep's
-/// invalid path, when a sheep has the dog's name.
+/// `unset` refuses it the same way, not as a sheep's invalid path.
 #[tokio::test]
-async fn unset_refuses_a_defaults_key_as_the_dogs_when_a_sheep_has_the_dogs_name() {
+async fn unset_refuses_a_defaults_address_and_names_the_dogs_section() {
     let dir = tempfile::tempdir().unwrap();
     let paths = ShepPaths::resolve(&|_| None, dir.path());
     let (client, envelopes) = shepherd(dir.path(), &["metrics"], &["metrics"]).await;
@@ -143,19 +139,36 @@ async fn unset_refuses_a_defaults_key_as_the_dogs_when_a_sheep_has_the_dogs_name
     )
     .await;
 
-    assert_ne!(ran.code, ExitCode::Success);
-    assert!(
-        ran.said
-            .contains("does not remove a key of `metrics`'s defaults"),
-        "{}",
-        ran.said
-    );
+    assert_eq!(ran.code, ExitCode::InvalidConfig, "{}", ran.said);
+    assert!(ran.said.contains(SECTION_ADDRESS), "{}", ran.said);
 }
 
-/// `copy` answers a defaults address with the defaults refusal when a sheep
-/// has the dog's name.
+/// `get` refuses the whole address too, and names the key placeholder when no
+/// key follows.
 #[tokio::test]
-async fn copy_refuses_a_defaults_address_as_the_dogs_when_a_sheep_has_the_dogs_name() {
+async fn get_refuses_a_defaults_address_and_names_the_dogs_section() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (client, envelopes) = shepherd(dir.path(), &["metrics"], &["metrics"]).await;
+    let args = GetArgs {
+        address: "metrics.defaults".to_string(),
+    };
+
+    let ran = outcome(
+        &paths,
+        &client,
+        envelopes,
+        async |client, streams, paths| settings_read::get(client, streams, paths, &args).await,
+    )
+    .await;
+
+    assert_eq!(ran.code, ExitCode::InvalidConfig, "{}", ran.said);
+    assert!(ran.said.contains("`metrics.<key>`"), "{}", ran.said);
+}
+
+/// `copy` refuses it when a sheep has the dog's name.
+#[tokio::test]
+async fn copy_refuses_a_defaults_address_when_a_sheep_has_the_dogs_name() {
     let dir = tempfile::tempdir().unwrap();
     let paths = ShepPaths::resolve(&|_| None, dir.path());
     let (client, envelopes) = shepherd(dir.path(), &["metrics", "web"], &["metrics"]).await;
@@ -172,17 +185,12 @@ async fn copy_refuses_a_defaults_address_as_the_dogs_when_a_sheep_has_the_dogs_n
     )
     .await;
 
-    assert_ne!(ran.code, ExitCode::Success);
-    assert!(
-        ran.said.contains("shep set metrics.defaults"),
-        "{}",
-        ran.said
-    );
+    assert_eq!(ran.code, ExitCode::InvalidConfig, "{}", ran.said);
+    assert!(ran.said.contains(SECTION_ADDRESS), "{}", ran.said);
 }
 
-/// A dog this shepherd knows and no sheep runs still owns its defaults
-/// address, so `copy` refuses it as a defaults address and not as a missing
-/// sheep.
+/// A dog this shepherd knows and no sheep runs still owns the address, so
+/// `copy` refuses it as the retired address and not as a missing sheep.
 #[tokio::test]
 async fn copy_refuses_a_defaults_address_of_a_known_dog_no_flock_row_names() {
     let dir = tempfile::tempdir().unwrap();
@@ -202,11 +210,7 @@ async fn copy_refuses_a_defaults_address_of_a_known_dog_no_flock_row_names() {
     .await;
 
     assert_ne!(ran.code, ExitCode::Success);
-    assert!(
-        ran.said.contains("shep set metrics.defaults"),
-        "{}",
-        ran.said
-    );
+    assert!(ran.said.contains(SECTION_ADDRESS), "{}", ran.said);
     assert!(!ran.said.contains("no sheep named"), "{}", ran.said);
 }
 
@@ -239,9 +243,5 @@ async fn copy_reports_a_defaults_address_with_an_empty_key_as_malformed() {
     .await;
 
     assert_ne!(ran.code, ExitCode::Success);
-    assert!(
-        !ran.said.contains("shep set metrics.defaults"),
-        "{}",
-        ran.said
-    );
+    assert!(!ran.said.contains("is retired"), "{}", ran.said);
 }

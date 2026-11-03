@@ -14,6 +14,7 @@ mod error;
 mod handover;
 mod layout;
 mod pidfile;
+mod retired;
 mod running;
 mod signals;
 mod socket;
@@ -146,7 +147,6 @@ pub struct BootOptions {
 /// - [`BootError::AlreadyRunning`] if another daemon holds the lock or answered.
 /// - [`BootError::ReadyWrite`] if the readiness line could not be written.
 /// - [`BootError::Snapshot`] if a roll exists and could not be read or parsed.
-/// - [`BootError::DogDefaults`] if `dog-defaults.json` could not be read.
 pub async fn boot<R: ProcessRunner>(
     runner: R,
     paths: ShepPaths,
@@ -225,15 +225,9 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
         (PidfileLock::acquire(&paths)?, bind_socket(&paths, &socket)?);
     let pid = std::process::id();
     pidfile_lock.record(&paths, pid)?;
-    // After the lock, so a second boot reports `AlreadyRunning` rather than
-    // this store, and before the readiness line, so a boot refused over it
-    // never told its parent the shepherd is up.
-    let dog_defaults = shep_core::dog_defaults::read(&paths.dog_defaults).map_err(|source| {
-        BootError::DogDefaults {
-            path: paths.dog_defaults.clone(),
-            source,
-        }
-    })?;
+    // After the lock, so a second boot reports `AlreadyRunning` and only the
+    // shepherd that serves says so.
+    retired::warn_of_dog_defaults(&paths);
 
     // 3. Readiness, now that the socket is bound. Taken rather than moved out:
     //    a partial move leaves `options` unborrowable, and step 4 hands it
@@ -308,7 +302,6 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     let mut builder = SupervisorBuilder::new(runner, paths.clone(), events.clone())
         .extras(extras)
         .provider_secrets(Arc::clone(&provider_secrets))
-        .dog_defaults(dog_defaults)
         .dog_binaries(adopted_dog_paths(&options.dogs));
     #[cfg(target_os = "linux")]
     {

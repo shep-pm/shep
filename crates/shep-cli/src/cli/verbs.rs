@@ -411,8 +411,8 @@ pub enum Commands {
     ///
     /// The address is `shep get`'s and `shep copy`'s: a sheep's own field, a
     /// dog's table on that sheep, or the dog's own section of `dogs.toml`.
-    /// Only `shep set` takes `<dog>.defaults[.<key>]`, the default under every
-    /// sheep's table for the dog. The value is TOML, and text that is not TOML
+    /// `<dog>.defaults[.<key>]` is retired: a dog's own section, `<dog>.<key>`, is
+    /// the value for every sheep. The value is TOML, and text that is not TOML
     /// is the string as typed: `5` is a number, `true` a toggle, `3s` stays
     /// `3s`. TOML's `nan` and `inf` are refused: the flock's JSON has no cell.
     ///
@@ -433,8 +433,8 @@ pub enum Commands {
     Set(SetArgs),
     /// Drop an override, or remove a dog's key, so what was there before applies.
     ///
-    /// The address is `shep set`'s, but `<dog>.defaults[.<key>]` is refused: `shep
-    /// set` writes it. On a sheep's field it drops the override you set, so the
+    /// The address is `shep set`'s, and `<dog>.defaults[.<key>]` is refused as it is
+    /// there. On a sheep's field it drops the override you set, so the
     /// Flockfile's value returns in `shep get` and the running config. A field with
     /// no override is refused: it already holds the Flockfile's value. On a key of
     /// a dog's settings, whether its table on a sheep or its section of

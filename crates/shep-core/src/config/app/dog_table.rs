@@ -34,6 +34,20 @@ impl DogTable {
         self.0
     }
 
+    /// `layers` folded into one table, the lowest first: a later layer's
+    /// value wins.
+    ///
+    /// Nested tables merge key by key. An array or a plain value replaces
+    /// what is under it whole, so a sheep's list never adds to a section's.
+    #[must_use]
+    pub fn layered(layers: &[&Self]) -> Self {
+        let mut out = Map::new();
+        for layer in layers {
+            merge(&mut out, &layer.0);
+        }
+        Self(out)
+    }
+
     /// Every `{{secret:...}}` reference a string in this table names, as
     /// `KEY` or `namespace/KEY`.
     ///
@@ -83,6 +97,17 @@ impl DogTable {
         mut visit: impl FnMut(&str, &str) -> Result<Option<String>, E>,
     ) -> Result<Self, E> {
         map_object(&self.0, &mut root.to_string(), &mut visit).map(Self)
+    }
+}
+
+fn merge(under: &mut Map<String, Value>, over: &Map<String, Value>) {
+    for (key, value) in over {
+        match (under.get_mut(key), value) {
+            (Some(Value::Object(held)), Value::Object(incoming)) => merge(held, incoming),
+            _ => {
+                under.insert(key.clone(), value.clone());
+            }
+        }
     }
 }
 
@@ -227,6 +252,54 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), v))
                 .collect::<Map<String, Value>>(),
         )
+    }
+
+    fn table(value: Value) -> DogTable {
+        match value {
+            Value::Object(map) => DogTable::from(map),
+            other => panic!("not a table: {other}"),
+        }
+    }
+
+    #[test]
+    fn a_later_layer_wins_and_a_nested_table_merges_key_by_key() {
+        let section = table(json!({
+            "model": "opus",
+            "review": { "lines": 8, "tone": "terse" },
+            "labels": ["a", "b"],
+        }));
+        let sheep = table(json!({
+            "model": "sonnet",
+            "review": { "lines": 3 },
+        }));
+        assert_eq!(
+            DogTable::layered(&[&section, &sheep]),
+            table(json!({
+                "model": "sonnet",
+                "review": { "lines": 3, "tone": "terse" },
+                "labels": ["a", "b"],
+            }))
+        );
+    }
+
+    #[test]
+    fn an_array_or_a_plain_value_in_a_later_layer_replaces_the_lower_whole() {
+        let section = table(json!({
+            "labels": ["a", "b"],
+            "review": { "lines": 8 },
+            "budget": 5,
+        }));
+        let sheep = table(json!({
+            "labels": ["c"],
+            "review": "off",
+            "budget": { "daily": 1 },
+        }));
+        assert_eq!(DogTable::layered(&[&section, &sheep]), sheep);
+    }
+
+    #[test]
+    fn no_layers_fold_to_an_empty_table() {
+        assert_eq!(DogTable::layered(&[]), table(json!({})));
     }
 
     #[test]

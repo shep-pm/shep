@@ -120,11 +120,11 @@ pub(crate) async fn copy(
         Err(code) => return code,
     };
     // Before any sheep name, and against every dog the shepherd knows: a
-    // defaults address belongs to a dog whether or not a sheep runs it.
+    // retired defaults address belongs to a dog whether or not a sheep runs it.
     for raw in [&args.from, &args.to] {
         let segments: Vec<String> = raw.split('.').map(str::to_string).collect();
         if let Some(defaults) = settings_write::defaults_in(&segments, &flock, paths) {
-            return address::defaults_refusal(raw, &defaults).report(streams);
+            return CopyRefusal::Refused(address::retired_defaults(&defaults)).report(streams);
         }
     }
     let from = match address::written(&args.from, &flock) {
