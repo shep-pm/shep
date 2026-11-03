@@ -745,15 +745,20 @@ fn sheep_dog_settings_resolved_serializes_as_its_own_kind() {
     );
 }
 
-/// The operator-default verbs were retired: an older CLI that sends one gets
-/// the shepherd's unknown-request refusal, and nothing in use sends them.
+/// The operator-default verbs were retired: an older CLI that sends one
+/// decodes to `Unrecognized`, which the shepherd refuses, and nothing in use
+/// sends them.
 #[test]
-fn the_retired_dog_defaults_verbs_no_longer_decode() {
+fn the_retired_dog_defaults_verbs_decode_as_unrecognized() {
     for wire in [
         r#"{"kind":"dog_defaults","dog":"jobs"}"#,
         r#"{"kind":"set_dog_defaults","dog":"jobs","table":{"model":"opus"}}"#,
     ] {
-        assert!(serde_json::from_str::<Request>(wire).is_err(), "{wire}");
+        assert_eq!(
+            serde_json::from_str::<Request>(wire).unwrap(),
+            Request::Unrecognized,
+            "{wire}"
+        );
     }
 }
 
