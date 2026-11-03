@@ -1012,10 +1012,12 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
     <p>
       The tag must be <code>v&lt;version&gt;</code>, matching{" "}
       <code>Cargo.toml</code> at that tag. A real run needs the release to
-      exist before the job runs; a dry run doesn't. Your row must exist
-      already, with <code>source.kind</code> set to <code>cargo</code>; the
-      first one is a pull request of its own. Pass <code>bin</code> when the
-      binary isn't named after the package.
+      exist before the job runs; a dry run doesn't. The workflow updates
+      a row, never adds one, and the row needs <code>source.kind</code> set to{" "}
+      <code>cargo</code>. For a first release, add the row by hand with its{" "}
+      <code>version</code> and no hashes; <code>shep install</code> builds
+      that version from source until a later release adds them. Pass{" "}
+      <code>bin</code> when the binary isn't named after the package.
     </p>
     <p>
       Pin <code>uses:</code> to a full commit sha, not <code>main</code> or a

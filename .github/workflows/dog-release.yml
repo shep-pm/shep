@@ -11,7 +11,9 @@ name: Dog release
 # index row, so the tag has to be `v<version>`. See the "Releasing a dog"
 # section of web/src/pages/docs/writing-a-dog.astro for the calling job.
 # The calling job grants `contents: write` and `actions: read` and pins this
-# workflow by commit.
+# workflow by commit. Before replacing a release's assets it closes any open
+# index pull request for the same version, so a run that fails part-way never
+# leaves one holding hashes the release no longer serves.
 #
 # Run by hand with `workflow_dispatch` it is a dry run against any public
 # dog repository: it builds every target and prints the hashes, and uploads
@@ -270,6 +272,30 @@ jobs:
       # characters `resolve` allowed, so none holds a space.
       assets: ${{ steps.attach.outputs.assets }}
     steps:
+      # An earlier run's index pull request holds the hashes of the assets
+      # about to be replaced. If this run then fails part-way, that pull
+      # request would still be open, merge-ready and wrong: the release would
+      # serve new binaries under old hashes. Closing it first means a failed
+      # run leaves none, and `index-pr` opens a fresh one on success. A run
+      # that fails before this point replaced nothing, so its pull request
+      # stays valid.
+      - name: Close the index pull request these assets would outdate
+        env:
+          GH_TOKEN: ${{ secrets.index-token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="dog-release/${PACKAGE}-${VERSION}"
+          # `isCrossRepository` false: `--head` matches a branch name alone,
+          # so a fork's pull request from a same-named branch would count.
+          number="$(gh pr list --repo shep-pm/shep --head "$branch" --state open \
+            --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr close "$number" --repo shep-pm/shep --delete-branch \
+              --comment "A new run of ${PACKAGE} ${VERSION} is replacing the release assets this pull request hashed. It opens a fresh pull request when the upload completes."
+          fi
       - id: attach
         env:
           GH_TOKEN: ${{ github.token }}
@@ -343,15 +369,20 @@ jobs:
           set -euo pipefail
           cd shep
           branch="dog-release/${PACKAGE}-${VERSION}"
-          open_prs() {
-            gh pr list --repo shep-pm/shep --head "$branch" --state open --json number --jq length
+          # Only a pull request from a branch of this repository: `--head`
+          # alone also matches a fork's same-named branch.
+          open_pr() {
+            gh pr list --repo shep-pm/shep --head "$branch" --state open \
+              --json number,isCrossRepository \
+              --jq '[.[] | select(.isCrossRepository == false)][0].number // empty'
           }
           if git diff --quiet -- web/public/dogs.json; then
             echo "The index already approves ${PACKAGE} ${VERSION} with these hashes. Nothing to open."
             # An earlier run's pull request would now change nothing, or
             # worse, carry other hashes. Close it rather than leave it to merge.
-            if [ "$(open_prs)" != 0 ]; then
-              gh pr close "$branch" --repo shep-pm/shep --delete-branch \
+            number="$(open_pr)"
+            if [ -n "$number" ]; then
+              gh pr close "$number" --repo shep-pm/shep --delete-branch \
                 --comment "main already approves ${PACKAGE} ${VERSION} with the hashes of the latest run, so this pull request has nothing to change."
             fi
             exit 0
@@ -367,7 +398,7 @@ jobs:
           # replace its hashes rather than stop on the old ones.
           git push --force origin "HEAD:refs/heads/${branch}"
 
-          if [ "$(open_prs)" != 0 ]; then
+          if [ -n "$(open_pr)" ]; then
             echo "A pull request for ${branch} is open already. Its branch now carries these hashes."
             exit 0
           fi
