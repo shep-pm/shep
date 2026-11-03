@@ -215,13 +215,14 @@ pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> i
     Ok(())
 }
 
-/// Whether `dir`'s `cgroup.procs` lists a process. One byte tells: a listing
-/// is `<pid>\n` per process, and an endless file must not be read to its end.
+/// Whether `dir`'s `cgroup.procs` lists a process. A listing is `<pid>\n` per
+/// process, so its first byte is a digit: one byte tells, and an endless file
+/// such as `/dev/full` is neither read to its end nor taken for a listing.
 fn is_occupied(dir: &Path) -> bool {
     let mut first = [0u8; 1];
     fs::File::open(dir.join("cgroup.procs"))
         .and_then(|mut procs| io::Read::read(&mut procs, &mut first))
-        .is_ok_and(|read| read > 0)
+        .is_ok_and(|read| read == 1 && first[0].is_ascii_digit())
 }
 
 /// The error for a spawn that failed after [`join_on_exec`], which may be the

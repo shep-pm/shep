@@ -305,6 +305,10 @@ async fn a_failed_join_fails_the_spawn_and_runs_nothing() {
         panic!("expected SpawnFailed, got {failed:?}");
     };
     assert!(message.contains("web"), "names the sheep: {message}");
+    assert!(
+        message.contains("No space left"),
+        "the child's write failed, not a refusal to try: {message}"
+    );
     assert!(!marker.exists(), "the program never ran");
 }
 
@@ -421,16 +425,16 @@ fn a_cgroup_holding_a_process_is_not_removed() {
 }
 
 #[test]
-fn a_cgroup_procs_that_never_ends_is_read_as_holding_a_process() {
+fn an_endless_cgroup_procs_is_not_read_to_its_end() {
     let dir = tempfile::tempdir().expect("a temp directory");
     let cgroup = sheep_dir(dir.path(), 3, 0);
     fs::create_dir(&cgroup).expect("the sheep's cgroup");
-    // Endless, as `/dev/full` is: the check must not read it to the end.
+    // Zeros without end, as `/dev/full` reads: not a listing, and not to be read whole.
     std::os::unix::fs::symlink("/dev/zero", cgroup.join("cgroup.procs")).expect("the symlink");
 
-    remove_if_empty(&cgroup).expect("left, not an error");
-
-    assert!(cgroup.is_dir());
+    // Not taken for a process, so the removal is tried and the symlink in the
+    // directory makes the filesystem refuse it.
+    assert!(remove_if_empty(&cgroup).is_err());
 }
 
 #[test]
