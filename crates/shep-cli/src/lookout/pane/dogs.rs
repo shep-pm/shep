@@ -488,7 +488,11 @@ impl ConfigPane {
             return DogToggle::NoSchema(name);
         };
         if row.table.is_none() {
-            let pane = Self::sheep_dog(sheep, name, &schema, self.sheep_table(&row.entry.name));
+            let table = self.sheep_table(&row.entry.name);
+            let pane = match &row.entry.standard {
+                Some(section) => Self::sheep_dog_inheriting(sheep, name, &schema, table, section),
+                None => Self::sheep_dog(sheep, name, &schema, table),
+            };
             self.dogs_tab.rows[dog].table = Some(Box::new(pane));
         }
         self.dogs_tab.rows[dog].open = true;
@@ -698,3 +702,7 @@ pub(crate) fn dog_names(dogs: Option<&Value>) -> String {
 #[cfg(test)]
 #[path = "dogs_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "dogs_standard_tests.rs"]
+mod standard_tests;
