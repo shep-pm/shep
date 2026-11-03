@@ -169,8 +169,8 @@ impl ConfigPane {
         };
         inherits.shared = section.shared.clone();
         inherits.shared_values = flatten_values(&section.shared, paths);
-        let table = state.table.clone();
-        self.adopt_table(Some(table));
+        let table = inherits.has_table.then(|| state.table.clone());
+        self.adopt_table(table);
     }
 
     /// What `key` goes back to when its own value is cleared: the section's
@@ -384,6 +384,26 @@ mod tests {
         assert_eq!(pane.value("model"), "haiku");
         assert!(!pane.is_inherited("limit"));
         assert_eq!(pane.value("limit"), "9");
+    }
+
+    #[test]
+    fn a_new_section_does_not_give_an_opted_in_sheep_with_no_table_a_table() {
+        let first = section(Serves::OptedIn, json!({ "model": "sonnet" }));
+        let mut pane = ConfigPane::sheep_dog_inheriting(
+            "web".into(),
+            "jobs".into(),
+            &sheep_form(),
+            None,
+            &first,
+        );
+        pane.adopt_section(&section(Serves::OptedIn, json!({ "model": "haiku" })));
+        assert!(!pane.is_inherited("model"));
+        assert_eq!(pane.value("model"), "(unset)");
+
+        pane.adopt_table(Some(table(json!({ "limit": 9 }))));
+        pane.adopt_section(&section(Serves::OptedIn, json!({ "model": "opus" })));
+        assert!(pane.is_inherited("model"));
+        assert_eq!(pane.value("model"), "opus");
     }
 
     #[test]
