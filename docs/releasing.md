@@ -561,3 +561,29 @@ the crate it is building. They were never in danger of shipping.
 The largest archive is `shep-daemon` at 1.9 MiB uncompressed, 520 KiB
 compressed, which is `supervisor.rs` and `boot.rs` being large source files.
 That is well inside the 10 MiB registry limit.
+
+## Releasing a dog
+
+A dog's own release builds its prebuilt binaries and proposes its index row
+through `.github/workflows/dog-release.yml`, a reusable workflow in this
+repository. The calling job is in
+[Writing a dog](../web/src/pages/docs/writing-a-dog.astro). What to know on
+this side:
+
+- **The index row is a human's merge.** The workflow opens a branch
+  `dog-release/<package>-<version>` on this repository and a pull request
+  that changes `source.version` and `source.sha256` of that one row, through
+  `scripts/dog-index-update.py`. It hashes the assets the release serves, not
+  what each leg built. A first row for a new dog is a pull request by hand.
+- **The token is the dog repository's secret.** `index-token` has to push a
+  branch and open a pull request here; `GITHUB_TOKEN` cannot cross
+  repositories. A pull request opened with it fires no checks, so use a PAT
+  or an App token, as `release-plz-release.yml` does.
+- **The targets are `release-artifacts.yml`'s, copied.** A matrix cannot
+  cross workflow files, so `scripts/test_dog_release_targets.py` fails
+  `manifests` until a target added to one is added to the other.
+- **Dry run:** Actions, "Dog release", Run workflow, with the dog's package,
+  an existing tag and its `owner/name`. It builds every target and prints
+  each hash in the log and the job summary. It uploads and opens nothing,
+  and refuses a real run from here since this repository's token cannot
+  write to the dog's.

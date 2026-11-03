@@ -121,6 +121,22 @@ async fn run(runtime: DogRuntime) -> Result<(), Box<dyn core::error::Error>> {
     Ok(())
 }`;
 
+const releaseSnippet = `name: Release
+on:
+  release:
+    types: [published]
+
+jobs:
+  binaries:
+    permissions:
+      contents: write
+    uses: shep-pm/shep/.github/workflows/dog-release.yml@main
+    with:
+      package: shep-log-rotate
+      tag: \${{ github.event.release.tag_name }}
+    secrets:
+      index-token: \${{ secrets.SHEP_INDEX_TOKEN }}`;
+
 const schemaNotice = `notice[dog_schema_unreadable]: pydog answered \`--schema\` with something that
 is not JSON, so shep has no description of its settings and they stay a
 hand-edited section. The dog is adopted and runs normally; this is a bug to
@@ -973,6 +989,43 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>release: published</code> another workflow can hear, so a{" "}
       <code>release-plz</code> setup handed <code>GITHUB_TOKEN</code> never
       dispatches: it needs a real PAT.
+    </p>
+
+    <h2 id="releasing-a-dog">Releasing a dog</h2>
+    <p>
+      <code>shep install</code> downloads a prebuilt binary when the index row
+      holds a hash for the machine's target, and builds the row's version from
+      source when it doesn't. One job in your release workflow produces both.
+    </p>
+    <CodeBlock label=".github/workflows/release.yml">{releaseSnippet}</CodeBlock>
+    <p>
+      For every target shep ships for, the workflow runs{" "}
+      <code>cargo build --release --locked</code> and attaches the bare binary
+      to your release as <code>&lt;package&gt;-&lt;version&gt;-&lt;target&gt;</code>,
+      with <code>.exe</code> on Windows and no archive. It then opens a pull
+      request on <code>shep-pm/shep</code> that sets your row's{" "}
+      <code>version</code> and <code>sha256</code> and nothing else. Merging it
+      is the review; until then <code>shep install</code> approves the old
+      version.
+    </p>
+    <p>
+      The tag must be <code>v&lt;version&gt;</code>, matching{" "}
+      <code>Cargo.toml</code> at that tag, and the release must exist before
+      the job runs. Your row must exist too; the first one is a pull request of
+      its own. Pass <code>bin</code> when the binary isn't named after the
+      package.
+    </p>
+    <p>
+      The job needs <code>contents: write</code> and an <code>index-token</code>{" "}
+      secret: a GitHub App token or a personal access token that can push a
+      branch and open a pull request on <code>shep-pm/shep</code>.{" "}
+      <code>GITHUB_TOKEN</code> can't write to another repository.
+    </p>
+    <p>
+      To see the hashes without releasing, run <code>Dog release</code> from
+      the Actions tab of <code>shep-pm/shep</code> with your package, an
+      existing tag and your repository. It uploads and opens nothing.{" "}
+      <code>dry-run: true</code> does the same from your own job.
     </p>
   </article>
 </DocsLayout>
