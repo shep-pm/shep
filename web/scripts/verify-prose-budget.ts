@@ -253,7 +253,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 4450, for when the section shows: an opted-in sheep with
   // no table shows nothing from it.
-  "lookout-config": 4450,
+  //
+  // Raised again, to 4455, on #1451 for the dogs pane's SOURCE and VERSION
+  // columns, which no other page describes in lookout's terms.
+  "lookout-config": 4455,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
@@ -332,9 +335,14 @@ export const BUDGETS: Record<string, number> = {
   // dogs a manifest names, and the three refusals and the no that stop it.
   // An operator whose install stops needs to know what stays on disk.
   //
-  // Raised from 4570 for "Upgrading a dog": what an upgrade follows, the
-  // four flags, and which directory a rollback can still reach.
-  dogs: 5120,
+  // Raised from 4570 on #1451 for the SOURCE and VERSION columns and for what
+  // `shep delete` removes: an operator has to know what each SOURCE word
+  // means, that the arrow reads a cache, and that an adopted dog's file is
+  // never touched.
+  //
+  // Raised again for "Upgrading a dog": what an upgrade follows, the four
+  // flags, and which directory a rollback can still reach.
+  dogs: 4900,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
@@ -457,7 +465,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1580 for `sandbox_refused`: a key on `errored` rows only, and
   // the one place a script learns why a sheep stopped, is a shape a script
   // has to be told about.
-  "json-output": 1610,
+  // Raised from 1610 on #1451 for `source`, `version` and `newer_version`:
+  // three keys on a dog's row only, which a script has to be told about. The
+  // ceiling sits about 3 words above the page.
+  "json-output": 1630,
   // Raised from 1250 for the Windows section: `shep startup` registers a
   // logon task there, and an operator has to be told it runs at sign-in, not
   // boot, and what logoff and a crash leave behind. The page had no headroom.

@@ -13,12 +13,17 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 use shep_core::config::{DaemonConfig, DaemonConfigError, parse_daemon_bool};
+use shep_core::paths::ShepPaths;
 
 use crate::commands::shep_toml::{GrantRecord, PathError, ShepToml, ShepTomlError};
 use crate::dog::BUILT_IN_DOGS;
+use crate::dog_index;
+use crate::dog_origin::{DogOrigin, Origins};
 use crate::lookout::field::{Field, FieldKind, segment, shep_toml_shape};
 use crate::style::{StyleLevel, StyleSource};
 
+#[cfg(test)]
+mod origin_tests;
 #[cfg(test)]
 mod tests;
 
@@ -319,6 +324,11 @@ pub struct DogView {
     ///
     /// Names only: a value never leaves `shep.toml` for a screen to hold.
     pub env_keys: Vec<String>,
+    /// Where the dog came from and its version, for the SOURCE and VERSION
+    /// columns. [`load_settings`] fills it from the dog's receipt and the
+    /// cached index; every other constructor leaves what the dog's kind
+    /// alone says.
+    pub origin: DogOrigin,
 }
 
 impl DogView {
@@ -346,6 +356,12 @@ impl DogView {
             grants: DogGrants::Undeclared,
             offered: Vec::new(),
             env_keys: Vec::new(),
+            // A fixed version, so a frame pinned in a snapshot does not
+            // move with every release of shep.
+            origin: DogOrigin {
+                version: Some("1.0.0".to_owned()),
+                ..DogOrigin::built_in()
+            },
         }
     }
 
@@ -361,6 +377,7 @@ impl DogView {
     pub fn adopted(name: &str, enabled: bool, path: &Path) -> Self {
         Self {
             adopted_path: Some(path.to_path_buf()),
+            origin: DogOrigin::adopted(None),
             ..Self::built_in(name, enabled)
         }
     }
@@ -474,7 +491,15 @@ pub fn load_settings(
     style: (StyleLevel, StyleSource),
 ) -> Result<SettingsSnapshot, ShepTomlError> {
     let doc = ShepToml::read_only(path)?;
-    Ok(snapshot_of(&doc, socket_default, style))
+    let mut snapshot = snapshot_of(&doc, socket_default, style);
+    if let Some(home) = path.parent() {
+        let paths = ShepPaths::at(home.to_path_buf());
+        let origins = Origins::read(&paths, &dog_index::index_url());
+        for dog in &mut snapshot.dogs {
+            dog.origin = origins.of(&dog.name, dog.adopted_path.as_deref());
+        }
+    }
+    Ok(snapshot)
 }
 
 /// [`load_settings`] over a document already in hand.
@@ -517,6 +542,11 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
             };
             let offered = offered(&name, adopted_path.is_none(), &grants);
             let env_keys = doc.adopted_dog_env(&name).into_keys().collect();
+            let origin = if adopted_path.is_some() {
+                DogOrigin::adopted(None)
+            } else {
+                DogOrigin::built_in()
+            };
             DogView {
                 name,
                 enabled: is_enabled,
@@ -526,6 +556,7 @@ pub(crate) fn dog_candidates(doc: &ShepToml) -> Vec<DogView> {
                 grants,
                 offered,
                 env_keys,
+                origin,
             }
         })
         .collect()

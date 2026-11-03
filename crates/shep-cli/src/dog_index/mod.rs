@@ -22,7 +22,9 @@ mod cache;
 mod parse;
 mod prebuilt;
 
-pub use cache::{LoadedIndex, Origin, cached_index, describe_age};
+#[cfg(test)]
+pub(crate) use cache::write_cache;
+pub use cache::{LoadedIndex, Origin, cached_index, cached_only, describe_age};
 pub use parse::parse_index;
 pub use prebuilt::{BUILD_TARGET, Prebuilt};
 

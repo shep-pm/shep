@@ -718,7 +718,7 @@ mod tests {
         let forwards = DogRows::headers();
         let backwards: Vec<&'static str> = forwards.iter().copied().rev().collect();
 
-        let mut cells: Vec<String> = DogRows(vec![dog.clone()]).rows().remove(0);
+        let mut cells: Vec<String> = DogRows::new(vec![dog.clone()]).rows().remove(0);
         cells.reverse();
         let painted_rows = paint(vec![cells], &backwards, coloured(), true, |header, _, _| {
             process_info_paint(header, &dog)

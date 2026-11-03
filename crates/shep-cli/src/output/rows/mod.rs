@@ -351,7 +351,7 @@ pub(crate) mod tests {
         );
         assert_eq!(
             &dogs[common.len()..],
-            &["SOURCE", "ACCESS"],
+            &["SOURCE", "VERSION", "ACCESS"],
             "the dogs table's own"
         );
 
@@ -370,8 +370,8 @@ pub(crate) mod tests {
         let mut as_sheep = sample_dog(ProcStatus::Online, Some(14_110));
         as_sheep.dog = None;
         let sheep = FlockRows(vec![as_sheep]).rows_for(coloured(), true);
-        let dogs =
-            DogRows(vec![sample_dog(ProcStatus::Online, Some(14_110))]).rows_for(coloured(), true);
+        let dogs = DogRows::new(vec![sample_dog(ProcStatus::Online, Some(14_110))])
+            .rows_for(coloured(), true);
 
         for (index, header) in FlockRows::headers().iter().enumerate() {
             let Some(there) = DogRows::headers().iter().position(|h| h == header) else {

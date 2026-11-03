@@ -923,8 +923,8 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▸ bark                                                            no       built-in                  not running      
-  ▸ metrics                                                         yes      built-in                  not running      
+  ▸ bark                                              no       built-in              1.0.0             not running      
+  ▸ metrics                                           yes      built-in              1.0.0             not running      
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -957,8 +957,8 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                                                                                     
   [dogs]                                                                                                                                                                            
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   
-  ▸ bark                                                                                                                        no       built-in                  not running      
-  ▸ metrics                                                                                                                     yes      built-in                  not running      
+  ▸ bark                                                                                                          no       built-in              1.0.0             not running      
+  ▸ metrics                                                                                                       yes      built-in              1.0.0             not running      
                                                                                                                                                                                     
   set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   
                                                                                                                                                                                     
@@ -991,8 +991,8 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▸ bark                                                            no       built-in                  not running      
-  ▸ metrics                                                         yes      built-in                  not running      
+  ▸ bark                                              no       built-in              1.0.0             not running      
+  ▸ metrics                                           yes      built-in              1.0.0             not running      
                                                                                                                         
   editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           
                                                                                                                         
@@ -1025,9 +1025,9 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
-  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
-  ▸ bark                                                            yes      built-in                  silent           
+  ▸ otel                                              no       adopted               -                 online           
+  ▸ ledger                                            yes      adopted               -                 not running      
+  ▸ bark                                              yes      built-in              1.0.0             silent           
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -1090,7 +1090,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▾ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▾ otel                                              no       adopted               -                 online           
     boot first        no                                           the next boot reads it                               
     grants            nothing recorded                             its next start reads it                              
     source            /usr/local/bin/shep-otel                     shep adopt writes it                                 
@@ -1149,9 +1149,9 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
-  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
-> ▸ bark                                                            yes      built-in                  silent           
+  ▸ otel                                              no       adopted               -                 online           
+  ▸ ledger                                            yes      adopted               -                 not running      
+> ▸ bark                                              yes      built-in              1.0.0             silent           
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled
 
 === bleats  (100x14) ===

@@ -20,7 +20,7 @@ fn dog(access: Option<DogAccess>) -> ProcessInfo {
 }
 
 fn access_cell(access: Option<DogAccess>) -> String {
-    let rows = DogRows(vec![dog(access)]).rows();
+    let rows = DogRows::new(vec![dog(access)]).rows();
     let at = DogRows::headers()
         .iter()
         .position(|header| *header == "ACCESS")
@@ -62,7 +62,7 @@ fn marks_that_hold_together_are_listed_in_one_cell() {
 
 #[test]
 fn the_json_names_what_waits_and_a_dog_with_no_marks_omits_the_field() {
-    let json = serde_json::to_value(DogRows(vec![
+    let json = serde_json::to_value(DogRows::new(vec![
         dog(Some(marks(false, true, &["logs.read"]))),
         dog(None),
     ]))
@@ -80,8 +80,8 @@ fn the_json_names_what_waits_and_a_dog_with_no_marks_omits_the_field() {
 
 #[test]
 fn a_mark_is_worth_a_glance_and_a_dash_is_muted() {
-    let flagged = DogRows(vec![dog(Some(marks(true, false, &[])))]).rows_for(coloured(), true);
-    let clear = DogRows(vec![dog(None)]).rows_for(coloured(), true);
+    let flagged = DogRows::new(vec![dog(Some(marks(true, false, &[])))]).rows_for(coloured(), true);
+    let clear = DogRows::new(vec![dog(None)]).rows_for(coloured(), true);
     let last = |rows: &[Vec<String>]| rows[0].last().unwrap().clone();
 
     assert_eq!(last(&flagged), painted("undeclared", Role::Butter));
@@ -90,7 +90,7 @@ fn a_mark_is_worth_a_glance_and_a_dash_is_muted() {
 
 #[test]
 fn marks_that_are_all_clear_read_as_a_muted_dash() {
-    let rows = DogRows(vec![dog(Some(DogAccess::default()))]).rows_for(coloured(), true);
+    let rows = DogRows::new(vec![dog(Some(DogAccess::default()))]).rows_for(coloured(), true);
 
     assert_eq!(rows[0].last().unwrap(), &painted("-", Role::Ink3));
 }
