@@ -63,7 +63,7 @@ pub(super) enum Lookup {
     CratesIo(String),
     /// A fixed answer, so a test of everything after the lookup needs no
     /// socket.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     Canned(Published),
 }
 
@@ -71,7 +71,7 @@ impl Lookup {
     async fn published(&self, package: &str, version: &str) -> Result<Published, String> {
         match self {
             Self::CratesIo(base) => published_from(base, package, version).await,
-            #[cfg(test)]
+            #[cfg(all(test, unix))]
             Self::Canned(published) => Ok(published.clone()),
         }
     }
