@@ -207,18 +207,16 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`. `limits` are written first, by [`write_memory_max`],
-/// [`write_cpu_max`] and [`write_pids_max`].
+/// `memory.oom.group`. `limits` are written first; a key left `None` lifts the
+/// limit an earlier sheep left in a reused `dir`.
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
-/// cgroup, and a new sheep with the same id must not share it. Its old limits
-/// are lifted for every key `limits` leaves `None`, so a sheep that dropped
-/// `max_tasks` does not inherit the last one's `pids.max`.
+/// cgroup, and a new sheep with the same id must not share it.
 ///
 /// # Errors
-/// What creating the directory, writing `memory.oom.group`, `memory.max`,
-/// `cpu.max` or `pids.max`, or opening `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
+/// What creating the directory, writing `memory.oom.group` or a limit, or
+/// opening `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
 /// already holds a process. A directory this call made is removed again.
 pub(crate) fn join_on_exec(
     command: &mut std::process::Command,

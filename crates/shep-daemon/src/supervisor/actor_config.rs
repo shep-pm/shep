@@ -486,12 +486,11 @@ impl<R: ProcessRunner> Actor<R> {
 
     /// Writes `name`'s `max_cpu_cores` to each running instance's `cpu.max`
     /// and its `max_tasks` to `pids.max`, and lifts the limit from one that
-    /// has dropped the key, so a live change reaches the kernel at once. An
-    /// instance not running takes the new value at its next spawn.
+    /// has dropped the key. An instance not running takes it at its next
+    /// spawn.
     ///
-    /// Returns the keys whose limit did not reach some running instance, for
-    /// the caller to report as pending: the stored spec holds the value, and
-    /// the next spawn writes it.
+    /// Returns the keys whose limit did not reach some running instance: the
+    /// caller reports them pending, since the next spawn writes the stored value.
     #[cfg(target_os = "linux")]
     pub(super) fn rewrite_cgroup_limits(&mut self, name: &str) -> Vec<&'static str> {
         let mut unwritten: Vec<&'static str> = Vec::new();

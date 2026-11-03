@@ -282,9 +282,7 @@ pub struct AppConfig {
     /// Written to the cgroup's `pids.max`, like `docker run --pids-limit`. A
     /// thread counts as a task, so leave headroom above the healthy count. A
     /// fork or thread past it fails with `EAGAIN` and nothing is killed, so a
-    /// fork bomb stops there instead of exhausting the user's process limit
-    /// for every sheep that shares its uid. Needs Linux and a delegated
-    /// cgroup v2 subtree.
+    /// fork bomb stops there. Needs Linux and a delegated cgroup v2 subtree.
     #[cfg_attr(feature = "schema", schemars(range(min = 1, max = 4_194_304)))]
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "example": 256,

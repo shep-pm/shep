@@ -27,7 +27,7 @@ fn max_cpu_cores_writes_quota_and_period() {
         (Some(0.5), Some("50000 100000")),
         (Some(1.0), Some("100000 100000")),
         (Some(2.5), Some("250000 100000")),
-        (None, None),
+        (None, Some("max 100000")),
     ] {
         let base = tempfile::tempdir().expect("a temp directory");
         let cgroup = sheep_dir(base.path(), 1, 0);

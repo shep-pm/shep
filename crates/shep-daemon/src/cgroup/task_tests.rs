@@ -24,7 +24,11 @@ fn task_app(name: &str, program: &str, tasks: u32) -> AppConfig {
 
 #[test]
 fn max_tasks_writes_pids_max_before_the_child_joins() {
-    for (tasks, written) in [(Some(64), Some("64")), (Some(1), Some("1")), (None, None)] {
+    for (tasks, written) in [
+        (Some(64), Some("64")),
+        (Some(1), Some("1")),
+        (None, Some("max")),
+    ] {
         let base = tempfile::tempdir().expect("a temp directory");
         let cgroup = sheep_dir(base.path(), 1, 0);
         fs::create_dir(&cgroup).expect("the sheep's cgroup");
