@@ -93,3 +93,25 @@ fn grants_are_a_list_of_names_on_the_wire() {
         grants
     );
 }
+
+#[test]
+fn a_dog_grant_covers_that_dogs_events_and_no_other_dogs() {
+    let grants = Grants::parse(["events:dog.otel"]).unwrap();
+    assert!(grants.allows_topic("dog.otel.exported"));
+    assert!(grants.allows_topic("dog.otel.*"));
+    assert!(!grants.allows_topic("dog.otel-2.exported"));
+    assert!(!grants.allows_topic("dog.otel*"));
+    assert!(!grants.allows_topic("dog.*"));
+    assert!(!grants.allows_topic("dog.bark.sent"));
+    assert!(!grants.allows_topic("config.dog.otel"));
+}
+
+#[test]
+fn a_broader_events_grant_still_covers_every_dog() {
+    assert!(
+        Grants::parse(["events:dog."])
+            .unwrap()
+            .allows_topic("dog.*")
+    );
+    assert!(Grants::parse(["events:"]).unwrap().allows_topic("dog.*"));
+}

@@ -209,6 +209,10 @@ impl Grants {
     /// Judged on the pattern's literal head, the part before its first glob
     /// character: `process.*` can only reach topics beginning `process.`, so
     /// a grant of `process.` covers it and a grant of `process.exit` does not.
+    ///
+    /// A prefix that begins `dog.` names a dog and covers that dog's topics
+    /// alone: `dog.otel` is read as `dog.otel.`, so it does not reach
+    /// `dog.otel-2.exported`.
     #[must_use]
     pub fn allows_topic(&self, pattern: &str) -> bool {
         let head = pattern
@@ -217,6 +221,16 @@ impl Grants {
         self.0
             .iter()
             .filter_map(|name| name.strip_prefix("events:"))
-            .any(|prefix| head.starts_with(prefix))
+            .any(|prefix| covers(prefix, head))
+    }
+}
+
+/// Whether the granted `prefix` covers topics beginning `head`.
+fn covers(prefix: &str, head: &str) -> bool {
+    if prefix.starts_with("dog.") && !prefix.ends_with('.') {
+        head.strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('.'))
+    } else {
+        head.starts_with(prefix)
     }
 }

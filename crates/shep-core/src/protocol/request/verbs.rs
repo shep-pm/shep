@@ -524,6 +524,21 @@ pub enum Request {
         /// Topic globs, e.g. `process.*`
         topics: Vec<String>,
     },
+    /// Publish one event on the bus as the dog that sent this, under
+    /// `dog.<name>.<kind>`.
+    ///
+    /// Accepted on a dog's own connection only: the control socket has no dog
+    /// to publish as. The shepherd checks that `event` is a kind the dog
+    /// declared in its manifest and never reads `payload`. Answers
+    /// [`Response::EventPublished`]. Additive: an older daemon decodes
+    /// [`Self::Unrecognized`] and refuses by name.
+    PublishEvent {
+        /// A kind from the dog's manifest `events` list. Named `event` because
+        /// `kind` is this enum's tag.
+        event: String,
+        /// The event's body, any JSON, broadcast to subscribers as sent.
+        payload: serde_json::Value,
+    },
     /// A request kind this build has not been taught.
     ///
     /// `#[serde(other)]`, which serde allows here because `Request` is

@@ -772,3 +772,21 @@ fn the_dog_defaults_verbs_and_replies_have_their_own_tags() {
     assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
     assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
 }
+
+#[test]
+fn a_publish_event_request_and_its_reply_have_their_own_tags() {
+    let request = Request::PublishEvent {
+        event: "exported".to_string(),
+        payload: serde_json::json!({"batch": 3, "nested": {"ok": true}}),
+    };
+    let json = serde_json::to_string(&request).unwrap();
+    assert_eq!(
+        json,
+        r#"{"kind":"publish_event","event":"exported","payload":{"batch":3,"nested":{"ok":true}}}"#
+    );
+    assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+    assert_eq!(
+        serde_json::to_string(&Response::EventPublished).unwrap(),
+        r#"{"kind":"event_published"}"#
+    );
+}

@@ -325,3 +325,13 @@ fn a_subscription_is_checked_by_its_topics() {
     };
     assert!(matches!(need(&subscribe, CALLER), Need::Topics(t) if t == topics));
 }
+
+/// The shepherd judges a publish by the dog's declared kinds, which only it
+/// can look up, so the table holds no permission for it.
+#[test]
+fn a_publish_takes_no_grant() {
+    assert!(is_always(&Request::PublishEvent {
+        event: "exported".to_string(),
+        payload: serde_json::Value::Null,
+    }));
+}
