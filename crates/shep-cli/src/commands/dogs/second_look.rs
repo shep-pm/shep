@@ -12,10 +12,10 @@ use crate::commands::shep_toml::{GrantRecord, ShepToml};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
-use super::consent::{Input, not_confined};
+use super::consent::{Input, Prompt, not_confined};
 use super::fail_config;
 use super::upgrade::upgrade_one;
-use crate::commands::copy::confirm::{Answer, read_answer};
+use crate::commands::copy::confirm::Answer;
 
 /// [`emit_notice`](crate::output::emit_notice) code for grants left as they
 /// were because no one could be asked; not a failure.
@@ -56,7 +56,7 @@ pub(super) fn second_look(
         return Ok(());
     }
     let listing = listing(name, &record);
-    if !yes && !input.is_terminal {
+    if !yes && !input.is_terminal() {
         streams.aside(
             UNREVIEWED_NOTICE,
             &format!(
@@ -66,27 +66,8 @@ pub(super) fn second_look(
         );
         return Ok(());
     }
-    streams.aside(GRANTS_NOTICE, &format!("{listing}\n{}", not_confined(name)));
-    if !yes {
-        let question = if record.waiting.names().next().is_some() {
-            format!("grant {name} the new permissions too? [y/N] ")
-        } else {
-            format!("keep these grants for {name}? [y/N] ")
-        };
-        streams.aside("confirm", &question);
-        match read_answer(&mut input.reader) {
-            Answer::Yes => {}
-            Answer::No => return Ok(()),
-            Answer::Failed(reason) => {
-                return Err(streams.fail(
-                    ExitCode::Failure,
-                    &format!(
-                        "no permission was approved: the question could not be read ({reason})"
-                    ),
-                ));
-            }
-        }
-    }
+    let shown = format!("{listing}\n{}", not_confined(name));
+    streams.aside(GRANTS_NOTICE, &shown);
     let approved = GrantRecord {
         granted: Grants::from_names(
             record
@@ -99,6 +80,26 @@ pub(super) fn second_look(
         reviewed: true,
         ..record.clone()
     };
+    if !yes {
+        let question = if record.waiting.names().next().is_some() {
+            format!("grant {name} the new permissions too?")
+        } else {
+            format!("keep these grants for {name}?")
+        };
+        let prompt = Prompt::new(shown, question, Some(approved.granted.clone()));
+        match input.ask(streams, &prompt) {
+            Answer::Yes => {}
+            Answer::No => return Ok(()),
+            Answer::Failed(reason) => {
+                return Err(streams.fail(
+                    ExitCode::Failure,
+                    &format!(
+                        "no permission was approved: the question could not be read ({reason})"
+                    ),
+                ));
+            }
+        }
+    }
     let written = ShepToml::try_edit(&paths.daemon_config, |cfg| {
         if cfg.grant_record(name)?.as_ref() != Some(&record) {
             return Ok(false);
