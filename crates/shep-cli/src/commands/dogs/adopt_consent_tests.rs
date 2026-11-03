@@ -167,6 +167,28 @@ async fn re_adopting_a_rebuilt_dog_brings_its_event_kinds_up_to_date() {
 }
 
 #[tokio::test]
+async fn re_adopting_a_dog_rebuilt_with_no_manifest_clears_its_event_kinds() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let binary = write_dog(dir.path(), DECLARES_AN_EVENT);
+    adopt_otel(&paths, &binary, true, typing(None)).await;
+    assert_eq!(recorded_events(&paths), ["exported".to_string()]);
+
+    let bare = dir.path().join("bare");
+    std::fs::create_dir(&bare).unwrap();
+    let rebuilt = write_dog(&bare, "not a manifest");
+    let (code, _) = adopt_otel(&paths, &rebuilt, true, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(recorded_events(&paths), Vec::<String>::new());
+    assert_eq!(
+        recorded(&paths).0,
+        Some(vec!["flock.read".to_string()]),
+        "the grants stand"
+    );
+}
+
+#[tokio::test]
 async fn the_first_enable_of_a_declined_dog_records_its_event_kinds_too() {
     let dir = tempfile::tempdir().unwrap();
     let paths = ShepPaths::resolve(&|_| None, dir.path());

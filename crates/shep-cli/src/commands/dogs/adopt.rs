@@ -337,8 +337,9 @@ fn ask_before_adopting(
 
 /// Makes the event kinds an existing record holds for `name` those `reviewed`
 /// declares, leaving the grants as they are: kinds are no permission, so a
-/// rebuilt dog's follow its manifest with no question. A dog with no record,
-/// or a binary with no manifest, is left alone.
+/// rebuilt dog's follow its manifest with no question. A binary with no
+/// manifest declares none, so the kinds an earlier build held are cleared. A
+/// dog with no record is left alone.
 ///
 /// # Errors
 /// As [`ShepToml::set_grant_record`].
@@ -347,17 +348,11 @@ fn follow_declared_events(
     name: &str,
     reviewed: &Review,
 ) -> Result<(), ShepTomlError> {
-    let Review::Declared { events, .. } = reviewed else {
-        return Ok(());
-    };
+    let events = reviewed.events();
     match cfg.grant_record(name)? {
-        Some(record) if record.events != *events => cfg.set_grant_record(
-            name,
-            &GrantRecord {
-                events: events.clone(),
-                ..record
-            },
-        ),
+        Some(record) if record.events != events => {
+            cfg.set_grant_record(name, &GrantRecord { events, ..record })
+        }
         _ => Ok(()),
     }
 }

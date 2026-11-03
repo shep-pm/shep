@@ -90,6 +90,22 @@ fn an_undeclared_dog_and_an_unreadable_one_are_left_alone() {
 }
 
 #[test]
+fn a_dog_rebuilt_with_no_manifest_loses_the_event_kinds_it_had_recorded() {
+    let held = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+
+    let planned = plan(Some(&held), true, &Declaration::Undeclared);
+
+    assert_eq!(planned, Some(record(&["flock.read"], &[], &[], true)));
+}
+
+#[test]
+fn a_manifest_that_could_not_be_read_keeps_the_event_kinds_recorded() {
+    let held = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+
+    assert_eq!(plan(Some(&held), true, &Declaration::Unknown), None);
+}
+
+#[test]
 fn a_rebuilt_dog_that_asks_for_more_keeps_its_grants_and_waits_on_the_rest() {
     let held = record(&["flock.read"], &[], &[], true);
 
@@ -258,6 +274,25 @@ fn an_adopted_dog_whose_binary_declares_nothing_stays_undeclared() {
 
     assert!(changed.is_empty());
     assert_eq!(recorded(&paths, "otel"), None);
+}
+
+#[test]
+fn an_adopted_dog_rebuilt_with_no_manifest_has_its_recorded_event_kinds_cleared_at_boot() {
+    let (_dir, paths) = home();
+    let binary = write_dog(&paths.home, "not a manifest");
+    adopt_enabled(
+        &paths,
+        &binary,
+        "\n[daemon.dog_grants.otel]\ngranted = [\"flock.read\"]\nevents = [\"exported\"]\n",
+    );
+
+    let changed = upgrade_grants(&paths).unwrap();
+
+    assert_eq!(changed, ["otel"]);
+    assert_eq!(
+        recorded(&paths, "otel"),
+        Some(record(&["flock.read"], &[], &[], true))
+    );
 }
 
 #[test]

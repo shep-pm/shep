@@ -6,8 +6,8 @@
 //!   manifest declares, marked not reviewed, once.
 //! - A dog whose manifest declares a permission it holds neither as granted
 //!   nor as revoked has it put in `waiting`, and keeps running on what it had.
-//! - A dog's event kinds follow its manifest with no approval.
-//! - A dog with no manifest is left alone: undeclared, with full access.
+//! - A dog's event kinds follow its manifest with no approval, none if it has
+//!   no manifest, which leaves its grants alone: undeclared, full access.
 
 use std::path::Path;
 
@@ -22,7 +22,8 @@ use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest};
 /// What a dog's current build says it wants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Declaration {
-    /// No manifest: the dog declares nothing and keeps full access.
+    /// No manifest: the dog declares nothing, so no event kinds, and keeps
+    /// full access.
     Undeclared,
     /// The permissions in its manifest that this shep knows, and the event
     /// kinds it declares.
@@ -41,8 +42,19 @@ pub(super) fn plan(
     enabled: bool,
     declaration: &Declaration,
 ) -> Option<GrantRecord> {
-    let Declaration::Declares(declared, events) = declaration else {
-        return None;
+    let (declared, events) = match declaration {
+        Declaration::Declares(declared, events) => (declared, events),
+        // A build with no manifest declares no kinds: the shepherd must not
+        // go on allowing the ones an earlier build declared.
+        Declaration::Undeclared => {
+            return current
+                .filter(|record| !record.events.is_empty())
+                .map(|record| GrantRecord {
+                    events: Vec::new(),
+                    ..record.clone()
+                });
+        }
+        Declaration::Unknown => return None,
     };
     let Some(record) = current else {
         if !enabled {
