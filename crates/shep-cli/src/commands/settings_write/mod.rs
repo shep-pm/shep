@@ -339,12 +339,11 @@ async fn set_sheep(
         }
         ConfigPath::Dog { dog, keys } => {
             let standard = dog_standard(dog, ask.paths);
-            if let Some((_, standard)) = &standard {
-                if let Some(refusal) =
+            if let Some((_, standard)) = &standard
+                && let Some(refusal) =
                     dog_wide::dog_wide_refusal(standard, name, dog, keys, &ask.value)
-                {
-                    return refusal.report(streams);
-                }
+            {
+                return refusal.report(streams);
             }
             let plan = match plan_dog_table(name, dog, keys, &config, &ask.value) {
                 Ok(plan) => plan,

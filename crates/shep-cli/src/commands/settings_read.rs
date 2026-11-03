@@ -197,21 +197,21 @@ async fn get_sheep(
         Err(refusal) => return refusal_report(streams, &refusal),
     };
     let mut marked = Vec::new();
-    if let [root, dog, ..] = steps.as_slice() {
-        if root == DOGS {
-            let layering = match standard::layer(client, streams, paths, dog, &config).await {
-                Ok(layering) => layering,
-                Err(code) => return code,
+    if let [root, dog, ..] = steps.as_slice()
+        && root == DOGS
+    {
+        let layering = match standard::layer(client, streams, paths, dog, &config).await {
+            Ok(layering) => layering,
+            Err(code) => return code,
+        };
+        if let Some(layering) = layering {
+            config = layering.config;
+            let dogs = address::DogNames::new(flock, &config, &Json::Null);
+            steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {
+                Ok(steps) => steps,
+                Err(refusal) => return refusal_report(streams, &refusal),
             };
-            if let Some(layering) = layering {
-                config = layering.config;
-                let dogs = address::DogNames::new(flock, &config, &Json::Null);
-                steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {
-                    Ok(steps) => steps,
-                    Err(refusal) => return refusal_report(streams, &refusal),
-                };
-                marked = standard::covered(&steps, &layering.inherited);
-            }
+            marked = standard::covered(&steps, &layering.inherited);
         }
     }
     let toml = match sheep_document(&written, &config, &steps) {
