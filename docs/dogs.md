@@ -156,8 +156,10 @@ topic `dog.<name>.<kind>`. The shepherd checks two things: the kind was
 declared, and the name is the sender's own, which it takes from the
 connection and never from the request. The payload is opaque JSON that
 reaches subscribers unchanged. The control socket and a launch link are
-refused. A subscriber needs `events:dog.<name>`, which covers `dog.<name>.`
-and no other dog's topics, so `events:dog.otel` does not cover `dog.otel2.*`.
+refused, and so is a dog whose name has a dot in it, since `dog.a.b.x` could
+then be dog `a` or dog `a.b`. A subscriber needs `events:dog.<name>`, which
+covers `dog.<name>.` and no other dog's topics, so `events:dog.otel` does not
+cover `dog.otel2.*`.
 
 **A dog that restarts itself on a config change has to say so in its own
 log.** Nothing else can tell that apart from a crash loop, and the restart
@@ -248,7 +250,7 @@ granted = ["flock.read", "events:process."]
 - `--yes` grants everything declared and nothing else. With no terminal and no `--yes` the command changes nothing and exits 2 (usage).
 - A required permission this shep does not know refuses the adopt or enable (exit 4). An optional one is dropped with a warning and never granted.
 - A dog with no manifest prompts "declares nothing, runs with full access" and records no entry. A manifest that declares no permissions records `granted = []` without a question. A built-in dog is asked like any other, from a manifest built into the binary with no probe: `metrics` declares `flock.read`, `events:channel.metric` and `events:process.`; `bark` declares `flock.read`, `events:process.` and, optional, `events:log.`.
-- The kinds a dog declared are recorded beside `granted` as `events = ["exported"]` in the same `[daemon.dog_grants.<name>]` entry, so they survive a restart and a handover. `shep adopt` and the first `shep enable` write them from the manifest with no question, since they are not permissions, and an upgrade keeps them following the build. A dog with no manifest declares none and publishes nothing.
+- The kinds a dog declared are recorded beside `granted` as `events = ["exported"]` in the same `[daemon.dog_grants.<name>]` entry, so they survive a restart and a handover. `shep adopt` and the first `shep enable` write them from the manifest with no question, since they are not permissions, and an upgrade keeps them following the build. A dog with no manifest declares none and publishes nothing, and a build that stops answering the manifest flag has the kinds it held cleared at the next adopt, enable, grant, boot or reload. A manifest that cannot be read changes nothing.
 - Grants keep an honest dog in bounds. They are not a sandbox: a dog runs as the operator and could open the control socket like the CLI.
 
 ### Upgrades
@@ -1048,7 +1050,7 @@ already visible and unread.
 ## Answering `--shep-manifest`
 
 One flag describes the dog whole: `--shep-manifest`, answered on stdout with
-one JSON object, manifest v2. A v1 manifest still reads, with no `events`. `shep adopt` asks it first. `--version` and
+one JSON object, manifest v2. A v1 manifest still reads, and an `events` list in it is ignored: the field is v2's. `shep adopt` asks it first. `--version` and
 `--schema` stay as they are, for a dog built against an older shep and for an
 older shep adopting this one, and `shep adopt` asks them when a dog answers no
 manifest.

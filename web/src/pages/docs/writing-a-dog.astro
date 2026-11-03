@@ -615,7 +615,8 @@ shep-channel: true`}</CodeBlock>
       shepherd never reads. Subscribers hear it as{" "}
       <code>dog.&lt;name&gt;.&lt;kind&gt;</code> and need{" "}
       <code>events:dog.&lt;name&gt;</code>. A kind the manifest does not list
-      is refused by name, and so is a publish from the control socket.
+      is refused by name, and so is a publish from the control socket or
+      from a dog whose name has a dot in it.
     </p>
     <CodeBlock label="main.rs">{eventsSnippet}</CodeBlock>
 
