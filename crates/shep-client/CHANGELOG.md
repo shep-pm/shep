@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- Mark a dog settings field dog-wide
+- A Probe declares which sheep the dog serves
+- Read each served sheep's settings from one dog type
+- Let a dog's manifest list the actions it answers
+- Add memory_enforce, protocol 16, and its client gate
+- Add max_cpu_cores, a CPU quota refused off Linux
+- Add max_tasks, a process limit refused off Linux
+- Carry a dog's declared event kinds on its source and in dog_grants
+- Declare a dog's events on the probe and publish them from the runtime
+- A long dog action answers with an id and reports its result as an event
+- Retire the <dog>.defaults operator default **(BREAKING)**
+- One dog settings type, set per dog in the section and per sheep in its table
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
+
+### Fixed
+
+- Read each sheep's own table, not the one with the operator default under it
+- Concurrent long-action waits share one subscription and reject malformed results
+- Send the long-action trigger with the trigger deadline
+- A wait sends no Subscribe when its topic is already heard
+
+
 ## [0.23.0] - 2026-11-02
 
 ### Added

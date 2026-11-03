@@ -10,6 +10,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- Find a delegated cgroup v2 subtree at boot and move the shepherd into a leaf
+- Hold a launched sheep to a link scoped to its own table
+- Name the calling dog on an action a dog triggers
+- Spawn every sheep into its own cgroup, joined before it execs
+- A cargo row approves one version and hashes prebuilt binaries per target
+- Add a bounded lock wait and the dogs directory path
+- Enforce max_memory through memory.max and charge a kernel OOM to max_restarts
+- Write cpu.max for max_cpu_cores at spawn and on a live change
+- Write pids.max for max_tasks at spawn and on a live change
+- Carry a dog's declared event kinds on its source and in dog_grants
+- Publish a dog's declared events under dog.<name>.<kind>
+- Retire the <dog>.defaults operator default **(BREAKING)**
+- A sheep spawned through the sandbox dog holds a link scoped to its own table
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Approve an exact dog version, hash prebuilt binaries, cache the index for a day
+- Spawn every sheep on Linux into its own cgroup, joined before it execs
+- Shep install builds a dog with cargo and records a receipt
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
+
+### Fixed
+
+- Report a busy cgroup before moving the shepherd and drop a leaf a failed move created
+- Move the handover blob to version 2 so an older image refuses a launch link
+- Read one byte of cgroup.procs, not all of it
+- Refuse to join a cgroup that already holds a process, and drop it on early spawn failures
+- Let a failed cgroup.procs write reach the failed-join test
+- Fit the new cgroup docs to IR-47 and move the handshake literals to protocol 16
+- Take the oom_kill baseline when a live switch enters kernel enforcement
+- Rewrite cpu.max when a pane edit changes max_cpu_cores
+- Refuse a max_cpu_cores the kernel cannot hold
+- Keep the cgroup files under the size limit and run every cgroups test
+- Report an unwritten pids.max as pending and clear stale limits
+- Cut three doc blocks to IR-47 and expect lifted limits in two tests
+- A dog with a dot in its name cannot publish events
+
+
 ## [0.23.0] - 2026-11-02
 
 ### Added

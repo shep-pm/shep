@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- Mark a dog settings field dog-wide
+- One dog settings type, set per dog in the section and per sheep in its table
+
+
 ## [0.23.0] - 2026-11-02
 
 

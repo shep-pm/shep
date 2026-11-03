@@ -13,6 +13,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- Delegate a cgroup subtree to the shepherd in the systemd unit
+- Read the dog settings standard off a dog's one schema
+- Shep set refuses a dog-wide key on a sheep and names the dog-level address
+- Shep get marks the keys a sheep inherits from a standard dog's section
+- A sheep's dog pane shows the dog's section under its own table, inherited rows marked
+- Lookout probes a dog's one schema and the section every sheep shares
+- The dogs tab opens a standard dog's form with the section under the sheep's table
+- The dog pane marks dog-wide rows and says its values reach every sheep
+- List a dog's declared actions with shep trigger <dog>
+- A verb's help shows that verb, with the global flags in one footer line
+- A cargo row approves one version and hashes prebuilt binaries per target
+- Read the dog index through a one-day cache and flag unversioned cargo rows
+- Add a bounded lock wait and the dogs directory path
+- Shep install builds the index's version of a dog with cargo and records a receipt
+- Shep install downloads a dog's prebuilt binary when the index hashes one
+- Add --cargo and the one-redirect asset fetch to shep install
+- Add max_cpu_cores, a CPU quota refused off Linux
+- List max_tasks in lookout beside max_memory
+- Carry a dog's declared event kinds on its source and in dog_grants
+- Record a dog's declared event kinds beside its grants in shep.toml
+- Shep install --ref builds a dog from a branch, tag or commit of its repo
+- Shep install installs a dog's missing dependencies first
+- Retire the <dog>.defaults operator default **(BREAKING)**
+- SOURCE and VERSION columns in shep dogs and shep flock
+- Shep delete removes the directory install wrote
+- Shep upgrade follows the receipt, with --ref, --release and --rollback
+- SOURCE and VERSION columns in the dogs pane
+- Show a verb's own help with the global flags in one footer line
+- Tell a triggered dog who called and list a dog's actions in its manifest **(BREAKING)**
+- Approve an exact dog version, hash prebuilt binaries, cache the index for a day
+- Shep install builds a dog with cargo and records a receipt
+- Enforce max_memory through memory.max with memory_enforce = "kernel"
+- Max_cpu_cores caps a sheep's CPU through cpu.max
+- Max_tasks caps how many processes a sheep can run through pids.max
+- Lookout and shep get/set show a dog's settings at the dog level and per sheep
+- A dog publishes events under dog.<name>.*, declared in manifest v2
+- Retire <dog>.defaults now that a dog's own section is every sheep's value **(BREAKING)**
+- SOURCE and VERSION columns for dogs, and delete removes what install wrote
+
+### Changed
+
+- Hand adopt_after_config the dog's source instead of its parts
+
+### Fixed
+
+- Build the standard-dog test helpers on unix only
+- Refuse --host for shep trigger <dog> before dialling the host
+- Walk subcommands with mut_subcommand so the oldest clap builds
+- Address review of the dog settings standard
+- Keep an opted-in sheep without a table from inheriting after a re-read
+- Build the canned lookup only where its tests run
+- Keep install's help inside IR-47 and give it a sample argv
+- Shep install answers --format json with an error envelope for a row it cannot build
+- Put the token-publish line beside the grant question
+- Spell two asset-fetch test names so typos passes
+- Keep a reinstalled dog's binary and receipt when adopt refuses
+- Copy a reinstalled dog's files aside instead of moving them
+- Mask an inherited entries value, mark nested inherited keys and scope the docs
+- Shep install --ref without a dog is a usage error
+- Warn when a sheep's table holds a dog-wide key instead of layering it
+- Re-adopting a rebuilt dog refreshes its recorded event kinds
+- Shep install plans every dependency before it adopts any
+- A build with no manifest clears the event kinds it recorded
+- Enable merges event kinds into a grant written during its prompt
+- Cut the upgrade help to IR-47's limit and fix a typo in test names
+- Compare the index with the pinned version, and carry origins in flock JSON
+- Shep upgrade --dogs answers one JSON document
+
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
