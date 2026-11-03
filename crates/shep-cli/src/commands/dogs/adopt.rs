@@ -82,6 +82,20 @@ pub(super) async fn adopt_with(
     flow: Flow,
     note: Option<&str>,
 ) -> ExitCode {
+    adopt_noting(streams, paths, args, input, flow, note, &mut false).await
+}
+
+/// [`adopt_with`], setting `said_no` when the operator answered no at the
+/// grant question. A refusal before the answer leaves it as it was.
+pub(super) async fn adopt_noting(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &AdoptArgs,
+    input: &mut Input,
+    flow: Flow,
+    note: Option<&str>,
+    said_no: &mut bool,
+) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
     let candidate = resolve_adopt_path(&args.path, home.as_deref(), path_var.as_deref());
@@ -163,6 +177,7 @@ pub(super) async fn adopt_with(
             Ok(recorded) => recorded,
             Err(err) => return fail_config(streams, &err),
         };
+    *said_no = declined;
     // The registration is in, so the defaults half is the last config write
     // `adopt` makes and it still precedes any socket: a dog adopted against
     // no shepherd gets its section too.
