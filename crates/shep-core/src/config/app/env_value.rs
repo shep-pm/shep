@@ -210,6 +210,11 @@ mod tests {
                     "shep-daemon's privilege::resolve, at spawn",
                 ),
                 (
+                    "memory_enforce",
+                    "kernel on macOS or Windows",
+                    "normalize, off Linux only: normalize::tests",
+                ),
+                (
                     "user",
                     "a name with no passwd entry",
                     "shep-daemon's privilege::resolve, at spawn",

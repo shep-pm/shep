@@ -11,10 +11,10 @@ expression: "text.join(\"\\n\")"
    exp_backoff_restart_delay  100ms                                 up
    max_memory                 (unset)                             
 > *max_restarts               3▏2                                   now     32
-   min_uptime                 1s                                    default 16
-   restart_delay              (unset)                               example (none)
-   stop_exit_codes            []                                  
-                                                                    ● now  the running sheep picks it up without stoppi…
+   memory_enforce             poll                                  default 16
+   min_uptime                 1s                                    example (none)
+   restart_delay              (unset)                             
+   stop_exit_codes            []                                    ● now  the running sheep picks it up without stoppi…
                                                                                  pick the timing when you close the pane
                                                                   
                                                                     ────────────────────────────────────────────────────

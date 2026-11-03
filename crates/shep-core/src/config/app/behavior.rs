@@ -1,4 +1,5 @@
 use super::schema::AppConfig;
+use crate::config::MemoryEnforce;
 use core::fmt;
 use std::collections::BTreeMap;
 // use schemars::generate
@@ -43,6 +44,7 @@ impl Default for AppConfig {
             graceful_timeout: UpDuration::from_millis(8000),
             action_timeout: UpDuration::from_millis(3000),
             max_memory: None,
+            memory_enforce: MemoryEnforce::Poll,
             watch: false,
             ignore_watch: Vec::new(),
             watch_delay: None,

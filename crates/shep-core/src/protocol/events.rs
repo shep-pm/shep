@@ -431,7 +431,7 @@ mod tests {
             sheep: "web".to_string(),
         });
 
-        insta::assert_json_snapshot!("bus_event_wire_v15", events);
+        insta::assert_json_snapshot!("bus_event_wire_v16", events);
     }
 
     #[test]

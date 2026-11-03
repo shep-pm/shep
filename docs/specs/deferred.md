@@ -51,9 +51,10 @@ feature on 2026-10-28, and each entry moved to "Not deferred" in
 [deferred-history.md](deferred-history.md).
 
 - HTTP/SSE MCP transport (whistle ships stdio-only first). Tracked as https://github.com/shep-pm/shep/issues/343
-- cgroup v2 enforcement (`enforce = "kernel"`) — `LimitEnforcer`'s polling
-  impl is the v1.0 tier. Sized 2026-09-06, together with the CPU half this
-  line never mentioned: see the subsection below. Tracked as https://github.com/shep-pm/shep/issues/344
+- cgroup v2 enforcement (`memory_enforce = "kernel"` is built; the CPU half
+  is not) — `LimitEnforcer`'s polling impl is the v1.0 tier. Sized
+  2026-09-06, together with the CPU half this line never mentioned: see the
+  subsection below. Tracked as https://github.com/shep-pm/shep/issues/344
 - `@shep/io` npm shim (built on demand). Tracked as https://github.com/shep-pm/shep/issues/362, with Python
   alongside it at https://github.com/shep-pm/shep/issues/363
 - `shep web` JSON status endpoint. Resolved, 2026-08-13: the metrics dog
@@ -70,7 +71,9 @@ shepherd now detects a delegated cgroup v2 subtree at boot, moves itself into a
 `shepherd` leaf and logs the result, or why there is none (`crates/shep-daemon/src/cgroup.rs`). With a
 delegated subtree, each Linux sheep runs in its own `sheep-<id>-<instance>`
 cgroup, joined by the child in `pre_exec` before it execs and removed once the
-sheep is reaped. Neither field exists yet.
+sheep is reaped. `memory_enforce = "kernel"` is built: it writes `max_memory` to
+that cgroup's `memory.max` and charges a rise in `memory.events.local`'s
+`oom_kill` to `max_restarts`. `max_cpu_cores` does not exist yet.
 
 Sized against the code, not built. The shape is two config fields carrying
 docker's semantics, chosen deliberately so nobody has to learn a shep-specific

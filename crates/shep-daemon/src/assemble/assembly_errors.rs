@@ -25,6 +25,12 @@ pub enum AssembleError {
         /// The dog's name.
         dog: String,
     },
+    /// The sheep has `memory_enforce = "kernel"` and this shepherd has no
+    /// cgroup to enforce it in.
+    CgroupUnavailable {
+        /// Why `detect` found none, in its own words.
+        reason: String,
+    },
     /// The sheep's `listen` sockets could not be bound.
     Listen(ListenError),
 }
@@ -41,6 +47,8 @@ impl AssembleError {
         match self {
             Self::Template { source, .. } => source.is_retriable(),
             Self::DogMissing { .. } => false,
+            // A host does not grow a delegated cgroup under a running shepherd.
+            Self::CgroupUnavailable { .. } => false,
             // A held port may free up, but nothing here can tell when, and a
             // crash loop on it would only hide the address in the log.
             Self::Listen(_) => false,
@@ -56,6 +64,10 @@ impl fmt::Display for AssembleError {
                 f,
                 "the `{dog}` dog is not adopted or is disabled, and this sheep does not run without it"
             ),
+            Self::CgroupUnavailable { reason } => write!(
+                f,
+                "`memory_enforce = \"kernel\"` needs a cgroup for this sheep, and this shepherd has none: {reason}"
+            ),
             Self::Listen(source) => source.fmt(f),
         }
     }
@@ -65,7 +77,7 @@ impl core::error::Error for AssembleError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Template { source, .. } => Some(source),
-            Self::DogMissing { .. } => None,
+            Self::DogMissing { .. } | Self::CgroupUnavailable { .. } => None,
             Self::Listen(source) => Some(source),
         }
     }

@@ -277,7 +277,7 @@ impl<R: ProcessRunner> Actor<R> {
                 .iter()
                 .any(|field| EXTRAS_FIELDS.contains(&field.as_str()))
         {
-            self.rearm_name(&name);
+            self.apply_extras_change(&name);
         }
 
         // `autostart` and `depends_on` are the two `NextSpawn` fields that
@@ -407,6 +407,61 @@ impl<R: ProcessRunner> Actor<R> {
             pending,
             refused: (!refusals.is_empty()).then(|| refusals.join("; ")),
             app,
+        }
+    }
+
+    /// Applies a changed [`EXTRAS_FIELDS`] value to `name`'s running instances:
+    /// the kernel's `memory.max` first, then the extras [`Self::rearm_name`]
+    /// rebuilds.
+    pub(super) fn apply_extras_change(&mut self, name: &str) {
+        #[cfg(target_os = "linux")]
+        self.rewrite_memory_max(name);
+        self.rearm_name(name);
+    }
+
+    /// Writes `name`'s `max_memory` to each running instance's `memory.max`
+    /// under `memory_enforce = "kernel"`, and lifts the cap from one that has
+    /// left it, so a live change reaches the kernel as it reaches the sampler.
+    ///
+    /// A sheep entering kernel enforcement gets its `oom_kill` baseline here,
+    /// since no spawn will take one; one leaving it loses its baseline. An
+    /// instance not running takes the new value at its next spawn.
+    #[cfg(target_os = "linux")]
+    fn rewrite_memory_max(&mut self, name: &str) {
+        let mut baselines: Vec<(u32, Option<u64>)> = Vec::new();
+        for (id, slot) in &self.sheep {
+            let config = slot.entry.spec.config();
+            if config.name != name || slot.entry.pid.is_none() {
+                continue;
+            }
+            let kernel = config.memory_enforce.is_kernel();
+            let Some(dir) = self.cgroup_for(*id, slot.entry.instance) else {
+                if kernel {
+                    tracing::warn!(
+                        id,
+                        name,
+                        "memory_enforce = \"kernel\" changed live on a shepherd with no cgroup: \
+                         nothing caps this sheep until it restarts, and its restart will refuse"
+                    );
+                }
+                continue;
+            };
+            let limit = config.max_memory.filter(|_| kernel).map(MemSize::bytes);
+            if let Err(error) = crate::cgroup::write_memory_max(&dir, limit) {
+                tracing::warn!(id, name, %error, cgroup = %dir.display(), "memory.max not written");
+            }
+            baselines.push((*id, kernel.then(|| crate::cgroup::oom_kills(&dir))));
+        }
+        for (id, baseline) in baselines {
+            match baseline {
+                // Kept when one is held: a rise since the spawn is still owed.
+                Some(kills) => {
+                    self.oom_baselines.entry(id).or_insert(kills);
+                }
+                None => {
+                    self.oom_baselines.remove(&id);
+                }
+            }
         }
     }
 

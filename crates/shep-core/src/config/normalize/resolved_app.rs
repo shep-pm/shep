@@ -219,6 +219,14 @@ pub fn normalize_with_home(
         // `max_restarts` can never end the loop.
         return Err(NormalizeError::ZeroMaxMemory { name: app.name });
     }
+    if app.memory_enforce.is_kernel() {
+        if app.max_memory.is_none() {
+            return Err(NormalizeError::MemoryEnforceNeedsMaxMemory { name: app.name });
+        }
+        if !cfg!(target_os = "linux") {
+            return Err(NormalizeError::MemoryEnforceKernelUnsupported { name: app.name });
+        }
+    }
     if let Some(name) = &app.kill_signal
         && KillSignal::parse(name).is_none()
     {

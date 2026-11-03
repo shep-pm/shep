@@ -22,6 +22,7 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     pub(super) adopted_listeners: Vec<AdoptedListeners>,
     pub(super) dog_binaries: BTreeMap<String, String>,
     pub(super) cgroup_base: Option<PathBuf>,
+    pub(super) cgroup_unavailable: Option<String>,
 }
 
 impl<R: ProcessRunner> SupervisorBuilder<R> {
@@ -41,18 +42,26 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             adopted_listeners: Vec::new(),
             dog_binaries: BTreeMap::new(),
             cgroup_base: None,
+            cgroup_unavailable: None,
         }
     }
 
     /// Gives each sheep its own cgroup under `cgroups`' base when it holds
-    /// one. [`crate::cgroup::Cgroups::Unavailable`] leaves every sheep spawning without.
+    /// one. [`crate::cgroup::Cgroups::Unavailable`] leaves every sheep spawning
+    /// without, and refuses one with `memory_enforce = "kernel"`, naming why.
     #[cfg(target_os = "linux")]
     #[must_use]
     pub(crate) fn cgroups(mut self, cgroups: crate::cgroup::Cgroups) -> Self {
-        self.cgroup_base = match cgroups {
-            crate::cgroup::Cgroups::Available { base } => Some(base),
-            crate::cgroup::Cgroups::Unavailable(_) => None,
-        };
+        match cgroups {
+            crate::cgroup::Cgroups::Available { base } => {
+                self.cgroup_base = Some(base);
+                self.cgroup_unavailable = None;
+            }
+            crate::cgroup::Cgroups::Unavailable(reason) => {
+                self.cgroup_base = None;
+                self.cgroup_unavailable = Some(reason.to_string());
+            }
+        }
         self
     }
 
@@ -210,6 +219,8 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             listeners,
             listeners_before: BTreeMap::new(),
             cgroup_base: self.cgroup_base,
+            cgroup_unavailable: self.cgroup_unavailable,
+            oom_baselines: HashMap::new(),
         }
     }
 }

@@ -5,12 +5,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use shep_core::config::{AppConfig, normalize};
+use shep_core::config::{AppConfig, MemoryEnforce, normalize};
 use shep_core::protocol::{BusEvent, ProcessEventKind};
 use shep_core::selector::ProcessSelector;
+use shep_core::status::ProcStatus;
+use shep_core::values::{MemSize, UpDuration};
 use tokio::time::timeout;
 
-use super::{Cgroups, Reason, detect, detect_at, remove_if_empty, remove_stale, sheep_dir};
+use super::{
+    Cgroups, Reason, detect, detect_at, oom_kills, remove_if_empty, remove_stale, sheep_dir,
+    write_memory_max,
+};
 use crate::fake::{ProcScript, ScriptedRunner};
 use crate::runner::{ProcessRunner, RunnerError, RunningProcess, SpawnSpec};
 use crate::supervisor::SupervisorBuilder;
@@ -540,5 +545,313 @@ async fn the_cgroup_is_removed_after_the_sheep_is_reaped() {
     assert!(
         !cgroup.exists(),
         "gone once the sheep was reaped and the group empty"
+    );
+}
+
+// --- memory_enforce = "kernel" ---
+
+/// A sheep `name` running `program`, capped by the kernel at `limit` bytes.
+fn kernel_app(name: &str, program: &str, limit: u64) -> AppConfig {
+    let mut app = AppConfig::minimal(name, program);
+    app.max_memory = Some(MemSize::from_bytes(limit));
+    app.memory_enforce = MemoryEnforce::Kernel;
+    app
+}
+
+/// What a sheep's cgroup file holds, trailing newline off.
+fn read(dir: &Path, file: &str) -> String {
+    fs::read_to_string(dir.join(file))
+        .unwrap_or_else(|error| panic!("{file}: {error}"))
+        .trim_end()
+        .to_string()
+}
+
+#[test]
+fn memory_max_is_written_in_bytes_and_lifted_with_max() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+
+    write_memory_max(dir.path(), Some(67_108_864)).expect("a cap");
+    assert_eq!(read(dir.path(), "memory.max"), "67108864");
+    assert_eq!(
+        read(dir.path(), "memory.swap.max"),
+        "0",
+        "a sheep over its cap is killed, not swapped"
+    );
+
+    write_memory_max(dir.path(), None).expect("no cap");
+    assert_eq!(read(dir.path(), "memory.max"), "max");
+    assert_eq!(read(dir.path(), "memory.swap.max"), "max");
+}
+
+#[test]
+fn a_cgroup_without_a_swap_file_still_takes_its_cap() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+    // A directory where the swap file would be: the write fails, as on a
+    // kernel with no swap accounting.
+    fs::create_dir(dir.path().join("memory.swap.max")).expect("a blocker");
+
+    write_memory_max(dir.path(), Some(4096)).expect("the cap holds without swap accounting");
+
+    assert_eq!(read(dir.path(), "memory.max"), "4096");
+}
+
+#[test]
+fn oom_kills_reads_the_local_counter_and_is_zero_without_one() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+    assert_eq!(oom_kills(dir.path()), 0, "a cgroup not made yet");
+
+    fs::write(
+        dir.path().join("memory.events.local"),
+        "low 0\nhigh 0\nmax 12\noom 3\noom_kill 2\noom_group_kill 1\n",
+    )
+    .expect("the events file");
+    assert_eq!(oom_kills(dir.path()), 2);
+
+    fs::write(dir.path().join("memory.events.local"), "low 0\nmax 12\n").expect("no oom_kill line");
+    assert_eq!(oom_kills(dir.path()), 0);
+}
+
+#[test]
+fn a_cap_is_written_before_the_child_joins() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(dir.path(), 1, 0);
+    fs::create_dir(&cgroup).expect("the sheep's cgroup");
+    fs::write(cgroup.join("cgroup.procs"), "").expect("an empty cgroup.procs");
+    let mut command = std::process::Command::new("/bin/true");
+
+    super::join_on_exec(&mut command, &cgroup, Some(1 << 20)).expect("the join");
+
+    assert_eq!(read(&cgroup, "memory.max"), "1048576");
+}
+
+/// Starts `app` on a supervisor over a plain directory standing in for the
+/// delegated base, so a file the test writes is what the kernel would.
+async fn start_over(
+    cgroups: Cgroups,
+    runner: Arc<ScriptedRunner>,
+    app: AppConfig,
+) -> (
+    crate::supervisor::SupervisorHandle,
+    Result<Vec<shep_core::protocol::ProcessInfo>, crate::supervisor::SupervisorError>,
+    tempfile::TempDir,
+) {
+    let (events, _rx) = crate::bus::test_bus(64);
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let handle = SupervisorBuilder::new(SharedRunner(runner), test_paths(&dir), events)
+        .cgroups(cgroups)
+        .spawn();
+    let started = handle.start(vec![normalize(app).expect("a config")]).await;
+    (handle, started, dir)
+}
+
+#[tokio::test]
+async fn a_kernel_enforced_spawn_is_asked_for_its_memory_max_and_a_polled_one_is_not() {
+    let base = tempfile::tempdir().expect("a temp directory");
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::never_exits(),
+        ProcScript::never_exits(),
+    ]));
+    let cgroups = Cgroups::Available {
+        base: base.path().to_path_buf(),
+    };
+
+    let (_handle, started, _dir) = start_over(
+        cgroups.clone(),
+        Arc::clone(&runner),
+        kernel_app("capped", "./srv", 64 << 20),
+    )
+    .await;
+    started.expect("the start");
+    let mut polled = AppConfig::minimal("polled", "./srv");
+    polled.max_memory = Some(MemSize::from_bytes(64 << 20));
+    let (_handle, started, _dir) = start_over(cgroups, Arc::clone(&runner), polled).await;
+    started.expect("the start");
+
+    assert_eq!(runner.spawned_memory_max(0), Some(64 << 20));
+    assert_eq!(runner.spawned_memory_max(1), None, "poll writes no cap");
+}
+
+#[tokio::test]
+async fn an_unavailable_host_refuses_a_kernel_enforced_sheep_and_names_why() {
+    let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));
+
+    let (_handle, started, _dir) = start_over(
+        Cgroups::Unavailable(Reason::NotDelegated),
+        Arc::clone(&runner),
+        kernel_app("capped", "./srv", 64 << 20),
+    )
+    .await;
+
+    let refusal = started.expect_err("no silent fall back to polling");
+    assert!(
+        refusal
+            .to_string()
+            .contains("the shepherd's cgroup is not delegated to it"),
+        "the refusal carries the reason detect gave: {refusal}"
+    );
+    assert_eq!(runner.spawn_count(), 0, "nothing ran uncapped");
+}
+
+/// Runs a kernel-enforced sheep whose every life stays up a second and exits
+/// 137, raising its cgroup's `oom_kill` counter in each life when `oom` is set.
+/// Returns its row once it is `Errored`, or once `lives` lives have spawned.
+async fn run_lives(oom: bool, max_restarts: u32, lives: usize) -> shep_core::protocol::ProcessInfo {
+    let base = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(base.path(), 0, 0);
+    fs::create_dir_all(&cgroup).expect("the sheep's cgroup");
+    let events = cgroup.join("memory.events.local");
+    fs::write(&events, "oom_kill 0\n").expect("the counter");
+    let runner = Arc::new(ScriptedRunner::new(vec![
+        ProcScript::stable_then_exit(
+            1000, 137
+        );
+        lives
+    ]));
+    let mut app = kernel_app("leak", "./leak", 16 << 20);
+    app.max_restarts = max_restarts;
+    // Every exit below ran past it, so only the OOM charge can park the sheep.
+    app.min_uptime = UpDuration::from_millis(100);
+    let (handle, started, _dir) = start_over(
+        Cgroups::Available {
+            base: base.path().to_path_buf(),
+        },
+        Arc::clone(&runner),
+        app,
+    )
+    .await;
+    started.expect("the start");
+
+    for life in 1..=lives {
+        // Written as soon as the life exists, a second before it exits, and
+        // after the baseline its spawn read.
+        while runner.spawn_count() < life {
+            let row = handle.list().await.remove(0);
+            if row.status == ProcStatus::Errored {
+                return row;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        if oom {
+            fs::write(&events, format!("oom_kill {life}\n")).expect("the counter");
+        }
+    }
+    handle.list().await.remove(0)
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_oom_kill_in_the_sheeps_cgroup_counts_against_max_restarts_even_after_a_long_run() {
+    let row = run_lives(true, 3, 6).await;
+
+    assert_eq!(row.status, ProcStatus::Errored, "a leak parks");
+    assert_eq!(row.restarts, 2, "after the budget of three lives");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_long_run_with_no_rise_in_the_counter_is_not_charged() {
+    let row = run_lives(false, 3, 6).await;
+
+    assert_ne!(
+        row.status,
+        ProcStatus::Errored,
+        "stable exits reset the budget"
+    );
+    assert!(row.restarts >= 5, "restarted {} times", row.restarts);
+}
+
+/// The memory cap a sheep's cgroup holds, as a real kernel keeps it.
+#[tokio::test]
+async fn a_kernel_enforced_sheep_gets_memory_max_and_a_live_change_rewrites_it() {
+    let Some(base) = delegated_base() else {
+        return;
+    };
+    let (events, _rx) = crate::bus::test_bus(64);
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let handle = SupervisorBuilder::new(TokioRunner::new(), test_paths(&dir), events)
+        .cgroups(Cgroups::Available { base: base.clone() })
+        .spawn();
+    let mut app = kernel_app("web", "/bin/sleep", 64 << 20);
+    app.args = vec!["30".to_string()];
+    let started = handle
+        .start(vec![normalize(app).expect("a config")])
+        .await
+        .expect("the start");
+    let cgroup = sheep_dir(&base, started[0].id, 0);
+
+    assert_eq!(read(&cgroup, "memory.max"), (64u64 << 20).to_string());
+
+    handle
+        .set_sheep_field("web", "max_memory", serde_json::json!("128M"))
+        .await
+        .expect("a live change");
+    assert_eq!(
+        read(&cgroup, "memory.max"),
+        (128u64 << 20).to_string(),
+        "the running sheep's cap followed the change"
+    );
+
+    handle
+        .set_sheep_field("web", "memory_enforce", serde_json::json!("poll"))
+        .await
+        .expect("back to polling");
+    assert_eq!(
+        read(&cgroup, "memory.max"),
+        "max",
+        "a sheep that left kernel enforcement is uncapped"
+    );
+
+    timeout(
+        DEADLINE,
+        handle.stop(ProcessSelector::Name("web".to_string())),
+    )
+    .await
+    .expect("the stop answers")
+    .expect("the stop");
+}
+
+/// A sheep that allocates well past a small `max_memory`, from a real kernel.
+#[tokio::test]
+async fn an_oom_inside_the_sheeps_own_cgroup_is_recorded_and_counts_against_max_restarts() {
+    let Some(base) = delegated_base() else {
+        return;
+    };
+    let (events, _rx) = crate::bus::test_bus(64);
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let handle = SupervisorBuilder::new(TokioRunner::new(), test_paths(&dir), events)
+        .cgroups(Cgroups::Available { base })
+        .spawn();
+    let mut app = kernel_app("leak", "/bin/sh", 32 << 20);
+    // A second of life before the leak, so the exit is "stable": only the OOM
+    // charge stops the restarts.
+    app.args = vec![
+        "-c".to_string(),
+        "/bin/sleep 1; x=$(/usr/bin/head -c 200000000 /dev/zero | /usr/bin/tr '\\0' a)".to_string(),
+    ];
+    app.max_restarts = 2;
+    app.min_uptime = UpDuration::from_millis(100);
+    handle
+        .start(vec![normalize(app).expect("a config")])
+        .await
+        .expect("the start");
+
+    let parked = timeout(DEADLINE, async {
+        loop {
+            let row = handle.list().await.remove(0);
+            if row.status == ProcStatus::Errored {
+                return row;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("a leak parks rather than looping");
+
+    assert_eq!(
+        parked.restarts, 1,
+        "one restart, then the budget of two ran out"
+    );
+    assert_eq!(
+        parked.last_exit.expect("an exit").signal,
+        Some(9),
+        "the kernel's kill"
     );
 }
