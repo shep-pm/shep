@@ -30,8 +30,9 @@ pub(super) struct Receipt<'a> {
     pub(super) row: &'a AvailableDog,
     /// The crate the binary comes from.
     pub(super) package: &'a str,
-    /// The exact version installed.
-    pub(super) version: &'a str,
+    /// The version or the ref and commit installed.
+    #[serde(flatten)]
+    pub(super) pinned: Pinned<'a>,
     /// How the binary got there.
     #[serde(flatten)]
     pub(super) installer: Installer<'a>,
@@ -43,6 +44,26 @@ pub(super) struct Receipt<'a> {
     pub(super) manifest: Option<&'a Manifest>,
     /// When the receipt was written, as UTC RFC 3339.
     pub(super) installed_at: String,
+}
+
+/// What was installed, written as `version`, or as `ref` and `commit`.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(super) enum Pinned<'a> {
+    /// The index's exact version.
+    Version {
+        /// The version.
+        version: &'a str,
+    },
+    /// A branch, tag or commit of the row's repository, which the index has
+    /// not reviewed.
+    Ref {
+        /// What the operator typed after `--ref`.
+        #[serde(rename = "ref")]
+        git_ref: &'a str,
+        /// The full commit cargo built.
+        commit: &'a str,
+    },
 }
 
 /// What put the binary on disk, written as `command` or `url` in the receipt.
