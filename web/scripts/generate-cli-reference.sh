@@ -30,7 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # `shep` on unix, `shep.exe` on Windows: checked in that order rather than
 # branching on `$OSTYPE`, since this runs under Git Bash and WSL too.
-BIN="$REPO_ROOT/target/release/shep"
+# SHEP_BIN names another build, for a target dir outside the checkout.
+BIN="${SHEP_BIN:-$REPO_ROOT/target/release/shep}"
 if [[ ! -x "$BIN" && -x "$BIN.exe" ]]; then
   BIN="$BIN.exe"
 fi
@@ -74,6 +75,9 @@ VERBS=(
   # so what is committed here changes only when the CLI surface itself does.
   echo "@@TOPLEVEL@@"
   shep --help
+  # The global flags' long text is on no verb's page, so it is here once.
+  echo "@@FLAGS@@"
+  shep help flags
   for v in "${VERBS[@]}"; do
     echo "@@VERB:$v@@"
     # shellcheck disable=SC2086 -- word-splitting is the point: a

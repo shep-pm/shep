@@ -48,12 +48,20 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
         std::env::var_os("TERM").as_deref(),
         std::env::var_os("COLORTERM").as_deref(),
     );
-    let mut command = Cli::command()
+    let colour = help_colour_choice(&argv, std::env::var("SHEP_STYLE").ok().as_deref());
+    // `shep help flags` is a topic beside `help <verb>`, which clap's own
+    // `help` cannot take, so it is answered before the parse.
+    if cli::flags_topic_asked(&argv) {
+        let topic = cli::flags_topic()
+            .styles(output::paint::help_styles(deep))
+            .color(colour);
+        // A closed stdout leaves nothing to report, as for `shep <dog> --help`.
+        let _ = topic.clone().print_long_help();
+        return ExitCode::Success.into();
+    }
+    let mut command = cli::with_global_footer(Cli::command())
         .styles(output::paint::help_styles(deep))
-        .color(help_colour_choice(
-            &argv,
-            std::env::var("SHEP_STYLE").ok().as_deref(),
-        ));
+        .color(colour);
     // Help colour is chosen above, ahead of the parse and `resolve_style`.
     let dogs = if adopted_help::top_level_help_asked(&argv)
         && let Some(paths) = adopted_help::paths_from_argv(&argv)

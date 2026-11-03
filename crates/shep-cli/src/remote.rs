@@ -91,6 +91,23 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
     }
 }
 
+/// The verbs [`host_scope`] sends to [`HostScope::Reaches`], by name.
+///
+/// Help names `--host` under these and no others. `enable` is here for its
+/// ordinary form; the hidden `--exec` one is refused.
+/// `every_verb_is_named_for_host_as_host_scope_classes_it` holds it to
+/// [`host_scope`].
+const HOST_VERBS: &[&str] = &[
+    "flock", "describe", "fold", "stop", "thatlldo", "restart", "reset", "reload", "delete",
+    "disable", "stock", "trigger", "signal", "whisper", "bleats", "lookout", "enable", "start",
+    "muster",
+];
+
+/// Whether the verb called `name` takes `--host`.
+pub(crate) fn takes_host(name: &str) -> bool {
+    HOST_VERBS.contains(&name)
+}
+
 /// The one refusal every [`HostScope::LocalOnly`] verb gets.
 ///
 /// Names no supported verb, so widening [`host_scope`] never edits it.
@@ -311,6 +328,54 @@ mod tests {
 
     /// Every argv of `reset`, which has no dog half and so reaches a host.
     const RESETTING: &[&[&str]] = &[&["reset", "web"], &["reset", "web", "api"]];
+
+    /// Fails when `HOST_VERBS` and `host_scope` classify a verb differently,
+    /// and when a verb's help names `--host` against that classification.
+    #[test]
+    fn every_verb_is_named_for_host_as_host_scope_classes_it() {
+        use crate::cli::with_global_footer;
+        let mut root = with_global_footer(Cli::command());
+        root.build();
+        for sample in SAMPLES {
+            let reaches = host_scope(&parsed_with_host(sample).command) == HostScope::Reaches;
+            assert_eq!(takes_host(sample[0]), reaches, "{sample:?}");
+            let help = root
+                .find_subcommand(sample[0])
+                .expect("a sample names a verb")
+                .clone()
+                .render_help()
+                .to_string();
+            let footer = help
+                .lines()
+                .find(|line| line.starts_with("Global flags:"))
+                .unwrap_or_else(|| panic!("`shep {}` has no footer:\n{help}", sample[0]));
+            assert_eq!(footer.contains("--host"), reaches, "{sample:?}: {footer}");
+        }
+    }
+
+    /// Every global flag is still valid after every verb, whatever its help
+    /// shows.
+    #[test]
+    fn every_global_flag_still_parses_after_every_verb() {
+        for sample in SAMPLES {
+            for flags in [
+                &["--format", "json"][..],
+                &["-q"],
+                &["--quiet"],
+                &["--style", "bare"],
+                &["--home", "/tmp/shep"],
+                &["--host", "amp2"],
+            ] {
+                let argv: Vec<&str> = ["shep"]
+                    .into_iter()
+                    .chain(sample.iter().copied())
+                    .chain(flags.iter().copied())
+                    .collect();
+                Cli::try_parse_from(&argv)
+                    .unwrap_or_else(|err| panic!("{argv:?} must parse: {err}"));
+            }
+        }
+    }
 
     #[test]
     fn reset_reaches_a_host() {

@@ -74,6 +74,14 @@ Help             welcome init help completions style
 Aliases          flock: list, ls   bleats: logs   lookout: dash   stock: scale   whisper: sendline
 Upgrading        cargo install shep replaces the binary, not the running shepherd: shep daemon reload
 
+Global flags     valid on every verb; shep help flags has the long text
+  --format <FORMAT>  table or json
+  -q, --quiet        suppress non-essential output
+  --style <STYLE>    full, plain or bare
+  --host <DEST>      reach another host's shepherd over ssh
+  --home <HOME>      talk to a different shepherd
+
+Options
 {options}{after-help}";
 
 /// `template` with the palette applied to its hand-written listing, which
@@ -138,6 +146,7 @@ enum Block {
     Prose,
     Examples,
     Groups,
+    Flags,
 }
 
 fn dress(template: &str, dress: &Dress) -> String {
@@ -186,6 +195,26 @@ fn dress(template: &str, dress: &Dress) -> String {
             }
             (Block::Prose, _) if line.starts_with("Upgrading  ") => {
                 dress.labelled(line, str::to_string)
+            }
+            (Block::Prose, "Options") => dress.paint(dress.heading, line),
+            (Block::Prose, _) if line.starts_with("Global flags  ") => {
+                block = Block::Flags;
+                dress.labelled(line, str::to_string)
+            }
+            (Block::Flags, "") => {
+                block = Block::Prose;
+                String::new()
+            }
+            // `-q, --quiet` and `--home <HOME>` end at the run of two spaces.
+            (Block::Flags, _) => {
+                let flag = line.trim_start();
+                let indent = &line[..line.len() - flag.len()];
+                match flag.split_once("  ") {
+                    Some((flag, description)) => {
+                        format!("{indent}{}  {description}", dress.paint(dress.verb, flag))
+                    }
+                    None => line.to_string(),
+                }
             }
             _ => line.to_string(),
         })
