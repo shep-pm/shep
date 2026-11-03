@@ -259,6 +259,10 @@ struct Actor<R: ProcessRunner> {
     /// its drainee still serves from. `None` is no set at all. See
     /// [`Actor::restore_listeners`].
     listeners_before: BTreeMap<String, Option<Arc<ListenSockets>>>,
+    /// The cgroup every sheep's child joins a leaf of, from the shepherd's
+    /// delegated subtree. `None` gives no sheep a cgroup: on every platform
+    /// but Linux, and on a Linux host that offers none.
+    cgroup_base: Option<PathBuf>,
 }
 
 #[cfg(test)]

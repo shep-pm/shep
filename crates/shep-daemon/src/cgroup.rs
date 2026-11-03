@@ -4,11 +4,18 @@
 //! write, it moves the shepherd into a `shepherd` leaf and enables the
 //! controllers a sheep's limits need on the parent, which becomes the
 //! [`Cgroups::Available`] base. Every other outcome names its [`Reason`].
+//!
+//! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
+//! which [`join_on_exec`] creates and the child joins before its exec.
+//! [`remove_if_empty`] and [`remove_stale`] drop it after the sheep or a crash.
 
 use core::fmt;
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use crate::runner::RunnerError;
 
 /// The cgroup v2 mount point every unified hierarchy is read from.
 const MOUNT: &str = "/sys/fs/cgroup";
@@ -155,6 +162,117 @@ fn classify(err: &io::Error) -> Reason {
     match err.kind() {
         io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem => Reason::NotDelegated,
         kind => Reason::Setup(kind),
+    }
+}
+
+/// Where the sheep with `id` and `instance` lives under `base`. The name is a
+/// function of both, so a successor after `shep daemon reload` finds it again.
+pub(crate) fn sheep_dir(base: &Path, id: u32, instance: u32) -> PathBuf {
+    base.join(format!("sheep-{id}-{instance}"))
+}
+
+/// Whether `name` is one [`sheep_dir`] makes.
+fn is_sheep_dir(name: &OsStr) -> bool {
+    name.to_str()
+        .and_then(|name| name.strip_prefix("sheep-"))
+        .and_then(|rest| rest.split_once('-'))
+        .is_some_and(|(id, instance)| id.parse::<u32>().is_ok() && instance.parse::<u32>().is_ok())
+}
+
+/// Creates the cgroup at `dir` and makes `command`'s child join it before it
+/// execs. A kill of any process in it takes the whole group, through
+/// `memory.oom.group`.
+///
+/// `dir` may already exist, as after a restart that reuses its name, but not
+/// with a process in it: a sheep that outlived a crashed shepherd keeps its
+/// cgroup, and a new sheep with the same id must not share it.
+///
+/// # Errors
+/// What creating the directory, writing `memory.oom.group` or opening
+/// `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
+/// already holds a process. A directory this call made is removed again.
+pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> io::Result<()> {
+    let created = match fs::create_dir(dir) {
+        Ok(()) => true,
+        Err(err) if err.kind() == io::ErrorKind::AlreadyExists => false,
+        Err(err) => return Err(err),
+    };
+    let procs = if is_occupied(dir) {
+        Err(io::Error::from(io::ErrorKind::ResourceBusy))
+    } else {
+        fs::write(dir.join("memory.oom.group"), "1").and_then(|()| {
+            fs::OpenOptions::new()
+                .write(true)
+                .open(dir.join("cgroup.procs"))
+        })
+    }
+    .inspect_err(|_| {
+        if created {
+            let _ = fs::remove_dir(dir);
+        }
+    })?;
+    crate::sys::join_cgroup_on_exec(command, procs);
+    Ok(())
+}
+
+/// Whether `dir`'s `cgroup.procs` lists a process. A listing is `<pid>\n` per
+/// process, so its first byte is a digit: one byte tells, and an endless file
+/// such as `/dev/full` is neither read to its end nor taken for a listing.
+fn is_occupied(dir: &Path) -> bool {
+    let mut first = [0u8; 1];
+    fs::File::open(dir.join("cgroup.procs"))
+        .and_then(|mut procs| io::Read::read(&mut procs, &mut first))
+        .is_ok_and(|read| read == 1 && first[0].is_ascii_digit())
+}
+
+/// The error for a spawn that failed after [`join_on_exec`], which may be the
+/// join itself: the child reports both the same way. Drops the cgroup.
+pub(crate) fn spawn_failed(name: &str, dir: &Path, error: &io::Error) -> RunnerError {
+    let _ = remove_if_empty(dir);
+    RunnerError::SpawnFailed(format!(
+        "{name} could not start in cgroup {}: {error}",
+        dir.display()
+    ))
+}
+
+/// Removes `dir` unless a process is still in it, which the kernel would
+/// refuse anyway. A directory already gone is removed.
+///
+/// # Errors
+/// What `cgroup.procs` or the removal reported, other than the directory
+/// being absent.
+pub(crate) fn remove_if_empty(dir: &Path) -> io::Result<()> {
+    if is_occupied(dir) {
+        return Ok(());
+    }
+    match fs::remove_dir(dir) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
+        _ => Ok(()),
+    }
+}
+
+/// Drops the cgroup of a spawn that failed before the child existed, which no
+/// exit will ever clean up. `None` is a spawn with no cgroup.
+pub(crate) fn release(dir: Option<&Path>) {
+    if let Some(dir) = dir {
+        let _ = remove_if_empty(dir);
+    }
+}
+
+/// Removes every empty `sheep-<id>-<instance>` cgroup under `base`, which a
+/// shepherd that crashed left behind. One with a process in it stays, so a
+/// sheep that outlived the crash or crossed a reload keeps its cgroup.
+pub(crate) fn remove_stale(base: &Path) {
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !is_sheep_dir(&entry.file_name()) {
+            continue;
+        }
+        if let Err(error) = remove_if_empty(&entry.path()) {
+            tracing::warn!(%error, cgroup = %entry.path().display(), "stale sheep cgroup not removed");
+        }
     }
 }
 

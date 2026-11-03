@@ -158,6 +158,7 @@ fn test_actor(
         disabled: BTreeSet::new(),
         listeners: BTreeMap::new(),
         listeners_before: BTreeMap::new(),
+        cgroup_base: None,
     }
 }
 

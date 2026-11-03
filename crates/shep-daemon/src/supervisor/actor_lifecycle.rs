@@ -134,6 +134,7 @@ impl<R: ProcessRunner> Actor<R> {
                 Ok(SpawnSpec {
                     dog_link,
                     listen: self.listen_for(app.config())?,
+                    cgroup: self.cgroup_for(id, instance),
                     ..spec
                 })
             });

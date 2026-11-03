@@ -248,6 +248,12 @@ pub struct SpawnSpec {
     /// the sockets outlive any one child. Unix only: `normalize` refuses
     /// `listen` on Windows.
     pub listen: Option<std::sync::Arc<crate::listen::ListenSockets>>,
+    /// The cgroup this sheep's child joins before it execs, so everything it
+    /// forks is accounted there. The runner creates it.
+    ///
+    /// `None` on a host with no delegated cgroup v2 subtree, and on every
+    /// platform but Linux, where the runner ignores it.
+    pub cgroup: Option<PathBuf>,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,
