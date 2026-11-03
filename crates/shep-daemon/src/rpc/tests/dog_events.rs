@@ -208,6 +208,29 @@ async fn a_grant_for_one_dog_does_not_cover_a_dog_sharing_its_prefix() {
     assert!(refused.is_err(), "events:dog.otel covered dog.otel2");
 }
 
+/// `events:dog.a.b` is a plain prefix, so a dog named `a.b` would let it reach
+/// `dog.a.b-2.*`, the topics of a dog named `a.b-2`. A dotted name publishes
+/// nothing, so every topic names its dog in the first segment.
+#[tokio::test(start_paused = true)]
+async fn a_dog_with_a_dotted_name_cannot_publish() {
+    let h = harness(vec![ProcScript::never_exits()]);
+    h.ctx
+        .known_dogs
+        .replace("a.b", Some(Grants::default()), vec!["exported".to_string()]);
+    let mut rx = h.ctx.events.subscribe();
+
+    let reply = reply_of(sent_by(&h, Some("a.b"), publish("exported", serde_json::json!(1))).await);
+
+    let err = reply.result.expect_err("a dotted name");
+    assert_eq!(err.code, RpcErrorCode::Forbidden);
+    assert!(err.message.contains("`a.b`"), "{}", err.message);
+    assert!(
+        rx.try_recv()
+            .map_or(true, |e| !matches!(e.to_event(), BusEvent::Dog { .. })),
+        "a dotted name reached the bus"
+    );
+}
+
 /// The declared kinds are the recorded ones: an `EnableDog` sent on a dog's
 /// own connection carries a list the shepherd replaces, as it does grants.
 #[tokio::test(start_paused = true)]

@@ -14,7 +14,8 @@ use super::gate::Link;
 ///
 /// # Errors
 /// [`RpcErrorCode::Forbidden`] when `link` is the control socket or a launch
-/// link, or when the dog did not declare `kind`.
+/// link, when the dog's name has a dot in it, or when the dog did not declare
+/// `kind`.
 pub(super) fn publish_dog_event(
     link: Option<Link<'_>>,
     kind: &str,
@@ -26,6 +27,15 @@ pub(super) fn publish_dog_event(
             "only a dog's own connection publishes events: this connection is not one",
         ));
     };
+    // `events:dog.a.b` is a plain prefix, so a dog named `a.b` would put its
+    // topics inside `events:dog.a.b-2`'s reach too. With no dot in the name,
+    // the first segment after `dog.` is always the dog.
+    if dog.contains('.') {
+        return Err(forbidden(&format!(
+            "dog `{dog}` has a dot in its name, so it may not publish events: its topics \
+             would read as another dog's"
+        )));
+    }
     if !ctx.known_dogs.declares(dog, kind) {
         return Err(forbidden(&format!(
             "dog `{dog}` did not declare the event kind `{kind}` in its manifest, so it may not publish it"
