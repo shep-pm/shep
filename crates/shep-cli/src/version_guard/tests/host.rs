@@ -257,6 +257,30 @@ async fn a_host_ahead_of_this_build_is_one_line_naming_the_upgrade() {
     assert!(!notice.contains("ssh amp2"), "{notice}");
 }
 
+/// A Homebrew user is not told `cargo install`: the fix for a host ahead runs
+/// here, through whatever installed this shep.
+#[test]
+fn a_host_ahead_is_told_the_upgrade_of_the_channel_this_shep_came_from() {
+    use crate::install_channel::Channel;
+
+    for (channel, command) in [
+        (Channel::Homebrew, "brew upgrade shep"),
+        (Channel::Cargo, "cargo install --locked shep"),
+        (Channel::Scoop, "scoop update shep"),
+        (Channel::Winget, "winget upgrade shep-pm.shep"),
+        (Channel::Chocolatey, "choco upgrade shep"),
+        (Channel::Deb, "cargo install shep"),
+        (Channel::Archive, "cargo install shep"),
+    ] {
+        assert_eq!(protocol_fix(Some("amp2"), true, channel), command);
+    }
+    assert_eq!(
+        protocol_fix(Some("amp2"), false, Channel::Homebrew),
+        "ssh amp2 shep daemon reload",
+        "a host behind is fixed there, whatever installed this shep"
+    );
+}
+
 /// The roll is this machine's `flock.json`. A dead host that printed it
 /// would list the wrong flock under the right exit code.
 #[tokio::test]
