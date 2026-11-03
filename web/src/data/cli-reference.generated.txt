@@ -14,7 +14,7 @@ See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs install adopt whistle
+Dogs and agents  dogs install upgrade adopt whistle
 Foreground runs  runtime dev
 Coming from pm2  import
 Help             welcome init help completions style
@@ -791,6 +791,44 @@ Options:
           Build the dog from this branch, tag or commit of its own repository instead of the version
           the index approves. A 7 to 40 character hex string is a commit; anything else is tried as
           a tag, then a branch. The index has not reviewed it, and the grant question says so
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
+@@VERB:upgrade@@
+Upgrade an installed dog to what its receipt follows, with a way back.
+
+An index install moves to the index's version and a ref install rebuilds its ref at the newest
+commit. `--ref` switches ref, `--release` returns to the index's version and `--rollback` puts back
+the install the last upgrade replaced. Each upgrade restarts the dog, and a permission the new build
+declares waits for review.
+
+Usage: shep upgrade [OPTIONS] [DOG]
+
+Arguments:
+  [DOG]
+          The installed dog to upgrade. With none and no `--dogs`, `shep upgrade` would upgrade shep
+          itself, which it does not do yet
+
+Options:
+      --dogs
+          Upgrade every installed dog in turn. A dog adopted from a path has no receipt and is
+          skipped, with a line saying so
+
+      --ref <REF>
+          Switch to this branch, tag or commit of the dog's own repository, which the index has not
+          reviewed. Needs a dog name
+
+      --release
+          Return a dog installed from a ref to the version the index approves
+
+      --rollback
+          Put back the install the last upgrade replaced, and its receipt. The upgrade it undoes
+          becomes the one to roll back to
+
+      --refresh
+          Fetch the community index even when the copy cached in the last day is still fresh
 
   -h, --help
           Print help (see a summary with '-h')

@@ -344,8 +344,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 4570 on #1451 for the SOURCE and VERSION columns and for what
   // `shep delete` removes: an operator has to know what each SOURCE word
   // means, that the arrow reads a cache, and that an adopted dog's file is
-  // never touched. The ceiling sits about 4 words above the page.
-  dogs: 4660,
+  // never touched.
+  //
+  // Raised again for "Upgrading a dog": what an upgrade follows, the four
+  // flags, and which directory a rollback can still reach.
+  dogs: 4900,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.

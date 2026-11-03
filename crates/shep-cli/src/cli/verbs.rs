@@ -11,7 +11,7 @@ use super::{
     DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
     ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs,
     SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs,
-    TriggerArgs, UnsetArgs, WhisperArgs,
+    TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -254,6 +254,14 @@ pub enum Commands {
     /// the approved version with `cargo install --locked`. Then it asks
     /// `shep adopt`'s grant question. Any other row exits 1.
     Install(InstallArgs),
+    /// Upgrade an installed dog to what its receipt follows, with a way back.
+    ///
+    /// An index install moves to the index's version and a ref install
+    /// rebuilds its ref at the newest commit. `--ref` switches ref,
+    /// `--release` returns to the index's version and `--rollback` puts back
+    /// the install the last upgrade replaced. Each upgrade restarts the dog,
+    /// and a permission the new build declares waits for review.
+    Upgrade(UpgradeArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
     /// and starts it now if a shepherd is running.
@@ -767,6 +775,7 @@ mod tests {
             "enable",
             "disable",
             "install",
+            "upgrade",
             "adopt",
             "kv",
             "get",

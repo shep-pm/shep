@@ -144,7 +144,7 @@ fn the_dogs_join_the_dogs_group_of_the_rendered_help() {
     assert_eq!(
         help.lines().skip(group).take(3).collect::<Vec<_>>(),
         vec![
-            "Dogs and agents  dogs install adopt whistle",
+            "Dogs and agents  dogs install upgrade adopt whistle",
             "                 log-rotate",
             "                 otel        exports traces to an OTLP collector",
         ],

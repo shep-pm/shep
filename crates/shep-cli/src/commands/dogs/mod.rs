@@ -27,6 +27,8 @@ mod barks;
 mod consent;
 mod depends;
 mod disable;
+mod dog_rollback;
+mod dog_upgrade;
 mod enable;
 mod entry_drift;
 mod grant;
@@ -50,6 +52,8 @@ mod adopt_declined_tests;
 mod consent_tests;
 #[cfg(all(test, unix))]
 mod defaults_adoption_tests;
+#[cfg(all(test, unix))]
+mod dog_upgrade_tests;
 #[cfg(all(test, unix))]
 mod emit_dog_action_tests;
 #[cfg(test)]
@@ -84,6 +88,7 @@ mod upgrade_tests;
 pub use adopt::adopt;
 pub use barks::barks;
 pub use disable::disable;
+pub use dog_upgrade::upgrade;
 pub use enable::enable;
 #[cfg(test)]
 pub(crate) use entry_drift::test_support as entry_drift_support;
