@@ -572,7 +572,7 @@ fn reply_wire_snapshots() {
             result: Ok(Response::Reset(vec![sample_info()])),
         },
     ];
-    insta::assert_json_snapshot!("reply_wire_v16", replies);
+    insta::assert_json_snapshot!("reply_wire_v17", replies);
 }
 
 // `SheepFieldSet::warning` is additive in three parts. `None` stays off

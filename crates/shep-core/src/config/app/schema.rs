@@ -3,7 +3,7 @@ use super::env_value::deserialize_env;
 use super::probe::ProbeConfig;
 use std::collections::BTreeMap;
 // use schemars::generate
-use crate::config::{LevelRule, MemoryEnforce};
+use crate::config::{CpuCores, LevelRule, MemoryEnforce};
 use crate::values::{MemSize, UpDuration};
 use serde::{Deserialize, Serialize};
 
@@ -264,6 +264,19 @@ pub struct AppConfig {
         "neighbours": [{"field": "max_memory", "note": "the limit it enforces"}]
     })))]
     pub memory_enforce: MemoryEnforce,
+    /// CPU quota in cores: `1.5` caps the sheep and its lambs at one and a half cores
+    ///
+    /// A quota, not affinity, like `docker run --cpus`: the tree is throttled,
+    /// never killed. Needs Linux and a delegated cgroup v2 subtree.
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": 1.5,
+        "group": "restart",
+        "blurb": "Throttle the app and its children to this many cores' worth of CPU time",
+        "accepts": ["a positive number of cores, such as 0.5 or 2.5"],
+        "refuses": ["zero or a negative number", "any value on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
+    })))]
+    pub max_cpu_cores: Option<CpuCores>,
     /// Watch files and restart on change
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",

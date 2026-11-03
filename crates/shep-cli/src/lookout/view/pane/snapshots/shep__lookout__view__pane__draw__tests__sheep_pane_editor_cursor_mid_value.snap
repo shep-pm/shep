@@ -9,13 +9,13 @@ expression: "text.join(\"\\n\")"
    autorestart                true                                 FOCUSED  max_restarts  integer
    autostart                  true                                  How many unstable exits in a row before shep gives
    exp_backoff_restart_delay  100ms                                 up
-   max_memory                 (unset)                             
-> *max_restarts               3▏2                                   now     32
-   memory_enforce             poll                                  default 16
-   min_uptime                 1s                                    example (none)
-   restart_delay              (unset)                             
-   stop_exit_codes            []                                    ● now  the running sheep picks it up without stoppi…
-                                                                                 pick the timing when you close the pane
+   max_cpu_cores              (unset)                             
+   max_memory                 (unset)                               now     32
+> *max_restarts               3▏2                                   default 16
+   memory_enforce             poll                                  example (none)
+   min_uptime                 1s                                  
+   restart_delay              (unset)                               ● now  the running sheep picks it up without stoppi…
+   stop_exit_codes            []                                                 pick the timing when you close the pane
                                                                   
                                                                     ────────────────────────────────────────────────────
                                                                     VALIDATION
