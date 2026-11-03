@@ -549,8 +549,18 @@ jobs:
   # with `Delegate=yes` gives. It moves the test process, so it is off unless
   # `SHEP_TEST_CGROUPS` is set; elsewhere it skips and still reports passed.
   #
-  # Built outside the scope, run inside it. The grep floor is for both ways
-  # this can verify nothing: a filter that matches nothing, and a skip.
+  # Built outside the scope, and the test binary run inside it directly: under
+  # `cargo test`, cargo stays in the scope's cgroup as the binary's parent,
+  # and the kernel refuses controllers on a cgroup that holds a process.
+  #
+  # The scope is made by root and `--uid` only drops privileges afterwards. A
+  # scope unit has no `User=`, so systemd does not chown its cgroup the way it
+  # does a service's. The wrapper chowns the cgroup and the two files a
+  # non-root user writes, then drops to the runner user as the scope's only
+  # process.
+  #
+  # The grep floor is for both ways this can verify nothing: a filter that
+  # matches nothing, and a skip.
   cgroups:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
@@ -570,9 +580,14 @@ jobs:
       - shell: bash
         run: |
           sudo --preserve-env=PATH,HOME,RUSTUP_HOME,CARGO_HOME \
-            systemd-run --scope --quiet -p Delegate=yes --uid="$(id -u)" \
-            env SHEP_TEST_CGROUPS=1 \
-            "$(cat test-binary.path)" --nocapture --exact \
+            systemd-run --scope --quiet -p Delegate=yes \
+            bash -euc '
+              dir=/sys/fs/cgroup$(sed -n "s/^0:://p" /proc/self/cgroup)
+              chown "$0:$1" "$dir" "$dir/cgroup.procs" "$dir/cgroup.subtree_control"
+              ls -ld "$dir"
+              exec setpriv --reuid "$0" --regid "$1" --clear-groups \
+                env SHEP_TEST_CGROUPS=1 "$2" --nocapture --exact "$3"
+            ' "$(id -u)" "$(id -g)" "$(cat test-binary.path)" \
             cgroup::tests::a_real_delegated_subtree_moves_the_shepherd_into_its_leaf \
             | tee cgroups.out
           grep -q 'test result: ok. 1 passed' cgroups.out
