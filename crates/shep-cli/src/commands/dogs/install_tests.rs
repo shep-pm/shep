@@ -253,7 +253,35 @@ async fn a_publisher_other_than_the_rows_repo_refuses_before_cargo_runs() {
 }
 
 #[tokio::test]
-async fn a_token_publish_adds_one_line_to_the_prompt_and_still_installs() {
+async fn a_token_publish_puts_one_line_directly_above_the_grant_question() {
+    let fixture = Fixture::new();
+    let reach = fixture.reach(Published::ByToken);
+
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &args(false, false),
+        &reach,
+        typing(Some("n\n")),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(fixture.argv().exists());
+    let lines: Vec<_> = err.lines().collect();
+    let question = lines
+        .iter()
+        .position(|line| line.contains("[y/N]"))
+        .unwrap_or_else(|| panic!("no question was asked:\n{err}"));
+    assert!(
+        lines[question - 1].contains("API token"),
+        "the line must sit right above the question:\n{err}"
+    );
+    assert_eq!(err.matches("API token").count(), 1, "{err}");
+}
+
+#[tokio::test]
+async fn a_token_publish_is_still_said_once_when_yes_asks_nothing() {
     let fixture = Fixture::new();
     let reach = fixture.reach(Published::ByToken);
 
@@ -267,12 +295,8 @@ async fn a_token_publish_adds_one_line_to_the_prompt_and_still_installs() {
     .await;
 
     assert_eq!(code, ExitCode::Success, "{err}");
-    let lines: Vec<_> = err
-        .lines()
-        .filter(|line| line.contains("API token"))
-        .collect();
-    assert_eq!(lines.len(), 1, "{err}");
-    assert!(fixture.argv().exists());
+    assert_eq!(err.matches("API token").count(), 1, "{err}");
+    assert!(!err.contains("[y/N]"), "{err}");
 }
 
 #[tokio::test]

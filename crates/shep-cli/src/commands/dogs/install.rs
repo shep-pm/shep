@@ -40,10 +40,6 @@ const LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 /// The cap on crates.io's answer for one version.
 const LOOKUP_LIMIT: usize = 1 << 20;
 
-/// [`emit_notice`](crate::output::emit_notice) code for a version crates.io
-/// says was published with a token rather than from a repository's CI.
-const TOKEN_PUBLISH_NOTICE: &str = "dog_token_publish";
-
 /// What `install` reaches outside the index and `shep.toml`, so a test can
 /// stand a stub in for each.
 #[derive(Debug)]
@@ -384,16 +380,14 @@ pub(super) async fn install_dog(
         );
     }
 
-    if token_publish {
-        streams.aside(
-            TOKEN_PUBLISH_NOTICE,
-            &format!(
-                "crates.io lists {package} {version} as published with an API token, not from \
-                 {}'s CI, so the build is not tied to that repository",
-                dog.repo
-            ),
-        );
-    }
+    // One line at the end of the grant listing, above the question.
+    let note = token_publish.then(|| {
+        format!(
+            "crates.io lists {package} {version} as published with an API token, not from \
+             {}'s CI, so the build is not tied to that repository",
+            dog.repo
+        )
+    });
     let adopting = AdoptArgs {
         path: binary,
         name: Some(name.to_owned()),
@@ -403,7 +397,7 @@ pub(super) async fn install_dog(
         verb: "install",
         enable: !args.no_enable,
     };
-    adopt_with(streams, paths, &adopting, input, flow).await
+    adopt_with(streams, paths, &adopting, input, flow, note.as_deref()).await
 }
 
 /// What crates.io says about who published one version.

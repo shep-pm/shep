@@ -69,7 +69,7 @@ pub(super) async fn adopt_asking(
     args: &AdoptArgs,
     input: &mut Input,
 ) -> ExitCode {
-    adopt_with(streams, paths, args, input, Flow::ADOPT).await
+    adopt_with(streams, paths, args, input, Flow::ADOPT, None).await
 }
 
 /// [`adopt_asking`], reporting as `flow.verb` and enabling only if
@@ -80,6 +80,7 @@ pub(super) async fn adopt_with(
     args: &AdoptArgs,
     input: &mut Input,
     flow: Flow,
+    note: Option<&str>,
 ) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
@@ -120,7 +121,8 @@ pub(super) async fn adopt_with(
         Ok(reviewed) => reviewed,
         Err(refusal) => return refusal.report(streams, &name, "adopted"),
     };
-    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, args.yes, input) {
+    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, note, args.yes, input)
+    {
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
@@ -292,6 +294,7 @@ fn ask_before_adopting(
     paths: &ShepPaths,
     name: &str,
     reviewed: &Review,
+    note: Option<&str>,
     yes: bool,
     input: &mut Input,
 ) -> Result<Option<Verdict>, ExitCode> {
@@ -304,7 +307,7 @@ fn ask_before_adopting(
     {
         return Ok(None);
     }
-    consent_from(streams, name, "adopt", reviewed, yes, input).map(Some)
+    consent_from(streams, name, "adopt", reviewed, note, yes, input).map(Some)
 }
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches
