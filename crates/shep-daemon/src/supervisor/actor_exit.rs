@@ -291,6 +291,37 @@ impl<R: ProcessRunner> Actor<R> {
         false
     }
 
+    /// Whether the kernel's OOM killer killed inside the cgroup of the sheep
+    /// `id` since it spawned, which a kernel-enforced sheep's exit is charged
+    /// for. Read before [`Self::remove_cgroup`], which takes the counter with it.
+    ///
+    /// A rise in the cgroup's own `oom_kill` count over the life of the process
+    /// is the whole test. It cannot tell the root's death from a lamb's, and
+    /// a rise with an exit that looks clean is still taken: the cost of a wrong
+    /// guess is a leak that restarts for ever, not a restart too few.
+    fn take_oom(&mut self, id: u32) -> bool {
+        let Some(baseline) = self.oom_baselines.remove(&id) else {
+            return false;
+        };
+        #[cfg(target_os = "linux")]
+        if let Some(slot) = self.sheep.get(&id)
+            && let Some(dir) = self.cgroup_for(id, slot.entry.instance)
+        {
+            let kills = crate::cgroup::oom_kills(&dir);
+            if kills > baseline {
+                tracing::warn!(
+                    id,
+                    name = slot.entry.spec.config().name,
+                    kills = kills - baseline,
+                    "killed by the kernel for exceeding its memory.max"
+                );
+                return true;
+            }
+        }
+        let _ = baseline;
+        false
+    }
+
     /// Removes the cgroup of the sheep `id`, whose process and lambs are gone.
     /// One that still holds a process stays, for the next boot to find.
     #[cfg(target_os = "linux")]
@@ -308,6 +339,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// deferred reply waiting on this id. Returns `true` iff this exit just
     /// completed a `Shutdown`'s aggregation (the actor loop should break).
     pub(super) fn handle_exited(&mut self, id: u32, outcome: ExitOutcome) -> bool {
+        let oom_killed = self.take_oom(id);
         #[cfg(target_os = "linux")]
         self.remove_cgroup(id);
         let Some(slot) = self.sheep.get_mut(&id) else {
@@ -472,6 +504,7 @@ impl<R: ProcessRunner> Actor<R> {
                 uptime,
                 outcome,
                 kind.is_some(),
+                oom_killed,
             )
         };
 

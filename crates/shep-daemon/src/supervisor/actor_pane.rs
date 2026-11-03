@@ -535,7 +535,7 @@ impl<R: ProcessRunner> Actor<R> {
         // at the next spawn, the same line `apply_one` runs for the same
         // set of fields.
         if !park_all && group == ApplyGroup::Live && EXTRAS_FIELDS.contains(&key) {
-            self.rearm_name(name);
+            self.apply_extras_change(name);
         }
 
         // `reaches_running` owns the `autostart`/`depends_on` carve-out now,

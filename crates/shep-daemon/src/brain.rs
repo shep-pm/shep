@@ -44,12 +44,17 @@ pub enum Decision {
 
 /// Decides whether to restart, checking in order: manual stop, a sandbox
 /// refusal, a `stop_exit_codes` match, `autorestart`, then the restart budget.
+///
+/// `oom_killed` is the kernel's OOM killer having killed inside the sheep's
+/// cgroup. It charges the budget whatever the uptime, so a leak that runs past
+/// `min_uptime` before each kill still parks.
 pub fn decide_on_exit(
     app: &AppConfig,
     budget: &mut RestartBudget,
     uptime: Duration,
     exit: ExitOutcome,
     manual_stop: bool,
+    oom_killed: bool,
 ) -> Decision {
     if manual_stop {
         return Decision::CleanStop;
@@ -69,7 +74,11 @@ pub fn decide_on_exit(
         return Decision::CleanStop;
     }
 
-    let _stability = budget.note_exit(uptime, app.min_uptime.as_duration());
+    if oom_killed {
+        budget.note_failed_start();
+    } else {
+        let _stability = budget.note_exit(uptime, app.min_uptime.as_duration());
+    }
     if budget.exhausted(app.max_restarts) {
         return Decision::Errored;
     }
@@ -90,7 +99,14 @@ mod tests {
             code: Some(1),
             signal: None,
         };
-        let d = decide_on_exit(&app, &mut budget, Duration::from_millis(100), exit, true);
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_millis(100),
+            exit,
+            true,
+            false,
+        );
         assert!(matches!(d, Decision::CleanStop));
     }
 
@@ -103,7 +119,14 @@ mod tests {
             code: Some(42),
             signal: None,
         };
-        let d = decide_on_exit(&app, &mut budget, Duration::from_secs(1), exit, false);
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit,
+            false,
+            false,
+        );
         assert!(matches!(d, Decision::CleanStop));
     }
 
@@ -116,7 +139,14 @@ mod tests {
             code: None,
             signal: Some(15),
         };
-        let d = decide_on_exit(&app, &mut budget, Duration::from_millis(100), exit, false);
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_millis(100),
+            exit,
+            false,
+            false,
+        );
         assert!(matches!(d, Decision::Restart { .. }));
     }
 
@@ -158,6 +188,7 @@ mod tests {
             Duration::from_millis(100),
             exit_with(125),
             false,
+            false,
         );
         assert_eq!(d, Decision::SandboxRefused);
     }
@@ -173,6 +204,7 @@ mod tests {
             &mut budget,
             Duration::from_secs(1),
             exit_with(125),
+            false,
             false,
         );
         assert_eq!(d, Decision::SandboxRefused);
@@ -190,6 +222,7 @@ mod tests {
             Duration::from_secs(1),
             exit_with(125),
             false,
+            false,
         );
         assert_eq!(d, Decision::SandboxRefused);
     }
@@ -204,6 +237,7 @@ mod tests {
             &mut budget,
             Duration::from_millis(100),
             exit_with(125),
+            false,
             false,
         );
         assert_eq!(budget.unstable_count(), 0);
@@ -220,6 +254,7 @@ mod tests {
             Duration::from_secs(1),
             exit_with(1),
             false,
+            false,
         );
         assert!(matches!(d, Decision::Restart { .. }));
     }
@@ -235,6 +270,7 @@ mod tests {
             Duration::from_secs(1),
             exit_with(125),
             true,
+            false,
         );
         assert_eq!(d, Decision::CleanStop);
     }
@@ -248,6 +284,7 @@ mod tests {
             &mut budget,
             Duration::from_secs(1),
             exit_with(125),
+            false,
             false,
         );
         assert!(matches!(d, Decision::Restart { .. }));
@@ -264,6 +301,7 @@ mod tests {
             Duration::from_secs(1),
             exit_with(125),
             false,
+            false,
         );
         assert_eq!(d, Decision::CleanStop);
     }
@@ -277,7 +315,14 @@ mod tests {
             code: Some(1),
             signal: None,
         };
-        let d = decide_on_exit(&app, &mut budget, Duration::from_secs(1), exit, false);
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit,
+            false,
+            false,
+        );
         assert!(matches!(d, Decision::CleanStop));
     }
 
@@ -293,7 +338,14 @@ mod tests {
                 code: Some(1),
                 signal: None,
             };
-            let d = decide_on_exit(&app, &mut budget, Duration::from_millis(100), exit, false);
+            let d = decide_on_exit(
+                &app,
+                &mut budget,
+                Duration::from_millis(100),
+                exit,
+                false,
+                false,
+            );
             if budget.unstable_count() >= 16 {
                 assert!(matches!(d, Decision::Errored));
                 return;
@@ -312,7 +364,14 @@ mod tests {
             signal: None,
         };
         // Uptime >= min_uptime means stable exit
-        let d = decide_on_exit(&app, &mut budget, Duration::from_secs(1), exit, false);
+        let d = decide_on_exit(
+            &app,
+            &mut budget,
+            Duration::from_secs(1),
+            exit,
+            false,
+            false,
+        );
         assert!(matches!(d, Decision::Restart { delay: None }));
     }
 
@@ -327,7 +386,7 @@ mod tests {
             for (i, ms) in exits.iter().enumerate() {
                 let d = decide_on_exit(&app, &mut budget,
                     Duration::from_millis(*ms),
-                    ExitOutcome { code: Some(1), signal: None }, false);
+                    ExitOutcome { code: Some(1), signal: None }, false, false);
                 if i < 15 {
                     proptest::prop_assert!(
                         matches!(d, Decision::Restart { delay: _ }),
@@ -346,5 +405,35 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_oom_kill_counts_against_max_restarts_however_long_the_sheep_ran() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.min_uptime = "100".parse().unwrap();
+        app.max_restarts = 2;
+        let mut budget = RestartBudget::default();
+        let ran_a_minute = Duration::from_secs(60);
+
+        let first = decide_on_exit(&app, &mut budget, ran_a_minute, exit_with(137), false, true);
+        let second = decide_on_exit(&app, &mut budget, ran_a_minute, exit_with(137), false, true);
+
+        assert!(matches!(first, Decision::Restart { .. }));
+        assert_eq!(second, Decision::Errored);
+    }
+
+    #[test]
+    fn a_long_running_exit_without_an_oom_kill_resets_the_budget() {
+        let mut app = AppConfig::minimal("test", "./test");
+        app.min_uptime = "100".parse().unwrap();
+        app.max_restarts = 2;
+        let mut budget = RestartBudget::default();
+        let ran_a_minute = Duration::from_secs(60);
+
+        for _ in 0..5 {
+            let d = decide_on_exit(&app, &mut budget, ran_a_minute, exit_with(1), false, false);
+            assert!(matches!(d, Decision::Restart { .. }));
+        }
+        assert_eq!(budget.unstable_count(), 0);
     }
 }

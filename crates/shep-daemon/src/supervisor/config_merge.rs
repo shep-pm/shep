@@ -10,12 +10,13 @@ use super::*;
 /// The `AppConfig` fields a lifecycle extra reads when it is armed, rather
 /// than at each decision.
 ///
-/// All eight are [`ApplyGroup::Live`], but a worker already armed against the
+/// All nine are [`ApplyGroup::Live`], but a worker already armed against the
 /// old value keeps it, so changing one needs [`ExtrasRegistry::rearm_name`] on
 /// top of the spec write. Not derivable from [`apply_group`]: `fold` and
 /// `action_timeout` are Live too and need no re-arm.
 pub(super) const EXTRAS_FIELDS: &[&str] = &[
     "max_memory",
+    "memory_enforce",
     "watch",
     "ignore_watch",
     "watch_delay",
