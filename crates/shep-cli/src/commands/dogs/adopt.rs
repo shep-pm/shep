@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use shep_client::{Client, RequestError};
 use shep_core::paths::{ShepPaths, user_home};
-use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, EnvValue, Request, Response, RpcErrorCode};
 
 use crate::cli::AdoptArgs;
@@ -215,17 +214,12 @@ pub(super) async fn adopt_with(
         };
         return held_back_after_config(streams, flow.verb, &name, source, client.as_ref()).await;
     }
-    adopt_after_config(
-        streams,
-        flow.verb,
-        &name,
-        &path,
-        channel,
+    let source = DogSource::Adopted {
         grants,
-        &env,
-        client.as_ref(),
-    )
-    .await
+        path: path.display().to_string(),
+        channel,
+    };
+    adopt_after_config(streams, flow.verb, &name, source, &env, client.as_ref()).await
 }
 
 /// A declined adopt's daemon half: the config now has the dog disabled, so a
@@ -516,24 +510,17 @@ fn fail_dogs_config(streams: &mut Streams<'_>, err: &DogMigrationError) -> ExitC
 }
 
 /// `adopt`'s daemon half; see enable_after_config for the split and for
-/// what `client: None` means. `channel` is the binary's own ask, `grants`
-/// what `shep.toml` records for the dog, and `env` the `env` that entry holds
-/// after the adopt wrote it, which a re-adopt keeps.
+/// what `client: None` means. `source` is the adopted source with the
+/// binary's own channel ask and the grants `shep.toml` records, and `env` the
+/// `env` that entry holds after the adopt wrote it, which a re-adopt keeps.
 async fn adopt_after_config(
     streams: &mut Streams<'_>,
     verb: &str,
     name: &str,
-    path: &Path,
-    channel: bool,
-    grants: Option<Grants>,
+    source: DogSource,
     env: &BTreeMap<String, String>,
     client: Option<&Client>,
 ) -> ExitCode {
-    let source = DogSource::Adopted {
-        grants,
-        path: path.display().to_string(),
-        channel,
-    };
     let Some(client) = client else {
         return emit_dog_action(streams, verb, name, source, NO_SHEPHERD_ENABLE_STATUS);
     };
@@ -605,9 +592,11 @@ mod tests {
                 &mut streams(&mut out, &mut err),
                 "adopt",
                 "otel",
-                &binary,
-                channel,
-                None,
+                DogSource::Adopted {
+                    grants: None,
+                    path: binary.display().to_string(),
+                    channel,
+                },
                 &BTreeMap::new(),
                 Some(&client),
             )
@@ -706,9 +695,11 @@ mod tests {
                 &mut streams,
                 "adopt",
                 "otel",
-                &binary,
-                false,
-                None,
+                DogSource::Adopted {
+                    grants: None,
+                    path: binary.display().to_string(),
+                    channel: false,
+                },
                 &BTreeMap::new(),
                 client,
             )
