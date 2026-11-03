@@ -149,10 +149,24 @@ export const BUDGETS: Record<string, number> = {
   // an author has to know where a dog declares its actions and how a handler
   // learns which dog called. The ceiling sits about 5 words above the page.
   //
-  // Raised from 5640 on #1432 for "Publishing events": an author has to know
-  // where a dog declares an event kind, how it publishes one, and what a
-  // subscriber needs. The ceiling sits about 4 words above the page.
-  "writing-a-dog": 5665,
+  // Raised from 5640 on #1447 for "Releasing a dog": the calling job, the tag
+  // and release it needs, the token it takes and the dry run. A dog author has
+  // no other page that says how the index row and the prebuilt binaries get
+  // made. The ceiling sits about 7 words above the page.
+  //
+  // Raised from 5835 on #1447 review for why the workflow is pinned by commit:
+  // the job holds a write token and the index token, so a moving ref is a
+  // real risk to say out loud. The ceiling sits about 5 words above the page.
+  //
+  // Raised from 5894 on #1447 review for a dog's first release: the workflow
+  // updates a row and never adds one, so an author has to know to add it by
+  // hand and that shep builds from source until hashes arrive. The ceiling
+  // sits about 5 words above the page.
+  //
+  // Raised on #1432 for "Publishing events": an author has to know where a
+  // dog declares an event kind, how it publishes one, and what a subscriber
+  // needs. The ceiling sits about 4 words above the page.
+  "writing-a-dog": 5970,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

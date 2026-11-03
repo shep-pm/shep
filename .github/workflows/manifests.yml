@@ -10,7 +10,8 @@ name: manifests
 # locally in about a second: `python3 scripts/check-dev-deps.py`.
 #
 # The second runs the tests of every script here that has them: the release
-# guard's and the IR-47 comment checker's. The guard rewrites a branch and
+# guard's, the IR-47 comment checker's, the dog index writer's, and the one that
+# keeps dog-release.yml's target list equal to release-artifacts.yml's. The guard rewrites a branch and
 # pushes, so it is the one script in this repository whose bug would be a bad
 # release pull request rather than a failed check, and its tests build a
 # throwaway repository with a bare remote rather than read this one.
