@@ -136,8 +136,9 @@ fn a_real_delegated_subtree_moves_the_shepherd_into_its_leaf() {
         return;
     }
     let before = fs::read_to_string("/proc/self/cgroup").expect("/proc/self/cgroup");
-    let Cgroups::Available { base } = detect() else {
-        println!("skipped: no delegated cgroup v2 subtree here");
+    let found = detect();
+    let Cgroups::Available { base } = found else {
+        println!("skipped: no delegated cgroup v2 subtree here: {found}");
         return;
     };
 

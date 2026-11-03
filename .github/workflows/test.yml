@@ -560,13 +560,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo test -p shep-daemon --lib --locked --all-features --no-run
+      - shell: bash
+        run: |
+          cargo test -p shep-daemon --lib --locked --all-features --no-run \
+            --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "shep_daemon" and (.target.kind | index("lib"))) | .executable' \
+            > test-binary.path
+          test -x "$(cat test-binary.path)"
       - shell: bash
         run: |
           sudo --preserve-env=PATH,HOME,RUSTUP_HOME,CARGO_HOME \
             systemd-run --scope --quiet -p Delegate=yes --uid="$(id -u)" \
             env SHEP_TEST_CGROUPS=1 \
-            cargo test -p shep-daemon --lib --locked --all-features -- --nocapture --exact \
+            "$(cat test-binary.path)" --nocapture --exact \
             cgroup::tests::a_real_delegated_subtree_moves_the_shepherd_into_its_leaf \
             | tee cgroups.out
           grep -q 'test result: ok. 1 passed' cgroups.out
