@@ -209,7 +209,7 @@ impl DogRuntime {
     /// # }
     /// # let _ = read;
     /// ```
-        pub async fn sheep_settings<T>(
+    pub async fn sheep_settings<T>(
         &self,
         serves: Serves,
     ) -> Result<BTreeMap<String, Result<T, ServedSheepError>>, SheepSettingsReadError>
