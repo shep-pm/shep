@@ -23,7 +23,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-> ▾ bark                                              yes      built-in              0.23.0            not running      
+> ▾ bark                                              yes      built-in              [version]            not running      
     boot first        no                                           the next boot reads it                               
     grants            1 of 3 held                                  its next start reads it                              
       [x] flock.read                                                                                                    
@@ -36,7 +36,7 @@ shep lookout   /home/ada/.shep                                                  
     ▸ rules           (unset)                                      read-only                                            
     sink_timeout      (unset)                                      dogs.toml, it is told                                
     sinks             <set>                                        read-only                                            
-  ▸ metrics                                           no       built-in              0.23.0            not running      
+  ▸ metrics                                           no       built-in              [version]            not running      
                                                                                                                         
                                                                                                                         
                                                                                                                         

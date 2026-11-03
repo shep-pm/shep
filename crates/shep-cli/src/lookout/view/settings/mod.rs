@@ -343,7 +343,10 @@ mod tests {
         terminal
             .draw(|frame| super::super::draw(&app, frame))
             .unwrap();
-        insta::assert_snapshot!(render_text(terminal.backend().buffer()));
+        // A built-in dog's VERSION is shep's own, so a release bump must not move the snapshot.
+        let screen = render_text(terminal.backend().buffer())
+            .replace(env!("CARGO_PKG_VERSION"), "[version]");
+        insta::assert_snapshot!(screen);
     }
 
     /// An adopted dog's `env` is a table under its header, one row per key
