@@ -756,9 +756,9 @@ Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:install@@
 Install a dog from the community index, then adopt and enable it. With no name, lists the index.
 
-Downloads the prebuilt binary the index hashes for this target, and refuses it on a sha256 mismatch.
-Otherwise, or with `--cargo`, builds the approved version with `cargo install --locked`. Then it
-asks `shep adopt`'s grant question. Any other row exits 1.
+Downloads the prebuilt binary the index hashes for this target, or with `--cargo` builds the
+approved version with `cargo install --locked`. `--ref` builds an unreviewed branch, tag or commit.
+Then it asks `shep adopt`'s grant question.
 
 Usage: shep install [OPTIONS] [DOG]
 
@@ -783,6 +783,11 @@ Options:
       --cargo
           Build the index's version with cargo, even when the index hashes a prebuilt binary for
           this target
+
+      --ref <REF>
+          Build the dog from this branch, tag or commit of its own repository instead of the version
+          the index approves. A 7 to 40 character hex string is a commit; anything else is tried as
+          a tag, then a branch. The index has not reviewed it, and the grant question says so
 
   -h, --help
           Print help (see a summary with '-h')

@@ -4,14 +4,10 @@
 //! A row that hashes a binary for this target is downloaded and must match
 //! the hash ([`install_download`](super::install_download)). Otherwise, or
 //! with `--cargo`, cargo builds it, once crates.io names the row's repository
-//! as the publisher. The grant question and the enable are `adopt`'s own.
+//! as the publisher. `--ref` builds the row's repository at a ref instead
+//! ([`install_ref`]). The grant question and the enable are `adopt`'s own.
 //!
-//! `--ref` builds the row's own repository at a branch, tag or commit instead
-//! ([`install_ref`]), and the grant question says the index has not reviewed
-//! it.
-//!
-//! Any other row kind prints its instructions and installs nothing, and a
-//! dog the index does not carry is `shep adopt <path>`.
+//! Any other row kind prints its instructions and installs nothing.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
