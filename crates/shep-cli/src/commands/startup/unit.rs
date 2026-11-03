@@ -36,11 +36,9 @@ pub(crate) struct UnitSpec {
 ///
 /// No `TimeoutStartSec`: systemd's default applies, and the shepherd sends
 /// `EXTEND_TIMEOUT_USEC` around each muster-restore stage, so the deadline
-/// follows the walk rather than a fixed sum. `RestartPreventExitStatus` is
-/// [`ExitCode::DaemonAlreadyRunning`]: a hand-started shepherd holds the
-/// home lock. `Delegate=memory cpu pids` chowns the service's cgroup to
-/// `User=` and enables those three controllers below it, the only write
-/// access the shepherd has to cgroups; `yes` would grant every controller.
+/// follows the walk. `RestartPreventExitStatus` is [`ExitCode::DaemonAlreadyRunning`]:
+/// a hand-started shepherd holds the home lock. `Delegate=memory cpu pids` chowns
+/// the service cgroup to `User=` with only those controllers; `yes` grants all.
 pub(crate) fn systemd_unit(spec: &UnitSpec) -> String {
     let home = systemd_environment_value(&spec.home.display().to_string());
     let path = systemd_environment_value(&spec.path.to_string_lossy());
