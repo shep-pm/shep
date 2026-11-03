@@ -60,11 +60,9 @@ fn access_cell(access: Option<&DogAccess>) -> String {
 /// dogs:    ... + SOURCE  VERSION  ACCESS
 /// ```
 ///
-/// `FOLD` and `SMIT` are impossible for a dog rather than empty: a dog
-/// belongs to no fold, and a smit is a mark a dog paints on a sheep.
-///
-/// SOURCE and VERSION come from a [`DogOrigins`] the caller read off disk. A
-/// dog it holds nothing for reads as its `dog` marker says.
+/// `FOLD` and `SMIT` are impossible for a dog rather than empty. SOURCE and
+/// VERSION come from a [`DogOrigins`] the caller read off disk; a dog it
+/// holds nothing for reads as its `dog` marker says.
 #[derive(Debug)]
 pub struct DogRows {
     dogs: Vec<ProcessInfo>,
@@ -256,8 +254,7 @@ impl Render for DogRows {
     // Parallel to `headers()`. The nine shared columns carry the numbers
     // `FlockRows` gives them, so both tables narrow in the same order.
     // SOURCE takes FOLD's `7`; VERSION and ACCESS tie EXIT's `6` and, being
-    // later, go first of the three, ACCESS before VERSION. The JSON always
-    // carries them.
+    // later, go first, ACCESS before VERSION. The JSON always carries them.
     const PRIORITIES: &'static [u8] = &[0, 0, 0, 2, 4, 6, 5, 3, 1, 7, 6, 6];
 }
 

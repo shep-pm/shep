@@ -1,17 +1,12 @@
 //! The one removal an adopted dog has, run by `shep delete <name>` and by
 //! the hidden `shep rehome <name>`.
 //!
-//! Both verbs stop the dog, deregister it from this shepherd, and strike the
-//! adoption from `shep.toml`: out of `[daemon] enabled_dogs`,
-//! `[daemon] adopted_dogs` and `[daemon] channel_dogs`. What stays is the
-//! `[<name>]` section in `dogs.toml`, which is the operator's own writing.
+//! Both stop the dog, deregister it, and strike the adoption from `shep.toml`.
+//! The `[<name>]` section in `dogs.toml` stays: it is the operator's writing.
+//! `shep delete` alone also removes `$SHEP_HOME/dogs/<name>/` when a receipt
+//! there says `shep install` wrote it. An adopted dog's file is never touched.
 //!
-//! `shep delete` alone also removes `$SHEP_HOME/dogs/<name>/` when `shep
-//! install` wrote it: a receipt there says so. An adopted dog's file is never
-//! touched.
-//!
-//! A built-in dog is refused here rather than only in the CLI's help text:
-//! `disable` is the verb that exists for it.
+//! A built-in dog is refused here: `disable` is the verb that exists for it.
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;

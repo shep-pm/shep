@@ -160,12 +160,10 @@ pub enum Commands {
     /// struck from `[daemon] enabled_dogs`, `[daemon] adopted_dogs` and
     /// `[daemon] channel_dogs` in `shep.toml`, so the next boot does not
     /// bring it back. Its `[<name>]` table in `dogs.toml` stays, as it does
-    /// through `shep disable`, and the verb says so. A dog `shep install`
-    /// put on disk also loses `$SHEP_HOME/dogs/<name>/`, its binary and its
-    /// receipt; an adopted dog's file is never touched. A built-in dog is
-    /// refused, by the shepherd: `shep disable metrics` is the verb that
-    /// exists for one. A sweep (`all`, a fold, a `/regex/`) is the flock, and
-    /// a dog is not in it.
+    /// through `shep disable`, and the verb says so. A dog `shep install` put
+    /// on disk also loses `$SHEP_HOME/dogs/<name>/`; an adopted dog's file
+    /// stays. A built-in dog is refused by the shepherd: use `shep disable`.
+    /// A sweep (`all`, a fold, a `/regex/`) is the flock, not a dog.
     ///
     /// A name is judged against `shep.toml`, so a `shep.toml` that exists and
     /// cannot be read or parsed refuses a name selector instead of guessing at
