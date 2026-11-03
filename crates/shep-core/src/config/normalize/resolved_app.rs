@@ -228,8 +228,8 @@ pub fn normalize_with_home(
         }
     }
     if let Some(cores) = app.max_cpu_cores {
-        if !cores.is_positive() {
-            return Err(NormalizeError::NonPositiveMaxCpuCores { name: app.name });
+        if !cores.is_enforceable() {
+            return Err(NormalizeError::MaxCpuCoresOutOfRange { name: app.name });
         }
         if !cfg!(target_os = "linux") {
             return Err(NormalizeError::MaxCpuCoresUnsupported { name: app.name });

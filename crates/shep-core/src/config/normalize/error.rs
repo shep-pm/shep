@@ -117,10 +117,11 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
-    /// `max_cpu_cores` is zero, negative or not a finite number: a quota
-    /// `cpu.max` cannot express, or one that stalls the sheep outright.
-    /// Carries the app name.
-    NonPositiveMaxCpuCores {
+    /// `max_cpu_cores` is below 0.01, negative or not a finite number: a quota
+    /// `cpu.max` cannot hold, since the kernel refuses under 1000 microseconds
+    /// per period, and zero would stall the sheep outright. Carries the app
+    /// name.
+    MaxCpuCoresOutOfRange {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
@@ -399,10 +400,10 @@ impl fmt::Display for NormalizeError {
                      use \"poll\" on this platform"
                 )
             }
-            Self::NonPositiveMaxCpuCores { name } => {
+            Self::MaxCpuCoresOutOfRange { name } => {
                 write!(
                     f,
-                    "sheep `{name}` has a max_cpu_cores that is not a positive number of cores"
+                    "sheep `{name}` has a max_cpu_cores below 0.01 cores, or not a number"
                 )
             }
             Self::MaxCpuCoresUnsupported { name } => {

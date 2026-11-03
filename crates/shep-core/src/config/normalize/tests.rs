@@ -80,12 +80,27 @@ fn max_cpu_cores_must_be_positive() {
         let err = normalize(capped_cpu(cores)).unwrap_err();
         assert_eq!(
             err,
-            NormalizeError::NonPositiveMaxCpuCores {
+            NormalizeError::MaxCpuCoresOutOfRange {
                 name: "web".to_string()
             },
             "{cores}"
         );
         assert!(err.to_string().contains("max_cpu_cores"), "{err}");
+    }
+}
+
+#[test]
+fn max_cpu_cores_below_the_kernel_minimum_is_refused() {
+    // fails if 0.005 is accepted: `cpu.max` refuses a quota under 1000 us, so
+    // a live change would report applied while the old quota stayed in force.
+    for cores in [0.005, 0.000_001] {
+        assert_eq!(
+            normalize(capped_cpu(cores)).unwrap_err(),
+            NormalizeError::MaxCpuCoresOutOfRange {
+                name: "web".to_string()
+            },
+            "{cores}"
+        );
     }
 }
 

@@ -272,8 +272,8 @@ pub struct AppConfig {
         "example": 1.5,
         "group": "restart",
         "blurb": "Throttle the app and its children to this many cores' worth of CPU time",
-        "accepts": ["a positive number of cores, such as 0.5 or 2.5"],
-        "refuses": ["zero or a negative number", "any value on macOS or Windows"],
+        "accepts": ["a number of cores of 0.01 or more, such as 0.5 or 2.5"],
+        "refuses": ["below 0.01, zero or a negative number", "any value on macOS or Windows"],
         "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
     })))]
     pub max_cpu_cores: Option<CpuCores>,

@@ -26,9 +26,7 @@ const MOUNT: &str = "/sys/fs/cgroup";
 /// that holds processes.
 const LEAF: &str = "shepherd";
 
-/// The scheduling period in microseconds that `cpu.max` quotas are measured
-/// against: the kernel's own default, and what `docker run --cpus` uses.
-const CPU_PERIOD_US: u64 = 100_000;
+const CPU_PERIOD_US: u64 = CpuCores::PERIOD_US;
 
 /// Written to `cgroup.subtree_control`: the controllers a sheep's limits use.
 const CONTROLLERS: &str = "+memory +cpu +pids";
@@ -252,9 +250,7 @@ pub(crate) fn write_memory_max(dir: &Path, limit: Option<u64>) -> io::Result<()>
 /// The microseconds of CPU time per [`CPU_PERIOD_US`] that `cores` allows,
 /// rounded to the nearest microsecond.
 pub(crate) fn cpu_quota(cores: CpuCores) -> u64 {
-    // Saturating: a quota past `u64` is far above any kernel ceiling, which
-    // then refuses the write by name.
-    (cores.cores() * CPU_PERIOD_US as f64).round() as u64
+    cores.quota_us()
 }
 
 /// Writes `<quota> <period>` to `dir`'s `cpu.max`, or `max <period>` (no cap)

@@ -353,9 +353,9 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
         ),
         refused(
             "max_cpu_cores",
-            "zero or a negative number",
+            "below 0.01, zero or a negative number",
             sheep(|a| a.max_cpu_cores = Some(CpuCores::from_cores(0.0))),
-            |e| matches!(e, NormalizeError::NonPositiveMaxCpuCores { .. }),
+            |e| matches!(e, NormalizeError::MaxCpuCoresOutOfRange { .. }),
         ),
         elsewhere(
             "max_cpu_cores",

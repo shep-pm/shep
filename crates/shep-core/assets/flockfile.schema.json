@@ -619,7 +619,7 @@
           "default": null,
           "init": {
             "accepts": [
-              "a positive number of cores, such as 0.5 or 2.5"
+              "a number of cores of 0.01 or more, such as 0.5 or 2.5"
             ],
             "blurb": "Throttle the app and its children to this many cores' worth of CPU time",
             "example": 1.5,
@@ -631,7 +631,7 @@
               }
             ],
             "refuses": [
-              "zero or a negative number",
+              "below 0.01, zero or a negative number",
               "any value on macOS or Windows"
             ]
           }
@@ -976,10 +976,10 @@
       "additionalProperties": false
     },
     "CpuCores": {
-      "description": "A CPU quota in cores: `1.5` lets a sheep's tree use one and a half cores'\nworth of time, across however many cores it runs on.\n\nHolds whatever number the Flockfile wrote. `normalize` refuses a value\nthat is not finite and positive, so a config that reaches the shepherd\nhas already passed. Equality compares bits, so `NaN` equals itself and\nthe type is `Eq` like the `AppConfig` it sits in.",
+      "description": "A CPU quota in cores: `1.5` lets a sheep's tree use one and a half cores'\nworth of time, across however many cores it runs on.\n\nHolds whatever number the Flockfile wrote. `normalize` refuses a value\nunder 0.01 and any that is not a finite number, so a config that reaches\nthe shepherd has already passed. Equality compares bits, so `NaN` equals itself and\nthe type is `Eq` like the `AppConfig` it sits in.",
       "type": "number",
       "format": "double",
-      "exclusiveMinimum": 0
+      "minimum": 0.01
     },
     "DogTable": {
       "description": "A dog's own settings for this sheep. shep stores it and never reads a key inside.",

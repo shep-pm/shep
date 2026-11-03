@@ -6,18 +6,26 @@ use serde::{Deserialize, Serialize};
 /// worth of time, across however many cores it runs on.
 ///
 /// Holds whatever number the Flockfile wrote. `normalize` refuses a value
-/// that is not finite and positive, so a config that reaches the shepherd
-/// has already passed. Equality compares bits, so `NaN` equals itself and
+/// under 0.01 and any that is not a finite number, so a config that reaches
+/// the shepherd has already passed. Equality compares bits, so `NaN` equals itself and
 /// the type is `Eq` like the `AppConfig` it sits in.
 // wire format: changing this is a breaking change (a bare JSON/TOML number
 // inside AppConfig, which travels over the client<->daemon socket)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(extend("exclusiveMinimum" = 0)))]
+#[cfg_attr(feature = "schema", schemars(extend("minimum" = 0.01)))]
 #[serde(transparent)]
 pub struct CpuCores(f64);
 
 impl CpuCores {
+    /// The scheduling period in microseconds that `cpu.max` quotas are
+    /// measured against: the kernel's own default, and what `docker run
+    /// --cpus` uses.
+    pub const PERIOD_US: u64 = 100_000;
+
+    /// The smallest quota in microseconds the kernel accepts in `cpu.max`.
+    pub const MIN_QUOTA_US: u64 = 1_000;
+
     /// Wraps a core count, unchecked
     #[inline]
     #[must_use]
@@ -32,11 +40,19 @@ impl CpuCores {
         self.0
     }
 
-    /// Whether the quota is a finite number above zero, the only kind a
-    /// cgroup's `cpu.max` can express.
+    /// The microseconds of CPU time per [`Self::PERIOD_US`] this quota allows,
+    /// rounded to the nearest microsecond. Saturates at the ends of `u64`.
     #[must_use]
-    pub fn is_positive(self) -> bool {
-        self.0.is_finite() && self.0 > 0.0
+    pub fn quota_us(self) -> u64 {
+        // Saturating cast: a quota past `u64` is far above any kernel ceiling.
+        (self.0 * Self::PERIOD_US as f64).round() as u64
+    }
+
+    /// Whether a cgroup's `cpu.max` can hold the quota: finite, and at least
+    /// [`Self::MIN_QUOTA_US`] per period, which is 0.01 cores.
+    #[must_use]
+    pub fn is_enforceable(self) -> bool {
+        self.0.is_finite() && self.quota_us() >= Self::MIN_QUOTA_US
     }
 }
 
@@ -62,6 +78,15 @@ mod tests {
             serde_json::from_str::<CpuCores>("1.5").unwrap(),
             CpuCores::from_cores(1.5)
         );
+    }
+
+    #[test]
+    fn the_smallest_enforceable_quota_is_one_hundredth_of_a_core() {
+        assert!(CpuCores::from_cores(0.01).is_enforceable());
+        assert!(!CpuCores::from_cores(0.009).is_enforceable());
+        assert!(!CpuCores::from_cores(0.0).is_enforceable());
+        assert!(!CpuCores::from_cores(f64::NAN).is_enforceable());
+        assert!(!CpuCores::from_cores(f64::INFINITY).is_enforceable());
     }
 
     #[test]

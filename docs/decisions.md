@@ -2831,7 +2831,7 @@ The shepherd reads `oom_kill` from `memory.events.local` before the spawn (and w
 
 **Why:** a quota needs no placement decision, and the kernel throttles the tree wherever it runs. A Windows job-object CPU rate limit is a separate change, so Windows refuses the key for now. `LimitEnforcer` is unchanged because a quota has no breach to report.
 
-**What it costs:** a quota under the kernel's 1 ms minimum (below about 0.01 cores) passes `normalize` and fails at the write. The cgroup-backed cases run in the `cgroups` CI job only.
+**What it costs:** `normalize` refuses a quota under 0.01 cores, the kernel's 1000 microsecond minimum, so a write cannot fail on the value. The cgroup-backed cases run in the `cgroups` CI job only.
 
 `verified crates/shep-core/src/config/cpu_cores.rs, crates/shep-core/src/protocol/mod.rs (MAX_CPU_CORES_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_config.rs`
 
