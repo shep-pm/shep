@@ -44,9 +44,26 @@ pub(crate) fn with_global_footer(command: clap::Command) -> clap::Command {
         .iter()
         .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
         .collect();
-    command.mut_subcommands(|verb| {
+    each_verb(command, &|verb| {
         let takes_host = crate::remote::takes_host(verb.get_name());
         footed(verb, &flags, takes_host)
+    })
+}
+
+/// `command` with `change` applied to each of its direct subcommands.
+///
+/// By name, through `mut_subcommand`: `mut_subcommands` is newer than the
+/// clap the minimal-versions job resolves.
+fn each_verb(
+    command: clap::Command,
+    change: &dyn Fn(clap::Command) -> clap::Command,
+) -> clap::Command {
+    let names: Vec<String> = command
+        .get_subcommands()
+        .map(|verb| verb.get_name().to_owned())
+        .collect();
+    names.into_iter().fold(command, |command, name| {
+        command.mut_subcommand(name, change)
     })
 }
 
@@ -67,12 +84,11 @@ fn footed(command: clap::Command, flags: &[String], takes_host: bool) -> clap::C
         .action(clap::ArgAction::Version)
         .hide_short_help(true)
         .hide_long_help(true);
-    command
-        .disable_version_flag(true)
-        .arg(version)
-        .mut_subcommands(|sub| footed(sub, flags, takes_host))
-        .after_help(short)
-        .after_long_help(long)
+    each_verb(command.disable_version_flag(true).arg(version), &|sub| {
+        footed(sub, flags, takes_host)
+    })
+    .after_help(short)
+    .after_long_help(long)
 }
 
 /// The topic `shep help flags` prints: each global flag, once, with its long
