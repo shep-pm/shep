@@ -250,6 +250,11 @@ pub enum Commands {
     /// refuses it on a sha256 mismatch. Otherwise, or with `--cargo`, builds
     /// the approved version with `cargo install --locked`. Then it asks
     /// `shep adopt`'s grant question. Any other row exits 1.
+    ///
+    /// `--ref <ref>` builds the dog's own repository at a branch, tag or
+    /// commit instead, with `cargo install --locked --git`. The index has
+    /// not reviewed that build, and the grant question says so. A build from
+    /// any other repository is `shep adopt <path>`.
     Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,

@@ -157,6 +157,12 @@ pub struct InstallArgs {
     /// prebuilt binary for this target.
     #[arg(long)]
     pub cargo: bool,
+    /// Build the dog from this branch, tag or commit of its own repository
+    /// instead of the version the index approves. A 7 to 40 character hex
+    /// string is a commit; anything else is tried as a tag, then a branch.
+    /// The index has not reviewed it, and the grant question says so.
+    #[arg(long = "ref", value_name = "REF", conflicts_with = "cargo")]
+    pub git_ref: Option<String>,
 }
 
 #[cfg(test)]
