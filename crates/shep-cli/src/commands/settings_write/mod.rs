@@ -4,8 +4,7 @@
 //! The address is `copy`'s and `get`'s, and each kind is written through the
 //! request the shepherd already answers: [`Request::SetSheepField`],
 //! [`Request::SetSheepDogSettings`] or [`Request::SetDogConfig`], so everything
-//! those refuse this refuses. The retired `<dog>.defaults` address is refused
-//! before any of them.
+//! those refuse this refuses.
 //!
 //! The order is `copy`'s: resolve, read, plan, print the change list, ask,
 //! write. Nothing is sent until the operator has seen every key it touches.
