@@ -159,17 +159,12 @@ pub(crate) fn version_skew_command(host: Option<&str>) -> String {
     }
 }
 
-/// The command that fixes a protocol gap, spelled for the side of the gap it
-/// runs on.
+/// The command that fixes a protocol gap, spelled for the side it runs on.
 ///
-/// Which side is behind decides it. A host behind this build is fixed there,
-/// over ssh. A host ahead of it is fixed here: reloading a host that already
-/// runs the newer install changes nothing, and installing this build there
-/// takes that host down with it.
-///
-/// The upgrade is the one of the `channel` this shep came from. A channel
-/// with no command of its own names `cargo install shep`, as the help's
-/// Upgrading line and [`VERSION_SKEW_CAUSE`] do.
+/// A host behind this build is fixed there, over ssh. A host ahead of it is
+/// fixed here, since reloading one that already runs the newer install
+/// changes nothing. That upgrade is the `channel`'s own command, or
+/// `cargo install shep` for a channel with none, as [`VERSION_SKEW_CAUSE`] has it.
 fn protocol_fix(host: Option<&str>, host_ahead: bool, channel: Channel) -> String {
     if host_ahead {
         channel
