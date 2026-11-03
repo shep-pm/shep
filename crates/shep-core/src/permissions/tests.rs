@@ -107,6 +107,17 @@ fn a_dog_grant_covers_that_dogs_events_and_no_other_dogs() {
 }
 
 #[test]
+fn a_grant_naming_a_kind_or_part_of_one_covers_that_kind() {
+    let exact = Grants::parse(["events:dog.otel.exported"]).unwrap();
+    assert!(exact.allows_topic("dog.otel.exported"));
+    assert!(exact.allows_topic("dog.otel.exported.*"));
+    assert!(!exact.allows_topic("dog.otel.failed"));
+    let partial = Grants::parse(["events:dog.otel.exp"]).unwrap();
+    assert!(partial.allows_topic("dog.otel.exported"));
+    assert!(!partial.allows_topic("dog.otel.failed"));
+}
+
+#[test]
 fn a_broader_events_grant_still_covers_every_dog() {
     assert!(
         Grants::parse(["events:dog."])

@@ -223,8 +223,14 @@ impl Grants {
 }
 
 /// Whether the granted `prefix` covers topics beginning `head`.
+///
+/// A bare `dog.<name>` is held to the dog's own segment. Anything longer, a
+/// kind or part of one, is a plain prefix.
 fn covers(prefix: &str, head: &str) -> bool {
-    if prefix.starts_with("dog.") && !prefix.ends_with('.') {
+    let names_a_dog_alone = prefix
+        .strip_prefix("dog.")
+        .is_some_and(|name| !name.is_empty() && !name.contains('.'));
+    if names_a_dog_alone {
         head.strip_prefix(prefix)
             .is_some_and(|rest| rest.starts_with('.'))
     } else {
