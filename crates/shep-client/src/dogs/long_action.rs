@@ -1,18 +1,13 @@
 //! Work longer than a trigger: answer at once with an id, report the
 //! result later as one of the dog's own events.
 //!
-//! A trigger's reply is bounded by the callee's `action_timeout`. The
-//! convention has no shepherd state behind it:
-//!
-//! - The callee mints an [`ActionId`] and answers the trigger with
-//!   [`ActionId::accept`]'s body.
-//! - When the work ends it publishes [`DONE_KIND`] with
-//!   [`DogRuntime::finish_action`], carrying the id and a result or an error.
-//! - Everyone holding `events:dog.<callee>` hears it. The caller filters by id.
+//! A trigger's reply is bounded by the callee's `action_timeout`, so the
+//! callee answers with [`ActionId::accept`]'s body and publishes
+//! [`DONE_KIND`] with [`DogRuntime::finish_action`] when the work ends.
+//! The caller filters by id. The shepherd keeps no state for it.
 //!
 //! The kind is fixed so [`DogRuntime::trigger_and_wait`] works against any
-//! dog. The callee declares it with
-//! [`Probe::event`](super::Probe::event)`(DONE_KIND, ..)`.
+//! dog. The callee declares it with [`Probe::event`](super::Probe::event).
 
 use core::fmt;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -23,6 +18,9 @@ use serde_json::{Value, json};
 use shep_core::protocol::{ActionOutcome, BusEvent, Request, Response, RpcErrorCode, SelectorSpec};
 
 use crate::{EventStream, Lagged, ReconnectingClient, RequestError};
+
+#[cfg(doc)]
+use super::DogRuntime;
 
 /// The kind a callee publishes when a long action ends, heard as
 /// `dog.<callee>.action.done`.

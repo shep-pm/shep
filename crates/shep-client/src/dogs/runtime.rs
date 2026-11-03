@@ -129,8 +129,7 @@ impl DogRuntime {
     /// published at once is not missed. That subscription replaces any other
     /// this connection holds. The caller needs `events:dog.<callee>` as well
     /// as `dogs.trigger:<callee>`. The timeout starts once the callee has
-    /// answered with its id, since the trigger has the callee's own
-    /// `action_timeout`.
+    /// answered with its id.
     ///
     /// # Errors
     ///
