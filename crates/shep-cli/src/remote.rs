@@ -245,6 +245,7 @@ mod tests {
         &["dogs", "revoke", "otel", "flock.read"],
         &["enable", "metrics"],
         &["disable", "metrics"],
+        &["install", "web"],
         &["adopt", "/bin/true"],
         &["rehome", "metrics"],
         &["describe", "web"],

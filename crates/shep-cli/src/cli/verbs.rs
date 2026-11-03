@@ -246,18 +246,10 @@ pub enum Commands {
     /// Build a dog from the community index with cargo, then adopt and
     /// enable it. With no name, lists the index.
     ///
-    /// Runs `cargo install --locked --version <version> --root
-    /// $SHEP_HOME/dogs/<name>/<version>/ <package>` for the one version the
-    /// index approves, so it needs `cargo` on `PATH`; shep never installs a
-    /// toolchain. Before building it asks crates.io which repository
-    /// published that version, and refuses one other than the index row's.
-    /// Then it asks the same grant question `shep adopt` asks, and enables
-    /// the dog. A no leaves it installed, adopted and disabled.
-    /// `$SHEP_HOME/dogs/<name>/receipt.json` records what was built and how.
-    ///
-    /// Only a `cargo` row with an approved version installs. Any other row
-    /// prints its instructions and exits 1. A dog the index does not carry
-    /// is `shep adopt`.
+    /// Builds the version the index approves with `cargo install
+    /// --locked`, after checking who published it. Then it asks the grant
+    /// question `shep adopt` asks; a no leaves the dog adopted and
+    /// disabled. Any other row prints its instructions and exits 1.
     Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
