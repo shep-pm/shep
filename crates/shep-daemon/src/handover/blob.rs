@@ -104,7 +104,8 @@ impl Handover {
         &self.sheep
     }
 
-    /// Names each of `links` against the dog whose connection it is.
+    /// Names each of `links` against the dog, or for a launch link the sheep,
+    /// whose connection it is.
     ///
     /// Matched on name and pid together: a dog respawned since its connection
     /// was opened is a different process on a different connection, and the
@@ -115,7 +116,10 @@ impl Handover {
         for sheep in &mut self.sheep {
             let Some(link) = links
                 .iter()
-                .find(|link| sheep.pid() == Some(link.pid) && sheep.name() == link.name)
+                .find(|link| {
+                    sheep.pid() == Some(link.pid)
+                        && sheep.name() == link.launch_for.as_deref().unwrap_or(&link.name)
+                })
             else {
                 continue;
             };

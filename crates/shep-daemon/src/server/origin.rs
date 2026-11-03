@@ -8,7 +8,7 @@ use shep_core::protocol::Request;
 
 #[cfg(unix)]
 use super::link_table::Lease;
-use crate::rpc::{RpcContext, kind_of};
+use crate::rpc::{Link, RpcContext, kind_of};
 
 /// Which half of a connection a task serves, for a handover that parks both.
 #[derive(Debug, Clone, Copy)]
@@ -24,6 +24,8 @@ pub(super) enum Side {
 /// A connection on the control socket is whoever the uid check lets in, and
 /// names itself in its `Hello`. A dog's own connection, opened at spawn, is
 /// that dog and nobody else: the runner knew whom it handed the other end to.
+/// A launch link is the same for a sheep a dog launches, and speaks for the
+/// sheep alone.
 #[derive(Debug, Clone)]
 pub(super) enum Origin {
     /// Accepted on the control socket.
@@ -45,40 +47,59 @@ pub(super) enum Origin {
         /// `None` on Windows.
         resumed: Option<Vec<String>>,
     },
+    /// The connection a sheep was spawned holding because a dog launches it,
+    /// a socketpair that works under any uid. Unix only: Windows refuses
+    /// `launch`.
+    Launch {
+        /// The dog launching the sheep.
+        dog: String,
+        /// The sheep the link was opened for.
+        sheep: String,
+        /// This connection's row in the table a handover carries from.
+        #[cfg(unix)]
+        lease: Arc<Lease>,
+        /// As [`Self::Dog`]'s `resumed`.
+        resumed: Option<Vec<String>>,
+    },
 }
 
 impl Origin {
     /// The dog this connection speaks for: the link's own name, or for the
     /// socket whatever the peer `claimed`.
     ///
-    /// A claim on a link is dropped, so a dog cannot present as another.
+    /// A claim on a link is dropped, so a dog cannot present as another. A
+    /// launch link speaks for a sheep and no dog.
     pub(super) fn dog<'a>(&'a self, claimed: Option<&'a str>) -> Option<&'a str> {
         match self {
             Self::Socket => claimed,
             Self::Dog { name, .. } => Some(name),
+            Self::Launch { .. } => None,
         }
     }
 
-    /// The dog whose grants bound this connection's requests: the link's own
-    /// name, and never a socket's claim.
+    /// What bounds this connection's requests: the dog's grants or a launch
+    /// link's sheep, and never a socket's claim.
     ///
     /// A socket acts as the operator, so a `Hello` naming a dog buys it no
     /// grants and costs it none.
-    pub(super) fn bound_dog(&self) -> Option<&str> {
+    pub(super) fn link(&self) -> Option<Link<'_>> {
         match self {
             Self::Socket => None,
-            Self::Dog { name, .. } => Some(name),
+            Self::Dog { name, .. } => Some(Link::Dog(name)),
+            Self::Launch { dog, sheep, .. } => Some(Link::Launch { dog, sheep }),
         }
     }
 
     /// The pid to record contact against: the link's, or for the socket the
     /// one the OS reported, which `None` on Windows.
     ///
-    /// A socketpair's peer credentials name the daemon itself.
+    /// A socketpair's peer credentials name the daemon itself. A launch link
+    /// records none: the silence watch is about dogs.
     pub(super) fn pid(&self, reported: Option<u32>) -> Option<u32> {
         match self {
             Self::Socket => reported,
             Self::Dog { pid, .. } => Some(*pid),
+            Self::Launch { .. } => None,
         }
     }
 
@@ -87,7 +108,7 @@ impl Origin {
     pub(super) fn resumed(&self) -> Option<&[String]> {
         match self {
             Self::Socket => None,
-            Self::Dog { resumed, .. } => resumed.as_deref(),
+            Self::Dog { resumed, .. } | Self::Launch { resumed, .. } => resumed.as_deref(),
         }
     }
 
@@ -95,7 +116,7 @@ impl Origin {
     /// row.
     pub(super) async fn greeted(&self) {
         #[cfg(unix)]
-        if let Self::Dog { lease, .. } = self {
+        if let Self::Dog { lease, .. } | Self::Launch { lease, .. } = self {
             lease.greeted().await;
         }
     }
@@ -108,7 +129,7 @@ impl Origin {
     )]
     pub(super) async fn subscribed(&self, patterns: &[String]) {
         #[cfg(unix)]
-        if let Self::Dog { lease, .. } = self {
+        if let Self::Dog { lease, .. } | Self::Launch { lease, .. } = self {
             lease.subscribed(patterns).await;
         }
     }
@@ -117,7 +138,7 @@ impl Origin {
     /// a connection no handover carries.
     pub(super) async fn frozen(&self) {
         #[cfg(unix)]
-        if let Self::Dog { lease, .. } = self {
+        if let Self::Dog { lease, .. } | Self::Launch { lease, .. } = self {
             return lease.frozen().await;
         }
         core::future::pending::<()>().await;
@@ -131,7 +152,7 @@ impl Origin {
     )]
     pub(super) async fn park(&self, side: Side) {
         #[cfg(unix)]
-        if let Self::Dog { lease, .. } = self {
+        if let Self::Dog { lease, .. } | Self::Launch { lease, .. } = self {
             lease.park(side).await;
         }
     }
@@ -142,6 +163,17 @@ impl Origin {
         Self::Dog {
             name: name.to_string(),
             pid,
+            lease: Arc::new(Lease::untracked()),
+            resumed: None,
+        }
+    }
+
+    /// A launch link no handover can carry, for a test that serves one.
+    #[cfg(all(test, unix))]
+    pub(super) fn untracked_launch(dog: &str, sheep: &str) -> Self {
+        Self::Launch {
+            dog: dog.to_string(),
+            sheep: sheep.to_string(),
             lease: Arc::new(Lease::untracked()),
             resumed: None,
         }
@@ -176,7 +208,8 @@ pub(super) struct Attribution {
 }
 
 impl Attribution {
-    /// Attributes requests to `origin`'s dog; a socket connection has none.
+    /// Attributes requests to `origin`'s dog; a socket connection and a launch
+    /// link have none.
     pub(super) fn new(origin: &Origin) -> Self {
         match origin {
             Origin::Socket => Self::default(),
@@ -184,6 +217,7 @@ impl Attribution {
                 dog: Some(name.clone()),
                 seen: BTreeSet::new(),
             },
+            Origin::Launch { .. } => Self::default(),
         }
     }
 
@@ -217,12 +251,28 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn only_a_link_is_bound_by_its_dogs_grants() {
-        assert_eq!(
-            Origin::untracked_dog("metrics", 7).bound_dog(),
-            Some("metrics")
-        );
-        assert_eq!(Origin::Socket.bound_dog(), None);
+    fn only_a_link_is_bounded_and_a_launch_link_by_its_sheep() {
+        assert!(matches!(
+            Origin::untracked_dog("metrics", 7).link(),
+            Some(Link::Dog("metrics"))
+        ));
+        assert!(matches!(
+            Origin::untracked_launch("sandbox", "web").link(),
+            Some(Link::Launch {
+                dog: "sandbox",
+                sheep: "web"
+            })
+        ));
+        assert!(Origin::Socket.link().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_launch_link_speaks_for_no_dog_and_records_no_contact() {
+        let link = Origin::untracked_launch("sandbox", "web");
+        assert_eq!(link.dog(Some("sandbox")), None);
+        assert_eq!(link.pid(Some(99)), None);
+        assert!(!link.checks_peer());
     }
 
     #[test]

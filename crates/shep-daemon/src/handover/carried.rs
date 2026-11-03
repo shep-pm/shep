@@ -403,6 +403,9 @@ impl CarriedSheep {
 pub struct DogConnection {
     /// The dog's name, as its sheep is named.
     pub name: String,
+    /// The sheep a launch link was opened for, which the connection is carried
+    /// on; `None` for a dog's own, carried on the dog.
+    pub launch_for: Option<String>,
     /// The pid the dog was spawned under, which tells an instance that has
     /// since respawned from the one this connection belongs to.
     pub pid: u32,

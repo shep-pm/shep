@@ -70,7 +70,7 @@ pub(super) fn serve_dog_link<T: Send + 'static>(
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok(stream) => {
-                    let _ = links.send(DogLink { name, pid, stream, resumed: None });
+                    let _ = links.send(DogLink { name, launch_for: None, pid, stream, resumed: None });
                 }
                 Err(error) => {
                     tracing::warn!(%error, dog = %name, "dog connection accept failed");

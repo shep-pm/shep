@@ -42,6 +42,7 @@ pub(super) async fn serve(
     links
         .send(DogLink {
             name: name.to_string(),
+            launch_for: None,
             pid: FIRST_SCRIPTED_PID,
             stream: server,
             resumed,

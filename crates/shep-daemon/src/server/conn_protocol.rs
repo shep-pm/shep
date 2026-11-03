@@ -134,7 +134,7 @@ async fn read_loop(
         let frame = frame?; // oversize/short frame ends the connection
         let envelope: Envelope = decode_frame(&frame).map_err(ConnError::Decode)?;
         attribution.note(ctx, &envelope.body);
-        match dispatch(envelope, conn, origin.bound_dog(), ctx).await {
+        match dispatch(envelope, conn, origin.link(), ctx).await {
             Outcome::Reply(reply) => send(out, &reply).await?,
             Outcome::Subscribe { reply, filter } => {
                 // Recorded ahead of the reply: a handover's snapshot then never
@@ -145,7 +145,7 @@ async fn read_loop(
                 // connection one topic list, not a growing union.
                 if let Some(old) = forwarder.replace(spawn_checked_forwarder(
                     ctx,
-                    origin.bound_dog(),
+                    origin.link(),
                     filter,
                     out.clone(),
                 )) {
@@ -192,10 +192,10 @@ async fn resume(
     // subscribed under, and the stream would otherwise outlive the narrowing.
     // Refused whole, as a fresh `Subscribe` is, and recorded as empty so the
     // next handover does not carry it on.
-    if let Some(dog) = origin.bound_dog()
-        && let Err(refusal) = check_carried(ctx, dog, topics).await
+    if let Some(link) = origin.link()
+        && let Err(refusal) = check_carried(ctx, link, topics).await
     {
-        tracing::warn!(%dog, reason = %refusal.message, "a carried dog subscription is outside its grants");
+        tracing::warn!(?link, reason = %refusal.message, "a carried subscription is outside its link's bounds");
         origin.subscribed(&[]).await;
         return Ok(None);
     }
@@ -210,7 +210,7 @@ async fn resume(
     send(out, &BusEvent::Dropped { count: 1 }).await?;
     Ok(Some(spawn_checked_forwarder(
         ctx,
-        origin.bound_dog(),
+        origin.link(),
         filter,
         out.clone(),
     )))

@@ -88,7 +88,7 @@ async fn a_refused_enable_leaves_the_grants_the_name_already_held() {
 
 /// Sends `request` on `dog`'s own connection.
 async fn as_dog(h: &crate::testing::Harness, dog: &str, request: Request) -> Reply {
-    reply_of(super::super::dispatch(envelope(1, request), ConnId::next(), Some(dog), &h.ctx).await)
+    reply_of(super::super::dispatch(envelope(1, request), ConnId::next(), Some(Link::Dog(dog)), &h.ctx).await)
 }
 
 fn enabling(name: &str, grants: Option<Grants>) -> Request {

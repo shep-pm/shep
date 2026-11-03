@@ -145,6 +145,9 @@ pub struct AdoptSpec {
     /// What `dog_link` had subscribed to, or `None` if its dog had not yet
     /// sent its `Hello`. Read only with `dog_link`.
     pub dog_topics: Option<Vec<String>>,
+    /// The dog `dog_link` is a launch link for, when the sheep is not itself
+    /// a dog: the connection then reads only this sheep's table.
+    pub launch_dog: Option<String>,
     /// The one reaper this successor waits every adopted pid through.
     ///
     /// Shared rather than owned per sheep: a status can be collected once,
@@ -222,6 +225,16 @@ pub struct SpawnSpec {
     /// Set by the supervisor for a dog and never by `assemble`, so a sheep
     /// cannot ask for one.
     pub dog_link: bool,
+    /// Hand the child a connection scoped to its own table, for a sheep a dog
+    /// launches: the dog it launches through, which is the connection's
+    /// `dog`, and the spec's own `name` as its sheep.
+    ///
+    /// Opened as [`Self::dog_link`] is, on fd 4 and in `$SHEP_DOG_FD`, so the
+    /// launch runs under any uid. Set by [`through_dog`](crate::assemble::through_dog)
+    /// and never by `assemble`. Unix only. A sheep with `listen` sockets gets
+    /// none, as fd 4 is theirs, and a spec with `dog_link` set keeps the
+    /// dog's own.
+    pub launch_link: Option<String>,
     /// Send the stop signal to the leader alone, not its process group.
     ///
     /// Set with a `dogs.sandbox` table: the sandbox passes the signal on to

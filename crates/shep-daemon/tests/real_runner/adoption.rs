@@ -36,6 +36,7 @@ fn adopt_spec(dir: &tempfile::TempDir, pid: u32, reaper: &Arc<AdoptedReaper>) ->
         channel: None,
         dog_link: None,
         dog_topics: None,
+        launch_dog: None,
         reaper: Arc::clone(reaper),
     }
 }
