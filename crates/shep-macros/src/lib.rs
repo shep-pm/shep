@@ -3,10 +3,9 @@
 //! A dog publishes a JSON Schema for its config so shep can render a
 //! settings pane. A credential field needs marking, shown as `<set>` rather
 //! than its value, and a field with one value per dog needs marking as
-//! dog-wide. `schemars` can mark either by hand with
-//! `#[schemars(extend("x-shep-secret" = true))]`. That key is a string an
-//! author can misspell silently. This attribute writes it, and turns a
-//! misspelled option into a compile error.
+//! dog-wide. `schemars` can mark either by hand with an `extend("x-shep-...")`
+//! key, a string an author can misspell silently. This attribute writes it,
+//! and turns a misspelled option into a compile error.
 //!
 //! Depend on `shep-client`, not this crate: it re-exports the attribute.
 
@@ -30,16 +29,12 @@ const DOG_WIDE: &str = "dog_wide";
 /// macro cannot resolve a path.
 const JSON_SCHEMA: &str = "JsonSchema";
 
-/// Marks which of a dog's config fields are credentials, so shep can redact
-/// them. The author never types the `schemars` extension key that says so.
+/// Marks which of a dog's config fields are credentials, or hold one value
+/// per dog, so the author never types the `schemars` extension key.
 ///
 /// Put it above the derives on the type a dog deserializes its config into.
-/// Mark each credential field with `#[shep(secret)]`, and each field that has
-/// one value per dog, such as a poll interval, with `#[shep(dog_wide)]`.
-/// Both go on one field as `#[shep(secret, dog_wide)]`. A dog-wide key is set
-/// in `[<dog>]` only; a sheep's `[app.dogs.<dog>]` table may not set it.
-/// Structs and enums both work. A marked field with no `JsonSchema` derive
-/// below it is refused.
+/// Mark a credential `#[shep(secret)]` and a per-dog field `#[shep(dog_wide)]`.
+/// A marked field with no `JsonSchema` derive below it is refused.
 ///
 /// # Example
 ///

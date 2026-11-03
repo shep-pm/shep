@@ -25,10 +25,7 @@ pub fn probe<T: DogConfig + schemars::JsonSchema>(name: &str, version: &str) {
 }
 
 /// [`probe`], for a dog whose per-sheep `[app.dogs.<name>]` table has its own schema.
-///
-/// The older form: a dog with one settings type marks per-dog keys
-/// `#[shep(dog_wide)]` and reads each sheep with `DogRuntime::sheep_settings`.
-/// The schema flag answers with [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep).
+/// The older form of [`Probe::serves`]. The schema flag answers with [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep).
 ///
 /// # Exits
 ///
@@ -229,8 +226,7 @@ impl<'a> Probe<'a> {
     }
 
     /// [`Self::answer`], for a dog that also publishes a schema for its
-    /// per-sheep table, as [`probe_with_sheep`] does. The older form: see
-    /// [`Self::serves`] for the one-type standard.
+    /// per-sheep table, as [`probe_with_sheep`] does.
     ///
     /// # Exits
     ///
