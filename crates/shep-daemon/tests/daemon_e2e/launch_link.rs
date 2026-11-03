@@ -71,6 +71,7 @@ async fn launched_as(user: Option<&str>) -> (String, String) {
             grants: None,
             path: script.display().to_string(),
             channel: false,
+            events: Vec::new(),
         },
         env: BTreeMap::new(),
     };

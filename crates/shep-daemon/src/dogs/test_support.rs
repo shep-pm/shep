@@ -19,7 +19,10 @@ const DOG_FIXTURE_START_BUDGET: Duration = Duration::from_secs(10);
 pub(super) async fn start_test_dog(ctx: &crate::rpc::RpcContext, name: &str) {
     let spec = DogSpec {
         name: name.to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     };
     let app = dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
@@ -29,8 +32,13 @@ pub(super) async fn start_test_dog(ctx: &crate::rpc::RpcContext, name: &str) {
     // timeout fires rather than waiting on a wall clock.
     tokio::time::timeout(
         DOG_FIXTURE_START_BUDGET,
-        ctx.supervisor
-            .start_dog(app, DogSource::BuiltIn { grants: None }),
+        ctx.supervisor.start_dog(
+            app,
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        ),
     )
     .await
     .expect("the dog fixture must start inside its budget")

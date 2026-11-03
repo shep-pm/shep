@@ -80,7 +80,10 @@ pub fn sample_info() -> ProcessInfo {
         .err_file(Some("/home/ada/.shep/logs/web-0-err.log".to_string()))
         .cpu_percent(Some(12.5))
         .memory_bytes(Some(48 * 1024 * 1024))
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .lambs(Some(vec![Lamb::new(4243, "node")]))
         // `restarts: 3` already implies an exit; give it a real outcome
         // rather than `None` so `last_exit`'s JSON shape gets exercised too.

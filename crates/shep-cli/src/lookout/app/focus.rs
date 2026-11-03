@@ -579,7 +579,10 @@ mod tests {
         let _ = app.update(Msg::Snapshot {
             rows: vec![
                 ProcessInfo::builder(90, "otel", ProcStatus::Online)
-                    .dog(Some(DogSource::BuiltIn { grants: None }))
+                    .dog(Some(DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new(),
+                    }))
                     .build(),
             ],
             at: Instant::now(),

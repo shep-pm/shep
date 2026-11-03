@@ -274,7 +274,10 @@ mod tests {
             let code = remove_after_config(
                 &mut streams,
                 "otel",
-                Some(DogSource::BuiltIn { grants: None }),
+                Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
                 client,
                 Removal::Rehome,
             )
@@ -312,6 +315,7 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-otel".to_string(),
                 channel: false,
+                events: Vec::new(),
             }),
             Some(&client),
             Removal::Delete,

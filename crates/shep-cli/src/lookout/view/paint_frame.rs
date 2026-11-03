@@ -496,6 +496,7 @@ mod tests {
                 .pid(Some(90_000))
                 .dog(Some(shep_core::protocol::DogSource::BuiltIn {
                     grants: None,
+                    events: Vec::new(),
                 }))
                 .build(),
         ];

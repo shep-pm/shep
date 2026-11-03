@@ -677,7 +677,10 @@ mod tests {
         let store = Arc::new(SampleStore::new());
         let feed = spawn_feed(client, Arc::clone(&store));
         let mut bark = sheep(2, "bark");
-        bark.dog = Some(DogSource::BuiltIn { grants: None });
+        bark.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
 
         daemon.push(metric(2, "barks_sent", 4.0)).await;
         assert!(

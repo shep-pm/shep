@@ -339,7 +339,10 @@ mod tests {
     /// `shep.toml` says about one.
     fn built_in() -> DogEntry {
         DogEntry {
-            source: DogSource::BuiltIn { grants: None },
+            source: DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             env: BTreeMap::default(),
         }
     }
@@ -527,7 +530,10 @@ mod tests {
             Request::EnableDog {
                 name: "metrics".to_string(),
                 env: BTreeMap::default(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new()
+                },
             }
         );
     }
@@ -574,6 +580,7 @@ mod tests {
                         grants: None,
                         path: "/usr/local/bin/shep-otel".to_string(),
                         channel,
+                        events: Vec::new(),
                     },
                 }
             );

@@ -35,7 +35,13 @@ async fn start_sheep(
 async fn starting_a_sheep_named_after_a_built_in_dog_at_rest_is_refused() {
     let h = harness(vec![ProcScript::never_exits()]);
     crate::dogs::register_dogs_at_rest(
-        &[dog("metrics", DogSource::BuiltIn { grants: None })],
+        &[dog(
+            "metrics",
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )],
         &[],
         &h.ctx.paths,
         &h.ctx.supervisor,
@@ -49,7 +55,10 @@ async fn starting_a_sheep_named_after_a_built_in_dog_at_rest_is_refused() {
     assert_eq!(flock.len(), 1, "{flock:?}");
     assert_eq!(
         flock[0].dog,
-        Some(DogSource::BuiltIn { grants: None }),
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        }),
         "{flock:?}"
     );
     assert_eq!(flock[0].status, ProcStatus::Stopped, "{flock:?}");
@@ -67,7 +76,10 @@ async fn starting_a_sheep_named_after_a_running_dog_is_refused() {
     assert_eq!(flock.len(), 1, "{flock:?}");
     assert_eq!(
         flock[0].dog,
-        Some(DogSource::BuiltIn { grants: None }),
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        }),
         "{flock:?}"
     );
 }
@@ -82,6 +94,7 @@ async fn starting_a_sheep_named_after_an_adopted_dog_is_refused() {
                 grants: None,
                 path: "/usr/local/bin/shep-otel".to_string(),
                 channel: true,
+                events: Vec::new(),
             },
         )],
         &[],

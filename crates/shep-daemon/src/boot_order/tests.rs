@@ -407,7 +407,13 @@ async fn a_dog_stops_after_every_sheep() {
     h.ctx.registry.record(std::slice::from_ref(&dog));
     h.ctx
         .supervisor
-        .start_dog(dog, DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog,
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .expect("a scripted dog that never exits starts");
 

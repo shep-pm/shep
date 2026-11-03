@@ -325,7 +325,14 @@ fn actor_with_a_sheep_and_a_dog(
     let mut sheep = HashMap::new();
     for (id, name, dog) in [
         (SHEEP_ID, "web", None),
-        (DOG_ID, "bark", Some(DogSource::BuiltIn { grants: None })),
+        (
+            DOG_ID,
+            "bark",
+            Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }),
+        ),
     ] {
         let app = app_with(name, |config| config.fold = Some("svc".to_string()));
         let mut entry = armed_entry(id, 0, 1111 + id, app, &paths);
@@ -376,7 +383,10 @@ fn a_listing_reports_where_a_dog_came_from() {
 
     assert_eq!(
         to_info(&actor.sheep[&DOG_ID].entry, &actor.smits).dog,
-        Some(DogSource::BuiltIn { grants: None })
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
     );
     assert_eq!(
         to_info(&actor.sheep[&SHEEP_ID].entry, &actor.smits).dog,

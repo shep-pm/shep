@@ -49,6 +49,7 @@ mod tests {
     fn granted() -> DogSource {
         DogSource::BuiltIn {
             grants: Some(Grants::new([Permission::FlockRead])),
+            events: Vec::new(),
         }
     }
 
@@ -77,7 +78,10 @@ mod tests {
 
     #[test]
     fn a_dog_with_no_grants_has_nothing_to_enforce_on_any_shepherd() {
-        let undeclared = DogSource::BuiltIn { grants: None };
+        let undeclared = DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        };
 
         assert_eq!(said(&undeclared, ENFORCED_SINCE - 1), "");
     }

@@ -197,7 +197,10 @@ fn dog_control_holds_enabling_and_disabling_a_dog() {
         Request::EnableDog {
             name: "jobs".into(),
             env: BTreeMap::default(),
-            source: crate::protocol::DogSource::BuiltIn { grants: None },
+            source: crate::protocol::DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         },
         Request::DisableDog {
             name: "jobs".into(),

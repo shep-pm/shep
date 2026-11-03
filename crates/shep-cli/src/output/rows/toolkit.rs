@@ -747,7 +747,10 @@ mod tests {
     #[test]
     fn source_draws_the_trust_line_and_never_paints_a_working_dog_red() {
         assert_eq!(
-            source_role(&DogSource::BuiltIn { grants: None }),
+            source_role(&DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new()
+            }),
             Role::Ink3
         );
         assert_eq!(
@@ -755,15 +758,20 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
                 channel: false,
+                events: Vec::new(),
             }),
             Role::Butter
         );
         assert_ne!(
-            source_role(&DogSource::BuiltIn { grants: None }),
+            source_role(&DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new()
+            }),
             source_role(&DogSource::Adopted {
                 grants: None,
                 path: "/x".to_string(),
                 channel: false,
+                events: Vec::new(),
             }),
             "shep's own code and a third-party binary must not look the same"
         );
@@ -833,7 +841,13 @@ mod tests {
             ProcStatus::WaitingRestart,
         ];
         let handshooks = [None, Some(false), Some(true)];
-        let dogs = [None, Some(DogSource::BuiltIn { grants: None })];
+        let dogs = [
+            None,
+            Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }),
+        ];
 
         for dog in &dogs {
             for &handshook in &handshooks {

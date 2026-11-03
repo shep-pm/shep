@@ -15,7 +15,10 @@ fn paths() -> (tempfile::TempDir, ShepPaths) {
 
 fn dog(name: &str, grants: Option<Grants>) -> ProcessInfo {
     ProcessInfo::builder(1, name, ProcStatus::Online)
-        .dog(Some(DogSource::BuiltIn { grants }))
+        .dog(Some(DogSource::BuiltIn {
+            grants,
+            events: Vec::new(),
+        }))
         .build()
 }
 
@@ -51,7 +54,10 @@ fn a_disabled_dog_with_no_grants_is_not_running_with_full_access() {
     let (_dir, paths) = paths();
     let mut rows = vec![
         ProcessInfo::builder(1, "bark", ProcStatus::Stopped)
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .disabled(Some(true))
             .build(),
     ];

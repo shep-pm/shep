@@ -356,6 +356,7 @@ async fn restart_kelpie(entry_env: &str, spawned_env: &[(&str, &str)]) -> (Strin
         path: spawned.script.clone(),
         channel: false,
         grants: None,
+        events: Vec::new(),
     }))
     .build();
     let base = shepherd_running(spawned, shep_core::status::ProcStatus::Online);

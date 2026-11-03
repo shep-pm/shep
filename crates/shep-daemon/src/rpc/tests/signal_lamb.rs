@@ -144,7 +144,10 @@ async fn a_dog_named_exactly_is_refused_and_nothing_is_sent() {
     crate::dogs::register_dogs_at_rest(
         &[crate::dogs::DogSpec {
             name: "metrics".to_string(),
-            source: DogSource::BuiltIn { grants: None },
+            source: DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             env: std::collections::BTreeMap::new(),
         }],
         &[],

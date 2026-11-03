@@ -314,6 +314,7 @@ pub(crate) mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
                 channel: false,
+                events: Vec::new(),
             }))
             .build()
     }
@@ -415,6 +416,7 @@ pub(crate) mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
                 channel: false,
+                events: Vec::new(),
             },
             DogActionStatus::Acted("online"),
         );

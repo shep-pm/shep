@@ -194,7 +194,10 @@ async fn a_dog_in_the_flock_is_not_a_sheep_it_serves() {
     let dir = tempfile::tempdir().unwrap();
     let (runtime, shepherd) = started(dir.path(), "", &["web"], &[]).await;
     let mut dog = sheep(2, "bark");
-    dog.dog = Some(shep_core::protocol::DogSource::BuiltIn { grants: None });
+    dog.dog = Some(shep_core::protocol::DogSource::BuiltIn {
+        grants: None,
+        events: Vec::new(),
+    });
     shepherd.reply_to_list(vec![sheep(1, "web"), dog]);
 
     let settings = read(&runtime, Serves::EverySheep).await;

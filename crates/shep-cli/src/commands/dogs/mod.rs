@@ -182,7 +182,10 @@ pub(crate) fn boot_first_in_config(
 /// The verbs that send the source read `grants` with `?` so a typo stops
 /// them; the ones that only report it pass `None`.
 fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
-    adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn { grants })
+    adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn {
+        grants,
+        events: Vec::new(),
+    })
 }
 
 /// What `shep.toml` says about `name`, as the CLI hands it to the shepherd:
@@ -220,6 +223,7 @@ fn adopted_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> Option<
         grants,
         path: path.display().to_string(),
         channel: cfg.asked_for_channel(name),
+        events: Vec::new(),
     })
 }
 

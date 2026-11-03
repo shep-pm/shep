@@ -86,6 +86,7 @@ impl Session {
                 path: path.display().to_string(),
                 channel: false,
                 grants: grants.map(|names| Grants::parse(names).unwrap()),
+                events: Vec::new(),
             },
             env: BTreeMap::new(),
         };

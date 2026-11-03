@@ -64,6 +64,7 @@ fn an_enable_dog_carries_its_env_and_hides_its_values() {
             grants: None,
             path: "/usr/local/bin/shep-kelpie".to_string(),
             channel: false,
+            events: Vec::new(),
         },
         env: BTreeMap::from([(
             "PADDOCK_KEY".to_string(),
@@ -84,7 +85,10 @@ fn an_enable_dog_carries_its_env_and_hides_its_values() {
 
     let bare = Request::EnableDog {
         name: "metrics".to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     };
     let json = serde_json::to_string(&bare).unwrap();
@@ -332,7 +336,10 @@ fn request_wire_snapshots() {
             Request::EnableDog {
                 name: "metrics".to_string(),
                 env: BTreeMap::default(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
             },
         ),
         envelope(

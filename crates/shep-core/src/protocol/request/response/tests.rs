@@ -114,6 +114,7 @@ fn reply_wire_snapshots() {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 }),
                 ..sample_info()
             }])),
@@ -132,7 +133,10 @@ fn reply_wire_snapshots() {
             result: Ok(Response::DogStarted(ProcessInfo {
                 id: 4,
                 name: "metrics".to_string(),
-                dog: Some(DogSource::BuiltIn { grants: None }),
+                dog: Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
                 ..sample_info()
             })),
         },
@@ -346,6 +350,7 @@ fn reply_wire_snapshots() {
                         grants: None,
                         path: "/usr/local/bin/shep-log-rotate".to_string(),
                         channel: false,
+                        events: Vec::new(),
                     }))
                     .handshook(Some(false))
                     .dog_stale(Some(false))
@@ -361,6 +366,7 @@ fn reply_wire_snapshots() {
                         grants: None,
                         path: "/usr/local/bin/shep-log-rotate".to_string(),
                         channel: false,
+                        events: Vec::new(),
                     }))
                     .handshook(Some(false))
                     .dog_stale(Some(true))

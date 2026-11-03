@@ -281,10 +281,17 @@ pub(crate) fn dog_spec(config: &DaemonConfig, name: &str) -> DogSpec {
                 grants,
                 path: entry.path.display().to_string(),
                 channel: config.daemon.channel_dogs.iter().any(|dog| dog == name),
+                events: Vec::new(),
             },
             entry.env.clone(),
         ),
-        None => (DogSource::BuiltIn { grants }, BTreeMap::new()),
+        None => (
+            DogSource::BuiltIn {
+                grants,
+                events: Vec::new(),
+            },
+            BTreeMap::new(),
+        ),
     };
     DogSpec {
         name: name.to_string(),
@@ -420,7 +427,10 @@ jobs = "/usr/local/bin/shep-jobs"
             vec![
                 DogSpec {
                     name: "metrics".into(),
-                    source: DogSource::BuiltIn { grants: None },
+                    source: DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new()
+                    },
                     env: BTreeMap::new(),
                 },
                 DogSpec {
@@ -429,6 +439,7 @@ jobs = "/usr/local/bin/shep-jobs"
                         grants: None,
                         path: "/usr/local/bin/shep-otel".into(),
                         channel: false,
+                        events: Vec::new(),
                     },
                     env: BTreeMap::new(),
                 },
@@ -438,6 +449,7 @@ jobs = "/usr/local/bin/shep-jobs"
                         grants: None,
                         path: "/usr/local/bin/shep-jobs".into(),
                         channel: true,
+                        events: Vec::new(),
                     },
                     env: BTreeMap::new(),
                 },
@@ -476,12 +488,18 @@ otel = "/usr/local/bin/shep-otel"
             vec![
                 DogSpec {
                     name: "metrics".into(),
-                    source: DogSource::BuiltIn { grants: None },
+                    source: DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new()
+                    },
                     env: BTreeMap::new(),
                 },
                 DogSpec {
                     name: "bark".into(),
-                    source: DogSource::BuiltIn { grants: None },
+                    source: DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new()
+                    },
                     env: BTreeMap::new(),
                 },
                 DogSpec {
@@ -490,6 +508,7 @@ otel = "/usr/local/bin/shep-otel"
                         grants: None,
                         path: "/usr/local/bin/shep-otel".into(),
                         channel: false,
+                        events: Vec::new(),
                     },
                     env: BTreeMap::new(),
                 },

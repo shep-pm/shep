@@ -42,7 +42,10 @@ async fn list_flock_returns_every_registered_entry_including_dogs() {
     let socket = shep_client::testing::control_address(dir.path());
     let sheep = shep_client::testing::sample_info();
     let dog = ProcessInfo::builder(2, "metrics", ProcStatus::Online)
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .build();
     let served = shep_client::testing::serve_one_request(
         &socket,

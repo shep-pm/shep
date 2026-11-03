@@ -19,7 +19,10 @@ use std::collections::BTreeMap;
 fn built_in(name: &str) -> DogSpec {
     DogSpec {
         name: name.to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     }
 }

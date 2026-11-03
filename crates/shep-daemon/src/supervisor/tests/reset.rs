@@ -123,7 +123,10 @@ async fn reset_clears_last_exit_except_on_a_stopped_dog() {
     let metrics = actor
         .register_dog_at_rest(
             &normalize(AppConfig::minimal("metrics", "/dogs/metrics")).unwrap(),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             &BTreeSet::new(),
         )
         .id;

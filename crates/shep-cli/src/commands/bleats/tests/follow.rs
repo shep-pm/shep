@@ -260,6 +260,7 @@ fn instance_counts_agree_with_instance_count_for_every_name() {
         ProcessInfo::builder(5, "metrics", ProcStatus::Online)
             .dog(Some(shep_core::protocol::DogSource::BuiltIn {
                 grants: None,
+                events: Vec::new(),
             }))
             .build(),
     ];

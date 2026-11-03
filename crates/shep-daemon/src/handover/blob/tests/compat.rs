@@ -332,6 +332,7 @@ fn a_dogs_marker_crosses_the_blob() {
         grants: None,
         path: "/opt/bin/shep-log-rotate".to_string(),
         channel: false,
+        events: Vec::new(),
     });
     let mut blob = sample_handover();
     blob.sheep[0] = CarriedSheep::from_entry(&entry, 7, fds_at(11), false, None, false, None);
@@ -345,6 +346,7 @@ fn a_dogs_marker_crosses_the_blob() {
             grants: None,
             path: "/opt/bin/shep-log-rotate".to_string(),
             channel: false,
+            events: Vec::new(),
         }),
         "a dog that crossed the exec as an ordinary sheep is one `shep dogs` has lost"
     );
@@ -357,7 +359,10 @@ fn a_dogs_marker_crosses_the_blob() {
 #[test]
 fn a_blob_row_this_build_cannot_read_refuses_the_handover() {
     let mut entry = entry_fixture(|_| {});
-    entry.dog = Some(DogSource::BuiltIn { grants: None });
+    entry.dog = Some(DogSource::BuiltIn {
+        grants: None,
+        events: Vec::new(),
+    });
     let mut blob = sample_handover();
     blob.sheep[0] = CarriedSheep::from_entry(&entry, 7, fds_at(11), false, None, false, None);
     let wire = serde_json::to_value(&blob).unwrap();
@@ -395,7 +400,10 @@ fn a_plain_sheep_crosses_the_blob_without_one() {
 #[test]
 fn a_blob_written_before_a_dog_was_carried_still_loads() {
     let mut entry = entry_fixture(|_| {});
-    entry.dog = Some(DogSource::BuiltIn { grants: None });
+    entry.dog = Some(DogSource::BuiltIn {
+        grants: None,
+        events: Vec::new(),
+    });
     let mut blob = sample_handover();
     blob.sheep[0] = CarriedSheep::from_entry(&entry, 7, fds_at(11), false, None, false, None);
     let value = serde_json::to_value(&blob).unwrap();
@@ -405,7 +413,10 @@ fn a_blob_written_before_a_dog_was_carried_still_loads() {
             .expect("a current blob loads")
             .sheep[0]
             .dog(),
-        Some(&DogSource::BuiltIn { grants: None }),
+        Some(&DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        }),
         "a marker on the wire must come back as one"
     );
 

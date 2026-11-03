@@ -162,7 +162,10 @@ mod tests {
         let code = disable_after_config(
             &mut streams,
             "bark",
-            &DogSource::BuiltIn { grants: None },
+            &DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             Some(&client),
         )
         .await;
@@ -191,7 +194,10 @@ mod tests {
         let code = disable_after_config(
             &mut streams,
             "bark",
-            &DogSource::BuiltIn { grants: None },
+            &DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             None,
         )
         .await;
@@ -217,7 +223,10 @@ mod tests {
         let _ = disable_after_config(
             &mut streams(&mut out, &mut err),
             "bark",
-            &DogSource::BuiltIn { grants: None },
+            &DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             Some(&client),
         )
         .await;
@@ -262,7 +271,10 @@ mod tests {
         let code = disable_after_config(
             &mut streams(&mut out, &mut err),
             "ghost",
-            &DogSource::BuiltIn { grants: None },
+            &DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             Some(&client),
         )
         .await;

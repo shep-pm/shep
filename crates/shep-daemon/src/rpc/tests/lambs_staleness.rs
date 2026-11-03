@@ -40,12 +40,21 @@ async fn only_describe_carries_a_lamb_tree() {
 async fn start_dog(ctx: &RpcContext, name: &str) -> ProcessInfo {
     let spec = DogSpec {
         name: name.to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     };
     let app = crate::dogs::dog_app(&spec, &ctx.paths).expect("the dog fixture must assemble");
     ctx.supervisor
-        .start_dog(app, DogSource::BuiltIn { grants: None })
+        .start_dog(
+            app,
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .expect("the dog fixture must start")
 }

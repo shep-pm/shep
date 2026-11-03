@@ -272,7 +272,10 @@ mod tests {
             edit,
             ticket,
             result: Ok(DogEntry {
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::default(),
             }),
         });
@@ -342,7 +345,10 @@ mod tests {
             edit,
             ticket,
             result: Ok(DogEntry {
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::default(),
             }),
         }) else {
@@ -362,7 +368,10 @@ mod tests {
         );
         let info = ProcessInfo::builder(50, "metrics", ProcStatus::Online)
             .pid(Some(50_000))
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build();
         app.update(Msg::Replied {
             sent,
@@ -425,7 +434,10 @@ mod tests {
                 Response::DogStarted(
                     ProcessInfo::builder(50, name, ProcStatus::Online)
                         .pid(Some(50_000))
-                        .dog(Some(DogSource::BuiltIn { grants: None }))
+                        .dog(Some(DogSource::BuiltIn {
+                            grants: None,
+                            events: Vec::new(),
+                        }))
                         .build(),
                 )
             } else {

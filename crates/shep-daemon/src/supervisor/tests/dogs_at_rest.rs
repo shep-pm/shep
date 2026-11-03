@@ -28,13 +28,22 @@ async fn a_dog_at_rest_is_listed_stopped_and_disabled_and_nothing_is_spawned() {
 
     let registered = actor.register_dog_at_rest(
         &dog_from("metrics", "/dogs/metrics"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["metrics"]),
     );
 
     assert_eq!(registered.status, ProcStatus::Stopped);
     assert_eq!(registered.disabled, Some(true));
-    assert_eq!(registered.dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        registered.dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
     assert_eq!(registered.pid, None);
     assert_eq!(actor.runner.spawn_count(), 0);
     assert_eq!(listed(&actor), vec![registered]);
@@ -47,7 +56,10 @@ async fn a_dog_the_operator_enabled_is_listed_without_the_mark() {
 
     let registered = actor.register_dog_at_rest(
         &dog_from("bark", "/dogs/bark"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&[]),
     );
 
@@ -63,7 +75,10 @@ async fn a_sheep_already_holding_the_name_is_neither_replaced_nor_marked() {
 
     let answered = actor.register_dog_at_rest(
         &dog_from("metrics", "/dogs/metrics"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["metrics"]),
     );
 
@@ -80,12 +95,18 @@ async fn starting_a_dog_at_rest_runs_it_under_the_id_it_was_listed_with() {
     let api = actor.register_at_rest(&dog_from("api", "/sheep/api"));
     let metrics = actor.register_dog_at_rest(
         &dog_from("metrics", "/dogs/metrics"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["metrics"]),
     );
     let bark = actor.register_dog_at_rest(
         &dog_from("bark", "/dogs/bark"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["bark"]),
     );
     assert_eq!((api.id, metrics.id, bark.id), (0, 1, 2));
@@ -93,7 +114,10 @@ async fn starting_a_dog_at_rest_runs_it_under_the_id_it_was_listed_with() {
     let started = actor
         .do_start_dog(
             dog_from("metrics", "/dogs/metrics"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
 
@@ -117,19 +141,28 @@ async fn the_next_sheep_after_an_enable_still_takes_the_next_free_id() {
     );
     actor.register_dog_at_rest(
         &dog_from("metrics", "/dogs/metrics"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["metrics"]),
     );
     actor.register_dog_at_rest(
         &dog_from("bark", "/dogs/bark"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["bark"]),
     );
 
     actor
         .do_start_dog(
             dog_from("metrics", "/dogs/metrics"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
     let after = actor.register_at_rest(&dog_from("web", "/sheep/web"));
@@ -146,6 +179,7 @@ async fn enabling_after_a_re_adopt_spawns_the_path_in_the_request() {
         grants: None,
         path: path.into(),
         channel: false,
+        events: Vec::new(),
     };
     actor.register_dog_at_rest(
         &dog_from("mine", "/old/mine"),
@@ -168,14 +202,20 @@ async fn starting_a_dog_that_is_running_answers_with_it_and_spawns_nothing() {
     let first = actor
         .do_start_dog(
             dog_from("bark", "/dogs/bark"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
 
     let again = actor
         .do_start_dog(
             dog_from("bark", "/dogs/bark"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
 
@@ -189,13 +229,19 @@ async fn a_dog_at_rest_that_cannot_spawn_is_errored_and_keeps_its_id() {
     let mut actor = actor_with_an_empty_flock(&dir, Vec::new());
     let at_rest = actor.register_dog_at_rest(
         &dog_from("bark", "/dogs/bark"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         &names(&["bark"]),
     );
 
     let failed = actor.do_start_dog(
         dog_from("bark", "/dogs/bark"),
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
     );
 
     assert!(matches!(failed, Err(SupervisorError::SpawnFailed(_))));
@@ -203,7 +249,13 @@ async fn a_dog_at_rest_that_cannot_spawn_is_errored_and_keeps_its_id() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, at_rest.id);
     assert_eq!(rows[0].status, ProcStatus::Errored);
-    assert_eq!(rows[0].dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        rows[0].dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
 }
 
 /// A dog the operator stopped is `Stopped` like one at rest, and a boot that
@@ -215,7 +267,10 @@ async fn a_dog_that_ran_and_stopped_is_not_started_again_by_a_second_start_dog()
     let running = actor
         .do_start_dog(
             dog_from("metrics", "/dogs/metrics"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
     let slot = actor.sheep.get_mut(&running.id).unwrap();
@@ -229,7 +284,10 @@ async fn a_dog_that_ran_and_stopped_is_not_started_again_by_a_second_start_dog()
     let again = actor
         .do_start_dog(
             dog_from("metrics", "/dogs/metrics"),
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )
         .unwrap();
 

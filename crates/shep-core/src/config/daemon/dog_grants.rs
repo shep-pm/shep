@@ -35,6 +35,11 @@ pub struct DogGrantsSection {
     /// looked at. Absent means reviewed.
     #[serde(default = "reviewed_by_default")]
     pub reviewed: bool,
+    /// The event kinds the dog's manifest declares, which it may publish as
+    /// `dog.<name>.<kind>`. Written by `shep adopt` and `shep enable` from
+    /// the manifest, and read by the shepherd to judge a publish.
+    #[serde(default)]
+    pub events: Vec<String>,
 }
 
 const fn reviewed_by_default() -> bool {
@@ -68,6 +73,23 @@ granted = ["flock.read", "events:process.", "secrets.write:vault"]
                 Permission::SecretsWrite("vault".to_string()),
             ])
         );
+    }
+
+    #[test]
+    fn declared_event_kinds_are_read_beside_granted() {
+        let src = "[daemon.dog_grants.otel]\ngranted = []\nevents = [\"exported\", \"failed\"]\n";
+        let cfg = DaemonConfig::load(Some(src), &no_env).unwrap();
+        assert_eq!(
+            cfg.daemon.dog_grants["otel"].events,
+            ["exported".to_string(), "failed".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_entry_without_events_declares_none() {
+        let cfg =
+            DaemonConfig::load(Some("[daemon.dog_grants.otel]\ngranted = []\n"), &no_env).unwrap();
+        assert!(cfg.daemon.dog_grants["otel"].events.is_empty());
     }
 
     #[test]

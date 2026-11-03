@@ -163,6 +163,7 @@ pub(super) async fn adopt_asking(
             grants: None,
             path: path.display().to_string(),
             channel,
+            events: Vec::new(),
         };
         return declined_after_config(streams, &name, source, client.as_ref()).await;
     }
@@ -456,6 +457,7 @@ async fn adopt_after_config(
         grants,
         path: path.display().to_string(),
         channel,
+        events: Vec::new(),
     };
     let Some(client) = client else {
         return emit_dog_action(streams, "adopt", name, source, NO_SHEPHERD_ENABLE_STATUS);
@@ -545,6 +547,7 @@ mod tests {
                         grants: None,
                         path: "/usr/local/bin/shep-otel".to_string(),
                         channel,
+                        events: Vec::new(),
                     },
                 }
             );

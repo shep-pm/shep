@@ -15,6 +15,7 @@ fn adopted_with(grants: Grants) -> Request {
             grants: Some(grants),
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: false,
+            events: Vec::new(),
         },
     }
 }
@@ -51,6 +52,7 @@ async fn an_enable_refused_for_a_sheeps_name_remembers_no_dog() {
             grants: Some(Grants::default()),
             path: "/usr/local/bin/shep-web".to_string(),
             channel: false,
+            events: Vec::new(),
         },
     };
 
@@ -78,6 +80,7 @@ async fn a_refused_enable_leaves_the_grants_the_name_already_held() {
             grants: Some(Grants::default()),
             path: "/usr/local/bin/shep-web".to_string(),
             channel: false,
+            events: Vec::new(),
         },
     };
 
@@ -107,6 +110,7 @@ fn enabling(name: &str, grants: Option<Grants>) -> Request {
             grants,
             path: format!("/usr/local/bin/shep-{name}"),
             channel: false,
+            events: Vec::new(),
         },
     }
 }

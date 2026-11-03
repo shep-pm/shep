@@ -35,7 +35,10 @@ async fn boot_restores_the_flock_before_it_lets_the_dogs_out() {
             restore: true,
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::new(),
             }],
             ..BootOptions::default()
@@ -62,7 +65,10 @@ async fn boot_restores_the_flock_before_it_lets_the_dogs_out() {
     );
     assert_eq!(
         dog.dog,
-        Some(DogSource::BuiltIn { grants: None }),
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        }),
         "the dog entry must carry its source"
     );
     assert!(
@@ -89,7 +95,10 @@ fn a_dog_that_will_not_start_does_not_fail_the_boot() {
         BootOptions {
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::new(),
             }],
             ..BootOptions::default()
@@ -131,7 +140,10 @@ fn a_dog_enabled_under_a_sheeps_name_does_not_start_and_does_not_fail_the_boot()
             restore: true,
             dogs: vec![DogSpec {
                 name: "metrics".to_string(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::new(),
             }],
             ..BootOptions::default()

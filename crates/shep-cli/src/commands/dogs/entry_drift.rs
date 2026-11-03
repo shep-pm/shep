@@ -146,6 +146,7 @@ pub(crate) mod test_support {
                         path: spawned.script.clone(),
                         channel: false,
                         grants: None,
+                        events: Vec::new(),
                     }))
                     .build(),
             ]),
@@ -186,6 +187,7 @@ pub(crate) mod test_support {
                     path: "/usr/local/bin/shep-kelpie".to_string(),
                     channel: false,
                     grants: None,
+                    events: Vec::new(),
                 },
                 env: spawned_env
                     .iter()
@@ -271,6 +273,7 @@ mod tests {
                 path: spawned.script.clone(),
                 channel: false,
                 grants: None,
+                events: Vec::new(),
             }))
             .build()];
         let (client, mut envelopes) = shep_client::testing::fake_client_answering(

@@ -75,6 +75,7 @@ async fn a_boot_first_dog_handshakes_while_the_socket_is_not_served() {
             grants: None,
             path: script.display().to_string(),
             channel: false,
+            events: Vec::new(),
         },
         env: BTreeMap::new(),
     };

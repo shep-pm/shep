@@ -11,7 +11,10 @@ use crate::vocabulary::Role;
 
 fn dog(access: Option<DogAccess>) -> ProcessInfo {
     ProcessInfo::builder(1, "otel", ProcStatus::Online)
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .access(access)
         .build()
 }

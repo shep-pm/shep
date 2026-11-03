@@ -604,13 +604,20 @@ mod tests {
     fn a_carried_dog_does_not_reach_the_muster_roll() {
         let flock = vec![
             carried_for_the_roll("web", None),
-            carried_for_the_roll("metrics", Some(DogSource::BuiltIn { grants: None })),
+            carried_for_the_roll(
+                "metrics",
+                Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
+            ),
             carried_for_the_roll(
                 "log-rotate",
                 Some(DogSource::Adopted {
                     grants: None,
                     path: "/opt/bin/shep-log-rotate".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 }),
             ),
         ];

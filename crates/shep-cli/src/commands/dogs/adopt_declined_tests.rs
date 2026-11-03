@@ -18,6 +18,7 @@ fn otel() -> DogSource {
         grants: None,
         path: "/usr/local/bin/shep-otel".to_string(),
         channel: false,
+        events: Vec::new(),
     }
 }
 

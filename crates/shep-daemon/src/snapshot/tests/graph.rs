@@ -208,7 +208,13 @@ fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about
                     let dog = normalize(AppConfig::minimal("metrics", "./srv"))
                         .expect("a minimal dog normalizes");
                     handle
-                        .start_dog(dog, DogSource::BuiltIn { grants: None })
+                        .start_dog(
+                            dog,
+                            DogSource::BuiltIn {
+                                grants: None,
+                                events: Vec::new(),
+                            },
+                        )
                         .await
                         .expect("a scripted dog that never exits starts");
                 }
@@ -248,7 +254,10 @@ fn a_dependency_on_an_unpromoted_dog_that_is_already_running_is_not_warned_about
 fn a_dog_holding_a_saved_sheeps_name_is_warned_about() {
     let members = vec![normalize(AppConfig::minimal("metrics", "./srv")).expect("normalizes")];
     let as_dog = [ProcessInfo::builder(0, "metrics", ProcStatus::Online)
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .build()];
     let as_sheep = [ProcessInfo::builder(0, "metrics", ProcStatus::Online).build()];
 
