@@ -688,14 +688,13 @@ prose itself for `manual`) and then a `shep adopt <path> --name <name>` line.
 The operator runs the first. shep runs only the second, which vets the binary
 before it registers it, so nothing in shep fetches, builds or executes a
 stranger's code. The reason, argued in
-[deferred.md](specs/deferred.md#shep-install-does-not-exist-and-a-scanner-is-not-what-would-make-it-safe)
-and tracked as #357, is that the index is written by strangers and every
+the deferred entry that is now gone (#357), is that the index is written by strangers and every
 string in it reaches a terminal, so the module treats all of it as hostile
 and sanitises escapes. An index whose strings cannot be trusted to print is
 not one to trust to execute. The source kind is a tagged enum so an installer
 can be added later without asking past contributors to rewrite their entries.
-A future `shep install` would reverse the print-only call, and this entry is
-the record of the call it reverses.
+`shep install` has since reversed the print-only call: see
+[decisions.md](decisions.md#shep-install-runs-the-installer-reversing-print-never-execute).
 
 **`shep lookout <sheep> [tab] [dog]` opens on the screen the operator named**
 (issue #1194). The verb took no positional at all before it: lookout opened the

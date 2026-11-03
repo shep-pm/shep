@@ -14,7 +14,7 @@ See what's up    flock describe bleats lookout fold barks
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs adopt whistle
+Dogs and agents  dogs install adopt whistle
 Foreground runs  runtime dev
 Coming from pm2  import
 Help             welcome init help completions style
@@ -753,6 +753,44 @@ Options:
           Print help (see a summary with '-h')
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
+@@VERB:install@@
+Build a dog from the community index with cargo, then adopt and enable it. With no name, lists the
+index.
+
+Runs `cargo install --locked --version <version> --root $SHEP_HOME/dogs/<name>/<version>/ <package>`
+for the one version the index approves, so it needs `cargo` on `PATH`; shep never installs a
+toolchain. Before building it asks crates.io which repository published that version, and refuses
+one other than the index row's. Then it asks the same grant question `shep adopt` asks, and enables
+the dog. A no leaves it installed, adopted and disabled. `$SHEP_HOME/dogs/<name>/receipt.json`
+records what was built and how.
+
+Only a `cargo` row with an approved version installs. Any other row prints its instructions and
+exits 1. A dog the index does not carry is `shep adopt`.
+
+Usage: shep install [OPTIONS] [DOG]
+
+Arguments:
+  [DOG]
+          The dog to install: its `adopt_as` name in the community index, as `shep install` with no
+          name lists it. With none, lists what `shep dogs --available` lists, with the install line
+          under each dog that can be installed
+
+Options:
+      --yes
+          Grant the dog everything it declares without asking. With no terminal and no `--yes`,
+          install builds the dog and then refuses at the grant question
+
+      --no-enable
+          Stop after adopting: the dog is built, recorded and granted, and left disabled until `shep
+          enable`
+
+      --refresh
+          Fetch the community index even when the copy cached in the last day is still fresh
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:adopt@@
 Vet a binary shep has never seen and register it as a dog: writes `[daemon] adopted_dogs` and
 `[daemon] enabled_dogs` in `shep.toml`, and starts it now if a shepherd is running.
