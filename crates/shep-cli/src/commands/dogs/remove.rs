@@ -6,6 +6,10 @@
 //! `[daemon] adopted_dogs` and `[daemon] channel_dogs`. What stays is the
 //! `[<name>]` section in `dogs.toml`, which is the operator's own writing.
 //!
+//! `shep delete` alone also removes `$SHEP_HOME/dogs/<name>/` when `shep
+//! install` wrote it: a receipt there says so. An adopted dog's file is never
+//! touched.
+//!
 //! A built-in dog is refused here rather than only in the CLI's help text:
 //! `disable` is the verb that exists for it.
 
@@ -19,6 +23,7 @@ use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
+use super::receipt;
 use super::{
     DISABLED_STATUS, NO_SHEPHERD_DISABLE_STATUS, adopted_source, connect_or_absent,
     emit_dog_action, fail_config,
@@ -87,7 +92,10 @@ pub(crate) async fn remove_dog(
         Ok(client) => client,
         Err(code) => return code,
     };
-    let code = remove_after_config(streams, name, source, client.as_ref(), removal).await;
+    let mut code = remove_after_config(streams, name, source, client.as_ref(), removal).await;
+    if code == ExitCode::Success && removal == Removal::Delete {
+        code = remove_installed_files(streams, paths, name);
+    }
     if kept {
         streams.aside(
             removal.verb(),
@@ -95,6 +103,26 @@ pub(crate) async fn remove_dog(
         );
     }
     code
+}
+
+/// Deletes what `shep install` wrote for `name`, once the dog is stopped and
+/// deregistered. Says what it removed; a failure keeps its own exit code,
+/// since the dog is gone but its files are not.
+fn remove_installed_files(streams: &mut Streams<'_>, paths: &ShepPaths, name: &str) -> ExitCode {
+    match receipt::remove_install(paths, name) {
+        Ok(Some(dir)) => {
+            streams.aside("delete", &format!("removed {}", dir.display()));
+            ExitCode::Success
+        }
+        Ok(None) => ExitCode::Success,
+        Err(err) => streams.fail(
+            ExitCode::Failure,
+            &format!(
+                "{name} is deleted, but removing {} failed: {err}; remove it by hand",
+                paths.dogs_dir.join(name).display()
+            ),
+        ),
+    }
 }
 
 /// The daemon half of [`remove_dog`]; see enable_after_config for the split

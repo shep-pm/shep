@@ -86,6 +86,26 @@ pub(super) fn receipt_path(paths: &ShepPaths, name: &str) -> PathBuf {
     paths.dogs_dir.join(name).join(RECEIPT_FILE)
 }
 
+/// Removes what `shep install` wrote for `name`: the directory
+/// `$SHEP_HOME/dogs/<name>/`, binary and receipt together. Returns the
+/// directory it removed, or `None` when there was nothing of install's to
+/// remove.
+///
+/// The receipt is the proof install wrote the directory, so a directory
+/// without one is left alone, and so is a `name` that is not one plain path
+/// component. An adopted dog has no receipt and its file is never reached.
+///
+/// # Errors
+/// The directory exists and could not be removed.
+pub(super) fn remove_install(paths: &ShepPaths, name: &str) -> std::io::Result<Option<PathBuf>> {
+    if !super::install::is_path_safe(name) || !receipt_path(paths, name).is_file() {
+        return Ok(None);
+    }
+    let dir = paths.dogs_dir.join(name);
+    std::fs::remove_dir_all(&dir)?;
+    Ok(Some(dir))
+}
+
 /// Writes `receipt` as `name`'s receipt, replacing the one before it.
 ///
 /// # Errors

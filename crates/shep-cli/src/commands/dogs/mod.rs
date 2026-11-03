@@ -70,6 +70,8 @@ mod install_ref_tests;
 mod install_tests;
 #[cfg(all(test, unix))]
 mod manifest_adoption_tests;
+#[cfg(all(test, unix))]
+mod remove_install_tests;
 #[cfg(test)]
 mod second_look_race_tests;
 #[cfg(test)]
