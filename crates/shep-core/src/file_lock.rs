@@ -10,6 +10,7 @@
 //! replace never sees.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// An exclusive advisory lock over one file, held for as long as the value
 /// lives and released when it drops, including on an early `?` and by the
@@ -107,6 +108,75 @@ impl FileLock {
     }
 }
 
+impl FileLock {
+    /// [`Self::acquire`], giving up after `wait` instead of blocking for as
+    /// long as the holder lives. `Ok(None)` is the holder still holding it.
+    ///
+    /// Polls: `flock(2)` has no timed wait, so the non-blocking form is
+    /// retried on a short sleep until `wait` has passed. One attempt is made
+    /// even for a zero `wait`.
+    ///
+    /// # Errors
+    /// As [`Self::acquire`]; contention is the `None`, never an error.
+    pub fn acquire_within(path: &Path, wait: Duration) -> std::io::Result<Option<Self>> {
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            if let Some(lock) = Self::try_acquire(path)? {
+                return Ok(Some(lock));
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(None);
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
+
+    /// One non-blocking attempt at `path`'s lock; `None` when it is held.
+    #[cfg(unix)]
+    fn try_acquire(path: &Path) -> std::io::Result<Option<Self>> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
+        use nix::errno::Errno;
+        use nix::fcntl::{Flock, FlockArg};
+
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(crate::atomic_file::OWNER_ONLY_FILE_MODE)
+            .open(lock_path(path))?;
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(flock) => Ok(Some(Self { _flock: flock })),
+            Err((_file, Errno::EWOULDBLOCK)) => Ok(None),
+            Err((_file, errno)) => Err(std::io::Error::from(errno)),
+        }
+    }
+
+    /// One attempt at `path`'s lock; `None` when it is held.
+    #[cfg(windows)]
+    fn try_acquire(path: &Path) -> std::io::Result<Option<Self>> {
+        use std::os::windows::fs::OpenOptionsExt as _;
+
+        /// As in [`Self::acquire`].
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .open(lock_path(path))
+        {
+            Ok(handle) => Ok(Some(Self { _handle: handle })),
+            Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+/// How long [`FileLock::acquire_within`] sleeps between attempts.
+const POLL_INTERVAL: Duration = Duration::from_millis(20);
+
 /// The lock file that guards `path`: its own name with `.lock` appended, so
 /// it sits in `$SHEP_HOME` next to the file it guards and inherits that
 /// directory's `0700`.
@@ -122,6 +192,26 @@ fn lock_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bounded_acquire_of_a_held_lock_gives_up_after_the_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("otel");
+        let held = FileLock::acquire(&path).unwrap();
+
+        let started = std::time::Instant::now();
+        let second = FileLock::acquire_within(&path, Duration::from_millis(100)).unwrap();
+
+        assert!(second.is_none(), "the lock was held");
+        assert!(started.elapsed() >= Duration::from_millis(100));
+        drop(held);
+        assert!(
+            FileLock::acquire_within(&path, Duration::ZERO)
+                .unwrap()
+                .is_some(),
+            "free once released"
+        );
+    }
 
     #[test]
     fn the_lock_file_is_a_sibling_of_the_file_it_guards() {
