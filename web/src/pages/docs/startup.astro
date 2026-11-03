@@ -128,6 +128,14 @@ shep unstartup`}</CodeBlock>
       from looping.
     </p>
 
+    <h2 id="cgroup-delegation">Cgroup delegation</h2>
+    <p>
+      The systemd unit sets <code>Delegate=memory cpu pids</code>, which
+      gives the shepherd's user the service's cgroup subtree and those three
+      controllers. A unit installed earlier gains the line only after{" "}
+      <code>shep unstartup</code> and a fresh <code>shep startup</code>.
+    </p>
+
     <h2 id="the-muster-roll">The muster roll</h2>
     <p>
       The unit brings the shepherd back. What brings the <em>flock</em> back
