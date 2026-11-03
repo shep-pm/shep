@@ -148,7 +148,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 5575 on #1431 for `Probe::action` and `on_action_with_caller`:
   // an author has to know where a dog declares its actions and how a handler
   // learns which dog called. The ceiling sits about 5 words above the page.
-  "writing-a-dog": 5640,
+  //
+  // Raised from 5640 on #1432 for "Publishing events": an author has to know
+  // where a dog declares an event kind, how it publishes one, and what a
+  // subscriber needs. The ceiling sits about 4 words above the page.
+  "writing-a-dog": 5665,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

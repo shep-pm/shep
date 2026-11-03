@@ -146,7 +146,14 @@ reviewed = false`}</CodeBlock>
     <ul>
       <li>
         A dog always keeps its own <code>dogs.toml</code> section and its
-        own sheep settings, whatever it was granted.
+        own sheep settings, whatever it was granted. Another dog's{" "}
+        <code>config.dog.&lt;name&gt;</code> needs{" "}
+        <code>events:config.dog.&lt;name&gt;</code>.
+      </li>
+      <li>
+        <code>events:dog.&lt;name&gt;</code> covers the events that dog
+        publishes and no other dog's. Publishing takes no grant: the kind
+        has to be in the dog's manifest.
       </li>
       <li>
         A subscription is judged on the part of each topic before its first

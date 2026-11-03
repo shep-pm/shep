@@ -148,6 +148,17 @@ section out of `shep.toml`, and a write from lookout's own dog config pane,
 which is why an edit made there reaches a running bark without bouncing it.
 A hand edit still needs the stop/start above.
 
+**A dog can publish events of its own.** Each kind it publishes is declared in
+its manifest `events` list (below). A running dog sends
+`Request::PublishEvent { event, payload }` on its own connection, through
+`DogRuntime::publish`, and the shepherd publishes one `BusEvent::Dog` on the
+topic `dog.<name>.<kind>`. The shepherd checks two things: the kind was
+declared, and the name is the sender's own, which it takes from the
+connection and never from the request. The payload is opaque JSON that
+reaches subscribers unchanged. The control socket and a launch link are
+refused. A subscriber needs `events:dog.<name>`, which covers `dog.<name>.`
+and no other dog's topics, so `events:dog.otel` does not cover `dog.otel2.*`.
+
 **A dog that restarts itself on a config change has to say so in its own
 log.** Nothing else can tell that apart from a crash loop, and the restart
 count is the column an operator reads as instability.
@@ -228,7 +239,8 @@ granted = ["flock.read", "events:process."]
 - The table that maps every request to one permission is `shep_core::permissions::need`, an exhaustive match: a new request does not compile until it is placed.
 - A refusal is `RpcErrorCode::Forbidden`: ``dog `otel` was refused `stop`: it needs `flock.control`, which was not granted to it``.
 - No entry means undeclared and full access. `granted = []` grants nothing.
-- A dog always keeps its own `dogs.toml` section, its own sheep settings and the `config.dog.<name>` and `config.sheep.<name>` topics.
+- A dog always keeps its own `dogs.toml` section, its own sheep settings and the `config.dog.<name>` and `config.sheep.<name>` topics. Another dog's `config.dog.<x>` needs `events:config.dog.<x>`.
+- `events:dog.<name>` covers a dog's published events, the topics `dog.<name>.<kind>`, and nothing of any other dog. Publishing takes no grant: the kind must be in the dog's manifest `events`.
 - `Subscribe` is checked per topic against the `events:` prefixes, on the literal head of the pattern before its first glob character.
 - Grants are read at boot and sent with `EnableDog`. A name shep cannot read stops the boot, and `shep adopt` and `shep enable` refuse it with `invalid config` before they write or send anything. A shepherd below protocol 12 records them and enforces nothing; `shep adopt` and `shep enable` say so.
 - A reload re-reads the grants and checks each subscription a dog carried across it. One outside them is dropped whole, as a fresh `Subscribe` would be refused, and the dog hears no events on it until it asks again within its grants.
@@ -236,6 +248,7 @@ granted = ["flock.read", "events:process."]
 - `--yes` grants everything declared and nothing else. With no terminal and no `--yes` the command changes nothing and exits 2 (usage).
 - A required permission this shep does not know refuses the adopt or enable (exit 4). An optional one is dropped with a warning and never granted.
 - A dog with no manifest prompts "declares nothing, runs with full access" and records no entry. A manifest that declares no permissions records `granted = []` without a question. A built-in dog is asked like any other, from a manifest built into the binary with no probe: `metrics` declares `flock.read`, `events:channel.metric` and `events:process.`; `bark` declares `flock.read`, `events:process.` and, optional, `events:log.`.
+- The kinds a dog declared are recorded beside `granted` as `events = ["exported"]` in the same `[daemon.dog_grants.<name>]` entry, so they survive a restart and a handover. `shep adopt` and the first `shep enable` write them from the manifest with no question, since they are not permissions, and an upgrade keeps them following the build. A dog with no manifest declares none and publishes nothing.
 - Grants keep an honest dog in bounds. They are not a sandbox: a dog runs as the operator and could open the control socket like the CLI.
 
 ### Upgrades
@@ -1035,14 +1048,14 @@ already visible and unread.
 ## Answering `--shep-manifest`
 
 One flag describes the dog whole: `--shep-manifest`, answered on stdout with
-one JSON object, manifest v1. `shep adopt` asks it first. `--version` and
+one JSON object, manifest v2. A v1 manifest still reads, with no `events`. `shep adopt` asks it first. `--version` and
 `--schema` stay as they are, for a dog built against an older shep and for an
 older shep adopting this one, and `shep adopt` asks them when a dog answers no
 manifest.
 
 | Field | Meaning |
 | --- | --- |
-| `manifest` | The version, `1`. |
+| `manifest` | The version, `2`. `1` still reads. |
 | `name`, `version`, `protocol` | Who the dog is, and the wire protocol it speaks. |
 | `channel` | Whether it asks for the shepherd channel. |
 | `settings` | The JSON Schema `--schema` answers, byte for byte. |
@@ -1053,6 +1066,7 @@ manifest.
 | `validate` | Whether the dog validates a proposed settings table over its channel, through `shep.validate`. Needs `channel`: `shep adopt` refuses a manifest declaring it without. |
 | `launch` | Whether the dog runs a sheep's command, as `<path> launch <sheep> -- <cmd>`. A dog adopted as `sandbox` needs it: `shep adopt` refuses one without. |
 | `actions` | The actions the dog answers on its channel, each with `name` and a one-line `description`. `shep trigger <dog>` with no action lists them. |
+| `events` | The event kinds the dog publishes, each with `kind` and a one-line `description`. `Probe::event` declares one, `DogRuntime::publish` sends it. |
 
 `manifest`, `name`, `version` and `protocol` are required; the rest default
 to nothing declared. A reader ignores a field it does not know, so a later
