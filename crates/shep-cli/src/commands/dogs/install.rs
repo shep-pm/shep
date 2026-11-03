@@ -14,6 +14,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use serde_json::Value;
+use shep_core::dogs::manifest::Manifest;
 use shep_core::file_lock::FileLock;
 use shep_core::paths::ShepPaths;
 
@@ -25,7 +26,7 @@ use crate::output::{AvailableDogRows, Streams, emit, write_outcome};
 
 use super::adopt::{Flow, adopt_noting, collides_with_a_verb, lookup_on_path};
 use super::consent::Input;
-use super::install_depends::{Catalog, install_dependencies};
+use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::receipt::{self, Installer, Receipt};
@@ -184,6 +185,9 @@ fn is_path_safe(text: &str) -> bool {
 }
 
 /// Everything after the index named a row and the operator asked for it.
+///
+/// Fetches the dog and, depth first, each dependency it needs that is not
+/// adopted, then adopts them dependencies first.
 pub(super) async fn install_dog(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -193,24 +197,41 @@ pub(super) async fn install_dog(
     dog: &AvailableDog,
     catalog: &Catalog<'_>,
 ) -> ExitCode {
-    install_noting(streams, paths, args, reach, input, dog, catalog, &mut false).await
+    let mut fetched = Vec::new();
+    if let Err(code) = gather(streams, paths, args, reach, catalog, dog, &mut fetched).await {
+        return code;
+    }
+    adopt_in_order(streams, paths, args, input, catalog, fetched).await
 }
 
-/// [`install_dog`], setting `said_no` when the operator answered no at the
-/// grant question.
-// Eight, one over the lint's limit: bundling any of them would only be
-// unbundled by every caller.
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn install_noting(
+/// A dog fetched and read, not yet recorded or adopted.
+///
+/// Dropping it puts back what it replaced and lets go of the install lock.
+pub(super) struct Fetched {
+    /// The index row it came from.
+    pub(super) dog: AvailableDog,
+    /// What it read from the binary's `--shep-manifest`, if anything.
+    pub(super) manifest: Option<Manifest>,
+    binary: PathBuf,
+    sha256: String,
+    installed: Installed,
+    token_publish: bool,
+    kept: Kept,
+    _held: FileLock,
+}
+
+/// Fetches `dog`'s binary into `$SHEP_HOME/dogs` and reads its manifest,
+/// leaving everything else for [`adopt_fetched`].
+///
+/// # Errors
+/// The [`ExitCode`] already reported to `streams`.
+pub(super) async fn fetch_dog(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     args: &InstallArgs,
     reach: &Reach,
-    input: &mut Input,
     dog: &AvailableDog,
-    catalog: &Catalog<'_>,
-    said_no: &mut bool,
-) -> ExitCode {
+) -> Result<Fetched, ExitCode> {
     let DogSourceKind::Cargo {
         version: Some(version),
         ..
@@ -221,38 +242,38 @@ pub(super) async fn install_noting(
         // error envelope every other refusal does.
         if matches!(streams.fmt, Format::Table) {
             let _ = crate::commands::query::render_detail(&mut *streams.out, dog);
-            return ExitCode::Failure;
+            return Err(ExitCode::Failure);
         }
         let instruction = crate::commands::query::install_instruction(dog);
-        return streams.fail(
+        return Err(streams.fail(
             ExitCode::Failure,
             &format!(
                 "`{}` is not a cargo row with an approved version, so shep cannot install it: \
                  {instruction}",
                 dog.adopt_as
             ),
-        );
+        ));
     };
     let name = dog.adopt_as.as_str();
     let package = dog.package.as_str();
     for (what, text) in [("name", name), ("package", package), ("version", version)] {
         if !is_path_safe(text) {
-            return streams.fail(
+            return Err(streams.fail(
                 ExitCode::InvalidConfig,
                 &format!("the index row's {what} {text:?} is not one this shep will build"),
-            );
+            ));
         }
     }
     // Before building: `adopt` refuses the same name, and only after the
     // build has been paid for.
     if collides_with_a_verb(name) {
-        return streams.fail(
+        return Err(streams.fail(
             ExitCode::InvalidConfig,
             &format!(
                 "`{name}` is already a shep verb or alias, so a dog by that name could never be \
                  reached; nothing was built"
             ),
-        );
+        ));
     }
     let download_from = if args.cargo { None } else { dog.prebuilt() };
     let plan = match (download_from, &reach.cargo) {
@@ -264,55 +285,55 @@ pub(super) async fn install_noting(
             } else {
                 format!("{package} {version} has no prebuilt binary for {BUILD_TARGET}")
             };
-            return streams.fail(
+            return Err(streams.fail(
                 ExitCode::Failure,
                 &format!(
                     "{why}, and there is no `cargo` on PATH. Install a Rust toolchain from \
                      https://rustup.rs and run it again; shep never installs one"
                 ),
-            );
+            ));
         }
     };
 
     let token_publish = if matches!(plan, Plan::Build(_)) {
         match check_publisher(streams, reach, dog, version).await {
             Ok(token_publish) => token_publish,
-            Err(code) => return code,
+            Err(code) => return Err(code),
         }
     } else {
         false
     };
 
     if let Err(err) = std::fs::create_dir_all(&paths.dogs_dir) {
-        return streams.fail(
+        return Err(streams.fail(
             ExitCode::Failure,
             &format!("making {}: {err}", paths.dogs_dir.display()),
-        );
+        ));
     }
     let lock_target = paths.dogs_dir.join(name);
     let lock_wait = reach.lock_wait;
     let lock =
         tokio::task::spawn_blocking(move || FileLock::acquire_within(&lock_target, lock_wait))
             .await;
-    let _held = match lock {
+    let held = match lock {
         Ok(Ok(Some(held))) => held,
         Ok(Ok(None)) => {
-            return streams.fail(
+            return Err(streams.fail(
                 ExitCode::Failure,
                 &format!(
                     "another `shep install {name}` is running: {} is held. Wait for it to finish",
                     paths.dogs_dir.join(format!("{name}.lock")).display()
                 ),
-            );
+            ));
         }
         Ok(Err(err)) => {
-            return streams.fail(
+            return Err(streams.fail(
                 ExitCode::Failure,
                 &format!("locking the install of {name}: {err}"),
-            );
+            ));
         }
         Err(err) => {
-            return streams.fail(ExitCode::Internal, &format!("locking the install: {err}"));
+            return Err(streams.fail(ExitCode::Internal, &format!("locking the install: {err}")));
         }
     };
 
@@ -326,32 +347,30 @@ pub(super) async fn install_noting(
     let kept = match Kept::park(&[&binary, &receipt_file]) {
         Ok(kept) => kept,
         Err(err) => {
-            return streams.fail(
+            return Err(streams.fail(
                 ExitCode::Failure,
                 &format!("setting aside the installed {name}: {err}"),
-            );
+            ));
         }
     };
     let installed = match plan {
         Plan::Download(prebuilt) => {
-            if let Err(code) = download(streams, paths, &reach.assets, &prebuilt, &binary).await {
-                return code;
-            }
+            download(streams, paths, &reach.assets, &prebuilt, &binary).await?;
             Installed::Url(prebuilt.url)
         }
         Plan::Build(cargo) => match build(streams, cargo, &root, package, version).await {
             Ok(command) => Installed::Command(command),
-            Err(code) => return code,
+            Err(code) => return Err(code),
         },
     };
     let Some(sha256) = sha256_hex(&binary) else {
-        return streams.fail(
+        return Err(streams.fail(
             ExitCode::Failure,
             &format!(
                 "the install left no binary called {package} in {}; nothing was adopted",
                 root.join("bin").display()
             ),
-        );
+        ));
     };
     // A binary that prints none, or that this read cannot take, records none:
     // `adopt` reads it again and reports whichever it was.
@@ -359,18 +378,54 @@ pub(super) async fn install_noting(
         Ok(ManifestRead::Read(manifest)) => Some(manifest),
         Ok(ManifestRead::Absent | ManifestRead::Unreadable) | Err(_) => None,
     };
-    if let Some(manifest) = &manifest
-        && let Err(code) =
-            install_dependencies(streams, paths, args, reach, input, name, manifest, catalog).await
-    {
-        return code;
-    }
+    Ok(Fetched {
+        dog: dog.clone(),
+        manifest,
+        binary,
+        sha256,
+        installed,
+        token_publish,
+        kept,
+        _held: held,
+    })
+}
+
+/// Records `fetched`'s receipt and adopts it, asking the grant question.
+///
+/// `said_no` is set when the operator answered no.
+pub(super) async fn adopt_fetched(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &InstallArgs,
+    input: &mut Input,
+    fetched: Fetched,
+    index_url: &str,
+    said_no: &mut bool,
+) -> ExitCode {
+    let Fetched {
+        dog,
+        manifest,
+        binary,
+        sha256,
+        installed,
+        token_publish,
+        kept,
+        _held,
+    } = fetched;
+    let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
+    let DogSourceKind::Cargo {
+        version: Some(version),
+        ..
+    } = &dog.source
+    else {
+        return ExitCode::Internal;
+    };
     let written = receipt::write(
         paths,
         name,
         &Receipt {
-            index: fetch::url_for_message(catalog.url),
-            row: dog,
+            index: fetch::url_for_message(index_url),
+            row: &dog,
             package,
             version,
             installer: match &installed {
