@@ -139,3 +139,17 @@ async fn a_key_left_in_a_table_the_sheep_sets_part_of_is_marked_in_both_outputs(
     let envelope: Json = serde_json::from_str(&out).unwrap();
     assert_eq!(envelope["data"]["inherited"], json!(["db.port"]));
 }
+
+#[tokio::test]
+async fn a_table_holding_a_dog_wide_key_is_printed_as_stored_with_a_warning() {
+    let own = Some(json!({ "poll": "1m", "limit": 9 }));
+    let (code, out, err) = get("api.dogs.jobs", Format::Table, Serves::OptedIn, own).await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(out.contains("poll = \"1m\""), "{out}");
+    assert!(!out.contains("inherited"), "{out}");
+    assert!(
+        err.contains("`poll`") && err.contains("reads no settings"),
+        "{err}"
+    );
+}

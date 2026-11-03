@@ -205,6 +205,12 @@ async fn get_sheep(
             Err(code) => return code,
         };
         if let Some(layering) = layering {
+            if !layering.stray.is_empty() {
+                streams.aside(
+                    "warning",
+                    &standard::stray_warning(&written.name, dog, &layering.stray),
+                );
+            }
             config = layering.config;
             let dogs = address::DogNames::new(flock, &config, &Json::Null);
             steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {

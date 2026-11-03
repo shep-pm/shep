@@ -26,6 +26,9 @@ pub(super) struct Layering {
     pub(super) config: Json,
     /// The path of each value of that table the sheep's own table does not set.
     pub(super) inherited: BTreeSet<Vec<String>>,
+    /// The dog-wide keys the sheep's own table holds. The dog reads no
+    /// settings for such a sheep, so the config is left as the sheep has it.
+    pub(super) stray: Vec<String>,
 }
 
 /// The layering for `dog` on the sheep whose config is `config`, or
@@ -71,7 +74,8 @@ fn serves(standard: &Standard, config: &Json, dog: &str) -> bool {
     standard.serves == Serves::EverySheep || address::dog_table(config, dog).is_some()
 }
 
-/// `config` with `dog`'s table replaced by `section` layered under it.
+/// `config` with `dog`'s table replaced by `section` layered under it, or
+/// left as it is when the sheep's table holds a dog-wide key.
 fn layer_config(
     standard: &Standard,
     config: &Json,
@@ -85,6 +89,18 @@ fn layer_config(
         .and_then(Json::as_object)
         .cloned()
         .unwrap_or_default();
+    let stray: Vec<String> = own
+        .keys()
+        .filter(|key| standard.is_dog_wide(key))
+        .cloned()
+        .collect();
+    if !stray.is_empty() {
+        return Some(Layering {
+            config: config.clone(),
+            inherited: BTreeSet::new(),
+            stray,
+        });
+    }
     let layered = standard.layer(section, &own);
     let mut config = config.clone();
     let dogs = config.as_object_mut()?;
@@ -96,7 +112,23 @@ fn layer_config(
     Some(Layering {
         config,
         inherited: layered.inherited,
+        stray,
     })
+}
+
+/// What `shep get` says on stderr when `sheep`'s table for `dog` holds the
+/// dog-wide `stray` keys, which the dog refuses the whole table for.
+pub(super) fn stray_warning(sheep: &str, dog: &str, stray: &[String]) -> String {
+    format!(
+        "`{sheep}`'s table for `{dog}` sets {}, which {dog} keeps for every sheep, so {dog} reads \
+         no settings for `{sheep}` until they are removed. The table below is what `{sheep}` \
+         holds, not what {dog} reads",
+        stray
+            .iter()
+            .map(|key| format!("`{key}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 /// The inherited paths an answer at `steps` covers, in order, each below the
@@ -221,6 +253,18 @@ mod tests {
             json!({ "model": "sonnet", "limit": 9 })
         );
         assert_eq!(layering.inherited, BTreeSet::from([path(&["model"])]));
+    }
+
+    #[test]
+    fn a_table_holding_a_dog_wide_key_is_not_layered_and_names_the_key() {
+        let own = json!({ "name": "api", "dogs": { "jobs": { "poll": "1m", "limit": 9 } } });
+        let layering = layer_config(&jobs(Serves::OptedIn), &own, "jobs", &section())
+            .expect("a sheep with a table is served");
+        assert_eq!(layering.config, own);
+        assert!(layering.inherited.is_empty());
+        assert_eq!(layering.stray, ["poll"]);
+        let warning = stray_warning("api", "jobs", &layering.stray);
+        assert!(warning.contains("`poll`") && warning.contains("reads no settings"));
     }
 
     #[test]
