@@ -252,13 +252,23 @@ mod tests {
         let (_home, cache) = home_cached_at(document("Cached"), now - hours(23)).await;
         let calls = Cell::new(0);
 
-        let loaded = load(&cache, URL, false, now, answering(document("Fetched"), &calls))
-            .await
-            .expect("loads");
+        let loaded = load(
+            &cache,
+            URL,
+            false,
+            now,
+            answering(document("Fetched"), &calls),
+        )
+        .await
+        .expect("loads");
 
         assert_eq!(calls.get(), 0, "a young cache must not fetch");
         assert_eq!(names(&loaded), ["Cached"]);
-        assert!(matches!(loaded.origin, Origin::Cache), "{:?}", loaded.origin);
+        assert!(
+            matches!(loaded.origin, Origin::Cache),
+            "{:?}",
+            loaded.origin
+        );
     }
 
     #[tokio::test]
@@ -267,13 +277,23 @@ mod tests {
         let (_home, cache) = home_cached_at(document("Cached"), now - hours(25)).await;
         let calls = Cell::new(0);
 
-        let loaded = load(&cache, URL, false, now, answering(document("Fetched"), &calls))
-            .await
-            .expect("loads");
+        let loaded = load(
+            &cache,
+            URL,
+            false,
+            now,
+            answering(document("Fetched"), &calls),
+        )
+        .await
+        .expect("loads");
 
         assert_eq!(calls.get(), 1);
         assert_eq!(names(&loaded), ["Fetched"]);
-        assert!(matches!(loaded.origin, Origin::Fetched), "{:?}", loaded.origin);
+        assert!(
+            matches!(loaded.origin, Origin::Fetched),
+            "{:?}",
+            loaded.origin
+        );
         let again = load(&cache, URL, false, now, failing(&calls))
             .await
             .expect("loads");
@@ -286,9 +306,15 @@ mod tests {
         let (_home, cache) = home_cached_at(document("Cached"), now - hours(1)).await;
         let calls = Cell::new(0);
 
-        let loaded = load(&cache, URL, true, now, answering(document("Fetched"), &calls))
-            .await
-            .expect("loads");
+        let loaded = load(
+            &cache,
+            URL,
+            true,
+            now,
+            answering(document("Fetched"), &calls),
+        )
+        .await
+        .expect("loads");
 
         assert_eq!(calls.get(), 1);
         assert_eq!(names(&loaded), ["Fetched"]);
@@ -321,7 +347,10 @@ mod tests {
             .await
             .expect_err("nothing to fall back to");
 
-        assert!(matches!(err, IndexError::Fetch(FetchError::Timeout)), "{err:?}");
+        assert!(
+            matches!(err, IndexError::Fetch(FetchError::Timeout)),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
@@ -330,9 +359,15 @@ mod tests {
         let cache = home.path().join("cache").join("dogs.json");
         let calls = Cell::new(0);
 
-        let err = load(&cache, URL, false, SystemTime::now(), answering(b"[]".to_vec(), &calls))
-            .await
-            .expect_err("a bare array is refused");
+        let err = load(
+            &cache,
+            URL,
+            false,
+            SystemTime::now(),
+            answering(b"[]".to_vec(), &calls),
+        )
+        .await
+        .expect_err("a bare array is refused");
 
         assert!(matches!(err, IndexError::NotAnObject), "{err:?}");
         assert!(!cache.exists(), "a bad document must not become the cache");
@@ -386,9 +421,15 @@ mod tests {
         let cache = home.path().join("cache").join("dogs.json");
         let calls = Cell::new(0);
 
-        load(&cache, url, false, SystemTime::now(), answering(document("X"), &calls))
-            .await
-            .expect("loads");
+        load(
+            &cache,
+            url,
+            false,
+            SystemTime::now(),
+            answering(document("X"), &calls),
+        )
+        .await
+        .expect("loads");
 
         let written = std::fs::read_to_string(&cache).unwrap();
         assert!(!written.contains("sentinel-secret"), "{written}");

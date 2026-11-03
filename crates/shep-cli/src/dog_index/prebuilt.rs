@@ -47,11 +47,13 @@ impl AvailableDog {
         }
         let repo = self.repo.trim_end_matches('/');
         let package = &self.package;
-        let exe = if target.contains("windows") { ".exe" } else { "" };
+        let exe = if target.contains("windows") {
+            ".exe"
+        } else {
+            ""
+        };
         Some(Prebuilt {
-            url: format!(
-                "{repo}/releases/download/v{version}/{package}-{version}-{target}{exe}"
-            ),
+            url: format!("{repo}/releases/download/v{version}/{package}-{version}-{target}{exe}"),
             sha256: sha256.clone(),
         })
     }
@@ -97,7 +99,11 @@ mod tests {
 
         let prebuilt = dog.prebuilt().expect("the build target is hashed");
 
-        let exe = if BUILD_TARGET.contains("windows") { ".exe" } else { "" };
+        let exe = if BUILD_TARGET.contains("windows") {
+            ".exe"
+        } else {
+            ""
+        };
         assert_eq!(
             prebuilt.url,
             format!(
@@ -112,7 +118,10 @@ mod tests {
     fn a_row_hashing_only_other_targets_yields_nothing() {
         let dog = cargo_dog(
             Some("0.2.4"),
-            &[("x86_64-unknown-linux-gnu", HASH), ("aarch64-apple-darwin", HASH)],
+            &[
+                ("x86_64-unknown-linux-gnu", HASH),
+                ("aarch64-apple-darwin", HASH),
+            ],
         );
 
         assert_eq!(dog.prebuilt_for("x86_64-unknown-linux-musl"), None);
@@ -123,13 +132,23 @@ mod tests {
     fn a_windows_target_gets_an_exe_suffix_and_a_unix_one_does_not() {
         let dog = cargo_dog(
             Some("0.2.4"),
-            &[("x86_64-pc-windows-msvc", HASH), ("aarch64-apple-darwin", HASH)],
+            &[
+                ("x86_64-pc-windows-msvc", HASH),
+                ("aarch64-apple-darwin", HASH),
+            ],
         );
 
         let windows = dog.prebuilt_for("x86_64-pc-windows-msvc").expect("hashed");
-        assert!(windows.url.ends_with("/shep-log-rotate-0.2.4-x86_64-pc-windows-msvc.exe"));
+        assert!(
+            windows
+                .url
+                .ends_with("/shep-log-rotate-0.2.4-x86_64-pc-windows-msvc.exe")
+        );
         let mac = dog.prebuilt_for("aarch64-apple-darwin").expect("hashed");
-        assert!(mac.url.ends_with("/shep-log-rotate-0.2.4-aarch64-apple-darwin"));
+        assert!(
+            mac.url
+                .ends_with("/shep-log-rotate-0.2.4-aarch64-apple-darwin")
+        );
     }
 
     #[test]

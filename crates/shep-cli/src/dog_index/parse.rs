@@ -164,7 +164,9 @@ fn validate_hashes(hashes: &Value) -> Option<BTreeMap<String, String>> {
                     .bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b));
             let hash_ok = hash.len() == SHA256_HEX_LEN
-                && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+                && hash
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
             (target_ok && hash_ok).then(|| (target.clone(), hash.to_owned()))
         })
         .collect()
@@ -464,10 +466,13 @@ pub(super) mod tests {
         let index = parse_index(document.as_bytes()).expect("parses");
         assert_eq!(index.skipped, 0);
         assert_eq!(index.dogs.len(), 1);
-        assert_eq!(index.dogs[0].source, DogSourceKind::Cargo {
+        assert_eq!(
+            index.dogs[0].source,
+            DogSourceKind::Cargo {
                 version: None,
                 sha256: BTreeMap::new()
-            });
+            }
+        );
     }
 
     /// `repo` is a link; a `cargo-git` `url` is pasted into a shell, so it

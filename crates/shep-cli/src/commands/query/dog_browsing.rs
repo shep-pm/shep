@@ -54,16 +54,10 @@ fn matches_filter(filter: &str, haystacks: &[&str]) -> bool {
 
 /// Lists the dogs published in the community index: `shep dogs --available`
 ///
-/// Reaches no [`Client`], so it answers with no shepherd running.
-///
-/// Reads the index through its one-day cache; `--refresh` fetches
-/// regardless. A fetch that fails with a cached copy to hand lists the copy
-/// and says how old it is.
-///
-/// # Errors reaching the operator
-/// A failure to read or parse the index, with no cached copy to fall back
-/// to, names the URL and exits [`ExitCode::Failure`]. A URL holding an `@`
-/// is not named at all.
+/// Reaches no [`Client`]. Reads the index through its one-day cache, which
+/// `--refresh` skips; a failed fetch lists the cached copy and its age.
+/// With no copy, a failed read names the URL (never one holding an `@`) and
+/// exits [`ExitCode::Failure`].
 pub async fn available_dogs(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
@@ -226,8 +220,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::fetch::FetchError;
     use crate::dog_index::IndexError;
+    use crate::fetch::FetchError;
 
     fn cargo(version: Option<&str>) -> DogSourceKind {
         DogSourceKind::Cargo {
@@ -266,7 +260,10 @@ mod tests {
         let printed = String::from_utf8(err).unwrap();
         assert_eq!(printed.lines().count(), 1, "{printed}");
         assert!(printed.contains("30 hours"), "{printed}");
-        assert!(printed.contains("https://example.test/dogs.json"), "{printed}");
+        assert!(
+            printed.contains("https://example.test/dogs.json"),
+            "{printed}"
+        );
         assert!(out.is_empty());
     }
 
