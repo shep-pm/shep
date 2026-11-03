@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- A dog's manifest says which sheep it serves
+- Let a dog's manifest list the actions it answers
+- Declare a dog's published events in manifest v2
+- Add the PublishEvent request and a dog's bus event under dog.<name>.<kind>
+- A cargo row approves one version and hashes prebuilt binaries per target
+- Add a bounded lock wait and the dogs directory path
+- Add memory_enforce, protocol 16, and its client gate
+- Add max_cpu_cores, a CPU quota refused off Linux
+- Add max_tasks, a process limit refused off Linux
+- Carry a dog's declared event kinds on its source and in dog_grants
+- Retire the <dog>.defaults operator default **(BREAKING)**
+
+### Fixed
+
+- Fit the new cgroup docs to IR-47 and move the handshake literals to protocol 16
+- Refuse a max_cpu_cores the kernel cannot hold
+- Report an unwritten pids.max as pending and clear stale limits
+- Cut three doc blocks to IR-47 and expect lifted limits in two tests
+- An events:dog grant naming a kind covers that kind
+- Read a manifest's events only from version 2 up
+
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
