@@ -140,7 +140,7 @@ channel = true`}</CodeBlock>
     <div class="wire-table">
       <div class="row header"><span>Message</span> <span>Meaning</span></div>
       <div class="row"><span><code>{`{"kind":"shutdown"}`}</code></span> <span data-label="Meaning">Sent instead of a stop signal when <code>shutdown_with_message = true</code>. The daemon still escalates to <code>SIGKILL</code> after <code>kill_timeout</code> if you take too long.</span></div>
-      <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span data-label="Meaning">An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. <code>id</code> is always present: echo it on your reply.</span></div>
+      <div class="row"><span><code>{`{"kind":"action","name":"<n>","id":<num>}`}</code></span> <span data-label="Meaning">An operator ran <code>shep trigger</code> against you, optionally with <code>{`"params":"<text>"`}</code>. When another dog triggered it, <code>{`"caller":"<dog>"`}</code> follows <code>params</code>; it is absent otherwise. <code>id</code> is always present: echo it on your reply.</span></div>
       <div class="row"><span><code>{`{"kind":"lamb-signalled","pid":<num>,"signal":"<n>"}`}</code></span> <span data-label="Meaning"><code>shep signal --lamb</code> reached that child of yours, which may still run. <code>signal</code> is the canonical name, like <code>SIGHUP</code>.</span></div>
     </div>
 
@@ -281,7 +281,7 @@ $ shep trigger chatty ping --format json
     </p>
 
     <h2 id="custom-actions-the-part-most-worth-reading-closely">Custom actions: the part most worth reading closely</h2>
-    <VerbSignature verb="trigger" usage="shep trigger <selector> <action> [params]">
+    <VerbSignature verb="trigger" usage="shep trigger <selector> [action] [params]">
       <p>
         How an operator reaches a running app directly, for whatever your
         app defines an "action" to mean: force a GC, dump internal state,
@@ -298,7 +298,16 @@ $ shep trigger chatty ping --format json
       Whatever the operator typed after the selector is sent to you
       verbatim, for you to recognize or refuse. There is no way to ask the
       daemon "what actions does this app support": that documentation
-      lives with your app, not with shep.
+      lives with your app, not with shep. A dog is the exception, because it
+      may declare its actions in its manifest, and{" "}
+      <code>shep trigger &lt;dog&gt;</code> with no action lists them.
+    </p>
+    <p>
+      An action another dog triggers arrives with <code>caller</code>, that
+      dog's name. The shepherd sets it from the connection the trigger came in
+      on, so a dog cannot name another. It is absent when an operator
+      triggered the action, and from a shepherd older than the field, so a
+      handler that reads it treats absence as the operator.
     </p>
     <p>
       One action name is shep's own, and it never arrives from{" "}

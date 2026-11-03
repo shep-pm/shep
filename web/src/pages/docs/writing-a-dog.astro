@@ -40,6 +40,16 @@ fn main() {
     // ...the dog's own loop, watching \`stop\`.
 }`;
 
+const callerSnippet = `Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    .ask_for_channel()
+    .action("rotate", "rotates the signing key")
+    .answer::<MyDogConfig>();
+
+// ...later, once the channel is served:
+shepherd.on_action_with_caller("rotate", |_params, _name, caller| {
+    format!("rotated for {}", caller.unwrap_or("the operator"))
+});`;
+
 const validateSnippet = `use shep_client::dogs::{Probe, Stop, Verdict, validate_answer};
 
 fn main() {
@@ -561,6 +571,21 @@ shep-channel: true`}</CodeBlock>
       Serve it with <code>shep-channel</code>. A stop is the{" "}
       <code>shutdown</code> message with no signal behind it, so a dog that
       ignores it is killed once <code>kill_timeout</code> runs out.
+    </p>
+
+    <h3 id="actions-and-callers">Declaring actions and reading the caller</h3>
+    <p>
+      A dog that answers actions can declare them with{" "}
+      <code>Probe::action</code>, a name and a one-line description.{" "}
+      <code>shep trigger &lt;dog&gt;</code> with no action lists what the
+      manifest declares. shep never checks the list against the handlers.
+    </p>
+    <CodeBlock label="main.rs">{callerSnippet}</CodeBlock>
+    <p>
+      <code>on_action_with_caller</code> passes a third argument: the name of
+      the dog that triggered the action, set by the shepherd from the
+      connection the trigger came in on. It is <code>None</code> for an
+      operator and from a shepherd older than the field.
     </p>
 
     <h3 id="being-asked-about-its-settings">Being asked about a write to its settings</h3>
