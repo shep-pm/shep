@@ -40,28 +40,35 @@ async fn set(address: &str, value: &str) -> (ExitCode, String, Vec<Request>) {
     (code, String::from_utf8_lossy(&err).to_string(), sent)
 }
 
+/// The requests among `sent` that change something, by the variant's name.
+fn writes(sent: &[Request]) -> Vec<&Request> {
+    sent.iter()
+        .filter(|request| format!("{request:?}").starts_with("Set"))
+        .collect()
+}
+
 #[tokio::test]
 async fn a_dog_wide_key_on_a_sheep_is_refused_before_a_write_is_sent() {
     let (code, said, sent) = set("api.dogs.jobs.poll", "5m").await;
 
     assert_eq!(code, ExitCode::InvalidConfig, "{said} {sent:?}");
     assert!(said.contains("shep set jobs.poll <value>"), "{said}");
-    assert!(
-        !sent
-            .iter()
-            .any(|request| matches!(request, Request::SetSheepDogSettings { .. })),
-        "a write went out: {sent:?}"
-    );
+    assert!(writes(&sent).is_empty(), "a write went out: {sent:?}");
 }
 
 #[tokio::test]
-async fn a_key_the_sheep_may_override_is_written() {
+async fn a_key_the_sheep_may_override_is_written_to_its_table_for_that_dog() {
     let (code, said, sent) = set("api.dogs.jobs.model", "haiku").await;
 
     assert_eq!(code, ExitCode::Success, "{said}");
-    assert!(
-        sent.iter()
-            .any(|request| matches!(request, Request::SetSheepDogSettings { .. })),
-        "{sent:?}"
+    let writes = writes(&sent);
+    let [Request::SetSheepDogSettings { name, dog, table }] = writes.as_slice() else {
+        panic!("expected the one table write: {sent:?}");
+    };
+    assert_eq!((name.as_str(), dog.as_str()), ("api", "jobs"));
+    let table = table.as_ref().expect("a table, not a removal");
+    assert_eq!(
+        serde_json::Value::Object(table.as_map().clone()),
+        json!({ "model": "haiku" })
     );
 }

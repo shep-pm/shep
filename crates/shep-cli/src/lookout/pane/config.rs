@@ -480,13 +480,24 @@ impl ConfigPane {
         if let Some(text) = self.union_text(key) {
             return Some(text);
         }
-        let raw = if self.entries_field(key).is_some() {
-            entries_text(Some(value.as_value()))
+        Some(self.filed_text(key, value.as_value()))
+    }
+
+    /// `value` as a row for `key` draws it: an entries field as a count, so
+    /// no leaf inside an entry is ever spelled out.
+    pub(super) fn filed_text(&self, key: &str, value: &Value) -> String {
+        let counted = !matches!(self.target, PaneTarget::Sheep { .. })
+            && matches!(
+                self.fields.by_key(key).map(|field| &field.kind),
+                Some(FieldKind::Entries(_))
+            );
+        let raw = if counted {
+            entries_text(Some(value))
         } else {
-            self.checklist_text(key, Some(value.as_value()))
-                .unwrap_or_else(|| render_json(value.as_value()))
+            self.checklist_text(key, Some(value))
+                .unwrap_or_else(|| render_json(value))
         };
-        Some(self.resolved(key, &raw))
+        self.resolved(key, &raw)
     }
 
     /// [`Self::value`], resolved through its own grammar for a

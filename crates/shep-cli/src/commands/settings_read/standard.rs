@@ -8,7 +8,7 @@ use serde_json::{Map, Value as Json};
 use shep_client::Client;
 use shep_core::dogs::manifest::Serves;
 use shep_core::paths::ShepPaths;
-use toml_edit::{DocumentMut, Item};
+use toml_edit::{DocumentMut, Item, Key};
 
 use crate::commands::copy::address;
 use crate::commands::settings_write::dog_standard;
@@ -24,8 +24,8 @@ use super::{DOGS, read_dog_section};
 pub(super) struct Layering {
     /// The config, its `dogs.<dog>` replaced by the layered table.
     pub(super) config: Json,
-    /// The top-level keys of that table the sheep's own table does not set.
-    pub(super) inherited: BTreeSet<String>,
+    /// The path of each value of that table the sheep's own table does not set.
+    pub(super) inherited: BTreeSet<Vec<String>>,
 }
 
 /// The layering for `dog` on the sheep whose config is `config`, or
@@ -99,20 +99,46 @@ fn layer_config(
     })
 }
 
-/// The inherited keys an answer at `steps` covers, in order.
+/// The inherited paths an answer at `steps` covers, in order, each below the
+/// dog's table.
 ///
-/// The whole dog table covers every one, a key inside it only itself.
-pub(super) fn covered(steps: &[String], inherited: &BTreeSet<String>) -> Vec<String> {
-    match steps {
-        [_, _] => inherited.iter().cloned().collect(),
-        [_, _, key, ..] => inherited.get(key).cloned().into_iter().collect(),
-        _ => Vec::new(),
+/// An address above an inherited path covers it. An address inside an
+/// inherited value is covered whole, and is the one path.
+pub(super) fn covered(steps: &[String], inherited: &BTreeSet<Vec<String>>) -> Vec<Vec<String>> {
+    let Some(address) = steps.get(2..) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<Vec<String>> = Vec::new();
+    for path in inherited {
+        let found = if path.starts_with(address) {
+            path.clone()
+        } else if address.starts_with(path) {
+            address.to_vec()
+        } else {
+            continue;
+        };
+        if !paths.contains(&found) {
+            paths.push(found);
+        }
     }
+    paths
 }
 
-/// Marks each inherited key `covered` names with a trailing comment that
-/// names the dog's section, in the document `shep get` is about to print.
-pub(super) fn mark(toml: &str, steps: &[String], dog: &str, inherited: &[String]) -> String {
+/// `path` as the dotted key `shep get` would be asked for, a segment that
+/// needs it quoted.
+pub(super) fn dotted(path: &[String]) -> String {
+    path.iter()
+        .map(|segment| Key::new(segment.as_str()).to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+/// Marks each inherited path with a trailing comment that names the dog's
+/// section, in the document `shep get` is about to print.
+///
+/// A path inside an inline table marks the inline table, since a comment
+/// cannot sit inside one.
+pub(super) fn mark(toml: &str, steps: &[String], dog: &str, inherited: &[Vec<String>]) -> String {
     if inherited.is_empty() {
         return toml.to_string();
     }
@@ -121,26 +147,29 @@ pub(super) fn mark(toml: &str, steps: &[String], dog: &str, inherited: &[String]
     };
     let note = format!(" # inherited from [{dog}]");
     let dog_depth = 2;
-    let Some(table) = steps
-        .iter()
-        .take(dog_depth)
-        .try_fold(doc.as_item_mut(), |item, step| item.get_mut(step.as_str()))
-    else {
-        return toml.to_string();
-    };
-    if steps.len() == dog_depth {
-        for key in inherited {
-            if let Some(item) = table.get_mut(key.as_str()) {
-                annotate(item, &note);
-            }
+    for path in inherited {
+        let steps = steps.iter().take(dog_depth).chain(path);
+        if let Some(item) = locate(doc.as_item_mut(), steps) {
+            annotate(item, &note);
         }
-    } else if let Some(item) = steps
-        .get(dog_depth)
-        .and_then(|key| table.get_mut(key.as_str()))
-    {
-        annotate(item, &note);
     }
     doc.to_string()
+}
+
+/// The item `steps` leads to, or the inline table that holds it, or
+/// [`None`] when the document has nothing there.
+fn locate<'a, 'b>(
+    root: &'a mut Item,
+    steps: impl Iterator<Item = &'b String>,
+) -> Option<&'a mut Item> {
+    let mut item = root;
+    for step in steps {
+        if matches!(item, Item::Value(_)) {
+            break;
+        }
+        item = item.as_table_like_mut()?.get_mut(step.as_str())?;
+    }
+    Some(item)
 }
 
 fn annotate(item: &mut Item, note: &str) {
@@ -191,7 +220,7 @@ mod tests {
             layering.config["dogs"]["jobs"],
             json!({ "model": "sonnet", "limit": 9 })
         );
-        assert_eq!(layering.inherited.iter().collect::<Vec<_>>(), ["model"]);
+        assert_eq!(layering.inherited, BTreeSet::from([path(&["model"])]));
     }
 
     #[test]
@@ -206,21 +235,61 @@ mod tests {
         );
     }
 
+    fn path(steps: &[&str]) -> Vec<String> {
+        steps.iter().map(|step| (*step).to_string()).collect()
+    }
+
     #[test]
     fn the_whole_table_marks_each_inherited_key() {
         let toml = "[dogs.jobs]\nlimit = 9\nmodel = \"sonnet\"\n";
         let steps = vec!["dogs".to_string(), "jobs".to_string()];
         assert_eq!(
-            mark(toml, &steps, "jobs", &["model".to_string()]),
+            mark(toml, &steps, "jobs", &[path(&["model"])]),
             "[dogs.jobs]\nlimit = 9\nmodel = \"sonnet\" # inherited from [jobs]\n"
         );
     }
 
     #[test]
+    fn a_key_left_inside_a_table_the_sheep_sets_part_of_is_marked() {
+        let toml = "[dogs.jobs.db]\nhost = \"b\"\nport = 1\n";
+        let steps = path(&["dogs", "jobs"]);
+        assert_eq!(
+            mark(toml, &steps, "jobs", &[path(&["db", "port"])]),
+            "[dogs.jobs.db]\nhost = \"b\"\nport = 1 # inherited from [jobs]\n"
+        );
+    }
+
+    #[test]
+    fn a_path_the_document_lacks_marks_nothing() {
+        let toml = "[dogs.jobs]\nlimit = 9\n";
+        let steps = path(&["dogs", "jobs"]);
+        assert_eq!(mark(toml, &steps, "jobs", &[path(&["db", "port"])]), toml);
+    }
+
+    #[test]
     fn one_key_covers_only_itself() {
-        let inherited: BTreeSet<String> = ["model".to_string()].into();
-        let key = |name: &str| ["dogs", "jobs", name].map(String::from).to_vec();
-        assert_eq!(covered(&key("model"), &inherited), ["model"]);
+        let inherited = BTreeSet::from([path(&["model"])]);
+        let key = |name: &str| path(&["dogs", "jobs", name]);
+        assert_eq!(covered(&key("model"), &inherited), [path(&["model"])]);
         assert!(covered(&key("limit"), &inherited).is_empty());
+    }
+
+    #[test]
+    fn a_table_covers_what_inside_it_is_inherited_and_a_key_inside_one_is_covered_whole() {
+        let inherited = BTreeSet::from([path(&["db", "port"]), path(&["model"])]);
+        assert_eq!(
+            covered(&path(&["dogs", "jobs", "db"]), &inherited),
+            [path(&["db", "port"])]
+        );
+        assert_eq!(
+            covered(&path(&["dogs", "jobs", "db", "port", "x"]), &inherited),
+            [path(&["db", "port", "x"])]
+        );
+        assert!(covered(&path(&["dogs", "jobs", "db", "host"]), &inherited).is_empty());
+    }
+
+    #[test]
+    fn a_path_is_dotted_with_a_segment_that_needs_it_quoted() {
+        assert_eq!(dotted(&path(&["db", "a.b"])), "db.\"a.b\"");
     }
 }

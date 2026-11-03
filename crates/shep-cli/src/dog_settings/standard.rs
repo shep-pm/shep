@@ -107,15 +107,15 @@ impl Standard {
     }
 
     /// What the dog reads for a sheep: `section` without its dog-wide keys,
-    /// with `own` layered over it, and the top-level keys `own` leaves to the
-    /// section.
+    /// with `own` layered over it, and the paths `own` leaves to the section.
+    ///
+    /// A table the sheep sets only some keys of is merged key by key, so the
+    /// keys it leaves are inherited. A `null` in `own` is a value, as the dog
+    /// reads it: it replaces the section's and the key is not inherited.
     pub(crate) fn layer(&self, section: &Map<String, Value>, own: &Map<String, Value>) -> Layered {
         let shared = self.shared(section);
-        let inherited = shared
-            .keys()
-            .filter(|key| own.get(*key).is_none_or(Value::is_null))
-            .cloned()
-            .collect();
+        let mut inherited = BTreeSet::new();
+        inherited_paths(&shared, own, &mut Vec::new(), &mut inherited);
         let table = layered(&[&DogTable::from(shared), &DogTable::from(own.clone())]);
         Layered {
             table: table.into_map(),
@@ -124,13 +124,36 @@ impl Standard {
     }
 }
 
+/// Adds to `out` the path of each key `shared` holds and `own` lacks, going
+/// into a table both hold, which the dog merges key by key.
+fn inherited_paths(
+    shared: &Map<String, Value>,
+    own: &Map<String, Value>,
+    at: &mut Vec<String>,
+    out: &mut BTreeSet<Vec<String>>,
+) {
+    for (key, value) in shared {
+        at.push(key.clone());
+        match (own.get(key), value) {
+            (None, _) => {
+                out.insert(at.clone());
+            }
+            (Some(Value::Object(held)), Value::Object(under)) => {
+                inherited_paths(under, held, at, out);
+            }
+            _ => {}
+        }
+        at.pop();
+    }
+}
+
 /// A sheep's table with the dog's section under it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Layered {
     /// The table the dog reads.
     pub(crate) table: Map<String, Value>,
-    /// The top-level keys the sheep's own table does not set.
-    pub(crate) inherited: BTreeSet<String>,
+    /// The path of each value the sheep's own table leaves to the section.
+    pub(crate) inherited: BTreeSet<Vec<String>>,
 }
 
 /// The root-level properties `root` marks `x-shep-dog-wide`, in each variant
@@ -293,14 +316,35 @@ mod tests {
         let own = map(json!({ "limit": 9 }));
         let layered = standard.layer(&section, &own);
         assert_eq!(layered.table, map(json!({ "model": "sonnet", "limit": 9 })));
-        assert_eq!(layered.inherited.iter().collect::<Vec<_>>(), ["model"]);
+        assert_eq!(
+            layered.inherited,
+            BTreeSet::from([vec!["model".to_owned()]])
+        );
     }
 
     #[test]
-    fn a_null_in_the_sheep_table_inherits_again() {
+    fn a_table_the_sheep_sets_part_of_inherits_the_keys_it_leaves() {
+        let standard = Standard::recognise(&jobs(), Serves::OptedIn).expect("standard");
+        let section = map(json!({ "db": { "host": "a", "port": 1 }, "model": "sonnet" }));
+        let own = map(json!({ "db": { "host": "b" }, "model": "haiku" }));
+        let layered = standard.layer(&section, &own);
+        assert_eq!(
+            layered.table,
+            map(json!({ "db": { "host": "b", "port": 1 }, "model": "haiku" }))
+        );
+        assert_eq!(
+            layered.inherited,
+            BTreeSet::from([vec!["db".to_owned(), "port".to_owned()]])
+        );
+    }
+
+    #[test]
+    fn a_null_in_the_sheep_table_replaces_the_section_as_the_dog_reads_it() {
         let standard = Standard::recognise(&jobs(), Serves::OptedIn).expect("standard");
         let section = map(json!({ "model": "sonnet" }));
         let own = map(json!({ "model": null }));
-        assert!(standard.layer(&section, &own).inherited.contains("model"));
+        let layered = standard.layer(&section, &own);
+        assert!(layered.inherited.is_empty());
+        assert_eq!(layered.table, map(json!({ "model": null })));
     }
 }

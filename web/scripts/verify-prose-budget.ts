@@ -167,7 +167,11 @@ export const BUDGETS: Record<string, number> = {
   // `shep set` refusal and the `shep get` marker are addresses and output an
   // operator types and reads, so the page that says how a sheep's tuning is
   // written owes them.
-  overrides: 3650,
+  //
+  // Raised again, to 3693, because the two levels reach different sheep: a
+  // dog serving only sheep with a table reads nothing for one without, and a
+  // nested key a sheep leaves out is still inherited. The page said neither.
+  overrides: 3693,
   // Raised from 3240 on 2026-09-27 for "A sheep's dogs row": the sub-screen
   // and the per-sheep table pane are new operator-facing surface, not
   // prose to trim back out.
@@ -227,7 +231,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 4300 for the standard dog's two levels in the dogs tab and
   // the dog pane's foot (#1429): the `^` and `@` marks are what an operator
   // reads on screen and has no other page to look up.
-  "lookout-config": 4440,
+  //
+  // Raised again, to 4450, for when the section shows: an opted-in sheep with
+  // no table shows nothing from it.
+  "lookout-config": 4450,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line

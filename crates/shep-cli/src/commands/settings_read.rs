@@ -222,7 +222,7 @@ async fn get_sheep(
         Some(dog) => standard::mark(&toml, &steps, dog, &marked),
         None => toml,
     };
-    print(streams, &written, &toml, marked)
+    print(streams, &written, &toml, &marked)
 }
 
 /// One dog's own section, or the fragment of it the address named.
@@ -271,7 +271,7 @@ async fn get_dog(
         };
         let steps = dog_steps(doc.as_table(), &written.rest);
         return match dog_document(&written, &doc, &steps) {
-            Ok(toml) => print(streams, &written, &toml, Vec::new()),
+            Ok(toml) => print(streams, &written, &toml, &[]),
             Err(refusal) => refusal_report(streams, &refusal),
         };
     }
@@ -644,7 +644,7 @@ fn print(
     streams: &mut Streams<'_>,
     written: &Written,
     toml: &str,
-    inherited: Vec<String>,
+    inherited: &[Vec<String>],
 ) -> ExitCode {
     if streams.fmt == Format::Table {
         return write_outcome(streams.out.write_all(toml.as_bytes()));
@@ -658,7 +658,10 @@ fn print(
             name: written.name.clone(),
             path: written.rest.join("."),
             toml: toml.to_string(),
-            inherited,
+            inherited: inherited
+                .iter()
+                .map(|path| standard::dotted(path))
+                .collect(),
         },
         streams.style,
     ))

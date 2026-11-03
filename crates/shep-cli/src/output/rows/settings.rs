@@ -23,9 +23,10 @@ pub struct SettingsAnswer {
     pub path: String,
     /// The answer, as TOML text.
     pub toml: String,
-    /// The top-level keys of a dog's table on a sheep that the sheep leaves to
-    /// the dog's own section, for a dog that follows the dog settings
-    /// standard. Left out when there are none.
+    /// The keys of a dog's table on a sheep that the sheep leaves to the dog's
+    /// own section, for a dog that follows the dog settings standard. A key
+    /// inside a table the sheep sets part of is its dotted path. Left out
+    /// when there are none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub inherited: Vec<String>,
 }

@@ -20,10 +20,21 @@ async fn get(
     serves: Serves,
     own: Option<Json>,
 ) -> (ExitCode, String, String) {
+    get_in(SECTION, address, fmt, serves, own).await
+}
+
+/// [`get`] over a `jobs` section of `section`.
+async fn get_in(
+    section: &str,
+    address: &str,
+    fmt: Format,
+    serves: Serves,
+    own: Option<Json>,
+) -> (ExitCode, String, String) {
     let dir = tempfile::tempdir().unwrap();
     adopt_jobs(dir.path(), serves);
     let paths = ShepPaths::at(dir.path().to_path_buf());
-    let (client, _envelopes) = shepherd(dir.path(), own, SECTION).await;
+    let (client, _envelopes) = shepherd(dir.path(), own, section).await;
     let args = GetArgs {
         address: address.to_string(),
     };
@@ -97,4 +108,34 @@ async fn a_key_the_sheep_sets_carries_no_mark() {
 
     assert_eq!(code, ExitCode::Success, "{err}");
     assert!(!out.contains("inherited"), "{out}");
+}
+
+#[tokio::test]
+async fn a_key_left_in_a_table_the_sheep_sets_part_of_is_marked_in_both_outputs() {
+    let section = "poll = \"5m\"\n[db]\nhost = \"a\"\nport = 1\n";
+    let own = || Some(json!({ "db": { "host": "b" } }));
+
+    let (code, out, err) = get_in(
+        section,
+        "api.dogs.jobs",
+        Format::Table,
+        Serves::OptedIn,
+        own(),
+    )
+    .await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(out.contains("port = 1 # inherited from [jobs]"), "{out}");
+    assert!(!out.contains("host = \"b\" #"), "{out}");
+
+    let (code, out, err) = get_in(
+        section,
+        "api.dogs.jobs",
+        Format::Json,
+        Serves::OptedIn,
+        own(),
+    )
+    .await;
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let envelope: Json = serde_json::from_str(&out).unwrap();
+    assert_eq!(envelope["data"]["inherited"], json!(["db.port"]));
 }

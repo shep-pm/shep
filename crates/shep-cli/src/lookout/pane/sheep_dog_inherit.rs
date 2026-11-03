@@ -35,14 +35,17 @@ pub(super) struct Inherits {
 }
 
 impl SheepDogTable {
+    /// The section under the table, once the dog reads it for this sheep.
+    fn layering(&self) -> Option<&Inherits> {
+        self.inherits
+            .as_ref()
+            .filter(|inherits| inherits.serves == Serves::EverySheep || inherits.has_table)
+    }
+
     /// What the rows show, and which of them the section fills.
     pub(super) fn displayed(&self) -> (Map<String, Value>, BTreeSet<String>) {
         let own = flatten_values(&self.table, &self.paths);
-        let Some(inherits) = self
-            .inherits
-            .as_ref()
-            .filter(|inherits| inherits.serves == Serves::EverySheep || inherits.has_table)
-        else {
+        let Some(inherits) = self.layering() else {
             return (own, BTreeSet::new());
         };
         let table = layered(&[
@@ -111,14 +114,16 @@ impl ConfigPane {
             .is_some_and(|inherits| inherits.inherited.contains(key))
     }
 
-    /// Whether this pane sits over the dog's section.
+    /// Whether this pane shows the dog's section under the sheep's table:
+    /// false for a pane over no section, and for an opted-in sheep with no
+    /// table, which the dog reads nothing for.
     #[must_use]
     pub fn inherits_section(&self) -> bool {
         matches!(self.target, PaneTarget::SheepDog { .. })
             && self
                 .dog_table
                 .as_ref()
-                .is_some_and(|state| state.inherits.is_some())
+                .is_some_and(|state| state.layering().is_some())
     }
 
     /// Whether `key` is dog-wide on a dog's own pane: the section sets it
@@ -174,10 +179,10 @@ impl ConfigPane {
     }
 
     /// What `key` goes back to when its own value is cleared: the section's
-    /// value, rendered like a stored one. [`None`] when the section has none.
+    /// value, rendered like a filed one. [`None`] when the section has none.
     pub(super) fn inherited_text(&self, key: &str) -> Option<String> {
         let shared = self.inherited_value(key)?;
-        Some(self.resolved(key, &super::fields::render_json(shared)))
+        Some(self.filed_text(key, shared))
     }
 }
 
@@ -263,6 +268,26 @@ mod tests {
         pane.adopt_table(Some(table(json!({ "limit": 9 }))));
         assert!(pane.is_inherited("model"));
         assert_eq!(pane.value("model"), "sonnet");
+    }
+
+    #[test]
+    fn an_opted_in_sheep_with_no_table_draws_no_inheritance_footer() {
+        let section = section(Serves::OptedIn, json!({ "model": "sonnet" }));
+        let mut pane = ConfigPane::sheep_dog_inheriting(
+            "web".into(),
+            "jobs".into(),
+            &sheep_form(),
+            None,
+            &section,
+        );
+        assert!(!pane.inherits_section());
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        assert!(!text.contains("comes from"), "{text}");
+
+        pane.adopt_table(Some(table(json!({ "limit": 9 }))));
+        assert!(pane.inherits_section());
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        assert!(text.contains("^ comes from [jobs]"), "{text}");
     }
 
     #[test]
@@ -376,6 +401,59 @@ mod tests {
         );
     }
 
+    fn clients_schema() -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "clients": { "type": "array", "items": { "$ref": "#/$defs/Client" } },
+                "token": { "type": "string", "x-shep-secret": true },
+            },
+            "$defs": { "Client": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "key": { "type": "string", "x-shep-secret": true },
+            } } },
+        })
+    }
+
+    fn cleared_pane(own: Value) -> ConfigPane {
+        let mut pane = ConfigPane::sheep_dog_inheriting(
+            "web".into(),
+            "jobs".into(),
+            &clients_schema(),
+            Some(table(own)),
+            &section(
+                Serves::EverySheep,
+                json!({
+                    "clients": [{ "name": "alpha", "key": "hunter2" }],
+                    "token": "s3cret",
+                }),
+            ),
+        );
+        pane.file_field("clients".into(), Value::Null);
+        pane.file_field("token".into(), Value::Null);
+        pane
+    }
+
+    #[test]
+    fn clearing_an_entries_row_names_a_count_and_never_the_inherited_secret_leaves() {
+        let pane = cleared_pane(json!({ "clients": [{ "name": "own" }], "token": "mine" }));
+        let text = pane.edited_value("clients").expect("filed");
+        assert_eq!(text, "1 entry (inherited)");
+        assert!(!text.contains("hunter2"), "{text}");
+    }
+
+    #[test]
+    fn clearing_a_secret_row_draws_no_value_on_the_row_or_in_the_pending_list() {
+        let pane = cleared_pane(json!({ "clients": [{ "name": "own" }], "token": "mine" }));
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        assert!(
+            !text.contains("s3cret") && !text.contains("hunter2"),
+            "{text}"
+        );
+        assert!(!text.contains("mine"), "{text}");
+        assert!(text.contains("<set> -> <set>"), "{text}");
+    }
+
     #[test]
     fn a_new_section_replaces_what_the_inherited_rows_show() {
         let mut pane = pane(json!({ "limit": 9 }));
@@ -419,6 +497,27 @@ mod tests {
         assert!(pane.is_dog_wide("\"a.b\""));
         assert!(!pane.is_dog_wide("a.b"));
         assert!(!pane.is_dog_wide("model"));
+    }
+
+    #[test]
+    fn a_dog_wide_key_with_a_dot_draws_the_mark_on_its_row() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "a.b": { "type": "string", "x-shep-dog-wide": true },
+                "model": { "type": "string" },
+            },
+        });
+        let pane = ConfigPane::dog(
+            "jobs".into(),
+            None,
+            schema,
+            "\"a.b\" = \"x\"\nmodel = \"m\"\n".into(),
+            Vec::new(),
+        );
+        let text = render_all(&pane_lines(&pane, plain(), 120, 0));
+        assert!(text.contains("@\"a.b\""), "{text}");
+        assert!(!text.contains("@model"), "{text}");
     }
 
     fn jobs_dog_pane() -> ConfigPane {
