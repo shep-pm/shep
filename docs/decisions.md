@@ -172,6 +172,16 @@ A dedicated research pass ranked three options for the daemon-boot readiness han
 
 `issue #1079 (parent #1073); verified crates/shep-core/src/dog_defaults.rs, crates/shep-daemon/src/supervisor/actor_dog_tables.rs, crates/shep-cli/src/commands/settings_write/defaults.rs, crates/shep-cli/src/commands/copy/address.rs, crates/shep-cli/src/dog_settings/table.rs`
 
+### A dog declares one settings type, its section is the value for every sheep, and a sheep's table overrides it per key
+
+A dog's `[<dog>]` section is the value for every sheep it serves, and a sheep's `[app.dogs.<dog>]` table overrides any key the dog's type does not mark `#[shep(dog_wide)]`. `#[dog_config]` takes the mark and publishes `x-shep-dog-wide: true` on the property. The manifest gained `serves` (`opted_in`, the default, or `every_sheep`), set with `Probe::serves` or `Probe::serves_every_sheep`. `DogRuntime::sheep_settings::<T>(serves)` returns one `Result` per served sheep: the section without its dog-wide keys, the sheep's table layered over it with `dog_defaults::layered`, read as `T`. A dog-wide key in a sheep's table is that sheep's error and names the key. A dog serving every sheep gets an entry for each sheep in the flock, one with no table included. A dog that sets nothing keeps today's behaviour. `probe_with_sheep` and `answer_with_sheep` stay as the older form.
+
+**Superseded:** the per-sheep-defaults part of "A dog's per-sheep tables layer over one operator-set default per dog". Two types (`T` and `S`) with `<dog>.defaults` as a second dog-level layer is replaced by one type with the section as that layer. `<dog>.defaults`, `dog-defaults.json` and `Request::SetDogDefaults` are untouched by this change and keep serving a dog on the older form. `sheep_settings` does not read the default: the shepherd layers it under every table in `DogSheepSettings`, so the call reads each sheep's own table from `Request::SheepConfig` instead, one request per sheep carrying a table. Otherwise a sheep with a table would see the default and one without would not, and a dog-wide key set in the default would read as set in every sheep's table.
+
+**Why:** the maintainer chose this on 2026-11-02. Two types made every author write a merge by hand and pick which layer a key lived in. One type makes the answer a mark on the field. The layering runs in the client, not the shepherd: the shepherd never sees a dog's manifest, the call composes requests that already exist, and `PROTOCOL_VERSION` stays. A `{{secret:...}}` in the section resolves in the dog's environment and one in a sheep's table in that sheep's, as each did. The cost is one request per sheep whose table holds a reference, and a dog-wide field needs a serde default because every sheep's settings leave it out.
+
+`issue #1428; verified crates/shep-client/src/dogs/sheep_settings.rs, crates/shep-core/src/dogs/manifest.rs and crates/shep-macros/src/lib.rs`
+
 ## Supervision and lifecycle
 
 ### A memory breach self-disarms the id it reports

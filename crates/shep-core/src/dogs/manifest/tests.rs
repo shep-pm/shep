@@ -21,7 +21,8 @@ const FIXTURE: &str = r#"{
     "dogs": [{"name": "metrics", "version": ">=0.2"}],
     "shep": "0.9.0"
   },
-  "validate": true
+  "validate": true,
+  "serves": "every_sheep"
 }"#;
 
 fn fixture() -> Manifest {
@@ -36,6 +37,7 @@ fn fixture() -> Manifest {
     manifest.depends.dogs = vec![DogDependency::new("metrics", ">=0.2")];
     manifest.depends.shep = Some("0.9.0".to_string());
     manifest.validate = true;
+    manifest.serves = Serves::EverySheep;
     manifest
 }
 
@@ -143,4 +145,53 @@ fn a_manifest_without_launch_reads_it_as_false() {
     .unwrap();
 
     assert!(!manifest.launch);
+}
+
+#[test]
+fn a_manifest_without_serves_reads_as_opted_in() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 1, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+    )
+    .unwrap();
+
+    assert_eq!(manifest.serves, Serves::OptedIn);
+}
+
+#[test]
+fn both_serves_values_read_from_their_documented_names_and_round_trip() {
+    for (name, serves) in [
+        ("opted_in", Serves::OptedIn),
+        ("every_sheep", Serves::EverySheep),
+    ] {
+        let text = format!(
+            r#"{{"manifest": 1, "name": "shep-jobs", "version": "0.1.0", "protocol": 11, "serves": "{name}"}}"#
+        );
+
+        let manifest: Manifest = serde_json::from_str(&text).unwrap();
+
+        assert_eq!(manifest.serves, serves, "{name}");
+        let again = serde_json::to_string(&manifest).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Manifest>(&again).unwrap().serves,
+            serves,
+            "{name} after a round trip"
+        );
+    }
+}
+
+#[test]
+fn a_dog_serving_every_sheep_prints_it_and_one_opted_in_prints_nothing() {
+    let mut every = Manifest::new("shep-jobs", "0.1.0", 11);
+    every.serves = Serves::EverySheep;
+
+    assert_eq!(
+        serde_json::to_value(&every).unwrap()["serves"],
+        serde_json::json!("every_sheep")
+    );
+    assert_eq!(
+        serde_json::to_value(Manifest::new("shep-jobs", "0.1.0", 11))
+            .unwrap()
+            .get("serves"),
+        None
+    );
 }

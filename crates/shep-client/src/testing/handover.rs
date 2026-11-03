@@ -45,6 +45,7 @@ pub struct Handovers {
     armed_list: Arc<Mutex<Vec<ProcessInfo>>>,
     armed_dog_section: Arc<Mutex<String>>,
     armed_sheep_tables: Arc<Mutex<BTreeMap<String, DogTable>>>,
+    armed_sheep_dogs: Arc<Mutex<BTreeMap<String, BTreeMap<String, DogTable>>>>,
     armed_subscribe_err: Arc<Mutex<Option<RpcError>>>,
     armed_resolved_refusal: Arc<Mutex<Option<RpcError>>>,
     events: mpsc::Sender<BusEvent>,
@@ -77,6 +78,8 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
     let armed_dog_section: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let armed_sheep_tables: Arc<Mutex<BTreeMap<String, DogTable>>> =
         Arc::new(Mutex::new(BTreeMap::new()));
+    let armed_sheep_dogs: Arc<Mutex<BTreeMap<String, BTreeMap<String, DogTable>>>> =
+        Arc::new(Mutex::new(BTreeMap::new()));
     let armed_subscribe_err: Arc<Mutex<Option<RpcError>>> = Arc::new(Mutex::new(None));
     let armed_resolved_refusal: Arc<Mutex<Option<RpcError>>> = Arc::new(Mutex::new(None));
     let (events_tx, mut events_rx) = mpsc::channel(SCRIPT_CHANNEL_CAPACITY);
@@ -89,6 +92,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
         let armed_list = Arc::clone(&armed_list);
         let armed_dog_section = Arc::clone(&armed_dog_section);
         let armed_sheep_tables = Arc::clone(&armed_sheep_tables);
+        let armed_sheep_dogs = Arc::clone(&armed_sheep_dogs);
         let armed_subscribe_err = Arc::clone(&armed_subscribe_err);
         let armed_resolved_refusal = Arc::clone(&armed_resolved_refusal);
         async move {
@@ -177,6 +181,18 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
                                 Request::DogSheepSettings { .. } => Response::DogSheepSettings {
                                     tables: armed_sheep_tables.lock().unwrap().clone(),
                                 },
+                                Request::SheepConfig { name } => {
+                                    let mut config = shep_core::config::AppConfig::minimal(&name, "true");
+                                    config.dogs = armed_sheep_dogs
+                                        .lock()
+                                        .unwrap()
+                                        .get(&name)
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    Response::SheepConfig(Box::new(
+                                        shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new()),
+                                    ))
+                                }
                                 _ => Response::Pong,
                             };
                             write_reply(&mut frames, id, response).await;
@@ -216,6 +232,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
         armed_list,
         armed_dog_section,
         armed_sheep_tables,
+        armed_sheep_dogs,
         armed_subscribe_err,
         armed_resolved_refusal,
         events: events_tx,
@@ -284,6 +301,16 @@ impl Handovers {
     /// Not consumed, like [`Self::reply_to_list`].
     pub fn reply_to_dog_sheep_settings(&self, tables: BTreeMap<String, DogTable>) {
         *self.armed_sheep_tables.lock().unwrap() = tables;
+    }
+
+    /// Arms the `dogs` map each sheep's config answers `Request::SheepConfig`
+    /// with: the tables as the sheep holds them, with no operator default
+    /// layered under, unlike [`Self::reply_to_dog_sheep_settings`]. A sheep
+    /// not armed answers an empty map.
+    ///
+    /// Not consumed, like [`Self::reply_to_list`].
+    pub fn reply_to_sheep_config(&self, dogs: BTreeMap<String, BTreeMap<String, DogTable>>) {
+        *self.armed_sheep_dogs.lock().unwrap() = dogs;
     }
 
     /// Arms every `Request::DogConfigResolved` and

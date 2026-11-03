@@ -80,6 +80,37 @@ struct MyDogConfig {
     every: Option<UpDuration>,
 }`;
 
+const perSheepSnippet = `use shep_client::dogs::{DogRuntime, Probe, Serves, dog_config};
+
+#[dog_config]
+#[derive(Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+struct Jobs {
+    /// How often to look. One value for the dog.
+    #[shep(dog_wide)]
+    poll: String,
+    /// Which model reviews this sheep.
+    model: String,
+}
+
+// First thing in main, before \`DogRuntime::start\`.
+fn declare() {
+    Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .serves_every_sheep()
+        .answer::<Jobs>();
+}
+
+async fn run(runtime: DogRuntime) -> Result<(), Box<dyn core::error::Error>> {
+    let poll = runtime.config::<Jobs>()?.poll;
+    for (sheep, settings) in runtime.sheep_settings::<Jobs>(Serves::EverySheep).await? {
+        match settings {
+            Ok(jobs) => review(&sheep, &jobs.model, &poll),
+            Err(err) => eprintln!("{sheep}: {err}"),
+        }
+    }
+    Ok(())
+}`;
+
 const schemaNotice = `notice[dog_schema_unreadable]: pydog answered \`--schema\` with something that
 is not JSON, so shep has no description of its settings and they stay a
 hand-edited section. The dog is adopted and runs normally; this is a bug to
@@ -852,47 +883,52 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
 
     <h2 id="reading-a-sheep-s-own-table">Reading a sheep's own table</h2>
     <p>
-      A dog that acts per sheep asks{" "}
-      <code>Request::DogSheepSettings {"{"} dog {"}"}</code> for its own
-      name and parses each sheep's table with{" "}
-      <code>shep_client::dogs::parse_sheep_settings</code>, one at a time,
-      so a table that doesn't fit never hides the rest. shep stores every
-      table and reads none of them itself. Each arrives laid over the
-      operator's default for the dog, if set. Subscribe to{" "}
-      <code>config.sheep.&lt;dog&gt;</code> to hear one change.
+      A dog declares one settings type. Its <code>[&lt;dog&gt;]</code>{" "}
+      section is the value for every sheep, and a sheep's own{" "}
+      <code>[app.dogs.&lt;dog&gt;]</code> table overrides any key the type
+      doesn't mark <code>#[shep(dog_wide)]</code>. A dog-wide key is set in
+      the section only, for a thing with one value per dog, such as a poll
+      interval.
+    </p>
+    <CodeBlock label="main.rs">{perSheepSnippet}</CodeBlock>
+    <p>
+      <code>serves_every_sheep()</code> puts <code>serves</code> in the
+      manifest. Left out, a dog serves only the sheep that carry a table,
+      which is also what a manifest from before the field means.{" "}
+      <code>sheep_settings</code> takes the same value and returns one entry
+      per served sheep, each its own <code>Result</code>, so a table that
+      doesn't fit never hides the rest. A dog serving every sheep gets an
+      entry for one with no table, equal to the section without its
+      dog-wide keys.
     </p>
     <p>
-      A table may hold <code>{'{{secret:...}}'}</code> references. Ask{" "}
-      <code>Request::SheepDogSettingsResolved {"{"} name, dog {"}"}</code>{" "}
-      for one sheep's table with each replaced, in that sheep's own
-      environment. In <code>shep-client</code> that is{" "}
-      <code>sheep_dog_table</code>.
+      A dog-wide key set in a sheep's table is an error for that sheep,
+      and the error names the key. A dog-wide key is also left out of every
+      sheep's settings, so give the field a serde default and read its value
+      from <code>runtime.config()</code>. The layering runs in{" "}
+      <code>shep-client</code>, over requests that already exist. Subscribe
+      to <code>config.sheep.&lt;dog&gt;</code> to hear one table change.
+    </p>
+    <p>
+      A <code>{'{{secret:...}}'}</code> in the section resolves in the dog's
+      environment, and one in a sheep's table in that sheep's own.{" "}
+      <code>sheep_settings</code> needs the <code>schema</code> feature and
+      skips <code>&lt;dog&gt;.defaults</code>.
     </p>
 
     <h2 id="publishing-a-per-sheep-schema">Publishing a per-sheep schema</h2>
     <p>
-      A dog whose per-sheep table deserves a form in{" "}
-      <code>shep lookout</code> calls{" "}
-      <code>probe_with_sheep::&lt;T, S&gt;(name, version)</code> instead of
-      {" "}<code>probe</code>. It answers <code>--schema</code> the same
-      way, with one more key: <code>x-shep-sheep</code>, holding{" "}
-      <code>S</code>'s schema in the same <code>$defs</code> as{" "}
-      <code>T</code>'s. A dog with one config type passes it for both.
-    </p>
-    <p>
-      <code>#[shep(secret)]</code> marks a field of <code>S</code> the way
-      it marks one of <code>T</code>: <code>&lt;set&gt;</code> in lookout,
-      never the value. A nested struct in <code>S</code> becomes a
-      table row there with its keys indented under it, like{" "}
-      <code>models</code> holding <code>worker</code> holding{" "}
-      <code>model</code>. A map with more than
-      a fixed set of keys, an array of tables, or a list whose items can
-      be null stays one read-only row.
+      The one type is the schema. <code>answer::&lt;T&gt;</code> publishes it
+      for <code>shep lookout</code>, and <code>#[shep(dog_wide)]</code>{" "}
+      writes <code>x-shep-dog-wide: true</code> on the property, beside{" "}
+      <code>x-shep-secret</code>. Both marks can sit on one field:{" "}
+      <code>#[shep(secret, dog_wide)]</code>.
     </p>
     <p class="fine">
-      Without the <code>schema</code> feature,{" "}
-      <code>probe_with_sheep::&lt;T, S&gt;</code> behaves like{" "}
-      <code>probe::&lt;T&gt;</code> alone.
+      The older form, <code>probe_with_sheep::&lt;T, S&gt;</code> and{" "}
+      <code>answer_with_sheep</code>, keeps working. It publishes a second
+      schema under <code>x-shep-sheep</code> and leaves the layering to the
+      dog. It stays until no published dog uses it.
     </p>
 
     <h2 id="your-dogs-own-docs-page">Your dog's own docs page</h2>

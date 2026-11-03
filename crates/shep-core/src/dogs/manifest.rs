@@ -63,6 +63,10 @@ pub struct Manifest {
     /// `<path> launch <sheep> -- <cmd>`.
     #[serde(default)]
     pub launch: bool,
+    /// Which sheep the dog's settings apply to. Absent reads as
+    /// [`Serves::OptedIn`].
+    #[serde(default, skip_serializing_if = "Serves::is_opted_in")]
+    pub serves: Serves,
 }
 
 impl Manifest {
@@ -82,7 +86,32 @@ impl Manifest {
             depends: Depends::default(),
             validate: false,
             launch: false,
+            serves: Serves::OptedIn,
         }
+    }
+}
+
+/// Which sheep a dog's settings apply to.
+///
+/// The dog's `[<dog>]` section is the value for every sheep it serves, and a
+/// sheep's own `[app.dogs.<dog>]` table overrides any key that is not
+/// dog-wide.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Serves {
+    /// Only a sheep carrying an `[app.dogs.<dog>]` table.
+    #[default]
+    OptedIn,
+    /// Every sheep in the flock, one with no table of its own included.
+    EverySheep,
+}
+
+impl Serves {
+    /// Whether this is [`Self::OptedIn`], so a manifest leaves the field out.
+    #[must_use]
+    pub const fn is_opted_in(&self) -> bool {
+        matches!(self, Self::OptedIn)
     }
 }
 

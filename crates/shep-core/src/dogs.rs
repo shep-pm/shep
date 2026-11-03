@@ -74,6 +74,11 @@ pub const DOG_LINK_FD: i32 = 4;
 /// render unredacted.
 pub const SECRET_KEY: &str = "x-shep-secret";
 
+/// The schemars extension key that marks a config field as dog-wide: set in
+/// the dog's `[<dog>]` section only, never in a sheep's `[app.dogs.<dog>]`
+/// table. Written by the `dog_config` attribute.
+pub const DOG_WIDE_KEY: &str = "x-shep-dog-wide";
+
 /// The schemars extension key that holds the schema of a dog's per-sheep
 /// `[app.dogs.<name>]` table, inside its `--schema` answer.
 ///

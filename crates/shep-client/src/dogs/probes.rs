@@ -3,7 +3,7 @@
 
 use std::io::Write as _;
 
-use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Verb};
+use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Serves, Verb};
 use shep_core::dogs::{
     MANIFEST_FLAG, SCHEMA_FLAG, SHEP_CHANNEL_KEY, SHEP_PROTOCOL_KEY, VERSION_FLAG,
 };
@@ -25,7 +25,7 @@ pub fn probe<T: DogConfig + schemars::JsonSchema>(name: &str, version: &str) {
 }
 
 /// [`probe`], for a dog whose per-sheep `[app.dogs.<name>]` table has its own schema.
-/// The schema flag answers with [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep).
+/// The older form of [`Probe::serves`]. The schema flag answers with [`config_schema_with_sheep::<T, S>`](config_schema_with_sheep).
 ///
 /// # Exits
 ///
@@ -116,6 +116,7 @@ pub struct Probe<'a> {
     defaults: Option<String>,
     validate: bool,
     launch: bool,
+    serves: Serves,
 }
 
 impl<'a> Probe<'a> {
@@ -132,6 +133,7 @@ impl<'a> Probe<'a> {
             defaults: None,
             validate: false,
             launch: false,
+            serves: Serves::OptedIn,
         }
     }
 
@@ -193,6 +195,22 @@ impl<'a> Probe<'a> {
     pub const fn launch(mut self) -> Self {
         self.launch = true;
         self
+    }
+
+    /// Declares which sheep the dog's settings apply to. Without it a dog
+    /// serves [`Serves::OptedIn`] sheep, the ones carrying an
+    /// `[app.dogs.<name>]` table.
+    ///
+    /// [`DogRuntime::sheep_settings`](super::DogRuntime::sheep_settings) takes
+    /// the same value.
+    pub const fn serves(mut self, serves: Serves) -> Self {
+        self.serves = serves;
+        self
+    }
+
+    /// Shorthand for <code>[Self::serves]\([Serves::EverySheep])</code>.
+    pub const fn serves_every_sheep(self) -> Self {
+        self.serves(Serves::EverySheep)
     }
 
     /// Answers the manifest flag, the version flag, or the schema flag with
@@ -285,6 +303,7 @@ impl<'a> Probe<'a> {
         manifest.depends.shep.clone_from(&self.shep);
         manifest.validate = self.validate;
         manifest.launch = self.launch;
+        manifest.serves = self.serves;
         manifest
     }
 

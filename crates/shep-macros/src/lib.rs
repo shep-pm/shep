@@ -2,10 +2,10 @@
 //!
 //! A dog publishes a JSON Schema for its config so shep can render a
 //! settings pane. A credential field needs marking, shown as `<set>` rather
-//! than its value. `schemars` can mark it by hand with
-//! `#[schemars(extend("x-shep-secret" = true))]`. That key is a string an
-//! author can misspell silently. This attribute writes it, and turns a
-//! misspelled option into a compile error.
+//! than its value, and a field with one value per dog needs marking as
+//! dog-wide. `schemars` can mark either by hand with an `extend("x-shep-...")`
+//! key, a string an author can misspell silently. This attribute writes it,
+//! and turns a misspelled option into a compile error.
 //!
 //! Depend on `shep-client`, not this crate: it re-exports the attribute.
 
@@ -16,23 +16,25 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{Attribute, Data, DeriveInput, Field, Meta, Token, parse_macro_input, parse_quote};
 
-/// The attribute this macro claims on a field. Only `#[shep(secret)]` is
-/// spelled with it today.
+/// The attribute this macro claims on a field.
 const ATTR: &str = "shep";
 
-/// The one option `#[shep(...)]` accepts.
+/// The option that marks a credential.
 const SECRET: &str = "secret";
+
+/// The option that marks a field set only in the dog's own section.
+const DOG_WIDE: &str = "dog_wide";
 
 /// The derive a marked field's extension rides on, checked by name because a
 /// macro cannot resolve a path.
 const JSON_SCHEMA: &str = "JsonSchema";
 
-/// Marks which of a dog's config fields are credentials, so shep can redact
-/// them. The author never types the `schemars` extension key that says so.
+/// Marks which of a dog's config fields are credentials, or hold one value
+/// per dog, so the author never types the `schemars` extension key.
 ///
 /// Put it above the derives on the type a dog deserializes its config into.
-/// Mark each credential field with `#[shep(secret)]`. Structs and enums both
-/// work. A marked field with no `JsonSchema` derive below it is refused.
+/// Mark a credential `#[shep(secret)]` and a per-dog field `#[shep(dog_wide)]`.
+/// A marked field with no `JsonSchema` derive below it is refused.
 ///
 /// # Example
 ///
@@ -60,8 +62,7 @@ const JSON_SCHEMA: &str = "JsonSchema";
 /// derive, which is what keeps `shep-client`'s `schema` feature optional.
 /// Every deliberate refusal is a compile error with its own message.
 ///
-/// The expansion, with each `#[shep(secret)]` replaced by the `schemars`
-/// extension and an `impl shep_client::dogs::DogConfig` added:
+/// The expansion, with each mark replaced by its `schemars` extension and an `impl shep_client::dogs::DogConfig` added:
 ///
 /// ```rust,ignore
 /// #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -128,36 +129,42 @@ fn expand(args: &TokenStream2, input: &mut DeriveInput) -> syn::Result<TokenStre
     // `schemars` attribute with no derive left to claim it, and rustc would
     // report that ahead of the refusal that explains it.
     let derives_json_schema = derives_json_schema(&input.attrs);
-    let mut marked: Vec<&mut Field> = Vec::new();
+    let mut marked: Vec<(&mut Field, Marks)> = Vec::new();
     for field in fields_of_mut(input)? {
-        if !take_secret(field)? {
+        let marks = take_marks(field)?;
+        if marks == Marks::default() {
             continue;
         }
         if field.ident.is_none() {
             return Err(syn::Error::new_spanned(
                 field,
-                "`#[shep(secret)]` cannot mark an unnamed field: `schemars` \
+                "`#[shep(...)]` cannot mark an unnamed field: `schemars` \
                  puts it in `prefixItems`, where a settings pane reading \
                  properties by name has nothing to find. Name the field.",
             ));
         }
-        marked.push(field);
+        marked.push((field, marks));
     }
 
     if !marked.is_empty() && !derives_json_schema {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            "a `#[shep(secret)]` field needs `#[derive(schemars::JsonSchema)]` \
-             BELOW `#[dog_config]` on this type. The mark is written as a \
-             `schemars` attribute, so a derive listed above this one has \
-             already expanded without it and the credential would go out \
-             unmarked. Move `#[dog_config]` above the derives, or add the \
-             derive.",
+            "a `#[shep(secret)]` or `#[shep(dog_wide)]` field needs \
+             `#[derive(schemars::JsonSchema)]` BELOW `#[dog_config]` on this \
+             type. The mark is written as a `schemars` attribute, so a derive \
+             listed above this one has already expanded without it and the \
+             field would go out unmarked. Move `#[dog_config]` above the \
+             derives, or add the derive.",
         ));
     }
 
-    for field in marked {
-        field.attrs.push(secret_extension());
+    for (field, marks) in marked {
+        if marks.secret {
+            field.attrs.push(secret_extension());
+        }
+        if marks.dog_wide {
+            field.attrs.push(dog_wide_extension());
+        }
     }
 
     let carry_on = dog_config_impl(input);
@@ -248,6 +255,16 @@ fn secret_extension() -> Attribute {
     parse_quote!(#[schemars(extend("x-shep-secret" = true))])
 }
 
+/// The `schemars` extension a dog-wide field carries.
+///
+/// A literal for the same reason as [`secret_extension`]. It must stay equal
+/// to `shep_core::dogs::DOG_WIDE_KEY`, and
+/// `the_marker_key_is_the_one_shep_core_publishes` in `shep-client` fails when
+/// it does not.
+fn dog_wide_extension() -> Attribute {
+    parse_quote!(#[schemars(extend("x-shep-dog-wide" = true))])
+}
+
 /// Every field the type has, a struct's directly and an enum's
 /// gathered from its variants.
 ///
@@ -280,14 +297,20 @@ fn fields_of_mut(input: &mut DeriveInput) -> syn::Result<Vec<&mut Field>> {
     }
 }
 
-/// Whether a field carries `#[shep(secret)]`, removing every `#[shep(...)]`
-/// it finds.
+/// The marks a field carries.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Marks {
+    secret: bool,
+    dog_wide: bool,
+}
+
+/// The marks a field carries, removing every `#[shep(...)]` it finds.
 ///
-/// Repeating the attribute on one field is accepted and marks it
-/// once. It is redundant rather than wrong. A second error message
-/// would be noise next to the one that matters: a misspelled option.
-fn take_secret(field: &mut Field) -> syn::Result<bool> {
-    let mut secret = false;
+/// Repeating an option on one field is accepted and marks it once. It is
+/// redundant rather than wrong. A second error message would be noise next
+/// to the one that matters: a misspelled option.
+fn take_marks(field: &mut Field) -> syn::Result<Marks> {
+    let mut marks = Marks::default();
     for attr in &field.attrs {
         if !attr.path().is_ident(ATTR) {
             continue;
@@ -295,29 +318,33 @@ fn take_secret(field: &mut Field) -> syn::Result<bool> {
         if !matches!(&attr.meta, Meta::List(list) if !list.tokens.is_empty()) {
             return Err(syn::Error::new_spanned(
                 attr,
-                "`#[shep]` needs an option in parentheses: the only one is \
-                 `secret`, as in `#[shep(secret)]`",
+                "`#[shep]` needs an option in parentheses: `secret` or \
+                 `dog_wide`, as in `#[shep(secret)]`",
             ));
         }
         attr.parse_nested_meta(|meta| {
-            if !meta.path.is_ident(SECRET) {
+            let mark = if meta.path.is_ident(SECRET) {
+                &mut marks.secret
+            } else if meta.path.is_ident(DOG_WIDE) {
+                &mut marks.dog_wide
+            } else {
                 return Err(meta.error(
-                    "unknown `shep` option: the only one is `secret`, as in \
-                     `#[shep(secret)]`",
+                    "unknown `shep` option: the options are `secret` and \
+                     `dog_wide`, as in `#[shep(secret)]`",
                 ));
-            }
+            };
             if meta.input.peek(Token![=]) {
                 return Err(meta.error(
-                    "`secret` is a flag and takes no value: write \
-                     `#[shep(secret)]`",
+                    "`secret` and `dog_wide` are flags and take no value: \
+                     write `#[shep(secret)]`",
                 ));
             }
-            secret = true;
+            *mark = true;
             Ok(())
         })?;
     }
     field.attrs.retain(|attr| !attr.path().is_ident(ATTR));
-    Ok(secret)
+    Ok(marks)
 }
 
 /// The first `#[shep(...)]` in a list, for the places one does not belong.
