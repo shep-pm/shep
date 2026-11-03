@@ -292,13 +292,12 @@ impl<R: ProcessRunner> Actor<R> {
     }
 
     /// Whether the kernel's OOM killer killed inside the cgroup of the sheep
-    /// `id` since it spawned, which a kernel-enforced sheep's exit is charged
-    /// for. Read before [`Self::remove_cgroup`], which takes the counter with it.
+    /// `id` since it spawned. Read before `remove_cgroup` takes the counter.
     ///
-    /// A rise in the cgroup's own `oom_kill` count over the life of the process
-    /// is the whole test. It cannot tell the root's death from a lamb's, and
-    /// a rise with an exit that looks clean is still taken: the cost of a wrong
-    /// guess is a leak that restarts for ever, not a restart too few.
+    /// A rise in the cgroup's own `oom_kill` count is the whole test. It cannot
+    /// tell the root's death from a lamb's, and a rise with an exit that looks
+    /// clean is still taken: a wrong guess costs a restart, not a leak that
+    /// restarts for ever.
     fn take_oom(&mut self, id: u32) -> bool {
         let Some(baseline) = self.oom_baselines.remove(&id) else {
             return false;

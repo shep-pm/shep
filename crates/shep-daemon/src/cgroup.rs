@@ -1,17 +1,13 @@
 //! Whether this host can give every sheep its own cgroup
 //!
 //! [`detect`] runs once at boot. On cgroup v2 with a subtree the shepherd may
-//! write, it moves the shepherd into a `shepherd` leaf and enables the
-//! controllers a sheep's limits need on the parent, which becomes the
-//! [`Cgroups::Available`] base. Every other outcome names its [`Reason`].
+//! write, it moves itself into a `shepherd` leaf and enables the controllers a
+//! sheep's limits need: the [`Cgroups::Available`] base. Else it names a [`Reason`].
 //!
 //! Under an available base each sheep gets `<base>/sheep-<id>-<instance>`,
-//! which [`join_on_exec`] creates and the child joins before its exec.
-//! [`remove_if_empty`] and [`remove_stale`] drop it after the sheep or a crash.
-//!
-//! A sheep with `memory_enforce = "kernel"` also gets its `max_memory` written
-//! to `memory.max` there, at spawn and on a live change ([`write_memory_max`]),
-//! and [`oom_kills`] tells the exit path whether the kernel killed it.
+//! which [`join_on_exec`] creates and the child joins before its exec, with
+//! `memory.max` set first ([`write_memory_max`]) and [`oom_kills`] read at the
+//! exit. [`remove_if_empty`] and [`remove_stale`] drop it.
 
 use core::fmt;
 use std::ffi::OsStr;
@@ -185,10 +181,7 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`.
-///
-/// `memory_max` is written first, by [`write_memory_max`], so the cap holds
-/// from the child's first allocation.
+/// `memory.oom.group`. `memory_max` is written first, by [`write_memory_max`].
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
