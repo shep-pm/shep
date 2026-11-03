@@ -10,6 +10,8 @@ name: Dog release
 # `<repo>/releases/download/v<version>/<package>-<version>-<target>` from the
 # index row, so the tag has to be `v<version>`. See the "Releasing a dog"
 # section of web/src/pages/docs/writing-a-dog.astro for the calling job.
+# The calling job grants `contents: write` and `actions: read` and pins this
+# workflow by commit.
 #
 # Run by hand with `workflow_dispatch` it is a dry run against any public
 # dog repository: it builds every target and prints the hashes, and uploads
@@ -180,11 +182,12 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
     runs-on: ${{ matrix.os }}
-    # Needs write to attach assets to the calling repository's release, so a
-    # caller must grant `contents: write` on its job. A dry run uploads
-    # nothing and the token is passed only to the one step that uploads.
+    # Read only. This job runs the dog's build scripts, and a build script
+    # can prepend to GITHUB_PATH and swap any tool a later step runs, so
+    # nothing here holds a token that can write. The `upload` job below does
+    # that, from the built files alone.
     permissions:
-      contents: write
+      contents: read
     timeout-minutes: 60
     defaults:
       run:
@@ -213,7 +216,6 @@ jobs:
         # lockfile at the tag, not of whatever resolves on the day.
         run: cargo build --release --locked --package "$PACKAGE" --bin "$BIN" --target "$TARGET"
       - name: Stage the bare binary under its release name
-        id: stage
         env:
           PACKAGE: ${{ inputs.package }}
           BIN: ${{ needs.resolve.outputs.bin }}
@@ -226,7 +228,6 @@ jobs:
           asset="${PACKAGE}-${VERSION}-${TARGET}${exe}"
           mkdir dist
           cp "target/${TARGET}/release/${BIN}${exe}" "dist/${asset}"
-          echo "asset=${asset}" >> "$GITHUB_OUTPUT"
           # `sha256sum` where there is one (Linux, Git for Windows), else the
           # macOS spelling. Both print `<hash>  <name>`, the line
           # scripts/dog-index-update.py reads back.
@@ -239,22 +240,58 @@ jobs:
             echo "$line"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Attach it to the release
+      - name: Hand the binary to the upload job
         if: needs.resolve.outputs.dry-run != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job that can write to the release, and it runs nothing from the
+  # dog: it downloads what `build` made and attaches it. `gh` is the runner's
+  # own, since no step of the dog's has run on this machine.
+  #
+  # `gh run download`, not `actions/download-artifact`, which this repository
+  # pins by commit nowhere yet; it needs `actions: read`, which a caller
+  # granting its own `permissions:` has to list beside `contents: write`.
+  upload:
+    name: Attach to the release
+    needs: [resolve, build]
+    if: needs.resolve.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    timeout-minutes: 15
+    outputs:
+      # The names this run uploaded, space separated. They are made of the
+      # characters `resolve` allowed, so none holds a space.
+      assets: ${{ steps.attach.outputs.assets }}
+    steps:
+      - id: attach
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ needs.resolve.outputs.repository }}
           TAG: ${{ inputs.tag }}
-          ASSET: ${{ steps.stage.outputs.asset }}
-        # `--clobber`: a re-run replaces the asset, and the next job hashes
-        # what the release holds, not what this leg built.
-        run: gh release upload "$TAG" "dist/${ASSET}" --clobber
+        run: |
+          set -euo pipefail
+          mkdir dist
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir dist --pattern 'dist-*'
+          # `--clobber`: a re-run replaces the asset, and `index-pr` hashes
+          # what the release holds, not what a leg built.
+          gh release upload "$TAG" dist/*/* --clobber
+          names="$(for f in dist/*/*; do basename "$f"; done | sort | tr '\n' ' ')"
+          echo "assets=${names% }" >> "$GITHUB_OUTPUT"
 
   # Hashes what the release serves rather than what the legs built, since
-  # that is the file `shep install` downloads and checks.
+  # that is the file `shep install` downloads and checks. Only the files this
+  # run uploaded: a re-run with fewer targets must not carry an older run's
+  # assets into the index.
   index-pr:
     name: Open the index pull request
-    needs: [resolve, build]
+    needs: [resolve, upload]
     if: needs.resolve.outputs.dry-run != 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -274,24 +311,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ needs.resolve.outputs.repository }}
           TAG: ${{ inputs.tag }}
-          PACKAGE: ${{ inputs.package }}
-          VERSION: ${{ needs.resolve.outputs.version }}
+          ASSETS: ${{ needs.upload.outputs.assets }}
         run: |
           set -euo pipefail
+          read -ra names <<< "$ASSETS"
+          [ "${#names[@]}" -gt 0 ] || { echo "::error::the upload job named no assets"; exit 1; }
           mkdir assets
-          gh release download "$TAG" --dir assets --pattern "${PACKAGE}-${VERSION}-*"
-          # Only the binaries. A name that is not <package>-<version>-<triple>,
-          # with `.exe` allowed, is a sidecar or a signature the dog attached
-          # itself and is not an approved target.
-          binary="^$(printf '%s' "${PACKAGE}-${VERSION}-" | sed 's/[.+]/\\&/g')[a-z0-9_]+(-[a-z0-9_]+){2,}(\\.exe)?\$"
+          args=()
+          for name in "${names[@]}"; do args+=(--pattern "$name"); done
+          gh release download "$TAG" --dir assets "${args[@]}"
           : > sums.txt
-          for file in assets/*; do
-            name="$(basename "$file")"
-            if printf '%s' "$name" | grep -Eq "$binary"; then
-              (cd assets && sha256sum -- "$name") >> sums.txt
-            else
-              echo "skipping $name: not a binary asset"
-            fi
+          for name in "${names[@]}"; do
+            test -f "assets/$name" || { echo "::error::$name is not on the release"; exit 1; }
+            (cd assets && sha256sum -- "$name") >> sums.txt
           done
           cat sums.txt
       - name: Write the row

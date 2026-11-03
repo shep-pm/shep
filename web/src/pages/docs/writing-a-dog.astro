@@ -130,7 +130,8 @@ jobs:
   binaries:
     permissions:
       contents: write
-    uses: shep-pm/shep/.github/workflows/dog-release.yml@main
+      actions: read
+    uses: shep-pm/shep/.github/workflows/dog-release.yml@<full commit sha>
     with:
       package: shep-log-rotate
       tag: \${{ github.event.release.tag_name }}
@@ -1010,13 +1011,21 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
     </p>
     <p>
       The tag must be <code>v&lt;version&gt;</code>, matching{" "}
-      <code>Cargo.toml</code> at that tag, and the release must exist before
-      the job runs. Your row must exist already, with <code>source.kind</code>{" "}
-      set to <code>cargo</code>; the first one is a pull request of its own. Pass <code>bin</code> when the binary isn't named after the
-      package.
+      <code>Cargo.toml</code> at that tag. A real run needs the release to
+      exist before the job runs; a dry run doesn't. Your row must exist
+      already, with <code>source.kind</code> set to <code>cargo</code>; the
+      first one is a pull request of its own. Pass <code>bin</code> when the
+      binary isn't named after the package.
     </p>
     <p>
-      The job needs <code>contents: write</code> and an <code>index-token</code>{" "}
+      Pin <code>uses:</code> to a full commit sha, not <code>main</code> or a
+      tag. The workflow runs with your <code>contents: write</code> and your{" "}
+      <code>index-token</code>, so a ref that can move lets a later change to
+      it run with both. Move the sha when you choose to.
+    </p>
+    <p>
+      The job needs <code>contents: write</code>, <code>actions: read</code>{" "}
+      and an <code>index-token</code>
       secret: a GitHub App token or a personal access token that can push a
       branch and open a pull request on <code>shep-pm/shep</code>.{" "}
       <code>GITHUB_TOKEN</code> can't write to another repository.

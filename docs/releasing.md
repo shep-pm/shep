@@ -575,6 +575,13 @@ this side:
   that changes `source.version` and `source.sha256` of that one row, through
   `scripts/dog-index-update.py`. It hashes the assets the release serves, not
   what each leg built. A first row for a new dog is a pull request by hand.
+- **Building and uploading are separate jobs.** `build` holds a read-only
+  token, since it runs the dog's build scripts and one can prepend to
+  `GITHUB_PATH` to swap a tool a later step runs. `upload` runs none of the
+  dog's code: it fetches the built files with `gh run download`, which is why
+  the caller grants `actions: read`, and attaches them. `index-pr` hashes
+  only the names `upload` reports, so a re-run with fewer targets leaves
+  nothing from an older run in the index.
 - **The token is the dog repository's secret.** `index-token` has to push a
   branch and open a pull request here; `GITHUB_TOKEN` cannot cross
   repositories. A pull request opened with it fires no checks, so use a PAT

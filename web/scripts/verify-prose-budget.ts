@@ -153,7 +153,11 @@ export const BUDGETS: Record<string, number> = {
   // and release it needs, the token it takes and the dry run. A dog author has
   // no other page that says how the index row and the prebuilt binaries get
   // made. The ceiling sits about 7 words above the page.
-  "writing-a-dog": 5835,
+  //
+  // Raised from 5835 on #1447 review for why the workflow is pinned by commit:
+  // the job holds a write token and the index token, so a moving ref is a
+  // real risk to say out loud. The ceiling sits about 5 words above the page.
+  "writing-a-dog": 5894,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

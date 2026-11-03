@@ -137,12 +137,12 @@ class ApplyTests(unittest.TestCase):
         with self.assertRaisesRegex(dog_index_update.IndexUpdateError, "shep-example-0.1.0-"):
             self.apply(index_text(row()), "0.2.0", sums("shep-example", "0.1.0", {LINUX: HASH_A}))
 
-    def test_an_asset_that_is_not_a_target_triple_is_refused(self) -> None:
+    def test_an_asset_with_an_empty_or_malformed_target_is_refused(self) -> None:
         for target in ("", "Linux", "x86 64"):
             with self.subTest(target=target), self.assertRaises(dog_index_update.IndexUpdateError):
                 self.apply(index_text(row()), "0.2.0", f"{HASH_A}  shep-example-0.2.0-{target}\n")
 
-    def test_a_suffix_that_is_not_a_triple_is_refused(self) -> None:
+    def test_a_sidecar_or_short_suffix_is_refused(self) -> None:
         # A checksum sidecar or a signature shares the release's name prefix.
         for target in (f"{LINUX}.sha256", f"{LINUX}.sig", "linux", "x86_64-linux"):
             with self.subTest(target=target), self.assertRaises(dog_index_update.IndexUpdateError):
@@ -191,7 +191,7 @@ class CommandLineTests(unittest.TestCase):
             code = dog_index_update.main(list(argv))
         return code, out.getvalue(), err.getvalue()
 
-    def test_writes_the_index_in_place_and_says_what_moved(self) -> None:
+    def test_writes_the_index_in_place_and_names_the_package_and_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             index = Path(tmp) / "dogs.json"
             index.write_text(index_text(row()))
@@ -224,7 +224,7 @@ class CommittedIndexTests(unittest.TestCase):
         text = (REPO_ROOT / "web/public/dogs.json").read_text()
         self.assertEqual(json.dumps(json.loads(text), indent=2, ensure_ascii=False) + "\n", text)
 
-    def test_the_schema_accepts_the_shape_the_script_writes(self) -> None:
+    def test_the_schema_declares_the_cargo_fields_the_script_writes(self) -> None:
         schema = json.loads((REPO_ROOT / "web/public/dogs.schema.json").read_text())
         cargo = schema["properties"]["dogs"]["items"]["properties"]["source"]["oneOf"][0]
         self.assertEqual(sorted(cargo["properties"]), ["kind", "sha256", "version"])
