@@ -37,7 +37,6 @@ impl AvailableDog {
 
     /// The prebuilt binary for the triple this binary was compiled for, or
     /// `None` when the index hashes none for it.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the install verb reads this"))]
     pub fn prebuilt(&self) -> Option<Prebuilt> {
         self.prebuilt_for(BUILD_TARGET)
     }

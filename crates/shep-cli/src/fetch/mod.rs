@@ -7,6 +7,8 @@
 //! non-2xx; any `Transfer-Encoding`; a bad `Content-Length`; and a body above
 //! the caller's `limit`. The head has its own cap, [`MAX_HEADER_BYTES`].
 //!
+//! [`get_asset`] is the one GET that follows a redirect, and only one.
+//!
 //! The `otel` feature adds `post_json` in the `post` submodule.
 use core::fmt;
 use std::sync::Arc;
@@ -24,6 +26,11 @@ mod post;
 /// of the crate reaches it as. Its `PostReply` is named where it is made.
 #[cfg(feature = "otel")]
 pub use post::post_json;
+
+/// The GET that follows the one redirect a release asset needs.
+mod asset;
+
+pub use asset::{RedirectPolicy, get_asset};
 
 /// Connect, TLS handshake, write and flush: the half every request here shares.
 mod transport;

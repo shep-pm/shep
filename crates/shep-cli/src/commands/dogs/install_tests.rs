@@ -18,30 +18,31 @@ use crate::cli::InstallArgs;
 use crate::commands::shep_toml::ShepToml;
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
+use crate::fetch::RedirectPolicy;
 
-const MANIFEST: &str = r#"{"manifest":1,"name":"otel","version":"0.2.4","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock to report on it"}]}"#;
+pub(super) const MANIFEST: &str = r#"{"manifest":1,"name":"otel","version":"0.2.4","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock to report on it"}]}"#;
 
-const REPO: &str = "https://github.com/shep-pm/shep-otel";
+pub(super) const REPO: &str = "https://github.com/shep-pm/shep-otel";
 
 /// The publisher the row's own repo names.
-fn from_the_row() -> Published {
+pub(super) fn from_the_row() -> Published {
     Published::From("shep-pm/shep-otel".to_owned())
 }
 
-struct Fixture {
-    dir: tempfile::TempDir,
-    paths: ShepPaths,
+pub(super) struct Fixture {
+    pub(super) dir: tempfile::TempDir,
+    pub(super) paths: ShepPaths,
 }
 
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
         Self { dir, paths }
     }
 
     /// Where the stub cargo records the arguments it was run with.
-    fn argv(&self) -> PathBuf {
+    pub(super) fn argv(&self) -> PathBuf {
         self.dir.path().join("argv")
     }
 
@@ -68,18 +69,19 @@ impl Fixture {
         bin
     }
 
-    fn reach(&self, published: Published) -> Reach {
+    pub(super) fn reach(&self, published: Published) -> Reach {
         let bin = self.stub_cargo();
         Reach {
             // The real PATH lookup, over a PATH holding only the stub.
             cargo: super::adopt::lookup_on_path(Path::new("cargo"), Some(bin.as_os_str())),
             lookup: Lookup::Canned(published),
+            assets: RedirectPolicy::loopback("127.0.0.1", &["localhost"]),
             lock_wait: Duration::from_millis(100),
         }
     }
 }
 
-fn row(source: DogSourceKind) -> AvailableDog {
+pub(super) fn row(source: DogSourceKind) -> AvailableDog {
     AvailableDog {
         name: "Otel".to_owned(),
         package: "shep-otel".to_owned(),
@@ -122,23 +124,24 @@ async fn crates_io(body: String) -> (String, tokio::sync::mpsc::UnboundedReceive
     (format!("http://127.0.0.1:{}", addr.port()), asked)
 }
 
-fn typing(typed: Option<&'static str>) -> Input {
+pub(super) fn typing(typed: Option<&'static str>) -> Input {
     Input {
         is_terminal: typed.is_some(),
         reader: Box::new(Cursor::new(typed.unwrap_or("").as_bytes())),
     }
 }
 
-fn args(yes: bool, no_enable: bool) -> InstallArgs {
+pub(super) fn args(yes: bool, no_enable: bool) -> InstallArgs {
     InstallArgs {
         dog: Some("otel".to_owned()),
         yes,
         no_enable,
         refresh: false,
+        cargo: false,
     }
 }
 
-async fn run(
+pub(super) async fn run(
     fixture: &Fixture,
     dog: &AvailableDog,
     args: &InstallArgs,
@@ -163,11 +166,11 @@ async fn run(
     )
 }
 
-fn config(fixture: &Fixture) -> ShepToml {
+pub(super) fn config(fixture: &Fixture) -> ShepToml {
     ShepToml::read_only(&fixture.paths.daemon_config).unwrap()
 }
 
-fn enabled(fixture: &Fixture) -> bool {
+pub(super) fn enabled(fixture: &Fixture) -> bool {
     config(fixture)
         .enabled_dog_names()
         .iter()
@@ -326,6 +329,7 @@ async fn no_cargo_on_path_refuses_naming_cargo_and_rustup() {
     let reach = Reach {
         cargo: super::adopt::lookup_on_path(Path::new("cargo"), Some(empty.as_os_str())),
         lookup: Lookup::Canned(from_the_row()),
+        assets: RedirectPolicy::GITHUB_RELEASES,
         lock_wait: Duration::from_millis(100),
     };
 

@@ -243,13 +243,15 @@ pub enum Commands {
     /// own configuration in `dogs.toml` survives a disable/enable cycle;
     /// `shep delete` forgets the adoption as well.
     Disable(DisableArgs),
-    /// Build a dog from the community index with cargo, then adopt and
-    /// enable it. With no name, lists the index.
+    /// Install a dog from the community index, then adopt and enable it.
+    /// With no name, lists the index.
     ///
-    /// Builds the version the index approves with `cargo install
-    /// --locked`, after checking who published it. Then it asks the grant
-    /// question `shep adopt` asks; a no leaves the dog adopted and
-    /// disabled. Any other row prints its instructions and exits 1.
+    /// Downloads the prebuilt binary when the index hashes one for this
+    /// target, and refuses it if its sha256 differs. Otherwise, or with
+    /// `--cargo`, builds the approved version with `cargo install --locked`,
+    /// after checking who published it. Then it asks the grant question
+    /// `shep adopt` asks; a no leaves the dog adopted and disabled. Any other
+    /// row prints its instructions and exits 1.
     Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
