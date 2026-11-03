@@ -24,6 +24,7 @@ mod prebuilt;
 
 pub use cache::{Origin, cached_index, describe_age};
 pub use parse::parse_index;
+pub use prebuilt::{BUILD_TARGET, Prebuilt};
 
 /// Where the index lives when nothing overrides it. An exact file path, so
 /// it answers 200 rather than redirecting: [`crate::fetch::get`] refuses
