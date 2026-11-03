@@ -1,5 +1,6 @@
 use super::*;
 use core::fmt;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
@@ -77,6 +78,18 @@ pub(super) struct Shared {
 /// The generation of the connection in force right now.
 pub(super) struct State {
     client: Arc<Client>,
+    /// Counts the connections made, from 1: what a daemon-side topic filter
+    /// belongs to, since a successor starts with none.
+    generation: u64,
+}
+
+/// The topics a connection's daemon-side filter is known to hold.
+///
+/// `Default` knows nothing, so the next subscription is sent.
+#[derive(Debug, Default)]
+pub(crate) struct Covered {
+    generation: u64,
+    topics: BTreeSet<String>,
 }
 
 /// Stops the supervisor when the handle goes away.
@@ -163,6 +176,12 @@ impl Shared {
         Arc::clone(&self.read().client)
     }
 
+    /// The current generation and its number, read together.
+    fn current(&self) -> (Arc<Client>, u64) {
+        let state = self.read();
+        (Arc::clone(&state.client), state.generation)
+    }
+
     fn set_link(&self, link: LinkState) {
         self.link.send_replace(link);
     }
@@ -172,7 +191,10 @@ impl Shared {
     /// The generation lands before the link is announced, so a waiter woken
     /// by [`LinkState::Connected`] finds the connection it was told about.
     fn install(&self, client: Client) {
-        self.write().client = Arc::new(client);
+        let mut state = self.write();
+        state.client = Arc::new(client);
+        state.generation += 1;
+        drop(state);
         self.set_link(LinkState::Connected);
     }
 }
@@ -293,6 +315,7 @@ impl ReconnectingClient {
             link: watch::Sender::new(LinkState::Connected),
             state: RwLock::new(State {
                 client: Arc::new(client),
+                generation: 1,
             }),
         });
         let supervisor = tokio::spawn(supervise(Arc::clone(&shared)));
@@ -375,6 +398,47 @@ impl ReconnectingClient {
     /// Same as [`Self::request`].
     pub async fn subscribe(&self, topics: Vec<String>) -> Result<EventStream, RequestError> {
         self.shared.client().subscribe(topics).await
+    }
+
+    /// As [`Self::subscribe`], except that a `Subscribe` is sent only when
+    /// `covered` does not already hold every topic on this generation.
+    ///
+    /// The shepherd answers a `Subscribe` by replacing the connection's
+    /// forwarder, and the event the old one holds in flight is lost. A
+    /// caller that keeps `topics` a union of what it needs and passes the
+    /// same `covered` each time asks only when the union grows.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::request`]. `covered` is forgotten, so the next call
+    /// asks again.
+    pub(crate) async fn subscribe_covered(
+        &self,
+        topics: Vec<String>,
+        covered: &mut Covered,
+    ) -> Result<EventStream, RequestError> {
+        let (client, generation) = self.shared.current();
+        let held = covered.generation == generation
+            && topics.iter().all(|topic| covered.topics.contains(topic));
+        let sent = if held {
+            client.events().await
+        } else {
+            client.subscribe(topics.clone()).await
+        };
+        match sent {
+            Ok(events) if held => Ok(events),
+            Ok(events) => {
+                *covered = Covered {
+                    generation,
+                    topics: topics.into_iter().collect(),
+                };
+                Ok(events)
+            }
+            Err(error) => {
+                *covered = Covered::default();
+                Err(error)
+            }
+        }
     }
 
     /// Waits for the supervisor to be on a connection again, for at most

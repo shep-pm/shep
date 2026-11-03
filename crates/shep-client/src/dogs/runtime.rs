@@ -1,9 +1,12 @@
 //! [`DogRuntime`], the connection and configuration a dog starts with.
 
+use std::time::Duration;
+
 use serde::de::DeserializeOwned;
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::DogSectionToml;
 
+use super::long_action::{self, ActionDone, ActionId, LongActionError, Waits};
 use super::{DogIdentity, SectionError, ShepherdError, link, parse_section};
 use crate::ReconnectingClient;
 
@@ -39,6 +42,7 @@ pub struct DogRuntime {
     section: DogSectionToml,
     paths: ShepPaths,
     identity: DogIdentity,
+    waits: Waits,
 }
 
 impl DogRuntime {
@@ -63,6 +67,7 @@ impl DogRuntime {
             section,
             paths,
             identity,
+            waits: Waits::default(),
         })
     }
 
@@ -97,6 +102,52 @@ impl DogRuntime {
         payload: serde_json::Value,
     ) -> Result<(), ShepherdError> {
         Ok(self.client.publish_event(kind, payload).await?)
+    }
+
+    /// Reports the result of the long action `id` as this dog's
+    /// [`DONE_KIND`](super::DONE_KIND) event: `Ok` carries what the work
+    /// produced, `Err` what went wrong.
+    ///
+    /// Holders of `events:dog.<name>` all hear it, and the caller picks its
+    /// own out by id. The dog declares [`DONE_KIND`](super::DONE_KIND) with
+    /// [`Probe::event`](super::Probe::event) first, or the shepherd refuses.
+    /// So does a dog whose name contains a dot: it cannot publish at all, so
+    /// no caller will hear its results.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::publish`].
+    pub async fn finish_action(
+        &self,
+        id: &ActionId,
+        outcome: Result<serde_json::Value, String>,
+    ) -> Result<(), ShepherdError> {
+        self.publish(super::DONE_KIND, long_action::done_payload(id, outcome))
+            .await
+    }
+
+    /// Triggers `action` on the dog `callee` and waits up to `timeout` for
+    /// the result of the long action it answers with.
+    ///
+    /// Subscribes to `callee`'s results before it triggers, so a result
+    /// published at once is not missed. Waits share one subscription, sent
+    /// only when a callee joins it, which replaces any other this connection
+    /// holds. The caller needs `events:dog.<callee>` and
+    /// `dogs.trigger:<callee>`. The timeout starts once the callee answers.
+    ///
+    /// # Errors
+    ///
+    /// [`LongActionError::NotGranted`] names the missing grant. The other
+    /// variants say why no result arrived.
+    pub async fn trigger_and_wait(
+        &self,
+        callee: &str,
+        action: &str,
+        params: Option<&str>,
+        timeout: Duration,
+    ) -> Result<ActionDone, LongActionError> {
+        long_action::trigger_and_wait(&self.waits, &self.client, callee, action, params, timeout)
+            .await
     }
 
     /// The connection, which re-establishes itself across a handover.
@@ -136,7 +187,7 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use shep_core::protocol::{Request, Response};
+    use shep_core::protocol::{Request, Response, SelectorSpec};
 
     use super::*;
     use crate::testing::{control_address, fake_daemon, sample_ack, serve_one_request};
@@ -223,6 +274,121 @@ mod tests {
             }),
             "{sent:?}"
         );
+    }
+
+    /// A callee's `action_timeout` reaches 58s, so a trigger sent with the
+    /// client's 5s default would abandon an id the callee is still minting.
+    #[tokio::test]
+    async fn the_trigger_waits_as_long_as_any_other_trigger_does() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd =
+            fake_daemon_across_handovers(&paths.socket, vec![Handshake::Accept(sample_ack())]);
+        let runtime = tokio::time::timeout(
+            Duration::from_secs(5),
+            DogRuntime::start(DogIdentity::named("bark"), paths),
+        )
+        .await
+        .expect("DogRuntime::start hung instead of connecting")
+        .unwrap();
+
+        // The fake answers `Pong`, which is no list of replies: the result
+        // is beside the point, the envelope is the subject.
+        let _ = runtime
+            .trigger_and_wait("builder", "build", Some("p"), Duration::from_millis(50))
+            .await;
+
+        let trigger = shepherd
+            .envelopes()
+            .into_iter()
+            .map(|(_, envelope)| envelope)
+            .find(|envelope| matches!(envelope.body, Request::Trigger { .. }))
+            .expect("the shepherd was sent a Trigger");
+        assert_eq!(
+            trigger.body,
+            Request::Trigger {
+                selector: SelectorSpec::Name("builder".to_owned()),
+                action: "build".to_owned(),
+                params: Some("p".to_owned()),
+            }
+        );
+        assert_eq!(
+            trigger.deadline_ms,
+            Some(u64::try_from(crate::TRIGGER_DEADLINE.as_millis()).unwrap())
+        );
+    }
+
+    /// How many `Subscribe`s each generation of `shepherd` was sent.
+    fn subscribes(shepherd: &crate::testing::Handovers) -> Vec<u32> {
+        shepherd
+            .envelopes()
+            .into_iter()
+            .filter(|(_, envelope)| matches!(envelope.body, Request::Subscribe { .. }))
+            .map(|(generation, _)| generation)
+            .collect()
+    }
+
+    /// A second `Subscribe` makes the shepherd replace the first one's
+    /// forwarder and drop the event it holds in flight, so a wait whose topic
+    /// the connection already hears does not send one.
+    #[tokio::test]
+    async fn a_wait_on_a_topic_the_connection_already_hears_sends_no_subscribe() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd =
+            fake_daemon_across_handovers(&paths.socket, vec![Handshake::Accept(sample_ack())]);
+        let runtime = DogRuntime::start(DogIdentity::named("bark"), paths)
+            .await
+            .unwrap();
+        let wait = || runtime.trigger_and_wait("builder", "build", None, Duration::from_millis(50));
+
+        let _ = tokio::join!(wait(), wait());
+        let _ = wait().await;
+
+        assert_eq!(subscribes(&shepherd), [1]);
+    }
+
+    /// The shepherd's filter belongs to a connection, so a successor starts
+    /// with none and the next wait has to ask again.
+    #[tokio::test]
+    async fn a_wait_after_a_handover_subscribes_again() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd = fake_daemon_across_handovers(
+            &paths.socket,
+            vec![
+                Handshake::Accept(sample_ack()),
+                Handshake::Accept(sample_ack()),
+            ],
+        );
+        let runtime = DogRuntime::start(DogIdentity::named("bark"), paths)
+            .await
+            .unwrap();
+        let wait = || runtime.trigger_and_wait("builder", "build", None, Duration::from_millis(50));
+        let _ = wait().await;
+
+        shepherd.cut().await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while shepherd.accepted() < 2 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            runtime
+                .client()
+                .connected_within(Duration::from_secs(5))
+                .await
+        })
+        .await
+        .expect("the client reconnects")
+        .unwrap();
+        let _ = wait().await;
+
+        assert_eq!(subscribes(&shepherd), [1, 2]);
     }
 
     #[tokio::test]

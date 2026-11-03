@@ -57,6 +57,33 @@ const eventsSnippet = `Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSIO
 // ...later, with a DogRuntime:
 runtime.publish("exported", serde_json::json!({ "batch": 3 })).await?;`;
 
+const longActionCalleeSnippet = `use shep_client::dogs::{ActionId, Probe};
+
+Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    .ask_for_channel()
+    .action("build", "build the site, reporting when it is done")
+    .event(shep_client::dogs::DONE_KIND, "a long action ended")
+    .answer::<MyDogConfig>();
+
+// ...later, with the runtime in an Arc and a tokio Handle:
+shepherd.on_action("build", move |_params, _name| {
+    let (id, reply) = ActionId::accept();
+    let runtime = Arc::clone(&runtime);
+    handle.spawn(async move {
+        let outcome = run_build().await.map_err(|err| err.to_string());
+        if let Err(err) = runtime.finish_action(&id, outcome).await {
+            eprintln!("build result not published: {err}");
+        }
+    });
+    reply
+});`;
+
+const longActionCallerSnippet = `// Needs dogs.trigger:builder and events:dog.builder.
+let done = runtime
+    .trigger_and_wait("builder", "build", None, Duration::from_secs(600))
+    .await?;
+println!("action {} returned {}", done.id, done.result);`;
+
 const validateSnippet = `use shep_client::dogs::{Probe, Stop, Verdict, validate_answer};
 
 fn main() {
@@ -619,6 +646,41 @@ shep-channel: true`}</CodeBlock>
       from a dog whose name has a dot in it.
     </p>
     <CodeBlock label="main.rs">{eventsSnippet}</CodeBlock>
+
+    <h3 id="work-longer-than-a-trigger">Work longer than a trigger</h3>
+    <p>
+      A trigger's reply waits at most the callee's{" "}
+      <code>action_timeout</code>. Work that runs longer answers at once with
+      an id, then reports its result as one of the callee's own events. The
+      shepherd keeps no state for it.
+    </p>
+    <ul>
+      <li>
+        The callee returns the body from <code>ActionId::accept</code>, which
+        carries a fresh id, and runs the work elsewhere.
+      </li>
+      <li>
+        When the work ends, <code>DogRuntime::finish_action</code> publishes{" "}
+        <code>action.done</code> with that id and either a result or an error.
+        The callee declares the kind <code>DONE_KIND</code> like any other.
+      </li>
+      <li>
+        <code>DogRuntime::trigger_and_wait</code> subscribes before it
+        triggers, so a result published at once is not missed, then waits for
+        the event with that id. Its timeout starts when the callee has
+        answered.
+      </li>
+    </ul>
+    <CodeBlock label="the callee">{longActionCalleeSnippet}</CodeBlock>
+    <CodeBlock label="the caller">{longActionCallerSnippet}</CodeBlock>
+    <p>
+      The caller needs <code>events:dog.&lt;callee&gt;</code> as well as{" "}
+      <code>dogs.trigger:&lt;callee&gt;</code>, and the error names the one
+      it lacks. Every holder of <code>events:dog.&lt;callee&gt;</code> hears
+      every result, so the id correlates and keeps nothing private. The
+      subscription replaces any other the caller's connection holds. A callee
+      with a dot in its name cannot publish, so it cannot finish a long action.
+    </p>
 
     <h3 id="being-asked-about-its-settings">Being asked about a write to its settings</h3>
     <p>

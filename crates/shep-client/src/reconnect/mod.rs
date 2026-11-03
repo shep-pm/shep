@@ -16,6 +16,7 @@ mod schedule;
 #[cfg(test)]
 mod testing;
 pub use link_state::{LinkLost, LinkState, Reconnected};
+pub(crate) use reconnecting::Covered;
 pub use reconnecting::ReconnectingClient;
 use schedule::next_delay;
 pub use schedule::{RECONNECT_MAX_DELAY, RECONNECT_MIN_DELAY};

@@ -161,6 +161,26 @@ then be dog `a` or dog `a.b`. A subscriber needs `events:dog.<name>`, which
 covers `dog.<name>.` and no other dog's topics, so `events:dog.otel` does not
 cover `dog.otel2.*`.
 
+**Work longer than a trigger answers with an id and reports as an event.** A
+trigger's reply waits at most the callee's `action_timeout`, so a build or a
+model call does not run inside it. The callee mints an id and replies at once
+(`ActionId::accept` builds the body). When the work ends it publishes the kind
+`action.done` through `DogRuntime::finish_action`. The payload is
+`{"id": "18e4a019b13a0ff8-14e1b-0", "result": {"built": 3}}` on success and
+`{"id": "18e4a019b13a0ff8-14e1b-0", "error": "disk full"}` on failure, where
+`result` is any JSON value and `error` is text. Shep holds no state for it. The kind
+is fixed so one caller helper works against any dog, and the callee declares
+it in its manifest `events` like any other (`DONE_KIND`). Every holder of
+`events:dog.<callee>` hears every result, so the id correlates and keeps
+nothing private. `DogRuntime::trigger_and_wait(callee, action, params,
+timeout)` subscribes before it triggers, so a result published at once is
+not missed, then waits for the event with that id; the timeout starts when
+the callee has answered. The caller needs `events:dog.<callee>` as well as
+`dogs.trigger:<callee>`, and `LongActionError::NotGranted` names the one it
+lacks. Waits running at once share one subscription, which replaces any
+other on the caller's connection. A callee with a dot in its name cannot
+publish, so it cannot finish a long action. `web/src/pages/docs/writing-a-dog.astro` has a worked example.
+
 **A dog that restarts itself on a config change has to say so in its own
 log.** Nothing else can tell that apart from a crash loop, and the restart
 count is the column an operator reads as instability.

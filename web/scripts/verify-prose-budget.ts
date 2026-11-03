@@ -167,7 +167,13 @@ export const BUDGETS: Record<string, number> = {
   // dog declares an event kind, how it publishes one, what a subscriber
   // needs, and that a dotted dog name cannot publish. The ceiling sits about
   // 4 words above the page.
-  "writing-a-dog": 5982,
+  //
+  // Raised on #1433 for "Work longer than a trigger": an author has to know
+  // the id-then-event convention, the one fixed event kind, the two grants
+  // the caller needs, and that every result is visible to every holder of
+  // them, and that a callee with a dot in its name cannot finish one. The
+  // ceiling sits about 4 words above the page.
+  "writing-a-dog": 6157,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
