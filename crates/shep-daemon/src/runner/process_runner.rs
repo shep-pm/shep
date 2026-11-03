@@ -230,10 +230,8 @@ pub struct SpawnSpec {
     /// `dog`, and the spec's own `name` as its sheep.
     ///
     /// Opened as [`Self::dog_link`] is, on fd 4 and in `$SHEP_DOG_FD`, so the
-    /// launch runs under any uid. Set by [`through_dog`](crate::assemble::through_dog)
-    /// and never by `assemble`. Unix only. A sheep with `listen` sockets gets
-    /// none, as fd 4 is theirs, and a spec with `dog_link` set keeps the
-    /// dog's own.
+    /// launch runs under any uid. Set by [`through_dog`](crate::assemble::through_dog).
+    /// Unix only. A sheep with `listen` sockets gets none, as fd 4 is theirs.
     pub launch_link: Option<String>,
     /// Send the stop signal to the leader alone, not its process group.
     ///

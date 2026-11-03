@@ -33,16 +33,13 @@ use super::selector_verbs::{
 };
 use super::walk::{reload_request, restart_request};
 
-/// Dispatches one request envelope against `ctx`, returning what the
-/// connection layer must do with the result.
+/// Dispatches one request envelope against `ctx`, returning the connection's next step.
 ///
-/// `link` is the connection a dog, or a sheep a dog launches, was spawned
-/// holding, and bounds what it may send. `None` is the control socket.
+/// `link` is the connection a dog or a launched sheep was spawned holding,
+/// which bounds what it may send. `None` is the control socket.
 ///
-/// The deadline [`budget`] computes bounds the reply, not the actor's work:
-/// dropping the work future only stops the daemon waiting on the supervisor.
-/// A `DeadlineExceeded` reply to `Start` means no answer within the budget,
-/// not that nothing happened; a client that retries must reconcile with `ListFlock`.
+/// The deadline [`budget`] bounds the reply, not the actor's work: a
+/// `DeadlineExceeded` to `Start` does not mean nothing happened.
 pub(crate) async fn dispatch(
     envelope: Envelope,
     conn: ConnId,

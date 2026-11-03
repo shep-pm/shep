@@ -107,11 +107,10 @@ impl Handover {
     /// Names each of `links` against the dog, or for a launch link the sheep,
     /// whose connection it is.
     ///
-    /// Matched on name and pid together: a dog respawned since its connection
-    /// was opened is a different process on a different connection, and the
-    /// old one must not be handed to it. A link matching no sheep is left out
-    /// and closes at the exec, which the dog meets as a lost connection and
-    /// answers by falling back to the control socket.
+    /// Matched on name and pid together: a respawned process is on a
+    /// different connection. A link matching no sheep is left out and closes
+    /// at the exec, which the dog meets as a lost connection and answers by
+    /// falling back to the control socket.
     pub fn carry_dog_links(&mut self, links: &[DogConnection]) {
         for sheep in &mut self.sheep {
             let Some(link) = links.iter().find(|link| {
