@@ -40,7 +40,7 @@ mod default_refusal_tests;
 mod defaults;
 #[cfg(test)]
 mod defaults_routing_tests;
-mod dog_wide;
+pub(crate) mod dog_wide;
 #[cfg(all(test, unix))]
 mod dog_wide_flow_tests;
 mod edit;

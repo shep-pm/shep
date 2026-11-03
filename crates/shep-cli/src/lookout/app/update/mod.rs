@@ -92,6 +92,7 @@ impl App {
                 self.on_sheep_dog_names_answer(sheep, ask, dogs)
             }
             Msg::SheepDog { sheep, entry } => self.on_sheep_dog_answer(&sheep, entry),
+            Msg::SheepDogSections { sheep, entries } => self.on_sheep_dog_sections(&sheep, entries),
             Msg::DogWritten {
                 edit,
                 ticket,

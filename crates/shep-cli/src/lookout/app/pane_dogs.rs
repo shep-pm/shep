@@ -83,6 +83,35 @@ impl App {
         self.toggle_dog_row(index, Some(true))
     }
 
+    /// The ask that re-reads every standard dog's section, or nothing when
+    /// the tab is not listed, lists none, or reads another machine.
+    pub(super) fn refresh_sections_effect(&mut self) -> Effect {
+        let Some(pane) = self.config_pane() else {
+            return Effect::None;
+        };
+        let dogs = pane.dogs_tab().standard_dogs();
+        if dogs.is_empty() || self.remote_host.is_some() {
+            return Effect::None;
+        }
+        let sheep = pane.target().name().to_owned();
+        Effect::RefreshSheepDogSections { sheep, dogs }
+    }
+
+    /// One [`Msg::SheepDogSections`]: hands each standard dog's section to
+    /// its row and to its open table, edits and cursor kept.
+    pub(super) fn on_sheep_dog_sections(
+        &mut self,
+        sheep: &str,
+        entries: Vec<SheepDogEntry>,
+    ) -> Effect {
+        if let Some(pane) = self.config_pane_mut()
+            && matches!(pane.target(), PaneTarget::Sheep { name } if name == sheep)
+        {
+            pane.refresh_sections(entries);
+        }
+        Effect::None
+    }
+
     /// One [`Msg::SheepDog`]: the dog's schema has come, so its row, if it
     /// was waiting, opens. A dog that publishes no sheep schema opens
     /// nothing and says so.

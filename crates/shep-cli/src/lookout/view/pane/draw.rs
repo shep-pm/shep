@@ -181,7 +181,7 @@ pub(super) fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<S
     // changes what an edit does.
     let note = match pane.target() {
         PaneTarget::Dog { .. } if pane.applies_to_every_sheep() => Some(format!(
-            "[{name}] values apply to every sheep; @ marks a key no sheep can override"
+            "[{name}] values apply to every sheep it serves; @ marks a key no sheep can override"
         )),
         PaneTarget::SheepDog { .. } if pane.inherits_section() => Some(format!(
             "^ comes from [{name}]; d on a value you set returns it to [{name}]"

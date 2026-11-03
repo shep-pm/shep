@@ -122,3 +122,62 @@ fn a_dog_that_does_not_follow_the_standard_draws_exactly_as_before() {
     assert_eq!(text, drawn(&plain_tab));
     assert!(row(&text, "model").contains("(unset)"), "{text}");
 }
+
+#[test]
+fn an_opted_in_dog_shows_the_section_on_a_sheep_with_an_empty_table() {
+    let mut pane = web(Some(json!({})));
+    pane.list_dogs(vec![standard_jobs(Serves::OptedIn)]);
+    let _ = pane.toggle_dog(0);
+
+    let text = drawn(&pane);
+    assert!(row(&text, "model").contains("^model"), "{text}");
+    assert!(row(&text, "model").contains("sonnet"), "{text}");
+}
+
+#[test]
+fn a_re_read_of_the_sections_reaches_an_open_table() {
+    let mut pane = web(Some(json!({ "limit": 9 })));
+    pane.list_dogs(vec![standard_jobs(Serves::EverySheep)]);
+    let _ = pane.toggle_dog(0);
+    assert!(drawn(&pane).contains("sonnet"));
+
+    let mut fresh = standard_jobs(Serves::EverySheep).entry;
+    fresh.standard = Some(StandardSection {
+        serves: Serves::EverySheep,
+        shared: json!({ "model": "haiku" })
+            .as_object()
+            .cloned()
+            .expect("a table"),
+    });
+    pane.refresh_sections(vec![fresh]);
+
+    let text = drawn(&pane);
+    assert!(row(&text, "model").contains("haiku"), "{text}");
+    assert!(row(&text, "model").contains("^model"), "{text}");
+    assert!(!text.contains("sonnet"), "{text}");
+}
+
+#[test]
+fn the_tab_names_the_standard_dogs_to_ask_again() {
+    let mut pane = web(None);
+    pane.list_dogs(vec![standard_jobs(Serves::EverySheep)]);
+    assert_eq!(
+        pane.dogs_tab().standard_dogs(),
+        [("jobs".to_owned(), Some(PathBuf::from("/opt/jobs")))]
+    );
+}
+
+#[test]
+fn a_standard_section_debug_names_no_value() {
+    let section = StandardSection {
+        serves: Serves::EverySheep,
+        shared: json!({ "token": "hunter2", "model": "sonnet" })
+            .as_object()
+            .cloned()
+            .expect("a table"),
+    };
+    assert_eq!(
+        format!("{section:?}"),
+        "StandardSection { serves: EverySheep, keys: 2 }"
+    );
+}

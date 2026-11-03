@@ -445,6 +445,24 @@ where
                     Msg::SheepDog { sheep, entry }
                 }));
             }
+            // Each standard dog asked again, off this task for the listing's
+            // reason. A dog that goes silent answers with no section, which
+            // leaves its rows as they were.
+            Effect::RefreshSheepDogSections { sheep, dogs } => {
+                let paths = paths.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    let budget = crate::commands::dogs::VERSION_BUDGET;
+                    dogs.into_iter()
+                        .map(|(name, path)| {
+                            super::probe_sheep_dogs::probe_sheep_dog(&paths, &name, path, budget)
+                        })
+                        .collect::<Vec<_>>()
+                });
+                inflight.push(Box::pin(async move {
+                    let entries = handle.await.unwrap_or_default();
+                    Msg::SheepDogSections { sheep, entries }
+                }));
+            }
             // `dogs::enable_in_config`/`dogs::disable_in_config` take
             // `ShepToml`'s own lock, which blocks with no deadline, so this
             // arm does not wait for it either. `_authority` is dropped as in

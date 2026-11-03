@@ -139,6 +139,15 @@ impl ConfigPane {
             },
             None => None,
         };
+        // A filed clear shows the section's value, which is where the cycle
+        // starts, not at the `null` that clears it.
+        let filed_here = filed_here.map(|value| {
+            if value.is_null() {
+                self.inherited_value(&field.key).unwrap_or(value)
+            } else {
+                value
+            }
+        });
         let current = filed_here
             .or_else(|| self.stored_of(&field.key))
             .or_else(|| self.values.get(&field.key));

@@ -45,17 +45,51 @@ impl Standard {
 
     /// The schema a sheep's own table is edited against: `root` without its
     /// dog-wide properties, `$defs` kept.
+    ///
+    /// The properties are dropped wherever `root` holds them: at the root,
+    /// in a variant, or behind a `$ref`.
     pub(crate) fn sheep_form(&self, root: &Value) -> Value {
         let mut form = root.clone();
-        if let Value::Object(map) = &mut form {
-            if let Some(Value::Object(properties)) = map.get_mut("properties") {
-                properties.retain(|name, _| !self.dog_wide.contains(name));
+        let mut pending = Vec::new();
+        self.strip(&mut form, &mut pending);
+        let mut seen = BTreeSet::new();
+        while let Some(pointer) = pending.pop() {
+            if !seen.insert(pointer.clone()) {
+                continue;
             }
-            if let Some(Value::Array(required)) = map.get_mut("required") {
-                required.retain(|name| name.as_str().is_none_or(|n| !self.dog_wide.contains(n)));
+            if let Some(target) = form.pointer_mut(&pointer) {
+                self.strip(target, &mut pending);
             }
         }
         form
+    }
+
+    /// Drops the dog-wide properties of `node` and of each variant inline in
+    /// it, and queues the pointer of each `$ref` found on the way.
+    fn strip(&self, node: &mut Value, refs: &mut Vec<String>) {
+        let Value::Object(map) = node else {
+            return;
+        };
+        if let Some(Value::Object(properties)) = map.get_mut("properties") {
+            properties.retain(|name, _| !self.dog_wide.contains(name));
+        }
+        if let Some(Value::Array(required)) = map.get_mut("required") {
+            required.retain(|name| name.as_str().is_none_or(|n| !self.dog_wide.contains(n)));
+        }
+        if let Some(pointer) = map
+            .get("$ref")
+            .and_then(Value::as_str)
+            .and_then(|reference| reference.strip_prefix('#'))
+        {
+            refs.push(pointer.to_owned());
+        }
+        for branch in ["allOf", "anyOf", "oneOf"] {
+            if let Some(Value::Array(children)) = map.get_mut(branch) {
+                for child in children {
+                    self.strip(child, refs);
+                }
+            }
+        }
     }
 
     /// Whether `key`, the first one under a sheep's `dogs.<dog>`, is dog-wide.
@@ -221,6 +255,35 @@ mod tests {
                 "$defs": { "Hours": { "type": "string" } },
             })
         );
+    }
+
+    #[test]
+    fn the_sheep_form_drops_a_dog_wide_property_behind_a_ref_and_in_a_variant() {
+        let root = json!({
+            "$ref": "#/$defs/Settings",
+            "$defs": {
+                "Settings": {
+                    "properties": {
+                        "poll": { "x-shep-dog-wide": true },
+                        "model": {},
+                    },
+                    "allOf": [{ "properties": {
+                        "token": { "x-shep-dog-wide": true },
+                        "limit": {},
+                    } }],
+                },
+            },
+        });
+        let standard = Standard::recognise(&root, Serves::OptedIn).expect("standard");
+        let form = standard.sheep_form(&root);
+        assert_eq!(
+            form["$defs"]["Settings"],
+            json!({
+                "properties": { "model": {} },
+                "allOf": [{ "properties": { "limit": {} } }],
+            })
+        );
+        assert_eq!(form["$ref"], "#/$defs/Settings");
     }
 
     #[test]

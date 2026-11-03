@@ -11,7 +11,7 @@ use crate::dog_settings::standard::Standard;
 ///
 /// `keys` is the path under the dog's table, empty for the whole table, whose
 /// `value` is then checked key by key.
-pub(super) fn dog_wide_refusal(
+pub(crate) fn dog_wide_refusal(
     standard: &Standard,
     sheep: &str,
     dog: &str,

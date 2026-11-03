@@ -58,9 +58,9 @@ pub(crate) fn adopt_jobs(dir: &Path, serves: Serves) {
     assert!(matches!(read, Ok(ManifestRead::Read(_))), "{read:?}");
 }
 
-/// A shepherd running sheep `api` and the dog `jobs`. `api` carries `own` as
+/// A shepherd running sheep `api` and `web` and the dog `jobs`. `api` carries `own` as
 /// its `jobs` table when there is one, and `section` is `jobs`'s section of
-/// `dogs.toml`.
+/// `dogs.toml`. Every sheep answers with the same config.
 pub(crate) async fn shepherd(
     dir: &Path,
     own: Option<Json>,
@@ -68,6 +68,7 @@ pub(crate) async fn shepherd(
 ) -> (Client, UnboundedReceiver<Envelope>) {
     let flock = vec![
         ProcessInfo::builder(1, "api", ProcStatus::Online).build(),
+        ProcessInfo::builder(3, "web", ProcStatus::Online).build(),
         ProcessInfo::builder(2, "jobs", ProcStatus::Online)
             .dog(Some(DogSource::BuiltIn { grants: None }))
             .build(),

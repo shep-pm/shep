@@ -142,11 +142,16 @@ impl ConfigPane {
     /// one, keeping the cursor and the filed edits. An open editor is
     /// dropped, for the reason [`Self::adopt_edits`] gives. An open list
     /// sub-screen is reseeded from the filed elements, at its cursor.
-    pub(in crate::lookout) fn adopt_table(&mut self, table: Map<String, Value>) {
+    ///
+    /// `table` is [`None`] for a sheep that now carries no table.
+    pub(in crate::lookout) fn adopt_table(&mut self, table: Option<Map<String, Value>>) {
         let Some(state) = self.dog_table.as_mut() else {
             return;
         };
-        state.table = table;
+        if let Some(inherits) = state.inherits.as_mut() {
+            inherits.has_table = table.is_some();
+        }
+        state.table = table.unwrap_or_default();
         let (values, inherited) = state.displayed();
         self.values = values;
         state.set_inherited(inherited);
@@ -454,7 +459,7 @@ mod tests {
         pane.open_list();
 
         let fresh = json!({ "worker": { "allowed_domains": ["a.example", "c.example"] } });
-        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        pane.adopt_table(fresh.as_object().cloned());
         let list = pane.list_mut().expect("the sub-screen stays open");
         assert_eq!(list.elements(), ["a.example", "c.example"]);
 
@@ -566,7 +571,7 @@ mod tests {
         assert!(pane.open_tables().contains("models.worker"));
 
         let fresh = json!({ "models": { "worker": { "model": "large" } } });
-        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        pane.adopt_table(fresh.as_object().cloned());
         assert!(pane.open_tables().contains("models.worker"));
         assert!(pane.open_tables().contains("models"));
         assert_eq!(pane.cursor(), cursor);

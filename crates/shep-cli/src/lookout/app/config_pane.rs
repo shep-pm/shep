@@ -149,7 +149,10 @@ impl App {
         self.keymap_open = false;
         // The `dogs` tab has no rows until its listing lands, and a pane that
         // opened on it needs the ask `tab` would have raised.
-        self.dogs_tab_effect()
+        match self.dogs_tab_effect() {
+            Effect::None => self.refresh_sections_effect(),
+            listing => listing,
+        }
     }
 
     /// `e`'s own handler: open a dog's pane directly, else ask the shepherd.
