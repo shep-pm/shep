@@ -193,6 +193,7 @@ pub fn fake_daemon_across_handovers(path: &Path, handshakes: Vec<Handshake>) -> 
                                         shep_core::protocol::SheepConfigView::new(config, Vec::new(), Vec::new()),
                                     ))
                                 }
+                                Request::PublishEvent { .. } => Response::EventPublished,
                                 _ => Response::Pong,
                             };
                             write_reply(&mut frames, id, response).await;

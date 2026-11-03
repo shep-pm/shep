@@ -91,6 +91,32 @@ impl Client {
         host(self.request(Request::HostUsage).await?)
     }
 
+    /// Publishes `payload` as the event kind `event` of the dog on this
+    /// connection: it reaches subscribers as `dog.<name>.<event>`.
+    ///
+    /// Asks [`Request::PublishEvent`], which only a dog's own connection may
+    /// send. The shepherd checks that `event` is in the dog's manifest and
+    /// nothing about `payload`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::request`]: [`RpcErrorCode::Forbidden`] naming the kind when
+    /// the dog did not declare it or this is not a dog's connection. A
+    /// different answer gives [`RequestError::UnexpectedReply`].
+    pub async fn publish_event(
+        &self,
+        event: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), RequestError> {
+        published(
+            self.request(Request::PublishEvent {
+                event: event.to_owned(),
+                payload,
+            })
+            .await?,
+        )
+    }
+
     /// The last `lines` lines of one sheep's out or err log, read by the
     /// shepherd on its own host.
     ///
@@ -113,6 +139,25 @@ impl Client {
 }
 
 impl ReconnectingClient {
+    /// Shorthand for [`Client::publish_event`] on the current generation.
+    ///
+    /// # Errors
+    ///
+    /// As [`Client::publish_event`].
+    pub async fn publish_event(
+        &self,
+        event: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), RequestError> {
+        published(
+            self.request(Request::PublishEvent {
+                event: event.to_owned(),
+                payload,
+            })
+            .await?,
+        )
+    }
+
     /// Shorthand for [`Client::dog_config`] on the current generation.
     ///
     /// # Errors
@@ -331,6 +376,13 @@ fn host(answer: Response) -> Result<Option<HostUsage>, RequestError> {
     }
 }
 
+fn published(answer: Response) -> Result<(), RequestError> {
+    match answer {
+        Response::EventPublished => Ok(()),
+        other => Err(unexpected("PublishEvent", &other)),
+    }
+}
+
 fn log_tail(answer: Response) -> Result<LogTail, RequestError> {
     match answer {
         Response::LogTail(tail) => Ok(tail),
@@ -356,8 +408,9 @@ mod tests {
 
     use super::*;
     use crate::testing::{
-        Handovers, Handshake, control_address, fake_client_answering, fake_daemon_across_handovers,
-        sample_ack, sample_info, serve_one_request,
+        Handovers, Handshake, control_address, fake_client_answering,
+        fake_client_answering_refusals, fake_daemon_across_handovers, sample_ack, sample_info,
+        serve_one_request,
     };
 
     /// The sentinel stands for a secret's value: it must reach no error text.
@@ -416,6 +469,74 @@ mod tests {
             .await
             .expect("the request reached the fake daemon")
             .expect("the fake daemon is still up")
+    }
+
+    #[tokio::test]
+    async fn publish_event_sends_the_kind_and_the_payload_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, mut envelopes) =
+            fake_client_answering(&control_address(dir.path()), |_| Response::EventPublished).await;
+        let payload = serde_json::json!({ "batch": 3, "rows": [1, null, "x"] });
+
+        client
+            .publish_event("exported", payload.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            sent(&mut envelopes).await.body,
+            Request::PublishEvent {
+                event: "exported".to_owned(),
+                payload,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_event_refused_by_the_shepherd_is_the_rpc_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, _envelopes) =
+            fake_client_answering_refusals(&control_address(dir.path()), |_| {
+                Err(RpcError {
+                    code: RpcErrorCode::Forbidden,
+                    message: "dog `bark` did not declare the event kind `dropped`".to_owned(),
+                    daemon_version: None,
+                })
+            })
+            .await;
+
+        let err = client
+            .publish_event("dropped", serde_json::Value::Null)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, RequestError::Rpc(ref rpc) if rpc.code == RpcErrorCode::Forbidden),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_event_answered_with_anything_else_is_an_unexpected_reply() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, _envelopes) =
+            fake_client_answering(&control_address(dir.path()), |_| Response::Pong).await;
+
+        let err = client
+            .publish_event("exported", serde_json::Value::Null)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(
+                err,
+                RequestError::UnexpectedReply {
+                    asked: "PublishEvent",
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 
     #[tokio::test]
