@@ -14,7 +14,7 @@ use crate::commands::dog_migration::{
     DefaultsOutcome, DogMigrationError, migrate_dog_sections, seed_dog_defaults,
 };
 use crate::commands::rpc::{client_error, unexpected_response};
-use crate::commands::shep_toml::{GrantRecord, ShepToml};
+use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
@@ -137,7 +137,7 @@ pub(super) async fn adopt_with(
             // file, not the raw answer, so a dog granted meanwhile is not stopped.
             let mut declined = false;
             match &verdict {
-                Some(_) if decided_meanwhile => {}
+                Some(_) if decided_meanwhile => follow_declared_events(cfg, &name, &reviewed)?,
                 Some(Verdict::Grant(Some(grants))) => cfg.set_grant_record(
                     &name,
                     &GrantRecord::reviewed(grants.clone()).with_events(reviewed.events()),
@@ -147,7 +147,10 @@ pub(super) async fn adopt_with(
                     cfg.disable_dog(&name);
                     declined = true;
                 }
-                Some(Verdict::Grant(None)) | None => {}
+                Some(Verdict::Grant(None)) => {}
+                // Already decided before this run: nothing to ask, but the
+                // kinds belong to the build being adopted.
+                None => follow_declared_events(cfg, &name, &reviewed)?,
             }
             // `adopt_dog` enables; `--no-enable` takes that back, and says so
             // only when it is the reason the dog is off.
@@ -315,6 +318,33 @@ fn ask_before_adopting(
         return Ok(None);
     }
     consent_from(streams, name, "adopt", reviewed, note, yes, input).map(Some)
+}
+
+/// Makes the event kinds an existing record holds for `name` those `reviewed`
+/// declares, leaving the grants as they are: kinds are no permission, so a
+/// rebuilt dog's follow its manifest with no question. A dog with no record,
+/// or a binary with no manifest, is left alone.
+///
+/// # Errors
+/// As [`ShepToml::set_grant_record`].
+fn follow_declared_events(
+    cfg: &mut ShepToml,
+    name: &str,
+    reviewed: &Review,
+) -> Result<(), ShepTomlError> {
+    let Review::Declared { events, .. } = reviewed else {
+        return Ok(());
+    };
+    match cfg.grant_record(name)? {
+        Some(record) if record.events != *events => cfg.set_grant_record(
+            name,
+            &GrantRecord {
+                events: events.clone(),
+                ..record
+            },
+        ),
+        _ => Ok(()),
+    }
 }
 
 /// Resolves `raw`, `shep adopt`'s own path argument, before it reaches

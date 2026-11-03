@@ -146,6 +146,26 @@ async fn adopting_a_dog_records_the_event_kinds_its_manifest_declares() {
     assert_eq!(recorded_events(&paths), ["exported".to_string()]);
 }
 
+const DECLARES_TWO_EVENTS: &str = r#"{"manifest":2,"name":"otel","version":"0.3.0","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock"}],"events":[{"kind":"exported","description":"a batch was sent"},{"kind":"failed","description":"a batch was dropped"}]}"#;
+
+#[tokio::test]
+async fn re_adopting_a_rebuilt_dog_brings_its_event_kinds_up_to_date() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let binary = write_dog(dir.path(), DECLARES_AN_EVENT);
+    adopt_otel(&paths, &binary, true, typing(None)).await;
+    assert_eq!(recorded_events(&paths), ["exported".to_string()]);
+
+    let rebuilt = write_dog(dir.path(), DECLARES_TWO_EVENTS);
+    let (code, _) = adopt_otel(&paths, &rebuilt, true, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert_eq!(
+        recorded_events(&paths),
+        ["exported".to_string(), "failed".to_string()]
+    );
+}
+
 #[tokio::test]
 async fn the_first_enable_of_a_declined_dog_records_its_event_kinds_too() {
     let dir = tempfile::tempdir().unwrap();
