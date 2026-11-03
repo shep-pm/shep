@@ -1,8 +1,6 @@
 //! A fixture dog's `Probe`, asked each of the three flags.
 
-use shep_core::dogs::manifest::{
-    DogDependency, Manifest, Permission, Serves, Subcommand, Verb,
-};
+use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Serves, Subcommand, Verb};
 use shep_core::dogs::{MANIFEST_FLAG, SCHEMA_FLAG, VERSION_FLAG};
 
 use super::*;
@@ -69,7 +67,10 @@ fn the_manifest_parses_back_to_what_the_dog_declared() {
 #[test]
 fn serves_can_be_set_to_either_value() {
     for serves in [Serves::OptedIn, Serves::EverySheep] {
-        let text = reply(&Probe::new("shep-jobs", "0.1.0").serves(serves), MANIFEST_FLAG);
+        let text = reply(
+            &Probe::new("shep-jobs", "0.1.0").serves(serves),
+            MANIFEST_FLAG,
+        );
         let manifest: Manifest = serde_json::from_str(&text).unwrap();
         assert_eq!(manifest.serves, serves);
     }

@@ -7,6 +7,8 @@
 use core::fmt;
 
 use serde::de::DeserializeOwned;
+#[cfg(feature = "schema")]
+use shep_core::config::DogTable;
 
 /// A dog's section that does not fit its config type, reported by where
 /// and never by what.
@@ -72,12 +74,30 @@ where
     if text.is_empty() {
         return Ok(T::default());
     }
-    toml::from_str(text).map_err(|err| SectionError {
+    toml::from_str(text).map_err(|err| refusal(section, text, &err))
+}
+
+/// `text`, the `[<section>]` the shepherd served, as a table to layer a
+/// sheep's own over. Empty when `text` is.
+///
+/// # Errors
+///
+/// [`SectionError`] when `text` is not a TOML table, naming the line.
+#[cfg(feature = "schema")]
+pub(super) fn section_table(section: &str, text: &str) -> Result<DogTable, SectionError> {
+    if text.is_empty() {
+        return Ok(DogTable::from(serde_json::Map::new()));
+    }
+    toml::from_str(text).map_err(|err| refusal(section, text, &err))
+}
+
+fn refusal(section: &str, text: &str, err: &toml::de::Error) -> SectionError {
+    SectionError {
         section: section.to_owned(),
         line: err
             .span()
             .map(|span| text[..span.start.min(text.len())].matches('\n').count() + 1),
-    })
+    }
 }
 
 #[cfg(test)]

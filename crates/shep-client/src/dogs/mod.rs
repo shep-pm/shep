@@ -66,6 +66,7 @@
 
 use core::fmt;
 
+#[cfg(feature = "schema")]
 mod dog_wide;
 mod error;
 mod identity;
@@ -73,6 +74,8 @@ mod link;
 mod probes;
 mod runtime;
 mod section;
+#[cfg(feature = "schema")]
+mod sheep_settings;
 mod startup;
 mod stop;
 mod validate;
@@ -83,6 +86,8 @@ pub use probes::{Probe, probe, probe_with_sheep};
 pub use runtime::DogRuntime;
 pub use section::{SectionError, parse_section};
 use serde::de::DeserializeOwned;
+#[cfg(feature = "schema")]
+pub use sheep_settings::{ServedSheepError, SheepSettingsReadError};
 use shep_core::config::DogTable;
 pub use shep_core::dogs::manifest::{
     DogDependency, Manifest, Permission, Serves, Subcommand, Verb,
