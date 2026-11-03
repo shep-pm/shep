@@ -85,31 +85,46 @@ impl DogRows {
     }
 }
 
-/// One dog's JSON: its `ProcessInfo` as ever, then what the SOURCE and
-/// VERSION columns say.
+/// The keys SOURCE and VERSION add to a dog's JSON row.
 ///
 /// `source` is the column's own text. `version` and `newer_version` split
 /// the VERSION cell, which a script would otherwise have to parse an arrow
 /// out of.
 #[derive(Serialize)]
-struct ListedDog<'a> {
-    #[serde(flatten)]
-    info: &'a ProcessInfo,
+pub(crate) struct OriginFields {
     source: &'static str,
     version: Option<String>,
     newer_version: Option<String>,
 }
 
+impl OriginFields {
+    /// What `origins` holds for `dog`, or `None` when `dog` is a sheep, whose
+    /// row carries none of the three keys.
+    pub(crate) fn of(origins: &DogOrigins, dog: &ProcessInfo) -> Option<Self> {
+        dog.dog.as_ref()?;
+        let origin = origins.of(dog);
+        Some(Self {
+            source: origin.source.as_str(),
+            version: origin.version,
+            newer_version: origin.newer,
+        })
+    }
+}
+
+/// One dog's JSON: its `ProcessInfo` as ever, then [`OriginFields`].
+#[derive(Serialize)]
+struct ListedDog<'a> {
+    #[serde(flatten)]
+    info: &'a ProcessInfo,
+    #[serde(flatten)]
+    fields: Option<OriginFields>,
+}
+
 impl Serialize for DogRows {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.dogs.iter().map(|info| {
-            let origin = self.origins.of(info);
-            ListedDog {
-                info,
-                source: origin.source.as_str(),
-                version: origin.version,
-                newer_version: origin.newer,
-            }
+        serializer.collect_seq(self.dogs.iter().map(|info| ListedDog {
+            info,
+            fields: OriginFields::of(&self.origins, info),
         }))
     }
 }

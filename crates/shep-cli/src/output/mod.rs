@@ -466,6 +466,7 @@ pub(crate) mod tests {
             host: host.map(str::to_owned),
             procs: vec![sheep_info(name)],
             usage,
+            origins: None,
         };
         let mut out = Vec::new();
         emit_fleet_flock(

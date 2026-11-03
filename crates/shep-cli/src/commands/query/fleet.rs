@@ -18,7 +18,7 @@ use shep_core::paths::ShepPaths;
 use shep_core::protocol::{HostUsage, ProcessInfo};
 use tokio::time::error::Elapsed;
 
-use super::flock_display::{flock_from_roll, host_usage, print_listing};
+use super::flock_display::{flock_from_roll, host_usage, local_origins, print_listing};
 use crate::cli::Format;
 use crate::client::unreachable_message;
 use crate::commands::hosts::{HOST_CONNECT_TIMEOUT, unattended};
@@ -144,7 +144,8 @@ pub(super) async fn fleet(
 
     match ask_local(streams, guard, local, timeout).await {
         Local::Listed(answer) => {
-            if let Err(done) = tables.print(streams, None, answer, None) {
+            let origins = local_origins(paths, &answer.procs);
+            if let Err(done) = tables.print(streams, None, answer, None, Some(origins)) {
                 return done;
             }
         }
@@ -161,7 +162,7 @@ pub(super) async fn fleet(
     for (host, result) in hosts.iter().zip(remote) {
         match result {
             Ok(HostAnswer { answer, skew }) => {
-                if let Err(done) = tables.print(streams, Some(host), answer, skew) {
+                if let Err(done) = tables.print(streams, Some(host), answer, skew, None) {
                     return done;
                 }
             }
@@ -225,6 +226,7 @@ impl Tables {
         host: Option<&str>,
         answer: Answer,
         skew: Option<String>,
+        origins: Option<DogOrigins>,
     ) -> Result<(), ExitCode> {
         if let Some(warning) = skew {
             streams.aside("version_skew", &warning);
@@ -234,6 +236,7 @@ impl Tables {
                 host: host.map(str::to_owned),
                 procs: answer.procs,
                 usage: answer.usage,
+                origins,
             });
             return Ok(());
         }
@@ -244,7 +247,7 @@ impl Tables {
                     answer.procs,
                     answer.usage,
                     None,
-                    DogOrigins::default(),
+                    origins.unwrap_or_default(),
                 )
             })
             .map_err(|err| write_outcome(Err(err)))

@@ -149,7 +149,7 @@ impl<'a> Origins<'a> {
         } else {
             Source::Community
         };
-        let newer = receipt.version.as_deref().and_then(|have| {
+        let newer = receipt.pinned.as_deref().and_then(|have| {
             let row = self
                 .index
                 .as_ref()?
@@ -218,13 +218,19 @@ mod tests {
         }
 
         /// A receipt as `shep install` wrote it, narrowed to what is read.
-        fn receipt(&self, name: &str, repo: &str, manifest_version: &str) {
+        fn receipt(&self, name: &str, repo: &str, version: &str) {
+            self.receipt_pinning(name, repo, version, version);
+        }
+
+        /// As [`Self::receipt`], with the index version the install pinned
+        /// apart from what the manifest reported.
+        fn receipt_pinning(&self, name: &str, repo: &str, pinned: &str, manifest_version: &str) {
             let dir = self.paths.dogs_dir.join(name);
             std::fs::create_dir_all(&dir).unwrap();
             let body = serde_json::json!({
                 "package": "shep-log-rotate",
                 "row": { "repo": repo },
-                "version": "0.2.4",
+                "version": pinned,
                 "manifest": { "version": manifest_version },
             });
             std::fs::write(dir.join("receipt.json"), body.to_string()).unwrap();
@@ -364,6 +370,25 @@ mod tests {
             home.origin("log-rotate").version_cell(),
             "0.10.0",
             "compared as semver, not as text"
+        );
+    }
+
+    #[test]
+    fn the_arrow_compares_the_index_with_the_pinned_version_not_the_manifests() {
+        let home = Home::new();
+        home.receipt_pinning("log-rotate", SHEP_PM, "0.2.4", "0.2.3");
+        home.index_listing("0.2.4");
+
+        assert_eq!(
+            home.origin("log-rotate").version_cell(),
+            "0.2.3",
+            "the crate the index lists is the one installed"
+        );
+
+        home.index_listing("0.3.0");
+        assert_eq!(
+            home.origin("log-rotate").version_cell(),
+            "0.2.3 \u{2192} 0.3.0"
         );
     }
 

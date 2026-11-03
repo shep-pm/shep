@@ -14,6 +14,7 @@ use crate::cli::Format;
 use crate::dog_origin::DogOrigins;
 use crate::style::Presentation;
 
+use super::rows::OriginFields;
 use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of, write_json_line};
 
 /// The `--format json` shape [`emit_flock`] writes:
@@ -28,9 +29,19 @@ use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of, write_json_line}
 struct FlockEnvelope<'a> {
     schema_version: u32,
     command: &'a str,
-    data: FlockRows,
+    data: Vec<TaggedRow<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     host: Option<Option<HostUsage>>,
+}
+
+/// One row of a local listing: the shepherd's [`ProcessInfo`], flattened,
+/// and for a dog the keys SOURCE and VERSION add.
+#[derive(Serialize)]
+struct TaggedRow<'a> {
+    #[serde(flatten)]
+    info: &'a ProcessInfo,
+    #[serde(flatten)]
+    fields: Option<OriginFields>,
 }
 
 /// One row of a listing that names where it came from: the shepherd's own
@@ -45,6 +56,8 @@ struct OriginRow<'a> {
     #[serde(flatten)]
     info: &'a ProcessInfo,
     origin: Option<&'a str>,
+    #[serde(flatten)]
+    fields: Option<OriginFields>,
 }
 
 /// The `--format json` shape of a listing whose rows name their `origin`:
@@ -73,6 +86,10 @@ pub(crate) struct HostListing {
     pub procs: Vec<ProcessInfo>,
     /// As [`emit_flock`]'s `host`.
     pub usage: Option<Option<HostUsage>>,
+    /// What this machine's disk says of its dogs, for the local listing only.
+    /// A remote host's rows carry no `source`, `version` or `newer_version`:
+    /// this machine's receipts say nothing of them.
+    pub origins: Option<DogOrigins>,
 }
 
 /// Writes a fleet listing as one JSON envelope: every shepherd's rows in
@@ -110,6 +127,10 @@ pub(crate) fn emit_fleet_flock(
             listing.procs.iter().map(|info| OriginRow {
                 info,
                 origin: listing.host.as_deref(),
+                fields: listing
+                    .origins
+                    .as_ref()
+                    .and_then(|origins| OriginFields::of(origins, info)),
             })
         })
         .collect();
@@ -148,6 +169,7 @@ pub(crate) fn emit_origin_flock(
                 .map(|info| OriginRow {
                     info,
                     origin: Some(origin),
+                    fields: None,
                 })
                 .collect(),
             host,
@@ -207,7 +229,13 @@ pub fn emit_flock_with_origins(
             let envelope = FlockEnvelope {
                 schema_version: SCHEMA_VERSION,
                 command,
-                data: FlockRows(listing),
+                data: listing
+                    .iter()
+                    .map(|info| TaggedRow {
+                        info,
+                        fields: OriginFields::of(&origins, info),
+                    })
+                    .collect(),
                 host,
             };
             write_json_line(&mut *out, &envelope)
@@ -272,6 +300,7 @@ mod tests {
 
     use super::super::tests::{mixed_listing, sheep_info, silent_dog};
     use super::*;
+    use crate::dog_origin::{DogOrigin, Source};
 
     /// The dogs table needs no flag: a dead bark dog is what an operator
     /// needs to notice, and hiding it means finding out by not being
@@ -453,6 +482,68 @@ mod tests {
         assert_eq!(json["data"][1]["dog"]["kind"], "built_in");
     }
 
+    fn bark_installed() -> DogOrigins {
+        [(
+            "bark".to_owned(),
+            DogOrigin {
+                source: Source::Installed,
+                version: Some("0.2.3".to_owned()),
+                newer: Some("0.3.0".to_owned()),
+            },
+        )]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn a_json_flock_gives_a_dog_the_keys_shep_dogs_gives_it_and_a_sheep_none() {
+        let mut out = Vec::new();
+        emit_flock_with_origins(
+            &mut out,
+            Format::Json,
+            "flock",
+            mixed_listing(),
+            None,
+            Presentation::BARE,
+            bark_installed(),
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+
+        let sheep = json["data"][0].as_object().unwrap();
+        assert!(!sheep.contains_key("source") && !sheep.contains_key("version"));
+        assert_eq!(json["data"][1]["source"], "installed");
+        assert_eq!(json["data"][1]["version"], "0.2.3");
+        assert_eq!(json["data"][1]["newer_version"], "0.3.0");
+    }
+
+    #[test]
+    fn a_fleet_json_gives_this_machines_dogs_the_keys_and_a_remote_hosts_none() {
+        let mut local = listing(None, &[], None);
+        local.procs = mixed_listing();
+        local.origins = Some(bark_installed());
+        let mut remote = listing(Some("amp2"), &[], None);
+        remote.procs = mixed_listing();
+
+        let json = fleet_json(vec![local, remote]);
+
+        let dog = |origin: serde_json::Value| {
+            json["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["name"] == "bark" && row["origin"] == origin)
+                .unwrap()
+                .as_object()
+                .unwrap()
+        };
+        let local_dog = dog(serde_json::Value::Null);
+        assert_eq!(local_dog["source"], "installed");
+        assert_eq!(local_dog["newer_version"], "0.3.0");
+        let remote_dog = dog("amp2".into());
+        assert!(!remote_dog.contains_key("source"), "{remote_dog:?}");
+    }
+
     /// An empty table still prints its header row, so a caption here
     /// would surface a bare header line under every dogless listing.
     #[test]
@@ -490,6 +581,7 @@ mod tests {
             host: host.map(str::to_owned),
             procs: names.iter().map(|name| sheep_info(name)).collect(),
             usage,
+            origins: None,
         }
     }
 

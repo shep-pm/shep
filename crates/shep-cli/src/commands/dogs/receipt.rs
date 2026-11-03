@@ -132,6 +132,9 @@ pub(crate) struct Installed {
     /// the install pinned. `None` for a ref install of a dog with no
     /// manifest.
     pub(crate) version: Option<String>,
+    /// The index version the install pinned, which the index's own version
+    /// is compared against. `None` for a ref install.
+    pub(crate) pinned: Option<String>,
 }
 
 /// The receipt's shape as written, narrowed to what [`Installed`] keeps.
@@ -166,7 +169,11 @@ pub(crate) fn installed(paths: &ShepPaths, name: &str) -> Option<Installed> {
     Some(Installed {
         package: written.package,
         repo: written.row.repo,
-        version: written.manifest.map(|m| m.version).or(written.version),
+        version: written
+            .manifest
+            .map(|m| m.version)
+            .or_else(|| written.version.clone()),
+        pinned: written.version,
     })
 }
 
@@ -234,6 +241,7 @@ mod tests {
         assert_eq!(read.package, "shep-log-rotate");
         assert_eq!(read.repo, "https://github.com/shep-pm/shep-log-rotate");
         assert_eq!(read.version.as_deref(), Some("0.2.3"), "the manifest wins");
+        assert_eq!(read.pinned.as_deref(), Some("0.2.4"));
     }
 
     #[test]
@@ -254,7 +262,8 @@ mod tests {
                 commit: "3f9c2a1b",
             },
         );
-        assert_eq!(installed(&paths, "log-rotate").unwrap().version, None);
+        let read = installed(&paths, "log-rotate").unwrap();
+        assert_eq!((read.version, read.pinned), (None, None));
     }
 
     #[test]
