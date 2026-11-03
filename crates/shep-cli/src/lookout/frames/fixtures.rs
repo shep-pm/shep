@@ -628,6 +628,7 @@ pub(super) fn dogs_listing() -> Vec<ListedDog> {
                 name: name.to_string(),
                 adopted_path: Some(PathBuf::from(format!("/opt/{name}"))),
                 schema: None,
+                standard: None,
             },
             asked: false,
         })
@@ -640,6 +641,7 @@ pub(super) fn jobs_entry() -> SheepDogEntry {
         name: "jobs".to_string(),
         adopted_path: Some(PathBuf::from("/opt/jobs")),
         schema: Some(jobs_schema()),
+        standard: None,
     }
 }
 
@@ -650,6 +652,7 @@ pub(super) fn kelpie_entry() -> SheepDogEntry {
         name: "kelpie".to_string(),
         adopted_path: Some(PathBuf::from("/opt/kelpie")),
         schema: Some(crate::lookout::testing::kelpie_sheep_schema()),
+        standard: None,
     }
 }
 

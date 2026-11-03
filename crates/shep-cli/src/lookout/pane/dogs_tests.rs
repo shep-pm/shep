@@ -33,6 +33,7 @@ fn listed(name: &str, schema: Option<Value>, asked: bool) -> ListedDog {
             name: name.to_owned(),
             adopted_path: Some(PathBuf::from(format!("/opt/{name}"))),
             schema,
+            standard: None,
         },
         asked,
     }
@@ -243,6 +244,7 @@ fn an_unasked_dog_asks_once_and_opens_on_its_answer() {
         name: "deploy".into(),
         adopted_path: Some(PathBuf::from("/opt/deploy")),
         schema: plain_schema(),
+        standard: None,
     });
     assert_eq!(answered, Some(DogToggle::Opened));
     assert!(pane.dogs_tab().rows()[0].is_open());
@@ -258,6 +260,7 @@ fn a_dog_that_answers_with_no_schema_opens_nothing() {
         name: "deploy".into(),
         adopted_path: Some(PathBuf::from("/opt/deploy")),
         schema: None,
+        standard: None,
     });
     assert_eq!(answered, Some(DogToggle::NoSchema("deploy".into())));
     let deploy = &pane.dogs_tab().rows()[0];
@@ -272,6 +275,7 @@ fn an_answer_for_an_unlisted_dog_is_dropped() {
         name: "ghost".into(),
         adopted_path: None,
         schema: plain_schema(),
+        standard: None,
     });
     assert_eq!(answered, None);
 }
@@ -323,6 +327,7 @@ fn the_debug_of_an_entry_names_no_schema() {
         name: "jobs".into(),
         adopted_path: None,
         schema: Some(json!({ "default": "sk-live-51Hx9Qa" })),
+        standard: None,
     };
     assert_eq!(
         format!("{entry:?}"),

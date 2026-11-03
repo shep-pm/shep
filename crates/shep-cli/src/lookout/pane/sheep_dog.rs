@@ -14,6 +14,7 @@ use super::super::edits::{EditKey, Edits};
 use super::super::field::{Flattened, flatten_values, flattened};
 use super::super::viewport::Viewport;
 use super::entries::EntryRows;
+use super::sheep_dog_inherit::Inherits;
 use super::union::arm_fields;
 use super::{ConfigPane, PaneEdit, PaneTarget};
 
@@ -30,7 +31,10 @@ pub(in crate::lookout) struct SheepDogTable {
     pub(super) paths: BTreeMap<String, Vec<String>>,
     /// The table as the shepherd holds it, keys the schema does not name
     /// included.
-    table: Map<String, Value>,
+    pub(super) table: Map<String, Value>,
+    /// What the dog's section gives every sheep, when the dog follows the
+    /// standard. See [`super::sheep_dog_inherit`].
+    pub(super) inherits: Option<Inherits>,
     /// The dog's `x-shep-sheep` answer, kept so a write can be checked
     /// against it. See [`crate::dog_settings::touched_refusal`].
     pub(super) schema: Value,
@@ -89,6 +93,7 @@ impl ConfigPane {
             dog_table: Some(Box::new(SheepDogTable {
                 paths,
                 table,
+                inherits: None,
                 schema: schema.clone(),
             })),
             reshapes: Arc::default(),
@@ -137,12 +142,19 @@ impl ConfigPane {
     /// one, keeping the cursor and the filed edits. An open editor is
     /// dropped, for the reason [`Self::adopt_edits`] gives. An open list
     /// sub-screen is reseeded from the filed elements, at its cursor.
-    pub(in crate::lookout) fn adopt_table(&mut self, table: Map<String, Value>) {
+    ///
+    /// `table` is [`None`] for a sheep that now carries no table.
+    pub(in crate::lookout) fn adopt_table(&mut self, table: Option<Map<String, Value>>) {
         let Some(state) = self.dog_table.as_mut() else {
             return;
         };
-        self.values = flatten_values(&table, &state.paths);
-        state.table = table;
+        if let Some(inherits) = state.inherits.as_mut() {
+            inherits.has_table = table.is_some();
+        }
+        state.table = table.unwrap_or_default();
+        let (values, inherited) = state.displayed();
+        self.values = values;
+        state.set_inherited(inherited);
         self.entries = Arc::new(
             self.entries
                 .rebuilt(&self.fields, &state.paths, &self.values),
@@ -447,7 +459,7 @@ mod tests {
         pane.open_list();
 
         let fresh = json!({ "worker": { "allowed_domains": ["a.example", "c.example"] } });
-        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        pane.adopt_table(fresh.as_object().cloned());
         let list = pane.list_mut().expect("the sub-screen stays open");
         assert_eq!(list.elements(), ["a.example", "c.example"]);
 
@@ -559,7 +571,7 @@ mod tests {
         assert!(pane.open_tables().contains("models.worker"));
 
         let fresh = json!({ "models": { "worker": { "model": "large" } } });
-        pane.adopt_table(fresh.as_object().cloned().expect("a table"));
+        pane.adopt_table(fresh.as_object().cloned());
         assert!(pane.open_tables().contains("models.worker"));
         assert!(pane.open_tables().contains("models"));
         assert_eq!(pane.cursor(), cursor);

@@ -15,6 +15,7 @@ mod forms;
 mod items;
 mod numbers;
 mod patterns;
+pub(crate) mod standard;
 pub(crate) mod table;
 #[cfg(test)]
 mod table_tests;

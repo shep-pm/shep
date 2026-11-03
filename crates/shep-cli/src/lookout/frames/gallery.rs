@@ -20,9 +20,9 @@ These are real frames, rendered headlessly through ratatui's TestBackend by
 
 Nothing here is a mockup.
 
-frames.ansi renders all sixty-nine scenes through the same coloured
+frames.ansi renders all seventy-one scenes through the same coloured
 palette the pinned `.snap` tests use; read it with `less -R`. frames.txt
-renders the same sixty-nine scenes through the flattened NO_COLOR palette
+renders the same seventy-one scenes through the flattened NO_COLOR palette
 instead, the one an operator with $NO_COLOR set or a 16-colour terminal
 actually gets. The two files are deliberately different pictures of the
 same dashboard, not one file with the colour removed.
@@ -59,6 +59,13 @@ removal armed. And `jobs`'s own table pane, its nested `hours` and
 `models.worker` tables flattened into dotted rows, with
 `models.worker.token` drawn `<set>` and no value from any of the four
 frames anywhere on screen.
+
+Two more show a dog that follows the settings standard, opened on the same
+tab. One is an opted-in dog on a sheep whose own table sets one key: that
+row reads plain, the others show the dog's value with a `^` mark and the foot
+says where it comes from, and the dog-wide key has no row. The other is a dog
+serving every sheep, on a sheep with no table at all, where every row is
+inherited.
 
 The last eight are the keymap overlay, `h` or `?` from any body. Boxed and
 centred at the 160x48 target, at 130 where the border only just fits,

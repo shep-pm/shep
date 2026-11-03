@@ -12,6 +12,7 @@ use std::fmt;
 
 use serde_json::Value as Json;
 use shep_client::Client;
+use shep_core::paths::ShepPaths;
 use shep_core::protocol::{Request, Response};
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value as TomlValue};
 
@@ -122,7 +123,12 @@ impl core::error::Error for ReadRefusal {}
 /// The [`ExitCode`] already reported to `streams`: a name no sheep or dog
 /// answers, a malformed address, a key this verb never reads, a path nothing
 /// is set at, or a shepherd that refused the read.
-pub(crate) async fn get(client: &Client, streams: &mut Streams<'_>, args: &GetArgs) -> ExitCode {
+pub(crate) async fn get(
+    client: &Client,
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &GetArgs,
+) -> ExitCode {
     let flock = match copy::flock_names(client, streams).await {
         Ok(names) => names,
         Err(code) => return code,
@@ -138,7 +144,7 @@ pub(crate) async fn get(client: &Client, streams: &mut Streams<'_>, args: &GetAr
             name,
             rest: segments[depth..].to_vec(),
         };
-        return get_sheep(client, streams, &flock, written).await;
+        return get_sheep(client, streams, paths, &flock, written).await;
     }
     get_dog(client, streams, &flock, &segments).await
 }
@@ -168,28 +174,61 @@ fn refusal_report(streams: &mut Streams<'_>, refusal: &ReadRefusal) -> ExitCode 
 }
 
 /// One sheep's config, or the fragment of it the address named.
+///
+/// A dog's table that follows the dog settings standard is read as the dog
+/// reads it, the dog's section under the sheep's own, with the keys the sheep
+/// leaves to the section marked.
 async fn get_sheep(
     client: &Client,
     streams: &mut Streams<'_>,
+    paths: &ShepPaths,
     flock: &FlockNames,
     written: Written,
 ) -> ExitCode {
-    let config = match copy::read_config(client, streams, &written.name).await {
+    let mut config = match copy::read_config(client, streams, &written.name).await {
         Ok(config) => config,
         Err(code) => return code,
     };
     // The target config is `Null`: a read resolves a dotted dog name against
     // the one sheep it names, where a copy resolves against two.
     let dogs = address::DogNames::new(flock, &config, &Json::Null);
-    let steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {
+    let mut steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {
         Ok(steps) => steps,
         Err(refusal) => return refusal_report(streams, &refusal),
     };
+    let mut marked = Vec::new();
+    if let [root, dog, ..] = steps.as_slice()
+        && root == DOGS
+    {
+        let layering = match standard::layer(client, streams, paths, dog, &config).await {
+            Ok(layering) => layering,
+            Err(code) => return code,
+        };
+        if let Some(layering) = layering {
+            if !layering.stray.is_empty() {
+                streams.aside(
+                    "warning",
+                    &standard::stray_warning(&written.name, dog, &layering.stray),
+                );
+            }
+            config = layering.config;
+            let dogs = address::DogNames::new(flock, &config, &Json::Null);
+            steps = match sheep_steps(&written.name, &written.rest, &dogs, &config) {
+                Ok(steps) => steps,
+                Err(refusal) => return refusal_report(streams, &refusal),
+            };
+            marked = standard::covered(&steps, &layering.inherited);
+        }
+    }
     let toml = match sheep_document(&written, &config, &steps) {
         Ok(toml) => toml,
         Err(refusal) => return refusal_report(streams, &refusal),
     };
-    print(streams, &written, &toml)
+    let toml = match steps.get(1) {
+        Some(dog) => standard::mark(&toml, &steps, dog, &marked),
+        None => toml,
+    };
+    print(streams, &written, &toml, &marked)
 }
 
 /// One dog's own section, or the fragment of it the address named.
@@ -238,7 +277,7 @@ async fn get_dog(
         };
         let steps = dog_steps(doc.as_table(), &written.rest);
         return match dog_document(&written, &doc, &steps) {
-            Ok(toml) => print(streams, &written, &toml),
+            Ok(toml) => print(streams, &written, &toml, &[]),
             Err(refusal) => refusal_report(streams, &refusal),
         };
     }
@@ -607,7 +646,12 @@ fn json_value(value: &Json) -> Option<TomlValue> {
 
 /// Prints the answer: the TOML text itself, or the one envelope `--format json`
 /// owes.
-fn print(streams: &mut Streams<'_>, written: &Written, toml: &str) -> ExitCode {
+fn print(
+    streams: &mut Streams<'_>,
+    written: &Written,
+    toml: &str,
+    inherited: &[Vec<String>],
+) -> ExitCode {
     if streams.fmt == Format::Table {
         return write_outcome(streams.out.write_all(toml.as_bytes()));
     }
@@ -620,6 +664,10 @@ fn print(streams: &mut Streams<'_>, written: &Written, toml: &str) -> ExitCode {
             name: written.name.clone(),
             path: written.rest.join("."),
             toml: toml.to_string(),
+            inherited: inherited
+                .iter()
+                .map(|path| standard::dotted(path))
+                .collect(),
         },
         streams.style,
     ))
@@ -651,5 +699,8 @@ pub(crate) async fn read_dog_section(
     }
 }
 
+mod standard;
+#[cfg(all(test, unix))]
+mod standard_flow_tests;
 #[cfg(test)]
 mod tests;

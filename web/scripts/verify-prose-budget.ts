@@ -180,7 +180,16 @@ export const BUDGETS: Record<string, number> = {
   // Raised on #1079, to 3555, for "One default for a dog's tables": `shep set
   // <dog>.defaults.<key>` is a new address an operator types, and the page
   // that says how a sheep's tuning is written is where they look for it.
-  overrides: 3555,
+  //
+  // Raised from 3555 for "A dog's section and a sheep's table" (#1429): the
+  // `shep set` refusal and the `shep get` marker are addresses and output an
+  // operator types and reads, so the page that says how a sheep's tuning is
+  // written owes them.
+  //
+  // Raised again, to 3693, because the two levels reach different sheep: a
+  // dog serving only sheep with a table reads nothing for one without, and a
+  // nested key a sheep leaves out is still inherited. The page said neither.
+  overrides: 3693,
   // Raised from 3240 on 2026-09-27 for "A sheep's dogs row": the sub-screen
   // and the per-sheep table pane are new operator-facing surface, not
   // prose to trim back out.
@@ -236,7 +245,14 @@ export const BUDGETS: Record<string, number> = {
   // Raised again from 4250 for the same env rows on the settings screen: the
   // keys, the two edit keys, the refused duplicate and the reload a running
   // dog needs (#1286). The dog pane's paragraph shrank to point at them.
-  "lookout-config": 4300,
+  //
+  // Raised from 4300 for the standard dog's two levels in the dogs tab and
+  // the dog pane's foot (#1429): the `^` and `@` marks are what an operator
+  // reads on screen and has no other page to look up.
+  //
+  // Raised again, to 4450, for when the section shows: an opted-in sheep with
+  // no table shows nothing from it.
+  "lookout-config": 4450,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
@@ -325,7 +341,9 @@ export const BUDGETS: Record<string, number> = {
   // be told which keys move between the two fields, where a key name is
   // checked, and that a rename is one Enter (#1193). Required content, not
   // prose to trim back out.
-  lookout: 3180,
+  //
+  // Raised from 3180 for the sentence naming a dog's two levels (#1429).
+  lookout: 3210,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

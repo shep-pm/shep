@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value};
 use shep_core::config::DogTable;
+use shep_core::dogs::manifest::Serves;
 use shep_core::protocol::SheepConfigView;
 
 use super::{ConfigPane, PaneRow, PaneTarget};
@@ -30,16 +31,47 @@ pub struct SheepDogEntry {
     /// Its `x-shep-sheep` value with the root's `$defs` attached, or
     /// [`None`] for a dog that publishes no per-sheep schema.
     pub schema: Option<Value>,
+    /// The dog's section, for a dog that follows the settings standard. Its
+    /// [`Self::schema`] is then the dog's one schema without the dog-wide
+    /// fields.
+    pub standard: Option<StandardSection>,
 }
 
 impl core::fmt::Debug for SheepDogEntry {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "SheepDogEntry {{ name: {:?}, adopted_path: {:?}, schema: {} }}",
+            "SheepDogEntry {{ name: {:?}, adopted_path: {:?}, schema: {}",
             self.name,
             self.adopted_path,
             self.schema.as_ref().map_or("None", |_| "Some(..)")
+        )?;
+        if self.standard.is_some() {
+            write!(f, ", standard: Some(..)")?;
+        }
+        write!(f, " }}")
+    }
+}
+
+/// What a dog that follows the settings standard gives every sheep.
+///
+/// `Debug` is manual (IR-41): a section can hold a credential, so it prints
+/// which sheep the dog serves and how many keys there are.
+#[derive(Clone, PartialEq, Eq)]
+pub struct StandardSection {
+    /// Which sheep the dog serves.
+    pub serves: Serves,
+    /// The dog's `[<dog>]` section without its dog-wide keys.
+    pub shared: Map<String, Value>,
+}
+
+impl core::fmt::Debug for StandardSection {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "StandardSection {{ serves: {:?}, keys: {} }}",
+            self.serves,
+            self.shared.len()
         )
     }
 }
@@ -223,6 +255,15 @@ impl DogsTab {
         self.listing == Listing::Listed
     }
 
+    /// Each dog that follows the standard, with its adopted binary.
+    pub(in crate::lookout) fn standard_dogs(&self) -> Vec<(String, Option<PathBuf>)> {
+        self.rows
+            .iter()
+            .filter(|row| row.entry.standard.is_some())
+            .map(|row| (row.entry.name.clone(), row.entry.adopted_path.clone()))
+            .collect()
+    }
+
     /// The dog whose table an `Enter` would remove, or [`None`].
     #[must_use]
     pub fn armed(&self) -> Option<&str> {
@@ -302,12 +343,7 @@ impl DogsTab {
             let table = tables.get(&row.entry.name);
             row.keys = table.map(key_names);
             if let Some(pane) = row.table.as_deref_mut() {
-                pane.adopt_table(
-                    table
-                        .and_then(Value::as_object)
-                        .cloned()
-                        .unwrap_or_default(),
-                );
+                pane.adopt_table(table.and_then(Value::as_object).cloned());
             }
         }
         self.rows
@@ -327,6 +363,7 @@ impl DogsTab {
                     name: name.clone(),
                     adopted_path: None,
                     schema: None,
+                    standard: None,
                 },
                 asked: Asked::Yes,
                 keys: Some(key_names(table)),
@@ -455,7 +492,16 @@ impl ConfigPane {
             return DogToggle::NoSchema(name);
         };
         if row.table.is_none() {
-            let pane = Self::sheep_dog(sheep, name, &schema, self.sheep_table(&row.entry.name));
+            let pane = match &row.entry.standard {
+                Some(section) => {
+                    let table = self.sheep_table_if_any(&name);
+                    Self::sheep_dog_inheriting(sheep, name, &schema, table, section)
+                }
+                None => {
+                    let table = self.sheep_table(&name);
+                    Self::sheep_dog(sheep, name, &schema, table)
+                }
+            };
             self.dogs_tab.rows[dog].table = Some(Box::new(pane));
         }
         self.dogs_tab.rows[dog].open = true;
@@ -486,6 +532,28 @@ impl ConfigPane {
             self.restore_dog_anchor(&anchor);
         }
         Some(toggled)
+    }
+
+    /// Takes each standard dog's section as `entries` read it: the row keeps
+    /// it for the next time it opens, and an open table shows it at once.
+    pub(in crate::lookout) fn refresh_sections(&mut self, entries: Vec<SheepDogEntry>) {
+        for entry in entries {
+            let Some(section) = entry.standard else {
+                continue;
+            };
+            let Some(row) = self
+                .dogs_tab
+                .rows
+                .iter_mut()
+                .find(|row| row.entry.name == entry.name && row.entry.standard.is_some())
+            else {
+                continue;
+            };
+            if let Some(table) = row.table.as_deref_mut() {
+                table.adopt_section(&section);
+            }
+            row.entry.standard = Some(section);
+        }
     }
 
     /// Carries a previous pane's tab onto this one's tables, for a re-read
@@ -630,12 +698,16 @@ impl ConfigPane {
     /// `dog`'s table on this sheep, or an empty one when it carries none.
     #[must_use]
     pub(in crate::lookout) fn sheep_table(&self, dog: &str) -> Map<String, Value> {
+        self.sheep_table_if_any(dog).unwrap_or_default()
+    }
+
+    /// `dog`'s table on this sheep, or [`None`] when it carries none.
+    fn sheep_table_if_any(&self, dog: &str) -> Option<Map<String, Value>> {
         self.values
             .get("dogs")
             .and_then(|dogs| dogs.get(dog))
             .and_then(Value::as_object)
             .cloned()
-            .unwrap_or_default()
     }
 
     fn sheep_tables(&self) -> Map<String, Value> {
@@ -665,3 +737,7 @@ pub(crate) fn dog_names(dogs: Option<&Value>) -> String {
 #[cfg(test)]
 #[path = "dogs_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "dogs_standard_tests.rs"]
+mod standard_tests;

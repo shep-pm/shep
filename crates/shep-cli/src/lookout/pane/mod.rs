@@ -30,6 +30,7 @@ mod section_write;
 #[cfg(test)]
 mod section_write_entries;
 mod sheep_dog;
+mod sheep_dog_inherit;
 mod tree;
 mod types;
 mod union;
@@ -44,7 +45,7 @@ pub(in crate::lookout) use config::toml_table;
 pub use config::{ConfigPane, ReloadKind};
 pub(in crate::lookout) use dogs::DogToggle;
 pub(crate) use dogs::dog_names;
-pub use dogs::{DogRow, DogTableState, ListedDog, SheepDogEntry};
+pub use dogs::{DogRow, DogTableState, ListedDog, SheepDogEntry, StandardSection};
 pub use edit::PaneTyping;
 pub(in crate::lookout) use entries::EntryBody;
 pub(crate) use env::{ArmedEnv, EnvSubmit};

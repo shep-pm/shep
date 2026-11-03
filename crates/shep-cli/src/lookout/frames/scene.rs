@@ -188,6 +188,14 @@ pub enum Scene {
     /// step: `implement` open onto its tag and `path`, `review` set and
     /// closed, `retro` unset, the cursor on `path`.
     SheepDogUnion,
+    /// `jobs`, a dog that follows the settings standard and serves only the
+    /// sheep with a table, opened on `api`'s `dogs` tab: `limit` is `api`'s
+    /// own and plain, `model` and `merge` come from `[jobs]` and carry `^`,
+    /// and the dog-wide `poll` has no row.
+    SheepDogInherited,
+    /// A standard dog serving every sheep, opened on a sheep with no table:
+    /// every row is inherited and carries `^`.
+    SheepDogEverySheep,
     /// A paddock-shaped dog's pane at the design target: a `clients` array
     /// and a `models` map each read as a count, `clients` opened onto its
     /// entries and the first of them onto its fields, a credential drawn
@@ -297,6 +305,8 @@ impl Scene {
             Self::SheepDogsRemove => "sheep_dogs_remove",
             Self::SheepDogTable => "sheep_dog_table",
             Self::SheepDogUnion => "sheep_dog_union",
+            Self::SheepDogInherited => "sheep_dog_inherited",
+            Self::SheepDogEverySheep => "sheep_dog_every_sheep",
             Self::DogEntries => "dog_entries",
             Self::DogEntriesNarrow => "dog_entries_narrow",
             Self::DogEntryTyping => "dog_entry_typing",
@@ -483,6 +493,12 @@ impl Scene {
             Self::SheepDogUnion => {
                 "kelpie opened inline on the dogs tab over a recorded copy of its schema, skills opened onto one union per step: implement reads kind = path and is open onto its kind row and its path, review reads kind = plugin and is closed, and retro reads (unset). The cursor is on path, and the explanation panel names it and carries the blurb of the path arm."
             }
+            Self::SheepDogInherited => {
+                "jobs, a dog that follows the settings standard, opened inline on api's dogs tab. limit is api's own table and reads plain; model and merge are not set there, so they show the value from [jobs] with a ^ mark, and the foot says ^ comes from [jobs]. jobs's dog-wide poll key has no row at all."
+            }
+            Self::SheepDogEverySheep => {
+                "jobs, a standard dog that serves every sheep, opened inline on api's dogs tab where api has no jobs table: all three rows are inherited, each with a ^ mark and the value from [jobs], and the same dog-wide poll key has no row."
+            }
             Self::DogEntries => {
                 "A dog's pane over a paddock-shaped schema at 160x48: clients and models each read as a count and nothing more, clients is open onto alpha, b-2 and #2, named by name, then id, then their index, and alpha is open onto its fields, key drawn <set> with no credential on screen anywhere in the frame. The cursor is on key, which opens an editor like any other field."
             }
@@ -638,6 +654,8 @@ impl Scene {
             | Self::SheepDogsRemove
             | Self::SheepDogTable
             | Self::SheepDogUnion
+            | Self::SheepDogInherited
+            | Self::SheepDogEverySheep
             | Self::DogEntries
             | Self::DogEntryTyping
             | Self::DogEntriesNew => (160, 48),
@@ -752,6 +770,8 @@ impl Scene {
             | Self::SheepDogsRemove
             | Self::SheepDogTable
             | Self::SheepDogUnion
+            | Self::SheepDogInherited
+            | Self::SheepDogEverySheep
             | Self::DogEntries
             | Self::DogEntriesNarrow
             | Self::DogEntryTyping
