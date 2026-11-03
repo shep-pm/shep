@@ -2775,6 +2775,18 @@ The shepherd looks up the dog adopted under the name `sandbox` and spawns the sh
 
 `verified crates/shep-core/src/protocol/mod.rs (SANDBOX_DOG_SINCE), crates/shep-core/src/protocol/request/gated_keys.rs, crates/shep-core/src/config/normalize/validate.rs, crates/shep-client/src/client.rs`
 
+## Dogs triggering dogs
+
+### A dog's trigger reuses `Request::Trigger`, the shepherd sets `caller`, and discovery reads manifests
+
+One dog already triggers another with `Request::Trigger` on its own connection, taking `dogs.trigger:<name>`. No second verb is added. `ShepherdMessage::Action` gains an optional `caller`, the triggering dog's name, set in `rpc/dispatch.rs` from the link the request arrived on: `Link::Dog(name)` sets it, and the control socket and a launch link do not. A dog that opens the control socket acts as the operator and carries none. It is omitted from the wire when absent, so an older callee reads the message unchanged and a message without it serializes as before. `shep-channel` keeps `on_action` as it was and adds `on_action_with_caller`, whose handler takes the caller as a third argument. The manifest gains `actions`, each with a `name` and a one-line `description`, additive with a serde default, so `MANIFEST_VERSION` stays 1. `Probe::action` declares one. `shep trigger <dog>` with no action reads the manifest as `shep adopt` does and lists them; a dog that declares none, and a built-in dog, say so. Discovery by capability name is left for a later step.
+
+**Why:** `Request::Trigger` already carries the permission, the timeout and the reply path, so a second verb would repeat all three. The shepherd sets `caller` because it is the only party that knows which connection spoke: a name the caller wrote would let a dog pose as another. Reading manifests needs nothing running and reuses the cache `shep adopt` fills.
+
+**What it costs:** the `ShepherdMessage::Action` variant gains a field, which breaks a Rust caller that builds or matches it exhaustively (the channel commit is marked `!`) and moves the Go wire export. A declared action is a claim: nothing checks it against a handler, and an action the dog answers but does not declare still runs. The listing reads manifests on this machine, so `--host` refuses it. A dog that triggers through the control socket has no caller to tell the callee.
+
+`verified crates/shep-channel/src/wire.rs, crates/shep-channel/src/dispatch.rs, crates/shep-daemon/src/rpc/dispatch.rs, crates/shep-daemon/src/rpc/selector_verbs.rs, crates/shep-core/src/dogs/manifest.rs, crates/shep-client/src/dogs/probes.rs, crates/shep-cli/src/commands/trigger.rs`
+
 ## Listening sockets held by the shepherd
 
 ### A sheep's `listen` table has the shepherd bind its TCP sockets once and pass them to every instance through `LISTEN_FDS`

@@ -54,7 +54,7 @@ mod wire;
 #[cfg(feature = "client")]
 pub use channel::Channel;
 #[cfg(feature = "client")]
-pub use dispatch::{ActionHandler, ShutdownHandler};
+pub use dispatch::{ActionHandler, CallerActionHandler, ShutdownHandler};
 #[cfg(all(feature = "client", unix))]
 pub use endpoint::take_inherited_socket;
 #[cfg(feature = "client")]

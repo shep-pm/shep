@@ -33,6 +33,8 @@ export interface CliVerb {
 export interface CliReferenceData {
   /** `shep --help`, byte-for-byte, for the page's own top-level block. */
   topLevelHelp: string;
+  /** `shep help flags`, byte-for-byte: each global flag once, with its long text. */
+  globalFlagsHelp: string;
   verbs: CliVerb[];
 }
 
@@ -157,6 +159,10 @@ function parseAliasesFromTopLevel(topLevelHelp: string, names: readonly string[]
 // web/src/data/workspace-version.ts for where the page reads the version now.
 const TOP_LEVEL_MARKER = "@@TOPLEVEL@@\n";
 
+// `shep help flags` follows the top-level help. No verb's page carries the
+// global flags' long text, so this is the one place it is published.
+const FLAGS_MARKER = "\n@@FLAGS@@\n";
+
 function parse(source: string): CliReferenceData {
   if (!source.startsWith(TOP_LEVEL_MARKER)) {
     fail("does not open with the @@TOPLEVEL@@ marker — re-run generate-cli-reference.sh.");
@@ -168,7 +174,12 @@ function parse(source: string): CliReferenceData {
   if (sections.length === 0) {
     fail("has no @@VERB:...@@ markers — re-run generate-cli-reference.sh.");
   }
-  const topLevelHelp = topLevelSection.slice(TOP_LEVEL_MARKER.length).trim();
+  const flagsAt = topLevelSection.indexOf(FLAGS_MARKER);
+  if (flagsAt === -1) {
+    fail("has no @@FLAGS@@ section — re-run generate-cli-reference.sh.");
+  }
+  const topLevelHelp = topLevelSection.slice(TOP_LEVEL_MARKER.length, flagsAt).trim();
+  const globalFlagsHelp = topLevelSection.slice(flagsAt + FLAGS_MARKER.length).trim();
 
   const verbs: CliVerb[] = [];
   for (let i = 0; i < sections.length; i += 2) {
@@ -183,7 +194,7 @@ function parse(source: string): CliReferenceData {
     verb.aliases = aliasesByVerb.get(verb.name) ?? [];
   }
 
-  return { topLevelHelp, verbs };
+  return { topLevelHelp, globalFlagsHelp, verbs };
 }
 
 export const cliReference: CliReferenceData = parse(generatedSource);

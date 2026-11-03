@@ -64,7 +64,7 @@ pub(crate) async fn dispatch(
                 result: Err(err),
             });
         }
-        run(id, conn, body, ctx).await
+        run(id, conn, link, body, ctx).await
     };
     with_deadline(id, budget(envelope.deadline_ms), work).await
 }
@@ -92,7 +92,13 @@ pub(super) async fn with_deadline<F: Future<Output = Outcome> + Send>(
     }
 }
 
-async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outcome {
+async fn run(
+    id: u64,
+    conn: ConnId,
+    link: Option<Link<'_>>,
+    request: Request,
+    ctx: &RpcContext,
+) -> Outcome {
     let reply = |result| Outcome::Reply(Reply { id, result });
     match request {
         Request::Ping => reply(Ok(Response::Pong)),
@@ -253,7 +259,15 @@ async fn run(id: u64, conn: ConnId, request: Request, ctx: &RpcContext) -> Outco
             selector,
             action,
             params,
-        } => trigger(id, selector, action, params, ctx).await,
+        } => {
+            // Named only from a dog's own connection: the shepherd vouches
+            // for the name, since the connection is the dog's identity.
+            let caller = match link {
+                Some(Link::Dog(dog)) => Some(dog.to_owned()),
+                Some(Link::Launch { .. }) | None => None,
+            };
+            trigger(id, selector, action, params, caller, ctx).await
+        }
         Request::Signal {
             selector,
             signal,

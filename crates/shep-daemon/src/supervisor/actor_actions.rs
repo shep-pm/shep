@@ -20,6 +20,7 @@ impl<R: ProcessRunner> Actor<R> {
         selector: &ProcessSelector,
         action: String,
         params: Option<String>,
+        caller: Option<String>,
         reply: oneshot::Sender<Result<Vec<ActionReply>, SupervisorError>>,
     ) {
         // `matching_ids` answers in id order, so delivery is not arbitrary;
@@ -61,8 +62,12 @@ impl<R: ProcessRunner> Actor<R> {
                 refused.push(ActionReply { id, name, outcome });
                 continue;
             };
-            let answer =
-                self.arm_action(id, to_child, action.clone(), params.clone(), action_timeout);
+            let answer = self.arm_action(
+                id,
+                to_child,
+                (action.clone(), params.clone(), caller.clone()),
+                action_timeout,
+            );
             waits.push((id, name, answer));
         }
 
@@ -243,8 +248,7 @@ impl<R: ProcessRunner> Actor<R> {
         &mut self,
         id: u32,
         to_child: mpsc::Sender<ShepherdMessage>,
-        action: String,
-        params: Option<String>,
+        (action, params, caller): (String, Option<String>, Option<String>),
         timeout: Duration,
     ) -> oneshot::Receiver<ActionOutcome> {
         let (reply, answer) = oneshot::channel();
@@ -256,6 +260,7 @@ impl<R: ProcessRunner> Actor<R> {
             ShepherdMessage::Action {
                 name: action.clone(),
                 params,
+                caller,
                 id: stamp,
             },
             to_child,

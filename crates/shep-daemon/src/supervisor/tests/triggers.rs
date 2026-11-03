@@ -94,6 +94,7 @@ fn trigger_flock(
         selector,
         action: action.to_string(),
         params: None,
+        caller: None,
         reply,
     });
     answer

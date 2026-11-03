@@ -144,7 +144,11 @@ export const BUDGETS: Record<string, number> = {
   // sheep's own table" now teaches one type, `#[shep(dog_wide)]`, `serves`
   // and `sheep_settings`, says it skips `<dog>.defaults`, and keeps the older
   // two-type form in a line. The ceiling sits about 3 words above the page.
-  "writing-a-dog": 5575,
+  //
+  // Raised from 5575 on #1431 for `Probe::action` and `on_action_with_caller`:
+  // an author has to know where a dog declares its actions and how a handler
+  // learns which dog called. The ceiling sits about 5 words above the page.
+  "writing-a-dog": 5640,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -379,7 +383,11 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 2280 for `lamb-signalled` (#354): a message an app author
   // receives and has to be told about. One table row.
-  "shepherd-channel": 2288,
+  //
+  // Raised from 2288 on #1431 for the `caller` field of an action message and
+  // the pointer to `shep trigger <dog>`: a dog author reading a handler's input
+  // has to know both. The ceiling sits about 5 words above the page.
+  "shepherd-channel": 2330,
   "from-pm2": 1720,
   "boot-order": 1670,
   // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep

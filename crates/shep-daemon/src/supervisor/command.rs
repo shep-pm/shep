@@ -418,6 +418,9 @@ pub(crate) enum Command {
         action: String,
         /// Argument text for the action, passed to the app verbatim.
         params: Option<String>,
+        /// The dog the trigger arrived from, named to the app; `None` from
+        /// the control socket.
+        caller: Option<String>,
         /// Answers once every matched sheep has answered, timed out or been
         /// refused, off a task of its own (see [`Actor::begin_action`]).
         reply: oneshot::Sender<Result<Vec<ActionReply>, SupervisorError>>,

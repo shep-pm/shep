@@ -256,10 +256,11 @@ pub struct StockArgs {
 /// because this reaches a running app and the operator must name it.
 #[derive(Debug, clap::Args)]
 pub struct TriggerArgs {
-    /// name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`
+    /// name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`. With no
+    /// action, the name of a dog, whose declared actions are listed
     pub selector: String,
     /// Action name — free-form, defined by the app
-    pub action: String,
+    pub action: Option<String>,
     /// Argument text for the action, passed through to the app verbatim
     pub params: Option<String>,
 }
@@ -578,6 +579,10 @@ mod tests {
         assert!(
             Cli::try_parse_from(["shep", "trigger"]).is_err(),
             "`shep trigger` with neither selector nor action must be a usage error"
+        );
+        assert!(
+            Cli::try_parse_from(["shep", "trigger", "otel"]).is_ok(),
+            "`shep trigger otel` (a dog, no action) must parse and list the dog's actions"
         );
         assert!(
             Cli::try_parse_from(["shep", "trigger", "web", "reload-config"]).is_ok(),

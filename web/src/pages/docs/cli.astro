@@ -162,9 +162,8 @@ if (
 
     <Callout variant="note">
       <code>--home</code>, <code>--format table|json</code> and <code>-q</code>/<code>--quiet</code>{" "}
-      work on every verb on this page. They're global flags, flattened onto each
-      subcommand rather than repeated in the prose below. See the full dump under
-      "Every verb, at a glance" for exactly how they render on each one.{" "}
+      work on every verb on this page. A verb's help names the global flags it
+      takes; <a href="#global-flags">Global flags</a> has the full text.{" "}
       <code>--home</code> takes an absolute path, and so does{" "}
       <code>$SHEP_HOME</code>. A relative one would mean a different flock from
       every directory, so shep refuses it and prints the absolute form instead.
@@ -234,6 +233,10 @@ if (
       full command list, the global options, and their defaults.
     </p>
     <CodeBlock label={`$ shep --help`}>{cliReference.topLevelHelp}</CodeBlock>
+
+    <h2 id="global-flags">Global flags</h2>
+    <p>The exact output of <code>shep help flags</code>.</p>
+    <CodeBlock label={`$ shep help flags`}>{cliReference.globalFlagsHelp}</CodeBlock>
 
     {
       groups.map((group) => (

@@ -22,6 +22,24 @@ Help             welcome init help completions style
 Aliases          flock: list, ls   bleats: logs   lookout: dash   stock: scale   whisper: sendline
 Upgrading        cargo install shep replaces the binary, not the running shepherd: shep daemon reload
 
+Global flags     valid on every verb; shep help flags has the long text
+  --format <FORMAT>  table or json
+  -q, --quiet        suppress non-essential output
+  --style <STYLE>    full, plain or bare
+  --host <DEST>      reach another host's shepherd over ssh
+  --home <HOME>      talk to a different shepherd
+
+Options
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Run `shep help <command>` for one command, or `shep welcome` for the tour.
+@@FLAGS@@
+Global flags, valid on every verb:
+
       --format <FORMAT>
           Output format
 
@@ -52,12 +70,11 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
       --host <DEST>
           Reach another host's shepherd over ssh
           
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
+          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. A verb
+          that takes it names it in the global flags line at the foot of its help; any other verb
+          refuses it rather than act on this machine. `describe` shows no secrets over it, and
+          `enable` takes no hidden `--exec` form over it. `--home` still names this machine's home,
+          never the host's.
 
       --home <HOME>
           Talk to a different shepherd
@@ -67,14 +84,6 @@ Upgrading        cargo install shep replaces the binary, not the running shepher
           flock from every directory.
           
           [env: SHEP_HOME=]
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Run `shep help <command>` for one command, or `shep welcome` for the tour.
 @@VERB:start@@
 Start a sheep from a script, a Flockfile, or stdin
 
@@ -118,51 +127,14 @@ Arguments:
           since a name is unique to one sheep.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --name <NAME>
           Name for this sheep (script form only)
 
       --fold <FOLD>
           Fold to place this sheep in
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --cwd <CWD>
           Working directory to run in (default: where you ran `shep start`)
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
 
       --interpreter <INTERPRETER>
           Interpreter to run the script with, overriding both shep.toml's extension mapping and a
@@ -181,15 +153,6 @@ Options:
           running it through node, which is arbitrary code execution, so it never happens because a
           file merely has that extension. Without this flag `shep start server.js` starts
           `server.js` as a script, which is what it has always meant.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
       --no-log-timestamps
           Write this sheep's log lines without the timestamp shep puts in front of each one.
@@ -216,8 +179,7 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:add@@
 Register a sheep without starting it.
 
@@ -271,51 +233,14 @@ Arguments:
           since a name is unique to one sheep.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --name <NAME>
           Name for this sheep (script form only)
 
       --fold <FOLD>
           Fold to place this sheep in
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --cwd <CWD>
           Working directory to run in (default: where you ran `shep start`)
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
 
       --interpreter <INTERPRETER>
           Interpreter to run the script with, overriding both shep.toml's extension mapping and a
@@ -334,15 +259,6 @@ Options:
           running it through node, which is arbitrary code execution, so it never happens because a
           file merely has that extension. Without this flag `shep start server.js` starts
           `server.js` as a script, which is what it has always meant.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
       --no-log-timestamps
           Write this sheep's log lines without the timestamp shep puts in front of each one.
@@ -369,8 +285,7 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:serve@@
 Serve a directory over plain HTTP, as a managed sheep.
 
@@ -397,15 +312,6 @@ Arguments:
           Directory to serve
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --port <PORT>
           Port to listen on
           
@@ -417,48 +323,11 @@ Options:
           
           [default: 127.0.0.1]
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --name <NAME>
           Name for this sheep (default: the directory's own name)
 
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
       --fold <FOLD>
           Fold to place this sheep in
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
       --spa
           Serve index.html for paths that do not exist, for a single-page app. Only for requests
@@ -490,8 +359,7 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:stop@@
 Stop one or more sheep
 
@@ -510,57 +378,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:restart@@
 Restart one or more sheep.
 
@@ -600,57 +421,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:reset@@
 Zero the restart counters of one or more sheep.
 
@@ -672,57 +446,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:reload@@
 Reload one or more sheep, one instance at a time.
 
@@ -785,57 +512,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:delete@@
 Delete one or more sheep, or one or more dogs, from the flock, for good.
 
@@ -871,57 +551,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:stock@@
 Set how many instances one app runs — the stocking rate.
 
@@ -948,57 +581,10 @@ Arguments:
           How many instances it runs afterwards
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:flock@@
 List the flock.
 
@@ -1027,15 +613,6 @@ Options:
           moments after it. Needs a terminal too, and refuses `--format json`, since neither has
           anywhere to put a redraw.
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --interval <SECONDS>
           Seconds between redraws, with `--follow`
           
@@ -1045,48 +622,10 @@ Options:
           
           [default: 1]
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:dogs@@
 List the dogs, and nothing else. `--available` lists the community index of dogs you could adopt
 instead of the ones this shepherd is running. `grant` and `revoke` change one permission of a dog
@@ -1109,57 +648,10 @@ Options:
           List the dogs published in the community index instead of the ones this shepherd is
           running. Needs no shepherd
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:dogs grant@@
 Grant a dog one permission it declared.
 
@@ -1181,57 +673,10 @@ Arguments:
           `secrets.read:staging`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:dogs revoke@@
 Revoke one permission from a dog.
 
@@ -1249,57 +694,10 @@ Arguments:
           `secrets.read:staging`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:enable@@
 Turn a sheep or a dog back on. A sheep named here has its disabled mark cleared and is started; a
 dog is written into `[daemon] enabled_dogs` in `shep.toml` and started now if a shepherd is running.
@@ -1320,61 +718,14 @@ Arguments:
           config key in `dogs.toml`)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --yes
           Grant a dog everything it declares without asking; a dog's first enable asks, and with no
           terminal and no `--yes` refuses
 
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:disable@@
 Stop a sheep and refuse to start it again until `shep enable`, or turn a dog off. A dog is removed
 from `[daemon] enabled_dogs` and stopped now if a shepherd is running, and `shep flock` still lists
@@ -1395,57 +746,10 @@ Arguments:
           config key in `dogs.toml`)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:adopt@@
 Vet a binary shep has never seen and register it as a dog: writes `[daemon] adopted_dogs` and
 `[daemon] enabled_dogs` in `shep.toml`, and starts it now if a shepherd is running.
@@ -1471,65 +775,18 @@ Arguments:
           first hit wins
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --name <NAME>
           The dog's name, the `[<name>]` config key in `dogs.toml`. Defaults to the binary's file
           stem with a leading `shep-` stripped
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
 
       --yes
           Grant the dog everything it declares without asking. With no terminal and no `--yes`,
           adopt refuses rather than granting
 
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:describe@@
 Describe one sheep in detail.
 
@@ -1557,57 +814,10 @@ Arguments:
           is the sheep called `web.1`.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:trigger@@
 Send a named action to matched sheep and report what each app answers.
 
@@ -1619,70 +829,24 @@ reply, naming the same fields.
 `action` and any `params` are free-form and unvalidated here — sent to the app verbatim, on its own
 shepherd-channel wire, for the app itself to recognize or refuse.
 
-Usage: shep trigger [OPTIONS] <SELECTOR> <ACTION> [PARAMS]
+Usage: shep trigger [OPTIONS] <SELECTOR> [ACTION] [PARAMS]
 
 Arguments:
   <SELECTOR>
-          name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`
+          name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`. With no action, the name of a
+          dog, whose declared actions are listed
 
-  <ACTION>
+  [ACTION]
           Action name — free-form, defined by the app
 
   [PARAMS]
           Argument text for the action, passed through to the app verbatim
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:signal@@
 Send a unix signal to matched sheep.
 
@@ -1707,61 +871,14 @@ Arguments:
           Signal name, e.g. `SIGHUP` or `hup`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --lamb <PID>
           Signal this lamb of the sheep instead of the sheep itself. The selector must match exactly
           one sheep, and the pid one of its lambs
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whisper@@
 Write one line to matched sheep's stdin.
 
@@ -1786,57 +903,10 @@ Arguments:
           The line, without a trailing newline — shep adds exactly one
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:fold@@
 List one fold
 
@@ -1847,57 +917,10 @@ Arguments:
           The fold to list
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:bleats@@
 Show or follow bleats (log output) for one or more sheep.
 
@@ -1913,15 +936,6 @@ Arguments:
           [default: all]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --no-follow
           Print the tail of each sheep's log file and exit, instead of following
 
@@ -1939,54 +953,16 @@ Options:
           
           [default: 15]
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --err
           Only stderr
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
 
       --out
           Only stdout
 
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:lookout@@
 Watch the flock on a live dashboard.
 
@@ -2027,15 +1003,6 @@ Arguments:
           one.
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --read-only
           Close the dashboard's action gate. Actions are permitted by default.
           
@@ -2047,48 +1014,10 @@ Options:
           runs as you, so anything it could do you can already do with `shep stop`. Can also be
           closed with `shep kv set lookout.allow_control false`.
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whistle@@
 Serve the MCP interface on stdin/stdout for an AI agent.
 
@@ -2107,57 +1036,10 @@ so a flag would open nothing those don't already.
 Usage: shep whistle [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:reopen@@
 Reopen log files after an external rotator has renamed them
 
@@ -2170,57 +1052,10 @@ Arguments:
           [default: all]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:flush@@
 Empty the log files of one or more sheep, or the shepherd's own
 
@@ -2234,57 +1069,10 @@ Options:
       --daemon
           Empty the shepherd's own logs instead of any sheep's
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:barks@@
 Show the alert history: `barks.jsonl`, newest last.
 
@@ -2295,60 +1083,13 @@ Same precedent as `shep flush --daemon`, which also works on files rather than t
 Usage: shep barks [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --tail <TAIL>
           Show only the last N barks
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv@@
 Read and write the key/value store: `shep kv get`, `shep kv set`, `shep kv unset`.
 
@@ -2368,57 +1109,10 @@ Commands:
   help   Print this message or the help of the given subcommand(s)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv get@@
 Read one value from the store, or list the whole store with no key
 
@@ -2429,57 +1123,10 @@ Arguments:
           The key; omit to list every key
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv set@@
 Store a value in the shepherd's key/value store.
 
@@ -2500,57 +1147,10 @@ Arguments:
           The value
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv unset@@
 Remove one key from the store, or every key with --all
 
@@ -2564,57 +1164,10 @@ Options:
       --all
           Remove every key
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret@@
 Store the values a Flockfile refers to and never carries.
 
@@ -2641,57 +1194,10 @@ Commands:
   help   Print this message or the help of the given subcommand(s)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret set@@
 Store a value
 
@@ -2711,60 +1217,13 @@ Options:
       --env <ENV>
           Which environment; omit for every environment
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --stdin
           Read the value from stdin; the positional form is visible in `ps` and in shell history
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret get@@
 Print a value back, if `[secrets] allow_read` is on
 
@@ -2779,57 +1238,10 @@ Options:
           Which environment; omit to use `[daemon] environment`'s default, which an app's own
           environment may override
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret unset@@
 Remove a value
 
@@ -2843,114 +1255,20 @@ Options:
       --env <ENV>
           Which environment; omit for the every-environment slot
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret list@@
 List keys and the environments each has a value for
 
 Usage: shep secret list [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:host@@
 Keep the list of machines whose shepherds this CLI reaches.
 
@@ -2967,57 +1285,10 @@ Commands:
   help    Print this message or the help of the given subcommand(s)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:host add@@
 Add a machine to the list
 
@@ -3039,57 +1310,10 @@ Arguments:
           The ssh destination, such as `amp2` or `deploy@build.example.com`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:host remove@@
 Remove a machine from the list
 
@@ -3102,57 +1326,10 @@ Arguments:
           The ssh destination, exactly as listed
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:host list@@
 List the machines, in the order `shep.toml` holds them
 
@@ -3161,57 +1338,10 @@ Reads `shep.toml` only and never connects to a machine.
 Usage: shep host list [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:copy@@
 Copy one setting, one dog's table, or a sheep's env from one sheep onto another.
 
@@ -3258,69 +1388,22 @@ Arguments:
           The sheep and the same path to copy onto, such as `api.restart_delay` or `api.env`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --replace
           Make the target exactly the source at that path, instead of merging into it
 
       --except <KEY>
           Leave this key out, named under the path you are copying; repeat it for more than one
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --dry-run
           Print what would change and write nothing
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
 
       --yes
           Write without asking
 
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:get@@
 Print a sheep's or a dog's settings as TOML.
 
@@ -3352,57 +1435,10 @@ Arguments:
           `api.dogs.kelpie.git`, or `kelpie.worker`
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:set@@
 Change one setting of a sheep or a dog: `shep set <address> <value>`.
 
@@ -3439,60 +1475,13 @@ Options:
       --dry-run
           Print what would change and write nothing
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --yes
           Write without asking
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:unset@@
 Drop an override, or remove a dog's key, so what was there before applies.
 
@@ -3520,174 +1509,33 @@ Options:
       --dry-run
           Print what would change and write nothing
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --yes
           Write without asking
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:ping@@
 Check whether the shepherd answers
 
 Usage: shep ping [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kill@@
 Shut the shepherd down
 
 Usage: shep kill [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:save@@
 Write the muster roll now and say where it landed.
 
@@ -3697,114 +1545,20 @@ reboot rather than trusting that it is.
 Usage: shep save [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:muster@@
 Assemble the flock from the muster roll, starting the shepherd first if none is running
 
 Usage: shep muster [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:runtime@@
 Boot a shepherd in this process, run one Flockfile's flock in the foreground, and exit once nothing
 is left online.
@@ -3831,57 +1585,10 @@ Arguments:
           Flockfile to run (default: discovered in the current directory)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:dev@@
 Run one Flockfile's flock in an isolated, throwaway foreground session: `$SHEP_DEV_HOME` (default
 `~/.shep-dev`), forced `watch = true` on every app, and a full stop-and-delete teardown when it
@@ -3902,60 +1609,13 @@ Arguments:
           Script or Flockfile to run (default: discovered in this directory)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --name <NAME>
           Name for this sheep (script form only)
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:import@@
 Read somebody else's config into shep: a pm2 dump, or a `.env`
 
@@ -3967,57 +1627,10 @@ Commands:
   help  Print this message or the help of the given subcommand(s)
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:import pm2@@
 Write a Flockfile from a pm2 dump. Starts nothing.
 
@@ -4030,69 +1643,22 @@ of the Flockfile, for the operator to decide.
 Usage: shep import pm2 [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --from <FROM>
           Read this pm2 dump instead of `~/.pm2/dump.pm2`
 
       --out <OUT>
           Write the Flockfile here instead of `./Flockfile.toml`
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --dry-run
           Print the Flockfile that would be written, and write nothing
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
 
       --force
           Overwrite an existing Flockfile
 
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:import env@@
 Read a `.env` into the secret store and one sheep's own env.
 
@@ -4123,22 +1689,6 @@ Options:
       --app <APP>
           The sheep whose env these keys belong to
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
       --secret <SECRET>
           Store this key's value as a secret, and reference it from the env.
           
@@ -4150,17 +1700,6 @@ Options:
           
           Same grammar as `--secret`, and the same refusal.
 
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
       --env <ENV>
           Which environment's slot the secrets go in.
           
@@ -4168,27 +1707,8 @@ Options:
           environment` when it has none, and so is never the `all` slot that every environment
           reads. Naming `all` here writes that slot, as `shep secret set --env all` does.
 
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
       --dry-run
           Print what would be written, and write nothing
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
       --force
           Overwrite keys that already hold a different value
@@ -4196,8 +1716,7 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:startup@@
 Install an init unit so the shepherd starts at boot.
 
@@ -4223,15 +1742,6 @@ the commands that hand the flock over.
 Usage: shep startup [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --user <USER>
           The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
 
@@ -4249,52 +1759,14 @@ Options:
           - freebsd-rc: FreeBSD: an `/etc/rc.subr` script under `/usr/local/etc/rc.d`
           - openbsd-rc: OpenBSD: an `/etc/rc.d/rc.subr` script under `/etc/rc.d`
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
 
 On Windows this registers a per-user Scheduled Task with a logon trigger instead: the flock comes
 back at sign-in, not at boot. It runs as you, stores no password and needs no elevation. `--user`
 naming anyone else, and `--init`, are refused there.
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:unstartup@@
 Disable and remove whichever unit `startup` installed — systemd, openrc, launchd, or a BSD `rc.d`
 script.
@@ -4305,15 +1777,6 @@ non-zero. A unit that is not there is reported absent rather than failing.
 Usage: shep unstartup [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --user <USER>
           The user the unit runs the shepherd as (default: $SUDO_USER, else the invoking user)
 
@@ -4331,51 +1794,13 @@ Options:
           - freebsd-rc: FreeBSD: an `/etc/rc.subr` script under `/usr/local/etc/rc.d`
           - openbsd-rc: OpenBSD: an `/etc/rc.d/rc.subr` script under `/etc/rc.d`
 
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
-
 On Windows this removes the logon task. A running shepherd keeps running; `shep kill` stops it.
 `--user` naming anyone else, and `--init`, are refused there.
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:completions@@
 Print a shell completion script.
 
@@ -4390,57 +1815,10 @@ Arguments:
           [possible values: bash, elvish, fish, powershell, zsh]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:init@@
 Write a commented Flockfile to start from
 
@@ -4455,60 +1833,13 @@ Options:
       --all
           Show every option the grammar has, not just the common ones
 
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
       --force
           Overwrite the Flockfile that is already here, keeping its own format
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:style@@
 Show or set how much shep dresses up its output
 
@@ -4530,57 +1861,10 @@ Arguments:
           - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:welcome@@
 Print the welcome: the sheep, and the five commands worth knowing.
 
@@ -4590,54 +1874,7 @@ than a diagnostic, so it goes to stdout.
 Usage: shep welcome [OPTIONS]
 
 Options:
-      --format <FORMAT>
-          Output format
-
-          Possible values:
-          - table: Human-readable columns (the default)
-          - json:  A versioned JSON envelope, one object per invocation
-          
-          [default: table]
-
-  -q, --quiet
-          Suppress non-essential output
-          
-          Currently narrows `bleats`' own notices (a dropped-events count, a daemon-shutdown notice,
-          ...): diagnostics distinct from a sheep's own line or a real error, both of which still
-          print regardless.
-
-      --style <STYLE>
-          How much this invocation dresses up its output: `full`, `plain`, or `bare`
-          
-          Wins over `$SHEP_STYLE` and `shep.toml`'s `[style] level`. Omit to let those decide; `shep
-          style` reports which one answered.
-
-          Possible values:
-          - full:  Sheep, boxes and colour
-          - plain: Boxes and colour, no sheep
-          - bare:  Exactly what shep printed before any of this, and exactly what a pipe gets
-
-      --host <DEST>
-          Reach another host's shepherd over ssh
-          
-          DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from ~/.ssh/config. `flock`,
-          `describe`, `fold`, `bleats`, `stop`, `restart`, `reload`, `delete`, `stock`, `enable`,
-          `disable`, `signal`, `whisper`, `trigger` and `lookout` take it; any other verb refuses it
-          rather than act on this machine. `describe` shows no secrets over it, and `enable` takes
-          no hidden `--exec` form over it. `--home` still names this machine's home, never the
-          host's.
-
-      --home <HOME>
-          Talk to a different shepherd
-          
-          Mostly plumbing: `shep dev` sessions, a system-wide flock, tests. You almost certainly
-          want the default, ~/.shep. Must be an absolute path: a relative one would name a different
-          flock from every directory.
-          
-          [env: SHEP_HOME=]
-
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+Global flags: --format, --quiet, --style, --home. See shep help flags

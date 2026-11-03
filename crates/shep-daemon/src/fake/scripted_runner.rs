@@ -845,6 +845,7 @@ mod tests {
         let sent = ShepherdMessage::Action {
             name: "gc".to_string(),
             params: None,
+            caller: None,
             id: 0,
         };
         io.to_child.send(sent.clone()).await.unwrap();
