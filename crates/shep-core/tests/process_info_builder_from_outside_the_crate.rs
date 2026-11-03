@@ -25,7 +25,10 @@ fn the_builder_reaches_every_field_from_outside_the_crate() {
         .err_file(Some("e".to_string()))
         .cpu_percent(Some(1.0))
         .memory_bytes(Some(1))
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .lambs(Some(vec![Lamb::new(4243, "node")]))
         .last_exit(Some(ExitInfo {
             code: Some(1),
@@ -46,7 +49,13 @@ fn the_builder_reaches_every_field_from_outside_the_crate() {
     assert_eq!(info.err_file.as_deref(), Some("e"));
     assert_eq!(info.cpu_percent, Some(1.0));
     assert_eq!(info.memory_bytes, Some(1));
-    assert_eq!(info.dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        info.dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
     assert_eq!(info.lambs, Some(vec![Lamb::new(4243, "node")]));
     assert_eq!(
         info.last_exit,

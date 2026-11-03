@@ -5,11 +5,10 @@ use std::path::Path;
 
 use shep_client::Client;
 use shep_core::paths::ShepPaths;
-use shep_core::permissions::Grants;
 use shep_core::protocol::{DogSource, Request, Response};
 
 use crate::commands::rpc::{client_error, unexpected_response};
-use crate::commands::shep_toml::{ShepToml, ShepTomlError};
+use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
@@ -76,15 +75,24 @@ pub(crate) fn enable_in_config(path: &Path, name: &str) -> Result<DogEntry, Enab
 fn enable_granting(
     path: &Path,
     name: &str,
-    grants: Option<&Grants>,
+    record: Option<&GrantRecord>,
 ) -> Result<DogEntry, EnableRefusal> {
     ShepToml::try_edit(path, |cfg| {
-        // `grants` answers a question asked against a read taken before this
-        // write. A grant another shep wrote since stands.
-        if let Some(grants) = grants
-            && cfg.granted(name)?.is_none()
-        {
-            cfg.set_granted(name, grants)?;
+        // `record` answers a question asked against a read taken before this
+        // write. A grant another shep wrote since stands, and the kinds the
+        // answer carries are merged into it, not dropped.
+        if let Some(record) = record {
+            match cfg.grant_record(name)? {
+                None => cfg.set_grant_record(name, record)?,
+                Some(held) if held.events != record.events => cfg.set_grant_record(
+                    name,
+                    &GrantRecord {
+                        events: record.events.clone(),
+                        ..held
+                    },
+                )?,
+                Some(_) => {}
+            }
         }
         let entry = dog_entry(cfg, name, cfg.granted(name)?);
         if matches!(entry.source, DogSource::BuiltIn { .. })
@@ -151,7 +159,7 @@ pub(super) async fn enable_asking(
 /// one an operator declined at `shep adopt`, hand-wrote into
 /// `[daemon.adopted_dogs]`, or a built-in nobody has enabled.
 ///
-/// `Ok` holds the grants to record with the enable; `Ok(None)` is nothing to
+/// `Ok` holds the record to write with the enable; `Ok(None)` is nothing to
 /// record, either because no question was due or because the dog is
 /// undeclared and keeps full access.
 ///
@@ -163,7 +171,7 @@ fn ask_before_first_enable(
     name: &str,
     yes: bool,
     input: &mut Input,
-) -> Result<Option<Grants>, ExitCode> {
+) -> Result<Option<GrantRecord>, ExitCode> {
     let cfg =
         ShepToml::read_only(&paths.daemon_config).map_err(|err| fail_config(streams, &err))?;
     let binary = cfg.adopted_dog_path(name);
@@ -185,7 +193,9 @@ fn ask_before_first_enable(
     let reviewed =
         review(manifest.as_ref()).map_err(|refusal| refusal.report(streams, name, "enabled"))?;
     match consent_from(streams, name, "enable", &reviewed, None, yes, input)? {
-        Verdict::Grant(grants) => Ok(grants),
+        Verdict::Grant(grants) => {
+            Ok(grants.map(|grants| GrantRecord::reviewed(grants).with_events(reviewed.events())))
+        }
         Verdict::Declined => {
             let source = dog_source(&cfg, name, None);
             Err(emit_dog_action(
@@ -339,9 +349,42 @@ mod tests {
     /// `shep.toml` says about one.
     fn built_in() -> DogEntry {
         DogEntry {
-            source: DogSource::BuiltIn { grants: None },
+            source: DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             env: BTreeMap::default(),
         }
+    }
+
+    /// An answer given while another shep wrote a grant: that grant stands,
+    /// and the kinds the answer carries are merged in rather than dropped.
+    #[test]
+    fn a_grant_written_while_the_prompt_was_open_stands_and_takes_the_event_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shep.toml");
+        std::fs::write(
+            &path,
+            "[daemon.adopted_dogs]\notel = \"/bin/otel\"\n\n\
+             [daemon.dog_grants.otel]\ngranted = [\"flock.read\"]\n",
+        )
+        .unwrap();
+        let asked =
+            GrantRecord::reviewed(shep_core::permissions::Grants::parse(["logs.read"]).unwrap())
+                .with_events(vec!["exported".to_string()]);
+
+        enable_granting(&path, "otel", Some(&asked)).unwrap();
+
+        let held = ShepToml::read_only(&path)
+            .unwrap()
+            .grant_record("otel")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            held.granted,
+            shep_core::permissions::Grants::parse(["flock.read"]).unwrap()
+        );
+        assert_eq!(held.events, ["exported".to_string()]);
     }
 
     // The fake shepherd's socket needs wall-clock I/O deadlines.
@@ -527,7 +570,10 @@ mod tests {
             Request::EnableDog {
                 name: "metrics".to_string(),
                 env: BTreeMap::default(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new()
+                },
             }
         );
     }
@@ -574,6 +620,7 @@ mod tests {
                         grants: None,
                         path: "/usr/local/bin/shep-otel".to_string(),
                         channel,
+                        events: Vec::new(),
                     },
                 }
             );

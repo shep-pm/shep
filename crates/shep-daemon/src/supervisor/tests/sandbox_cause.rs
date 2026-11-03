@@ -169,6 +169,7 @@ fn adopted(path: &str) -> DogSource {
         path: path.to_owned(),
         channel: false,
         grants: None,
+        events: Vec::new(),
     }
 }
 

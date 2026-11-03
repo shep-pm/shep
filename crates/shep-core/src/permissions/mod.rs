@@ -206,9 +206,10 @@ impl Grants {
     /// Whether a subscription to the topic glob `pattern` stays inside a
     /// granted `events:` prefix.
     ///
-    /// Judged on the pattern's literal head, the part before its first glob
-    /// character: `process.*` can only reach topics beginning `process.`, so
-    /// a grant of `process.` covers it and a grant of `process.exit` does not.
+    /// Judged on the pattern's literal head, before its first glob character:
+    /// `process.*` is covered by a grant of `process.`, not `process.exit`.
+    /// A prefix beginning `dog.` names one dog: `dog.otel` covers `dog.otel.`
+    /// and not `dog.otel-2.x`.
     #[must_use]
     pub fn allows_topic(&self, pattern: &str) -> bool {
         let head = pattern
@@ -217,6 +218,22 @@ impl Grants {
         self.0
             .iter()
             .filter_map(|name| name.strip_prefix("events:"))
-            .any(|prefix| head.starts_with(prefix))
+            .any(|prefix| covers(prefix, head))
+    }
+}
+
+/// Whether the granted `prefix` covers topics beginning `head`.
+///
+/// A bare `dog.<name>` is held to the dog's own segment. Anything longer, a
+/// kind or part of one, is a plain prefix.
+fn covers(prefix: &str, head: &str) -> bool {
+    let names_a_dog_alone = prefix
+        .strip_prefix("dog.")
+        .is_some_and(|name| !name.is_empty() && !name.contains('.'));
+    if names_a_dog_alone {
+        head.strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('.'))
+    } else {
+        head.starts_with(prefix)
     }
 }

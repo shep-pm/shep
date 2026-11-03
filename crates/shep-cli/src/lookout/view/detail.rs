@@ -575,6 +575,7 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
                 channel: false,
+                events: Vec::new(),
             }))
             .handshook(Some(false))
             .build();

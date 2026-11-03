@@ -652,6 +652,7 @@ mod tests {
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: false,
             grants: None,
+            events: Vec::new(),
         }
     }
 
@@ -801,7 +802,10 @@ mod tests {
         let flock = Response::Flock(vec![a_dog(
             3,
             "metrics",
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         )]);
 
         let (code, err, sent) = delete_over_a_host(flock, &["metrics"]).await;

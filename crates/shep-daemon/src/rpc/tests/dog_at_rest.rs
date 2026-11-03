@@ -6,7 +6,10 @@ use std::collections::BTreeMap;
 fn built_in(name: &str) -> crate::dogs::DogSpec {
     crate::dogs::DogSpec {
         name: name.to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     }
 }

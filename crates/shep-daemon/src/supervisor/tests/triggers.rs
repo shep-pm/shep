@@ -77,6 +77,7 @@ fn register_dog(
         grants: None,
         path: "./dog".to_string(),
         channel,
+        events: Vec::new(),
     });
     actor.sheep.insert(id, SheepSlot::new(entry));
     id

@@ -19,7 +19,10 @@ fn emit_dog_action_wraps_the_row_in_the_verb_s_envelope_under_json() {
         &mut streams,
         "disable",
         "bark",
-        DogSource::BuiltIn { grants: None },
+        DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         DogActionStatus::Acted("stopped"),
     );
 

@@ -20,6 +20,7 @@ use crate::supervisor::{BatchPolicy, ConnId, SheepDogRead, SupervisorError};
 
 use super::batch::{duplicate_name, persists, staged_plan};
 use super::context::{Outcome, RpcContext, budget};
+use super::dog_events::publish_dog_event;
 use super::dog_secrets::{resolved_section, resolved_sheep_table};
 #[cfg(feature = "vcs")]
 use super::enrichment::with_vcs;
@@ -255,6 +256,9 @@ async fn run(
             stream,
             lines,
         } => reply(super::log_tail::answer(sheep, stream, lines, ctx).await),
+        Request::PublishEvent { event, payload } => {
+            reply(publish_dog_event(link, &event, payload, ctx))
+        }
         Request::Trigger {
             selector,
             action,
@@ -434,6 +438,7 @@ async fn run(
                     .collect(),
             };
             let grants = spec.source.grants().cloned();
+            let events = spec.source.events().to_vec();
             match crate::dogs::dog_app(&spec, &ctx.paths) {
                 Err(err) => reply(Err(invalid_config(err))),
                 Ok(app) => {
@@ -445,7 +450,7 @@ async fn run(
                     // answers. The supervisor starts the dog whether or not
                     // this dispatch outlives its deadline, and a dog with no
                     // entry is undeclared, with full access.
-                    let held = ctx.known_dogs.replace(&spec.name, grants);
+                    let held = ctx.known_dogs.replace(&spec.name, grants, events);
                     match ctx.supervisor.start_dog(app, spec.source).await {
                         // `start_dog` is idempotent by name for anything not
                         // at rest, so what comes back is whatever already

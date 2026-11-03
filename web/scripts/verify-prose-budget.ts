@@ -162,7 +162,12 @@ export const BUDGETS: Record<string, number> = {
   // updates a row and never adds one, so an author has to know to add it by
   // hand and that shep builds from source until hashes arrive. The ceiling
   // sits about 5 words above the page.
-  "writing-a-dog": 5918,
+  //
+  // Raised on #1432 for "Publishing events": an author has to know where a
+  // dog declares an event kind, how it publishes one, what a subscriber
+  // needs, and that a dotted dog name cannot publish. The ceiling sits about
+  // 4 words above the page.
+  "writing-a-dog": 5982,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

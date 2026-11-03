@@ -492,7 +492,10 @@ pub(super) mod tests {
     fn a_dog_that_is_down_reports_zero_rather_than_nothing() {
         let mut dead = sample_info("bark");
         dead.status = ProcStatus::Errored;
-        dead.dog = Some(DogSource::BuiltIn { grants: None });
+        dead.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         let text = render(&Reading {
             flock: vec![dead],
             ..reading()
@@ -510,10 +513,16 @@ pub(super) mod tests {
     fn a_disabled_dog_exports_no_series_at_all() {
         let mut parked = sample_info("bark");
         parked.status = ProcStatus::Stopped;
-        parked.dog = Some(DogSource::BuiltIn { grants: None });
+        parked.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         parked.disabled = Some(true);
         let mut running = sample_info("metrics");
-        running.dog = Some(DogSource::BuiltIn { grants: None });
+        running.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         let text = render(&Reading {
             flock: vec![parked, running],
             ..reading()
@@ -535,6 +544,7 @@ pub(super) mod tests {
             grants: None,
             path: "/opt/bin/shep-discord".to_string(),
             channel: false,
+            events: Vec::new(),
         });
         let text = render(&Reading {
             flock: vec![dog],
@@ -563,7 +573,10 @@ pub(super) mod tests {
     #[test]
     fn every_metric_name_carries_one_help_one_type_and_contiguous_series() {
         let mut dog = sample_info("bark");
-        dog.dog = Some(DogSource::BuiltIn { grants: None });
+        dog.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         let mut idle = sample_info("worker");
         idle.cpu_percent = None;
         idle.memory_bytes = None;
@@ -831,7 +844,10 @@ pub(super) mod tests {
     /// it. `pub(super)`: the OTLP encoder's drift guard uses it too.
     pub(in crate::dog::metrics) fn golden_reading() -> Reading {
         let mut dog = sample_info("bark");
-        dog.dog = Some(DogSource::BuiltIn { grants: None });
+        dog.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         let mut odd = sample_info("we\"b\\x\n");
         odd.status = ProcStatus::WaitingRestart;
         let mut idle = sample_info("worker");

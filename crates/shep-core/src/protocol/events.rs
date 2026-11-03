@@ -131,6 +131,20 @@ pub enum BusEvent {
         /// The dog whose section changed.
         dog: String,
     },
+    /// One event a dog published about itself. Published under
+    /// `dog.<dog>.<kind>`, so a subscriber granted `events:dog.<dog>` hears
+    /// that dog and no other.
+    ///
+    /// `kind` is one the dog declared in its manifest. `payload` is the
+    /// dog's own JSON, broadcast as sent and never read by the shepherd.
+    Dog {
+        /// The publishing dog.
+        dog: String,
+        /// The declared kind, the last segment of the topic.
+        kind: String,
+        /// The dog's body.
+        payload: serde_json::Value,
+    },
     /// A dog's `[app.dogs.<name>]` table changed on one sheep. Published
     /// under `config.sheep.<dog>`, so a dog hears nobody else's.
     ///
@@ -193,6 +207,7 @@ impl BusEvent {
             // so `config.dog.bark` reaches one dog and `config.*` reaches
             // all of them.
             Self::DogConfigChanged { dog } => return Cow::Owned(format!("config.dog.{dog}")),
+            Self::Dog { dog, kind, .. } => return Cow::Owned(format!("dog.{dog}.{kind}")),
             // Named by the dog, like `DogConfigChanged` above: the sheep is
             // the payload, not the topic, so a dog subscribes once for
             // every sheep carrying its table.
@@ -213,6 +228,20 @@ mod tests {
 
     /// The comment above this enum said a new variant is not free because
     /// there is no fallback. This is the fallback.
+    #[test]
+    fn a_dogs_event_is_published_under_its_own_name_and_kind() {
+        let event = BusEvent::Dog {
+            dog: "otel".to_string(),
+            kind: "exported".to_string(),
+            payload: serde_json::json!({"batch": 3}),
+        };
+        assert_eq!(event.topic(), "dog.otel.exported");
+        assert_eq!(
+            serde_json::to_string(&event).unwrap(),
+            r#"{"event":"dog","data":{"dog":"otel","kind":"exported","payload":{"batch":3}}}"#
+        );
+    }
+
     #[test]
     fn an_unknown_process_event_decodes_as_unrecognized() {
         assert_eq!(

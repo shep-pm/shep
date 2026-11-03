@@ -115,6 +115,7 @@ async fn an_adopted_dog_keeps_its_marker_and_stays_out_of_a_wildcard() {
                         grants: None,
                         path: "/opt/bin/shep-log-rotate".to_string(),
                         channel: false,
+                        events: Vec::new(),
                     });
                 },
             ))],
@@ -130,6 +131,7 @@ async fn an_adopted_dog_keeps_its_marker_and_stays_out_of_a_wildcard() {
             grants: None,
             path: "/opt/bin/shep-log-rotate".to_string(),
             channel: false,
+            events: Vec::new(),
         }),
         "a dog adopted as an ordinary sheep is one `shep dogs` has lost"
     );

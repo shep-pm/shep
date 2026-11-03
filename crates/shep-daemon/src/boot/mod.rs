@@ -526,16 +526,16 @@ pub(crate) async fn boot_with_sweep<R: ProcessRunner>(
     })
 }
 
-/// Every dog `options` makes known, with the grants its source carries: the
-/// known list plus the enabled one.
+/// Every dog `options` makes known, with the grants and declared event kinds
+/// its source carries: the known list plus the enabled one.
 fn known_dog_grants(options: &BootOptions) -> crate::rpc::KnownDogs {
-    crate::rpc::KnownDogs::with_grants(
-        options
-            .known_dogs
-            .iter()
-            .chain(&options.dogs)
-            .map(|spec| (spec.name.clone(), spec.source.grants().cloned())),
-    )
+    crate::rpc::KnownDogs::with_grants(options.known_dogs.iter().chain(&options.dogs).map(|spec| {
+        (
+            spec.name.clone(),
+            spec.source.grants().cloned(),
+            spec.source.events().to_vec(),
+        )
+    }))
 }
 
 /// Where each adopted dog in `dogs` keeps its binary, by dog name.

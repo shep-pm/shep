@@ -12,6 +12,7 @@ fn kelpie(path: &str, env: &[(&str, &str)]) -> DogSpec {
             path: path.to_string(),
             channel: false,
             grants: None,
+            events: Vec::new(),
         },
         env: env
             .iter()

@@ -28,7 +28,10 @@ pub fn dog_section() -> String {
 pub fn app_in_dog_pane() -> App {
     let bark = ProcessInfo::builder(91, "bark", ProcStatus::Online)
         .pid(Some(91_000))
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .build();
     let mut app = app_with(vec![bark], plain());
     app.set_control_for_tests(Control::Allowed);
@@ -61,6 +64,7 @@ pub fn app_in_adopted_channel_dog_pane_from_row() -> App {
             grants: None,
             path: "/usr/local/bin/shep-kelpie".to_string(),
             channel: true,
+            events: Vec::new(),
         }))
         .build();
     let mut app = app_with(vec![kelpie], plain());

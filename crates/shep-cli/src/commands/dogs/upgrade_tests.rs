@@ -19,11 +19,12 @@ fn record(granted: &[&str], waiting: &[&str], revoked: &[&str], reviewed: bool) 
         waiting: grants(waiting),
         revoked: grants(revoked),
         reviewed,
+        events: Vec::new(),
     }
 }
 
 fn declares(names: &[&str]) -> Declaration {
-    Declaration::Declares(grants(names))
+    Declaration::Declares(grants(names), Vec::new())
 }
 
 #[test]
@@ -34,6 +35,36 @@ fn an_enabled_dog_with_a_manifest_and_no_record_is_granted_its_list_not_reviewed
         planned,
         Some(record(&["flock.read", "logs.read"], &[], &[], false))
     );
+}
+
+#[test]
+fn a_new_record_carries_the_declared_event_kinds() {
+    let declaration = Declaration::Declares(grants(&[]), vec!["exported".to_string()]);
+
+    let planned = plan(None, true, &declaration).unwrap();
+
+    assert_eq!(planned.events, ["exported".to_string()]);
+}
+
+#[test]
+fn a_rebuilt_dog_that_declares_other_event_kinds_has_them_follow_with_no_approval() {
+    let before = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+    let declaration = Declaration::Declares(grants(&["flock.read"]), vec!["new".to_string()]);
+
+    let planned = plan(Some(&before), true, &declaration).unwrap();
+
+    assert_eq!(planned.events, ["new".to_string()]);
+    assert_eq!(planned.granted, before.granted);
+    assert!(planned.waiting.names().next().is_none());
+    assert!(planned.reviewed);
+}
+
+#[test]
+fn a_dog_declaring_the_event_kinds_it_has_recorded_changes_nothing() {
+    let before = record(&["flock.read"], &[], &[], true).with_events(vec!["same".to_string()]);
+    let declaration = Declaration::Declares(grants(&["flock.read"]), vec!["same".to_string()]);
+
+    assert_eq!(plan(Some(&before), true, &declaration), None);
 }
 
 #[test]
@@ -56,6 +87,22 @@ fn an_undeclared_dog_and_an_unreadable_one_are_left_alone() {
         let held = record(&["flock.read"], &[], &[], true);
         assert_eq!(plan(Some(&held), true, &declaration), None);
     }
+}
+
+#[test]
+fn a_dog_rebuilt_with_no_manifest_loses_the_event_kinds_it_had_recorded() {
+    let held = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+
+    let planned = plan(Some(&held), true, &Declaration::Undeclared);
+
+    assert_eq!(planned, Some(record(&["flock.read"], &[], &[], true)));
+}
+
+#[test]
+fn a_manifest_that_could_not_be_read_keeps_the_event_kinds_recorded() {
+    let held = record(&["flock.read"], &[], &[], true).with_events(vec!["old".to_string()]);
+
+    assert_eq!(plan(Some(&held), true, &Declaration::Unknown), None);
 }
 
 #[test]
@@ -227,6 +274,25 @@ fn an_adopted_dog_whose_binary_declares_nothing_stays_undeclared() {
 
     assert!(changed.is_empty());
     assert_eq!(recorded(&paths, "otel"), None);
+}
+
+#[test]
+fn an_adopted_dog_rebuilt_with_no_manifest_has_its_recorded_event_kinds_cleared_at_boot() {
+    let (_dir, paths) = home();
+    let binary = write_dog(&paths.home, "not a manifest");
+    adopt_enabled(
+        &paths,
+        &binary,
+        "\n[daemon.dog_grants.otel]\ngranted = [\"flock.read\"]\nevents = [\"exported\"]\n",
+    );
+
+    let changed = upgrade_grants(&paths).unwrap();
+
+    assert_eq!(changed, ["otel"]);
+    assert_eq!(
+        recorded(&paths, "otel"),
+        Some(record(&["flock.read"], &[], &[], true))
+    );
 }
 
 #[test]

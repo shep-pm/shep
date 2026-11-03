@@ -58,7 +58,9 @@ pub fn need<'r>(request: &'r Request, caller: &str) -> Need<'r> {
         }
     };
     match request {
-        Request::Ping | Request::Unrecognized => Need::Always,
+        // Judged against the dog's declared kinds, which only the shepherd
+        // holds, and published under the caller's own name alone.
+        Request::Ping | Request::PublishEvent { .. } | Request::Unrecognized => Need::Always,
         Request::ListFlock
         | Request::HostUsage
         | Request::Describe { .. }

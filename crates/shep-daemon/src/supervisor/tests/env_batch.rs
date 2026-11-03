@@ -13,7 +13,13 @@ async fn env_batch_harness() -> Harness {
     start_app(&h, AppConfig::minimal("web", "./srv")).await;
     h.ctx
         .supervisor
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .unwrap();
     h

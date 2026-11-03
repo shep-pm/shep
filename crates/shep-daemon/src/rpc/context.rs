@@ -38,21 +38,36 @@ pub(crate) const MAX_DEADLINE_MS: u64 = 60_000;
 /// `shep disable` leaves the section in `dogs.toml`, where a disabled dog still wants configuring.
 #[derive(Debug, Clone)]
 pub(crate) struct KnownDogs {
-    dogs: Arc<Mutex<BTreeMap<String, Option<Grants>>>>,
+    dogs: Arc<Mutex<BTreeMap<String, Entry>>>,
+}
+
+/// What [`KnownDogs`] records for one name.
+#[derive(Debug, Clone, Default)]
+struct Entry {
+    /// `None` when the dog is undeclared.
+    grants: Option<Grants>,
+    /// The event kinds the dog's manifest declared, as read from `shep.toml`.
+    events: Vec<String>,
 }
 
 impl KnownDogs {
     /// Wraps a boot-time seed of undeclared dogs.
     #[cfg(test)]
     pub(crate) fn new(names: std::collections::BTreeSet<String>) -> Self {
-        Self::with_grants(names.into_iter().map(|name| (name, None)))
+        Self::with_grants(names.into_iter().map(|name| (name, None, Vec::new())))
     }
 
-    /// Wraps a boot-time seed, each name with the grants it was spawned
-    /// with.
-    pub(crate) fn with_grants(dogs: impl IntoIterator<Item = (String, Option<Grants>)>) -> Self {
+    /// Wraps a boot-time seed, each name with the grants it was spawned with
+    /// and the event kinds it declared.
+    pub(crate) fn with_grants(
+        dogs: impl IntoIterator<Item = (String, Option<Grants>, Vec<String>)>,
+    ) -> Self {
         Self {
-            dogs: Arc::new(Mutex::new(dogs.into_iter().collect())),
+            dogs: Arc::new(Mutex::new(
+                dogs.into_iter()
+                    .map(|(name, grants, events)| (name, Entry { grants, events }))
+                    .collect(),
+            )),
         }
     }
 
@@ -62,22 +77,32 @@ impl KnownDogs {
     }
 
     /// Records that `name` is a dog this shepherd knows about, with the
-    /// `grants` it now holds. `None` leaves it undeclared.
+    /// `grants` it now holds. `None` leaves it undeclared. Declares no events.
     #[cfg(test)]
     pub(crate) fn insert(&self, name: &str, grants: Option<Grants>) {
-        self.lock().insert(name.to_owned(), grants);
+        self.lock().insert(
+            name.to_owned(),
+            Entry {
+                grants,
+                events: Vec::new(),
+            },
+        );
     }
 
-    /// Records `grants` for `name` and hands back what it held before, for
-    /// [`Self::restore`] when the start it was recorded ahead of is refused.
-    pub(crate) fn replace(&self, name: &str, grants: Option<Grants>) -> Held {
-        Held(self.lock().insert(name.to_owned(), grants))
+    /// Records `grants` and the declared `events` for `name` and hands back
+    /// what it held before, for [`Self::restore`] when the start it was
+    /// recorded ahead of is refused.
+    pub(crate) fn replace(&self, name: &str, grants: Option<Grants>, events: Vec<String>) -> Held {
+        Held(
+            self.lock()
+                .insert(name.to_owned(), Entry { grants, events }),
+        )
     }
 
     /// Puts `name` back as [`Self::replace`] found it.
     pub(crate) fn restore(&self, name: &str, held: Held) {
         match held.0 {
-            Some(grants) => self.lock().insert(name.to_owned(), grants),
+            Some(entry) => self.lock().insert(name.to_owned(), entry),
             None => self.lock().remove(name),
         };
     }
@@ -85,18 +110,33 @@ impl KnownDogs {
     /// What is recorded for `name`: `None` for a name never seen, and
     /// otherwise its grants, themselves `None` when it is undeclared.
     pub(crate) fn recorded(&self, name: &str) -> Option<Option<Grants>> {
-        self.lock().get(name).cloned()
+        self.lock().get(name).map(|entry| entry.grants.clone())
     }
 
     /// What `name` was granted, or `None` when it is undeclared or unknown.
     pub(crate) fn grants(&self, name: &str) -> Option<Grants> {
-        self.lock().get(name).cloned().flatten()
+        self.lock().get(name).and_then(|entry| entry.grants.clone())
+    }
+
+    /// The event kinds `name` declared; empty when it declared none or is unknown.
+    pub(crate) fn events(&self, name: &str) -> Vec<String> {
+        self.lock()
+            .get(name)
+            .map(|entry| entry.events.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether `name` declared `kind` among its events.
+    pub(crate) fn declares(&self, name: &str, kind: &str) -> bool {
+        self.lock()
+            .get(name)
+            .is_some_and(|entry| entry.events.iter().any(|declared| declared == kind))
     }
 
     /// A poisoned lock is recovered rather than propagated, as
     /// [`crate::dogs::DogRefusals`] does: these are names with no invariant
     /// a panic mid-write could have broken.
-    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, Option<Grants>>> {
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, Entry>> {
         self.dogs.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -104,7 +144,7 @@ impl KnownDogs {
 /// What [`KnownDogs`] held for a name before [`KnownDogs::replace`]: nothing
 /// at all, or an entry that was undeclared or granted.
 #[derive(Debug)]
-pub(crate) struct Held(Option<Option<Grants>>);
+pub(crate) struct Held(Option<Entry>);
 
 /// Everything a request handler may touch; one clone per connection.
 ///

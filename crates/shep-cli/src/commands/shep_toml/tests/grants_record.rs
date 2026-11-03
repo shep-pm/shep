@@ -11,6 +11,7 @@ fn record() -> GrantRecord {
         waiting: Grants::new([Permission::Events("process.".to_string())]),
         revoked: Grants::new([Permission::LogsRead]),
         reviewed: false,
+        events: vec!["exported".to_string()],
     }
 }
 
@@ -65,8 +66,27 @@ fn the_marks_are_written_only_when_they_say_something() {
          granted = [\"flock.read\"]\n\
          waiting = [\"events:process.\"]\n\
          revoked = [\"logs.read\"]\n\
-         reviewed = false\n"
+         reviewed = false\n\
+         events = [\"exported\"]\n"
     );
+}
+
+#[test]
+fn an_events_list_that_holds_a_non_string_is_refused_as_the_boot_refuses_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shep.toml");
+    std::fs::write(
+        &path,
+        "[daemon.dog_grants.otel]\ngranted = []\nevents = [3]\n",
+    )
+    .unwrap();
+
+    let err = ShepToml::read_only(&path)
+        .unwrap()
+        .grant_record("otel")
+        .unwrap_err();
+
+    assert!(err.to_string().contains("`events` must be a list"), "{err}");
 }
 
 #[test]

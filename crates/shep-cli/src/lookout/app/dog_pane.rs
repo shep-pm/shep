@@ -368,7 +368,10 @@ mod tests {
     fn flock_on_dog(name: &str) -> App {
         let dog = ProcessInfo::builder(91, name, ProcStatus::Online)
             .pid(Some(91_000))
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build();
         let mut app = fixtures::app_with(vec![dog], fixtures::plain());
         app.set_control_for_tests(Control::Allowed);

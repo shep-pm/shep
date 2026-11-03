@@ -132,7 +132,10 @@ async fn enable_dog(ctx: &RpcContext, id: u64, name: &str) -> ProcessInfo {
                 Request::EnableDog {
                     name: name.to_string(),
                     env: BTreeMap::default(),
-                    source: DogSource::BuiltIn { grants: None },
+                    source: DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new(),
+                    },
                 },
             ),
             ctx,
@@ -303,6 +306,7 @@ mod dog_disable;
 mod dog_enable_grants;
 mod dog_entry_drift;
 mod dog_env;
+mod dog_events;
 mod dog_fields;
 mod dog_lifecycle;
 mod dog_secrets;

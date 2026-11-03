@@ -178,6 +178,7 @@ async fn a_revoke_on_an_enabled_dog_sends_the_shepherd_the_grants_now_held() {
                 path: dir.path().join("shep-otel").display().to_string(),
                 channel: false,
                 grants: Some(Grants::parse(["events:process."]).unwrap()),
+                events: Vec::new(),
             },
         }
     );

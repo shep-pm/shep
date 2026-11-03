@@ -29,10 +29,22 @@ async fn a_dog_that_restarts_is_still_a_dog() {
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
     let dog = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .unwrap();
-    assert_eq!(dog.dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        dog.dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
 
     // `Restart` is emitted from inside the respawn, after the entry has been
     // rewritten, so a listing taken once it lands cannot read the entry
@@ -44,7 +56,13 @@ async fn a_dog_that_restarts_is_still_a_dog() {
         after.restarts, 1,
         "the ordinary restart path, not a dog one"
     );
-    assert_eq!(after.dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        after.dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
 }
 
 /// A dog whose binary is not there, which is what `adopt` with a bad path
@@ -59,7 +77,13 @@ async fn a_dog_that_cannot_be_spawned_is_still_a_dog() {
     let handle = spawn_supervisor(ScriptedRunner::new(Vec::new()), test_paths(&dir), events);
 
     let failed = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .expect_err("a spawn with no script behind it cannot succeed");
     assert!(matches!(failed, SupervisorError::SpawnFailed(_)));
@@ -67,7 +91,13 @@ async fn a_dog_that_cannot_be_spawned_is_still_a_dog() {
     let listed = handle.list().await;
     let errored = dog_row(&listed, 0);
     assert_eq!(errored.status, ProcStatus::Errored);
-    assert_eq!(errored.dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        errored.dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
 }
 
 /// Fails if the gate is ignored: with no `wait_ready` and no
@@ -244,7 +274,13 @@ async fn a_dog_that_cannot_spawn_is_registered_errored_rather_than_refused() {
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
     let err = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .expect_err("nothing can spawn against an empty script pool");
 
@@ -262,7 +298,10 @@ async fn a_dog_that_cannot_spawn_is_registered_errored_rather_than_refused() {
         vec![(
             "bark",
             ProcStatus::Errored,
-            Some(DogSource::BuiltIn { grants: None })
+            Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new()
+            })
         )],
         "the dogs table must still show the dog, and show it broken"
     );
@@ -283,7 +322,13 @@ async fn a_reloaded_dog_is_still_a_dog() {
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
     let dog = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .unwrap();
     handle
@@ -304,7 +349,10 @@ async fn a_reloaded_dog_is_still_a_dog() {
     );
     assert_eq!(
         dog_row(&listed, replacement).dog,
-        Some(DogSource::BuiltIn { grants: None }),
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        }),
         "the half that arrived is the same dog the half that left was"
     );
 }
@@ -321,7 +369,10 @@ async fn a_dog_is_refused_once_a_shutdown_has_begun() {
     let (reply, rx) = oneshot::channel();
     actor.handle_command(Command::StartDog {
         app: Box::new(dog_app("bark")),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         reply,
     });
 
@@ -343,11 +394,23 @@ async fn enabling_a_dog_twice_starts_one_process() {
     let handle = spawn_supervisor(runner, test_paths(&dir), events);
 
     let first = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .unwrap();
     let second = handle
-        .start_dog(dog_app("bark"), DogSource::BuiltIn { grants: None })
+        .start_dog(
+            dog_app("bark"),
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        )
         .await
         .unwrap();
 

@@ -440,6 +440,7 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/dog".to_string(),
                 channel: true,
+                events: Vec::new(),
             }))
             .lambs(Some(vec![
                 Lamb::new(4243, "node"),
@@ -465,9 +466,13 @@ mod tests {
             grants: None,
             path: "/usr/local/bin/dog".to_string(),
             channel,
+            events: Vec::new(),
         };
         for source in [
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             adopted(false),
             adopted(true),
         ] {
@@ -510,6 +515,7 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/dog".to_string(),
                 channel: false,
+                events: Vec::new(),
             }))
             .lambs(Some(vec![Lamb::new(4243, "node")]))
             .pending(Some(vec!["env".to_string()]))

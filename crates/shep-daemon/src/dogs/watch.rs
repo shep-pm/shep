@@ -156,7 +156,10 @@ mod tests {
         events
             .send(errored_event(
                 "bark",
-                Some(DogSource::BuiltIn { grants: None }),
+                Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
             ))
             .unwrap();
 
@@ -183,7 +186,10 @@ mod tests {
             .send(process_event(
                 "bark",
                 ProcessEventKind::Exit,
-                Some(DogSource::BuiltIn { grants: None }),
+                Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
             ))
             .unwrap();
         // A real `Errored` after it proves the watcher was listening at all:
@@ -191,7 +197,10 @@ mod tests {
         events
             .send(errored_event(
                 "bark",
-                Some(DogSource::BuiltIn { grants: None }),
+                Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }),
             ))
             .unwrap();
 

@@ -1,4 +1,4 @@
-//! Manifest v1: everything a dog says about itself, answered to
+//! Manifest v2: everything a dog says about itself, answered to
 //! [`MANIFEST_FLAG`](super::MANIFEST_FLAG) as one JSON object on stdout.
 //!
 //! Every type ignores a field it does not know when read, so a manifest a
@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The `manifest` field's value for the format this module describes.
-pub const MANIFEST_VERSION: u32 = 1;
+pub const MANIFEST_VERSION: u32 = 2;
 
 /// What a dog answers [`MANIFEST_FLAG`](super::MANIFEST_FLAG) with.
 ///
@@ -18,14 +18,15 @@ pub const MANIFEST_VERSION: u32 = 1;
 /// output without them is not a manifest, and the asker falls back to the
 /// version and schema flags. Everything else defaults to nothing declared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Wire")]
 #[non_exhaustive]
 pub struct Manifest {
     /// The manifest's own version, [`MANIFEST_VERSION`] for this format.
     ///
     /// Reading refuses 0, which no format has. A higher one is read: later
-    /// versions add fields and never change what a v1 field means, so what
-    /// this shep knows of them stays true.
-    #[serde(deserialize_with = "version_from_one")]
+    /// versions add fields and never change what an earlier field means, so
+    /// what this shep knows of them stays true. A v1 manifest declares no
+    /// [`events`](Self::events), whatever it prints.
     pub manifest: u32,
     /// The dog's registered name.
     pub name: String,
@@ -71,6 +72,11 @@ pub struct Manifest {
     /// lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<Action>,
+    /// The events the dog publishes on the shepherd's bus, under
+    /// `dog.<name>.<kind>`. Added in manifest v2; a v1 manifest declares
+    /// none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<DogEvent>,
 }
 
 impl Manifest {
@@ -92,6 +98,92 @@ impl Manifest {
             launch: false,
             serves: Serves::OptedIn,
             actions: Vec::new(),
+            events: Vec::new(),
+        }
+    }
+}
+
+/// The first manifest version that carries [`Manifest::events`].
+const EVENTS_SINCE: u32 = 2;
+
+/// What is read off the wire, before a field is held to the version that
+/// introduced it. The fields are [`Manifest`]'s, in the same order.
+#[derive(Deserialize)]
+struct Wire {
+    #[serde(deserialize_with = "version_from_one")]
+    manifest: u32,
+    name: String,
+    version: String,
+    protocol: u32,
+    #[serde(default)]
+    channel: bool,
+    #[serde(default)]
+    settings: Option<serde_json::Value>,
+    #[serde(default)]
+    defaults: Option<String>,
+    #[serde(default)]
+    permissions: Vec<Permission>,
+    #[serde(default)]
+    verb: Option<Verb>,
+    #[serde(default)]
+    depends: Depends,
+    #[serde(default)]
+    validate: bool,
+    #[serde(default)]
+    launch: bool,
+    #[serde(default)]
+    serves: Serves,
+    #[serde(default)]
+    actions: Vec<Action>,
+    #[serde(default)]
+    events: Vec<DogEvent>,
+}
+
+impl From<Wire> for Manifest {
+    fn from(wire: Wire) -> Self {
+        // A field is the version that added it: an older dog that prints it is
+        // not declaring it.
+        let events = if wire.manifest >= EVENTS_SINCE {
+            wire.events
+        } else {
+            Vec::new()
+        };
+        Self {
+            manifest: wire.manifest,
+            name: wire.name,
+            version: wire.version,
+            protocol: wire.protocol,
+            channel: wire.channel,
+            settings: wire.settings,
+            defaults: wire.defaults,
+            permissions: wire.permissions,
+            verb: wire.verb,
+            depends: wire.depends,
+            validate: wire.validate,
+            launch: wire.launch,
+            serves: wire.serves,
+            actions: wire.actions,
+            events,
+        }
+    }
+}
+
+/// One event a dog publishes on the shepherd's bus.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct DogEvent {
+    /// The kind, the last segment of the topic `dog.<name>.<kind>`.
+    pub kind: String,
+    /// One line saying what the event reports.
+    pub description: String,
+}
+
+impl DogEvent {
+    /// An event of `kind`, described by `description`.
+    pub fn new(kind: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            description: description.into(),
         }
     }
 }

@@ -310,7 +310,10 @@ async fn a_file_naming_a_dog_is_refused_rather_than_merged() {
         .get_mut(&0)
         .expect("the fixture registered one slot")
         .entry
-        .dog = Some(DogSource::BuiltIn { grants: None });
+        .dog = Some(DogSource::BuiltIn {
+        grants: None,
+        events: Vec::new(),
+    });
 
     let mut file = AppConfig::minimal("metrics", "/opt/evil");
     file.max_restarts = 42;

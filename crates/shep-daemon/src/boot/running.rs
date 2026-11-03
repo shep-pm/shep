@@ -364,7 +364,10 @@ mod tests {
             BootOptions {
                 dogs: vec![DogSpec {
                     name: "metrics".to_string(),
-                    source: DogSource::BuiltIn { grants: None },
+                    source: DogSource::BuiltIn {
+                        grants: None,
+                        events: Vec::new(),
+                    },
                     env: BTreeMap::new(),
                 }],
                 ..BootOptions::default()

@@ -193,7 +193,10 @@ mod tests {
             |req| match req {
                 Request::ListFlock => Response::Flock(vec![
                     ProcessInfo::builder(1, "metrics", ProcStatus::Online)
-                        .dog(Some(DogSource::BuiltIn { grants: None }))
+                        .dog(Some(DogSource::BuiltIn {
+                            grants: None,
+                            events: Vec::new(),
+                        }))
                         .build(),
                 ]),
                 _ => Response::HandoverFitness { refusal: None },

@@ -390,6 +390,8 @@ pub enum Response {
     },
     /// Answer to `Subscribe`
     Subscribed,
+    /// Answer to `PublishEvent`
+    EventPublished,
     /// Answer to `KillDaemon`
     ShuttingDown,
 }

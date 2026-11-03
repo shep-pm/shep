@@ -7,7 +7,7 @@ use toml_edit::{Array, InlineTable, Item, Table, TableLike, Value};
 use super::{ShepToml, ShepTomlError};
 
 /// The keys the boot's `DogGrantsSection` reads.
-const KEYS: [&str; 4] = ["granted", "waiting", "revoked", "reviewed"];
+const KEYS: [&str; 5] = ["granted", "waiting", "revoked", "reviewed", "events"];
 
 /// One dog's `[daemon.dog_grants.<name>]` entry.
 ///
@@ -27,6 +27,10 @@ pub struct GrantRecord {
     /// `false` for a list written at upgrade that the operator has not yet
     /// looked at.
     pub reviewed: bool,
+    /// The event kinds the dog's manifest declares it publishes. Not a
+    /// permission: the shepherd lets the dog publish these and no others,
+    /// under its own name.
+    pub events: Vec<String>,
 }
 
 impl GrantRecord {
@@ -38,6 +42,7 @@ impl GrantRecord {
             waiting: Grants::default(),
             revoked: Grants::default(),
             reviewed: true,
+            events: Vec::new(),
         }
     }
 
@@ -48,6 +53,14 @@ impl GrantRecord {
             reviewed: false,
             ..Self::reviewed(granted)
         }
+    }
+}
+
+impl GrantRecord {
+    /// This record declaring `events` as the kinds the dog publishes.
+    #[must_use]
+    pub fn with_events(self, events: Vec<String>) -> Self {
+        Self { events, ..self }
     }
 }
 
@@ -73,7 +86,7 @@ impl ShepToml {
     /// [`ShepTomlError::BadGrants`] when the entry is not a table holding
     /// only the keys the boot reads, when a list holds anything but strings
     /// or names a permission shep cannot read, or when `reviewed` is not a
-    /// boolean.
+    /// boolean, or `events` is not a list of strings.
     pub fn grant_record(&self, name: &str) -> Result<Option<GrantRecord>, ShepTomlError> {
         // Table-like, not `as_table`: `dog_grants = { otel = { granted = [] } }`
         // is the same TOML as the headed form and the boot reads both, so a
@@ -123,11 +136,24 @@ impl ShepToml {
                 .as_bool()
                 .ok_or_else(|| bad("`reviewed` must be true or false".to_string()))?,
         };
+        let events = match entry.get("events") {
+            None => Vec::new(),
+            Some(item) => item
+                .as_array()
+                .and_then(|kinds| {
+                    kinds
+                        .iter()
+                        .map(|kind| kind.as_str().map(str::to_owned))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .ok_or_else(|| bad("`events` must be a list of event kinds".to_string()))?,
+        };
         Ok(Some(GrantRecord {
             granted: list("granted", true)?,
             waiting: list("waiting", false)?,
             revoked: list("revoked", false)?,
             reviewed,
+            events,
         }))
     }
 
@@ -136,6 +162,7 @@ impl ShepToml {
     ///
     /// # Errors
     /// As [`Self::set_grant_record`].
+    #[cfg(all(test, unix))]
     pub fn set_granted(&mut self, name: &str, grants: &Grants) -> Result<(), ShepTomlError> {
         self.set_grant_record(name, &GrantRecord::reviewed(grants.clone()))
     }
@@ -147,8 +174,8 @@ impl ShepToml {
     /// `dogs.toml` so that a dog can never grant itself anything. An empty
     /// `granted` is written as `granted = []`, which grants nothing; leaving
     /// the entry out would make the dog undeclared, with full access.
-    /// `waiting`, `revoked` and `reviewed` are written only when they say
-    /// something.
+    /// `waiting`, `revoked`, `reviewed` and `events` are written only when
+    /// they say something.
     ///
     /// # Errors
     /// [`ShepTomlError::WrongShape`] when `daemon` or `dog_grants` holds
@@ -206,5 +233,13 @@ fn fill(entry: &mut dyn TableLike, record: &GrantRecord) {
     }
     if !record.reviewed {
         entry.insert("reviewed", Item::Value(Value::from(false)));
+    }
+    if !record.events.is_empty() {
+        entry.insert(
+            "events",
+            Item::Value(Value::Array(
+                record.events.iter().map(String::as_str).collect(),
+            )),
+        );
     }
 }

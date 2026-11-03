@@ -24,6 +24,10 @@ pub enum DogSource {
         /// the wire when `None`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         grants: Option<Grants>,
+        /// The event kinds the dog declared in its manifest, which it may
+        /// publish as `dog.<name>.<kind>`. Absent on the wire when empty.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        events: Vec<String>,
     },
     /// A binary an operator adopted, run at the daemon's own trust level.
     Adopted {
@@ -40,6 +44,10 @@ pub enum DogSource {
         /// set is a dog granted nothing. Absent on the wire when `None`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         grants: Option<Grants>,
+        /// The event kinds the dog declared in its manifest, which it may
+        /// publish as `dog.<name>.<kind>`. Absent on the wire when empty.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        events: Vec<String>,
     },
     /// A kind this build has not been taught.
     ///
@@ -58,8 +66,40 @@ impl DogSource {
     #[must_use]
     pub const fn grants(&self) -> Option<&Grants> {
         match self {
-            DogSource::BuiltIn { grants } | DogSource::Adopted { grants, .. } => grants.as_ref(),
+            DogSource::BuiltIn { grants, .. } | DogSource::Adopted { grants, .. } => {
+                grants.as_ref()
+            }
             DogSource::Unrecognized => None,
+        }
+    }
+
+    /// The event kinds this dog declared, which it may publish.
+    #[must_use]
+    pub fn events(&self) -> &[String] {
+        match self {
+            DogSource::BuiltIn { events, .. } | DogSource::Adopted { events, .. } => events,
+            DogSource::Unrecognized => &[],
+        }
+    }
+
+    /// This source with `events` in place of the kinds it carried. A kind
+    /// this build has not been taught comes back as it was.
+    #[must_use]
+    pub fn with_events(self, events: Vec<String>) -> Self {
+        match self {
+            DogSource::BuiltIn { grants, .. } => DogSource::BuiltIn { grants, events },
+            DogSource::Adopted {
+                path,
+                channel,
+                grants,
+                ..
+            } => DogSource::Adopted {
+                path,
+                channel,
+                grants,
+                events,
+            },
+            DogSource::Unrecognized => DogSource::Unrecognized,
         }
     }
 
@@ -68,11 +108,17 @@ impl DogSource {
     #[must_use]
     pub fn with_grants(self, grants: Option<Grants>) -> Self {
         match self {
-            DogSource::BuiltIn { .. } => DogSource::BuiltIn { grants },
-            DogSource::Adopted { path, channel, .. } => DogSource::Adopted {
+            DogSource::BuiltIn { events, .. } => DogSource::BuiltIn { grants, events },
+            DogSource::Adopted {
+                path,
+                channel,
+                events,
+                ..
+            } => DogSource::Adopted {
                 path,
                 channel,
                 grants,
+                events,
             },
             DogSource::Unrecognized => DogSource::Unrecognized,
         }
@@ -107,13 +153,18 @@ mod tests {
     #[test]
     fn a_dog_source_serializes_snake_case_under_its_kind() {
         assert_eq!(
-            serde_json::to_string(&DogSource::BuiltIn { grants: None }).unwrap(),
+            serde_json::to_string(&DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new()
+            })
+            .unwrap(),
             r#"{"kind":"built_in"}"#
         );
         let adopted = DogSource::Adopted {
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: false,
             grants: None,
+            events: Vec::new(),
         };
         let wire = r#"{"kind":"adopted","path":"/usr/local/bin/shep-otel"}"#;
         assert_eq!(serde_json::to_string(&adopted).unwrap(), wire);
@@ -127,6 +178,7 @@ mod tests {
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: true,
             grants: None,
+            events: Vec::new(),
         };
 
         assert_eq!(
@@ -135,12 +187,18 @@ mod tests {
                 path: "/usr/local/bin/shep-otel".to_string(),
                 channel: true,
                 grants: Some(granted.clone()),
+                events: Vec::new(),
             }
         );
         assert_eq!(
-            DogSource::BuiltIn { grants: None }.with_grants(Some(granted.clone())),
             DogSource::BuiltIn {
-                grants: Some(granted)
+                grants: None,
+                events: Vec::new()
+            }
+            .with_grants(Some(granted.clone())),
+            DogSource::BuiltIn {
+                grants: Some(granted),
+                events: Vec::new()
             }
         );
         assert_eq!(
@@ -157,6 +215,7 @@ mod tests {
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: true,
             grants: None,
+            events: Vec::new(),
         };
         let wire = r#"{"kind":"adopted","path":"/usr/local/bin/shep-otel","channel":true}"#;
         assert_eq!(serde_json::to_string(&adopted).unwrap(), wire);
@@ -177,6 +236,7 @@ mod tests {
                 path: "/usr/local/bin/shep-otel".to_string(),
                 channel: false,
                 grants: None,
+                events: Vec::new(),
             }
         );
     }
@@ -186,9 +246,13 @@ mod tests {
     /// dog granted nothing.
     #[test]
     fn a_dog_granted_nothing_is_not_a_dog_with_no_grants() {
-        let none = DogSource::BuiltIn { grants: None };
+        let none = DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        };
         let empty = DogSource::BuiltIn {
             grants: Some(Grants::default()),
+            events: Vec::new(),
         };
         assert_eq!(
             serde_json::to_string(&none).unwrap(),
@@ -207,10 +271,26 @@ mod tests {
             path: "/usr/local/bin/shep-otel".to_string(),
             channel: false,
             grants: Some(Grants::parse(["flock.read"]).unwrap()),
+            events: Vec::new(),
         };
         let wire =
             r#"{"kind":"adopted","path":"/usr/local/bin/shep-otel","grants":["flock.read"]}"#;
         assert_eq!(serde_json::to_string(&adopted).unwrap(), wire);
         assert_eq!(serde_json::from_str::<DogSource>(wire).unwrap(), adopted);
+    }
+
+    #[test]
+    fn declared_events_ride_beside_the_grants_and_are_left_out_when_none() {
+        let adopted = DogSource::Adopted {
+            path: "/usr/local/bin/shep-otel".to_string(),
+            channel: false,
+            grants: None,
+            events: vec!["exported".to_string()],
+        };
+        let wire = r#"{"kind":"adopted","path":"/usr/local/bin/shep-otel","events":["exported"]}"#;
+        assert_eq!(serde_json::to_string(&adopted).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<DogSource>(wire).unwrap(), adopted);
+        assert_eq!(adopted.events(), ["exported".to_string()]);
+        assert_eq!(adopted.with_events(Vec::new()).events(), &[] as &[String]);
     }
 }

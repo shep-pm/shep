@@ -380,7 +380,10 @@ mod tests {
         .unwrap();
         let spec = DogSpec {
             name: "bark".to_string(),
-            source: DogSource::BuiltIn { grants: None },
+            source: DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             env: BTreeMap::new(),
         };
         let app = dog_app(&spec, &paths).unwrap();
@@ -563,7 +566,7 @@ mod tests {
         assert_eq!(
             format!("{spec:?}"),
             "DogSpec { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
-             channel: false, grants: None }, env: <1 keys> }"
+             channel: false, grants: None, events: [] }, env: <1 keys> }"
         );
     }
 
@@ -576,6 +579,7 @@ mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-kelpie".to_string(),
                 channel: false,
+                events: Vec::new(),
             },
             env,
         }
@@ -597,7 +601,10 @@ mod tests {
         let built_in = dog_app(
             &DogSpec {
                 name: "metrics".to_string(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::new(),
             },
             &paths,
@@ -616,6 +623,7 @@ mod tests {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 },
                 env: BTreeMap::new(),
             },
@@ -638,7 +646,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let spec = DogSpec {
             name: "metrics".to_string(),
-            source: DogSource::BuiltIn { grants: None },
+            source: DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             env: BTreeMap::new(),
         };
 
@@ -658,12 +669,19 @@ mod tests {
             grants: None,
             path: "/usr/local/bin/shep-otel".to_string(),
             channel,
+            events: Vec::new(),
         };
 
         for (source, expected) in [
             (adopted(true), true),
             (adopted(false), false),
-            (DogSource::BuiltIn { grants: None }, false),
+            (
+                DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
+                false,
+            ),
         ] {
             let spec = DogSpec {
                 name: "otel".to_string(),
@@ -692,6 +710,7 @@ mod tests {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 },
                 env: BTreeMap::new(),
             },

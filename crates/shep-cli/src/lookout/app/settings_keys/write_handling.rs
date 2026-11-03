@@ -484,7 +484,10 @@ mod tests {
             edit,
             ticket,
             result: Ok(DogEntry {
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 env: BTreeMap::default(),
             }),
         }) else {
@@ -501,7 +504,10 @@ mod tests {
 
         let info = ProcessInfo::builder(50, "metrics", ProcStatus::Online)
             .pid(Some(50_000))
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build();
         let effect = app.update(Msg::Replied {
             sent: dog,

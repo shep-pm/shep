@@ -348,7 +348,10 @@ pub fn app_in_settings_with_dog_drift() -> App {
     let flock = vec![
         ProcessInfo::builder(90, "otel", ProcStatus::Online)
             .pid(Some(90_000))
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build(),
     ];
     let mut app = app_with(flock, plain());
@@ -372,7 +375,10 @@ pub fn app_in_settings_with_silent_dog() -> App {
     let flock = vec![
         ProcessInfo::builder(91, "bark", ProcStatus::Online)
             .pid(Some(91_000))
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .handshook(Some(false))
             .build(),
     ];

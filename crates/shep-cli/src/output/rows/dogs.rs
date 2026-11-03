@@ -308,13 +308,20 @@ pub(crate) mod tests {
     #[test]
     fn the_source_column_names_a_kind_and_leaves_the_path_to_json() {
         let rows = DogRows(vec![
-            dog_info("metrics", DogSource::BuiltIn { grants: None }),
+            dog_info(
+                "metrics",
+                DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
+            ),
             dog_info(
                 "otel",
                 DogSource::Adopted {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 },
             ),
         ]);
@@ -333,7 +340,13 @@ pub(crate) mod tests {
     /// nested too.
     #[test]
     fn dog_rows_do_not_drift() {
-        let mut dog = dog_info("metrics", DogSource::BuiltIn { grants: None });
+        let mut dog = dog_info(
+            "metrics",
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
+        );
         dog.spawn_failure = Some("metrics: spawn refused".to_string());
         assert_no_drift(
             &DogRows(vec![dog]),
@@ -348,7 +361,10 @@ pub(crate) mod tests {
         assert_no_drift(
             &DogActionRow::new(
                 "metrics",
-                DogSource::BuiltIn { grants: None },
+                DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 DogActionStatus::Acted("online"),
             ),
             |j| j,
@@ -362,7 +378,10 @@ pub(crate) mod tests {
         assert_no_drift(
             &DogActionRow::new(
                 "metrics",
-                DogSource::BuiltIn { grants: None },
+                DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
                 DogActionStatus::NoShepherd("not running; will not start with the next shepherd"),
             ),
             |j| j,
@@ -380,6 +399,7 @@ pub(crate) mod tests {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 },
                 DogActionStatus::Acted("online"),
             ),
@@ -395,7 +415,10 @@ pub(crate) mod tests {
     fn the_shepherd_cell_and_key_come_from_the_status_variant() {
         let acted = DogActionRow::new(
             "metrics",
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             DogActionStatus::Acted("online"),
         );
         assert_eq!(acted.rows()[0][2], "true");
@@ -407,7 +430,10 @@ pub(crate) mod tests {
 
         let absent = DogActionRow::new(
             "metrics",
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             DogActionStatus::NoShepherd("no shepherd running; the config was written"),
         );
         assert_eq!(absent.rows()[0][2], "false");
@@ -432,6 +458,7 @@ pub(crate) mod tests {
                     grants: None,
                     path: "/usr/local/bin/shep-otel".to_string(),
                     channel: false,
+                    events: Vec::new(),
                 },
                 DogActionStatus::Acted("stopped"),
             ),
@@ -499,6 +526,7 @@ pub(crate) mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-log-rotate".to_string(),
                 channel: false,
+                events: Vec::new(),
             },
             DogActionStatus::Acted("online"),
         );
@@ -513,7 +541,10 @@ pub(crate) mod tests {
         let sentence = "no shepherd running; the config was written";
         let unacted = DogActionRow::new(
             "log-rotate",
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             DogActionStatus::NoShepherd(sentence),
         );
         let row = &unacted.rows_for(coloured(), true)[0];
@@ -526,7 +557,10 @@ pub(crate) mod tests {
     fn a_dog_action_row_leaves_the_name_and_the_shepherd_column_plain() {
         let row = &DogActionRow::new(
             "log-rotate",
-            DogSource::BuiltIn { grants: None },
+            DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
             DogActionStatus::NoShepherd("no shepherd running"),
         )
         .rows_for(coloured(), true)[0];
@@ -559,6 +593,7 @@ pub(crate) mod tests {
                 grants: None,
                 path: "/usr/local/bin/shep-otel".to_string(),
                 channel: false,
+                events: Vec::new(),
             },
             DogActionStatus::Acted("online"),
         );

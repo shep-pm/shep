@@ -32,7 +32,13 @@ async fn disabling_a_dog_stops_it_and_keeps_it_listed_as_disabled() {
     let flock = list_flock(&h.ctx, 3).await;
     assert_eq!(flock.len(), 1, "{flock:?}");
     assert_eq!(flock[0].id, info.id);
-    assert_eq!(flock[0].dog, Some(DogSource::BuiltIn { grants: None }));
+    assert_eq!(
+        flock[0].dog,
+        Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new()
+        })
+    );
     assert_eq!(flock[0].status, ProcStatus::Stopped);
     assert_eq!(flock[0].pid, None);
     assert_eq!(flock[0].disabled, Some(true));
@@ -63,7 +69,10 @@ async fn disabling_a_dog_that_never_ran_marks_it_and_answers_deleted() {
     let h = harness(vec![]);
     let spec = crate::dogs::DogSpec {
         name: "bark".to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     };
     crate::dogs::register_dogs_at_rest(&[spec], &[], &h.ctx.paths, &h.ctx.supervisor).await;

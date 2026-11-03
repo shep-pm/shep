@@ -27,7 +27,10 @@ async fn shepherd(
         .map(|name| ProcessInfo::builder(1, *name, ProcStatus::Online).build())
         .chain(dogs.iter().map(|name| {
             ProcessInfo::builder(2, *name, ProcStatus::Online)
-                .dog(Some(DogSource::BuiltIn { grants: None }))
+                .dog(Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }))
                 .build()
         }))
         .collect();

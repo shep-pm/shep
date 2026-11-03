@@ -17,7 +17,10 @@ use std::collections::BTreeMap;
 fn built_in(name: &str) -> DogSpec {
     DogSpec {
         name: name.to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     }
 }
@@ -55,7 +58,10 @@ async fn a_fresh_home_lists_both_built_ins_disabled_at_ids_0_and_1() {
         assert_eq!(info.disabled, Some(true), "{info:?}");
         assert_eq!(
             info.dog,
-            Some(DogSource::BuiltIn { grants: None }),
+            Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new()
+            }),
             "{info:?}"
         );
         assert_eq!(info.pid, None, "{info:?}");
@@ -142,6 +148,7 @@ async fn an_adopted_disabled_dog_is_listed_with_the_source_it_would_run_from() {
         grants: None,
         path: "/usr/local/bin/shep-otel".to_string(),
         channel: true,
+        events: Vec::new(),
     };
 
     let daemon = boot_with_idle_sweep(
@@ -224,6 +231,7 @@ async fn a_restored_sandboxed_sheep_spawns_through_the_adopted_dog_boot_was_told
             path: "/opt/dogs/box".to_owned(),
             channel: false,
             grants: None,
+            events: Vec::new(),
         },
         env: BTreeMap::new(),
     };
@@ -258,6 +266,7 @@ fn adopted_sandbox() -> DogSpec {
             path: "/opt/dogs/box".to_owned(),
             channel: false,
             grants: None,
+            events: Vec::new(),
         },
         env: BTreeMap::new(),
     }

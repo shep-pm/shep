@@ -197,7 +197,10 @@ fn dog_control_holds_enabling_and_disabling_a_dog() {
         Request::EnableDog {
             name: "jobs".into(),
             env: BTreeMap::default(),
-            source: crate::protocol::DogSource::BuiltIn { grants: None },
+            source: crate::protocol::DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            },
         },
         Request::DisableDog {
             name: "jobs".into(),
@@ -324,4 +327,14 @@ fn a_subscription_is_checked_by_its_topics() {
         topics: topics.clone(),
     };
     assert!(matches!(need(&subscribe, CALLER), Need::Topics(t) if t == topics));
+}
+
+/// The shepherd judges a publish by the dog's declared kinds, which only it
+/// can look up, so the table holds no permission for it.
+#[test]
+fn a_publish_takes_no_grant() {
+    assert!(is_always(&Request::PublishEvent {
+        event: "exported".to_string(),
+        payload: serde_json::Value::Null,
+    }));
 }

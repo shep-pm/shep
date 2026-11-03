@@ -3,7 +3,9 @@
 
 use std::io::Write as _;
 
-use shep_core::dogs::manifest::{Action, DogDependency, Manifest, Permission, Serves, Verb};
+use shep_core::dogs::manifest::{
+    Action, DogDependency, DogEvent, Manifest, Permission, Serves, Verb,
+};
 use shep_core::dogs::{
     MANIFEST_FLAG, SCHEMA_FLAG, SHEP_CHANNEL_KEY, SHEP_PROTOCOL_KEY, VERSION_FLAG,
 };
@@ -118,6 +120,7 @@ pub struct Probe<'a> {
     launch: bool,
     serves: Serves,
     actions: Vec<Action>,
+    events: Vec<DogEvent>,
 }
 
 impl<'a> Probe<'a> {
@@ -136,6 +139,7 @@ impl<'a> Probe<'a> {
             launch: false,
             serves: Serves::OptedIn,
             actions: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -217,6 +221,16 @@ impl<'a> Probe<'a> {
     /// `Shepherd::on_action`: this only says it exists.
     pub fn action(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
         self.actions.push(Action::new(name, description));
+        self
+    }
+
+    /// Declares an event kind the dog publishes, with a one-line description.
+    ///
+    /// The shepherd publishes only the kinds a manifest lists. A subscriber
+    /// holding `events:dog.<name>` hears one as `dog.<name>.<kind>`, and
+    /// [`DogRuntime::publish`](super::DogRuntime::publish) sends it.
+    pub fn event(mut self, kind: impl Into<String>, description: impl Into<String>) -> Self {
+        self.events.push(DogEvent::new(kind, description));
         self
     }
 
@@ -317,6 +331,7 @@ impl<'a> Probe<'a> {
         manifest.launch = self.launch;
         manifest.serves = self.serves;
         manifest.actions.clone_from(&self.actions);
+        manifest.events.clone_from(&self.events);
         manifest
     }
 

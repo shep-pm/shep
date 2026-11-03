@@ -205,7 +205,10 @@ mod tests {
     #[test]
     fn a_dog_is_carried_rather_than_refused() {
         let mut built_in = entry_fixture(|_| {});
-        built_in.dog = Some(DogSource::BuiltIn { grants: None });
+        built_in.dog = Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        });
         assert_eq!(fitness(&[plain(&built_in)]), Fitness::Carryable);
 
         let mut adopted = entry_fixture(|_| {});
@@ -213,6 +216,7 @@ mod tests {
             grants: None,
             path: "/opt/bin/shep-log-rotate".to_string(),
             channel: false,
+            events: Vec::new(),
         });
         assert_eq!(fitness(&[plain(&adopted)]), Fitness::Carryable);
     }

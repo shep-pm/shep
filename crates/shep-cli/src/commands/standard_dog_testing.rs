@@ -102,7 +102,10 @@ pub(crate) async fn shepherd(
         ProcessInfo::builder(1, "api", ProcStatus::Online).build(),
         ProcessInfo::builder(3, "web", ProcStatus::Online).build(),
         ProcessInfo::builder(2, "jobs", ProcStatus::Online)
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build(),
     ];
     let mut config = AppConfig {

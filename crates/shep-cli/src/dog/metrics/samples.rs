@@ -402,7 +402,10 @@ mod tests {
     fn dog(id: u32, name: &str) -> ProcessInfo {
         ProcessInfo::builder(id, name, ProcStatus::Online)
             .uptime_ms(60_000)
-            .dog(Some(DogSource::BuiltIn { grants: None }))
+            .dog(Some(DogSource::BuiltIn {
+                grants: None,
+                events: Vec::new(),
+            }))
             .build()
     }
 

@@ -50,6 +50,13 @@ shepherd.on_action_with_caller("rotate", |_params, _name, caller| {
     format!("rotated for {}", caller.unwrap_or("the operator"))
 });`;
 
+const eventsSnippet = `Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+    .event("exported", "a batch was sent")
+    .answer::<MyDogConfig>();
+
+// ...later, with a DogRuntime:
+runtime.publish("exported", serde_json::json!({ "batch": 3 })).await?;`;
+
 const validateSnippet = `use shep_client::dogs::{Probe, Stop, Verdict, validate_answer};
 
 fn main() {
@@ -403,7 +410,8 @@ watchdog  adopted  true      stopped`}</CodeBlock>
     <p>
       <code>shep adopt</code> asks <code>--shep-manifest</code> first. A dog
       answers on stdout with one JSON object and exits 0; <code>manifest</code>{" "}
-      (the version, <code>1</code>), <code>name</code>, <code>version</code>{" "}
+      (the version, <code>2</code>; <code>1</code> still reads),{" "}
+      <code>name</code>, <code>version</code>{" "}
       and <code>protocol</code> are required, and a field shep doesn't know is
       ignored. The fields are listed in <code>docs/dogs.md</code>.
     </p>
@@ -599,6 +607,18 @@ shep-channel: true`}</CodeBlock>
       it, or <code>None</code> for an operator.
     </p>
     <CodeBlock label="main.rs">{callerSnippet}</CodeBlock>
+
+    <h3 id="publishing-events">Publishing events</h3>
+    <p>
+      <code>Probe::event</code> declares a kind in the manifest, and{" "}
+      <code>DogRuntime::publish</code> sends it with a JSON payload the
+      shepherd never reads. Subscribers hear it as{" "}
+      <code>dog.&lt;name&gt;.&lt;kind&gt;</code> and need{" "}
+      <code>events:dog.&lt;name&gt;</code>. A kind the manifest does not list
+      is refused by name, and so is a publish from the control socket or
+      from a dog whose name has a dot in it.
+    </p>
+    <CodeBlock label="main.rs">{eventsSnippet}</CodeBlock>
 
     <h3 id="being-asked-about-its-settings">Being asked about a write to its settings</h3>
     <p>

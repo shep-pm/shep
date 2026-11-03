@@ -183,6 +183,9 @@ pub(super) fn sheep(id: u32, status: ProcStatus) -> ProcessInfo {
 /// A registered dog, which `flock_display::sheep_flourish` must never count as a sheep.
 pub(super) fn dog(id: u32) -> ProcessInfo {
     ProcessInfo::builder(id, format!("d{id}"), ProcStatus::Online)
-        .dog(Some(DogSource::BuiltIn { grants: None }))
+        .dog(Some(DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        }))
         .build()
 }

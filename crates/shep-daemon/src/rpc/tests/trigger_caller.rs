@@ -66,6 +66,7 @@ fn adopted(name: &str, grants: Grants, channel: bool) -> Request {
             grants: Some(grants),
             path: format!("/usr/local/bin/shep-{name}"),
             channel,
+            events: Vec::new(),
         },
     }
 }

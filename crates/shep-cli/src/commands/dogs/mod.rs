@@ -202,7 +202,10 @@ pub(crate) fn boot_first_in_config(
 /// The verbs that send the source read `grants` with `?` so a typo stops
 /// them; the ones that only report it pass `None`.
 fn dog_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> DogSource {
-    adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn { grants })
+    adopted_source(cfg, name, grants.clone()).unwrap_or(DogSource::BuiltIn {
+        grants,
+        events: recorded_events(cfg, name),
+    })
 }
 
 /// What `shep.toml` says about `name`, as the CLI hands it to the shepherd:
@@ -240,7 +243,19 @@ fn adopted_source(cfg: &ShepToml, name: &str, grants: Option<Grants>) -> Option<
         grants,
         path: path.display().to_string(),
         channel: cfg.asked_for_channel(name),
+        events: recorded_events(cfg, name),
     })
+}
+
+/// The event kinds recorded for `name` beside its grants, or none for a dog
+/// with no record or one that does not read (the verbs that send a source
+/// have already stopped on that).
+fn recorded_events(cfg: &ShepToml, name: &str) -> Vec<String> {
+    cfg.grant_record(name)
+        .ok()
+        .flatten()
+        .map(|record| record.events)
+        .unwrap_or_default()
 }
 
 /// Connects to `paths.socket`, distinguishing a genuine absence from a

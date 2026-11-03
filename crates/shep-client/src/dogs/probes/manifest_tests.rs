@@ -1,7 +1,7 @@
 //! A fixture dog's `Probe`, asked each of the three flags.
 
 use shep_core::dogs::manifest::{
-    Action, DogDependency, Manifest, Permission, Serves, Subcommand, Verb,
+    Action, DogDependency, DogEvent, Manifest, Permission, Serves, Subcommand, Verb,
 };
 use shep_core::dogs::{MANIFEST_FLAG, SCHEMA_FLAG, VERSION_FLAG};
 
@@ -36,6 +36,7 @@ fn fixture() -> Probe<'static> {
         .validate()
         .serves_every_sheep()
         .action("export-now", "Export without waiting for the interval")
+        .event("exported", "A batch was sent")
 }
 
 fn reply(probe: &Probe<'_>, flag: &str) -> String {
@@ -68,6 +69,7 @@ fn the_manifest_parses_back_to_what_the_dog_declared() {
         "export-now",
         "Export without waiting for the interval",
     )];
+    expected.events = vec![DogEvent::new("exported", "A batch was sent")];
     assert_eq!(manifest, expected);
 }
 

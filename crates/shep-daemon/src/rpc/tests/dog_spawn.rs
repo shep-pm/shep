@@ -23,6 +23,7 @@ async fn describe_reports_the_refused_spawn_without_env_values() {
                             grants: None,
                             path: "/dogs/kelpie".to_string(),
                             channel: false,
+                            events: Vec::new(),
                         },
                         env: BTreeMap::from([
                             ("TOKEN".to_string(), "{{secret:MISSING}}".to_string().into()),
@@ -60,6 +61,7 @@ async fn enable_retries_an_errored_dog_from_the_current_entry() {
             grants: None,
             path: "/dogs/kelpie".to_string(),
             channel: false,
+            events: Vec::new(),
         };
         let refused = reply_of(
             dispatch(

@@ -505,7 +505,10 @@ async fn a_grant_from_the_checklist_writes_what_shep_dogs_grant_writes() {
         result: Ok(Response::DogStarted(
             ProcessInfo::builder(50, "bark", ProcStatus::Online)
                 .pid(Some(50_000))
-                .dog(Some(DogSource::BuiltIn { grants: None }))
+                .dog(Some(DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                }))
                 .build(),
         )),
     });

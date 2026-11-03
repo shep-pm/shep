@@ -185,6 +185,7 @@ pub(crate) fn record_change(
                 waiting: without(&held.waiting),
                 revoked: without(&held.revoked),
                 reviewed: true,
+                events: held.events.clone(),
             },
             // Nothing to take away: neither held nor waiting.
             Change::Revoke if !names(&held.granted) && !names(&held.waiting) => held.clone(),
@@ -200,6 +201,7 @@ pub(crate) fn record_change(
                         .chain([permission.clone()]),
                 ),
                 reviewed: held.reviewed,
+                events: held.events.clone(),
             },
         };
         if now != held {

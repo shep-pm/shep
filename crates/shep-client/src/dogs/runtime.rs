@@ -79,6 +79,26 @@ impl DogRuntime {
         parse_section(self.identity.section(), self.section.as_str())
     }
 
+    /// Publishes `payload` as this dog's event `kind`, which subscribers
+    /// holding `events:dog.<name>` hear as `dog.<name>.<kind>`.
+    ///
+    /// `kind` must be one the dog declared with
+    /// [`Probe::event`](super::Probe::event). The name is the connection's,
+    /// so a dog can publish only under its own, and the payload is opaque
+    /// to the shepherd.
+    ///
+    /// # Errors
+    ///
+    /// [`ShepherdError::Request`]: the shepherd refused (naming `kind` when
+    /// it was not declared), or the request failed.
+    pub async fn publish(
+        &self,
+        kind: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), ShepherdError> {
+        Ok(self.client.publish_event(kind, payload).await?)
+    }
+
     /// The connection, which re-establishes itself across a handover.
     #[must_use]
     pub fn client(&self) -> &ReconnectingClient {
@@ -170,6 +190,41 @@ mod tests {
 
     /// An unnamed dog still reads its default section, and says nothing
     /// about who it is.
+    /// A runtime against a shepherd that answers any request, and the
+    /// shepherd's record of what it was sent.
+    #[tokio::test]
+    async fn publish_sends_the_dogs_event_and_payload_to_the_shepherd() {
+        use crate::testing::{Handshake, fake_daemon_across_handovers};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let shepherd =
+            fake_daemon_across_handovers(&paths.socket, vec![Handshake::Accept(sample_ack())]);
+        let runtime = tokio::time::timeout(
+            Duration::from_secs(5),
+            DogRuntime::start(DogIdentity::named("bark"), paths),
+        )
+        .await
+        .expect("DogRuntime::start hung instead of connecting")
+        .unwrap();
+        let payload = serde_json::json!({ "sent": 3 });
+
+        runtime.publish("exported", payload.clone()).await.unwrap();
+
+        let sent: Vec<Request> = shepherd
+            .envelopes()
+            .into_iter()
+            .map(|(_, envelope)| envelope.body)
+            .collect();
+        assert!(
+            sent.contains(&Request::PublishEvent {
+                event: "exported".to_owned(),
+                payload
+            }),
+            "{sent:?}"
+        );
+    }
+
     #[tokio::test]
     async fn an_unnamed_dog_reads_its_default_section_anonymously() {
         let dir = tempfile::tempdir().unwrap();

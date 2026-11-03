@@ -146,8 +146,9 @@ pub(super) fn pin_grants(ctx: &RpcContext, request: Request) -> Request {
                 .known_dogs
                 .recorded(&name)
                 .unwrap_or_else(|| Some(Grants::default()));
+            let events = ctx.known_dogs.events(&name);
             Request::EnableDog {
-                source: source.with_grants(recorded),
+                source: source.with_grants(recorded).with_events(events),
                 name,
                 env,
             }

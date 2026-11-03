@@ -2787,6 +2787,16 @@ One dog already triggers another with `Request::Trigger` on its own connection, 
 
 `verified crates/shep-channel/src/wire.rs, crates/shep-channel/src/dispatch.rs, crates/shep-daemon/src/rpc/dispatch.rs, crates/shep-daemon/src/rpc/selector_verbs.rs, crates/shep-core/src/dogs/manifest.rs, crates/shep-client/src/dogs/probes.rs, crates/shep-cli/src/commands/trigger.rs`
 
+### A dog publishes one `BusEvent::Dog` under its own name, declared in manifest v2, with the kinds recorded in `shep.toml`
+
+`Request::PublishEvent { event, payload }` is accepted only on a dog's own connection. It publishes `BusEvent::Dog { dog, kind, payload }` on the topic `dog.<dog>.<kind>`, and the shepherd checks two things: the kind is in the sender's declared list, and the name is the connection's own. The control socket and a launch link are refused. The payload is opaque JSON the shepherd never reads. The manifest gains `events`, each with a `kind` and a `description`, and `MANIFEST_VERSION` is 2; a v1 manifest reads with none, even one that prints an `events` list. A subscriber needs `events:dog.<name>`, which covers `dog.<name>.` and no sibling that shares the prefix (`dog.otel2.`). `config.dog.<self>` stays always granted, and another dog's `config.dog.<x>` needs `events:config.dog.<x>`. The declared kinds ride `DogSource` beside `grants` and are recorded in `[daemon.dog_grants.<dog>] events`, so they survive a restart and a handover. An `EnableDog` sent by a dog has them replaced by the recorded ones, as it does its grants. `PROTOCOL_VERSION` stays: the request is additive on the `#[non_exhaustive]` enum.
+
+**Why:** one variant with an opaque payload keeps the bus from growing a variant per dog, and a dog's kinds are the dog's to define. Publishing only under the sender's own name needs no grant to reason about and lets a subscriber trust the segment after `dog.`. The manifest moves to v2 for events alone so that step 5's panes can be v3 rather than sharing a version with a half-finished field. The kinds live in `shep.toml` because the shepherd reads no manifest and a handover carries only what the successor reads at boot (the maintainer's call on #1432).
+
+**What it costs:** the request's field is `event`, not `kind`, because `kind` is the enum's serde tag. The payload is not checked or bounded beyond the frame limit. A dog with no manifest declares nothing and cannot publish, and a rebuild that drops its manifest clears the kinds it held. A dog whose name has a dot cannot publish, because a plain prefix grant cannot tell `dog.a.b.x` from dog `a` and dog `a.b`; refusing the name was chosen over matching registered names, which the grant check does not have. A kind is a claim until a rebuilt dog's manifest is read again at boot, reload, `enable` or `grant`.
+
+`verified crates/shep-core/src/protocol/request/verbs.rs, crates/shep-core/src/protocol/events.rs, crates/shep-core/src/permissions/mod.rs, crates/shep-core/src/dogs/manifest.rs, crates/shep-daemon/src/rpc/dog_events.rs, crates/shep-daemon/src/rpc/context.rs, crates/shep-daemon/src/rpc/gate.rs, crates/shep-cli/src/commands/shep_toml/grants.rs, crates/shep-client/src/dogs/runtime.rs`
+
 ## Listening sockets held by the shepherd
 
 ### A sheep's `listen` table has the shepherd bind its TCP sockets once and pass them to every instance through `LISTEN_FDS`

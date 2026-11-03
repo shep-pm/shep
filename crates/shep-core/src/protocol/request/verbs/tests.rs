@@ -64,6 +64,7 @@ fn an_enable_dog_carries_its_env_and_hides_its_values() {
             grants: None,
             path: "/usr/local/bin/shep-kelpie".to_string(),
             channel: false,
+            events: Vec::new(),
         },
         env: BTreeMap::from([(
             "PADDOCK_KEY".to_string(),
@@ -79,12 +80,15 @@ fn an_enable_dog_carries_its_env_and_hides_its_values() {
     assert_eq!(
         format!("{request:?}"),
         "EnableDog { name: \"kelpie\", source: Adopted { path: \"/usr/local/bin/shep-kelpie\", \
-         channel: false, grants: None }, env: {\"PADDOCK_KEY\": EnvValue(<11 bytes>)} }"
+         channel: false, grants: None, events: [] }, env: {\"PADDOCK_KEY\": EnvValue(<11 bytes>)} }"
     );
 
     let bare = Request::EnableDog {
         name: "metrics".to_string(),
-        source: DogSource::BuiltIn { grants: None },
+        source: DogSource::BuiltIn {
+            grants: None,
+            events: Vec::new(),
+        },
         env: BTreeMap::new(),
     };
     let json = serde_json::to_string(&bare).unwrap();
@@ -332,7 +336,10 @@ fn request_wire_snapshots() {
             Request::EnableDog {
                 name: "metrics".to_string(),
                 env: BTreeMap::default(),
-                source: DogSource::BuiltIn { grants: None },
+                source: DogSource::BuiltIn {
+                    grants: None,
+                    events: Vec::new(),
+                },
             },
         ),
         envelope(
@@ -771,4 +778,22 @@ fn the_dog_defaults_verbs_and_replies_have_their_own_tags() {
     let wire = r#"{"kind":"dog_defaults_set","data":{"dog":"jobs"}}"#;
     assert_eq!(serde_json::to_string(&reply).unwrap(), wire);
     assert_eq!(serde_json::from_str::<Response>(wire).unwrap(), reply);
+}
+
+#[test]
+fn a_publish_event_request_and_its_reply_have_their_own_tags() {
+    let request = Request::PublishEvent {
+        event: "exported".to_string(),
+        payload: serde_json::json!({"batch": 3, "nested": {"ok": true}}),
+    };
+    let json = serde_json::to_string(&request).unwrap();
+    assert_eq!(
+        json,
+        r#"{"kind":"publish_event","event":"exported","payload":{"batch":3,"nested":{"ok":true}}}"#
+    );
+    assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+    assert_eq!(
+        serde_json::to_string(&Response::EventPublished).unwrap(),
+        r#"{"kind":"event_published"}"#
+    );
 }
