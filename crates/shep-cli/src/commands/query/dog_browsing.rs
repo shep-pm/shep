@@ -25,13 +25,10 @@ pub async fn dogs(
     match client.list_flock().await {
         Ok(mut procs) => {
             mark_access(&mut procs, paths);
-            let rows = DogRows(
-                procs
-                    .into_iter()
-                    .filter(|p| p.dog.is_some())
-                    .filter(|p| filter.is_none_or(|f| matches_filter(f, &[&p.name])))
-                    .collect(),
-            );
+            procs.retain(|p| p.dog.is_some());
+            procs.retain(|p| filter.is_none_or(|f| matches_filter(f, &[&p.name])));
+            let origins = super::flock_display::local_origins(paths, &procs);
+            let rows = DogRows::with_origins(procs, origins);
             write_outcome(emit(
                 &mut *streams.out,
                 streams.fmt,

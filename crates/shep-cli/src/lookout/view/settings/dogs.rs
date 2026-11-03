@@ -38,8 +38,11 @@ pub(super) enum DogColumn {
     /// Whether `[daemon] enabled_dogs` names it, not whether the shepherd
     /// has started it.
     InFile,
-    /// `built-in`, or the adopted binary's path.
+    /// `built-in`, `installed`, `installed, community` or `adopted`.
     Source,
+    /// The dog's version, with `\u{2192} <new>` when the cached index holds
+    /// a newer one.
+    Version,
     /// Whether the dog is up: [`running_of`] joins it against the live flock,
     /// reading `not running` when no dog by that name is running.
     Running,
@@ -54,8 +57,10 @@ impl DogColumn {
             Self::Name => 0,
             // `IN FILE` header; yes/no cells are shorter.
             Self::InFile => 7,
-            // budget for an adopted binary's path before `fit` truncates.
-            Self::Source => 24,
+            // `installed, community`.
+            Self::Source => 20,
+            // `0.23.0 \u{2192} 0.24.0` and a little over.
+            Self::Version => 16,
             // matches `super::super::flock::Column::Status`'s width.
             Self::Running => 15,
         }
@@ -63,6 +68,13 @@ impl DogColumn {
 }
 
 const ALL_DOG_COLUMNS: &[DogColumn] = &[
+    DogColumn::Name,
+    DogColumn::InFile,
+    DogColumn::Source,
+    DogColumn::Version,
+    DogColumn::Running,
+];
+const NO_VERSION: &[DogColumn] = &[
     DogColumn::Name,
     DogColumn::InFile,
     DogColumn::Source,
@@ -81,10 +93,11 @@ const FLOOR_DOG_COLUMNS: &[DogColumn] = &[DogColumn::Name, DogColumn::Running];
 pub(super) const DOG_MIN_WIDTH: u16 = DogColumn::Running.width() + DOG_NAME_MIN + 2;
 
 /// Width thresholds, widest first, mirroring `flock::columns::TIERS`:
-/// least-diagnostic column drops first. SOURCE (widest) drops before IN
+/// least-diagnostic column drops first. VERSION drops, then SOURCE, then IN
 /// FILE; NAME and RUNNING are the floor.
 pub(super) const DOG_TIERS: &[(u16, &[DogColumn])] = &[
-    (61, ALL_DOG_COLUMNS),
+    (75, ALL_DOG_COLUMNS),
+    (57, NO_VERSION),
     (34, NO_SOURCE),
     (DOG_MIN_WIDTH, FLOOR_DOG_COLUMNS),
 ];
@@ -135,7 +148,7 @@ fn running_of(app: &App, name: &str) -> Option<String> {
 }
 
 /// One dog's header row: the fold glyph and its name, whether the file has it
-/// enabled, where its binary comes from, and whether it is up.
+/// enabled, where its binary came from, its version, and whether it is up.
 ///
 /// A refusal is a fifth thing, so it lands after the last column, in
 /// whatever width is left. It is fitted rather than wrapped: a narrow
@@ -188,10 +201,8 @@ pub(super) fn dog_header_line(
         let cell = match column {
             DogColumn::Name => format!("{} {}", open_glyph(open), dog.name),
             DogColumn::InFile => if dog.enabled { "yes" } else { "no" }.to_string(),
-            DogColumn::Source => dog
-                .adopted_path
-                .as_ref()
-                .map_or_else(|| "built-in".to_string(), |path| path.display().to_string()),
+            DogColumn::Source => dog.origin.source.as_str().to_string(),
+            DogColumn::Version => dog.origin.version_cell(),
             DogColumn::Running => {
                 running_of(app, &dog.name).unwrap_or_else(|| "not running".into())
             }
@@ -215,17 +226,71 @@ mod tests {
     use super::super::super::flock::GUTTER;
     use super::super::content_lines;
     use super::*;
+    use crate::commands::settings::DogView;
     use crate::output::width::visible_width;
 
-    /// SOURCE is the widest column, so it drops first.
+    /// VERSION is the least diagnostic, then SOURCE; RUNNING outlives both.
     #[test]
-    fn the_dogs_source_column_drops_before_the_rest() {
-        assert!(columns_for(120).contains(&DogColumn::Source));
-        assert!(!columns_for(60).contains(&DogColumn::Source));
+    fn the_dogs_version_column_drops_before_source_and_source_before_the_rest() {
+        assert!(columns_for(120).contains(&DogColumn::Version));
+        assert!(!columns_for(70).contains(&DogColumn::Version));
+        assert!(columns_for(70).contains(&DogColumn::Source));
+        assert!(!columns_for(50).contains(&DogColumn::Source));
         assert!(
-            columns_for(60).contains(&DogColumn::Running),
+            columns_for(50).contains(&DogColumn::Running),
             "RUNNING is the diagnostic half and outlives SOURCE"
         );
+    }
+
+    fn header_of(dog: DogView, width: u16) -> String {
+        let mut app = fixtures::app_in_settings_with_dog_drift();
+        let named = dog.name.clone();
+        app.update(crate::lookout::app::Msg::Settings {
+            result: Ok(crate::commands::settings::SettingsSnapshot {
+                dogs: vec![dog],
+                ..app.settings().unwrap().snapshot().clone()
+            }),
+        });
+        let settings = app.settings().unwrap();
+        assert_eq!(
+            settings.dog(0).map(|d| d.name.as_str()),
+            Some(named.as_str())
+        );
+        dog_header_line(&app, settings, 0, false, width, app.palette())
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn the_header_row_names_each_dogs_source_and_version() {
+        use crate::dog_origin::{DogOrigin, Source};
+        let installed = DogView {
+            origin: DogOrigin {
+                source: Source::Community,
+                version: Some("0.2.4".to_owned()),
+                newer: Some("0.3.0".to_owned()),
+            },
+            ..DogView::adopted("log-rotate", true, std::path::Path::new("/opt/log-rotate"))
+        };
+        let line = header_of(installed, 120);
+        assert!(line.contains("installed, community"), "{line:?}");
+        assert!(line.contains("0.2.4 \u{2192} 0.3.0"), "{line:?}");
+
+        let line = header_of(
+            DogView::adopted("otel", true, std::path::Path::new("/opt/otel")),
+            120,
+        );
+        assert!(line.contains("adopted"), "{line:?}");
+        assert!(
+            !line.contains("/opt/otel"),
+            "the path is not the source: {line:?}"
+        );
+
+        let line = header_of(DogView::built_in("bark", true), 120);
+        assert!(line.contains("built-in"), "{line:?}");
+        assert!(line.contains("1.0.0"), "{line:?}");
     }
 
     /// Measures the rendered lines, not the declared widths: each line

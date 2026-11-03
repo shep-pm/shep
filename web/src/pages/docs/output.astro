@@ -207,7 +207,7 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
     <div class="rows">
       <div class="row"><span>both</span><span><code>ID NAME STATUS PID RESTARTS EXIT CPU MEM UPTIME</code></span></div>
       <div class="row"><span>sheep only</span><span><code>CFG FOLD SMIT</code></span></div>
-      <div class="row"><span>dogs only</span><span><code>SOURCE ACCESS</code></span></div>
+      <div class="row"><span>dogs only</span><span><code>SOURCE VERSION ACCESS</code></span></div>
     </div>
     <CodeBlock label="shep flock">{`┌────┬────────┬──────────────┬───────┬──────────┬──────┬─────┬──────┬────────┬────────┬──────┐
 │ ID │ NAME   │ STATUS       │ PID   │ RESTARTS │ EXIT │ CFG │ CPU │ MEM  │ UPTIME │ FOLD   │ SMIT │
@@ -216,11 +216,11 @@ import ShortVersion from "../../components/docs/ShortVersion.astro";
 └────┴────────┴──────────────┴───────┴──────────┴──────┴─────┴─────┴──────┴────────┴────────┴──────┘
 
 Dogs
-┌────┬────────────┬──────────────┬───────┬──────────┬──────┬─────┬──────┬────────┬─────────┬────────┐
-│ ID │ NAME       │ STATUS       │ PID   │ RESTARTS │ EXIT │ CPU │ MEM  │ UPTIME │ SOURCE  │ ACCESS │
-├────┼────────────┼──────────────┼───────┼──────────┼──────┼─────┼──────┼────────┼─────────┼────────┤
-│ 1  │ log-rotate │ (o.o) online │ 48207 │ 0        │ -    │ -   │ 6.6M │ 2s     │ adopted │ -      │
-└────┴────────────┴──────────────┴───────┴──────────┴──────┴─────┴──────┴────────┴─────────┴────────┘`}</CodeBlock>
+┌────┬────────────┬──────────────┬───────┬──────────┬──────┬─────┬──────┬────────┬─────────┬─────────┬────────┐
+│ ID │ NAME       │ STATUS       │ PID   │ RESTARTS │ EXIT │ CPU │ MEM  │ UPTIME │ SOURCE  │ VERSION │ ACCESS │
+├────┼────────────┼──────────────┼───────┼──────────┼──────┼─────┼──────┼────────┼─────────┼─────────┼────────┤
+│ 1  │ log-rotate │ (o.o) online │ 48207 │ 0        │ -    │ -   │ 6.6M │ 2s     │ adopted │ -       │ -      │
+└────┴────────────┴──────────────┴───────┴──────────┴──────┴─────┴──────┴────────┴─────────┴─────────┴────────┘`}</CodeBlock>
     <p>
       <code>CFG</code>, <code>FOLD</code> and <code>SMIT</code> are missing
       from the dogs table because they are impossible for a dog rather than

@@ -304,6 +304,11 @@ import CodeBlock from "../../components/docs/CodeBlock.astro";
         Table format shows this row as <code>silent</code>.
       </li>
       <li>
+        <code>source</code>, <code>version</code> and{" "}
+        <code>newer_version</code> are on a local dog's row only: its SOURCE and
+        VERSION cells, <code>null</code> where a dog has none.
+      </li>
+      <li>
         <code>disabled</code> is <code>true</code> on a stopped sheep or dog
         whose app <code>shep disable</code> parked, and the key is absent on
         every other row. <code>status</code> stays <code>stopped</code>; table

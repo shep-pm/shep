@@ -160,10 +160,10 @@ pub enum Commands {
     /// struck from `[daemon] enabled_dogs`, `[daemon] adopted_dogs` and
     /// `[daemon] channel_dogs` in `shep.toml`, so the next boot does not
     /// bring it back. Its `[<name>]` table in `dogs.toml` stays, as it does
-    /// through `shep disable`, and the verb says so. A built-in dog is
-    /// refused, by the shepherd: `shep disable metrics` is the verb that
-    /// exists for one. A sweep (`all`, a fold, a `/regex/`) is the flock, and
-    /// a dog is not in it.
+    /// through `shep disable`, and the verb says so. A dog `shep install` put
+    /// on disk also loses `$SHEP_HOME/dogs/<name>/`; an adopted dog's file
+    /// stays. A built-in dog is refused by the shepherd: use `shep disable`.
+    /// A sweep (`all`, a fold, a `/regex/`) is the flock, not a dog.
     ///
     /// A name is judged against `shep.toml`, so a `shep.toml` that exists and
     /// cannot be read or parsed refuses a name selector instead of guessing at
@@ -212,7 +212,10 @@ pub enum Commands {
     Flock(FlockArgs),
     /// List the dogs, and nothing else. `--available` lists the community
     /// index of dogs you could adopt instead of the ones this shepherd is
-    /// running. `grant` and `revoke` change one permission of a dog.
+    /// running. The listing shows each dog's SOURCE (`built-in`, `installed`,
+    /// `installed, community` or `adopted`) and VERSION, with `→ <new>` when
+    /// the cached index holds a newer one; the index is never fetched for it.
+    /// `grant` and `revoke` change one permission of a dog.
     Dogs(DogsArgs),
     /// Turn a sheep or a dog back on. A sheep named here has its disabled
     /// mark cleared and is started; a dog is written into `[daemon]
