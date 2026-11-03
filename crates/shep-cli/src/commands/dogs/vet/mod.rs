@@ -20,7 +20,7 @@ use crate::output::Streams;
 
 mod manifest;
 
-pub(crate) use manifest::{ManifestRead, cached_manifest, read_manifest};
+pub(crate) use manifest::{ManifestRead, cached_manifest, read_manifest, sha256_hex};
 
 /// The dog name that runs sheep through `launch`.
 const SANDBOX: &str = "sandbox";

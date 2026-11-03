@@ -9,7 +9,7 @@
 use super::{
     AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs, DialStdioArgs,
     DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
-    ImportArgs, InitArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs,
+    ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs, SelectorArgs,
     ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs, TriggerArgs,
     UnsetArgs, WhisperArgs,
 };
@@ -243,6 +243,22 @@ pub enum Commands {
     /// own configuration in `dogs.toml` survives a disable/enable cycle;
     /// `shep delete` forgets the adoption as well.
     Disable(DisableArgs),
+    /// Build a dog from the community index with cargo, then adopt and
+    /// enable it. With no name, lists the index.
+    ///
+    /// Runs `cargo install --locked --version <version> --root
+    /// $SHEP_HOME/dogs/<name>/<version>/ <package>` for the one version the
+    /// index approves, so it needs `cargo` on `PATH`; shep never installs a
+    /// toolchain. Before building it asks crates.io which repository
+    /// published that version, and refuses one other than the index row's.
+    /// Then it asks the same grant question `shep adopt` asks, and enables
+    /// the dog. A no leaves it installed, adopted and disabled.
+    /// `$SHEP_HOME/dogs/<name>/receipt.json` records what was built and how.
+    ///
+    /// Only a `cargo` row with an approved version installs. Any other row
+    /// prints its instructions and exits 1. A dog the index does not carry
+    /// is `shep adopt`.
+    Install(InstallArgs),
     /// Vet a binary shep has never seen and register it as a dog: writes
     /// `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`,
     /// and starts it now if a shepherd is running.
@@ -755,6 +771,7 @@ mod tests {
             "whisper",
             "enable",
             "disable",
+            "install",
             "adopt",
             "kv",
             "get",

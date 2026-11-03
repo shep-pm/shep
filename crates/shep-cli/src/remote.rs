@@ -63,6 +63,7 @@ pub(crate) fn host_scope(command: &Commands) -> HostScope {
         | Commands::Serve(_)
         | Commands::Dogs(_)
         | Commands::Adopt(_)
+        | Commands::Install(_)
         | Commands::Rehome(_)
         | Commands::Whistle
         | Commands::Reopen(_)

@@ -27,7 +27,7 @@ use super::vet::{
     warn_unreadable_schema,
 };
 use super::{
-    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, connect_or_absent,
+    DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS, connect_or_absent,
     emit_dog_action, fail_config,
 };
 
@@ -42,12 +42,45 @@ pub async fn adopt(streams: &mut Streams<'_>, paths: &ShepPaths, args: &AdoptArg
     adopt_asking(streams, paths, args, &mut Input::stdin()).await
 }
 
+/// What the caller of [`adopt_with`] reports itself as, and whether the dog
+/// ends up running.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Flow {
+    /// The `command` of the reply: `adopt`, or `install` when `shep install`
+    /// hands its build over.
+    pub(super) verb: &'static str,
+    /// Whether a dog the operator granted is enabled. `shep install
+    /// --no-enable` stops after adopting, which leaves the grant recorded and
+    /// the dog off.
+    pub(super) enable: bool,
+}
+
+impl Flow {
+    /// `shep adopt`: adopt, then enable.
+    pub(super) const ADOPT: Self = Self {
+        verb: "adopt",
+        enable: true,
+    };
+}
+
 /// [`adopt`], asking at `input` rather than at this process's stdin.
 pub(super) async fn adopt_asking(
     streams: &mut Streams<'_>,
     paths: &ShepPaths,
     args: &AdoptArgs,
     input: &mut Input,
+) -> ExitCode {
+    adopt_with(streams, paths, args, input, Flow::ADOPT).await
+}
+
+/// [`adopt_asking`], reporting as `flow.verb` and enabling only if
+/// `flow.enable`.
+pub(super) async fn adopt_with(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &AdoptArgs,
+    input: &mut Input,
+    flow: Flow,
 ) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
     let path_var = std::env::var_os("PATH");
@@ -92,7 +125,7 @@ pub(super) async fn adopt_asking(
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
-    let (adopted, grants, declined, env) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
+    let (adopted, grants, declined, held_back, env) = match ShepToml::try_edit(&paths.daemon_config, |cfg| {
         cfg.adopt_dog(&name, &path, channel)?;
         // The answer was asked against a read taken before the question. A
         // grant another shep wrote since was decided by someone with the
@@ -111,10 +144,17 @@ pub(super) async fn adopt_asking(
             }
             Some(Verdict::Grant(None)) | None => {}
         }
+        // `adopt_dog` enables; `--no-enable` takes that back, and says so
+        // only when it is the reason the dog is off.
+        let held_back = !flow.enable && !declined;
+        if held_back {
+            cfg.disable_dog(&name);
+        }
         Ok((
             cfg.adopted_dog_names(),
             cfg.granted(&name)?,
             declined,
+            held_back,
             cfg.adopted_dog_env(&name),
         ))
     }) {
@@ -164,10 +204,19 @@ pub(super) async fn adopt_asking(
             path: path.display().to_string(),
             channel,
         };
-        return declined_after_config(streams, &name, source, client.as_ref()).await;
+        return declined_after_config(streams, flow.verb, &name, source, client.as_ref()).await;
+    }
+    if held_back {
+        let source = DogSource::Adopted {
+            grants,
+            path: path.display().to_string(),
+            channel,
+        };
+        return held_back_after_config(streams, flow.verb, &name, source, client.as_ref()).await;
     }
     adopt_after_config(
         streams,
+        flow.verb,
         &name,
         &path,
         channel,
@@ -183,12 +232,38 @@ pub(super) async fn adopt_asking(
 /// to stop it. With no shepherd there is nothing running to stop.
 pub(super) async fn declined_after_config(
     streams: &mut Streams<'_>,
+    verb: &str,
     name: &str,
     source: DogSource,
     client: Option<&Client>,
 ) -> ExitCode {
+    off_after_config(streams, verb, name, source, client, DECLINED_STATUS).await
+}
+
+/// `--no-enable`'s daemon half: the config has the dog adopted and granted
+/// but disabled, so a shepherd already running it is told to stop it.
+async fn held_back_after_config(
+    streams: &mut Streams<'_>,
+    verb: &str,
+    name: &str,
+    source: DogSource,
+    client: Option<&Client>,
+) -> ExitCode {
+    off_after_config(streams, verb, name, source, client, NOT_ENABLED_STATUS).await
+}
+
+/// The daemon half of an adopt that leaves the dog off, told in `idle` when
+/// no shepherd was running or the shepherd had no such dog.
+async fn off_after_config(
+    streams: &mut Streams<'_>,
+    verb: &str,
+    name: &str,
+    source: DogSource,
+    client: Option<&Client>,
+    idle: DogActionStatus,
+) -> ExitCode {
     let Some(client) = client else {
-        return emit_dog_action(streams, "adopt", name, source, DECLINED_STATUS);
+        return emit_dog_action(streams, verb, name, source, idle);
     };
     match client
         .request(Request::DisableDog {
@@ -197,11 +272,11 @@ pub(super) async fn declined_after_config(
         .await
     {
         Ok(Response::Deleted(_ids)) => {
-            emit_dog_action(streams, "adopt", name, source, DISABLED_STATUS)
+            emit_dog_action(streams, verb, name, source, DISABLED_STATUS)
         }
         // The shepherd holds no such dog: nothing was running to stop.
         Err(RequestError::Rpc(rpc)) if rpc.code == RpcErrorCode::NotFound => {
-            emit_dog_action(streams, "adopt", name, source, DECLINED_STATUS)
+            emit_dog_action(streams, verb, name, source, idle)
         }
         Ok(_unrecognised) => unexpected_response(streams),
         Err(err) => client_error(streams, &err),
@@ -283,7 +358,7 @@ fn expand_tilde_candidate(value: &str, home: Option<&Path>) -> Option<PathBuf> {
 /// not `./shep-log-rotate`), and only a hit with an execute bit set for
 /// someone, so a same-named non-executable file earlier on `$PATH` does not
 /// block the real binary further down it.
-fn lookup_on_path(name: &Path, path_var: Option<&OsStr>) -> Option<PathBuf> {
+pub(super) fn lookup_on_path(name: &Path, path_var: Option<&OsStr>) -> Option<PathBuf> {
     let is_bare = name
         .parent()
         .is_some_and(|parent| parent.as_os_str().is_empty());
@@ -445,6 +520,7 @@ fn fail_dogs_config(streams: &mut Streams<'_>, err: &DogMigrationError) -> ExitC
 /// after the adopt wrote it, which a re-adopt keeps.
 async fn adopt_after_config(
     streams: &mut Streams<'_>,
+    verb: &str,
     name: &str,
     path: &Path,
     channel: bool,
@@ -458,7 +534,7 @@ async fn adopt_after_config(
         channel,
     };
     let Some(client) = client else {
-        return emit_dog_action(streams, "adopt", name, source, NO_SHEPHERD_ENABLE_STATUS);
+        return emit_dog_action(streams, verb, name, source, NO_SHEPHERD_ENABLE_STATUS);
     };
     let request = Request::EnableDog {
         name: name.to_string(),
@@ -473,7 +549,7 @@ async fn adopt_after_config(
             warn_if_unenforced(streams, name, &source, client.daemon().protocol);
             emit_dog_action(
                 streams,
-                "adopt",
+                verb,
                 name,
                 source,
                 DogActionStatus::Acted(info.status.into()),
@@ -526,6 +602,7 @@ mod tests {
             let binary = PathBuf::from("/usr/local/bin/shep-otel");
             let _ = adopt_after_config(
                 &mut streams(&mut out, &mut err),
+                "adopt",
                 "otel",
                 &binary,
                 channel,
@@ -626,6 +703,7 @@ mod tests {
 
             let code = adopt_after_config(
                 &mut streams,
+                "adopt",
                 "otel",
                 &binary,
                 false,

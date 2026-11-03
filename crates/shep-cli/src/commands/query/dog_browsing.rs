@@ -160,7 +160,7 @@ fn note_index_costs(streams: &mut Streams<'_>, skipped: usize, sanitised: usize)
 ///
 /// # Errors
 /// The underlying write failed.
-fn render_detail(out: &mut dyn std::io::Write, dog: &AvailableDog) -> std::io::Result<()> {
+pub(crate) fn render_detail(out: &mut dyn std::io::Write, dog: &AvailableDog) -> std::io::Result<()> {
     writeln!(out, "{} . {} . {}", dog.name, dog.package, dog.category)?;
     writeln!(out, "{}", dog.description)?;
     writeln!(out, "{} . {}", dog.license, dog.repo)?;

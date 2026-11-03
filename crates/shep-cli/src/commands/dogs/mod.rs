@@ -31,6 +31,8 @@ mod enable;
 mod entry_drift;
 mod grant;
 mod grants;
+mod install;
+mod receipt;
 mod remove;
 mod second_look;
 mod upgrade;
@@ -55,6 +57,8 @@ mod grant_record_tests;
 #[cfg(all(test, unix))]
 mod grant_tests;
 #[cfg(all(test, unix))]
+mod install_tests;
+#[cfg(all(test, unix))]
 mod manifest_adoption_tests;
 #[cfg(test)]
 mod second_look_race_tests;
@@ -69,6 +73,7 @@ pub use adopt::adopt;
 pub use barks::barks;
 pub use disable::disable;
 pub use enable::enable;
+pub use install::install;
 #[cfg(test)]
 pub(crate) use entry_drift::test_support as entry_drift_support;
 pub(crate) use entry_drift::{
@@ -103,6 +108,11 @@ const NO_SHEPHERD_ENABLE_STATUS: DogActionStatus =
 /// permissions: nothing was granted and the dog was not enabled.
 const DECLINED_STATUS: DogActionStatus =
     DogActionStatus::NoShepherd("not enabled; nothing was granted");
+
+/// [`DogActionRow`]'s status when `shep install --no-enable` left the dog
+/// adopted and granted, and off.
+const NOT_ENABLED_STATUS: DogActionStatus =
+    DogActionStatus::NoShepherd("adopted, not enabled; `shep enable` starts it");
 
 /// [`DogActionRow`]'s status when
 /// `disable` wrote the config and no shepherd answered: the mirror of

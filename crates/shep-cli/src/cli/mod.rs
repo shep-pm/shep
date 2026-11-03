@@ -37,7 +37,9 @@ use help::version_text;
 pub(crate) use global_help::{flags_topic, flags_topic_asked, with_global_footer};
 pub(crate) use help::{HELP_TEMPLATE, dress_help_template};
 
-pub use dogs::{AdoptArgs, DisableArgs, DogArgs, DogsArgs, DogsCommand, EnableArgs};
+pub use dogs::{
+    AdoptArgs, DisableArgs, DogArgs, DogsArgs, DogsCommand, EnableArgs, InstallArgs,
+};
 pub use flock::{FlockArgs, FoldArgs, LookoutArgs};
 pub use hosts::{HostArgs, HostCommand};
 pub use import::{ImportArgs, ImportCommand, ImportEnvArgs, ImportPm2Args};
