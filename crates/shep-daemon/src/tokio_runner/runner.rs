@@ -830,14 +830,8 @@ impl ProcessRunner for TokioRunner {
         // descriptor this one writes through.
         #[cfg(target_os = "linux")]
         if let Some(dir) = &spec.cgroup {
-            crate::cgroup::join_on_exec(
-                command.as_std_mut(),
-                dir,
-                spec.memory_max,
-                spec.cpu_quota,
-                spec.pids_max,
-            )
-            .map_err(|error| crate::cgroup::spawn_failed(&spec.name, dir, &error))?;
+            crate::cgroup::join_on_exec(command.as_std_mut(), dir, spec.into())
+                .map_err(|error| crate::cgroup::spawn_failed(&spec.name, dir, &error))?;
         }
         #[cfg(unix)]
         if !mappings.is_empty() {

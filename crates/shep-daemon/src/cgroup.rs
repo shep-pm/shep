@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use shep_core::config::CpuCores;
 
-use crate::runner::RunnerError;
+use crate::runner::{RunnerError, SpawnSpec};
 
 /// The cgroup v2 mount point every unified hierarchy is read from.
 const MOUNT: &str = "/sys/fs/cgroup";
@@ -30,6 +30,28 @@ const CPU_PERIOD_US: u64 = CpuCores::PERIOD_US;
 
 /// Written to `cgroup.subtree_control`: the controllers a sheep's limits use.
 const CONTROLLERS: &str = "+memory +cpu +pids";
+
+/// What a sheep's cgroup is capped to before its child joins: `None` leaves
+/// that limit off.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Limits {
+    /// Bytes for `memory.max`.
+    pub memory_max: Option<u64>,
+    /// Microseconds per period for `cpu.max`.
+    pub cpu_quota: Option<u64>,
+    /// Processes for `pids.max`.
+    pub pids_max: Option<u32>,
+}
+
+impl From<&SpawnSpec> for Limits {
+    fn from(spec: &SpawnSpec) -> Self {
+        Self {
+            memory_max: spec.memory_max,
+            cpu_quota: spec.cpu_quota,
+            pids_max: spec.pids_max,
+        }
+    }
+}
 
 /// What [`detect`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,8 +207,8 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 
 /// Creates the cgroup at `dir` and makes `command`'s child join it before it
 /// execs. A kill of any process in it takes the whole group, through
-/// `memory.oom.group`. `memory_max`, `cpu_quota` and `pids_max` are written first, by
-/// [`write_memory_max`], [`write_cpu_max`] and [`write_pids_max`].
+/// `memory.oom.group`. `limits` are written first, by [`write_memory_max`],
+/// [`write_cpu_max`] and [`write_pids_max`].
 ///
 /// `dir` may already exist, as after a restart that reuses its name, but not
 /// with a process in it: a sheep that outlived a crashed shepherd keeps its
@@ -199,9 +221,7 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 pub(crate) fn join_on_exec(
     command: &mut std::process::Command,
     dir: &Path,
-    memory_max: Option<u64>,
-    cpu_quota: Option<u64>,
-    pids_max: Option<u32>,
+    limits: Limits,
 ) -> io::Result<()> {
     let created = match fs::create_dir(dir) {
         Ok(()) => true,
@@ -212,9 +232,21 @@ pub(crate) fn join_on_exec(
         Err(io::Error::from(io::ErrorKind::ResourceBusy))
     } else {
         fs::write(dir.join("memory.oom.group"), "1")
-            .and_then(|()| memory_max.map_or(Ok(()), |limit| write_memory_max(dir, Some(limit))))
-            .and_then(|()| cpu_quota.map_or(Ok(()), |quota| write_cpu_max(dir, Some(quota))))
-            .and_then(|()| pids_max.map_or(Ok(()), |limit| write_pids_max(dir, Some(limit))))
+            .and_then(|()| {
+                limits
+                    .memory_max
+                    .map_or(Ok(()), |limit| write_memory_max(dir, Some(limit)))
+            })
+            .and_then(|()| {
+                limits
+                    .cpu_quota
+                    .map_or(Ok(()), |quota| write_cpu_max(dir, Some(quota)))
+            })
+            .and_then(|()| {
+                limits
+                    .pids_max
+                    .map_or(Ok(()), |limit| write_pids_max(dir, Some(limit)))
+            })
             .and_then(|()| {
                 fs::OpenOptions::new()
                     .write(true)
@@ -357,5 +389,9 @@ pub(crate) fn remove_stale(base: &Path) {
     }
 }
 
+#[cfg(test)]
+mod cpu_tests;
+#[cfg(test)]
+mod task_tests;
 #[cfg(test)]
 mod tests;
