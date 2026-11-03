@@ -25,6 +25,7 @@ use crate::handover::DogConnection;
 #[derive(Debug)]
 struct Held {
     name: String,
+    launch_for: Option<String>,
     pid: u32,
     fd: OwnedFd,
     /// `None` until the dog's `Hello`; then its topic patterns.
@@ -67,13 +68,14 @@ impl DogLinks {
     /// Enters the connection `stream` into the table and returns the lease
     /// that keeps it there.
     ///
-    /// `resumed` is the topics of a connection a predecessor already greeted,
-    /// and `None` for a fresh one. A duplicate that cannot be made (out of
-    /// descriptors) leaves the connection served and untracked: a handover
-    /// then leaves it out and the dog falls back to the control socket.
+    /// `launch_for` is the sheep a launch link was opened for, `None` for a
+    /// dog's own. `resumed` is the topics a predecessor already greeted, `None`
+    /// for a fresh one. A duplicate that cannot be made (out of descriptors)
+    /// leaves the connection served and untracked: a handover leaves it out.
     pub(super) fn register(
         &self,
         name: &str,
+        launch_for: Option<&str>,
         pid: u32,
         stream: &impl AsFd,
         resumed: Option<Vec<String>>,
@@ -92,6 +94,7 @@ impl DogLinks {
             key,
             Held {
                 name: name.to_owned(),
+                launch_for: launch_for.map(str::to_owned),
                 pid,
                 fd,
                 topics: resumed,
@@ -158,6 +161,7 @@ impl DogLinks {
             .filter_map(|held| {
                 Some(DogConnection {
                     name: held.name.clone(),
+                    launch_for: held.launch_for.clone(),
                     pid: held.pid,
                     fd: held.fd.try_clone().ok()?,
                     topics: held.topics.clone(),

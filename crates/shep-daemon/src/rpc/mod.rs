@@ -35,7 +35,7 @@ mod dispatch;
 
 mod gate;
 
-pub(crate) use gate::{check_carried, kind_of, spawn_checked_forwarder};
+pub(crate) use gate::{Link, check_carried, kind_of, spawn_checked_forwarder};
 
 pub(crate) use dispatch::dispatch;
 #[cfg(test)]

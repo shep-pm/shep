@@ -180,6 +180,116 @@ async fn sheep_config_view(
     }
 }
 
+/// Sends `request` on the launch link of `sheep` through `dog`.
+async fn on_launch_link(h: &Harness, dog: &str, sheep: &str, request: Request) -> Reply {
+    let link = Link::Launch { dog, sheep };
+    reply_of(super::dispatch(envelope(1, request), ConnId::next(), Some(link), &h.ctx).await)
+}
+
+fn reads(sheep: &str, dog: &str) -> Request {
+    Request::SheepDogSettingsResolved {
+        name: sheep.to_string(),
+        dog: dog.to_string(),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_launch_link_reads_its_own_sheeps_table() {
+    let h = harness(vec![ProcScript::never_exits(); 2]);
+    let jobs = dog_tables::table(serde_json::json!({ "network": "none" }));
+    dog_tables::start(
+        &h.ctx,
+        1,
+        vec![dog_tables::carrying("web", vec![("jobs", jobs.clone())])],
+    )
+    .await;
+
+    let reply = on_launch_link(&h, "jobs", "web", reads("web", "jobs")).await;
+
+    assert_eq!(
+        reply.result,
+        Ok(Response::SheepDogTable { table: Some(jobs) })
+    );
+    let subscribe = Request::Subscribe {
+        topics: vec!["config.sheep.jobs".to_string()],
+    };
+    let outcome = super::dispatch(
+        envelope(2, subscribe),
+        ConnId::next(),
+        Some(Link::Launch {
+            dog: "jobs",
+            sheep: "web",
+        }),
+        &h.ctx,
+    )
+    .await;
+    assert!(matches!(outcome, Outcome::Subscribe { .. }));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_launch_link_is_refused_another_sheeps_table_and_every_other_request() {
+    let h = harness(vec![ProcScript::never_exits(); 2]);
+    let table = |n: u64| dog_tables::table(serde_json::json!({ "n": n }));
+    dog_tables::start(
+        &h.ctx,
+        1,
+        vec![
+            dog_tables::carrying("web", vec![("jobs", table(1)), ("deploy", table(2))]),
+            dog_tables::carrying("api", vec![("jobs", table(3))]),
+        ],
+    )
+    .await;
+    let refused = [
+        ("sheep_dog_settings_resolved", reads("api", "jobs")),
+        ("sheep_dog_settings_resolved", reads("web", "deploy")),
+        ("sheep_dog_settings_resolved", reads("nobody", "jobs")),
+        (
+            "subscribe",
+            Request::Subscribe {
+                topics: vec!["config.sheep.*".to_string()],
+            },
+        ),
+        (
+            "subscribe",
+            Request::Subscribe {
+                topics: vec!["config.sheep.deploy".to_string()],
+            },
+        ),
+        (
+            "subscribe",
+            Request::Subscribe {
+                topics: vec!["config.sheep.jobs".to_string(), "*".to_string()],
+            },
+        ),
+        ("ping", Request::Ping),
+        ("list_flock", Request::ListFlock),
+        (
+            "dog_sheep_settings",
+            Request::DogSheepSettings {
+                dog: "jobs".to_string(),
+            },
+        ),
+        (
+            "sheep_config",
+            Request::SheepConfig {
+                name: "web".to_string(),
+            },
+        ),
+        ("kill_daemon", Request::KillDaemon),
+    ];
+
+    for (kind, request) in refused {
+        let reply = on_launch_link(&h, "jobs", "web", request).await;
+        let err = reply.result.expect_err(kind);
+        assert_eq!(err.code, RpcErrorCode::Forbidden, "{kind}");
+        assert!(
+            err.message.contains(&format!("`{kind}`")),
+            "{kind}: {err:?}"
+        );
+    }
+    assert_eq!(list_flock(&h.ctx, 9).await.len(), 2, "nothing was touched");
+}
+
 mod apply_config;
 mod disable_enable;
 mod disable_roll;

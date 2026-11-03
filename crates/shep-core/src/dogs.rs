@@ -49,10 +49,10 @@ pub const DOG_NAME_VAR: &str = "SHEP_DOG_NAME";
 /// The variable that names the descriptor a supervised dog was spawned with
 /// an open connection to its shepherd on.
 ///
-/// Unix only, and set on every supervised dog. A process nothing supervised
-/// has no such variable and connects on the control socket, where it acts as
-/// the operator. See [`DOG_LINK_FD`]. Windows has no inherited descriptor and
-/// uses [`DOG_LINK_PIPE_VAR`] instead.
+/// Unix only, and set on every supervised dog and on a sheep launched through
+/// the sandbox dog, whose link reads only its own table. A process nothing
+/// supervised connects on the control socket as the operator. See
+/// [`DOG_LINK_FD`]. Windows uses [`DOG_LINK_PIPE_VAR`] instead.
 pub const DOG_LINK_FD_VAR: &str = "SHEP_DOG_FD";
 
 /// The Windows name of the pipe a supervised dog opens to its shepherd.

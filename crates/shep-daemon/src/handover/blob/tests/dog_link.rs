@@ -15,12 +15,41 @@ fn connection(
     (
         DogConnection {
             name: "web".to_owned(),
+            launch_for: None,
             pid,
             fd: OwnedFd::from(ours),
             topics,
         },
         theirs,
     )
+}
+
+#[test]
+fn a_launch_link_is_carried_on_the_sheep_it_was_opened_for() {
+    let mut blob = sample_handover();
+    let (mut link, _sheep_end) = connection(100, Some(vec!["config.sheep.sandbox".to_owned()]));
+    link.name = "sandbox".to_owned();
+    link.launch_for = Some("web".to_owned());
+    let number = link.fd.as_raw_fd();
+
+    blob.carry_dog_links(&[link]);
+
+    assert_eq!(blob.sheep[0].fds.dog_link, Some(number));
+    assert_eq!(
+        blob.sheep[0].dog_topics(),
+        Some(&["config.sheep.sandbox".to_owned()][..])
+    );
+}
+
+#[test]
+fn a_launch_link_is_not_carried_on_the_dog_that_launches_it() {
+    let mut blob = sample_handover();
+    let (mut link, _sheep_end) = connection(100, None);
+    link.launch_for = Some("elsewhere".to_owned());
+
+    blob.carry_dog_links(&[link]);
+
+    assert_eq!(blob.sheep[0].fds.dog_link, None);
 }
 
 #[test]

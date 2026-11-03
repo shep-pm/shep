@@ -51,6 +51,9 @@ mod dog_link;
 mod dog_grants;
 mod dog_tables;
 mod harness;
+// Unix only, as `dog_link` is.
+#[cfg(unix)]
+mod launch_link;
 mod lifecycle;
 #[cfg(unix)]
 mod listen_reload;

@@ -596,7 +596,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.rust == 'true' || needs.changes.result != 'success' || github.event_name == 'workflow_dispatch') }}
     # `real_runner/identity.rs`'s privilege-drop case needs a real uid change and a
-    # real supplementary-group clear, both root-only.
+    # real supplementary-group clear, both root-only. So does
+    # `daemon_e2e/launch_link.rs`, whose sheep runs as `nobody`.
     #
     # `log_path_security`'s two ownership cases are here for a different
     # reason: only root can `chown` or `lchown` a fixture to another uid, so
@@ -629,6 +630,15 @@ jobs:
             -- --ignored --exact identity::a_dropped_child_runs_as_the_requested_user \
             | tee dropped-child.out
           grep -q 'test result: ok. 1 passed' dropped-child.out
+      # A sheep with `user` set, launched through a stand-in sandbox dog,
+      # reads its table over its launch link while the control socket refuses
+      # it. Same grep floor as above.
+      - shell: bash
+        run: |
+          cargo test -p shep-daemon --test daemon_e2e --locked --all-features \
+            -- --ignored --exact launch_link::a_launched_sheep_with_a_user_reads_its_table_while_the_control_socket_stays_refused \
+            | tee launch-link.out
+          grep -q 'test result: ok. 1 passed' launch-link.out
       # Not `#[ignore]`d: they run in the main tiers as an ordinary user and
       # take their root branch only here, where `uid 0` is real. Libtest exits
       # 0 when a filter matches nothing, so the grep is the floor: a rename

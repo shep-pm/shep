@@ -529,6 +529,7 @@ impl ProcessRunner for TokioRunner {
             channel,
             dog_link,
             dog_topics,
+            launch_dog,
             reaper,
         } = spec;
 
@@ -557,11 +558,21 @@ impl ProcessRunner for TokioRunner {
         // not this runner's to start: it is handed over, and a send that fails
         // means nothing is serving links, as at a spawn.
         if let Some(stream) = dog_link {
-            let _ = self.links.send(DogLink {
-                name,
-                pid,
-                stream,
-                resumed: dog_topics,
+            let _ = self.links.send(match launch_dog {
+                Some(dog) => DogLink {
+                    name: dog,
+                    launch_for: Some(name),
+                    pid,
+                    stream,
+                    resumed: dog_topics,
+                },
+                None => DogLink {
+                    name,
+                    launch_for: None,
+                    pid,
+                    stream,
+                    resumed: dog_topics,
+                },
             });
         }
 
@@ -800,8 +811,16 @@ impl ProcessRunner for TokioRunner {
         // contact by that pid.
         #[cfg(unix)]
         let mut dog_end = None;
+        // A dog's own link wins over a launch link, and `listen` sockets
+        // keep fd 4 from a launched sheep, which then reaches the shepherd
+        // as it did before the link existed.
         #[cfg(unix)]
-        if spec.dog_link {
+        let launch_dog = spec
+            .launch_link
+            .as_deref()
+            .filter(|_| !spec.dog_link && listening.is_none());
+        #[cfg(unix)]
+        if spec.dog_link || launch_dog.is_some() {
             let (daemon_end, mapping) = dog_link::pair()?;
             env.insert(DOG_LINK_FD_VAR.to_string(), DOG_LINK_FD.to_string());
             mappings.push(mapping);
@@ -847,11 +866,21 @@ impl ProcessRunner for TokioRunner {
         // back to the control socket.
         #[cfg(unix)]
         if let Some(stream) = dog_end {
-            let _ = self.links.send(DogLink {
-                name: spec.name.clone(),
-                pid,
-                stream,
-                resumed: None,
+            let _ = self.links.send(match launch_dog {
+                Some(dog) => DogLink {
+                    name: dog.to_string(),
+                    launch_for: Some(spec.name.clone()),
+                    pid,
+                    stream,
+                    resumed: None,
+                },
+                None => DogLink {
+                    name: spec.name.clone(),
+                    launch_for: None,
+                    pid,
+                    stream,
+                    resumed: None,
+                },
             });
         }
 

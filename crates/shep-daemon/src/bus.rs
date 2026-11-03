@@ -275,6 +275,8 @@ impl PartialEq<BusEvent> for SharedEvent {
 pub struct TopicFilter {
     set: GlobSet,
     patterns: Vec<String>,
+    /// The one sheep a `config.sheep.<dog>` event must name to match.
+    only_sheep: Option<String>,
 }
 
 impl TopicFilter {
@@ -302,13 +304,28 @@ impl TopicFilter {
         Ok(Self {
             set,
             patterns: patterns.to_vec(),
+            only_sheep: None,
         })
+    }
+
+    /// This filter, narrowed to the `config.sheep.<dog>` events that name
+    /// `sheep`.
+    ///
+    /// Any other event it matches is dropped too: a scope that cannot read an
+    /// event's sheep admits nothing.
+    #[must_use]
+    pub(crate) fn only_sheep(mut self, sheep: &str) -> Self {
+        self.only_sheep = Some(sheep.to_owned());
+        self
     }
 
     /// True when `event`'s [`BusEvent::topic`] matches one of this filter's patterns.
     #[must_use]
     pub fn matches(&self, event: &BusEvent) -> bool {
         self.set.is_match(&*event.topic())
+            && self.only_sheep.as_deref().is_none_or(|only| {
+                matches!(event, BusEvent::DogSheepSettingsChanged { sheep, .. } if sheep == only)
+            })
     }
 
     /// True when this filter would match either log topic.
