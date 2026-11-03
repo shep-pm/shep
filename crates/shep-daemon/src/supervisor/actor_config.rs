@@ -478,7 +478,7 @@ impl<R: ProcessRunner> Actor<R> {
     /// reaches the kernel at once. An instance not running takes the new value
     /// at its next spawn.
     #[cfg(target_os = "linux")]
-    fn rewrite_cpu_max(&mut self, name: &str) {
+    pub(super) fn rewrite_cpu_max(&mut self, name: &str) {
         for (id, slot) in &self.sheep {
             let config = slot.entry.spec.config();
             if config.name != name || slot.entry.pid.is_none() {

@@ -537,6 +537,10 @@ impl<R: ProcessRunner> Actor<R> {
         if !park_all && group == ApplyGroup::Live && EXTRAS_FIELDS.contains(&key) {
             self.apply_extras_change(name);
         }
+        #[cfg(target_os = "linux")]
+        if !park_all && group == ApplyGroup::Live && CGROUP_FIELDS.contains(&key) {
+            self.rewrite_cpu_max(name);
+        }
 
         // `reaches_running` owns the `autostart`/`depends_on` carve-out now,
         // so the pane's prediction and this answer cannot drift.
