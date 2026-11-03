@@ -24,9 +24,9 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▸ otel                                                            no       /usr/local/bin/shep-otel  online           
-  ▸ ledger                                                          yes      /opt/ledger/bin/dog       not running      
-  ▸ bark                                                            yes      built-in                  silent           
+  ▸ otel                                              no       adopted               -                 online           
+  ▸ ledger                                            yes      adopted               -                 not running      
+  ▸ bark                                              yes      built-in              1.0.0             silent           
                                                                                                                         
                                                                                                                         
                                                                                                                         

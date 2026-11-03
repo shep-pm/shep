@@ -21,7 +21,7 @@ shep lookout   /home/ada/.shep                                                  
                                                                                                                         
   [dogs]                                                                                                                
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
-  ▾ otel                                                            no       /usr/local/bin/shep-otel  online           
+  ▾ otel                                              no       adopted               -                 online           
     boot first        no                                           the next boot reads it                               
     grants            nothing recorded                             its next start reads it                              
     source            /usr/local/bin/shep-otel                     shep adopt writes it                                 

@@ -70,7 +70,7 @@ impl DogOrigin {
 
     /// A dog adopted from a path, versioned by the manifest cached for that
     /// exact binary, which an adopt or enable read. `None` when none was.
-    fn adopted(version: Option<String>) -> Self {
+    pub fn adopted(version: Option<String>) -> Self {
         Self {
             source: Source::Adopted,
             version,
