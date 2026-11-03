@@ -12,6 +12,7 @@ mod dogs;
 #[cfg(test)]
 mod dogs_grant_tests;
 mod flock;
+mod global_help;
 mod help;
 mod hosts;
 mod import;
@@ -33,6 +34,7 @@ use help::version_text;
 
 // `crate::adopted_help` renders the registry's dogs into a copy of this
 // template; the template itself is what ships and stays hand-written.
+pub(crate) use global_help::{flags_topic, flags_topic_asked, with_global_footer};
 pub(crate) use help::{HELP_TEMPLATE, dress_help_template};
 
 pub use dogs::{AdoptArgs, DisableArgs, DogArgs, DogsArgs, DogsCommand, EnableArgs};
@@ -94,14 +96,20 @@ pub struct Cli {
 #[derive(Debug, clap::Args)]
 pub struct GlobalArgs {
     /// Output format
-    #[arg(long, global = true, value_enum, default_value_t = Format::Table)]
+    #[arg(long, global = true, hide_short_help = true, hide_long_help = true, value_enum, default_value_t = Format::Table)]
     pub format: Format,
     /// Suppress non-essential output
     ///
     /// Currently narrows `bleats`' own notices (a dropped-events count, a
     /// daemon-shutdown notice, ...): diagnostics distinct from a sheep's
     /// own line or a real error, both of which still print regardless.
-    #[arg(short, long, global = true)]
+    #[arg(
+        short,
+        long,
+        global = true,
+        hide_short_help = true,
+        hide_long_help = true
+    )]
     pub quiet: bool,
     /// How much this invocation dresses up its output: `full`, `plain`, or
     /// `bare`
@@ -110,18 +118,30 @@ pub struct GlobalArgs {
     /// let those decide; `shep style` reports which one answered.
     // The precedence order above is `style::resolve`'s; this field is only
     // the flag's own place in it.
-    #[arg(long, global = true, value_enum)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        hide_long_help = true,
+        value_enum
+    )]
     pub style: Option<crate::style::StyleLevel>,
     /// Reach another host's shepherd over ssh
     ///
     /// DEST is an ssh destination: `amp2`, `user@amp2`, or an alias from
-    /// ~/.ssh/config. `flock`, `describe`, `fold`, `bleats`,
-    /// `stop`, `restart`, `reload`, `delete`, `stock`, `enable`, `disable`,
-    /// `signal`, `whisper`, `trigger` and `lookout` take it; any other verb
-    /// refuses it rather than act on this machine. `describe` shows no
-    /// secrets over it, and `enable` takes no hidden `--exec` form over it.
-    /// `--home` still names this machine's home, never the host's.
-    #[arg(long, global = true, value_name = "DEST", value_parser = parse_destination)]
+    /// ~/.ssh/config. A verb that takes it names it in the global flags line
+    /// at the foot of its help; any other verb refuses it rather than act on
+    /// this machine. `describe` shows no secrets over it, and `enable` takes
+    /// no hidden `--exec` form over it. `--home` still names this machine's
+    /// home, never the host's.
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        hide_long_help = true,
+        value_name = "DEST",
+        value_parser = parse_destination
+    )]
     pub host: Option<String>,
     /// Talk to a different shepherd
     ///
@@ -129,10 +149,15 @@ pub struct GlobalArgs {
     /// almost certainly want the default, ~/.shep. Must be an absolute path:
     /// a relative one would name a different flock from every directory.
     // Declared last on purpose: it is the daemon's data-root, not a choice
-    // anyone should read first. `{options}` renders in declaration order and
-    // ignores `help_heading`. A `//`, not `///`, so it stays out of
-    // `shep --help`.
-    #[arg(long, global = true, env = "SHEP_HOME")]
+    // anyone should read first. A `//`, not `///`, so it stays out of
+    // `shep help flags`.
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        hide_long_help = true,
+        env = "SHEP_HOME"
+    )]
     pub home: Option<PathBuf>,
 }
 
