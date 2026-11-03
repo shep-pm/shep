@@ -226,7 +226,12 @@ pub(crate) fn spawn_failed(name: &str, dir: &Path, error: &io::Error) -> RunnerE
 /// What `cgroup.procs` or the removal reported, other than the directory
 /// being absent.
 pub(crate) fn remove_if_empty(dir: &Path) -> io::Result<()> {
-    if fs::read_to_string(dir.join("cgroup.procs")).is_ok_and(|procs| !procs.trim().is_empty()) {
+    // One byte tells: a listing is `<pid>\n` per process, so any byte is one.
+    let mut first = [0u8; 1];
+    let listed = fs::File::open(dir.join("cgroup.procs"))
+        .and_then(|mut procs| io::Read::read(&mut procs, &mut first))
+        .is_ok_and(|read| read > 0);
+    if listed {
         return Ok(());
     }
     match fs::remove_dir(dir) {

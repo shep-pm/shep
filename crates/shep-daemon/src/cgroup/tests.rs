@@ -399,6 +399,19 @@ fn a_cgroup_holding_a_process_is_not_removed() {
 }
 
 #[test]
+fn a_cgroup_procs_that_never_ends_is_read_as_holding_a_process() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(dir.path(), 3, 0);
+    fs::create_dir(&cgroup).expect("the sheep's cgroup");
+    // Endless, as `/dev/full` is: the check must not read it to the end.
+    std::os::unix::fs::symlink("/dev/zero", cgroup.join("cgroup.procs")).expect("the symlink");
+
+    remove_if_empty(&cgroup).expect("left, not an error");
+
+    assert!(cgroup.is_dir());
+}
+
+#[test]
 fn boot_removes_only_the_sheep_cgroups_a_crash_left_empty() {
     let dir = tempfile::tempdir().expect("a temp directory");
     let base = dir.path();
