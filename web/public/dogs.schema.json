@@ -75,9 +75,19 @@
                   "version": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The exact version to name, for a dog that needs one (a pre-release above all: cargo resolves * to the newest stable, and * never matches a pre-release). Omit for a normal release."
+                    "description": "The exact crates.io version this index approves. shep installs this version and no other. A cargo row without one is listed but cannot be installed."
+                  },
+                  "sha256": {
+                    "type": "object",
+                    "description": "Hex sha256 of the prebuilt binary for each target triple. The download URL is built from the row, never stored: <repo>/releases/download/v<version>/<package>-<version>-<target>, plus .exe on Windows. The release workflow writes these; a target with no entry is built from source. Needs version.",
+                    "propertyNames": { "pattern": "^[a-z0-9._-]+$" },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
                   }
-                }
+                },
+                "dependentRequired": { "sha256": ["version"] }
               },
               {
                 "type": "object",
