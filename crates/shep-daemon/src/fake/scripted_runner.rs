@@ -70,6 +70,10 @@ struct SpawnedProc {
     /// The cgroup this spawn was asked to join, off [`SpawnSpec::cgroup`],
     /// read back via [`ScriptedRunner::spawned_cgroup`].
     cgroup: Option<std::path::PathBuf>,
+    /// The `memory.max` this spawn was asked to set, off
+    /// [`SpawnSpec::memory_max`], read back via
+    /// [`ScriptedRunner::spawned_memory_max`].
+    memory_max: Option<u64>,
 }
 
 /// The pid [`ScriptedRunner`] gives the first proc it spawns; each later
@@ -308,6 +312,16 @@ impl ScriptedRunner {
     #[track_caller]
     pub fn spawned_cgroup(&self, spawn_index: usize) -> Option<std::path::PathBuf> {
         self.spawned.lock().unwrap()[spawn_index].cgroup.clone()
+    }
+
+    /// The `memory.max` the spawn at `spawn_index` was asked to set, or `None`.
+    ///
+    /// # Panics
+    /// If `spawn_index` is out of range.
+    #[must_use]
+    #[track_caller]
+    pub fn spawned_memory_max(&self, spawn_index: usize) -> Option<u64> {
+        self.spawned.lock().unwrap()[spawn_index].memory_max
     }
 
     /// How many spawns this runner has been asked for.
@@ -677,6 +691,7 @@ impl ProcessRunner for ScriptedRunner {
             args: spec.args.clone(),
             listen: spec.listen.clone(),
             cgroup: spec.cgroup.clone(),
+            memory_max: spec.memory_max,
         });
         drop(spawned);
 

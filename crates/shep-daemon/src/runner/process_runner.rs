@@ -254,6 +254,12 @@ pub struct SpawnSpec {
     /// `None` on a host with no delegated cgroup v2 subtree, and on every
     /// platform but Linux, where the runner ignores it.
     pub cgroup: Option<PathBuf>,
+    /// Bytes to write to the cgroup's `memory.max` before the child joins it,
+    /// for a sheep with `memory_enforce = "kernel"`. `None` leaves the cgroup
+    /// uncapped.
+    ///
+    /// Read only with [`Self::cgroup`] set, and only on Linux.
+    pub memory_max: Option<u64>,
 }
 
 /// Redacted: `env` and `args` both carry whatever the operator configured,

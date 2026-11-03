@@ -469,7 +469,7 @@ impl Client {
     ///
     /// - [`RequestError::Rpc`]: the daemon answered with a structured error,
     ///   or `body` carries a key a shepherd below its protocol version would
-    ///   drop (`dogs.sandbox`, `sandbox`, `listen`; see [`Request::gated_key_dropped_at`]),
+    ///   drop (`dogs.sandbox`, `sandbox`, `listen`, `memory_enforce`; see [`Request::gated_key_dropped_at`]),
     ///   which is refused as `Unsupported` before anything is sent.
     /// - [`RequestError::Timeout`]: no reply within `deadline + DEADLINE_GRACE`.
     /// - [`RequestError::Closed`]: the connection closed before a reply arrived.
@@ -557,8 +557,11 @@ fn millis(d: Duration) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use shep_core::config::MemoryEnforce;
     use shep_core::exit;
-    use shep_core::protocol::{LISTEN_SINCE, RpcErrorCode, SANDBOX_DOG_SINCE};
+    use shep_core::protocol::{
+        LISTEN_SINCE, MEMORY_ENFORCE_SINCE, RpcErrorCode, SANDBOX_DOG_SINCE,
+    };
 
     use super::*;
 
@@ -684,6 +687,54 @@ mod tests {
             crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
 
         let _ = client.request(sandboxed_start()).await;
+
+        assert!(
+            sent.try_recv().is_ok(),
+            "the request never reached the wire"
+        );
+    }
+
+    fn kernel_enforced_start() -> Request {
+        let mut app = shep_core::config::AppConfig::minimal("web", "./srv");
+        app.max_memory = Some("512M".parse().unwrap());
+        app.memory_enforce = MemoryEnforce::Kernel;
+        Request::Start { apps: vec![app] }
+    }
+
+    #[tokio::test]
+    async fn a_memory_enforce_key_is_not_sent_to_an_older_shepherd() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: MEMORY_ENFORCE_SINCE - 1,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let refused = client.request(kernel_enforced_start()).await.unwrap_err();
+
+        let RequestError::Rpc(rpc) = &refused else {
+            panic!("expected a refusal, got {refused:?}");
+        };
+        assert_eq!(rpc.code, RpcErrorCode::Unsupported);
+        assert!(rpc.message.contains("`memory_enforce`"), "{}", rpc.message);
+        assert!(rpc.message.contains("nothing was sent"), "{}", rpc.message);
+        assert!(sent.try_recv().is_err(), "the request reached the wire");
+    }
+
+    #[tokio::test]
+    async fn a_memory_enforce_key_is_sent_to_a_shepherd_that_reads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::testing::control_address(dir.path());
+        let ack = HelloAck {
+            protocol: MEMORY_ENFORCE_SINCE,
+            ..crate::testing::sample_ack()
+        };
+        let (client, mut sent) =
+            crate::testing::fake_client_capturing_envelopes_with_ack(&path, ack).await;
+
+        let _ = client.request(kernel_enforced_start()).await;
 
         assert!(
             sent.try_recv().is_ok(),

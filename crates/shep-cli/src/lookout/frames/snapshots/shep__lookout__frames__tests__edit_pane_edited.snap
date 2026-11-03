@@ -13,14 +13,14 @@ shep lookout   /home/ada/.shep                                                  
    exp_backoff_restart_delay  100ms                                           now                                                                               
 >  max_memory                 (unset) -> 256 B                                now         now     (unset)                                                       
    max_restarts               32                                              now         default (none)                                                        
-   min_uptime                 1s                                              now         example 512M                                                          
-   restart_delay              (unset)                                         now                                                                               
-   stop_exit_codes            []                                              now         ● now  the running sheep picks it up without stopping                 
-                                                                                                                         pick the timing when you close the pane
-  pending edits                                                                                                                                                 
-    cwd  (unset) -> /srv/api                                                              ──────────────────────────────────────────────────────────────────────
-    max_memory  (unset) -> 256 B                                                          VALIDATION                                                            
-                                                                                          █ 512M, 2G                                                            
+   memory_enforce             poll                                            now         example 512M                                                          
+   min_uptime                 1s                                              now                                                                               
+   restart_delay              (unset)                                         now         ● now  the running sheep picks it up without stopping                 
+   stop_exit_codes            []                                              now                                        pick the timing when you close the pane
+                                                                                                                                                                
+  pending edits                                                                           ──────────────────────────────────────────────────────────────────────
+    cwd  (unset) -> /srv/api                                                              VALIDATION                                                            
+    max_memory  (unset) -> 256 B                                                          █ 512M, 2G                                                            
                                                                                           █ a bare number is bytes                                              
                                                                                           █ refused: a two-letter unit                                          
                                                                                           █ refused: a lowercase unit                                           

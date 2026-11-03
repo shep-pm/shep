@@ -263,6 +263,13 @@ struct Actor<R: ProcessRunner> {
     /// delegated subtree. `None` gives no sheep a cgroup: on every platform
     /// but Linux, and on a Linux host that offers none.
     cgroup_base: Option<PathBuf>,
+    /// Why [`Self::cgroup_base`] is `None` on a Linux host that looked for
+    /// one, as `detect` reported it. A sheep with `memory_enforce = "kernel"`
+    /// is refused with it.
+    cgroup_unavailable: Option<String>,
+    /// The `oom_kill` count each running kernel-enforced sheep's cgroup held
+    /// when it spawned, by id. Taken at its exit; see [`Actor::take_oom`].
+    oom_baselines: HashMap<u32, u64>,
 }
 
 #[cfg(test)]

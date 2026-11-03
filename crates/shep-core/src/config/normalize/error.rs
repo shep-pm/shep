@@ -105,6 +105,18 @@ pub enum NormalizeError {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
+    /// `memory_enforce = "kernel"` with no `max_memory`, so there is no value
+    /// to write into `memory.max`. Carries the app name.
+    MemoryEnforceNeedsMaxMemory {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `memory_enforce = "kernel"` on a platform with no cgroups: anything but
+    /// Linux. Carries the app name.
+    MemoryEnforceKernelUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
     /// `action_timeout` is above `normalize`'s own ceiling: a wait no
     /// RPC caller could ever be given enough deadline to outlast, since the
     /// daemon clamps every deadline a caller can ask for. Carries the app
@@ -359,6 +371,19 @@ impl fmt::Display for NormalizeError {
                 write!(
                     f,
                     "sheep `{name}` has max_memory = 0, a limit nothing can stay under"
+                )
+            }
+            Self::MemoryEnforceNeedsMaxMemory { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has memory_enforce = \"kernel\" but no max_memory to enforce"
+                )
+            }
+            Self::MemoryEnforceKernelUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has memory_enforce = \"kernel\", which needs Linux cgroups; \
+                     use \"poll\" on this platform"
                 )
             }
             Self::ActionTimeoutTooLong { name, value, max } => {

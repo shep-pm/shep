@@ -121,6 +121,40 @@ impl<R: ProcessRunner> Actor<R> {
         }
     }
 
+    /// The cgroup the sheep `id` spawns into and the `memory.max` to set in it.
+    ///
+    /// The cap is `Some` only for `memory_enforce = "kernel"`. That sheep also
+    /// has its cgroup's `oom_kill` count read here, before the spawn, for
+    /// [`Self::take_oom`] to compare at its exit.
+    ///
+    /// # Errors
+    /// - [`AssembleError::CgroupUnavailable`] if the sheep wants the kernel to
+    ///   enforce `max_memory` and this shepherd has no cgroup to do it in.
+    ///   Never a silent fall back to polling.
+    pub(super) fn cgroup_placement(
+        &mut self,
+        config: &AppConfig,
+        id: u32,
+        instance: u32,
+    ) -> Result<(Option<PathBuf>, Option<u64>), AssembleError> {
+        let dir = self.cgroup_for(id, instance);
+        if !config.memory_enforce.is_kernel() {
+            return Ok((dir, None));
+        }
+        let Some(dir) = dir else {
+            return Err(AssembleError::CgroupUnavailable {
+                reason: self
+                    .cgroup_unavailable
+                    .clone()
+                    .unwrap_or_else(|| "this host has no cgroup v2".to_string()),
+            });
+        };
+        #[cfg(target_os = "linux")]
+        self.oom_baselines
+            .insert(id, crate::cgroup::oom_kills(&dir));
+        Ok((Some(dir), config.max_memory.map(MemSize::bytes)))
+    }
+
     /// The secret view one spawn, or one batch of instances, resolves against.
     ///
     /// The store is read here rather than inside [`assemble`], the same way
@@ -270,10 +304,12 @@ impl<R: ProcessRunner> Actor<R> {
         let assembled = self
             .assemble_for_spawn(app, instance, credentials, secrets)
             .and_then(|spec| {
+                let (cgroup, memory_max) = self.cgroup_placement(app.config(), id, instance)?;
                 Ok(SpawnSpec {
                     dog_link: dog.is_some(),
                     listen: self.listen_for(app.config())?,
-                    cgroup: self.cgroup_for(id, instance),
+                    cgroup,
+                    memory_max,
                     ..spec
                 })
             });
@@ -494,6 +530,16 @@ impl<R: ProcessRunner> Actor<R> {
             &self.secret_view(&app),
         );
         let id = carried.id();
+        // The predecessor's reading is gone with it, so the count it carries
+        // now is the baseline. Anything it killed before the handover is not
+        // charged to this life.
+        #[cfg(target_os = "linux")]
+        if app.config().memory_enforce.is_kernel()
+            && let Some(dir) = self.cgroup_for(id, carried.instance())
+        {
+            self.oom_baselines
+                .insert(id, crate::cgroup::oom_kills(&dir));
+        }
         let status = carried.status();
         // `None` for a blob written before this daemon carried a swap; see
         // `CarriedSheep::reload`.

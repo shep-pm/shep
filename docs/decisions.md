@@ -2811,6 +2811,20 @@ The successor takes each descriptor back, checks that it is a listening TCP sock
 
 `verified crates/shep-daemon/src/handover/blob.rs, crates/shep-daemon/src/handover/carried.rs, crates/shep-daemon/src/handover/adopt/adopt_listeners.rs, crates/shep-daemon/src/supervisor/handover.rs, crates/shep-daemon/src/supervisor/builder.rs, crates/shep-daemon/src/listen.rs, crates/shep-daemon/src/sys.rs`
 
+## Kernel-enforced memory
+
+### `memory_enforce = "kernel"` writes `memory.max` and charges a kernel OOM kill to `max_restarts`
+
+`memory_enforce` is `"poll"` (the default, the sampling enforcer) or `"kernel"`. `"kernel"` needs `max_memory`, and a load refuses it off Linux. On Linux the shepherd writes `max_memory` to the sheep's cgroup `memory.max` before the child execs, and again when a live change moves `max_memory`; lifting the cap writes `max`. Under a cap it also writes `memory.swap.max` as 0, best effort. A kernel sheep is not armed with the polling enforcer. A shepherd with no delegated cgroup refuses the start with the reason `detect` gave and never polls in its place; a live switch to `"kernel"` on such a shepherd only warns, and the refusal comes at the next spawn.
+
+The shepherd reads `oom_kill` from `memory.events.local` before the spawn (and when it adopts a sheep) and again at the exit. A rise charges the restart budget through `note_failed_start`, so a leak that ran longer than `min_uptime` still counts toward `max_restarts` and parks instead of looping, and an exit that is ambiguous with a clean one is charged too. The reason is a `warn!` in the daemon; `ExitInfo` is a wire struct and stays as it was. `PROTOCOL_VERSION` moves to 16 and the client refuses `memory_enforce` below it.
+
+**Why:** a poll every `MEMORY_POLL_INTERVAL` lets a fast leak take the host between two samples; `memory.max` caps the tree at the allocation. A polled breach restarts through the manual path and resets the budget, which is wrong for a kernel kill that arrives as an ordinary `SIGKILL` exit. `memory.events.local` is non-hierarchical, so an ancestor's or the host's OOM does not look like the sheep's own.
+
+**What it costs:** a poll sheep's OOM is not classified. The cgroup-backed cases run in the `cgroups` CI job only.
+
+`verified crates/shep-core/src/config/memory_enforce.rs, crates/shep-core/src/protocol/mod.rs (MEMORY_ENFORCE_SINCE), crates/shep-daemon/src/cgroup.rs, crates/shep-daemon/src/supervisor/actor_spawn.rs, crates/shep-daemon/src/supervisor/actor_exit.rs, crates/shep-daemon/src/brain.rs, crates/shep-daemon/src/extras/mod.rs`
+
 ## Installing a dog
 
 ### `shep install` runs the installer, reversing "print, never execute"

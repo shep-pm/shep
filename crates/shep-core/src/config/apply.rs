@@ -60,6 +60,7 @@ const FIELDS: &[FieldRow] = &[
     // Read fresh when extras arms a worker. These need a re-arm to take
     // effect; see `ExtrasRegistry::rearm_name`.
     FieldRow { field: "max_memory",                 group: ApplyGroup::Live,          reaches_running: true  },
+    FieldRow { field: "memory_enforce",             group: ApplyGroup::Live,          reaches_running: true  },
     FieldRow { field: "watch",                      group: ApplyGroup::Live,          reaches_running: true  },
     FieldRow { field: "ignore_watch",               group: ApplyGroup::Live,          reaches_running: true  },
     FieldRow { field: "watch_delay",                group: ApplyGroup::Live,          reaches_running: true  },
@@ -282,10 +283,10 @@ mod tests {
 
     /// fails if the split drifts unnoticed.
     #[test]
-    fn the_split_is_21_5_17_2() {
+    fn the_split_is_22_5_17_2() {
         let fields = appconfig_fields();
         let count = |want: ApplyGroup| fields.keys().filter(|k| apply_group(k) == want).count();
-        assert_eq!(count(ApplyGroup::Live), 21, "Live");
+        assert_eq!(count(ApplyGroup::Live), 22, "Live");
         assert_eq!(count(ApplyGroup::NextSpawn), 5, "NextSpawn");
         assert_eq!(count(ApplyGroup::NeedsRespawn), 17, "NeedsRespawn");
         assert_eq!(count(ApplyGroup::Structural), 2, "Structural");

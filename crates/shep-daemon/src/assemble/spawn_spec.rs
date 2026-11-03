@@ -188,6 +188,8 @@ pub(super) fn build<E>(
         listen: None,
         // Set by the supervisor, which knows the sheep's id.
         cgroup: None,
+        // Set by the supervisor, with `cgroup`.
+        memory_max: None,
     })
 }
 
