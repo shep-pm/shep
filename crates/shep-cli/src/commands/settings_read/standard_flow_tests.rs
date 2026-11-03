@@ -1,12 +1,14 @@
 //! `shep get <sheep>.dogs.<dog>` for a dog that follows the dog settings
-//! standard, and for one that does not.
+//! standard, and for one whose manifest predates it.
 
 use serde_json::{Value as Json, json};
 use shep_core::dogs::manifest::Serves;
 use shep_core::paths::ShepPaths;
 
 use crate::cli::{Format, GetArgs};
-use crate::commands::standard_dog_testing::{adopt_jobs, shepherd};
+use crate::commands::standard_dog_testing::{
+    adopt_jobs, adopt_jobs_without_the_standard, shepherd,
+};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
@@ -33,6 +35,17 @@ async fn get_in(
 ) -> (ExitCode, String, String) {
     let dir = tempfile::tempdir().unwrap();
     adopt_jobs(dir.path(), serves);
+    get_adopted(dir, section, address, fmt, own).await
+}
+
+/// [`get_in`] over a home that already adopts `jobs`.
+async fn get_adopted(
+    dir: tempfile::TempDir,
+    section: &str,
+    address: &str,
+    fmt: Format,
+    own: Option<Json>,
+) -> (ExitCode, String, String) {
     let paths = ShepPaths::at(dir.path().to_path_buf());
     let (client, _envelopes) = shepherd(dir.path(), own, section).await;
     let args = GetArgs {
@@ -152,4 +165,19 @@ async fn a_table_holding_a_dog_wide_key_is_printed_as_stored_with_a_warning() {
         err.contains("`poll`") && err.contains("reads no settings"),
         "{err}"
     );
+}
+
+#[tokio::test]
+async fn a_dog_whose_manifest_lacks_the_field_reads_as_before() {
+    for fmt in [Format::Table, Format::Json] {
+        let dir = tempfile::tempdir().unwrap();
+        adopt_jobs_without_the_standard(dir.path(), true);
+        let own = Some(json!({ "limit": 9 }));
+        let (code, out, err) = get_adopted(dir, SECTION, "api.dogs.jobs", fmt, own).await;
+
+        assert_eq!(code, ExitCode::Success, "{err}");
+        assert!(!out.contains("inherited"), "{out}");
+        assert!(out.contains("limit = 9"), "{out}");
+        assert!(!out.contains("model"), "[jobs] is not layered in: {out}");
+    }
 }

@@ -327,4 +327,43 @@ mod tests {
         assert_eq!(jobs.schema, Some(json!({ "type": "object" })));
         assert_eq!(jobs.standard, None);
     }
+
+    /// A manifest with no `serves` field and nothing marked dog-wide is not
+    /// the standard: the probe lists the dog's `x-shep-sheep` schema and no
+    /// section, which is what it listed before the standard existed.
+    #[cfg(unix)]
+    #[test]
+    fn a_dog_whose_manifest_lacks_the_field_is_probed_as_before() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::commands::standard_dog_testing::adopt_jobs_without_the_standard(dir.path(), true);
+        let paths = ShepPaths::at(dir.path().to_path_buf());
+        let script = dir.path().join("shep-jobs");
+
+        let jobs = probe_sheep_dog(&paths, "jobs", Some(script), Duration::from_secs(30));
+
+        assert_eq!(jobs.standard, None);
+        assert_eq!(
+            jobs.schema,
+            Some(json!({
+                "type": "object",
+                "properties": { "model": { "type": "string" }, "limit": { "type": "integer" } },
+            }))
+        );
+    }
+
+    /// The same manifest with no sheep schema either: nothing in it makes
+    /// the dog the standard, so it lists with no schema, as it did before.
+    #[cfg(unix)]
+    #[test]
+    fn a_dog_with_plain_settings_and_no_field_has_no_sheep_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::commands::standard_dog_testing::adopt_jobs_without_the_standard(dir.path(), false);
+        let paths = ShepPaths::at(dir.path().to_path_buf());
+        let script = dir.path().join("shep-jobs");
+
+        let jobs = probe_sheep_dog(&paths, "jobs", Some(script), Duration::from_secs(30));
+
+        assert_eq!(jobs.standard, None);
+        assert_eq!(jobs.schema, None);
+    }
 }

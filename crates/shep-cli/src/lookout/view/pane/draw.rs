@@ -183,14 +183,17 @@ pub(super) fn dog_footer_text(pane: &ConfigPane, body_budget: usize) -> Option<S
         PaneTarget::Dog { .. } if pane.applies_to_every_sheep() => Some(format!(
             "[{name}] values apply to every sheep it serves; @ marks a key no sheep can override"
         )),
-        PaneTarget::SheepDog { .. } if pane.inherits_section() => Some(format!(
-            "^ comes from [{name}]; d on a value you set returns it to [{name}]"
-        )),
+        PaneTarget::SheepDog { .. } if pane.inherits_section() => Some(inherited_note(name)),
         _ => None,
     };
     (body_budget > 0).then(|| {
         note.unwrap_or_else(|| format!("shep publishes the change; {name} decides what to reload"))
     })
+}
+
+/// What `^` means on a sheep's table for a standard dog `name`.
+pub(super) fn inherited_note(name: &str) -> String {
+    format!("^ comes from [{name}]; d on a value you set returns it to [{name}]")
 }
 
 /// Pushes `footer`'s line onto `lines`, muted and fit to `width`: the tail

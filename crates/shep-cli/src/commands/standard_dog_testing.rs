@@ -24,8 +24,6 @@ use crate::commands::dogs::{ManifestRead, read_manifest};
 /// first run of a fresh script can outlast the one second a lookup gets.
 #[cfg(unix)]
 pub(crate) fn adopt_jobs(dir: &Path, serves: Serves) {
-    use std::os::unix::fs::PermissionsExt;
-
     let mut manifest = Manifest::new("jobs", "1.0.0", 1);
     manifest.serves = serves;
     manifest.settings = Some(json!({
@@ -36,12 +34,46 @@ pub(crate) fn adopt_jobs(dir: &Path, serves: Serves) {
             "limit": { "type": "integer" },
         },
     }));
+    adopt(dir, &manifest);
+}
+
+/// Adopts `jobs` as a dog that predates the standard: its manifest has no
+/// `serves` field and marks nothing dog-wide. With `sheep_schema` it
+/// publishes the schema of `model` and `limit` under `x-shep-sheep`, and
+/// without it the dog publishes no schema for a sheep at all.
+#[cfg(unix)]
+pub(crate) fn adopt_jobs_without_the_standard(dir: &Path, sheep_schema: bool) {
+    let mut manifest = Manifest::new("jobs", "1.0.0", 1);
+    let mut settings = json!({
+        "type": "object",
+        "properties": {
+            "poll": { "type": "string" },
+            "model": { "type": "string" },
+            "limit": { "type": "integer" },
+        },
+    });
+    if sheep_schema {
+        settings["x-shep-sheep"] = json!({
+            "type": "object",
+            "properties": { "model": { "type": "string" }, "limit": { "type": "integer" } },
+        });
+    }
+    manifest.settings = Some(settings);
+    let wire = serde_json::to_value(&manifest).unwrap();
+    assert!(wire.get("serves").is_none(), "the field is absent: {wire}");
+    adopt(dir, &manifest);
+}
+
+#[cfg(unix)]
+fn adopt(dir: &Path, manifest: &Manifest) {
+    use std::os::unix::fs::PermissionsExt;
+
     let script = dir.join("shep-jobs");
     std::fs::write(
         &script,
         format!(
             "#!/bin/sh\ncat <<'EOF'\n{}\nEOF\n",
-            serde_json::to_string(&manifest).unwrap()
+            serde_json::to_string(manifest).unwrap()
         ),
     )
     .unwrap();

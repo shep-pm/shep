@@ -1,4 +1,7 @@
 //! `shep set` of a dog-wide key on a sheep is refused before the write.
+//!
+//! Two reads go out first, the flock and the sheep's config: the address
+//! cannot be told apart from a dog's without them.
 
 use serde_json::json;
 use shep_core::dogs::manifest::Serves;
@@ -54,6 +57,17 @@ async fn a_dog_wide_key_on_a_sheep_is_refused_before_a_write_is_sent() {
     assert_eq!(code, ExitCode::InvalidConfig, "{said} {sent:?}");
     assert!(said.contains("shep set jobs.poll <value>"), "{said}");
     assert!(writes(&sent).is_empty(), "a write went out: {sent:?}");
+    let names: Vec<String> = sent
+        .iter()
+        .map(|request| format!("{request:?}"))
+        .map(|text| {
+            text.split([' ', '{', '('])
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(names, ["ListFlock", "SheepConfig"], "{sent:?}");
 }
 
 #[tokio::test]

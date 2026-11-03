@@ -13,6 +13,7 @@ use super::super::super::theme::Palette;
 use super::super::flock::{fit, mark};
 use super::super::scroll::{self, Attempt};
 use super::body::row_line;
+use super::draw::inherited_note;
 use super::field_row::open_glyph;
 use super::layout::body_width;
 
@@ -47,11 +48,17 @@ pub(super) fn dogs_body_lines(
             palette.attention(),
         )));
     }
-    let body_budget = budget.saturating_sub(lines.len());
+    let mut body_budget = budget.saturating_sub(lines.len());
     if body_budget == 0 {
         return lines;
     }
     let rows = pane.rows();
+    // The row under the cursor decides, so the note names the dog whose
+    // `^` the operator is looking at. It costs a line only when it shows.
+    let note = inherited_note_for(pane, &rows).filter(|_| body_budget > 1);
+    if note.is_some() {
+        body_budget -= 1;
+    }
     if rows.is_empty() {
         let text = if pane.dogs_tab().is_listed() {
             "no dog publishes a sheep schema, and this sheep carries no table"
@@ -80,7 +87,26 @@ pub(super) fn dogs_body_lines(
             )]
         },
     ));
+    if let Some(note) = note {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", fit(&note, body_width(width))),
+            palette.muted(),
+        )));
+    }
     lines
+}
+
+/// The note under the tab when the cursor is on a standard dog's table that
+/// inherits from the dog's section.
+fn inherited_note_for(pane: &ConfigPane, rows: &[PaneRow]) -> Option<String> {
+    let cursor = pane.view().cursor().min(rows.len().checked_sub(1)?);
+    let (PaneRow::Dog(dog) | PaneRow::Under { dog, .. }) = *rows.get(cursor)? else {
+        return None;
+    };
+    let row = pane.dogs_tab().rows().get(dog)?;
+    row.table()
+        .filter(|table| table.inherits_section())
+        .map(|_| inherited_note(row.name()))
 }
 
 /// One row of the tab: a dog's own, or one of its open table's.
