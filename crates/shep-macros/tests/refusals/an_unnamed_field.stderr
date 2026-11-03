@@ -1,4 +1,4 @@
-error: `#[shep(secret)]` cannot mark an unnamed field: `schemars` puts it in `prefixItems`, where a settings pane reading properties by name has nothing to find. Name the field.
+error: `#[shep(...)]` cannot mark an unnamed field: `schemars` puts it in `prefixItems`, where a settings pane reading properties by name has nothing to find. Name the field.
  --> tests/refusals/an_unnamed_field.rs:4:31
   |
 4 | struct Config(#[shep(secret)] String);

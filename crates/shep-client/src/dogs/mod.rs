@@ -66,6 +66,7 @@
 
 use core::fmt;
 
+mod dog_wide;
 mod error;
 mod identity;
 mod link;
@@ -85,7 +86,7 @@ use serde::de::DeserializeOwned;
 use shep_core::config::DogTable;
 pub use shep_core::dogs::manifest::{DogDependency, Manifest, Permission, Subcommand, Verb};
 pub use shep_core::dogs::validate::{Proposed, VALIDATE_ACTION, Verdict};
-pub use shep_core::dogs::{SECRET_KEY, SHEEP_SCHEMA_KEY};
+pub use shep_core::dogs::{DOG_WIDE_KEY, SECRET_KEY, SHEEP_SCHEMA_KEY};
 /// The attribute that implements [`DogConfig`], re-exported so a dog takes
 /// one dependency rather than two.
 ///
