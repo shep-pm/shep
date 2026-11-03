@@ -16,7 +16,6 @@ pub(crate) struct SupervisorBuilder<R: ProcessRunner> {
     pub(super) extras: Option<Extras>,
     pub(super) environment: String,
     pub(super) provider_secrets: Option<Arc<ProviderSecrets>>,
-    pub(super) dog_defaults: DogDefaults,
     /// The `listen` sockets a predecessor carried, one set per sheep.
     #[cfg(unix)]
     pub(super) adopted_listeners: Vec<AdoptedListeners>,
@@ -37,7 +36,6 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             extras: None,
             environment: DEFAULT_ENVIRONMENT.to_string(),
             provider_secrets: None,
-            dog_defaults: DogDefaults::default(),
             #[cfg(unix)]
             adopted_listeners: Vec::new(),
             dog_binaries: BTreeMap::new(),
@@ -94,18 +92,6 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
     #[must_use]
     pub(crate) fn provider_secrets(mut self, secrets: Arc<ProviderSecrets>) -> Self {
         self.provider_secrets = Some(secrets);
-        self
-    }
-
-    /// The operator's defaults for each dog, layered under every sheep's table.
-    ///
-    /// Left unset, the actor starts with none. `boot` reads
-    /// [`ShepPaths::dog_defaults`] itself and refuses to start on a store it
-    /// cannot read, so no actor serves tables without defaults that are on
-    /// disk.
-    #[must_use]
-    pub(crate) fn dog_defaults(mut self, defaults: DogDefaults) -> Self {
-        self.dog_defaults = defaults;
         self
     }
 
@@ -201,7 +187,6 @@ impl<R: ProcessRunner> SupervisorBuilder<R> {
             paths: self.paths,
             events: self.events,
             host_environment: self.environment,
-            dog_defaults: self.dog_defaults,
             dog_binaries: self.dog_binaries,
             provider_secrets,
             tx,

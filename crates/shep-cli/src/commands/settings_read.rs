@@ -20,6 +20,7 @@ use crate::cli::{Format, GetArgs};
 use crate::commands::copy::address::FlockNames;
 use crate::commands::copy::{self, address};
 use crate::commands::rpc::{typed_request_error, unexpected_response};
+use crate::commands::settings_write;
 use crate::exit::ExitCode;
 use crate::output::{SettingsAnswer, Streams, emit, write_outcome};
 
@@ -137,6 +138,14 @@ pub(crate) async fn get(
         Ok(segments) => segments,
         Err(refusal) => return refusal_report(streams, &refusal),
     };
+    // Before any sheep name, as `shep set` does: a sheep named like a dog does
+    // not take the dog's retired defaults address.
+    if let Some(defaults) = settings_write::defaults_in(&segments, &flock, paths) {
+        return refusal_report(
+            streams,
+            &ReadRefusal::Refused(address::retired_defaults(&defaults)),
+        );
+    }
     if let Some(name) = address::longest_in(&segments, &flock.sheep) {
         let depth = name.split('.').count();
         let written = Written {
