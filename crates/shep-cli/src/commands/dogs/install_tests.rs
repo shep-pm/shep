@@ -13,6 +13,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::consent::Input;
 use super::install::{Lookup, Published, Reach, install_dog, published_from};
+use super::install_depends::Catalog;
 use super::test_support::streams;
 use crate::cli::InstallArgs;
 use crate::commands::shep_toml::ShepToml;
@@ -156,7 +157,7 @@ pub(super) async fn run(
         reach,
         &mut input,
         dog,
-        "https://shep-pm.com/dogs.json",
+        &Catalog::new("https://shep-pm.com/dogs.json", &[]),
     )
     .await;
     (
@@ -471,7 +472,7 @@ async fn a_row_that_cannot_install_answers_json_with_an_error_envelope_and_no_ta
         &reach,
         &mut typing(None),
         &dog,
-        "https://shep-pm.com/dogs.json",
+        &Catalog::new("https://shep-pm.com/dogs.json", &[]),
     )
     .await;
 

@@ -186,6 +186,21 @@ $ shep disable metrics`}</CodeBlock>
       <code>shep.toml</code>'s first.
     </p>
 
+    <h2 id="dependencies">Dependencies</h2>
+    <p>
+      <code>shep install</code> installs the dogs a manifest's{" "}
+      <code>depends</code> names and you haven't adopted first, each through
+      its own grant question. One already adopted is left alone, whatever its
+      version.
+    </p>
+    <p>
+      It refuses, naming the dependency and adopting nothing, when the index
+      lacks it, approves a version outside the range, or the dogs depend on
+      each other in a circle. A no at a dependency's question stops the
+      install: that dependency stays installed and disabled, and the dog is
+      not installed.
+    </p>
+
     <h2 id="when-a-dog-starts">When a dog starts</h2>
     <p>
       After the flock, by default. A metrics dog that came up first would

@@ -32,6 +32,7 @@ mod entry_drift;
 mod grant;
 mod grants;
 mod install;
+mod install_depends;
 mod install_download;
 mod install_keep;
 mod receipt;
@@ -58,6 +59,8 @@ mod grant_builtin_tests;
 mod grant_record_tests;
 #[cfg(all(test, unix))]
 mod grant_tests;
+#[cfg(all(test, unix))]
+mod install_depends_tests;
 #[cfg(all(test, unix))]
 mod install_download_tests;
 #[cfg(all(test, unix))]

@@ -23,8 +23,9 @@ use crate::exit::ExitCode;
 use crate::fetch::{self, RedirectPolicy};
 use crate::output::{AvailableDogRows, Streams, emit, write_outcome};
 
-use super::adopt::{Flow, adopt_with, collides_with_a_verb, lookup_on_path};
+use super::adopt::{Flow, adopt_noting, collides_with_a_verb, lookup_on_path};
 use super::consent::Input;
+use super::install_depends::{Catalog, install_dependencies};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::receipt::{self, Installer, Receipt};
@@ -135,7 +136,7 @@ pub async fn install(streams: &mut Streams<'_>, paths: &ShepPaths, args: &Instal
         &Reach::real(),
         &mut Input::stdin(),
         dog,
-        &url,
+        &Catalog::new(&url, &loaded.index.dogs),
     )
     .await
 }
@@ -190,7 +191,25 @@ pub(super) async fn install_dog(
     reach: &Reach,
     input: &mut Input,
     dog: &AvailableDog,
-    index_url: &str,
+    catalog: &Catalog<'_>,
+) -> ExitCode {
+    install_noting(streams, paths, args, reach, input, dog, catalog, &mut false).await
+}
+
+/// [`install_dog`], setting `said_no` when the operator answered no at the
+/// grant question.
+// Eight, one over the lint's limit: bundling any of them would only be
+// unbundled by every caller.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn install_noting(
+    streams: &mut Streams<'_>,
+    paths: &ShepPaths,
+    args: &InstallArgs,
+    reach: &Reach,
+    input: &mut Input,
+    dog: &AvailableDog,
+    catalog: &Catalog<'_>,
+    said_no: &mut bool,
 ) -> ExitCode {
     let DogSourceKind::Cargo {
         version: Some(version),
@@ -340,11 +359,17 @@ pub(super) async fn install_dog(
         Ok(ManifestRead::Read(manifest)) => Some(manifest),
         Ok(ManifestRead::Absent | ManifestRead::Unreadable) | Err(_) => None,
     };
+    if let Some(manifest) = &manifest
+        && let Err(code) =
+            install_dependencies(streams, paths, args, reach, input, name, manifest, catalog).await
+    {
+        return code;
+    }
     let written = receipt::write(
         paths,
         name,
         &Receipt {
-            index: fetch::url_for_message(index_url),
+            index: fetch::url_for_message(catalog.url),
             row: dog,
             package,
             version,
@@ -386,7 +411,16 @@ pub(super) async fn install_dog(
         enable: !args.no_enable,
     };
     let config_before = std::fs::read(&paths.daemon_config).ok();
-    let code = adopt_with(streams, paths, &adopting, input, flow, note.as_deref()).await;
+    let code = adopt_noting(
+        streams,
+        paths,
+        &adopting,
+        input,
+        flow,
+        note.as_deref(),
+        said_no,
+    )
+    .await;
     // Once `shep.toml` has changed the new binary is what was adopted.
     if code == ExitCode::Success || std::fs::read(&paths.daemon_config).ok() != config_before {
         kept.commit();
