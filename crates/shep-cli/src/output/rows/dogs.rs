@@ -5,10 +5,12 @@ use serde::Serialize;
 use shep_core::dogs::manifest::Action;
 use shep_core::protocol::{DogAccess, DogSource, ProcessInfo};
 
+use crate::dog_origin::{DogOrigin, DogOrigins, Source};
 use crate::output::Render;
 use crate::style::Presentation;
+use crate::vocabulary::Role;
 
-use super::toolkit::{dog_action_paint, exit_cell, paint, process_info_paint, reported};
+use super::toolkit::{Paint, dog_action_paint, exit_cell, paint, process_info_paint, reported};
 
 const EMPTY: &str = "-";
 
@@ -18,6 +20,15 @@ const EMPTY: &str = "-";
 /// together and is one `--format json` away.
 fn source_cell(source: Option<&DogSource>) -> String {
     source.map_or(EMPTY, |source| source.into()).to_owned()
+}
+
+/// [`Role`] for a SOURCE cell: shep's own code is muted, and anything else is
+/// worth a glance, never a fault.
+fn source_role_of(origin: &DogOrigin) -> Role {
+    match origin.source {
+        Source::BuiltIn => Role::Ink3,
+        Source::Installed | Source::Community | Source::Adopted => Role::Butter,
+    }
 }
 
 /// The ACCESS column's cell: the marks `access` carries, or `-` for a dog
@@ -46,14 +57,63 @@ fn access_cell(access: Option<&DogAccess>) -> String {
 /// ```text
 /// common:  ID  NAME  STATUS  PID  RESTARTS  EXIT  CPU  MEM  UPTIME
 /// sheep:   ... + FOLD  SMIT
-/// dogs:    ... + SOURCE  ACCESS
+/// dogs:    ... + SOURCE  VERSION  ACCESS
 /// ```
 ///
 /// `FOLD` and `SMIT` are impossible for a dog rather than empty: a dog
 /// belongs to no fold, and a smit is a mark a dog paints on a sheep.
-#[derive(Debug, Serialize)]
-#[serde(transparent)]
-pub struct DogRows(pub Vec<ProcessInfo>);
+///
+/// SOURCE and VERSION come from a [`DogOrigins`] the caller read off disk. A
+/// dog it holds nothing for reads as its `dog` marker says.
+#[derive(Debug)]
+pub struct DogRows {
+    dogs: Vec<ProcessInfo>,
+    origins: DogOrigins,
+}
+
+impl DogRows {
+    /// Rows for `dogs`, with no origin read: SOURCE says built-in or
+    /// adopted, and VERSION knows nothing of an adopted dog.
+    #[must_use]
+    pub fn new(dogs: Vec<ProcessInfo>) -> Self {
+        Self::with_origins(dogs, DogOrigins::default())
+    }
+
+    /// Rows for `dogs`, each with the origin `origins` holds for it.
+    #[must_use]
+    pub const fn with_origins(dogs: Vec<ProcessInfo>, origins: DogOrigins) -> Self {
+        Self { dogs, origins }
+    }
+}
+
+/// One dog's JSON: its `ProcessInfo` as ever, then what the SOURCE and
+/// VERSION columns say.
+///
+/// `source` is the column's own text. `version` and `newer_version` split
+/// the VERSION cell, which a script would otherwise have to parse an arrow
+/// out of.
+#[derive(Serialize)]
+struct ListedDog<'a> {
+    #[serde(flatten)]
+    info: &'a ProcessInfo,
+    source: &'static str,
+    version: Option<String>,
+    newer_version: Option<String>,
+}
+
+impl Serialize for DogRows {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.dogs.iter().map(|info| {
+            let origin = self.origins.of(info);
+            ListedDog {
+                info,
+                source: origin.source.as_str(),
+                version: origin.version,
+                newer_version: origin.newer,
+            }
+        }))
+    }
+}
 
 /// The actions a dog's manifest declares, for `shep trigger <dog>` with no
 /// action.
@@ -80,14 +140,15 @@ impl Render for DogRows {
     fn headers() -> &'static [&'static str] {
         &[
             "ID", "NAME", "STATUS", "PID", "RESTARTS", "EXIT", "CPU", "MEM", "UPTIME", "SOURCE",
-            "ACCESS",
+            "VERSION", "ACCESS",
         ]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        self.0
+        self.dogs
             .iter()
             .map(|p| {
+                let origin = self.origins.of(p);
                 vec![
                     p.id.to_string(),
                     p.name.clone(),
@@ -103,23 +164,31 @@ impl Render for DogRows {
                     p.memory_bytes
                         .map_or_else(|| EMPTY.to_string(), crate::output::human_bytes),
                     crate::output::human_duration(p.uptime_ms),
-                    // `None` is unreachable: callers filter on `dog.is_some()`.
-                    source_cell(p.dog.as_ref()),
+                    origin.source.as_str().to_owned(),
+                    origin.version_cell(),
                     access_cell(p.access.as_ref()),
                 ]
             })
             .collect()
     }
 
-    /// [`process_info_paint`], the same function `FlockRows` uses; SOURCE is
-    /// the one column not shared with that table.
+    /// [`process_info_paint`], the same function `FlockRows` uses; SOURCE and
+    /// VERSION are the columns not shared with that table.
     fn rows_for(&self, presentation: Presentation, status_word: bool) -> Vec<Vec<String>> {
         paint(
             self.rows(),
             Self::headers(),
             presentation,
             status_word,
-            |header, _cell, index| process_info_paint(header, &self.0[index]),
+            |header, _cell, index| {
+                let dog = &self.dogs[index];
+                match header {
+                    "SOURCE" => Paint::Role(source_role_of(&self.origins.of(dog))),
+                    // An update waiting is worth a glance, never a fault.
+                    "VERSION" if self.origins.of(dog).newer.is_some() => Paint::Role(Role::Butter),
+                    _ => process_info_paint(header, dog),
+                }
+            },
         )
     }
 
@@ -137,7 +206,8 @@ impl Render for DogRows {
             "CPU" => "cpu_percent",
             "MEM" => "memory_bytes",
             "UPTIME" => "uptime_ms",
-            "SOURCE" => "dog",
+            "SOURCE" => "source",
+            "VERSION" => "version",
             "ACCESS" => "access",
             other => panic!("DogRows::headers() does not include {other:?}"),
         }
@@ -145,6 +215,10 @@ impl Render for DogRows {
     }
 
     const JSON_ONLY: &'static [&'static str] = &[
+        // The tagged `DogSource`, which carries an adopted binary's path.
+        "dog",
+        // VERSION's arrow, split out: `version` is the left of it.
+        "newer_version",
         // Describe prints the refusal beneath its table.
         "spawn_failure",
         // A sheep concept: a dog is supervised, never grouped by fold.
@@ -180,9 +254,10 @@ impl Render for DogRows {
 
     // Parallel to `headers()`. The nine shared columns carry the numbers
     // `FlockRows` gives them, so both tables narrow in the same order.
-    // SOURCE takes FOLD's `7`; ACCESS ties EXIT's `6` and, being later, goes
-    // first of the two. The JSON always carries it.
-    const PRIORITIES: &'static [u8] = &[0, 0, 0, 2, 4, 6, 5, 3, 1, 7, 6];
+    // SOURCE takes FOLD's `7`; VERSION and ACCESS tie EXIT's `6` and, being
+    // later, go first of the three, ACCESS before VERSION. The JSON always
+    // carries them.
+    const PRIORITIES: &'static [u8] = &[0, 0, 0, 2, 4, 6, 5, 3, 1, 7, 6, 6];
 }
 
 /// `DogActionRow`'s STATUS cell and the SHEPHERD cell beside it, as one
@@ -307,7 +382,7 @@ pub(crate) mod tests {
     /// UPTIME off a terminal. It is still one `--format json` away.
     #[test]
     fn the_source_column_names_a_kind_and_leaves_the_path_to_json() {
-        let rows = DogRows(vec![
+        let rows = DogRows::new(vec![
             dog_info(
                 "metrics",
                 DogSource::BuiltIn {
@@ -349,10 +424,95 @@ pub(crate) mod tests {
         );
         dog.spawn_failure = Some("metrics: spawn refused".to_string());
         assert_no_drift(
-            &DogRows(vec![dog]),
+            &DogRows::new(vec![dog]),
             |j| &j[0],
-            &["UPTIME", "CPU", "MEM", "SOURCE", "EXIT", "ACCESS"],
+            &["UPTIME", "CPU", "MEM", "EXIT", "ACCESS"],
         );
+    }
+
+    fn origins_of(name: &str, source: Source, version: &str, newer: Option<&str>) -> DogOrigins {
+        [(
+            name.to_owned(),
+            DogOrigin {
+                source,
+                version: Some(version.to_owned()),
+                newer: newer.map(str::to_owned),
+            },
+        )]
+        .into_iter()
+        .collect()
+    }
+
+    /// The table prints the SOURCE and VERSION a `DogOrigin` says, and the
+    /// arrow only when there is a newer version.
+    #[test]
+    fn the_source_and_version_columns_say_what_the_origin_says() {
+        let adopted = || DogSource::Adopted {
+            grants: None,
+            path: "/x".to_string(),
+            channel: false,
+            events: Vec::new(),
+        };
+        let cells = |source, newer| {
+            let rows = DogRows::with_origins(
+                vec![dog_info("log-rotate", adopted())],
+                origins_of("log-rotate", source, "0.2.4", newer),
+            );
+            let row = &rows.rows()[0];
+            (
+                cell_of::<DogRows>(row, "SOURCE"),
+                cell_of::<DogRows>(row, "VERSION"),
+            )
+        };
+
+        assert_eq!(
+            cells(Source::Installed, Some("0.3.0")),
+            ("installed".to_owned(), "0.2.4 \u{2192} 0.3.0".to_owned())
+        );
+        assert_eq!(
+            cells(Source::Community, None),
+            ("installed, community".to_owned(), "0.2.4".to_owned())
+        );
+    }
+
+    /// An origin is read for an adopted binary; one never read says so with
+    /// a dash and not with a made-up version.
+    #[test]
+    fn a_dog_with_no_origin_read_keeps_the_kind_its_marker_says() {
+        let rows = DogRows::new(vec![sample_dog(ProcStatus::Online, Some(1))]).rows();
+
+        assert_eq!(cell_of::<DogRows>(&rows[0], "SOURCE"), "adopted");
+        assert_eq!(cell_of::<DogRows>(&rows[0], "VERSION"), "-");
+    }
+
+    /// JSON gains `source`, `version` and `newer_version` and keeps `dog`.
+    #[test]
+    fn the_json_carries_the_same_two_values_and_keeps_the_dog_marker() {
+        let rows = DogRows::with_origins(
+            vec![sample_dog(ProcStatus::Online, Some(1))],
+            origins_of("log-rotate", Source::Community, "0.2.4", Some("0.3.0")),
+        );
+
+        let json = serde_json::to_value(&rows).unwrap();
+
+        assert_eq!(json[0]["source"], "installed, community");
+        assert_eq!(json[0]["version"], "0.2.4");
+        assert_eq!(json[0]["newer_version"], "0.3.0");
+        assert_eq!(json[0]["dog"]["kind"], "adopted");
+        assert_eq!(json[0]["dog"]["path"], "/usr/local/bin/shep-log-rotate");
+    }
+
+    /// No version and no update are `null`, never absent, so a script reads
+    /// one shape.
+    #[test]
+    fn the_json_says_null_for_a_version_nothing_recorded() {
+        let json =
+            serde_json::to_value(DogRows::new(vec![sample_dog(ProcStatus::Online, Some(1))]))
+                .unwrap();
+
+        assert_eq!(json[0]["version"], serde_json::Value::Null);
+        assert_eq!(json[0]["newer_version"], serde_json::Value::Null);
+        assert!(json[0].as_object().unwrap().contains_key("newer_version"));
     }
 
     /// `SOURCE` is `formatted` for the reason `dog_rows_do_not_drift` gives.
@@ -478,8 +638,8 @@ pub(crate) mod tests {
 
     #[test]
     fn the_dogs_table_is_coloured_by_the_flock_tables_own_rules() {
-        let rows =
-            DogRows(vec![sample_dog(ProcStatus::Online, Some(14_110))]).rows_for(coloured(), true);
+        let rows = DogRows::new(vec![sample_dog(ProcStatus::Online, Some(14_110))])
+            .rows_for(coloured(), true);
         let row = &rows[0];
 
         // Cell by cell, in the sheep table's order.
@@ -507,7 +667,8 @@ pub(crate) mod tests {
     /// a real PID, CPU and MEM.
     #[test]
     fn a_stopped_dogs_placeholders_are_muted() {
-        let rows = DogRows(vec![sample_dog(ProcStatus::Stopped, None)]).rows_for(coloured(), true);
+        let rows =
+            DogRows::new(vec![sample_dog(ProcStatus::Stopped, None)]).rows_for(coloured(), true);
         let row = &rows[0];
 
         assert_eq!(row[2], painted("(-.-) stopped", Role::Ink3));
@@ -645,7 +806,7 @@ pub(crate) mod tests {
     /// question than the operator's.
     #[test]
     fn a_dog_that_has_never_answered_the_shepherd_does_not_read_as_online() {
-        let rows = DogRows(vec![dog_with_contact(Some(false))]).rows();
+        let rows = DogRows::new(vec![dog_with_contact(Some(false))]).rows();
         assert_eq!(cell_of::<DogRows>(&rows[0], "STATUS"), "silent");
     }
 
@@ -654,7 +815,7 @@ pub(crate) mod tests {
     #[test]
     fn a_silent_dog_reads_the_same_in_all_three_styles() {
         use crate::style::StyleLevel;
-        let dogs = DogRows(vec![dog_with_contact(Some(false))]);
+        let dogs = DogRows::new(vec![dog_with_contact(Some(false))]);
 
         let full = dogs.rows_for(styled(StyleLevel::Full), true);
         assert_eq!(
@@ -684,12 +845,12 @@ pub(crate) mod tests {
         let talking = dog_with_contact(Some(true));
 
         assert_eq!(
-            DogRows(vec![talking.clone()]).rows(),
-            DogRows(vec![before.clone()]).rows()
+            DogRows::new(vec![talking.clone()]).rows(),
+            DogRows::new(vec![before.clone()]).rows()
         );
         assert_eq!(
-            DogRows(vec![talking]).rows_for(styled(StyleLevel::Full), true),
-            DogRows(vec![before]).rows_for(styled(StyleLevel::Full), true)
+            DogRows::new(vec![talking]).rows_for(styled(StyleLevel::Full), true),
+            DogRows::new(vec![before]).rows_for(styled(StyleLevel::Full), true)
         );
     }
 
@@ -697,10 +858,11 @@ pub(crate) mod tests {
     #[test]
     fn a_dog_from_a_shepherd_predating_the_field_reads_as_it_always_did() {
         use crate::style::StyleLevel;
-        let rows = DogRows(vec![dog_with_contact(None)]).rows();
+        let rows = DogRows::new(vec![dog_with_contact(None)]).rows();
         assert_eq!(cell_of::<DogRows>(&rows[0], "STATUS"), "online");
 
-        let full = DogRows(vec![dog_with_contact(None)]).rows_for(styled(StyleLevel::Full), true);
+        let full =
+            DogRows::new(vec![dog_with_contact(None)]).rows_for(styled(StyleLevel::Full), true);
         assert_eq!(
             cell_of::<DogRows>(&full[0], "STATUS"),
             painted("(o.o) online", Role::Meadow)
@@ -720,7 +882,7 @@ pub(crate) mod tests {
         ] {
             let mut dog = sample_dog(status, Some(208_341));
             dog.handshook = Some(false);
-            let rows = DogRows(vec![dog]).rows();
+            let rows = DogRows::new(vec![dog]).rows();
             assert_eq!(
                 cell_of::<DogRows>(&rows[0], "STATUS"),
                 status.to_string(),
@@ -732,7 +894,7 @@ pub(crate) mod tests {
     /// `status` alone still reads `online` for a silent dog.
     #[test]
     fn the_json_form_carries_the_handshake_fact() {
-        let json = serde_json::to_value(DogRows(vec![
+        let json = serde_json::to_value(DogRows::new(vec![
             dog_with_contact(Some(false)),
             dog_with_contact(Some(true)),
             dog_with_contact(None),

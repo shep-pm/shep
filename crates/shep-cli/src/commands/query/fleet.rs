@@ -24,6 +24,7 @@ use crate::client::unreachable_message;
 use crate::commands::hosts::{HOST_CONNECT_TIMEOUT, unattended};
 use crate::commands::rpc::UNRECOGNISED;
 use crate::commands::shep_toml::ShepToml;
+use crate::dog_origin::DogOrigins;
 use crate::exit::ExitCode;
 use crate::output::{HostListing, Streams, emit_fleet_flock, write_outcome};
 use crate::version_guard::{
@@ -237,7 +238,15 @@ impl Tables {
             return Ok(());
         }
         self.open(streams, host.unwrap_or(LOCAL_HEADING))
-            .and_then(|()| print_listing(streams, answer.procs, answer.usage, None))
+            .and_then(|()| {
+                print_listing(
+                    streams,
+                    answer.procs,
+                    answer.usage,
+                    None,
+                    DogOrigins::default(),
+                )
+            })
             .map_err(|err| write_outcome(Err(err)))
     }
 

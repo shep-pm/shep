@@ -37,8 +37,8 @@ use crate::exit::ExitCode;
 
 pub use described::emit_described;
 pub use diagnostics::{emit_error, emit_notice};
-pub use flock::emit_flock;
 pub(crate) use flock::{HostListing, emit_fleet_flock, emit_origin_flock};
+pub use flock::{emit_flock, emit_flock_with_origins};
 
 // Re-exported for `commands/`, which names every one of these at its own
 // crate-root import. `commands/` is `#[cfg(unix)]`-gated, so on Windows

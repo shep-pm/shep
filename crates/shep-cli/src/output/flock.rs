@@ -11,6 +11,7 @@ use serde::Serialize;
 use shep_core::protocol::{HostUsage, ProcessInfo, sort_flock};
 
 use crate::cli::Format;
+use crate::dog_origin::DogOrigins;
 use crate::style::Presentation;
 
 use super::{DogRows, FlockRows, SCHEMA_VERSION, rows, table_of, write_json_line};
@@ -175,6 +176,32 @@ pub fn emit_flock(
     host: Option<Option<HostUsage>>,
     style: Presentation,
 ) -> io::Result<()> {
+    emit_flock_with_origins(
+        out,
+        fmt,
+        command,
+        listing,
+        host,
+        style,
+        DogOrigins::default(),
+    )
+}
+
+/// [`emit_flock`], with the SOURCE and VERSION the dogs table prints read
+/// off this machine's disk in `origins`.
+///
+/// # Errors
+/// The underlying write failed.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn emit_flock_with_origins(
+    out: &mut dyn io::Write,
+    fmt: Format,
+    command: &str,
+    listing: Vec<ProcessInfo>,
+    host: Option<Option<HostUsage>>,
+    style: Presentation,
+    origins: DogOrigins,
+) -> io::Result<()> {
     match fmt {
         Format::Json => {
             let envelope = FlockEnvelope {
@@ -196,7 +223,11 @@ pub fn emit_flock(
             // reason it is not read after the table is written.
             let pointer = silence_pointer(&dogs);
             write!(out, "\nDogs\n")?;
-            write!(out, "{}", table_of(&DogRows(dogs), style))?;
+            write!(
+                out,
+                "{}",
+                table_of(&DogRows::with_origins(dogs, origins), style)
+            )?;
             match pointer {
                 None => Ok(()),
                 Some(line) => writeln!(out, "\n{line}"),
@@ -292,7 +323,7 @@ mod tests {
             .collect();
         assert_eq!(
             &header[9..],
-            ["SOURCE", "ACCESS"],
+            ["SOURCE", "VERSION", "ACCESS"],
             "and this table's own columns last"
         );
     }
