@@ -472,7 +472,9 @@ export const BUDGETS: Record<string, number> = {
   // Raised again for the upgrade path and its ACCESS marks: what an upgrade
   // writes, what waits and when shep notices are behaviour a reader cannot
   // guess (#1093).
-  "dog-grants": 700,
+  // Raised again for a launched sheep's link, which reads only its own
+  // table (#1443).
+  "dog-grants": 780,
 };
 
 

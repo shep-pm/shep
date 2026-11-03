@@ -1,11 +1,14 @@
+use crate::brain::SANDBOX_DOG;
 use crate::runner::SpawnSpec;
 use std::path::Path;
 
 /// Wraps `spec` so the adopted sandbox dog at `dog` launches its command
 ///
 /// The dog becomes the program and runs `launch <sheep> -- <old command>`.
-/// `SHEP_HOME` is set to `home` unless the sheep's env already sets it. Every
-/// other field of `spec` stays.
+/// `SHEP_HOME` is set to `home` unless the sheep's env already sets it. The
+/// spec asks for a launch link, a connection to the shepherd that reads only
+/// this sheep's table, so the launch needs no access to the control socket.
+/// Every other field of `spec` stays.
 #[must_use]
 pub fn through_dog(mut spec: SpawnSpec, dog: &str, home: &Path, sheep: &str) -> SpawnSpec {
     let mut args = vec![
@@ -16,6 +19,7 @@ pub fn through_dog(mut spec: SpawnSpec, dog: &str, home: &Path, sheep: &str) -> 
     ];
     args.append(&mut spec.args);
     spec.args = args;
+    spec.launch_link = Some(SANDBOX_DOG.to_string());
     spec.env
         .entry("SHEP_HOME".to_string())
         .or_insert_with(|| home.to_string_lossy().into_owned());
@@ -61,7 +65,22 @@ mod tests {
         expected.program = "/opt/dogs/box".into();
         expected.args = wrapped.args.clone();
         expected.env = wrapped.env.clone();
+        expected.launch_link = wrapped.launch_link.clone();
         assert_eq!(wrapped, expected);
+    }
+
+    #[test]
+    fn a_launched_sheep_gets_a_link_on_fd_4() {
+        let wrapped = through_dog(
+            plain(),
+            "/opt/dogs/box",
+            Path::new("/home/ada/.shep"),
+            "web",
+        );
+
+        assert_eq!(wrapped.name, "web");
+        assert_eq!(wrapped.launch_link.as_deref(), Some("sandbox"));
+        assert!(!wrapped.dog_link, "the sheep is not itself a dog");
     }
 
     #[test]

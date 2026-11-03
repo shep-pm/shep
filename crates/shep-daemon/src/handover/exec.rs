@@ -19,7 +19,7 @@ use shep_handover::{Arrival, BootError, HandOverError, Verdict};
 
 pub use shep_handover::{exec_target, record_launch_path};
 
-use super::blob::{Handover, VERSION};
+use super::blob::{Handover, OLDEST_READABLE, VERSION, reads_version};
 use crate::sys::OpenFd;
 
 /// The environment variable a release before the envelope left for its
@@ -116,9 +116,10 @@ pub fn claim(arrival: Arrival<Handover>) -> io::Result<Handover> {
         state: mut blob,
         mut fds,
     } = arrival;
-    let mut problem = (blob.version != VERSION).then(|| {
+    let mut problem = (!reads_version(blob.version)).then(|| {
         format!(
-            "the handover blob is format version {}, and this shep implements version {VERSION}",
+            "the handover blob is format version {}, and this shep implements versions \
+             {OLDEST_READABLE} to {VERSION}",
             blob.version
         )
     });
@@ -518,7 +519,7 @@ mod tests {
         })
         .unwrap_err();
 
-        assert!(err.to_string().contains("version 2"), "{err}");
+        assert!(err.to_string().contains("versions 1 to 2"), "{err}");
     }
 
     #[test]
@@ -526,6 +527,8 @@ mod tests {
         use shep_handover::State as _;
         assert_eq!(Handover::FORMAT, VERSION);
         assert!(Handover::reads(VERSION));
+        assert!(Handover::reads(OLDEST_READABLE));
+        assert!(!Handover::reads(OLDEST_READABLE - 1));
         assert!(!Handover::reads(VERSION + 1));
     }
 }

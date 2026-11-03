@@ -589,6 +589,10 @@ impl<R: ProcessRunner> Actor<R> {
             return Ok(());
         };
 
+        // A link on a sheep that is no dog is the one a dog launched it
+        // holding.
+        let launch_dog =
+            (dog_link.is_some() && carried.dog().is_none()).then(|| SANDBOX_DOG.to_string());
         let (proc, io) = self
             .runner
             .adopt(AdoptSpec {
@@ -606,6 +610,7 @@ impl<R: ProcessRunner> Actor<R> {
                 channel,
                 dog_link,
                 dog_topics: carried.dog_topics().map(<[String]>::to_vec),
+                launch_dog,
                 reaper: Arc::clone(reaper),
             })
             .map_err(|source| AdoptError::Runner {

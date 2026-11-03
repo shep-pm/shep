@@ -1,4 +1,4 @@
-//! Serving the connection each dog is spawned holding.
+//! Serving the connection each dog, and each sheep a dog launches, is spawned holding.
 
 #[cfg(unix)]
 use std::sync::Arc;
@@ -16,9 +16,9 @@ use crate::runner::DogLink;
 ///
 /// Independent of the control socket's listener: the links arrive at spawn, so
 /// a dog started ahead of the muster restore is served during it. Each runs
-/// the same handshake and request loop as a socket connection, with the
-/// runner's own identity in place of the peer's claim. One a predecessor
-/// carried skips the handshake it already did. `table` holds each one.
+/// the socket's handshake and request loop under the runner's own identity. A
+/// link with a `launch_for` is bounded to that sheep's table. One a
+/// predecessor carried skips the handshake. `table` holds each one.
 pub(crate) async fn serve_dog_links(
     mut links: mpsc::UnboundedReceiver<DogLink>,
     ctx: RpcContext,
@@ -28,17 +28,32 @@ pub(crate) async fn serve_dog_links(
     loop {
         tokio::select! {
             link = links.recv() => {
-                let Some(DogLink { name, pid, stream, resumed }) = link else { return };
+                let Some(DogLink { name, launch_for, pid, stream, resumed }) = link else { return };
                 let ctx = ctx.clone();
                 #[cfg(unix)]
-                let lease = Arc::new(table.register(&name, pid, &stream, resumed.clone()));
+                let lease = Arc::new(table.register(
+                    &name,
+                    launch_for.as_deref(),
+                    pid,
+                    &stream,
+                    resumed.clone(),
+                ));
                 tokio::spawn(async move {
-                    let origin = Origin::Dog {
-                        name,
-                        pid,
-                        #[cfg(unix)]
-                        lease,
-                        resumed,
+                    let origin = match launch_for {
+                        Some(sheep) => Origin::Launch {
+                            dog: name,
+                            sheep,
+                            #[cfg(unix)]
+                            lease,
+                            resumed,
+                        },
+                        None => Origin::Dog {
+                            name,
+                            pid,
+                            #[cfg(unix)]
+                            lease,
+                            resumed,
+                        },
                     };
                     if let Err(err) = serve_conn(stream, ctx, origin).await {
                         tracing::debug!(%err, "dog connection ended");
