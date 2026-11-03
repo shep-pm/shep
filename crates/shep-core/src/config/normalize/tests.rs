@@ -124,3 +124,68 @@ fn max_cpu_cores_is_accepted_on_linux() {
     // fails if the platform check refuses the one platform that supports it.
     normalize(capped_cpu(1.5)).expect("a CPU quota on Linux");
 }
+
+fn task_capped(tasks: u32) -> AppConfig {
+    let mut app = AppConfig::minimal("web", "./srv");
+    app.max_tasks = Some(tasks);
+    app
+}
+
+#[test]
+fn max_tasks_defaults_to_unset() {
+    // fails if the default drifts to a cap: every existing Flockfile would
+    // start limited, or refused off Linux.
+    assert_eq!(AppConfig::minimal("web", "./srv").max_tasks, None);
+}
+
+#[test]
+fn max_tasks_must_be_positive() {
+    // fails if a limit of zero is accepted: `pids.max` of 0 lets the sheep
+    // run nothing, not even the process the shepherd just started.
+    let err = normalize(task_capped(0)).unwrap_err();
+    assert_eq!(
+        err,
+        NormalizeError::MaxTasksOutOfRange {
+            name: "web".to_string()
+        }
+    );
+    assert!(err.to_string().contains("max_tasks"), "{err}");
+}
+
+#[test]
+fn max_tasks_above_what_pids_max_can_hold_is_refused() {
+    // fails if a value the kernel rejects with EINVAL passes `normalize`: a
+    // live change would report applied while the old limit stayed in force.
+    for tasks in [4_194_305, u32::MAX] {
+        assert_eq!(
+            normalize(task_capped(tasks)).unwrap_err(),
+            NormalizeError::MaxTasksOutOfRange {
+                name: "web".to_string()
+            },
+            "{tasks}"
+        );
+    }
+}
+
+#[test]
+#[cfg(not(target_os = "linux"))]
+fn max_tasks_is_refused_off_linux() {
+    // fails if macOS or Windows accepts a limit only a cgroup can honour.
+    let err = normalize(task_capped(64)).unwrap_err();
+    assert_eq!(
+        err,
+        NormalizeError::MaxTasksUnsupported {
+            name: "web".to_string()
+        }
+    );
+    assert!(err.to_string().contains("Linux"), "{err}");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn max_tasks_is_accepted_on_linux() {
+    // fails if the platform check refuses the one platform that supports it,
+    // or the ceiling is set one too low.
+    normalize(task_capped(1)).expect("the smallest limit on Linux");
+    normalize(task_capped(4_194_304)).expect("the largest limit on Linux");
+}

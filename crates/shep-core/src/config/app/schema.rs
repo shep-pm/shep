@@ -277,6 +277,23 @@ pub struct AppConfig {
         "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
     })))]
     pub max_cpu_cores: Option<CpuCores>,
+    /// How many processes the sheep and its lambs may run at once
+    ///
+    /// Written to the cgroup's `pids.max`, like `docker run --pids-limit`. A
+    /// fork past it fails with `EAGAIN` inside the sheep and nothing is
+    /// killed, so a fork bomb stops at the limit instead of exhausting the
+    /// user's process limit for every sheep that shares its uid. Needs Linux
+    /// and a delegated cgroup v2 subtree.
+    #[cfg_attr(feature = "schema", schemars(range(min = 1, max = 4_194_304)))]
+    #[cfg_attr(feature = "schema", schemars(extend("init" = {
+        "example": 256,
+        "group": "restart",
+        "blurb": "Cap how many processes the app and its children can run at once",
+        "accepts": ["a whole number from 1 to 4194304"],
+        "refuses": ["zero or a number above 4194304", "any value on macOS or Windows"],
+        "neighbours": [{"field": "max_memory", "note": "the memory ceiling beside it"}]
+    })))]
+    pub max_tasks: Option<u32>,
     /// Watch files and restart on change
     #[cfg_attr(feature = "schema", schemars(extend("init" = {
         "group": "watch",

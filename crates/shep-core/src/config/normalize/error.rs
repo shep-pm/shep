@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::config::KillSignal;
+use crate::config::{AppConfig, KillSignal};
 use crate::paths::{HOME_DIR_VAR, SHEP_HOME_VAR};
 use crate::secrets;
 use crate::values::UpDuration;
@@ -128,6 +128,19 @@ pub enum NormalizeError {
     /// `max_cpu_cores` on a platform with no cgroups: anything but Linux.
     /// Carries the app name.
     MaxCpuCoresUnsupported {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_tasks` is zero or above [`AppConfig::MAX_TASKS_LIMIT`]: zero would
+    /// let the sheep run nothing, not even its own process, and `pids.max`
+    /// refuses a larger value. Carries the app name.
+    MaxTasksOutOfRange {
+        /// The sheep name, so the error names which Flockfile entry to edit.
+        name: String,
+    },
+    /// `max_tasks` on a platform with no cgroups: anything but Linux. Carries
+    /// the app name.
+    MaxTasksUnsupported {
         /// The sheep name, so the error names which Flockfile entry to edit.
         name: String,
     },
@@ -410,6 +423,20 @@ impl fmt::Display for NormalizeError {
                 write!(
                     f,
                     "sheep `{name}` has max_cpu_cores, which needs Linux cgroups; \
+                     remove it on this platform"
+                )
+            }
+            Self::MaxTasksOutOfRange { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has a max_tasks outside 1 to {}",
+                    AppConfig::MAX_TASKS_LIMIT
+                )
+            }
+            Self::MaxTasksUnsupported { name } => {
+                write!(
+                    f,
+                    "sheep `{name}` has max_tasks, which needs Linux cgroups; \
                      remove it on this platform"
                 )
             }

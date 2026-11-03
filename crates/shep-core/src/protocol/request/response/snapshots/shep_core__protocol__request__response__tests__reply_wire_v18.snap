@@ -772,6 +772,7 @@ expression: replies
             "max_memory": null,
             "memory_enforce": "poll",
             "max_cpu_cores": null,
+            "max_tasks": null,
             "watch": false,
             "ignore_watch": [],
             "watch_delay": null,

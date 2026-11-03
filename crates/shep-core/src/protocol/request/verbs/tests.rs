@@ -611,7 +611,7 @@ fn request_wire_snapshots() {
             },
         ),
     ];
-    insta::assert_json_snapshot!("request_wire_v17", requests);
+    insta::assert_json_snapshot!("request_wire_v18", requests);
 }
 
 /// The request names a sheep and a stream. A `path` key here would make the

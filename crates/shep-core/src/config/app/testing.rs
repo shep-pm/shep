@@ -363,6 +363,17 @@ pub(super) fn refusal_claims() -> Vec<RefusalClaim> {
             "normalize, off Linux only: normalize::tests",
         ),
         refused(
+            "max_tasks",
+            "zero or a number above 4194304",
+            sheep(|a| a.max_tasks = Some(0)),
+            |e| matches!(e, NormalizeError::MaxTasksOutOfRange { .. }),
+        ),
+        elsewhere(
+            "max_tasks",
+            "any value on macOS or Windows",
+            "normalize, off Linux only: normalize::tests",
+        ),
+        refused(
             "name",
             "a path separator or a colon",
             sheep(|a| a.name = "web/api".to_owned()),

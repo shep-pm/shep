@@ -664,6 +664,35 @@
           },
           "minimum": 0
         },
+        "max_tasks": {
+          "description": "How many processes the sheep and its lambs may run at once\n\nWritten to the cgroup's `pids.max`, like `docker run --pids-limit`. A\nfork past it fails with `EAGAIN` inside the sheep and nothing is\nkilled, so a fork bomb stops at the limit instead of exhausting the\nuser's process limit for every sheep that shares its uid. Needs Linux\nand a delegated cgroup v2 subtree.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "default": null,
+          "init": {
+            "accepts": [
+              "a whole number from 1 to 4194304"
+            ],
+            "blurb": "Cap how many processes the app and its children can run at once",
+            "example": 256,
+            "group": "restart",
+            "neighbours": [
+              {
+                "field": "max_memory",
+                "note": "the memory ceiling beside it"
+              }
+            ],
+            "refuses": [
+              "zero or a number above 4194304",
+              "any value on macOS or Windows"
+            ]
+          },
+          "maximum": 4194304,
+          "minimum": 1
+        },
         "memory_enforce": {
           "description": "Who enforces `max_memory`: `\"poll\"` (shep samples) or `\"kernel\"` (cgroup `memory.max`)\n\n`\"kernel\"` needs `max_memory`, Linux and a delegated cgroup v2 subtree. An\nOOM kill counts against `max_restarts`, unlike a polled restart.",
           "$ref": "#/$defs/MemoryEnforce",
