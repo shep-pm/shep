@@ -183,30 +183,45 @@ fn is_sheep_dir(name: &OsStr) -> bool {
 /// execs. A kill of any process in it takes the whole group, through
 /// `memory.oom.group`.
 ///
-/// `dir` may already exist, as after a restart that reuses its name.
+/// `dir` may already exist, as after a restart that reuses its name, but not
+/// with a process in it: a sheep that outlived a crashed shepherd keeps its
+/// cgroup, and a new sheep with the same id must not share it.
 ///
 /// # Errors
 /// What creating the directory, writing `memory.oom.group` or opening
-/// `cgroup.procs` reported. A directory this call made is removed again.
+/// `cgroup.procs` reported, or [`io::ErrorKind::ResourceBusy`] when `dir`
+/// already holds a process. A directory this call made is removed again.
 pub(crate) fn join_on_exec(command: &mut std::process::Command, dir: &Path) -> io::Result<()> {
     let created = match fs::create_dir(dir) {
         Ok(()) => true,
         Err(err) if err.kind() == io::ErrorKind::AlreadyExists => false,
         Err(err) => return Err(err),
     };
-    let procs = fs::write(dir.join("memory.oom.group"), "1")
-        .and_then(|()| {
+    let procs = if is_occupied(dir) {
+        Err(io::Error::from(io::ErrorKind::ResourceBusy))
+    } else {
+        fs::write(dir.join("memory.oom.group"), "1").and_then(|()| {
             fs::OpenOptions::new()
                 .write(true)
                 .open(dir.join("cgroup.procs"))
         })
-        .inspect_err(|_| {
-            if created {
-                let _ = fs::remove_dir(dir);
-            }
-        })?;
+    }
+    .inspect_err(|_| {
+        if created {
+            let _ = fs::remove_dir(dir);
+        }
+    })?;
     crate::sys::join_cgroup_on_exec(command, procs);
     Ok(())
+}
+
+/// Whether `dir`'s `cgroup.procs` lists a process. One byte tells: a listing
+/// is `<pid>\n` per process, and an endless file must not be read to its end.
+fn is_occupied(dir: &Path) -> bool {
+    let mut first = [0u8; 1];
+    fs::File::open(dir.join("cgroup.procs"))
+        .and_then(|mut procs| io::Read::read(&mut procs, &mut first))
+        .is_ok_and(|read| read > 0)
 }
 
 /// The error for a spawn that failed after [`join_on_exec`], which may be the
@@ -226,17 +241,20 @@ pub(crate) fn spawn_failed(name: &str, dir: &Path, error: &io::Error) -> RunnerE
 /// What `cgroup.procs` or the removal reported, other than the directory
 /// being absent.
 pub(crate) fn remove_if_empty(dir: &Path) -> io::Result<()> {
-    // One byte tells: a listing is `<pid>\n` per process, so any byte is one.
-    let mut first = [0u8; 1];
-    let listed = fs::File::open(dir.join("cgroup.procs"))
-        .and_then(|mut procs| io::Read::read(&mut procs, &mut first))
-        .is_ok_and(|read| read > 0);
-    if listed {
+    if is_occupied(dir) {
         return Ok(());
     }
     match fs::remove_dir(dir) {
         Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err),
         _ => Ok(()),
+    }
+}
+
+/// Drops the cgroup of a spawn that failed before the child existed, which no
+/// exit will ever clean up. `None` is a spawn with no cgroup.
+pub(crate) fn release(dir: Option<&Path>) {
+    if let Some(dir) = dir {
+        let _ = remove_if_empty(dir);
     }
 }
 

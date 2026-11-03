@@ -309,6 +309,28 @@ async fn a_failed_join_fails_the_spawn_and_runs_nothing() {
 }
 
 #[tokio::test]
+async fn a_cgroup_that_already_holds_a_process_is_not_joined() {
+    let dir = tempfile::tempdir().expect("a temp directory");
+    let cgroup = sheep_dir(dir.path(), 1, 0);
+    fs::create_dir(&cgroup).expect("the sheep's cgroup");
+    // A sheep that outlived the shepherd which started it.
+    fs::write(cgroup.join("cgroup.procs"), "4242\n").expect("a surviving process");
+    let marker = dir.path().join("ran");
+    let script = format!("touch '{}'", marker.display());
+
+    let failed = TokioRunner::new()
+        .spawn(&sh(dir.path(), &script, Some(cgroup.clone())))
+        .expect_err("the cgroup is taken");
+
+    let RunnerError::SpawnFailed(message) = failed else {
+        panic!("expected SpawnFailed, got {failed:?}");
+    };
+    assert!(message.contains("web"), "names the sheep: {message}");
+    assert!(!marker.exists(), "the program never ran");
+    assert!(cgroup.is_dir(), "the survivor keeps its cgroup");
+}
+
+#[tokio::test]
 async fn an_unavailable_host_spawns_as_before() {
     let (events, _rx) = crate::bus::test_bus(64);
     let runner = Arc::new(ScriptedRunner::new(vec![ProcScript::never_exits()]));

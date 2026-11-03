@@ -838,7 +838,11 @@ impl ProcessRunner for TokioRunner {
             command
                 .as_std_mut()
                 .fd_mappings(mappings)
-                .map_err(|error| RunnerError::SpawnFailed(format!("fd mapping: {error}")))?;
+                .map_err(|error| {
+                    #[cfg(target_os = "linux")]
+                    crate::cgroup::release(spec.cgroup.as_deref());
+                    RunnerError::SpawnFailed(format!("fd mapping: {error}"))
+                })?;
         }
 
         #[cfg(unix)]
@@ -846,8 +850,11 @@ impl ProcessRunner for TokioRunner {
             // `LISTEN_PID` is the child's own pid, which only the child can
             // write, after the fork. The block replaces `environ` there, so
             // the command's own env must stay untouched.
-            let block = crate::sys::ListenEnv::new(&env)
-                .map_err(|error| RunnerError::SpawnFailed(format!("environment: {error}")))?;
+            let block = crate::sys::ListenEnv::new(&env).map_err(|error| {
+                #[cfg(target_os = "linux")]
+                crate::cgroup::release(spec.cgroup.as_deref());
+                RunnerError::SpawnFailed(format!("environment: {error}"))
+            })?;
             crate::sys::set_listen_env(command.as_std_mut(), block);
         } else {
             command.env_clear();
