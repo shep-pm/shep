@@ -406,7 +406,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 1250 for the Windows section: `shep startup` registers a
   // logon task there, and an operator has to be told it runs at sign-in, not
   // boot, and what logoff and a crash leave behind. The page had no headroom.
-  startup: 1360,
+  //
+  // Raised again for the cgroup delegation section: the systemd unit now
+  // carries `Delegate=`, and an operator with an older unit has to be told
+  // it needs `unstartup` then `startup` to gain it.
+  startup: 1400,
   examples: 1200,
   "not-built": 1080,
   folds: 900,
