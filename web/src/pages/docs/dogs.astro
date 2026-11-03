@@ -118,9 +118,13 @@ const dogLogDemo = `2026-09-02T14:22:31.412+02:00 [shep] shep started this dog; 
         <code>channel_dogs</code> in <code>shep.toml</code>, so the next boot
         does not bring it back. Its <code>&lt;name&gt;</code> section in{" "}
         <code>dogs.toml</code> stays, webhook URLs and all, and the verb
-        says so: those settings are yours rather than the adoption's. A
-        built-in dog is refused by the shepherd, and the refusal names{" "}
-        <code>shep disable</code> as the verb that exists for one.
+        says so: those settings are yours rather than the adoption's. A dog{" "}
+        <code>shep install</code> put on disk also loses{" "}
+        <code>$SHEP_HOME/dogs/&lt;name&gt;/</code>, its binary and its
+        receipt. An adopted dog's file is never touched: it is yours, at a
+        path you gave. A built-in dog is refused by the shepherd, and the
+        refusal names <code>shep disable</code> as the verb that exists for
+        one.
       </p>
     </VerbSignature>
     <CodeBlock>{`$ shep enable metrics
@@ -128,18 +132,18 @@ NAME     SOURCE    SHEPHERD  STATUS
 metrics  built-in  true      online
 
 $ shep dogs
-ID  NAME     STATUS    PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE    ACCESS
-0   metrics  online    49313  0         -     -    10.9M  2s      built-in  -
-1   bark     disabled  -      0         -     -    -      0s      built-in  -
+ID  NAME     STATUS    PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE    VERSION  ACCESS
+0   metrics  online    49313  0         -     -    10.9M  2s      built-in  0.23.0   -
+1   bark     disabled  -      0         -     -    -      0s      built-in  0.23.0   -
 
 $ shep flock
 ID  NAME  STATUS  PID    RESTARTS  EXIT  CFG  CPU  MEM   UPTIME  FOLD  SMIT
 2   web   online  49290  0         -     -    -    3.0M  2s      -     -
 
 Dogs
-ID  NAME     STATUS    PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE    ACCESS
-0   metrics  online    49313  0         -     -    10.9M  2s      built-in  -
-1   bark     disabled  -      0         -     -    -      0s      built-in  -
+ID  NAME     STATUS    PID    RESTARTS  EXIT  CPU  MEM    UPTIME  SOURCE    VERSION  ACCESS
+0   metrics  online    49313  0         -     -    10.9M  2s      built-in  0.23.0   -
+1   bark     disabled  -      0         -     -    -      0s      built-in  0.23.0   -
 
 $ shep disable metrics`}</CodeBlock>
     <p class="fine">
@@ -163,10 +167,22 @@ $ shep disable metrics`}</CodeBlock>
     </p>
     <p class="fine">
       The dogs table shares its column order with the sheep table above it,
-      so a dog and a sheep read the same way. <code>SOURCE</code> is the one
-      column only dogs have, and <code>CFG</code>, <code>FOLD</code> and{" "}
-      <code>SMIT</code> the three only sheep have. See <a href="/docs/output#the-dogs-table">terminal
+      so a dog and a sheep read the same way. <code>SOURCE</code> and{" "}
+      <code>VERSION</code> are the two columns only dogs have, and{" "}
+      <code>CFG</code>, <code>FOLD</code> and <code>SMIT</code> the three
+      only sheep have. See <a href="/docs/output#the-dogs-table">terminal
       output</a>.
+    </p>
+    <p>
+      <code>SOURCE</code> is <code>built-in</code>, <code>installed</code>{" "}
+      (a <code>shep install</code> receipt for a{" "}
+      <code>github.com/shep-pm</code> repository),{" "}
+      <code>installed, community</code> (a receipt for any other) or{" "}
+      <code>adopted</code> (a path, no receipt). A fact, never a gate.{" "}
+      <code>VERSION</code> is the manifest's, then{" "}
+      <code>→ &lt;new&gt;</code> when the cached community index lists a
+      newer one. It never fetches. <code>--format json</code> and{" "}
+      <code>shep lookout</code> carry both.
     </p>
     <p class="fine">
       A dog whose <code>STATUS</code> reads <code>silent</code> is running

@@ -74,6 +74,7 @@ pub struct DogRows {
 impl DogRows {
     /// Rows for `dogs`, with no origin read: SOURCE says built-in or
     /// adopted, and VERSION knows nothing of an adopted dog.
+    #[cfg(test)]
     #[must_use]
     pub fn new(dogs: Vec<ProcessInfo>) -> Self {
         Self::with_origins(dogs, DogOrigins::default())
