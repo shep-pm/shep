@@ -6,11 +6,8 @@
 //! be configured up to 58s.
 //!
 //! A row's own outcome is never a request failure. `shep trigger` exits
-//! non-`Success` only when the RPC itself failed.
-//!
-//! With no action, `shep trigger <dog>` lists what the dog's manifest
-//! declares instead. That reads manifests on this machine and needs no
-//! shepherd.
+//! non-`Success` only when the RPC itself failed. With no action, it lists
+//! a dog's manifest instead, on this machine and without a shepherd.
 
 use shep_client::{Client, TRIGGER_DEADLINE};
 use shep_core::dogs::manifest::Action;
@@ -29,10 +26,8 @@ use crate::output::{DogActionList, Streams, TriggeredRows, emit, write_outcome};
 /// `args.selector`, and renders one row per match.
 ///
 /// `action` and `params` are carried exactly as typed: neither this side nor
-/// the daemon parses them.
-///
-/// An `args` with no action is refused: listing a dog's actions is
-/// [`list_actions`], which reads this machine's manifests.
+/// the daemon parses them. An `args` with no action is refused: listing is
+/// [`list_actions`].
 pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerArgs) -> ExitCode {
     let Some(action) = args.action.clone() else {
         return streams.fail(
