@@ -442,6 +442,9 @@ pub(crate) async fn run(
             })
             .await
         }
+        Commands::Trigger(ref args) if args.action.is_none() => {
+            trigger::list_actions(&mut streams, &paths, &args.selector)
+        }
         Commands::Trigger(ref args) => {
             with_client(&mut streams, &link, guard, async |client, streams| {
                 trigger::trigger(client, streams, args).await

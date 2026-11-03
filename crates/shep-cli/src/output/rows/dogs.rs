@@ -2,6 +2,7 @@
 //! `shep enable`/`disable`/`adopt`/`rehome` render.
 
 use serde::Serialize;
+use shep_core::dogs::manifest::Action;
 use shep_core::protocol::{DogAccess, DogSource, ProcessInfo};
 
 use crate::output::Render;
@@ -53,6 +54,27 @@ fn access_cell(access: Option<&DogAccess>) -> String {
 #[derive(Debug, Serialize)]
 #[serde(transparent)]
 pub struct DogRows(pub Vec<ProcessInfo>);
+
+/// The actions a dog's manifest declares, for `shep trigger <dog>` with no
+/// action.
+///
+/// Transparent, so `--format json` is the manifest's own `actions` array.
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
+pub struct DogActionList(pub Vec<Action>);
+
+impl Render for DogActionList {
+    fn headers() -> &'static [&'static str] {
+        &["NAME", "DESCRIPTION"]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.0
+            .iter()
+            .map(|action| vec![action.name.clone(), action.description.clone()])
+            .collect()
+    }
+}
 
 impl Render for DogRows {
     fn headers() -> &'static [&'static str] {
