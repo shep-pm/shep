@@ -32,10 +32,10 @@ fn write_dog(dir: &Path, manifest: &str) -> PathBuf {
 
 /// A terminal that types `typed`, or no terminal at all.
 fn typing(typed: Option<&'static str>) -> Input {
-    Input {
-        is_terminal: typed.is_some(),
-        reader: Box::new(std::io::Cursor::new(typed.unwrap_or("").as_bytes())),
-    }
+    Input::reading(
+        typed.is_some(),
+        std::io::Cursor::new(typed.unwrap_or("").as_bytes()),
+    )
 }
 
 async fn adopt_otel(
@@ -361,14 +361,14 @@ impl BufRead for GrantedWhileAsking {
 }
 
 fn granted_while_asking(paths: &ShepPaths, answer: &'static [u8]) -> Input {
-    Input {
-        is_terminal: true,
-        reader: Box::new(GrantedWhileAsking {
+    Input::reading(
+        true,
+        GrantedWhileAsking {
             config: paths.daemon_config.clone(),
             answer,
             asked: false,
-        }),
-    }
+        },
+    )
 }
 
 /// The grants another shep wrote while the question was open were decided by

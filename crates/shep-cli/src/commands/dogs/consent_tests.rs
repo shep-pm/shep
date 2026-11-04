@@ -3,11 +3,12 @@
 //! reader standing in for the terminal, the words and the verdict out.
 
 use std::io::Cursor;
+use std::sync::{Arc, Mutex};
 
 use shep_core::dogs::manifest::{Manifest, Permission as Declared};
 use shep_core::permissions::{Grants, Permission};
 
-use super::consent::{Mode, Verdict, consent, review};
+use super::consent::{Input, Mode, Prompt, Verdict, consent, consent_from, review};
 use super::test_support::streams;
 use crate::exit::ExitCode;
 
@@ -187,4 +188,86 @@ fn a_manifest_declaring_no_permissions_is_granted_nothing_without_a_question() {
 
     assert_eq!(verdict.unwrap(), Verdict::Grant(Some(Grants::default())));
     assert!(!said.contains("[y/N]"), "{said}");
+}
+
+#[test]
+fn the_prompt_for_a_review_is_the_listing_and_question_the_cli_prints() {
+    let reviewed = review(Some(&two())).unwrap();
+
+    let prompt = Prompt::for_review("otel", "adopt", &reviewed, None).unwrap();
+
+    assert_eq!(
+        prompt.listing(),
+        "otel declares these permissions:\n  \
+         flock.read (required): reads the flock to report on it\n  \
+         events:process. (optional): hears when a sheep exits\n\
+         Grants keep otel's requests in bounds and do not confine it: it runs as you and \
+         can do anything you can."
+    );
+    assert_eq!(prompt.question(), "adopt otel and grant it these?");
+    assert_eq!(prompt.grants(), Some(&both()));
+    let (_, said) = run(Some(&two()), ASK, "y\n");
+    for line in prompt.listing().lines() {
+        assert!(said.contains(line.trim_start()), "{line}: {said}");
+    }
+    assert!(
+        said.contains("adopt otel and grant it these? [y/N]"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_manifest_declaring_no_permissions_has_no_prompt() {
+    let reviewed = review(Some(&manifest(&[]))).unwrap();
+
+    assert!(Prompt::for_review("otel", "adopt", &reviewed, None).is_none());
+}
+
+#[test]
+fn the_note_sits_directly_above_the_question() {
+    let reviewed = review(Some(&two())).unwrap();
+
+    let prompt = Prompt::for_review("otel", "adopt", &reviewed, Some("a note")).unwrap();
+
+    assert!(
+        prompt
+            .listing()
+            .ends_with("can do anything you can.\na note")
+    );
+    assert!(!prompt.question().contains("a note"));
+}
+
+#[test]
+fn an_answering_input_grants_on_true_declines_on_false_and_is_handed_the_prompt() {
+    let reviewed = review(Some(&two())).unwrap();
+    let expected = Prompt::for_review("otel", "adopt", &reviewed, Some("a note")).unwrap();
+
+    for (answer, verdict) in [
+        (true, Verdict::Grant(Some(both()))),
+        (false, Verdict::Declined),
+    ] {
+        let handed = Arc::new(Mutex::new(Vec::new()));
+        let mut input = Input::answering({
+            let handed = Arc::clone(&handed);
+            move |prompt: &Prompt| {
+                handed.lock().unwrap().push(prompt.clone());
+                answer
+            }
+        });
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let got = consent_from(
+            &mut streams(&mut out, &mut err),
+            "otel",
+            "adopt",
+            &reviewed,
+            Some("a note"),
+            false,
+            &mut input,
+        );
+
+        assert_eq!(got.unwrap(), verdict, "answered {answer}");
+        assert_eq!(*handed.lock().unwrap(), std::slice::from_ref(&expected));
+    }
 }

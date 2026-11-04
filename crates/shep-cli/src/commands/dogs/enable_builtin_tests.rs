@@ -12,10 +12,10 @@ use crate::exit::ExitCode;
 
 /// A terminal that types `typed`, or no terminal at all.
 fn typing(typed: Option<&'static str>) -> Input {
-    Input {
-        is_terminal: typed.is_some(),
-        reader: Box::new(std::io::Cursor::new(typed.unwrap_or("").as_bytes())),
-    }
+    Input::reading(
+        typed.is_some(),
+        std::io::Cursor::new(typed.unwrap_or("").as_bytes()),
+    )
 }
 
 async fn enable(paths: &ShepPaths, name: &str, yes: bool, mut input: Input) -> (ExitCode, String) {
