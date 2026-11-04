@@ -300,11 +300,15 @@ impl App {
             return Effect::None;
         };
         if let DogJob::Running { job: running, .. } = &self.dog_job {
-            let (name, tag) = (running.name().to_owned(), self.mint_tag());
+            let (name, doing, tag) = (
+                running.name().to_owned(),
+                job_word(running),
+                self.mint_tag(),
+            );
             self.open_modal(Modal::output(
                 tag,
                 job_word(&job),
-                &format!("{name} is still installing. This one waits for it."),
+                &format!("{name} is still {doing}. This one waits for it."),
             ));
             return Effect::None;
         }
@@ -402,11 +406,11 @@ impl App {
         let DogJob::Running { job, .. } = &self.dog_job else {
             return None;
         };
-        let (name, tag) = (job.name().to_owned(), self.mint_tag());
+        let (name, doing, tag) = (job.name().to_owned(), job_word(job), self.mint_tag());
         self.dog_job.ask_quit(tag);
         self.open_modal(Modal::confirm(
             tag,
-            format!("quit lookout and stop installing {name}?"),
+            format!("quit lookout and stop {doing} {name}?"),
         ));
         Some(Effect::None)
     }
