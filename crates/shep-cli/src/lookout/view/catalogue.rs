@@ -33,8 +33,9 @@ const LABEL_WIDTH: u16 = 13;
 /// column set, and the widths of NAME, CATEGORY, VERSION and STATE in it.
 /// A zero drops the column.
 ///
-/// STATE takes the rest of the row.
-const TIERS: [(u16, [u16; 3]); 3] = [(70, [20, 13, 18]), (45, [20, 0, 18]), (0, [17, 0, 0])];
+/// STATE takes the rest of the row, so each floor is the widths above it plus
+/// [`STATE_MIN`].
+const TIERS: [(u16, [u16; 3]); 3] = [(70, [20, 13, 18]), (52, [20, 0, 18]), (0, [17, 0, 0])];
 
 /// Longest STATE word, `not installed`, and a gap.
 const STATE_MIN: u16 = 14;

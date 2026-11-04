@@ -294,3 +294,20 @@ fn an_installable_row_shows_no_build_instructions() {
 
     assert!(!frame.contains("cargo install"), "{frame}");
 }
+
+#[test]
+fn the_state_word_is_whole_at_every_width_the_list_draws_in() {
+    let app = app_on(three_rows(), false);
+
+    for width in NARROW..=100 {
+        let frame = draw_to(&app, width, HEIGHT);
+        let beta = frame
+            .lines()
+            .find(|line| line.contains("beta"))
+            .unwrap_or_else(|| panic!("{width}:\n{frame}"));
+        assert!(
+            beta.trim_end().ends_with("not installed"),
+            "{width}: {beta:?}"
+        );
+    }
+}
