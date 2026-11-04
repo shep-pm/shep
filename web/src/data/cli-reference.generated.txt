@@ -29,6 +29,7 @@ See what's up
   lookout, dash      Watch the flock on a live dashboard
   fold               List one fold
   barks              Show the alert history: `barks.jsonl`, newest last
+  hints              List the hints, and turn each off or on
 
 Survive reboots
   save               Write the muster roll now and say where it landed
@@ -797,6 +798,54 @@ Arguments:
   <PERMISSION>
           The permission, as the dog's manifest spells it: `flock.read`, `events:process.`,
           `secrets.read:staging`
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
+@@VERB:hints@@
+List the hints, and turn each off or on
+
+A hint is the one line `shep flock` prints under its listing when a log has grown large or a sheep
+keeps restarting, suggesting a dog. Each is on until turned off, and the choice is kept in
+`hints.json` under `$SHEP_HOME`. `shep hints off` and `shep hints on` take a hint's name, or turn
+every hint off or on with none. Needs no shepherd.
+
+Usage: shep hints [OPTIONS] [COMMAND]
+
+Commands:
+  off   Turn a hint off, or every hint with no name
+  on    Turn a hint back on, or every hint with no name
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
+@@VERB:hints off@@
+Turn a hint off, or every hint with no name
+
+Usage: shep hints off [OPTIONS] [HINT]
+
+Arguments:
+  [HINT]
+          The hint to turn off, as `shep hints` lists it
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+Global flags: --format, --quiet, --style, --home. See shep help flags
+@@VERB:hints on@@
+Turn a hint back on, or every hint with no name
+
+Usage: shep hints on [OPTIONS] [HINT]
+
+Arguments:
+  [HINT]
+          The hint to turn on, as `shep hints` lists it
 
 Options:
   -h, --help
