@@ -22,11 +22,7 @@ impl App {
             self.notice = Some(Notice::grave(reason.to_string()));
             return Effect::None;
         }
-        // These rows open something rather than set it: nothing to refuse.
-        if matches!(
-            self.settings().and_then(Settings::cursor),
-            Some(SettingsRow::AvailableDog(_) | SettingsRow::BrowseDogs)
-        ) {
+        if self.cursor_opens_something() {
             return Effect::None;
         }
         if self.authorize_write().is_none() {
@@ -52,6 +48,15 @@ impl App {
             | SettingsRow::AvailableDog(_)
             | SettingsRow::BrowseDogs => Effect::None,
         }
+    }
+
+    /// Whether the cursor is on a row that opens something and writes nothing,
+    /// so a read-only lookout has no refusal to give for it.
+    fn cursor_opens_something(&self) -> bool {
+        matches!(
+            self.settings().and_then(Settings::cursor),
+            Some(SettingsRow::AvailableDog(_) | SettingsRow::BrowseDogs)
+        )
     }
 
     /// `space` on a key row. Re-arms when a candidate is already armed, so a
@@ -96,6 +101,9 @@ impl App {
             return Effect::None;
         }
         if self.arm_env_removal() {
+            return Effect::None;
+        }
+        if self.cursor_opens_something() {
             return Effect::None;
         }
         if self.authorize_write().is_none() {
@@ -191,5 +199,16 @@ mod tests {
         assert!(settings.typing().is_none(), "no editor opened");
         assert!(app.notice().is_none(), "not even a refusal");
         assert!(matches!(app.body(), Body::Settings(_)));
+    }
+
+    #[test]
+    fn remove_on_an_available_dog_or_browse_dogs_gives_no_refusal() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        for name in ["available.otel", "dogs.browse"] {
+            fixtures::select_setting(&mut app, name);
+            assert_eq!(app.update(Msg::Key(KeyPress::Remove)), Effect::None);
+            assert!(app.notice().is_none(), "no refusal on {name}");
+            assert!(app.settings().unwrap().pending().is_none());
+        }
     }
 }
