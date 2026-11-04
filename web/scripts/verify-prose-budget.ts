@@ -451,8 +451,11 @@ export const BUDGETS: Record<string, number> = {
   // has to know both. The ceiling sits about 5 words above the page.
   //
   // Raised again on #1480 for the reserved `shep.pane` action named beside
-  // `shep.validate`.
-  "shepherd-channel": 2345,
+  // `shep.validate`, and again for its review: the page now says shep sends
+  // both names itself and refuses no action name, so `shep trigger <dog>
+  // shep.validate` reaches the dog and a dog answers a `shep.` name the same
+  // whoever sent it. The ceiling sits about 8 words above the page.
+  "shepherd-channel": 2375,
   "from-pm2": 1720,
   "boot-order": 1670,
   // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep

@@ -306,13 +306,16 @@ $ shep trigger chatty ping --format json
       the shepherd. It is absent for an operator.
     </p>
     <p>
-      Two action names are shep's own, and neither arrives from{" "}
-      <code>shep trigger</code>: <code>shep.validate</code>, sent to a dog
-      declaring <code>validate</code>, carrying the settings table a write would
-      put in place. <code>validate_answer</code> in <code>shep_client::dogs</code>{" "}
-      answers it, and the dog's answer decides whether <code>shep set</code>{" "}
-      lands. <code>shep.pane</code> asks a dog declaring <code>pane</code> for
-      the status pane lookout draws, and nothing asks for one yet.
+      Two action names are shep's own, and shep sends them itself:{" "}
+      <code>shep.validate</code>, sent to a dog declaring <code>validate</code>,
+      carrying the settings table a write would put in place.{" "}
+      <code>validate_answer</code> in <code>shep_client::dogs</code> answers it,
+      and the dog's answer decides whether <code>shep set</code> lands.{" "}
+      <code>shep.pane</code> asks a dog declaring <code>pane</code> for the status
+      pane lookout draws, and nothing asks for one yet. No action name is
+      refused, so <code>shep trigger &lt;dog&gt; shep.validate</code> reaches the
+      dog just as shep's own does. Answer a <code>shep.</code> name the same
+      whoever sent it.
     </p>
     <Callout variant="careful">
       Reply even to an action you don't recognize: this is the one rule
