@@ -368,7 +368,12 @@ export const BUDGETS: Record<string, number> = {
   // prose to trim back out.
   //
   // Raised from 3180 for the sentence naming a dog's two levels (#1429).
-  lookout: 3210,
+  //
+  // Raised from 3210 on 2026-11-04 for "The dog catalogue": the list, the
+  // entry, what an entry says about permissions, the `i` key and the
+  // `shep lookout catalogue` form are all things an operator sees or types,
+  // so the page owes them a section (#1499).
+  lookout: 3690,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

@@ -1204,7 +1204,11 @@ The values on screen stay exactly as they were, and it does not exit — you do.
 Needs a terminal: with stdout redirected it refuses rather than writing escape sequences into a
 file.
 
-Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG]
+Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG] [COMMAND]
+
+Commands:
+  catalogue  Open on the dog catalogue
+  help       Print this message or the help of the given subcommand(s)
 
 Arguments:
   [SHEEP]
@@ -1249,6 +1253,27 @@ Examples:
   $ shep lookout
   $ shep lookout api
   $ shep lookout api restart --read-only
+
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
+@@VERB:lookout catalogue@@
+Open on the dog catalogue.
+
+The same screen the `i` key opens, reached the same way: lookout sends itself that keypress before
+it draws, so `Esc` leaves to the dashboard and every key the catalogue binds is the key it already
+binds.
+
+Usage: shep lookout catalogue [OPTIONS]
+
+Options:
+      --read-only
+          Close the dashboard's action gate. Actions are permitted by default.
+          
+          The same gate `shep lookout --read-only` closes and the same one `shep kv set
+          lookout.allow_control false` closes: `x` (stop), `R` (restart) and `L` (reload) each
+          refuse outright with it closed.
+
+  -h, --help
+          Print help (see a summary with '-h')
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whistle@@
