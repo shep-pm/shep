@@ -945,6 +945,11 @@ name of the dog that sent `Request::Trigger` on its own connection.
 `None` for an operator, for a dog that opened the control socket, and from
 an older shepherd. A dog cannot choose it, so a callee can act on it.
 
+An action name under the `shep.` prefix is the shepherd's own to send, as
+the operator: `shep trigger` refuses one before it sends anything, and so is
+a dog triggering another dog, granted or not. A handler for `shep.validate`
+or `shep.pane` therefore always sees `caller` `None`.
+
 `shep trigger` against a dog that did not ask answers `dog_no_channel`
 rather than `no_channel`, whose advice names Flockfile keys a dog does not
 have.

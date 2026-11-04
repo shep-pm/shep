@@ -13,7 +13,8 @@ use serde_json::{Map, Value};
 
 /// The action name shep sends on the dog's shepherd channel.
 ///
-/// A `shep.` name, reserved the way the `--version` answer's key lines are.
+/// Carries [`RESERVED_ACTION_PREFIX`](super::RESERVED_ACTION_PREFIX): only
+/// shep sends it, and it reaches the dog as the operator.
 pub const VALIDATE_ACTION: &str = "shep.validate";
 
 /// How much of a dog's unreadable answer is quoted back to the operator.

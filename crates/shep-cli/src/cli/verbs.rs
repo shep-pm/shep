@@ -323,9 +323,9 @@ pub enum Commands {
     /// channel, so either one of the three is enough; a sheep with none of them
     /// answers a `no_channel` row instead of a reply, naming the same fields.
     ///
-    /// `action` and any `params` are free-form and unvalidated here — sent
-    /// to the app verbatim, on its own shepherd-channel wire, for the app
-    /// itself to recognize or refuse.
+    /// `action` and any `params` are free-form and unvalidated here — sent to
+    /// the app verbatim, for the app itself to recognize or refuse. A `shep.`
+    /// action name is refused: shep sends those itself, as the operator.
     Trigger(TriggerArgs),
     /// Send a unix signal to matched sheep.
     ///
