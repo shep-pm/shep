@@ -307,7 +307,9 @@ instability = { version = "0.3.4", default-features = false }
 # names. `shep-client`'s `clap` feature reads a dog's own clap tree with it,
 # and each crate names only the features it uses: shep-cli renders help,
 # shep-client reads fields off a tree it never renders.
-clap = { version = "4", default-features = false }
+# Floor 4.6.6: `Command::get_overridden_usage`, which `Verb::from_clap` reads a
+# subcommand's usage with, first ships there.
+clap = { version = "4.6.6", default-features = false }
 # The MCP SDK, for `shep whistle` (spec §8, §9): MCP is an evolving
 # protocol, and tracking an SDK beats owning a parser for a wire format
 # still moving.
