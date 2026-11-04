@@ -173,7 +173,13 @@ export const BUDGETS: Record<string, number> = {
   // the caller needs, and that every result is visible to every holder of
   // them, and that a callee with a dot in its name cannot finish one. The
   // ceiling sits about 4 words above the page.
-  "writing-a-dog": 6157,
+  //
+  // Raised on #1485 for the release workflow writing the row's permissions:
+  // an author whose dog declares permissions has to know the workflow reads
+  // them off the built Linux binary, that only the name and whether it is
+  // required reach the index, and that a binary answering nothing costs the
+  // row the list and not the release.
+  "writing-a-dog": 6235,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
