@@ -28,6 +28,10 @@ pub enum InputMode {
     Normal,
     /// The filter box is open and every printable key is text.
     Text,
+    /// A dog's status tab is open: a plain letter other than the reserved
+    /// ones is [`KeyPress::TextChar`], for the dog's action letters, and every
+    /// other key means what it does in `Normal`.
+    Pane,
 }
 
 /// The keys lookout binds, named by meaning rather than by keystroke.

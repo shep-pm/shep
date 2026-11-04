@@ -82,8 +82,9 @@ pub(super) fn layout(pane: &Pane) -> Layout {
     at
 }
 
-/// The letters lookout answers itself on every tab, so no action takes one.
-const RESERVED: [char; 4] = ['q', 'j', 'k', 'g'];
+/// The letters lookout answers itself on a status tab: quit and the four
+/// select keys. No action takes one.
+pub(in crate::lookout) const RESERVED: [char; 5] = ['q', 'j', 'k', 'g', 'G'];
 
 /// One action of a pane and the letter that runs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
