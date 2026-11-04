@@ -177,7 +177,11 @@ fn output_over_the_cap_is_cut_on_a_character_boundary() {
     let odd = format!("a{}", "é".repeat(OUTPUT_CAP));
     let cut = Modal::output(1, "cargo", &odd);
     let kept = shown(&cut).strip_suffix(CUT_MARK).expect("cut");
-    assert_eq!(kept.len(), OUTPUT_CAP - 1, "the straddling character is dropped");
+    assert_eq!(
+        kept.len(),
+        OUTPUT_CAP - 1,
+        "the straddling character is dropped"
+    );
 }
 
 #[test]
@@ -207,4 +211,22 @@ fn output_never_carries_escapes_or_control_characters() {
         );
     }
     assert_eq!(text.as_str(), "[31mred[0m \nbell tab2Jend");
+}
+
+/// Without this a permission list taller than the box could not be read, and
+/// every key that would scroll it answers no.
+#[test]
+fn a_grant_taller_than_the_box_scrolls_on_the_select_keys_and_answers_on_the_rest() {
+    let mut app = fixtures::full_app();
+    app.open_modal(grant(6));
+    app.note_modal_reach(3);
+
+    assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
+    assert_eq!(app.modal_scroll(), 1);
+    assert!(app.modal().is_some());
+
+    let effect = app.update(Msg::Key(KeyPress::Escape));
+
+    assert_eq!(effect, Effect::ModalAnswered { tag: 6, yes: false });
+    assert_eq!(app.modal_scroll(), 0);
 }

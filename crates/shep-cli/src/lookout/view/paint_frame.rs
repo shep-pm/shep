@@ -36,7 +36,7 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect) {
 
 /// Real caller: `super::super::mod`'s `run_ui`, once per frame.
 ///
-/// Three steps, so the overlay's own call is structural: a new `Body` variant
+/// Three steps, so the overlays' own calls are structural: a new `Body` variant
 /// cannot skip it, since the call sits outside the match a new arm would join.
 ///
 /// The refusal is the one path that gets no overlay: a terminal too
@@ -52,6 +52,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
 
     draw_body(app, frame);
     draw_keymap_overlay(app, area, frame.buffer_mut(), app.palette());
+    super::modal::draw(app, area, frame.buffer_mut());
 }
 
 /// Whichever of the six [`Body`] variants is up, plus the title band and

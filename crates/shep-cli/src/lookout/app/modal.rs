@@ -141,23 +141,31 @@ impl App {
     /// One key while a modal is open, ahead of every body and text box.
     ///
     /// A grant or a confirm answers yes on Enter and no on anything else, so
-    /// a stray key grants nothing. Output scrolls on the four select keys
-    /// when it is taller than its box and closes on the rest.
+    /// a stray key grants nothing. When the text is taller than the box the
+    /// four select keys scroll it instead, whatever the kind, since a
+    /// permission list that cannot be read cannot be agreed to. Output closes
+    /// on every other key.
     pub(super) fn on_modal_key(&mut self, key: KeyPress) -> Effect {
         let Some(modal) = self.modals.queue.front() else {
             return Effect::None;
         };
         let tag = modal.tag();
-        if matches!(modal, Modal::Output { .. }) {
-            if self.modals.reach > 0 && self.scroll_modal(key) {
-                return Effect::None;
-            }
-            self.close_modal();
+        let asks = !matches!(modal, Modal::Output { .. });
+        if self.modals.reach > 0 && self.scroll_modal(key) {
+            return Effect::None;
+        }
+        self.close_modal();
+        if !asks {
             return Effect::None;
         }
         let yes = matches!(key, KeyPress::Confirm | KeyPress::TextApply);
-        self.close_modal();
         Effect::ModalAnswered { tag, yes }
+    }
+
+    /// Whether the open modal's text is taller than its box, so the select
+    /// keys scroll it.
+    pub(crate) fn modal_scrolls(&self) -> bool {
+        self.modals.reach > 0
     }
 
     /// Moves the scroll for a select key, or returns `false` for any other.

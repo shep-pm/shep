@@ -61,6 +61,8 @@ mod feed_keys;
 mod focus;
 mod keys;
 mod lambs;
+// The layer is whole and drawn, but nothing opens a modal until the install flow does.
+#[allow(dead_code)]
 mod modal;
 mod msg;
 mod over_host;

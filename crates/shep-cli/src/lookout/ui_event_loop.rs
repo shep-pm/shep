@@ -141,6 +141,7 @@ where
                 let area = Rect::new(0, 0, size.width, size.height);
                 app.note_body_rows(super::view::body_rows(area));
                 app.note_body_width(area.width);
+                app.note_modal_reach(super::view::scroll_reach(&app, area));
             }
             let _ = terminal.draw(|frame| super::view::draw(&app, frame));
             dirty = false;
