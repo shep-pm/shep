@@ -308,13 +308,18 @@ fn a_delete_asked_while_a_job_runs_waits_for_it() {
 
 #[test]
 fn a_landed_upgrade_or_delete_names_what_it_did_and_rereads_the_rows() {
-    for (job, started, said) in [
+    let behind = "0.2.1 \u{2192} 0.2.4";
+    // The row a real job leaves: an upgrade catches the version up and keeps
+    // the dog enabled, a delete leaves the index's own version, not installed.
+    for (job, started, said, version, state) in [
         (
             Job::Upgrade {
                 name: "otel".to_owned(),
             },
             "upgrading otel  starting  0s",
             "upgraded otel",
+            "0.2.4",
+            DogState::Enabled,
         ),
         (
             Job::Delete {
@@ -322,9 +327,12 @@ fn a_landed_upgrade_or_delete_names_what_it_did_and_rereads_the_rows() {
             },
             "deleting otel  starting  0s",
             "deleted otel",
+            "0.2.4",
+            DogState::NotInstalled,
         ),
     ] {
-        let mut app = installed_entry();
+        let mut app = app_with_version(cargo_dog("otel"), behind, DogState::Enabled);
+        app.update(Msg::Key(KeyPress::Confirm));
         let Effect::StartDogJob { .. } = app.start_job(job) else {
             panic!("the job did not start");
         };
@@ -337,20 +345,44 @@ fn a_landed_upgrade_or_delete_names_what_it_did_and_rereads_the_rows() {
         });
         assert_eq!(effect, Effect::LoadCatalogue { fetch: false }, "{said}");
         assert_eq!(app.dog_job_line().as_deref(), Some(said));
+        assert_eq!(
+            app.catalogue_rows().first().map(|row| row.version.as_str()),
+            Some(behind),
+            "{said}: the rows are the old ones until the re-read lands"
+        );
 
         app.update(Msg::Catalogue {
             result: Ok(Box::new(CatalogueRead {
                 rows: vec![CatalogueRow {
                     dog: cargo_dog("otel"),
-                    version: "0.2.4".to_owned(),
-                    state: DogState::NotInstalled,
+                    version: version.to_owned(),
+                    state,
                 }],
                 refreshing: false,
             })),
         });
+        let row = app
+            .catalogue_rows()
+            .first()
+            .expect("the row is still there");
         assert_eq!(
-            app.catalogue_rows().first().map(|row| row.state),
-            Some(DogState::NotInstalled)
+            (row.version.as_str(), row.state, row.is_behind()),
+            (version, state, false),
+            "{said}"
+        );
+        app.update(Msg::Tick {
+            now: Instant::now() + DONE_SHOWS,
+        });
+        let effect = app.update(Msg::Key(KeyPress::Confirm));
+        assert!(
+            !matches!(
+                effect,
+                Effect::StartDogJob {
+                    job: Job::Upgrade { .. },
+                    ..
+                }
+            ),
+            "{said}: nothing is left to upgrade: {effect:?}"
         );
     }
 }
