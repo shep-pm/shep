@@ -21,6 +21,7 @@ import {
   CATEGORIES,
   REQUIRED_FIELDS,
   SUPPORTED_INDEX_VERSION,
+  SEMVER_PATTERN,
 } from "../src/data/dogs.ts";
 
 /** A valid entry, cloned and broken per case. */
@@ -149,6 +150,32 @@ test("a supported version with no dogs array is refused", () => {
 test("a wrapped, supported-version document unwraps to its dogs array", () => {
   const entries = [good()];
   assert.deepEqual(unwrapIndex({ version: SUPPORTED_INDEX_VERSION, dogs: entries }), entries);
+});
+
+test("a shep that is not a version is refused", () => {
+  for (const shep of ["latest", "0.24", "v0.24.0", "", 24, null, ["0.24.0"]]) {
+    assert.throws(
+      () => unwrapIndex({ version: SUPPORTED_INDEX_VERSION, shep, dogs: [good()] }),
+      /shep/,
+      JSON.stringify(shep),
+    );
+  }
+});
+
+test("a missing shep is accepted", () => {
+  const entries = [good()];
+  assert.deepEqual(unwrapIndex({ version: SUPPORTED_INDEX_VERSION, dogs: entries }), entries);
+  assert.deepEqual(
+    unwrapIndex({ version: SUPPORTED_INDEX_VERSION, shep: "0.24.0", dogs: entries }),
+    entries,
+  );
+});
+
+test("the schema declares the top-level shep", async () => {
+  const schema = JSON.parse(await readFile(new URL("../public/dogs.schema.json", import.meta.url), "utf8"));
+  assert.equal(schema.properties.shep.type, "string");
+  assert.equal(schema.properties.shep.pattern, SEMVER_PATTERN.source);
+  assert.ok(!schema.required.includes("shep"));
 });
 
 // --- Extra refusal cases, beyond the brief's list. See task-1-report.md for
