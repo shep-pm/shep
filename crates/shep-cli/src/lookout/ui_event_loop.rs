@@ -271,6 +271,31 @@ where
                     Msg::Settings { result }
                 }));
             }
+            // Off this task for `Effect::LoadSettings`' reason. The cache read
+            // never waits on the network: a fetch it finds due comes back as
+            // `Effect::FetchCatalogue`.
+            Effect::LoadCatalogue { fetch } => {
+                let paths = paths.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    super::app::catalogue_read_cache(&paths, &crate::dog_index::index_url(), fetch)
+                });
+                inflight.push(Box::pin(async move {
+                    Msg::Catalogue {
+                        result: join_blocking(handle).await,
+                    }
+                }));
+            }
+            // The only effect that reaches the network. In `inflight`, so the
+            // screen draws and keys move while the index is on its way.
+            Effect::FetchCatalogue => {
+                let paths = paths.clone();
+                inflight.push(Box::pin(async move {
+                    let url = crate::dog_index::index_url();
+                    Msg::Catalogue {
+                        result: super::app::catalogue_fetch(paths, url).await,
+                    }
+                }));
+            }
             // Off this task for `Effect::WriteSetting`'s reason: the store's
             // own lock acquires with no deadline. The environment is the
             // current tab's, or the daemon's configured default before the
