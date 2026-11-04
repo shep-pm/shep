@@ -380,7 +380,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
   // row.
-  lookout: 3222,
+  //
+  // Raised again, to 3247, on #1500 for the greyed rows of index dogs this
+  // machine lacks, which no other page names.
+  lookout: 3247,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

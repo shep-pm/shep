@@ -7,7 +7,10 @@ use shep_core::protocol::{DogSource, ProcessInfo, Response};
 use shep_core::status::ProcStatus;
 
 use crate::commands::settings::{DogView, SettingEdit, SettingsSnapshot, Shape};
-use crate::lookout::app::{App, Control, Effect, KeyPress, Msg, Sent, Settings, SettingsRow};
+use crate::lookout::app::{
+    App, CatalogueRead, CatalogueRow, Control, DogState, Effect, KeyPress, Msg, Sent, Settings,
+    SettingsRow,
+};
 use crate::lookout::field::shep_toml_shape;
 use crate::lookout::pane::PaneRow;
 use crate::style::{StyleLevel, StyleSource};
@@ -89,6 +92,12 @@ fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
             format!("dog.{}.env.{}", dog.name, dog.env_keys.get(index)?)
         }
         SettingsRow::DogEnvNew(dog) => format!("dog.{}.env+", settings.dog(dog)?.name),
+        SettingsRow::AvailableDog(index) => {
+            format!(
+                "available.{}",
+                settings.available().get(index)?.dog.adopt_as
+            )
+        }
         SettingsRow::BrowseDogs => "dogs.browse".to_owned(),
         SettingsRow::DogField { dog, row } => {
             let pane = settings.dog_tree(dog)?.pane()?;
@@ -348,6 +357,56 @@ pub fn app_in_settings_without_dogs() -> App {
     app.update(Msg::Key(KeyPress::Settings));
     app.update(Msg::Settings {
         result: Ok(settings_snapshot_with_dogs(Vec::new())),
+    });
+    app
+}
+
+/// One row of a cached dog index, as the catalogue builds it: `name` is also
+/// what it is adopted as.
+fn catalogue_row(name: &str, category: &str, state: DogState) -> CatalogueRow {
+    let document = serde_json::json!({
+        "version": 1,
+        "dogs": [{
+            "name": name,
+            "package": format!("shep-{name}"),
+            "adopt_as": name,
+            "description": format!("{name} does a thing."),
+            "repo": format!("https://github.com/shep-pm/shep-{name}"),
+            "license": "MIT",
+            "category": category,
+            "source": { "kind": "cargo", "version": "0.1.0" },
+        }],
+    });
+    let index = crate::dog_index::parse_index(document.to_string().as_bytes())
+        .expect("the fixture row parses");
+    CatalogueRow {
+        dog: index.dogs[0].clone(),
+        version: "0.1.0".to_owned(),
+        state,
+    }
+}
+
+/// The settings screen with `rotate` adopted, and a cached index of three
+/// dogs landed after it: `rotate` installed, `otel` and `tail-grep` not.
+pub fn app_in_settings_with_an_index() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.update(Msg::Key(KeyPress::Settings));
+    app.update(Msg::Settings {
+        result: Ok(settings_snapshot_with_dogs(vec![DogView::adopted(
+            "rotate",
+            true,
+            Path::new("/opt/rotate"),
+        )])),
+    });
+    app.update(Msg::Catalogue {
+        result: Ok(Box::new(CatalogueRead {
+            rows: vec![
+                catalogue_row("rotate", "logs", DogState::Installed),
+                catalogue_row("otel", "metrics", DogState::NotInstalled),
+                catalogue_row("tail-grep", "logs", DogState::NotInstalled),
+            ],
+            refreshing: false,
+        })),
     });
     app
 }

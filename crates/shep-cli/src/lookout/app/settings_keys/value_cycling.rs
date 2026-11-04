@@ -42,6 +42,7 @@ impl App {
             | SettingsRow::Table(_)
             | SettingsRow::Entry { .. }
             | SettingsRow::AddEntry(_)
+            | SettingsRow::AvailableDog(_)
             | SettingsRow::BrowseDogs => Effect::None,
         }
     }
@@ -152,6 +153,20 @@ mod tests {
             text.contains("set style level to plain"),
             "the file says full, so one step is plain: {text}"
         );
+    }
+
+    #[test]
+    fn space_and_a_typed_character_on_an_available_dog_change_nothing() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        fixtures::select_setting(&mut app, "available.otel");
+        assert_eq!(app.update(Msg::Key(KeyPress::Cycle)), Effect::None);
+        assert_eq!(app.update(Msg::Key(KeyPress::TextChar('x'))), Effect::None);
+        let settings = app.settings().expect("the screen stays open");
+        assert_eq!(settings.cursor(), Some(SettingsRow::AvailableDog(0)));
+        assert!(settings.pending().is_none(), "nothing armed");
+        assert!(settings.typing().is_none(), "no editor opened");
+        assert!(app.notice().is_none(), "not even a refusal");
+        assert!(matches!(app.body(), Body::Settings(_)));
     }
 
     #[test]

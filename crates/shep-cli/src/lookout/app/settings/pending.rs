@@ -13,6 +13,7 @@ impl Settings {
             view: Viewport::new(),
             pending: None,
             dog_trees: BTreeMap::new(),
+            available: Vec::new(),
         }
     }
 
