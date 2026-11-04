@@ -31,13 +31,12 @@ impl App {
 
     /// A bracketed paste: each printable character goes through the open
     /// box's own [`KeyPress::TextChar`] path, so every editor keeps its own
-    /// rules. Nothing happens outside [`InputMode::Text`].
+    /// rules. Nothing happens outside [`InputMode::Text`] or under a modal.
     ///
     /// The effects of the single characters collapse to the first one that
-    /// asks for anything: every effect a text box raises is a re-read, and
-    /// asking twice reads the same files twice.
+    /// asks for anything: every effect a text box raises is a re-read.
     pub(super) fn on_paste(&mut self, text: &str) -> Effect {
-        if self.mode != InputMode::Text {
+        if self.key_mode() != InputMode::Text {
             return Effect::None;
         }
         let mut effect = Effect::None;
@@ -361,6 +360,18 @@ impl App {
     #[must_use]
     pub fn mode(&self) -> InputMode {
         self.mode
+    }
+
+    /// The mode keys are read in: [`InputMode::Normal`] while a modal is
+    /// open, even over a text box, so its scroll keys and Enter arrive as the
+    /// select and confirm keys rather than as typing.
+    #[must_use]
+    pub fn key_mode(&self) -> InputMode {
+        if self.modal().is_some() {
+            InputMode::Normal
+        } else {
+            self.mode
+        }
     }
 
     /// Whether the keymap overlay is up, for `view` to draw.

@@ -202,5 +202,16 @@ fn a_frame_with_no_modal_is_the_dashboard_alone() {
 
     assert!(!frame.contains(BOX_CORNER), "{frame}");
     assert!(!frame.contains(KEYS), "{frame}");
-    assert_eq!(scroll_reach(&app, Rect::new(0, 0, 80, 24)), 0);
+    assert_eq!(scroll_reach(&app, Rect::new(0, 0, 80, 24)), None);
+}
+
+#[test]
+fn a_terminal_under_the_floor_does_not_show_the_modal_so_it_has_no_reach() {
+    let mut app = fixtures::full_app();
+    app.open_modal(Modal::grant(1, prompt_with(None)));
+
+    let small = Rect::new(0, 0, MIN_TERM_WIDTH - 1, 24);
+
+    assert_eq!(scroll_reach(&app, small), None);
+    assert!(scroll_reach(&app, Rect::new(0, 0, 80, 24)).is_some());
 }

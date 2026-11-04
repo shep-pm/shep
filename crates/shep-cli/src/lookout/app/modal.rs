@@ -111,7 +111,9 @@ impl Modal {
 pub(super) struct Modals {
     queue: VecDeque<Modal>,
     scroll: usize,
-    reach: usize,
+    /// How many lines the open modal's box cannot show, or `None` while it is
+    /// not on screen: not drawn yet, or the terminal too small to draw it.
+    reach: Option<usize>,
 }
 
 impl App {
@@ -131,27 +133,36 @@ impl App {
     }
 
     /// Tells the layer how many lines of the open modal's text the box cannot
-    /// show, so scrolling stops at the last line. The event loop calls it
-    /// before each draw, as it does [`Self::note_body_rows`].
-    pub(crate) fn note_modal_reach(&mut self, reach: usize) {
+    /// show, so scrolling stops at the last line, or `None` when the modal is
+    /// not on screen. The event loop calls it before each draw, as it does
+    /// [`Self::note_body_rows`].
+    pub(crate) fn note_modal_reach(&mut self, reach: Option<usize>) {
         self.modals.reach = reach;
-        self.modals.scroll = self.modals.scroll.min(reach);
+        self.modals.scroll = self.modals.scroll.min(reach.unwrap_or(0));
     }
 
     /// One key while a modal is open, ahead of every body and text box.
     ///
-    /// A grant or a confirm answers yes on Enter and no on anything else, so
-    /// a stray key grants nothing. When the text is taller than the box the
-    /// four select keys scroll it instead, whatever the kind, since a
-    /// permission list that cannot be read cannot be agreed to. Output closes
-    /// on every other key.
+    /// Enter answers a grant or a confirm yes and any other key no. With the
+    /// text taller than the box the four select keys scroll it instead, so a
+    /// long permission list can be read. Output closes on every other key.
+    // A modal not on screen answers nothing, since no one has seen the
+    // question: it waits for its first draw or for a resize. Quit still
+    // quits, as it does on the too-small screen.
     pub(super) fn on_modal_key(&mut self, key: KeyPress) -> Effect {
         let Some(modal) = self.modals.queue.front() else {
             return Effect::None;
         };
+        let Some(reach) = self.modals.reach else {
+            return if key == KeyPress::Quit {
+                Effect::Quit
+            } else {
+                Effect::None
+            };
+        };
         let tag = modal.tag();
         let asks = !matches!(modal, Modal::Output { .. });
-        if self.modals.reach > 0 && self.scroll_modal(key) {
+        if reach > 0 && self.scroll_modal(key) {
             return Effect::None;
         }
         self.close_modal();
@@ -165,27 +176,29 @@ impl App {
     /// Whether the open modal's text is taller than its box, so the select
     /// keys scroll it.
     pub(crate) fn modal_scrolls(&self) -> bool {
-        self.modals.reach > 0
+        self.modals.reach.is_some_and(|reach| reach > 0)
     }
 
     /// Moves the scroll for a select key, or returns `false` for any other.
     fn scroll_modal(&mut self, key: KeyPress) -> bool {
         let modals = &mut self.modals;
+        let reach = modals.reach.unwrap_or(0);
         match key {
             KeyPress::SelectUp => modals.scroll = modals.scroll.saturating_sub(1),
-            KeyPress::SelectDown => modals.scroll = (modals.scroll + 1).min(modals.reach),
+            KeyPress::SelectDown => modals.scroll = (modals.scroll + 1).min(reach),
             KeyPress::SelectFirst => modals.scroll = 0,
-            KeyPress::SelectLast => modals.scroll = modals.reach,
+            KeyPress::SelectLast => modals.scroll = reach,
             _ => return false,
         }
         true
     }
 
-    /// Drops the open modal; the next one, if any, starts at the top.
+    /// Drops the open modal; the next one, if any, starts at the top and is
+    /// not on screen until it is drawn.
     fn close_modal(&mut self) {
         self.modals.queue.pop_front();
         self.modals.scroll = 0;
-        self.modals.reach = 0;
+        self.modals.reach = None;
     }
 }
 

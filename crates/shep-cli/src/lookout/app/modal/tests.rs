@@ -11,10 +11,16 @@ fn grant(tag: u64) -> Modal {
     Modal::grant(tag, prompt())
 }
 
+/// What the event loop does after a draw that showed the open modal in full.
+fn drawn(app: &mut App) {
+    app.note_modal_reach(Some(0));
+}
+
 #[test]
 fn enter_answers_a_grant_yes_for_its_tag() {
     let mut app = fixtures::full_app();
     app.open_modal(grant(7));
+    drawn(&mut app);
 
     let effect = app.update(Msg::Key(KeyPress::Confirm));
 
@@ -36,6 +42,7 @@ fn any_other_key_answers_a_grant_no_for_its_tag() {
     for key in others {
         let mut app = fixtures::full_app();
         app.open_modal(grant(9));
+        drawn(&mut app);
 
         let effect = app.update(Msg::Key(key));
 
@@ -53,6 +60,7 @@ fn a_second_modal_waits_and_shows_once_the_first_is_answered() {
     let mut app = fixtures::full_app();
     app.open_modal(grant(1));
     app.open_modal(Modal::confirm(2, "quit lookout?".to_owned()));
+    drawn(&mut app);
 
     assert!(matches!(app.modal(), Some(Modal::Grant { tag: 1, .. })));
 
@@ -60,6 +68,7 @@ fn a_second_modal_waits_and_shows_once_the_first_is_answered() {
     assert_eq!(first, Effect::ModalAnswered { tag: 1, yes: true });
     assert!(matches!(app.modal(), Some(Modal::Confirm { tag: 2, .. })));
 
+    drawn(&mut app);
     let second = app.update(Msg::Key(KeyPress::Escape));
     assert_eq!(second, Effect::ModalAnswered { tag: 2, yes: false });
     assert!(app.modal().is_none());
@@ -82,6 +91,7 @@ fn a_dashboard_key_does_nothing_but_answer_the_modal() {
         let mut app = fixtures::app_with_a_dog_selected_and_control();
         let before = app.selected_index();
         app.open_modal(Modal::confirm(3, "go on?".to_owned()));
+        drawn(&mut app);
 
         let effect = app.update(Msg::Key(key));
 
@@ -102,6 +112,7 @@ fn a_dashboard_key_does_nothing_but_answer_the_modal() {
 fn the_modal_takes_keys_ahead_of_an_open_filter_box() {
     let mut app = fixtures::editing_app("web");
     app.open_modal(Modal::confirm(4, "go on?".to_owned()));
+    drawn(&mut app);
 
     let effect = app.update(Msg::Key(KeyPress::TextApply));
 
@@ -113,6 +124,7 @@ fn the_modal_takes_keys_ahead_of_an_open_filter_box() {
 fn an_output_modal_closes_on_any_key_and_raises_no_answer() {
     let mut app = fixtures::full_app();
     app.open_modal(Modal::output(5, "cargo", "error: boom"));
+    drawn(&mut app);
 
     let effect = app.update(Msg::Key(KeyPress::Confirm));
 
@@ -124,7 +136,7 @@ fn an_output_modal_closes_on_any_key_and_raises_no_answer() {
 fn output_scrolls_with_the_select_keys_only_when_it_is_taller_than_the_box() {
     let mut app = fixtures::full_app();
     app.open_modal(Modal::output(5, "cargo", "a\nb\nc\nd"));
-    app.note_modal_reach(2);
+    app.note_modal_reach(Some(2));
 
     assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
     assert_eq!(app.modal_scroll(), 1);
@@ -147,7 +159,7 @@ fn output_scrolls_with_the_select_keys_only_when_it_is_taller_than_the_box() {
 fn output_that_fits_the_box_closes_on_a_select_key() {
     let mut app = fixtures::full_app();
     app.open_modal(Modal::output(5, "cargo", "a\nb"));
-    app.note_modal_reach(0);
+    app.note_modal_reach(Some(0));
 
     app.update(Msg::Key(KeyPress::SelectDown));
 
@@ -219,7 +231,7 @@ fn output_never_carries_escapes_or_control_characters() {
 fn a_grant_taller_than_the_box_scrolls_on_the_select_keys_and_answers_on_the_rest() {
     let mut app = fixtures::full_app();
     app.open_modal(grant(6));
-    app.note_modal_reach(3);
+    app.note_modal_reach(Some(3));
 
     assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
     assert_eq!(app.modal_scroll(), 1);
@@ -229,4 +241,76 @@ fn a_grant_taller_than_the_box_scrolls_on_the_select_keys_and_answers_on_the_res
 
     assert_eq!(effect, Effect::ModalAnswered { tag: 6, yes: false });
     assert_eq!(app.modal_scroll(), 0);
+}
+
+#[test]
+fn a_paste_does_not_reach_a_text_box_under_a_modal() {
+    let mut app = fixtures::editing_app("web");
+    app.open_modal(Modal::confirm(4, "go on?".to_owned()));
+    drawn(&mut app);
+
+    let effect = app.update(Msg::Paste(Pasted::new("abc".to_owned())));
+
+    assert_eq!(effect, Effect::None);
+    assert_eq!(app.filter(), "web");
+    assert!(app.modal().is_some(), "a paste answered the modal");
+}
+
+#[test]
+fn a_modal_over_a_text_box_reads_keys_in_the_normal_keymap() {
+    let mut app = fixtures::editing_app("web");
+    assert_eq!(app.key_mode(), InputMode::Text);
+
+    app.open_modal(grant(8));
+    drawn(&mut app);
+
+    assert_eq!(app.key_mode(), InputMode::Normal);
+    app.update(Msg::Key(KeyPress::Confirm));
+    assert_eq!(app.key_mode(), InputMode::Text, "the box is back");
+}
+
+#[test]
+fn a_modal_not_yet_drawn_answers_nothing_but_a_quit_still_quits() {
+    let mut app = fixtures::full_app();
+    app.open_modal(grant(1));
+
+    assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::None);
+    assert_eq!(app.update(Msg::Key(KeyPress::SelectDown)), Effect::None);
+    assert!(app.modal().is_some());
+    assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
+}
+
+#[test]
+fn the_next_queued_modal_waits_for_its_own_draw_before_a_key_answers_it() {
+    let mut app = fixtures::full_app();
+    app.open_modal(grant(1));
+    app.open_modal(grant(2));
+    app.note_modal_reach(Some(0));
+    app.update(Msg::Key(KeyPress::Confirm));
+
+    let early = app.update(Msg::Key(KeyPress::SelectDown));
+
+    assert_eq!(early, Effect::None, "answered a grant no one has seen");
+    assert!(matches!(app.modal(), Some(Modal::Grant { tag: 2, .. })));
+    app.note_modal_reach(Some(3));
+    app.update(Msg::Key(KeyPress::SelectDown));
+    assert_eq!(app.modal_scroll(), 1);
+}
+
+#[test]
+fn a_modal_left_off_screen_by_a_small_terminal_keeps_its_question() {
+    let mut app = fixtures::full_app();
+    app.open_modal(grant(1));
+    app.note_modal_reach(Some(0));
+
+    app.note_modal_reach(None);
+    let effect = app.update(Msg::Key(KeyPress::Escape));
+
+    assert_eq!(effect, Effect::None);
+    assert!(app.modal().is_some());
+    app.note_modal_reach(Some(0));
+    assert_eq!(
+        app.update(Msg::Key(KeyPress::Escape)),
+        Effect::ModalAnswered { tag: 1, yes: false }
+    );
 }

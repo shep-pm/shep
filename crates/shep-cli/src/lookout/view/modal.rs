@@ -9,6 +9,8 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
 
+use super::MIN_TERM_WIDTH;
+use super::flock::MIN_HEIGHT;
 use super::overlay;
 use super::status::key_hint::modal_keys;
 use crate::lookout::app::{App, Modal};
@@ -94,10 +96,14 @@ fn measure(app: &App, area: Rect) -> Option<Parts> {
 
 /// How many lines of the open modal's text its box cannot show in `area`.
 ///
-/// Zero with none open. The event loop hands it to
-/// [`App::note_modal_reach`] before each draw.
-pub(in crate::lookout) fn scroll_reach(app: &App, area: Rect) -> usize {
-    measure(app, area).map_or(0, |parts| parts.reach())
+/// `None` with none open, and when `area` is under the floor the dashboard
+/// refuses to draw in, since the modal is not drawn there either. The event
+/// loop hands it to [`App::note_modal_reach`] before each draw.
+pub(in crate::lookout) fn scroll_reach(app: &App, area: Rect) -> Option<usize> {
+    if area.width < MIN_TERM_WIDTH || area.height < MIN_HEIGHT {
+        return None;
+    }
+    measure(app, area).map(|parts| parts.reach())
 }
 
 /// The open modal over `buffer`, muting what is already drawn. Nothing

@@ -165,9 +165,9 @@ where
                 // Only while a box is open; elsewhere a paste is nothing, and
                 // the reducer would say so too.
                 Some(Ok(crossterm::event::Event::Paste(text))) => {
-                    (app.mode() == InputMode::Text).then(|| Msg::Paste(Pasted::new(text)))
+                    (app.key_mode() == InputMode::Text).then(|| Msg::Paste(Pasted::new(text)))
                 }
-                Some(Ok(event)) => super::input::map_key(&event, app.mode()).map(Msg::Key),
+                Some(Ok(event)) => super::input::map_key(&event, app.key_mode()).map(Msg::Key),
                 // A key source that has ended, or has started erroring. Both
                 // conditions are permanent, and both retire this arm: one
                 // that keeps completing immediately, above the link and the
