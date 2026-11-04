@@ -6,13 +6,14 @@
 //! `ref-<sha>` that already holds the binary is kept as it is.
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 
 use serde_json::Value;
 use shep_core::paths::ShepPaths;
 
+use super::install_cargo::{self, with_tail};
 use super::install_keep::Kept;
 use super::receipt;
+use super::session::{Progress, Step};
 use crate::dog_index::AvailableDog;
 use crate::exit::ExitCode;
 use crate::output::Streams;
@@ -75,11 +76,19 @@ pub(super) async fn acquire(
     cargo: &Path,
     dog: &AvailableDog,
     git_ref: &str,
+    progress: Option<&Progress>,
 ) -> Result<Acquired, ExitCode> {
     let dog_dir = paths.dogs_dir.join(&dog.adopt_as);
     // A leading dot cannot be a version or a name the index passes.
     let staging = dog_dir.join(".ref-build");
-    let built = build(streams, cargo, &staging, &dog.repo, &dog.package, git_ref).await?;
+    let built = build(
+        streams,
+        cargo,
+        &staging,
+        (&dog.repo, &dog.package, git_ref),
+        progress,
+    )
+    .await?;
     let root = dog_dir.join(format!("ref-{}", built.commit));
     let binary = root
         .join("bin")
@@ -112,15 +121,18 @@ async fn build(
     streams: &mut Streams<'_>,
     cargo: &Path,
     staging: &Path,
-    repo: &str,
-    package: &str,
-    git_ref: &str,
+    (repo, package, git_ref): (&str, &str, &str),
+    progress: Option<&Progress>,
 ) -> Result<Built, ExitCode> {
     let _ = std::fs::remove_dir_all(staging);
     streams.aside(
         "install",
         &format!("building {package} from {git_ref} of {repo} with cargo"),
     );
+    if let Some(progress) = progress {
+        progress.tell(Step::Building);
+    }
+    let mut tail = String::new();
     for flag in flags_for(git_ref) {
         let command: Vec<String> = [
             "cargo",
@@ -136,16 +148,8 @@ async fn build(
         ]
         .map(str::to_owned)
         .into();
-        let status = tokio::process::Command::new(cargo)
-            .args(&command[1..])
-            .stdin(Stdio::null())
-            // stdout is the verb's answer; cargo narrates on stderr.
-            .stdout(Stdio::null())
-            .kill_on_drop(true)
-            .status()
-            .await;
-        match status {
-            Ok(status) if status.success() => {
+        match install_cargo::run(cargo, &command[1..], progress).await {
+            Ok(ran) if ran.status.success() => {
                 let Some(commit) = commit_of(staging, package) else {
                     let _ = std::fs::remove_dir_all(staging);
                     return Err(streams.fail(
@@ -158,7 +162,8 @@ async fn build(
                 };
                 return Ok(Built { commit, command });
             }
-            Ok(_) => {
+            Ok(ran) => {
+                tail = ran.tail;
                 let _ = std::fs::remove_dir_all(staging);
             }
             Err(err) => {
@@ -175,9 +180,12 @@ async fn build(
     };
     Err(streams.fail(
         ExitCode::Failure,
-        &format!(
-            "`cargo install` for {package} from {git_ref} of {repo} failed (tried as {tried}); \
-             nothing was adopted"
+        &with_tail(
+            format!(
+                "`cargo install` for {package} from {git_ref} of {repo} failed (tried as \
+                 {tried}); nothing was adopted"
+            ),
+            &tail,
         ),
     ))
 }
