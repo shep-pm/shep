@@ -615,10 +615,12 @@ An adopted dog is part of shep's own listing from then on. It appears in the
 Dogs group of `shep --help`, with the `verb.description` its manifest
 declared beside its name, and shell completion offers it. An undeclared dog
 is listed bare: the listing says what is known and is silent about what
-isn't. A dog that declared `verb.subcommands` gets a shep-rendered page for
-them from `shep <name> --help`, and its binary never runs to answer that
-flag; a dog that declared none keeps `--help` as a pass-through like every
-other argument. Nothing in a manifest claims a top-level verb: the registry
+isn't, or by the description of its row in the cached dog index. Every dog
+gets a shep-rendered page from `shep <name> --help`, `-h` and
+`shep help <name>`, and its binary never runs to answer them: a dog that
+declared a `verb` gets its subcommands and examples, one that declared none
+gets a stub that points at `shep <name> help`. `shep <name> help` and
+`shep <name> <sub> --help` still reach the dog like every other argument. Nothing in a manifest claims a top-level verb: the registry
 in `shep.toml` is what makes a name a dog, and a dog gets exactly
 `shep <name>`.
 
