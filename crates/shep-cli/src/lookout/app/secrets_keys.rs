@@ -129,6 +129,7 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Settings
+            | KeyPress::Catalogue
             | KeyPress::Cycle
             | KeyPress::Edit
             | KeyPress::Remove

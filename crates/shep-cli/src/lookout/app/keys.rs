@@ -161,6 +161,8 @@ impl App {
             // `Msg::Settings` lands.
             KeyPress::Settings if self.refuse_over_host() => Effect::None,
             KeyPress::Settings => Effect::LoadSettings,
+            // `open_catalogue` does its own remote refusal.
+            KeyPress::Catalogue => self.open_catalogue(),
             // Opens with an empty model; `Msg::Secrets` fills it once the
             // read lands. Closing again is `on_secrets_key`'s job, reached
             // only once `self.body` is already `Body::Secrets`, the same
@@ -741,5 +743,76 @@ mod tests {
         assert_eq!(effect, Effect::None);
         assert_eq!(app.filter_box().cursor(), 0);
         assert_eq!(app.selected_index(), selected);
+    }
+
+    /// The dashboard's `i` opens the catalogue screen at once, with the read
+    /// raised for the reducer to answer.
+    #[test]
+    fn i_on_the_dashboard_opens_the_catalogue_and_loads_it() {
+        let mut app = fixtures::full_app();
+
+        let effect = app.update(Msg::Key(KeyPress::Catalogue));
+
+        assert_eq!(effect, Effect::LoadCatalogue { fetch: true });
+        assert!(matches!(app.body(), Body::Catalogue(_)));
+    }
+
+    /// The catalogue reads this machine's receipts and `shep.toml`.
+    #[test]
+    fn over_a_host_i_is_refused_and_nothing_opens() {
+        let mut app = fixtures::full_app();
+        app.set_remote_host("build-01");
+
+        let effect = app.update(Msg::Key(KeyPress::Catalogue));
+
+        assert_eq!(effect, Effect::None);
+        assert!(matches!(app.body(), Body::FlockTable));
+        let notice = app.notice().expect("a refusal says why");
+        assert_eq!(notice.to_string(), NOT_OVER_HOST);
+    }
+
+    /// Each open screen owns the keyboard, so `i` on one of them neither
+    /// opens the catalogue nor raises an effect nor changes the body.
+    #[test]
+    fn i_does_nothing_in_the_panes_and_the_close_dialog() {
+        let mut in_bleats = fixtures::full_app();
+        let _ = in_bleats.update(Msg::Key(KeyPress::Bleats));
+        let mut in_dialog = fixtures::app_in_sheep_pane_with_control();
+        let _ = in_dialog.update(Msg::Key(KeyPress::Escape));
+
+        let cases: [(&str, App); 6] = [
+            ("settings", fixtures::app_in_settings()),
+            ("secrets", fixtures::app_with_secrets()),
+            ("bleats", in_bleats),
+            ("sheep pane", fixtures::app_in_sheep_pane()),
+            ("config pane", app_in_web(Control::Allowed)),
+            ("close dialog", in_dialog),
+        ];
+        for (what, mut app) in cases {
+            let before = core::mem::discriminant(app.body());
+            let dialog_was_open = app.close_dialog().is_some();
+            assert!(
+                what != "close dialog" || dialog_was_open,
+                "the dialog did not open"
+            );
+            assert!(
+                what != "config pane" || app.config_pane().is_some(),
+                "the config pane did not open"
+            );
+
+            let effect = app.update(Msg::Key(KeyPress::Catalogue));
+
+            assert_eq!(effect, Effect::None, "{what}");
+            assert_eq!(
+                core::mem::discriminant(app.body()),
+                before,
+                "{what}: the body changed"
+            );
+            assert!(
+                !matches!(app.body(), Body::Catalogue(_)),
+                "{what}: the catalogue opened"
+            );
+            assert_eq!(app.close_dialog().is_some(), dialog_was_open, "{what}");
+        }
     }
 }
