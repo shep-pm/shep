@@ -454,9 +454,9 @@ Dogs
 
     <h2 id="hints">Hints</h2>
     <p>
-      <code>shep flock</code> can end with one line suggesting a dog. shep
-      writes the line itself, from a fixed list of two, and shows the first
-      that applies:
+      <code>shep flock</code> can end with one line suggesting a dog or a newer
+      shep. shep writes the line itself, from a fixed list of three, and shows
+      the first that applies:
     </p>
     <ul>
       <li>
@@ -468,6 +468,11 @@ Dogs
         is the <code>RESTARTS</code> column. It offers the built-in{" "}
         <code>bark</code> and the dogs in the cached index that send alerts.
       </li>
+      <li>
+        <code>upgrade</code>: the cached index names a newer shep than this
+        one. It offers <code>shep upgrade</code> and ends when this shep is
+        that version.
+      </li>
     </ul>
     <CodeBlock label="shep flock">{`hint: api has restarted 3 times. Try: shep enable bark or shep install discord`}</CodeBlock>
     <p>
@@ -478,7 +483,8 @@ Dogs
     </p>
     <p>
       A hint reads the dog index cache and never fetches it, so with no cache
-      the <code>logs</code> hint has nothing to offer and stays quiet.
+      the <code>logs</code> and <code>upgrade</code> hints have nothing to offer
+      and stay quiet.
     </p>
     <p>
       <code>shep hints</code> lists the hints with their state and the dogs
