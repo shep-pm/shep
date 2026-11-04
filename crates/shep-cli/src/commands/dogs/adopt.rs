@@ -25,7 +25,7 @@ use super::depends::warn_of_unmet_depends;
 use super::grants::warn_if_unenforced;
 use super::vet::{
     DogSchema, fail_adopt, report_channel_ask, report_dog_version, vet_binary, warn_group_writable,
-    warn_unreadable_schema,
+    warn_of_verb_declaration, warn_unreadable_schema,
 };
 use super::{
     DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS,
@@ -281,6 +281,7 @@ pub(super) async fn adopt_noting(
     }
     if let Some(manifest) = &vetted.manifest {
         warn_of_unmet_depends(streams, &name, manifest, &adopted);
+        warn_of_verb_declaration(streams, &name, manifest);
     }
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,
