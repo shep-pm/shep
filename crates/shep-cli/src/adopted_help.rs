@@ -97,14 +97,14 @@ fn adopted_verbs_in(paths: &ShepPaths, index_url: &str) -> Vec<AdoptedVerb> {
 /// What the cached `index` says dog `name` does, or `None` when it has no
 /// row for it or the row says nothing.
 ///
-/// The row is the dog's `package` when it was installed, else the one that
-/// expects to be adopted under `name`.
+/// The row is the dog's `package` when it was installed, and no other: a
+/// package the index dropped has no description. A dog with no receipt gets
+/// the row that expects to be adopted under `name`.
 fn indexed_description(index: &Index, name: &str, package: Option<&str>) -> Option<String> {
-    let row = index
-        .dogs
-        .iter()
-        .find(|dog| package == Some(dog.package.as_str()))
-        .or_else(|| index.dogs.iter().find(|dog| dog.adopt_as == name))?;
+    let row = match package {
+        Some(package) => index.dogs.iter().find(|dog| dog.package == package)?,
+        None => index.dogs.iter().find(|dog| dog.adopt_as == name)?,
+    };
     Some(printable(&row.description)).filter(|description| !description.is_empty())
 }
 
@@ -301,12 +301,17 @@ fn help_verb_precedes(before: &[OsString]) -> bool {
 fn dog_page(name: &str, path: &Path, paths: &ShepPaths, index_url: &str) -> clap::Command {
     let manifest = cached_manifest(path, &paths.home);
     let receipt = installed(paths, name);
-    let version = receipt
+    let running = manifest.as_ref().map(|manifest| manifest.version.as_str());
+    let recorded = receipt
         .as_ref()
-        .and_then(|receipt| receipt.version.clone())
-        .or_else(|| manifest.as_ref().map(|manifest| manifest.version.clone()))
-        .map(|version| printable(&version));
-    let source = receipt.as_ref().map(|receipt| printable(&receipt.source()));
+        .and_then(|receipt| receipt.version.as_deref());
+    let version = running.or(recorded).map(printable);
+    // A receipt describes the binary it installed. When the binary now
+    // registered reports another version, the receipt's origin is not its own.
+    let source = receipt
+        .as_ref()
+        .filter(|_| running.is_none() || recorded.is_none() || running == recorded)
+        .map(|receipt| printable(&receipt.source()));
     let verb = manifest
         .and_then(|manifest| manifest.verb)
         .and_then(printable_verb);

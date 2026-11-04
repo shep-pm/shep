@@ -85,6 +85,8 @@ fn listed(verbs: &[AdoptedVerb]) -> Vec<(&str, Option<&str>)> {
         .collect()
 }
 
+mod receipt;
+
 #[test]
 fn a_manifest_dog_is_listed_with_its_description_and_an_undeclared_one_is_not() {
     let dir = tempfile::tempdir().unwrap();
@@ -920,33 +922,6 @@ fn a_dogs_own_help_subcommand_still_reaches_it() {
             .collect::<Vec<_>>(),
         ["help", "board --help", "help board"],
         "the dog got each argv as typed"
-    );
-}
-
-#[test]
-fn an_installed_dog_names_the_receipts_version_and_source() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = a_home_with(dir.path(), [("kelpie", KELPIE_BODY)]);
-    let receipt = paths.dogs_dir.join("kelpie").join("receipt.json");
-    std::fs::create_dir_all(receipt.parent().unwrap()).unwrap();
-    std::fs::write(
-        &receipt,
-        serde_json::json!({
-            "package": "shep-kelpie",
-            "row": { "repo": "https://github.com/shep-pm/shep-kelpie" },
-            "version": "0.9.3",
-        })
-        .to_string(),
-    )
-    .unwrap();
-
-    let page = page(&paths, dir.path(), "kelpie");
-
-    assert!(
-        page.ends_with(
-            "\nkelpie 0.9.3 from shep-pm/shep-kelpie. Anything after `shep kelpie` goes to the dog.\n"
-        ),
-        "{page}"
     );
 }
 
