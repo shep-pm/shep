@@ -555,7 +555,10 @@ export const BUDGETS: Record<string, number> = {
   // told every operator to upgrade through cargo, and now has to say that the
   // command does shep, the reload and the dogs through the channel shep came
   // from, and what a `.deb`, an archive and Windows get instead.
-  upgrading: 780,
+  // Raised from 780 on 2026-11-04 for the page that leads with `shep upgrade`
+  // (#1496): the channel table, the reload question, the Windows case and the
+  // by-hand steps for a `.deb` or an archive. Required content, not prose.
+  upgrading: 945,
   kv: 550,
   // Raised from 440 on 2026-09-21 for the prebuilt-binary download list,
   // which is new content rather than a correction. The page was sitting at
