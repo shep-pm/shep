@@ -10,10 +10,6 @@ pub(crate) struct Topic {
     /// What follows `shep help`.
     pub(crate) name: &'static str,
     /// One line for a listing of the topics.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the top level lists topics in a later slice")
-    )]
     pub(crate) about: &'static str,
     /// The page, as a command so the caller applies help colour to it.
     pub(crate) page: fn() -> clap::Command,
