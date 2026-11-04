@@ -564,6 +564,21 @@ mod tests {
         };
         assert_eq!(args.sheep.as_deref(), Some("catalogue"));
         assert!(!args.catalogue, "`--` is what makes the name a name again");
+
+        // The one spelling the parse cannot tell apart: the gate flag in front
+        // of `--` in front of the name. The flag is the only thing beside the
+        // name, so it reads as the screen. Nothing on the lookout page promises
+        // this one, and a sheep called `catalogue` is one keystroke away on the
+        // dashboard.
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "--read-only", "--", "catalogue"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert!(args.catalogue);
+        assert_eq!(args.sheep, None);
     }
 
     /// What the parse refuses. The subcommand has no positionals, so a tab or
