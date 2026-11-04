@@ -23,6 +23,7 @@ impl Settings {
     /// Every row the cursor can sit on: the sections and their keys in the
     /// order the screen draws them, a map's entries under it, then one row per
     /// candidate dog, with that dog's own rows under it while its row is open,
+    /// then one [`SettingsRow::AvailableDog`] per index dog this machine lacks,
     /// and [`SettingsRow::BrowseDogs`] last.
     #[must_use]
     pub fn rows(&self) -> Vec<SettingsRow> {
@@ -32,8 +33,61 @@ impl Settings {
         for index in 0..self.snapshot.dogs.len() {
             self.push_dog_rows(index, &mut rows);
         }
+        rows.extend((0..self.available.len()).map(SettingsRow::AvailableDog));
         rows.push(SettingsRow::BrowseDogs);
         rows
+    }
+
+    /// The index dogs this machine lacks, in the catalogue's order.
+    #[must_use]
+    pub(crate) fn available(&self) -> &[CatalogueRow] {
+        &self.available
+    }
+
+    /// Takes the uninstalled dogs out of `catalogue`: those no receipt or
+    /// adopted entry names, and whose name is not already a row of the dogs
+    /// list. The cursor stays on the row it was on, by dog for an
+    /// [`SettingsRow::AvailableDog`] and at the end for
+    /// [`SettingsRow::BrowseDogs`], since rows landing after it would
+    /// otherwise move it onto another one.
+    pub(in crate::lookout::app) fn set_available(&mut self, catalogue: &[CatalogueRow]) {
+        let cursor = self.cursor();
+        let kept = match cursor {
+            Some(SettingsRow::AvailableDog(index)) => self
+                .available
+                .get(index)
+                .map(|row| row.dog.adopt_as.clone()),
+            _ => None,
+        };
+        self.available = catalogue
+            .iter()
+            .filter(|row| row.state == DogState::NotInstalled)
+            .filter(|row| {
+                !self
+                    .snapshot
+                    .dogs
+                    .iter()
+                    .any(|dog| dog.name == row.dog.adopt_as)
+            })
+            .cloned()
+            .collect();
+        let len = self.rows_len();
+        match cursor {
+            Some(SettingsRow::BrowseDogs) => self.view.move_to(len.saturating_sub(1), len),
+            Some(SettingsRow::AvailableDog(_)) => {
+                let at = kept
+                    .and_then(|name| {
+                        self.available
+                            .iter()
+                            .position(|row| row.dog.adopt_as == name)
+                    })
+                    .map_or(len.saturating_sub(1), |index| {
+                        len - 1 - self.available.len() + index
+                    });
+                self.view.move_to(at, len);
+            }
+            _ => self.view.clamp(len),
+        }
     }
 
     /// One dog's block: its header row, then, while its row is open, the four

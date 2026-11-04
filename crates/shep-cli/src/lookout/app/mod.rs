@@ -91,10 +91,8 @@ mod testing;
 mod update;
 
 pub use action::*;
-#[cfg(test)]
-pub(crate) use catalogue::DogState;
 pub(crate) use catalogue::{
-    CataloguePane, CatalogueRead, CatalogueRow, fetch as catalogue_fetch,
+    CataloguePane, CatalogueRead, CatalogueRow, DogState, fetch as catalogue_fetch,
     read_cache as catalogue_read_cache,
 };
 pub use close_dialog::*;

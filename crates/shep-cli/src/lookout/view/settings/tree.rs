@@ -213,9 +213,10 @@ fn cells(settings: &Settings, row: SettingsRow) -> Option<Cells> {
             cost: String::new(),
         }),
         // The dog's own header row is not this function's: it answers four
-        // questions in four columns. Nor is the browse row, which has no
-        // column at all. Both live in [`super::dogs`].
-        SettingsRow::Dog(_) | SettingsRow::BrowseDogs => None,
+        // questions in four columns. Nor are the greyed index dogs or the
+        // browse row, which have no column at all. All three live in
+        // [`super::dogs`].
+        SettingsRow::Dog(_) | SettingsRow::AvailableDog(_) | SettingsRow::BrowseDogs => None,
         SettingsRow::DogKey { dog, key } => {
             let dog = settings.dog(dog)?;
             Some(Cells {
