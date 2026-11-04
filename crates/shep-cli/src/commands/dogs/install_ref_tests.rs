@@ -7,6 +7,7 @@ use clap::Parser;
 use super::install_tests::{
     COMMIT, Fixture, REPO, args, config, enabled, from_the_row, row, run, typing,
 };
+use super::session::Progress;
 use crate::cli::{Cli, Commands, InstallArgs};
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
@@ -256,6 +257,41 @@ async fn a_build_that_fails_as_tag_and_as_branch_adopts_nothing() {
     assert!(err.contains("tag") && err.contains("branch"), "{err}");
     assert!(config(&fixture).adopted_dog_path("otel").is_none());
     assert!(!ref_root(&fixture).exists());
+}
+
+#[tokio::test]
+async fn a_failed_ref_build_with_a_sink_reports_what_cargo_said_to_every_attempt() {
+    let fixture = Fixture::new();
+    let mut reach = fixture.reach(from_the_row());
+    let bin = fixture.dir.path().join("saying-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let cargo = bin.join("cargo");
+    std::fs::write(
+        &cargo,
+        "#!/bin/sh\n\
+         case \"$*\" in\n\
+           *--tag*) echo 'error: could not compile shep-otel' >&2 ;;\n\
+           *) echo 'error: no such branch' >&2 ;;\n\
+         esac\n\
+         exit 101\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    reach.cargo = Some(cargo);
+    reach.progress = Some(Progress::new(|_| {}));
+
+    let (code, _out, err) = run(
+        &fixture,
+        &cargo_row(),
+        &with_ref("v1.0.0"),
+        &reach,
+        typing(None),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Failure, "{err}");
+    assert!(err.contains("could not compile shep-otel"), "{err}");
+    assert!(err.contains("no such branch"), "{err}");
 }
 
 #[tokio::test]

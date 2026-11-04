@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -11,6 +12,7 @@ use super::install::{Lookup, Published, Reach};
 use super::install_tests::{
     Fixture, MANIFEST, REPO, args, config, enabled, from_the_row, row, run, typing,
 };
+use super::session::{Progress, Step};
 use crate::cli::InstallArgs;
 use crate::dog_index::{AvailableDog, BUILD_TARGET, DogSourceKind};
 use crate::exit::ExitCode;
@@ -257,6 +259,24 @@ async fn a_row_with_no_hash_for_this_target_builds_with_cargo() {
 }
 
 #[tokio::test]
+async fn a_prebuilt_download_tells_the_sink_it_is_downloading_and_never_building() {
+    let fixture = Fixture::new();
+    let binary = dog_binary();
+    let body = binary.clone();
+    let (port, _asked) = serve(move |_path, _port| ok(&body)).await;
+    let dog = prebuilt_row(&format!("http://127.0.0.1:{port}"), &sha256_of(&binary));
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&heard);
+    let mut reach = fixture.reach(from_the_row());
+    reach.progress = Some(Progress::new(move |step| sink.lock().unwrap().push(step)));
+
+    let (code, _out, err) = run(&fixture, &dog, &args(true, false), &reach, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert_eq!(*heard.lock().unwrap(), [Step::Downloading, Step::Adopting]);
+}
+
+#[tokio::test]
 async fn no_hash_for_this_target_and_no_cargo_refuses_naming_both_and_rustup() {
     let fixture = Fixture::new();
     let empty = fixture.dir.path().join("empty");
@@ -266,6 +286,7 @@ async fn no_hash_for_this_target_and_no_cargo_refuses_naming_both_and_rustup() {
         lookup: Lookup::Canned(from_the_row()),
         assets: RedirectPolicy::GITHUB_RELEASES,
         lock_wait: Duration::from_millis(100),
+        progress: None,
     };
 
     let (code, _out, err) = run(
