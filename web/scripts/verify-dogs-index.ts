@@ -273,3 +273,42 @@ test("a permission that is not a name and a required is refused", () => {
     assert.throws(() => validate([cargo({ version: "0.2.4", permissions: [bad] })]), /permissions/, JSON.stringify(bad));
   }
 });
+
+// --- An entry's needs ----------------------------------------------------
+
+test("a row may name its needs", () => {
+  const [dog] = validate([{ ...good(), needs: ["logs", "alerts"] }]);
+  assert.deepEqual(dog.needs, ["logs", "alerts"]);
+});
+
+test("a needs field that is not a list of names is refused", () => {
+  for (const bad of ["logs", { logs: true }, null, ["logs", 7], [["logs"]]]) {
+    assert.throws(() => validate([{ ...good(), needs: bad }]), /needs/, JSON.stringify(bad));
+  }
+});
+
+test("a need that is not a lowercase word is refused", () => {
+  for (const bad of ["", "Logs", "9logs", "log rotate", "-logs", "logs_"]) {
+    assert.throws(() => validate([{ ...good(), needs: [bad] }]), /needs/, JSON.stringify(bad));
+  }
+});
+
+test("a need no shep knows yet is accepted", () => {
+  const [dog] = validate([{ ...good(), needs: ["metrics-export"] }]);
+  assert.deepEqual(dog.needs, ["metrics-export"]);
+});
+
+test("the schema describes needs and does not require them", async () => {
+  const schema = JSON.parse(await readFile(new URL("../public/dogs.schema.json", import.meta.url), "utf8"));
+  const entrySchema = schema.properties.dogs.items;
+  assert.equal(entrySchema.properties.needs.type, "array");
+  assert.equal(entrySchema.properties.needs.uniqueItems, true);
+  assert.equal(entrySchema.properties.needs.items.type, "string");
+  assert.equal(entrySchema.properties.needs.items.pattern, "^[a-z][a-z0-9-]*$");
+  assert.ok(!entrySchema.required.includes("needs"));
+  assert.ok(!REQUIRED_FIELDS.includes("needs"));
+});
+
+test("a need named twice is refused", () => {
+  assert.throws(() => validate([{ ...good(), needs: ["logs", "logs"] }]), /twice/);
+});

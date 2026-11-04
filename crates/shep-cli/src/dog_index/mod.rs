@@ -115,6 +115,43 @@ pub struct AvailableDog {
     /// What the index claims, not what the binary asks for: `shep install`
     /// reads the manifest off the binary and prompts from that.
     pub permissions: Option<Vec<IndexedPermission>>,
+    /// The needs this dog meets, each once, in the order the row lists
+    /// them. A name this build does not know is not here.
+    ///
+    /// Not serialised: no listing shows it yet.
+    #[serde(skip)]
+    pub needs: Vec<Need>,
+}
+
+/// A need shep writes a hint for, from the fixed list shep owns.
+///
+/// The index maps a dog to the needs it meets. A name in the index that is
+/// not here is ignored, so the index can add a need before this build shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Need {
+    /// Reading and keeping a sheep's logs.
+    Logs,
+    /// Being told when a sheep needs attention.
+    Alerts,
+}
+
+impl Need {
+    /// Every need shep knows, in the order it lists them.
+    pub const ALL: [Self; 2] = [Self::Logs, Self::Alerts];
+
+    /// The name the index spells this need as.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Logs => "logs",
+            Self::Alerts => "alerts",
+        }
+    }
+
+    /// The need an index names, or `None` for a name this build does not
+    /// know. Exact match: no case folding, no trimming.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|need| need.as_str() == name)
+    }
 }
 
 /// One permission a `cargo` row says its approved version asks for.
@@ -521,6 +558,53 @@ mod tests {
         assert_eq!(item_keys, ["name", "required"], "{item}");
         assert_eq!(item["properties"]["name"]["type"], "string", "{item}");
         assert_eq!(item["properties"]["required"]["type"], "boolean", "{item}");
+    }
+
+    /// The published schema's `needs`: optional, a list of unique words.
+    ///
+    /// Skips outside the workspace checkout, see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn the_schema_describes_needs_and_does_not_require_them() {
+        let Some(schema) = read_workspace_web_file("public/dogs.schema.json") else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&schema).expect("dogs.schema.json is valid json");
+        let entry_schema = &schema["properties"]["dogs"]["items"];
+
+        let needs = &entry_schema["properties"]["needs"];
+        assert_eq!(needs["type"], "array", "{needs}");
+        assert_eq!(needs["uniqueItems"], true, "{needs}");
+        assert_eq!(needs["items"]["type"], "string", "{needs}");
+        assert_eq!(needs["items"]["pattern"], "^[a-z][a-z0-9-]*$", "{needs}");
+
+        let required = entry_schema["required"]
+            .as_array()
+            .expect("required is a list");
+        assert!(!required.iter().any(|key| key == "needs"), "{required:?}");
+    }
+
+    /// Skips outside the workspace checkout, see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn the_live_index_maps_log_rotate_to_logs_and_discord_to_alerts() {
+        let Some(live) = read_workspace_web_file("public/dogs.json") else {
+            return;
+        };
+        let index = parse_index(live.as_bytes()).expect("the live index parses");
+        let needs_of = |adopt_as: &str| {
+            index
+                .dogs
+                .iter()
+                .find(|dog| dog.adopt_as == adopt_as)
+                .unwrap_or_else(|| panic!("the live index lists {adopt_as}"))
+                .needs
+                .clone()
+        };
+
+        assert_eq!(needs_of("log-rotate"), [Need::Logs]);
+        assert_eq!(needs_of("discord"), [Need::Alerts]);
+        assert_eq!(needs_of("deploy"), []);
     }
 
     /// It is the one URL an operator never types, so nothing else would

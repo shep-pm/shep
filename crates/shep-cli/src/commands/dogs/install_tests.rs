@@ -154,6 +154,7 @@ pub(super) fn row(source: DogSourceKind) -> AvailableDog {
         license: "MIT".to_owned(),
         category: "metrics".to_owned(),
         permissions: None,
+        needs: Vec::new(),
         source,
     }
 }
