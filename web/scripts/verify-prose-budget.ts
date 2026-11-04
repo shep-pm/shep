@@ -362,7 +362,11 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again for "Upgrading a dog": what an upgrade follows, the four
   // flags, and which directory a rollback can still reach.
-  dogs: 4900,
+  //
+  // Raised again, to 5029, on #1492 for bare `shep upgrade`: what it lists,
+  // what stops it before the dogs, the Windows rule and the reload step. An
+  // operator running it needs each to know what was and was not changed.
+  dogs: 5029,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
