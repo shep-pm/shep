@@ -132,7 +132,7 @@ fn a_declared_dogs_own_help_lists_its_subcommands() {
     assert_success(&help);
     let help = String::from_utf8(help.stdout).unwrap();
 
-    assert!(help.contains("Usage: shep otel [COMMAND]"), "{help}");
+    assert!(help.contains("Usage: shep otel <command> [args]"), "{help}");
     assert!(
         help.contains("exports traces to an OTLP collector"),
         "{help}"
@@ -141,7 +141,7 @@ fn a_declared_dogs_own_help_lists_its_subcommands() {
     assert!(help.contains("drain"), "{help}");
     assert!(help.contains("empty the export queue"), "{help}");
     assert!(
-        help.contains("Anything else after `shep otel` goes to the dog unchanged."),
+        help.contains("otel 0.2.0. Anything after `shep otel` goes to the dog."),
         "{help}"
     );
     assert!(
@@ -151,21 +151,35 @@ fn a_declared_dogs_own_help_lists_its_subcommands() {
 }
 
 #[cfg(unix)]
-/// The other half of the rule: a dog that declared nothing keeps the
-/// `--help` it was always given, passed through like every other argument.
+/// The other half of the rule: a dog that declared nothing gets a stub from
+/// shep, `shep help <dog>` and `-h` included, and the dog never runs. Its own
+/// `help` subcommand still reaches it.
 #[test]
-fn an_undeclared_dogs_help_flag_still_reaches_the_dog() {
+fn an_undeclared_dogs_help_flag_gets_the_stub_and_its_help_word_still_reaches_the_dog() {
     let home = TempDir::new().unwrap();
     let marker = home.path().join("ran");
     let binary = silent_dog(&home, &marker);
 
     assert_success(&adopt(home.path(), &binary, "lr"));
+    // The adopt probe ran the dog once.
+    std::fs::remove_file(&marker).ok();
 
-    assert_success(&run(home.path(), &["lr", "--help"]));
+    for args in [&["lr", "--help"][..], &["lr", "-h"], &["help", "lr"]] {
+        let help = run(home.path(), args);
+        assert_success(&help);
+        let help = String::from_utf8(help.stdout).unwrap();
+        assert!(
+            help.contains("This dog declares no help. `shep lr help` asks the dog itself."),
+            "{args:?}: {help}"
+        );
+    }
+    assert!(!marker.exists(), "a help form spawned the dog");
+
+    assert_success(&run(home.path(), &["lr", "help"]));
     assert_eq!(
         std::fs::read_to_string(&marker).unwrap().trim(),
         "ran",
-        "the dog answers its own --help"
+        "the dog answers its own help subcommand"
     );
 }
 
