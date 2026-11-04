@@ -76,6 +76,10 @@ pub enum SettingsRow {
         /// Which row of its tree.
         row: usize,
     },
+    /// The last row of the dogs section, after every dog and its rows. It is
+    /// there with no dog adopted, `Enter` opens the catalogue on it, and it is
+    /// never edited, cycled or folded.
+    BrowseDogs,
 }
 
 /// Which of a dog's `[daemon] keys a [`SettingsRow::DogKey`] names.
@@ -698,6 +702,71 @@ mod tests {
             "the walk found the schema: {expected:?}"
         );
         assert_eq!(drawn, expected);
+    }
+
+    #[test]
+    fn the_dogs_section_ends_in_the_browse_dogs_row() {
+        let app = fixtures::app_in_settings();
+        let rows = app.settings().unwrap().rows();
+        assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| **row == SettingsRow::BrowseDogs)
+                .count(),
+            1
+        );
+        assert!(
+            rows.iter().any(|row| matches!(row, SettingsRow::Dog(_))),
+            "the fixture has dogs, and the row sits after them"
+        );
+    }
+
+    #[test]
+    fn the_browse_dogs_row_follows_an_open_dogs_own_rows() {
+        let app = fixtures::app_in_settings_with_a_dog_open();
+        let rows = app.settings().unwrap().rows();
+        assert!(
+            rows.iter()
+                .any(|row| matches!(row, SettingsRow::DogKey { .. })),
+            "the dog is open, so its keys are rows"
+        );
+        assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
+    }
+
+    #[test]
+    fn the_browse_dogs_row_follows_adopted_dogs_and_an_open_adopted_dogs_env_rows() {
+        let mut app = fixtures::app_in_settings_with_dog_drift();
+        let settings = app.settings().unwrap();
+        assert!(
+            settings
+                .snapshot()
+                .dogs
+                .iter()
+                .all(|dog| dog.adopted_path.is_some()),
+            "the fixture's dogs are all adopted"
+        );
+        assert_eq!(settings.rows().last(), Some(&SettingsRow::BrowseDogs));
+
+        fixtures::open_adopted_dog_row(
+            &mut app,
+            "otel",
+            std::path::Path::new("/usr/local/bin/shep-otel"),
+        );
+        let rows = app.settings().unwrap().rows();
+        assert!(
+            rows.iter()
+                .any(|row| matches!(row, SettingsRow::DogEnvNew(_))),
+            "an open adopted dog carries env rows a built-in has not: {rows:?}"
+        );
+        assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
+    }
+
+    #[test]
+    fn a_bare_install_still_ends_in_the_browse_dogs_row() {
+        let app = fixtures::app_in_settings_without_dogs();
+        let settings = app.settings().unwrap();
+        assert!(settings.snapshot().dogs.is_empty());
+        assert_eq!(settings.rows().last(), Some(&SettingsRow::BrowseDogs));
     }
 
     #[test]
