@@ -541,8 +541,8 @@ export const BUDGETS: Record<string, number> = {
   // with no approved version.
   // Raised from 610 on #1478 for the third `cargo` field: a contributor
   // writing a row has to be told the index can list what that version
-  // declares, and that the release workflow writes them. Required content
-  // for the page that documents the index, not prose to trim out.
+  // declares, and that a release clears the list. Required content for the
+  // page that documents the index, not prose to trim out.
   "community-dogs": 632,
   terminology: 210,
   "pm2-verbs": 40,
