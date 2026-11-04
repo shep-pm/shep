@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Say when a section names an event the dog does not declare
 - The status tab's footer lists the pane's action keys
 - Show a pane action that answers with an id as running in the status bar
+- Install a dog from the catalogue, with a grant modal and progress in the status bar
+- Pull a dog's pane with shep.pane when its config pane opens
+- Run a dog's pane actions from its status tab
 
 ### Changed
 
@@ -54,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settle review findings on the pane action flow
 - End a long action whose result came before its reply
 - Keep the pane footer's wording for actions that are not long
+- Refuse a reserved action name in shep trigger and from a dog
 
 
 ## [0.24.1] - 2026-11-04

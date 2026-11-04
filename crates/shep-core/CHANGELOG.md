@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reserve the `shep.` action prefix for the shepherd
 
+### Fixed
+
+- Refuse a reserved action name in shep trigger and from a dog
+
 
 ## [0.24.1] - 2026-11-04
 
