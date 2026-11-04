@@ -406,6 +406,7 @@ mod tests {
             license: "MIT OR Apache-2.0".to_string(),
             category: "logs".to_string(),
             permissions: None,
+            needs: Vec::new(),
             source: crate::dog_index::DogSourceKind::CargoGit {
                 url: "https://github.com/shep-pm/shep-log-rotate".to_string(),
             },
@@ -492,6 +493,20 @@ mod tests {
             AvailableDogRows(vec![sample_available_dog()]).rows()[0].len(),
             4
         );
+    }
+
+    /// No listing shows `needs` yet, so the JSON keeps its shape.
+    #[test]
+    fn a_row_with_needs_serialises_without_them() {
+        let mut dog = sample_available_dog();
+        dog.needs = vec![crate::dog_index::Need::Logs, crate::dog_index::Need::Alerts];
+
+        let with = serde_json::to_value(AvailableDogRows(vec![dog])).unwrap();
+        let without =
+            serde_json::to_value(AvailableDogRows(vec![sample_available_dog()])).unwrap();
+
+        assert_eq!(with, without, "{with}");
+        assert!(with[0].get("needs").is_none(), "{with}");
     }
 
     // --- PRIORITIES ------------------------------------------------------
