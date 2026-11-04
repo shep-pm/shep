@@ -4,14 +4,14 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use super::dog_upgrade::{Goal, upgrade_dog};
+use super::dog_upgrade::{Goal, upgrade, upgrade_dog};
 use super::install::Reach;
 use super::install_depends::Catalog;
 use super::install_tests::{Fixture, config, enabled, from_the_row, row, typing};
 use super::remove::{Removal, remove_dog};
 use super::session::{Capture, Job, Progress, Step, run, run_with};
-use crate::cli::Format;
-use crate::dog_index::{DogSourceKind, write_cache};
+use crate::cli::{Format, UpgradeArgs};
+use crate::dog_index::{DogSourceKind, index_url, write_cache};
 use crate::exit::ExitCode;
 use crate::output::Streams;
 
@@ -19,6 +19,11 @@ const URL: &str = "https://shep-pm.com/dogs.json";
 
 /// Caches an index holding `otel` at `version` for [`URL`].
 fn cache_index(fixture: &Fixture, version: &str) {
+    cache_index_at(fixture, URL, version);
+}
+
+/// Caches an index holding `otel` at `version` for `url`.
+fn cache_index_at(fixture: &Fixture, url: &str, version: &str) {
     let document = serde_json::json!({
         "version": 1,
         "dogs": [{
@@ -34,7 +39,7 @@ fn cache_index(fixture: &Fixture, version: &str) {
     });
     write_cache(
         &fixture.paths.dog_index_cache,
-        URL,
+        url,
         document.to_string().as_bytes(),
     )
     .unwrap();
@@ -150,7 +155,7 @@ fn row_at(version: &str) -> crate::dog_index::AvailableDog {
 }
 
 #[tokio::test]
-async fn an_upgrade_gives_the_exit_code_and_text_the_verb_gives() {
+async fn an_upgrade_gives_the_exit_code_and_text_upgrade_dog_gives() {
     let by_verb = installed().await;
     let by_session = installed().await;
     cache_index(&by_session, "0.3.0");
@@ -191,6 +196,50 @@ async fn an_upgrade_gives_the_exit_code_and_text_the_verb_gives() {
     );
 }
 
+/// `shep upgrade otel`, which loads the index and builds its own `Reach` and
+/// stdin input. Nothing needs building when the index is at the held version.
+#[tokio::test]
+async fn run_gives_the_exit_code_and_text_shep_upgrade_gives_for_a_current_dog() {
+    let by_verb = installed().await;
+    let by_session = installed().await;
+    for fixture in [&by_verb, &by_session] {
+        cache_index_at(fixture, &index_url(), "0.2.4");
+    }
+
+    let capture = Capture::default();
+    let (mut out, mut err) = (capture.clone(), capture.clone());
+    let verb_code = upgrade(
+        &mut Streams::bare(&mut out, &mut err, Format::Table),
+        &by_verb.paths,
+        &UpgradeArgs {
+            dog: Some("otel".to_owned()),
+            all: false,
+            git_ref: None,
+            release: false,
+            rollback: false,
+            refresh: false,
+        },
+    )
+    .await;
+    let (code, output) = run(
+        &by_session.paths,
+        Job::Upgrade {
+            name: "otel".to_owned(),
+        },
+        Progress::new(|_| {}),
+        |_| true,
+    )
+    .await;
+
+    assert_eq!(verb_code, ExitCode::Success, "{}", capture.text());
+    assert_eq!(code, verb_code, "{output}");
+    assert!(output.contains("already at 0.2.4"), "{output}");
+    assert_eq!(
+        at_home(&by_session, &output),
+        at_home(&by_verb, &capture.text())
+    );
+}
+
 #[tokio::test]
 async fn a_delete_gives_the_exit_code_and_text_the_verb_gives() {
     let by_verb = installed().await;
@@ -205,13 +254,12 @@ async fn a_delete_gives_the_exit_code_and_text_the_verb_gives() {
         Removal::Delete,
     )
     .await;
-    let (code, output) = run_with(
+    let (code, output) = run(
         &by_session.paths,
-        URL,
         Job::Delete {
             name: "otel".to_owned(),
         },
-        by_session.reach(from_the_row()),
+        Progress::new(|_| {}),
         |_| true,
     )
     .await;
