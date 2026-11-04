@@ -173,7 +173,13 @@ export const BUDGETS: Record<string, number> = {
   // the caller needs, and that every result is visible to every holder of
   // them, and that a callee with a dot in its name cannot finish one. The
   // ceiling sits about 4 words above the page.
-  "writing-a-dog": 6157,
+  //
+  // Raised on #1485 for the release workflow writing the row's permissions:
+  // an author whose dog declares permissions has to know the workflow reads
+  // them off the built Linux binary, that only the name and whether it is
+  // required reach the index, and that a binary answering nothing costs the
+  // row the list and not the release.
+  "writing-a-dog": 6235,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -262,7 +268,10 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 4455, on #1451 for the dogs pane's SOURCE and VERSION
   // columns, which no other page describes in lookout's terms.
-  "lookout-config": 4455,
+  //
+  // Raised again, to 4482, on #1494 for the `browse dogs` row that ends the
+  // dogs section, which no other page describes.
+  "lookout-config": 4482,
   // Raised from 2930 on 2026-09-14 for the host line, which `shep flock`
   // began printing on a one-shot listing and not only under `--follow`. It
   // shows above every table on this page, so four transcripts gained a line
@@ -369,11 +378,14 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised from 3180 for the sentence naming a dog's two levels (#1429).
   //
-  // Raised from 3210 on 2026-11-04 for "The dog catalogue": the list, the
+  // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
+  // row.
+  //
+  // Raised from 3222 on 2026-11-04 for "The dog catalogue": the list, the
   // entry, what an entry says about permissions, the `i` key and the
   // `shep lookout catalogue` form are all things an operator sees or types,
   // so the page owes them a section (#1499).
-  lookout: 3690,
+  lookout: 3702,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

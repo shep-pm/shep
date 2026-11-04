@@ -89,6 +89,7 @@ fn key_of(settings: &Settings, row: SettingsRow) -> Option<String> {
             format!("dog.{}.env.{}", dog.name, dog.env_keys.get(index)?)
         }
         SettingsRow::DogEnvNew(dog) => format!("dog.{}.env+", settings.dog(dog)?.name),
+        SettingsRow::BrowseDogs => "dogs.browse".to_owned(),
         SettingsRow::DogField { dog, row } => {
             let pane = settings.dog_tree(dog)?.pane()?;
             let PaneRow::Field(field) = pane.rows().get(row)?.to_owned() else {
@@ -338,6 +339,17 @@ fn settings_snapshot_with_dogs(dogs: Vec<DogView>) -> SettingsSnapshot {
         dogs,
         ..settings_snapshot()
     }
+}
+
+/// The settings screen on a bare install: [`settings_snapshot`]'s keys and no
+/// dog at all, the gate closed.
+pub fn app_in_settings_without_dogs() -> App {
+    let mut app = app_with(flock_of(3, 0), plain());
+    app.update(Msg::Key(KeyPress::Settings));
+    app.update(Msg::Settings {
+        result: Ok(settings_snapshot_with_dogs(Vec::new())),
+    });
+    app
 }
 
 /// `otel` runs online while the file disables it: a removed name still

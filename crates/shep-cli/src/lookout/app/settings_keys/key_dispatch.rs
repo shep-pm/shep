@@ -15,6 +15,14 @@ impl App {
         }
     }
 
+    /// Whether `Enter` would open the catalogue: the cursor is on
+    /// [`SettingsRow::BrowseDogs`] and no edit is in flight.
+    fn on_browse_dogs(&self) -> bool {
+        self.settings().is_some_and(|settings| {
+            settings.pending.is_none() && settings.cursor() == Some(SettingsRow::BrowseDogs)
+        })
+    }
+
     /// The settings screen's own keymap, in force while [`Self::settings`] is
     /// `Some`. Everything not named here is ignored, an action key included.
     pub(in crate::lookout::app) fn on_settings_key(&mut self, key: KeyPress) -> Effect {
@@ -50,7 +58,13 @@ impl App {
                 }
                 KeyPress::Cycle => return self.cycle_setting(),
                 KeyPress::Remove => return self.remove_setting(),
-                KeyPress::Confirm => return self.confirm_setting(),
+                KeyPress::Confirm => {
+                    return if self.on_browse_dogs() {
+                        self.open_catalogue()
+                    } else {
+                        self.confirm_setting()
+                    };
+                }
                 // Re-reads `shep.toml`, so another process's write shows up, and
                 // the cursor survives. An armed candidate eats this key too.
                 KeyPress::Refresh => {
@@ -238,9 +252,36 @@ mod tests {
             Some(*rows.last().unwrap())
         );
         assert!(
-            matches!(rows.last(), Some(SettingsRow::Dog(_))),
+            rows.iter().any(|row| matches!(row, SettingsRow::Dog(_))),
             "the dog rows sit below the tree"
         );
+        assert_eq!(
+            rows.last(),
+            Some(&SettingsRow::BrowseDogs),
+            "and the browse row ends the section"
+        );
+    }
+
+    #[test]
+    fn enter_on_browse_dogs_opens_the_catalogue_and_asks_for_its_rows() {
+        let mut app = fixtures::app_in_settings();
+        fixtures::select_setting(&mut app, "dogs.browse");
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::LoadCatalogue { fetch: true }
+        );
+        assert!(matches!(app.body(), Body::Catalogue(_)));
+        assert!(app.settings().is_none());
+    }
+
+    /// The way out is the one the `i` key's catalogue has.
+    #[test]
+    fn escape_from_a_catalogue_opened_in_settings_returns_to_the_dashboard() {
+        let mut app = fixtures::app_in_settings();
+        fixtures::select_setting(&mut app, "dogs.browse");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable));
     }
 
     #[test]
@@ -258,7 +299,7 @@ mod tests {
     /// The refusal is checked per keypress rather than at the end, because
     /// `on_settings_key` clears `self.notice` on every key.
     fn write_routes() -> Vec<(&'static str, Option<&'static str>, Vec<KeyPress>)> {
-        use KeyPress::{Confirm, Cycle, Remove, SelectLast, TextApply, TextChar};
+        use KeyPress::{Confirm, Cycle, Remove, TextApply, TextChar};
 
         let typed = |text: &str| -> Vec<KeyPress> {
             let mut keys = vec![Confirm];
@@ -295,7 +336,11 @@ mod tests {
                 Some("whistle.allow_control"),
                 vec![Cycle, Confirm],
             ),
-            ("space on a dog row", None, vec![SelectLast, Cycle, Confirm]),
+            (
+                "space on a dog row",
+                Some("dog.metrics"),
+                vec![Cycle, Confirm],
+            ),
         ]
     }
 

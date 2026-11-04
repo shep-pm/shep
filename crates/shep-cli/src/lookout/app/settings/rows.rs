@@ -22,7 +22,8 @@ impl Settings {
 
     /// Every row the cursor can sit on: the sections and their keys in the
     /// order the screen draws them, a map's entries under it, then one row per
-    /// candidate dog, with that dog's own rows under it while its row is open.
+    /// candidate dog, with that dog's own rows under it while its row is open,
+    /// and [`SettingsRow::BrowseDogs`] last.
     #[must_use]
     pub fn rows(&self) -> Vec<SettingsRow> {
         let shape = shep_toml_shape();
@@ -31,6 +32,7 @@ impl Settings {
         for index in 0..self.snapshot.dogs.len() {
             self.push_dog_rows(index, &mut rows);
         }
+        rows.push(SettingsRow::BrowseDogs);
         rows
     }
 
