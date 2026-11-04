@@ -73,9 +73,8 @@ where
     // `Instant` can panic, and "has never drawn" is what this means.
     let mut last_draw: Option<Instant> = None;
     // The one dog job running, if any: what its thread reports, and the
-    // handle that ends the run. Both drop when the loop leaves, which is what
-    // cancels a job the operator quit out from under: the cancel resolves, and
-    // the job's grant replies drop with `app`.
+    // handles that end the run. Ended after the loop rather than by dropping
+    // here, so the loop waits for the thread that holds the `cargo`.
     let mut dog: Option<DogRun> = None;
 
     loop {
@@ -240,14 +239,9 @@ where
         dirty = true;
 
         match app.update(msg) {
-            Effect::Quit => {
-                // Ends the job the operator quit out from under, and drops
-                // the grant replies its callback may be blocked on.
-                if let Some(run) = dog.as_mut() {
-                    run.end();
-                }
-                break;
-            }
+            // The job this left running is ended after the loop, where no
+            // way out of the loop can step over it.
+            Effect::Quit => break,
             Effect::PollNow => {
                 // `try_send`, not `send`: a full poll channel means a repair
                 // is already queued, and blocking the UI on it would stall the
@@ -710,6 +704,18 @@ where
                 dog = Some(dogs.start(&paths, job));
             }
         }
+    }
+
+    // A job still running when this loop leaves must end here, before the
+    // process does: dropping the run future is what kills a `cargo` mid-build,
+    // and a thread killed by process exit runs no destructors.
+    if let Some(mut run) = dog.take() {
+        // First, or a session parked in its callback never reaches that drop
+        // and the wait below runs out on a job that was never going to move.
+        app.release_dog_grants();
+        // `false` is a build this could not stop, and no screen is left to
+        // say so on.
+        let _ = run.end();
     }
 
     terminal

@@ -57,6 +57,7 @@ impl App {
             focus_ask: None,
             catalogue: Vec::new(),
             dog_job: DogJob::Idle,
+            dog_quit: None,
             next_modal_tag: 0,
         }
     }

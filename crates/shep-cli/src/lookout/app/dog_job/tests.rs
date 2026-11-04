@@ -2,12 +2,17 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
+#[cfg(all(test, unix))]
+use std::path::Path;
+
 use shep_core::paths::ShepPaths;
 
 use super::*;
 use crate::commands::dogs::declared_review;
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::lookout::app::modal::{CUT_MARK, OUTPUT_CAP};
+#[cfg(all(test, unix))]
+use crate::lookout::testing::{is_gone, sleeping_cargo};
 use crate::lookout::view::fixtures;
 
 /// A dashboard with the gate open and one catalogue row landed.
@@ -364,6 +369,42 @@ fn quitting_mid_job_asks_first_and_a_no_keeps_the_job() {
     assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::Quit);
 }
 
+/// The job landing under the open quit question must not turn the answer into
+/// a keystroke that does nothing.
+#[test]
+fn a_yes_to_quitting_after_the_job_lands_still_quits() {
+    let (mut app, _) = installing();
+    app.note_modal_reach(Some(0));
+    assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::None);
+    let tag = open_tag(&app);
+
+    app.update(Msg::DogJobDone {
+        name: "otel".to_owned(),
+        ok: true,
+        output: String::new(),
+    });
+    assert_eq!(app.dog_job_line().as_deref(), Some("installed otel"));
+    assert_eq!(open_tag(&app), tag, "the question is still open");
+
+    assert_eq!(app.update(Msg::Key(KeyPress::Confirm)), Effect::Quit);
+}
+
+#[test]
+fn a_no_to_quitting_after_the_job_lands_leaves_the_dashboard_open() {
+    let (mut app, _) = installing();
+    app.note_modal_reach(Some(0));
+    assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::None);
+    app.update(Msg::DogJobDone {
+        name: "otel".to_owned(),
+        ok: true,
+        output: String::new(),
+    });
+    assert_eq!(app.update(Msg::Key(KeyPress::Escape)), Effect::None);
+    assert!(app.modal().is_none(), "the question closed");
+    // Nothing runs now, so the next `q` quits as it always has.
+    assert_eq!(app.update(Msg::Key(KeyPress::Quit)), Effect::Quit);
+}
+
 #[test]
 fn quitting_with_no_job_running_quits_straight_away() {
     let mut app = app_with_row(cargo_dog("otel"), DogState::NotInstalled);
@@ -497,5 +538,167 @@ async fn dependencies_are_asked_in_the_clis_order_and_a_no_stops_the_next_questi
     assert!(
         !world.paths.dogs_dir.join("otel/receipt.json").exists(),
         "a stopped install writes no receipt"
+    );
+}
+
+/// How long the stub cargo may take to record its pid, and how long a build
+/// the run ended may take to show itself as stopped.
+#[cfg(all(test, unix))]
+const TAKEN_ATTEMPTS: usize = 1_500;
+
+#[cfg(all(test, unix))]
+const STOPPED_ATTEMPTS: usize = 100;
+
+#[cfg(all(test, unix))]
+const BUILD_POLL: Duration = Duration::from_millis(20);
+
+/// The pid the stub cargo recorded, once it has recorded one.
+#[cfg(all(test, unix))]
+#[track_caller]
+fn recorded_pid(pid_file: &Path) -> u32 {
+    for _ in 0..TAKEN_ATTEMPTS {
+        if let Ok(written) = std::fs::read_to_string(pid_file) {
+            return written.trim().parse().expect("the stub wrote a pid");
+        }
+        std::thread::sleep(BUILD_POLL);
+    }
+    panic!("the stub cargo never started");
+}
+
+/// The handle a quit holds is the thread that holds the `cargo`, so ending a
+/// run stops the build instead of leaving it to a thread a process exit is
+/// about to kill without running its destructors.
+///
+/// No `start_paused`: the run is a real thread running a real `cargo`.
+#[cfg(all(test, unix))]
+#[test]
+fn ending_a_run_stops_the_build_and_waits_for_the_thread_holding_it() {
+    // Short, not the default `$TMPDIR`: a long `$SHEP_HOME` overflows
+    // `SUN_LEN` for the control socket path this home names.
+    let dir = tempfile::Builder::new()
+        .prefix("s")
+        .tempdir()
+        .expect("a temp home");
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let (bin, pid_file) = (dir.path().join("bin"), dir.path().join("cargo.pid"));
+    std::fs::create_dir_all(&bin).expect("the stub bin");
+    let cargo = bin.join("cargo");
+    std::fs::write(&cargo, sleeping_cargo(&pid_file)).expect("the stub cargo");
+    std::fs::set_permissions(&cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("an executable stub");
+    crate::dog_index::write_cache(
+        &paths.dog_index_cache,
+        &crate::dog_index::index_url(),
+        serde_json::json!({
+            "version": 1,
+            "dogs": [{
+                "name": "Otel", "package": "shep-otel", "adopt_as": "otel",
+                "description": "exports traces",
+                "repo": "https://github.com/shep-pm/shep-otel",
+                "license": "MIT", "category": "metrics",
+                "source": { "kind": "cargo", "version": "0.2.4" }
+            }]
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .expect("a cached index");
+
+    let mut run = DogRunner::Stub(cargo).start(
+        &paths,
+        Job::Install {
+            adopt_as: "otel".to_owned(),
+        },
+    );
+    let pid = recorded_pid(&pid_file);
+
+    assert!(run.end(), "the job's own thread ended its run");
+
+    let mut stopped = false;
+    for _ in 0..STOPPED_ATTEMPTS {
+        if is_gone(pid) {
+            stopped = true;
+            break;
+        }
+        std::thread::sleep(BUILD_POLL);
+    }
+    assert!(stopped, "cargo {pid} is still building after the run ended");
+}
+
+/// A quit while the session is asking a grant question: the replies the
+/// dashboard holds go first, or the session stays parked in its callback and
+/// the run never ends to be waited for.
+///
+/// No `start_paused`: the run is a real thread with a real callback.
+#[cfg(all(test, unix))]
+#[test]
+fn a_quit_while_a_grant_is_asked_ends_the_run_that_is_waiting_on_it() {
+    let world = World::new();
+    let (mut app, _) = installing();
+    let mut run = DogRunner::Stub(world.cargo.clone()).start(
+        &world.paths,
+        Job::Install {
+            adopt_as: "otel".to_owned(),
+        },
+    );
+    app.note_modal_reach(Some(0));
+
+    // The reports drained into the dashboard the way the loop drains them,
+    // until it is holding a question the session is blocked on.
+    let mut asked = false;
+    for _ in 0..TAKEN_ATTEMPTS {
+        while let Ok(msg) = run.msgs.try_recv() {
+            app.update(msg);
+        }
+        asked = matches!(app.modal(), Some(Modal::Grant { .. }));
+        if asked {
+            break;
+        }
+        std::thread::sleep(BUILD_POLL);
+    }
+    assert!(asked, "the session never asked a grant question");
+
+    app.release_dog_grants();
+    assert!(
+        run.end(),
+        "the session left its callback and ended its own run"
+    );
+    assert!(
+        !world.paths.dogs_dir.join("otel/receipt.json").exists(),
+        "a run cut off mid-question adopted a dog"
+    );
+}
+
+/// The wait is bounded: a session parked on a question nobody will answer
+/// cannot hold the caller past [`END_BUDGET`].
+#[cfg(all(test, unix))]
+#[test]
+fn ending_a_run_waits_no_longer_than_its_budget() {
+    let world = World::new();
+    let mut run = DogRunner::Stub(world.cargo.clone()).start(
+        &world.paths,
+        Job::Install {
+            adopt_as: "otel".to_owned(),
+        },
+    );
+
+    // The question, held here and never answered: the session is parked in a
+    // callback, which is the one thing a cancel cannot interrupt.
+    let mut held: Option<Arc<GrantReply>> = None;
+    for _ in 0..TAKEN_ATTEMPTS {
+        if let Ok(Msg::DogGrant { reply, .. }) = run.msgs.try_recv() {
+            held = Some(reply);
+            break;
+        }
+        std::thread::sleep(BUILD_POLL);
+    }
+    assert!(held.is_some(), "the session never asked a grant question");
+
+    let asked_at = Instant::now();
+    assert!(!run.end(), "a parked session ended its run");
+    assert!(
+        asked_at.elapsed() >= END_BUDGET,
+        "the wait gave up after {:?}",
+        asked_at.elapsed()
     );
 }

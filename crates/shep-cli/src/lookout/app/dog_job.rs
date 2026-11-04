@@ -27,6 +27,12 @@ mod tests;
 /// short enough to be gone before the next `i` reopens the catalogue.
 const DONE_SHOWS: Duration = Duration::from_secs(6);
 
+/// How long a caller waits for a job's own thread to end its run.
+///
+/// That thread is what drops the `cargo` it started, and the wait is bounded
+/// because a session can sit in a file lock that has no deadline of its own.
+const END_BUDGET: Duration = Duration::from_secs(3);
+
 /// The answer a session's grant callback is blocked on.
 ///
 /// Dropped with the job, which is what releases a callback still waiting for
@@ -43,22 +49,38 @@ impl GrantReply {
     }
 }
 
-/// A running dog job: what its thread reports, and the handle that ends it.
+/// A running dog job: what its thread reports, and the handles that end it.
 ///
-/// Dropping the handle resolves the job's own cancel. It cannot release a
+/// Dropping the cancel resolves the job's own select. It cannot release a
 /// callback blocked on a [`GrantReply`]; dropping the job's replies does that.
 #[derive(Debug)]
 pub(crate) struct DogRun {
     /// The [`Msg`] the job's thread earns, in order.
     pub(crate) msgs: tokio::sync::mpsc::UnboundedReceiver<Msg>,
     cancel: Option<Cancel>,
+    /// The job's own thread, kept so a caller can wait for it.
+    thread: Option<std::thread::JoinHandle<()>>,
+    /// What that thread sends once its run is over, which is once the `cargo`
+    /// it started has been dropped.
+    ended: mpsc::Receiver<()>,
 }
 
 impl DogRun {
-    /// Ends the run. A callback blocked on a [`GrantReply`] is released by
-    /// dropping the job's replies, which the reducer does with the job.
-    pub(crate) fn end(&mut self) {
+    /// Ends the run and waits, up to [`END_BUDGET`], for the job's thread to
+    /// finish dropping it. `false` means the thread is still running.
+    ///
+    /// A [`GrantReply`] the dashboard still holds must be dropped first: a
+    /// session parked in its callback never reaches that drop.
+    pub(crate) fn end(&mut self) -> bool {
         self.cancel = None;
+        let ended = match self.ended.recv_timeout(END_BUDGET) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => true,
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+        };
+        if ended && let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        ended
     }
 }
 
@@ -93,13 +115,14 @@ impl DogRunner {
     pub(crate) fn start(&self, paths: &ShepPaths, job: Job) -> DogRun {
         let (sink, msgs) = tokio::sync::mpsc::unbounded_channel();
         let (cancel, cancelled) = tokio::sync::oneshot::channel();
+        let (ended_tx, ended) = mpsc::channel();
         let paths = paths.clone();
         let reach = match self {
             Self::Real => Reach::real(),
             #[cfg(all(test, unix))]
             Self::Stub(cargo) => stub_reach(cargo),
         };
-        std::thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -134,12 +157,12 @@ impl DogRunner {
                         waiting.recv().unwrap_or(false)
                     }
                 };
-                let ended = tokio::select! {
+                let outcome = tokio::select! {
                     biased;
                     _ = cancelled => None,
                     got = run(&paths, job, reach, progress, answer) => Some(got),
                 };
-                if let Some((code, output)) = ended {
+                if let Some((code, output)) = outcome {
                     let _ = sink.send(Msg::DogJobDone {
                         name,
                         ok: code == ExitCode::Success,
@@ -147,10 +170,15 @@ impl DogRunner {
                     });
                 }
             });
+            // Sent last: the run future is gone by now, and with it the
+            // `cargo` child it held.
+            let _ = ended_tx.send(());
         });
         DogRun {
             msgs,
             cancel: Some(Cancel(cancel)),
+            thread: Some(thread),
+            ended,
         }
     }
 }
@@ -175,8 +203,6 @@ pub(crate) enum DogJob {
         /// The grant replies waiting on a modal answer, by the tag this job
         /// gave that modal.
         grants: HashMap<u64, Arc<GrantReply>>,
-        /// The tag of the quit question, while this job is asking it.
-        quitting: Option<u64>,
     },
     /// A job landed and the bar is still saying so.
     Done {
@@ -244,19 +270,10 @@ impl DogJob {
         matches!(self, Self::Running { grants, .. } if grants.contains_key(&tag))
     }
 
-    /// Whether `tag` is this job's quit question, which it is no longer
-    /// asking either way.
-    fn is_quitting(&mut self, tag: u64) -> bool {
-        let Self::Running { quitting, .. } = self else {
-            return false;
-        };
-        quitting.take() == Some(tag)
-    }
-
-    /// Marks `tag` as the quit question this job is asking.
-    fn ask_quit(&mut self, tag: u64) {
-        if let Self::Running { quitting, .. } = self {
-            *quitting = Some(tag);
+    /// Drops every held reply, which each waiting callback reads as a no.
+    fn release_grants(&mut self) {
+        if let Self::Running { grants, .. } = self {
+            grants.clear();
         }
     }
 }
@@ -318,7 +335,6 @@ impl App {
             started: self.now,
             elapsed: Duration::ZERO,
             grants: HashMap::new(),
-            quitting: None,
         };
         Effect::StartDogJob { job, authority }
     }
@@ -407,7 +423,7 @@ impl App {
             return None;
         };
         let (name, doing, tag) = (job.name().to_owned(), job_word(job), self.mint_tag());
-        self.dog_job.ask_quit(tag);
+        self.dog_quit = Some(tag);
         self.open_modal(Modal::confirm(
             tag,
             format!("quit lookout and stop {doing} {name}?"),
@@ -418,17 +434,26 @@ impl App {
     /// What an answered modal means for the job, or `None` when it answers
     /// nothing here.
     ///
-    /// The quit question answers for the whole dashboard. A grant question's
-    /// answer reaches the waiting callback through [`Effect::ModalAnswered`],
-    /// which the caller delivers with [`App::answer_grant`].
+    /// The quit question answers for the whole dashboard, and keeps answering
+    /// after the job it was asked about has landed. A grant question's answer
+    /// reaches its callback through [`Effect::ModalAnswered`], delivered by
+    /// [`App::answer_grant`].
     pub(super) fn on_dog_modal_answer(&mut self, tag: u64, yes: bool) -> Option<Effect> {
-        if self.dog_job.is_quitting(tag) {
+        if self.dog_quit == Some(tag) {
+            self.dog_quit = None;
             return Some(if yes { Effect::Quit } else { Effect::None });
         }
         if self.dog_job.holds(tag) {
             return Some(Effect::ModalAnswered { tag, yes });
         }
         None
+    }
+
+    /// Drops every grant reply the running job holds, which is what releases a
+    /// session parked in its callback on a question lookout will not ask
+    /// again.
+    pub(crate) fn release_dog_grants(&mut self) {
+        self.dog_job.release_grants();
     }
 
     /// Hands the answer of the modal `tag` asked to the session waiting on

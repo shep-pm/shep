@@ -506,6 +506,12 @@ pub struct App {
     /// replies, which is what releases a callback still waiting for an
     /// operator who has already quit.
     dog_job: DogJob,
+    /// The tag of the quit question lookout is asking, or `None`.
+    ///
+    /// Held here rather than inside [`DogJob::Running`] because the answer can
+    /// arrive after the job it was asked about has landed, and a yes to a
+    /// question still on screen must still quit.
+    dog_quit: Option<u64>,
     /// The next modal tag.
     ///
     /// Shared by every modal owner so no two open modals carry the same tag,

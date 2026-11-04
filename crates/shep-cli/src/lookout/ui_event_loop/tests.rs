@@ -278,48 +278,12 @@ async fn a_host_lookout_reads_no_log_file_named_by_a_remote_row() {
     assert_eq!(reads_taken(true).await, (0, 0, 0));
 }
 
-/// A `cargo` that records its own pid and then replaces the shell with a
-/// `sleep`, so the recorded pid is the one that is still building when the
-/// operator quits.
-#[cfg(unix)]
-fn sleeping_cargo(pid_file: &Path) -> String {
-    format!(
-        "#!/bin/sh\necho $$ > {}\nexec sleep 30\n",
-        pid_file.display()
-    )
-}
-
-/// Whether `pid` is no longer running: reaped already (`ECHILD`), or reaped
-/// here. A child still alive is the thing this test is looking for.
-///
-/// `WNOHANG` rather than `kill(pid, 0)`: a killed child tokio never reaped
-/// is still a pid, and a zombie is not a running `cargo`.
-#[cfg(unix)]
-#[track_caller]
-fn is_gone(pid: u32) -> bool {
-    use nix::errno::Errno;
-    use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
-    use nix::unistd::Pid;
-
-    match waitpid(Pid::from_raw(cast_pid(pid)), Some(WaitPidFlag::WNOHANG)) {
-        Ok(WaitStatus::StillAlive) => false,
-        Ok(_) | Err(Errno::ECHILD) => true,
-        Err(err) => panic!("waitpid({pid}): {err}"),
-    }
-}
-
-#[cfg(unix)]
-fn cast_pid(pid: u32) -> i32 {
-    i32::try_from(pid).expect("a pid fits an i32")
-}
-
 /// Drives `Effect::StartDogJob` to a quit, the only test that does: only
 /// the loop holds the handle that ends the job's own thread.
 ///
-/// The yes to the `Confirm` lookout asks first drops that thread, which
-/// drops the `cargo install` future spawned with `kill_on_drop`.
-///
-/// No `start_paused`: the job runs against its own real clock.
+/// The yes to the `Confirm` lookout asks first ends that run, which drops the
+/// `cargo install` future spawned with `kill_on_drop`, and the loop waits for
+/// the thread holding it. No `start_paused`: the job runs on its own clock.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_quit_mid_build_leaves_no_cargo_and_no_receipt() {
