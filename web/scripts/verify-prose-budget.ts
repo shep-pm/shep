@@ -380,7 +380,11 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again for "Upgrading a dog": what an upgrade follows, the four
   // flags, and which directory a rollback can still reach.
-  dogs: 4900,
+  //
+  // Raised again, to 5029, on #1492 for bare `shep upgrade`: what it lists,
+  // what stops it before the dogs, the Windows rule and the reload step. An
+  // operator running it needs each to know what was and was not changed.
+  dogs: 5029,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
@@ -547,7 +551,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 675 on 2026-10-14 for the `enabled_dogs` half of the reload
   // the page already describes: a successor stops a dog the new file dropped
   // and registers a parked one at rest. Required content, not prose.
-  upgrading: 710,
+  // Raised from 710 on 2026-11-04 for bare `shep upgrade` (#1492): the page
+  // told every operator to upgrade through cargo, and now has to say that the
+  // command does shep, the reload and the dogs through the channel shep came
+  // from, and what a `.deb`, an archive and Windows get instead.
+  upgrading: 780,
   kv: 550,
   // Raised from 440 on 2026-09-21 for the prebuilt-binary download list,
   // which is new content rather than a correction. The page was sitting at

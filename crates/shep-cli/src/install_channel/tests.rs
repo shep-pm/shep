@@ -269,3 +269,45 @@ fn a_symlinked_root_matches_the_binary_resolved_through_it() {
         assert_eq!(Channel::of(&exe, &probe), channel, "{}", exe.display());
     }
 }
+
+#[test]
+fn the_manual_steps_name_the_release_page_the_checksum_and_the_install_command() {
+    let deb = Channel::Deb
+        .manual_steps("x86_64-unknown-linux-musl")
+        .join("\n");
+    assert!(
+        deb.contains("https://github.com/shep-pm/shep/releases/latest"),
+        "{deb}"
+    );
+    assert!(deb.contains("SHA256SUMS"), "{deb}");
+    assert!(deb.contains("sudo dpkg -i"), "{deb}");
+
+    let archive = Channel::Archive
+        .manual_steps("aarch64-apple-darwin")
+        .join("\n");
+    assert!(
+        archive.contains(
+            "https://github.com/shep-pm/shep/releases/latest/download/shep-aarch64-apple-darwin.tar.gz"
+        ),
+        "{archive}"
+    );
+    assert!(
+        archive.contains("https://github.com/shep-pm/shep/releases/latest/download/SHA256SUMS"),
+        "{archive}"
+    );
+    assert!(!archive.contains("dpkg"), "{archive}");
+
+    let windows = Channel::Archive
+        .manual_steps("x86_64-pc-windows-msvc")
+        .join("\n");
+    assert!(
+        windows.contains("shep-x86_64-pc-windows-msvc.zip"),
+        "{windows}"
+    );
+
+    assert!(
+        Channel::Homebrew
+            .manual_steps("x86_64-apple-darwin")
+            .is_empty()
+    );
+}

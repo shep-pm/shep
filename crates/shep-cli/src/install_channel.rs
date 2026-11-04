@@ -16,6 +16,9 @@ const DEB_BINARY: &str = "/usr/bin/shep";
 /// Where the dpkg database keeps its file lists.
 const DPKG_INFO: &str = "/var/lib/dpkg/info";
 
+/// The page the newest release is on.
+const RELEASES_URL: &str = "https://github.com/shep-pm/shep/releases/latest";
+
 /// How shep got onto this machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Channel {
@@ -139,6 +142,36 @@ impl Channel {
             Self::Winget => Some(format!("winget upgrade {WINGET_IDENTIFIER}")),
             Self::Chocolatey => Some("choco upgrade shep".to_owned()),
             Self::Deb | Self::Archive => None,
+        }
+    }
+
+    /// The steps that upgrade shep by hand, for a channel with no command.
+    /// Empty for a channel that has one. `target` is the triple the running
+    /// shep was built for, which names its archive.
+    pub(crate) fn manual_steps(self, target: &str) -> Vec<String> {
+        let sums = format!("{RELEASES_URL}/download/SHA256SUMS");
+        let check = format!("Check it against {sums} with `sha256sum --check --ignore-missing`");
+        match self {
+            Self::Deb => vec![
+                format!("Download the .deb for your architecture from {RELEASES_URL}"),
+                check,
+                "Install it with `sudo dpkg -i shep_*.deb`".to_owned(),
+            ],
+            Self::Archive => {
+                let extension = if target.contains("windows") {
+                    "zip"
+                } else {
+                    "tar.gz"
+                };
+                vec![
+                    format!("Download {RELEASES_URL}/download/shep-{target}.{extension}"),
+                    check,
+                    "Put the shep inside it where the old one is".to_owned(),
+                ]
+            }
+            Self::Homebrew | Self::Cargo | Self::Scoop | Self::Winget | Self::Chocolatey => {
+                Vec::new()
+            }
         }
     }
 }
