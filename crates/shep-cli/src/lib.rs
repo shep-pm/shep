@@ -24,6 +24,7 @@ mod entry;
 mod exit;
 mod fetch;
 mod flourish;
+mod hints;
 mod home;
 mod host;
 mod host_sample;
