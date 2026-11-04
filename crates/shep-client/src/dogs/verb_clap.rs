@@ -2,17 +2,60 @@
 //!
 //! [`Verb::from_clap`] is the shorthand for a Rust dog: the about becomes the
 //! description, every visible subcommand becomes a [`Subcommand`], and the
-//! `Examples:` block of the command's `after_help` becomes the examples. A dog
-//! that builds its verb by hand, or is written in another language, declares
-//! the JSON itself.
+//! `Examples:` block of the command's `after_help` becomes the examples.
+//! [`render_examples`] writes that block, so a dog and shep hold one grammar
+//! for it rather than two. A dog that builds its verb by hand, or is written
+//! in another language, declares the JSON itself.
 
 use shep_core::dogs::manifest::{MAX_EXAMPLES, Subcommand, Verb};
 
-/// The heading [`Verb::from_clap`] reads examples under.
+/// The heading examples are written under, and read back under.
 const EXAMPLES_HEADING: &str = "Examples:";
 
 /// What every example line under it starts with. shep prints the same prefix.
 const EXAMPLE_PREFIX: &str = "$ ";
+
+/// How far an example line is indented under the heading.
+const EXAMPLE_INDENT: &str = "  ";
+
+/// The `Examples:` block to hand a `clap` command's `after_help`, in the shape
+/// [`Verb::from_clap`] reads back.
+///
+/// Each example is one command line, written without the `$ ` prefix shep
+/// prints. A blank line is left out, and nothing to write is an empty string,
+/// which adds nothing to the help page.
+///
+/// # Example
+///
+/// ```
+/// use clap::Command;
+/// use shep_client::dogs::render_examples;
+///
+/// let command = Command::new("shep-kelpie")
+///     .about("Run agents on a ticket board")
+///     .after_help(render_examples(["shep kelpie board"]));
+/// assert_eq!(
+///     command.get_after_help().unwrap().to_string(),
+///     "Examples:\n  $ shep kelpie board"
+/// );
+/// ```
+pub fn render_examples(examples: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+    let mut block = String::new();
+    for example in examples {
+        let line = example.as_ref().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if block.is_empty() {
+            block.push_str(EXAMPLES_HEADING);
+        }
+        block.push('\n');
+        block.push_str(EXAMPLE_INDENT);
+        block.push_str(EXAMPLE_PREFIX);
+        block.push_str(line);
+    }
+    block
+}
 
 /// A [`Verb`] read off a `clap` command tree.
 ///
@@ -25,8 +68,9 @@ pub trait FromClap: Sized {
     /// overrides, which is the words shep prints after the name. A hidden
     /// subcommand is left out.
     ///
-    /// The examples are the block `after_help` carries under `Examples:`,
-    /// one command line to a line, each starting `$ `:
+    /// The examples are the block `after_help` carries under `Examples:`, in
+    /// the shape [`render_examples`] writes it: one command line to a line,
+    /// each starting `$ `.
     ///
     /// ```text
     /// Examples:
@@ -34,18 +78,20 @@ pub trait FromClap: Sized {
     /// ```
     ///
     /// shep stores each without the prefix. A block ends at the first line
-    /// that is not an example.
+    /// that is not an example. Write the block with [`render_examples`] and
+    /// this reads it back unchanged; a block written by hand is read the same
+    /// way as long as it holds that shape.
     ///
     /// # Example
     ///
     /// ```
     /// use clap::Command;
-    /// use shep_client::dogs::{FromClap as _, Verb};
+    /// use shep_client::dogs::{FromClap as _, Verb, render_examples};
     ///
     /// let command = Command::new("shep-kelpie")
     ///     .about("Run agents on a ticket board")
     ///     .subcommand(Command::new("board").about("Show the board"))
-    ///     .after_help("Examples:\n  $ shep kelpie board");
+    ///     .after_help(render_examples(["shep kelpie board"]));
     /// let verb = Verb::from_clap(&command).expect("three examples at most");
     ///
     /// assert_eq!(verb.description, "Run agents on a ticket board");
@@ -207,5 +253,29 @@ mod tests {
 
         assert!(verb.examples.is_empty());
         assert!(verb.subcommands.is_empty());
+    }
+
+    #[test]
+    fn render_examples_writes_the_block_from_clap_reads() {
+        let lines = ["shep kelpie board", "shep kelpie rule 42 yes looks good"];
+        let command = Command::new("shep-kelpie")
+            .about("Run agents on a ticket board")
+            .after_help(render_examples(lines));
+
+        assert_eq!(
+            command.get_after_help().unwrap().to_string(),
+            "Examples:\n  $ shep kelpie board\n  $ shep kelpie rule 42 yes looks good"
+        );
+        assert_eq!(Verb::from_clap(&command).unwrap().examples, lines);
+    }
+
+    #[test]
+    fn render_examples_writes_no_block_for_nothing_to_write() {
+        assert_eq!(render_examples([] as [&str; 0]), "");
+        assert_eq!(render_examples(["  ", ""]), "");
+        assert_eq!(
+            render_examples(&["shep ping".to_owned()]),
+            "Examples:\n  $ shep ping"
+        );
     }
 }

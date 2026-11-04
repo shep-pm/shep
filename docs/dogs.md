@@ -1119,7 +1119,9 @@ columns or `verb.examples` holds more than three: what is past them is a line
 no operator sees. A Rust dog built on clap declares none of `verb` by hand.
 `Verb::from_clap(&Command)`, behind `shep-client`'s `clap` feature, reads the
 command's about, every visible subcommand's name, about and `override_usage`,
-and the `Examples:` block of its `after_help`.
+and the `Examples:` block of its `after_help`. `dogs::render_examples(lines)`
+writes that block, and shep's own verb pages write it the same way, so a dog's
+help and shep's read one grammar.
 
 What shep prints of a manifest is one line of text. A placeholder brace, a
 line break or an escape in a `verb.description` or a subcommand's `about`

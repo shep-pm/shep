@@ -108,7 +108,7 @@ pub use startup::{DogAction, HomeError, PRINT_CONFIG_FLAG, UsageError, parse_arg
 pub use stop::{Interrupted, Stop, StopRequest};
 pub use validate::validate_answer;
 #[cfg(feature = "clap")]
-pub use verb_clap::{FromClap, VerbClapError};
+pub use verb_clap::{FromClap, VerbClapError, render_examples};
 
 /// That a type's config schema has been through [`dog_config`], so every
 /// field marked `#[shep(secret)]` carries [`SECRET_KEY`] wherever `schemars`

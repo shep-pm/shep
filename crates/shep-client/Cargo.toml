@@ -18,8 +18,9 @@ categories = ["asynchronous", "network-programming", "api-bindings"]
 default = ["schema"]
 
 # Option: `dogs::Verb::from_clap`, which reads a dog's own clap tree into its
-# manifest `verb`. Off by default: it costs a `clap` dependency, and a dog
-# that declares its verb by hand, or in another language, wants neither.
+# manifest `verb`, and `dogs::render_examples`, which writes the `Examples:`
+# block it reads. Off by default: it costs a `clap` dependency, and a dog that
+# declares its verb by hand, or in another language, wants neither.
 clap = ["dep:clap"]
 
 # Option: `dogs::config_schema` and the `dogs::probe` arm that prints it. On
