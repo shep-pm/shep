@@ -1,0 +1,270 @@
+//! A dog's manifest [`Verb`], read off the clap tree it already has.
+//!
+//! [`Verb::from_clap`] is the shorthand for a Rust dog: the about becomes the
+//! description, every visible subcommand becomes a [`Subcommand`], and the
+//! `Examples:` block of the command's `after_help` becomes the examples.
+//! [`render_examples`] writes that block, so a dog and shep hold one grammar
+//! for it rather than two, and a block ends at the first line that is not an
+//! example. A dog that builds its verb by hand, or is written in another
+//! language, declares the JSON itself.
+
+use shep_core::dogs::manifest::{MAX_EXAMPLES, Subcommand, Verb};
+
+/// The heading examples are written under, and read back under.
+const EXAMPLES_HEADING: &str = "Examples:";
+
+/// What every example line under it starts with. shep prints the same prefix.
+const EXAMPLE_PREFIX: &str = "$ ";
+
+/// How far an example line is indented under the heading.
+const EXAMPLE_INDENT: &str = "  ";
+
+/// The `Examples:` block to hand a `clap` command's `after_help`, in the shape
+/// [`Verb::from_clap`] reads back.
+///
+/// Each example is one command line, written without the `$ ` prefix shep
+/// prints. A blank line is left out, and nothing to write is an empty string,
+/// which adds nothing to the help page.
+///
+/// # Example
+///
+/// ```
+/// use clap::Command;
+/// use shep_client::dogs::render_examples;
+///
+/// let command = Command::new("shep-kelpie")
+///     .about("Run agents on a ticket board")
+///     .after_help(render_examples(["shep kelpie board"]));
+/// assert_eq!(
+///     command.get_after_help().unwrap().to_string(),
+///     "Examples:\n  $ shep kelpie board"
+/// );
+/// ```
+pub fn render_examples(examples: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+    let mut block = String::new();
+    for example in examples {
+        let line = example.as_ref().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if block.is_empty() {
+            block.push_str(EXAMPLES_HEADING);
+        }
+        block.push('\n');
+        block.push_str(EXAMPLE_INDENT);
+        block.push_str(EXAMPLE_PREFIX);
+        block.push_str(line);
+    }
+    block
+}
+
+/// A [`Verb`] read off a `clap` command tree.
+///
+/// Apply it to [`Verb`] and call [`Verb::from_clap`].
+pub trait FromClap: Sized {
+    /// The verb `command` describes.
+    ///
+    /// The description is the command's about. Each subcommand clap lists, a
+    /// hidden one aside, is a [`Subcommand`] with its name, its about and the
+    /// usage it overrides, which is the words shep prints after the name. The
+    /// examples are the `Examples:` block of `after_help`, in the shape
+    /// [`render_examples`] writes it: one command line to a line, each
+    /// starting `$ ` and stored without the prefix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use clap::Command;
+    /// use shep_client::dogs::{FromClap as _, Verb, render_examples};
+    ///
+    /// let command = Command::new("shep-kelpie")
+    ///     .about("Run agents on a ticket board")
+    ///     .subcommand(Command::new("board").about("Show the board"))
+    ///     .after_help(render_examples(["shep kelpie board"]));
+    /// let verb = Verb::from_clap(&command).expect("three examples at most");
+    ///
+    /// assert_eq!(verb.description, "Run agents on a ticket board");
+    /// assert_eq!(verb.examples, ["shep kelpie board"]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`VerbClapError::TooManyExamples`] when the block holds more than
+    /// [`MAX_EXAMPLES`] command lines.
+    fn from_clap(command: &clap::Command) -> Result<Self, VerbClapError>;
+}
+
+/// Why a clap tree was not read as a [`Verb`].
+///
+/// `#[non_exhaustive]`: a later slice adds what else a tree can get wrong, and
+/// a dog matching on this only ever reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum VerbClapError {
+    /// The `Examples:` block holds `examples` command lines, and a manifest
+    /// declares at most [`MAX_EXAMPLES`].
+    TooManyExamples {
+        /// The name of the command the block belongs to.
+        command: String,
+        /// How many command lines it holds.
+        examples: usize,
+    },
+}
+
+impl core::fmt::Display for VerbClapError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::TooManyExamples { command, examples } => write!(
+                f,
+                "`{command}` carries {examples} examples, and a manifest declares at most \
+                 {MAX_EXAMPLES}"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for VerbClapError {}
+
+impl FromClap for Verb {
+    fn from_clap(command: &clap::Command) -> Result<Self, VerbClapError> {
+        let examples = examples(command);
+        if examples.len() > MAX_EXAMPLES {
+            return Err(VerbClapError::TooManyExamples {
+                command: command.get_name().to_owned(),
+                examples: examples.len(),
+            });
+        }
+        let mut verb = Verb::new(about(command)).with_examples(examples);
+        verb.subcommands = command
+            .get_subcommands()
+            .filter(|sub| !sub.is_hide_set())
+            .map(|sub| match sub.get_overridden_usage() {
+                Some(usage) => Subcommand::new(sub.get_name(), about(sub))
+                    .with_usage(usage.to_string().trim().to_owned()),
+                None => Subcommand::new(sub.get_name(), about(sub)),
+            })
+            .collect();
+        Ok(verb)
+    }
+}
+
+/// `command`'s about, or nothing when it has none.
+fn about(command: &clap::Command) -> String {
+    command
+        .get_about()
+        .map(ToString::to_string)
+        .unwrap_or_default()
+}
+
+/// The `Examples:` block of `command`'s `after_help`, each line without its
+/// `$ ` prefix. Empty when there is no block.
+fn examples(command: &clap::Command) -> Vec<String> {
+    let Some(after) = command.get_after_help() else {
+        return Vec::new();
+    };
+    let mut under_heading = false;
+    let mut lines = Vec::new();
+    for line in after.to_string().lines().map(str::trim) {
+        if !under_heading {
+            under_heading = line == EXAMPLES_HEADING;
+            continue;
+        }
+        let Some(example) = line.strip_prefix(EXAMPLE_PREFIX) else {
+            break;
+        };
+        lines.push(example.trim().to_owned());
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Command;
+
+    use super::*;
+
+    #[test]
+    fn a_clap_tree_becomes_a_verb() {
+        let command = Command::new("shep-kelpie")
+            .about("Run agents on a ticket board")
+            .subcommand(Command::new("board").about("Show the board"))
+            .subcommand(
+                Command::new("rule")
+                    .about("Answer a ruling")
+                    .override_usage("<id> yes|no <note>"),
+            )
+            .subcommand(Command::new("draft").about("Draft a card").hide(true))
+            .after_help(
+                "Examples:\n  $ shep kelpie board\n  $ shep kelpie rule 42 yes looks good\n\
+                 Anything after `shep kelpie` goes to the dog.",
+            );
+
+        let verb = Verb::from_clap(&command).unwrap();
+
+        assert_eq!(verb.description, "Run agents on a ticket board");
+        assert_eq!(
+            verb.subcommands,
+            vec![
+                Subcommand::new("board", "Show the board"),
+                Subcommand::new("rule", "Answer a ruling").with_usage("<id> yes|no <note>"),
+            ]
+        );
+        assert_eq!(
+            verb.examples,
+            ["shep kelpie board", "shep kelpie rule 42 yes looks good"]
+        );
+    }
+
+    #[test]
+    fn four_examples_are_refused() {
+        let command = Command::new("shep-otel")
+            .about("Export metrics")
+            .after_help("Examples:\n  $ a\n  $ b\n  $ c\n  $ d");
+
+        let refused = Verb::from_clap(&command).expect_err("four examples is more than three");
+
+        assert_eq!(
+            refused,
+            VerbClapError::TooManyExamples {
+                command: "shep-otel".to_owned(),
+                examples: 4,
+            }
+        );
+        assert_eq!(
+            refused.to_string(),
+            "`shep-otel` carries 4 examples, and a manifest declares at most 3"
+        );
+    }
+
+    #[test]
+    fn a_tree_with_no_examples_declares_none() {
+        let verb = Verb::from_clap(&Command::new("shep-otel").about("Export metrics")).unwrap();
+
+        assert!(verb.examples.is_empty());
+        assert!(verb.subcommands.is_empty());
+    }
+
+    #[test]
+    fn render_examples_writes_the_block_from_clap_reads() {
+        let lines = ["shep kelpie board", "shep kelpie rule 42 yes looks good"];
+        let command = Command::new("shep-kelpie")
+            .about("Run agents on a ticket board")
+            .after_help(render_examples(lines));
+
+        assert_eq!(
+            command.get_after_help().unwrap().to_string(),
+            "Examples:\n  $ shep kelpie board\n  $ shep kelpie rule 42 yes looks good"
+        );
+        assert_eq!(Verb::from_clap(&command).unwrap().examples, lines);
+    }
+
+    #[test]
+    fn render_examples_writes_no_block_for_nothing_to_write() {
+        assert_eq!(render_examples([] as [&str; 0]), "");
+        assert_eq!(render_examples(["  ", ""]), "");
+        assert_eq!(
+            render_examples(&["shep ping".to_owned()]),
+            "Examples:\n  $ shep ping"
+        );
+    }
+}
