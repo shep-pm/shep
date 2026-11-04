@@ -1087,9 +1087,19 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       to your release as <code>&lt;package&gt;-&lt;version&gt;-&lt;target&gt;</code>,
       with <code>.exe</code> on Windows and no archive. It then opens a pull
       request on <code>shep-pm/shep</code> that sets your row's{" "}
-      <code>version</code> and <code>sha256</code> and nothing else. Merging it
-      is the review; until then <code>shep install</code> approves the old
-      version.
+      <code>version</code>, <code>sha256</code> and <code>permissions</code>.
+      Merging it is the review; until then <code>shep install</code> approves
+      the old version.
+    </p>
+    <p>
+      The <code>permissions</code> come from the binary itself. The workflow
+      runs the <code>x86_64-unknown-linux-gnu</code> one with{" "}
+      <code>--shep-manifest</code> and writes each permission's name and
+      whether it is required, in the order your manifest declares them.
+      Nothing else in the manifest reaches the index, and a dog declares one
+      manifest for every target. A binary that answers no manifest costs your
+      row the list and costs the release nothing: the run says so in its job
+      summary and your row carries no <code>permissions</code>.
     </p>
     <p>
       The tag must be <code>v&lt;version&gt;</code>, matching{" "}
