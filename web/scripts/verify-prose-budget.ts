@@ -419,7 +419,11 @@ export const BUDGETS: Record<string, number> = {
   // install key, the grant modal, the status-bar job item, one job at a time,
   // and what quitting mid-job leaves behind. None of it is described on any
   // other page, and it is required content rather than prose to trim back out.
-  lookout: 3870,
+  //
+  // Raised again, to 3904, on #1495 for "The hint": the status bar's flock
+  // hint, that it matches `shep flock`, and that `shep hints off` silences
+  // both. No other page says it of lookout.
+  lookout: 3904,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

@@ -242,13 +242,12 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
 }
 
 /// The key hint for whatever body is up, and the style it is drawn in, with
-/// the running dog job ahead of it and, on the dashboard's own keys only, the
+/// the dog job ahead of it and, on the dashboard's own keys only, the flock
 /// hint after it.
 ///
 /// Reached only when [`status_line`] has no question, editor, notice or
-/// in-flight line to show: while one of those is up the bar says that, and a
-/// hint naming keys the screen is not taking is the asterisk this file's
-/// standing rule forbids.
+/// in-flight line to show: a hint naming keys the screen is not taking is the
+/// asterisk this file's standing rule forbids.
 #[must_use]
 fn body_hint(app: &App, width: u16) -> (String, Style) {
     let (keys, style, is_dashboard) = screen_hint(app);
