@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 /// The action name shep sends on the dog's shepherd channel.
 ///
-/// A `shep-` name, reserved the way the `--version` answer's key lines are.
+/// A `shep.` name, reserved the way the `--version` answer's key lines are.
 pub const VALIDATE_ACTION: &str = "shep.validate";
 
 /// How much of a dog's unreadable answer is quoted back to the operator.

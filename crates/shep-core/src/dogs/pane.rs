@@ -15,7 +15,7 @@ use super::validate::{quoted, unreadable};
 /// The action name lookout sends on a dog's shepherd channel to ask for its
 /// pane.
 ///
-/// A `shep-` name, reserved the way
+/// A `shep.` name, reserved the way
 /// [`VALIDATE_ACTION`](super::validate::VALIDATE_ACTION) is. Lookout sends it
 /// as the operator, so it needs no grant the operator does not already hold.
 pub const PANE_ACTION: &str = "shep.pane";
