@@ -19,7 +19,10 @@ fn paddock_pane() -> ActionOutcome {
 /// `paddock`'s status tab with its first pull answered, a second after
 /// the app's clock started.
 fn status_tab() -> App {
-    let mut app = fixtures::app_in_pane_dog(Some(paddock_pane()));
+    let mut app = fixtures::app_in_pane_dog_declaring(
+        &["lease.changed", "model.loaded"],
+        Some(paddock_pane()),
+    );
     let at = app.now() + Duration::from_secs(2);
     assert_eq!(app.update(Msg::Tick { now: at }), Effect::None);
     app
