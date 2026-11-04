@@ -26,8 +26,9 @@ fn fixture() -> Probe<'static> {
         .permission(Permission::new("flock.read", true, "lists the flock"))
         .permission(Permission::new("logs.read", false, "tails logs"))
         .verb({
-            let mut verb = Verb::new("Export metrics");
-            verb.subcommands = vec![Subcommand::new("status", "Show the exporter")];
+            let mut verb = Verb::new("Export metrics").with_examples(["shep otel status"]);
+            verb.subcommands =
+                vec![Subcommand::new("status", "Show the exporter").with_usage("<job> [watch]")];
             verb
         })
         .depends_on_dog(DogDependency::new("metrics", ">=0.2"))
@@ -58,8 +59,9 @@ fn the_manifest_parses_back_to_what_the_dog_declared() {
         Permission::new("flock.read", true, "lists the flock"),
         Permission::new("logs.read", false, "tails logs"),
     ];
-    let mut verb = Verb::new("Export metrics");
-    verb.subcommands = vec![Subcommand::new("status", "Show the exporter")];
+    let mut verb = Verb::new("Export metrics").with_examples(["shep otel status"]);
+    verb.subcommands =
+        vec![Subcommand::new("status", "Show the exporter").with_usage("<job> [watch]")];
     expected.verb = Some(verb);
     expected.depends.dogs = vec![DogDependency::new("metrics", ">=0.2")];
     expected.depends.shep = Some("0.9.0".to_string());

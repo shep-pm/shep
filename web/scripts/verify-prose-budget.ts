@@ -180,11 +180,18 @@ export const BUDGETS: Record<string, number> = {
   // required reach the index, and that a binary answering nothing costs the
   // row the list and not the release.
   //
+  // Raised on #1517 for a dog declaring its own help: an author has to know
+  // `verb.examples` and a subcommand's `usage` exist, that an example is
+  // written without the `$ ` shep prints, that `Verb::from_clap` reads a clap
+  // tree into all of it, and that `shep adopt` warns past 60 columns or a
+  // fourth example and adopts anyway. The ceiling sits about 4 words above
+  // the page.
+  //
   // Raised again on #1480 for the manifest's `pane` field: an author has to
   // know it is answered over the channel, and that a manifest declaring it
   // without one has no pane to draw. The two raises land on one page, so the
   // ceiling is the one the merged page measures.
-  "writing-a-dog": 6280,
+  "writing-a-dog": 6357,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
