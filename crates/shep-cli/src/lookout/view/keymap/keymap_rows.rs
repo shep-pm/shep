@@ -170,15 +170,14 @@ pub(super) fn gate_line(app: &App, palette: Palette, width: u16) -> Line<'static
 /// before either is padded to a width.
 fn gate_text(app: &App) -> String {
     if matches!(app.link(), Link::Lost { .. }) {
-        " the three above are refused  \u{b7}  \u{2588} the link is down  \u{b7}  nothing acts"
-            .to_string()
+        " x R L are refused  \u{b7}  \u{2588} the link is down  \u{b7}  nothing acts".to_string()
     } else {
         let label = match app.control() {
             Control::ReadOnly => status::READ_ONLY_LABEL,
             Control::Allowed => status::CONTROL_ENABLED_LABEL,
         };
         format!(
-            " the three above each arm a confirm  \u{b7}  \u{21b5} confirms  \u{b7}  10s to \
+            " x R L each arm a confirm  \u{b7}  \u{21b5} confirms  \u{b7}  10s to \
              answer  \u{b7}  \u{2588} {label}"
         )
     }
@@ -471,5 +470,16 @@ mod tests {
         let plain = render_overlay(&app_with_overlay(), 160, 48);
         assert!(plain.contains("environment tab"), "{plain}");
         assert!(!plain.contains("close/open table"), "{plain}");
+    }
+
+    /// The line names the keys that arm a confirm, since `i` sits in the
+    /// same column and arms nothing.
+    #[test]
+    fn the_gate_line_names_x_r_l_linked_and_link_down() {
+        let linked = gate_text(&app_with_overlay());
+        assert!(linked.contains("x R L each arm a confirm"), "{linked}");
+
+        let down = gate_text(&frozen_app_with_overlay());
+        assert!(down.contains("x R L are refused"), "{down}");
     }
 }
