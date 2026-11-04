@@ -9,10 +9,41 @@
 use shep_core::exit;
 use shep_core::protocol::RpcErrorCode;
 
-/// A `shep` process exit status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ExitCode {
+/// Declares [`ExitCode`] together with [`ExitCode::ALL`] and
+/// [`ExitCode::summary`], so a variant added here reaches `shep help
+/// exit-codes` with its doc line and number and nothing else to edit.
+macro_rules! exit_codes {
+    ($(
+        $(#[doc = $doc:literal])*
+        $(#[cfg_attr($($cfg:tt)*)])?
+        $name:ident = $value:expr,
+    )*) => {
+        /// A `shep` process exit status.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[repr(u8)]
+        pub enum ExitCode {
+            $(
+                $(#[doc = $doc])*
+                $(#[cfg_attr($($cfg)*)])?
+                $name = $value,
+            )*
+        }
+
+        impl ExitCode {
+            /// Every code, in declaration order.
+            pub const ALL: &'static [Self] = &[$(Self::$name),*];
+
+            /// The doc comment's lines, as written.
+            const fn doc_lines(self) -> &'static [&'static str] {
+                match self {
+                    $(Self::$name => &[$($doc),*],)*
+                }
+            }
+        }
+    };
+}
+
+exit_codes! {
     /// The command did what it was asked.
     #[cfg_attr(windows, allow(dead_code))]
     Success = 0,
@@ -36,11 +67,11 @@ pub enum ExitCode {
     DeadlineExceeded = exit::DEADLINE_EXCEEDED,
     /// An unexpected daemon-side failure.
     Internal = exit::INTERNAL,
-    /// Another daemon already holds this `$SHEP_HOME`. Read across the
-    /// process boundary by `shep_client::spawn::DAEMON_ALREADY_RUNNING`,
-    /// which must stay equal to 10.
+    /// Another daemon already holds this `$SHEP_HOME`.
     ///
-    /// How a losing child in a cold-start race tells the probing parent it
+    /// Read across the process boundary by
+    /// `shep_client::spawn::DAEMON_ALREADY_RUNNING`, which must stay equal
+    /// to 10. How a losing child in a cold-start race tells the probing parent it
     /// lost.
     #[cfg_attr(windows, allow(dead_code))]
     DaemonAlreadyRunning = 10,
@@ -63,6 +94,22 @@ pub enum ExitCode {
     /// the connected daemon implements, so a newer shepherd is the remedy
     /// rather than different arguments.
     Unsupported = exit::UNSUPPORTED,
+}
+
+impl ExitCode {
+    /// What this code means: the first paragraph of the variant's doc
+    /// comment, on one line.
+    #[must_use]
+    pub fn summary(self) -> String {
+        let lines = self.doc_lines();
+        let paragraph = lines.split(|line| line.trim().is_empty()).next();
+        paragraph
+            .unwrap_or_default()
+            .iter()
+            .map(|line| line.trim())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 impl ExitCode {

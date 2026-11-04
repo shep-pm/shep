@@ -84,6 +84,42 @@ Global flags, valid on every verb:
           flock from every directory.
           
           [env: SHEP_HOME=]
+@@TOPIC:selectors@@
+Selectors, for every verb that acts on part of the flock:
+
+  name           one sheep, exact: web.1 is the sheep called web.1
+  id             one sheep, by its id
+  name:slot      one slot of a sheep with several instances
+  all            every sheep
+  api-*          a glob, anchored
+  /regex/        a regular expression
+  fold:<name>    every sheep in that fold
+
+A pattern carrying *, ?, [ or { is a glob, anchored: api-* selects api-auth
+and not my-api-auth. Quote it. Your shell expands api-* against filenames
+first, and zsh refuses outright when none match. A name with no such
+character is exact.
+
+Give several and they are applied in turn, not atomically: shep stop a b c,
+where b matches nothing, still stops a and c, and the exit code is the first
+failure.
+@@TOPIC:exit-codes@@
+Exit codes, the same on every verb:
+
+  0  The command did what it was asked.
+  1  An error with no more specific code.
+  2  Bad arguments. clap's own convention.
+  3  A selector matched no registered sheep.
+  4  A Flockfile or daemon config failed validation.
+  5  No daemon answered, and none could be started.
+  6  The daemon refused this client's handshake: its protocol version is below the daemon's `MIN_SUPPORTED` floor.
+  7  The daemon could not spawn a sheep.
+  8  The request outlived its deadline.
+  9  An unexpected daemon-side failure.
+  10 Another daemon already holds this `$SHEP_HOME`.
+  11 The flock emptied and something in it had failed.
+  12 This binary and the shepherd it reached disagree about shep.
+  13 The daemon understood the handshake but not the request itself.
 @@VERB:start@@
 Start a sheep from a script, a Flockfile, or stdin
 
@@ -369,13 +405,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
@@ -412,13 +442,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
@@ -437,13 +461,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
@@ -503,13 +521,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
@@ -542,13 +554,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
@@ -889,13 +895,7 @@ Arguments:
   <SELECTORS>...
           One or more: name, id, `name:slot`, `all`, `api-*`, `/regex/`, `fold:<name>`
           
-          Several are applied in turn, not atomically: `shep stop a b c` where `b` matches nothing
-          still stops `a` and `c`, and the exit code is the first failure.
-          
-          A pattern carrying `*`, `?`, `[` or `{` is a glob, anchored, so `api-*` selects `api-auth`
-          and not `my-api-auth`. Quote it: your shell expands `api-*` against filenames first, and
-          zsh refuses outright when none match. A name with no such character is exact, so `web.1`
-          is the sheep called `web.1`.
+          See shep help selectors
 
 Options:
   -h, --help
