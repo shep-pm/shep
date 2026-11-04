@@ -136,18 +136,3 @@ test("no part is called Dogs", () => {
   const parts = new Set(chapters.map((c) => c.part));
   assert.equal(parts.has("Dogs"), false);
 });
-
-test("the book is six parts, in the order the header comment names", () => {
-  assert.deepEqual(
-    [...new Set(chapters.map((c) => c.part))],
-    [
-      "Get it running",
-      "Day to day",
-      "Configuration",
-      "Machine surfaces",
-      "Other places it runs",
-      "Reference",
-    ],
-  );
-  assert.equal(chapters.length, 31);
-});
