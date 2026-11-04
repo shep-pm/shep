@@ -10,7 +10,6 @@
 //! carry is `shep adopt <path>`.
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -26,11 +25,13 @@ use crate::output::{AvailableDogRows, Streams, emit, write_outcome};
 
 use super::adopt::{Flow, Note, adopt_noting, collides_with_a_verb, lookup_on_path};
 use super::consent::Input;
+use super::install_cargo::{self, with_tail};
 use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
 use super::install_keep::Kept;
 use super::install_ref;
 use super::receipt::{self, HeldPin, Installer, Pinned, Receipt};
+use super::session::{Progress, Step};
 use super::vet::{ManifestRead, VERSION_BUDGET, read_manifest, sha256_hex};
 
 /// Where crates.io's API is, when nothing says otherwise.
@@ -57,6 +58,8 @@ pub(super) struct Reach {
     pub(super) assets: RedirectPolicy,
     /// How long to wait for another install of the same dog.
     pub(super) lock_wait: Duration,
+    /// Who hears each step, or `None` to leave the terminal to the verb.
+    pub(super) progress: Option<Progress>,
 }
 
 /// Where `install` learns who published a version.
@@ -88,6 +91,7 @@ impl Reach {
             lookup: Lookup::CratesIo(CRATES_IO.to_owned()),
             assets: RedirectPolicy::GITHUB_RELEASES,
             lock_wait: LOCK_WAIT,
+            progress: None,
         }
     }
 }
@@ -237,6 +241,7 @@ pub(super) struct Fetched {
     token_publish: bool,
     kept: Kept,
     _held: FileLock,
+    progress: Option<Progress>,
     /// Set by `shep upgrade`: how this adopt differs from a first install.
     pub(super) upgrading: Option<Upgrading>,
 }
@@ -404,7 +409,16 @@ pub(super) async fn fetch_dog(
     let receipt_file = receipt::receipt_path(paths, name);
     let (root, binary, kept, installed, landed) = match plan {
         Plan::BuildRef { cargo, git_ref } => {
-            let got = match install_ref::acquire(streams, paths, cargo, dog, git_ref).await {
+            let got = match install_ref::acquire(
+                streams,
+                paths,
+                cargo,
+                dog,
+                git_ref,
+                reach.progress.as_ref(),
+            )
+            .await
+            {
                 Ok(got) => got,
                 Err(code) => return Err(code),
             };
@@ -421,7 +435,15 @@ pub(super) async fn fetch_dog(
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
-            download(streams, paths, &reach.assets, &prebuilt, &binary).await?;
+            download(
+                streams,
+                paths,
+                &reach.assets,
+                &prebuilt,
+                &binary,
+                reach.progress.as_ref(),
+            )
+            .await?;
             let installed = Installed::Url(prebuilt.url);
             (
                 root,
@@ -437,7 +459,15 @@ pub(super) async fn fetch_dog(
                 Ok(kept) => kept,
                 Err(code) => return Err(code),
             };
-            let command = match build(streams, cargo, &root, package, version).await {
+            let command = match build(
+                streams,
+                cargo,
+                &root,
+                (package, version),
+                reach.progress.as_ref(),
+            )
+            .await
+            {
                 Ok(command) => command,
                 Err(code) => return Err(code),
             };
@@ -476,6 +506,7 @@ pub(super) async fn fetch_dog(
         token_publish,
         kept,
         _held,
+        progress: reach.progress.clone(),
         upgrading: None,
     })
 }
@@ -501,6 +532,7 @@ pub(super) async fn adopt_fetched(
         token_publish,
         kept,
         _held,
+        progress,
         upgrading,
     } = fetched;
     let (name, package) = (dog.adopt_as.as_str(), dog.package.as_str());
@@ -569,6 +601,9 @@ pub(super) async fn adopt_fetched(
             restart: false,
         },
     };
+    if let Some(progress) = &progress {
+        progress.tell(Step::Adopting);
+    }
     let config_before = std::fs::read(&paths.daemon_config).ok();
     // An upgrade keeps its own review of what is new.
     let listed = match &upgrading {
@@ -726,8 +761,8 @@ async fn build(
     streams: &mut Streams<'_>,
     cargo: &Path,
     root: &Path,
-    package: &str,
-    version: &str,
+    (package, version): (&str, &str),
+    progress: Option<&Progress>,
 ) -> Result<Vec<String>, ExitCode> {
     let command = [
         "cargo".to_owned(),
@@ -743,20 +778,19 @@ async fn build(
         "install",
         &format!("building {package} {version} with cargo"),
     );
-    let status = tokio::process::Command::new(cargo)
-        .args(&command[1..])
-        .stdin(Stdio::null())
-        // stdout is the verb's answer; cargo narrates on stderr.
-        .stdout(Stdio::null())
-        .kill_on_drop(true)
-        .status()
-        .await;
-    match status {
-        Ok(status) if status.success() => Ok(command.into()),
-        Ok(status) => Err(streams.fail(
+    if let Some(progress) = progress {
+        progress.tell(Step::Building);
+    }
+    match install_cargo::run(cargo, &command[1..], progress).await {
+        Ok(ran) if ran.status.success() => Ok(command.into()),
+        Ok(ran) => Err(streams.fail(
             ExitCode::Failure,
-            &format!(
-                "`cargo install` for {package} {version} failed ({status}); nothing was adopted"
+            &with_tail(
+                format!(
+                    "`cargo install` for {package} {version} failed ({}); nothing was adopted",
+                    ran.status
+                ),
+                &ran.tail,
             ),
         )),
         Err(err) => Err(streams.fail(

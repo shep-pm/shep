@@ -25,7 +25,7 @@ use super::depends::warn_of_unmet_depends;
 use super::grants::warn_if_unenforced;
 use super::vet::{
     DogSchema, fail_adopt, report_channel_ask, report_dog_version, vet_binary, warn_group_writable,
-    warn_unreadable_schema,
+    warn_of_verb_declaration, warn_unreadable_schema,
 };
 use super::{
     DECLINED_STATUS, DISABLED_STATUS, NO_SHEPHERD_ENABLE_STATUS, NOT_ENABLED_STATUS,
@@ -281,6 +281,8 @@ pub(super) async fn adopt_noting(
     }
     if let Some(manifest) = &vetted.manifest {
         warn_of_unmet_depends(streams, &name, manifest, &adopted);
+        warn_of_pane_without_channel(streams, &name, manifest);
+        warn_of_verb_declaration(streams, &name, manifest);
     }
     let client = match connect_or_absent(paths, streams).await {
         Ok(client) => client,
@@ -613,6 +615,26 @@ fn warn_unreadable_defaults(streams: &mut Streams<'_>, name: &str) {
          report to whoever wrote it"
     );
     streams.aside(DOG_DEFAULTS_UNREADABLE_NOTICE, &message);
+}
+
+/// [`emit_notice`](crate::output::emit_notice) code for a dog that asked for a
+/// pane with no channel to answer it on; not a failure.
+const DOG_PANE_WITHOUT_CHANNEL_NOTICE: &str = "dog_pane_without_channel";
+
+/// Tells the operator that `name` asked for a pane and will not have one.
+///
+/// Not a refusal the way `validate` without a channel is: a pane is a screen
+/// the operator loses, and a dog that never asked for the channel runs exactly
+/// as it did. The one who wrote the dog is the one who can fix it.
+fn warn_of_pane_without_channel(streams: &mut Streams<'_>, name: &str, manifest: &Manifest) {
+    if !manifest.pane_ignored {
+        return;
+    }
+    let message = format!(
+        "{name}'s manifest asks for a pane, but the dog never asked for the shepherd channel to \
+         answer it on, so it has none"
+    );
+    streams.aside(DOG_PANE_WITHOUT_CHANNEL_NOTICE, &message);
 }
 
 /// Renders a `dogs.toml` or migration failure and returns its exit code.

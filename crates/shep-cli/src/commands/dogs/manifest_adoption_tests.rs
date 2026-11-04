@@ -254,6 +254,72 @@ async fn adopt_stays_quiet_when_this_shep_is_new_enough() {
     assert!(!notices.contains("needs shep"), "{notices}");
 }
 
+/// A manifest declaring a `verb` with `description` and `examples`.
+fn manifest_with_verb(description: &str, examples: &[&str]) -> String {
+    let examples = examples
+        .iter()
+        .map(|example| format!("\"{example}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let verb = format!(r#"{{"description":"{description}","examples":[{examples}]}}"#);
+    format!(r#"{{"manifest":1,"name":"otel","version":"0.2.0","protocol":12,"verb":{verb}}}"#)
+}
+
+#[tokio::test]
+async fn a_long_description_is_noticed_and_still_adopted() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let manifest = manifest_with_verb(
+        "export metrics to a collector over the network every interval",
+        &[
+            "shep otel status",
+            "shep otel status --full",
+            "shep otel flush",
+            "shep otel once",
+        ],
+    );
+    let (binary, _) = write_dog(dir.path(), &manifest, "");
+
+    let (code, notices) = adopt_otel(&paths, &binary).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert!(
+        notices.contains("reports version 0.2.0, shep protocol 12"),
+        "the manifest was not read: {notices}"
+    );
+    assert!(
+        notices.contains("more in its manifest `verb` than shep's help holds"),
+        "{notices}"
+    );
+    assert!(notices.contains("61 columns"), "{notices}");
+    assert!(notices.contains("4 examples"), "{notices}");
+    assert!(
+        std::fs::read_to_string(&paths.daemon_config)
+            .unwrap()
+            .contains("otel")
+    );
+}
+
+#[tokio::test]
+async fn a_verb_inside_the_help_budget_is_said_nothing_about() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ShepPaths::resolve(&|_| None, dir.path());
+    let manifest = manifest_with_verb(
+        "export metrics to a collector",
+        &["shep otel status", "shep otel status --full"],
+    );
+    let (binary, _) = write_dog(dir.path(), &manifest, "");
+
+    let (code, notices) = adopt_otel(&paths, &binary).await;
+
+    assert_eq!(code, ExitCode::Success);
+    assert!(
+        notices.contains("reports version 0.2.0, shep protocol 12"),
+        "the manifest was not read: {notices}"
+    );
+    assert!(!notices.contains("manifest `verb`"), "{notices}");
+}
+
 #[tokio::test]
 async fn enable_of_an_adopted_dog_gives_both_warnings_and_still_enables() {
     let dir = tempfile::tempdir().unwrap();

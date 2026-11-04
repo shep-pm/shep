@@ -977,8 +977,9 @@ Usage: shep upgrade [OPTIONS] [DOG]
 
 Arguments:
   [DOG]
-          The installed dog to upgrade. With none and no `--dogs`, `shep upgrade` would upgrade shep
-          itself, which it does not do yet
+          The installed dog to upgrade. With none and no `--dogs`, `shep upgrade` upgrades shep
+          through the channel it came from, then every installed dog the index has a newer version
+          of
 
 Options:
       --dogs
@@ -998,6 +999,10 @@ Options:
 
       --refresh
           Fetch the community index even when the copy cached in the last day is still fresh
+
+      --reload
+          Reload the shepherd onto the new shep without asking. Only a bare `shep upgrade` that
+          upgraded shep has a reload to do
 
   -h, --help
           Print help (see a summary with '-h')

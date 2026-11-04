@@ -3,7 +3,7 @@ use super::*;
 /// A manifest as a dog written against this format prints it. A literal, so
 /// a rename of a field fails here instead of passing by construction.
 const FIXTURE: &str = r#"{
-  "manifest": 2,
+  "manifest": 3,
   "name": "shep-otel",
   "version": "0.1.3",
   "protocol": 11,
@@ -15,7 +15,8 @@ const FIXTURE: &str = r#"{
   ],
   "verb": {
     "description": "Export metrics",
-    "subcommands": [{"name": "status", "about": "Show the exporter"}]
+    "subcommands": [{"name": "status", "about": "Show the exporter", "usage": "<job> [watch]"}],
+    "examples": ["shep otel status", "shep otel status --full"]
   },
   "depends": {
     "dogs": [{"name": "metrics", "version": ">=0.2"}],
@@ -37,8 +38,10 @@ fn fixture() -> Manifest {
     manifest.settings = Some(serde_json::json!({"type": "object"}));
     manifest.defaults = Some("interval = \"1h\"\n".to_string());
     manifest.permissions = vec![Permission::new("flock.read", true, "lists the flock")];
-    let mut verb = Verb::new("Export metrics");
-    verb.subcommands = vec![Subcommand::new("status", "Show the exporter")];
+    let mut verb =
+        Verb::new("Export metrics").with_examples(["shep otel status", "shep otel status --full"]);
+    verb.subcommands =
+        vec![Subcommand::new("status", "Show the exporter").with_usage("<job> [watch]")];
     manifest.verb = Some(verb);
     manifest.depends.dogs = vec![DogDependency::new("metrics", ">=0.2")];
     manifest.depends.shep = Some("0.9.0".to_string());
@@ -83,10 +86,47 @@ fn a_field_this_shep_does_not_know_is_ignored_at_every_level() {
     assert_eq!(manifest, fixture());
 }
 
+/// The fixture carries both, so a rename fails there; this is where they read.
+#[test]
+fn a_verb_round_trips_its_examples_and_usage() {
+    let manifest: Manifest = serde_json::from_str(FIXTURE).unwrap();
+    let verb = manifest.verb.clone().unwrap();
+
+    assert_eq!(
+        verb.examples,
+        ["shep otel status", "shep otel status --full"]
+    );
+    assert_eq!(verb.subcommands[0].usage.as_deref(), Some("<job> [watch]"));
+
+    let again = serde_json::to_string(&manifest).unwrap();
+    assert_eq!(serde_json::from_str::<Manifest>(&again).unwrap(), manifest);
+}
+
+#[test]
+fn a_verb_without_examples_reads_as_none() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
+            "verb": {"description": "Export metrics",
+                     "subcommands": [{"name": "status", "about": "Show the exporter"}]}}"#,
+    )
+    .unwrap();
+
+    let verb = manifest.verb.unwrap();
+    assert!(verb.examples.is_empty());
+    assert_eq!(verb.subcommands[0].usage, None);
+    assert_eq!(
+        serde_json::to_value(&verb).unwrap(),
+        serde_json::json!({
+            "description": "Export metrics",
+            "subcommands": [{"name": "status", "about": "Show the exporter"}],
+        })
+    );
+}
+
 #[test]
 fn a_manifest_that_declares_nothing_reads_with_nothing_declared() {
     let manifest: Manifest = serde_json::from_str(
-        r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+        r#"{"manifest": 3, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
     )
     .unwrap();
 
@@ -114,13 +154,14 @@ fn a_manifest_that_declares_nothing_prints_only_who_the_dog_is() {
     assert_eq!(
         value,
         serde_json::json!({
-            "manifest": 2,
+            "manifest": 3,
             "name": "shep-otel",
             "version": "0.1.3",
             "protocol": 11,
             "channel": false,
             "validate": false,
             "launch": false,
+            "pane": false,
         })
     );
 }
@@ -168,7 +209,7 @@ fn version_zero_is_not_a_manifest_and_a_later_version_still_reads() {
 
 #[test]
 fn a_manifest_that_declares_launch_reads_it_and_round_trips() {
-    let text = r#"{"manifest": 2, "name": "shep-sandbox", "version": "0.1.0", "protocol": 11, "launch": true}"#;
+    let text = r#"{"manifest": 3, "name": "shep-sandbox", "version": "0.1.0", "protocol": 11, "launch": true}"#;
 
     let manifest: Manifest = serde_json::from_str(text).unwrap();
 
@@ -286,7 +327,64 @@ fn declared_events_read_from_their_documented_names_and_round_trip() {
 }
 
 #[test]
-fn a_new_manifest_is_version_two() {
-    assert_eq!(MANIFEST_VERSION, 2);
-    assert_eq!(Manifest::new("shep-otel", "0.1.3", 11).manifest, 2);
+fn a_new_manifest_is_version_three() {
+    assert_eq!(MANIFEST_VERSION, 3);
+    assert_eq!(Manifest::new("shep-otel", "0.1.3", 11).manifest, 3);
+}
+
+/// `pane` is a v3 field: a v2 dog that prints one is not declaring it, the
+/// way a v1 dog printing `events` is not.
+#[test]
+fn a_v2_manifest_carrying_pane_declares_none() {
+    let with = |version: u32| {
+        serde_json::from_value::<Manifest>(serde_json::json!({
+            "manifest": version, "name": "shep-paddock", "version": "0.1.0", "protocol": 11,
+            "channel": true, "pane": true,
+        }))
+        .unwrap()
+    };
+
+    let v2 = with(2);
+    assert!(!v2.pane);
+    assert!(!v2.pane_ignored, "a v2 manifest never asked for a pane");
+    assert!(with(3).pane);
+}
+
+#[test]
+fn a_v3_manifest_with_pane_and_a_channel_reads_it() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 3, "name": "shep-paddock", "version": "0.1.0", "protocol": 11, "channel": true, "pane": true}"#,
+    )
+    .unwrap();
+
+    assert!(manifest.pane);
+    assert!(!manifest.pane_ignored);
+}
+
+/// A pane is answered on the channel, so a dog that asked for one without a
+/// channel has none, and `adopt` is the one place the operator hears that.
+#[test]
+fn a_v3_manifest_with_pane_and_no_channel_reads_false_and_says_so() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 3, "name": "shep-paddock", "version": "0.1.0", "protocol": 11, "pane": true}"#,
+    )
+    .unwrap();
+
+    assert!(!manifest.pane);
+    assert!(manifest.pane_ignored);
+}
+
+#[test]
+fn a_manifest_without_pane_reads_it_as_false_and_prints_it() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 3, "name": "shep-otel", "version": "0.1.3", "protocol": 11}"#,
+    )
+    .unwrap();
+
+    assert!(!manifest.pane);
+    assert!(!manifest.pane_ignored);
+    assert_eq!(
+        serde_json::to_value(&manifest).unwrap()["pane"],
+        serde_json::json!(false)
+    );
 }

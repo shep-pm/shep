@@ -72,6 +72,7 @@ mod error;
 mod identity;
 mod link;
 mod long_action;
+mod pane;
 mod probes;
 mod runtime;
 mod section;
@@ -80,10 +81,13 @@ mod sheep_settings;
 mod startup;
 mod stop;
 mod validate;
+#[cfg(feature = "clap")]
+mod verb_clap;
 
 pub use error::ShepherdError;
 pub use identity::DogIdentity;
 pub use long_action::{ActionDone, ActionId, DONE_KIND, LongActionError};
+pub use pane::pane_answer;
 pub use probes::{Probe, probe, probe_with_sheep};
 pub use runtime::DogRuntime;
 pub use section::{SectionError, parse_section};
@@ -93,6 +97,9 @@ pub use sheep_settings::{ServedSheepError, SheepSettingsReadError};
 use shep_core::config::DogTable;
 pub use shep_core::dogs::manifest::{
     DogDependency, Manifest, Permission, Serves, Subcommand, Verb,
+};
+pub use shep_core::dogs::pane::{
+    Destructive, Field, Fields, PANE_ACTION, Pane, PaneAction, Row, Section, Table,
 };
 pub use shep_core::dogs::validate::{Proposed, VALIDATE_ACTION, Verdict};
 pub use shep_core::dogs::{DOG_WIDE_KEY, SECRET_KEY, SHEEP_SCHEMA_KEY};
@@ -105,6 +112,8 @@ pub use shep_macros::dog_config;
 pub use startup::{DogAction, HomeError, PRINT_CONFIG_FLAG, UsageError, parse_args, resolve_paths};
 pub use stop::{Interrupted, Stop, StopRequest};
 pub use validate::validate_answer;
+#[cfg(feature = "clap")]
+pub use verb_clap::{FromClap, VerbClapError, render_examples};
 
 /// That a type's config schema has been through [`dog_config`], so every
 /// field marked `#[shep(secret)]` carries [`SECRET_KEY`] wherever `schemars`
@@ -284,6 +293,32 @@ mod tests {
         );
         assert!(!err.to_string().contains("hunter2"));
         assert!(!format!("{err:?}").contains("hunter2"));
+    }
+
+    /// A dog crate names the pane types here rather than in `shep_core`, so a
+    /// type left out of the re-export list is an unresolved import in the dog's
+    /// own crate. Every one of them is named below.
+    #[test]
+    fn every_pane_type_is_named_through_the_client() {
+        let pane = Pane::new()
+            .fields("host", [("VRAM", "20 GiB")])
+            .table("models", ["MODEL"], [Row::new("qwen3-32b", ["qwen3-32b"])])
+            .row_action("revoke", "Revoke lease", Destructive::Yes)
+            .action("pause", "Pause the board", Destructive::No);
+
+        let Section::Fields(fields) = &pane.sections[0] else {
+            panic!("the first section is a fields section");
+        };
+        let Section::Table(table) = &pane.sections[1] else {
+            panic!("the second section is a table section");
+        };
+
+        assert_eq!(PANE_ACTION, "shep.pane");
+        assert_eq!(fields.fields[0].label, "VRAM");
+        assert_eq!(table.rows[0].key, "qwen3-32b");
+        assert_eq!(table.row_actions[0].action, "revoke");
+        assert_eq!(pane.actions[0].label, "Pause the board");
+        assert!(pane.body().is_ok());
     }
 
     /// Everything the `schema` feature gates, gated the same way: with the

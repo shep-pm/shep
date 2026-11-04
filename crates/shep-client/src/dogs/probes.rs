@@ -117,6 +117,7 @@ pub struct Probe<'a> {
     shep: Option<String>,
     defaults: Option<String>,
     validate: bool,
+    pane: bool,
     launch: bool,
     serves: Serves,
     actions: Vec<Action>,
@@ -136,6 +137,7 @@ impl<'a> Probe<'a> {
             shep: None,
             defaults: None,
             validate: false,
+            pane: false,
             launch: false,
             serves: Serves::OptedIn,
             actions: Vec::new(),
@@ -192,6 +194,17 @@ impl<'a> Probe<'a> {
     /// is the call that answers.
     pub const fn validate(mut self) -> Self {
         self.validate = true;
+        self
+    }
+
+    /// Declares that the dog answers [`PANE_ACTION`](super::PANE_ACTION) with a
+    /// pane lookout draws. It answers over the shepherd channel, so it also
+    /// needs [`Self::ask_for_channel`], and [`pane_answer`](super::pane_answer)
+    /// is the call that answers.
+    ///
+    /// `shep adopt` reads a pane without a channel as no pane, and says so.
+    pub const fn pane(mut self) -> Self {
+        self.pane = true;
         self
     }
 
@@ -328,6 +341,7 @@ impl<'a> Probe<'a> {
         manifest.depends.dogs.clone_from(&self.dogs);
         manifest.depends.shep.clone_from(&self.shep);
         manifest.validate = self.validate;
+        manifest.pane = self.pane;
         manifest.launch = self.launch;
         manifest.serves = self.serves;
         manifest.actions.clone_from(&self.actions);

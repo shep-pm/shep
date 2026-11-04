@@ -3,14 +3,14 @@
 
 use std::collections::BTreeMap;
 
-use super::dog_upgrade::{Goal, upgrade, upgrade_all, upgrade_dog};
+use super::dog_upgrade::{Goal, upgrade_all, upgrade_dog};
 use super::install_depends::Catalog;
 use super::install_tests::{
     COMMIT, Fixture, NEWER_COMMIT, args, config, from_the_row, row, run, typing,
 };
 use super::receipt;
 use super::test_support::{streams, this_builds_ack};
-use crate::cli::{AdoptArgs, Format, UpgradeArgs};
+use crate::cli::{AdoptArgs, Format};
 use crate::commands::shep_toml::ShepToml;
 use crate::dog_index::{AvailableDog, DogSourceKind};
 use crate::exit::ExitCode;
@@ -345,30 +345,6 @@ async fn a_name_nobody_adopted_is_not_found() {
 
     assert_eq!(code, ExitCode::NotFound);
     assert!(err.contains("not an adopted dog"), "{err}");
-}
-
-#[tokio::test]
-async fn bare_upgrade_is_not_implemented_and_says_so() {
-    let fixture = Fixture::new();
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-
-    let code = upgrade(
-        &mut streams(&mut out, &mut err),
-        &fixture.paths,
-        &UpgradeArgs {
-            dog: None,
-            all: false,
-            git_ref: None,
-            release: false,
-            rollback: false,
-            refresh: false,
-        },
-    )
-    .await;
-
-    assert_eq!(code, ExitCode::Failure);
-    let err = String::from_utf8(err).unwrap();
-    assert!(err.contains("not implemented"), "{err}");
 }
 
 #[tokio::test]

@@ -389,10 +389,6 @@ impl Input {
     /// Answers by calling `answer` with the prompt: true is a yes, false a
     /// no. `answer` blocks, so a caller on an async runtime runs the install
     /// on a blocking thread.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "lookout's install modal answers through it")
-    )]
     pub(crate) fn answering(answer: impl FnMut(&Prompt) -> bool + Send + 'static) -> Self {
         Self(Source::Answering(Box::new(answer)))
     }
@@ -403,6 +399,16 @@ impl Input {
             Source::Reading { is_terminal, .. } => *is_terminal,
             Source::Answering(_) => true,
         }
+    }
+
+    /// The next line of input, `None` at its end or when answers come from a
+    /// callback, which has no line to give.
+    pub(super) fn read_line(&mut self) -> std::io::Result<Option<String>> {
+        let Source::Reading { reader, .. } = &mut self.0 else {
+            return Ok(None);
+        };
+        let mut line = String::new();
+        Ok((reader.read_line(&mut line)? > 0).then_some(line))
     }
 
     /// Asks `prompt`'s question. A reader is shown it on `streams` first; a

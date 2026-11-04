@@ -34,6 +34,7 @@ mod entry_drift;
 mod grant;
 mod grants;
 mod install;
+mod install_cargo;
 mod install_depends;
 mod install_download;
 mod install_keep;
@@ -41,6 +42,8 @@ mod install_ref;
 mod receipt;
 mod remove;
 mod second_look;
+mod session;
+mod shep_upgrade;
 mod upgrade;
 mod vet;
 
@@ -80,6 +83,10 @@ mod remove_install_tests;
 mod second_look_race_tests;
 #[cfg(test)]
 mod second_look_tests;
+#[cfg(all(test, unix))]
+mod session_tests;
+#[cfg(test)]
+mod shep_upgrade_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(all(test, unix))]

@@ -106,6 +106,54 @@ fn main() {
     // ...the dog's own loop, watching \`stop\`.
 }`;
 
+const paneSnippet = `use std::sync::{Arc, Mutex};
+
+use shep_client::dogs::{Destructive, PANE_ACTION, Pane, Probe, Row, pane_answer};
+
+fn build(models: &[String]) -> Pane {
+    Pane::new()
+        .fields("host", [("VRAM", "20 GiB")])
+        .table(
+            "models",
+            ["MODEL", "STATE"],
+            models.iter().map(|m| Row::new(m, [m.as_str(), "loaded"])),
+        )
+        .row_action("unload", "Unload", Destructive::Yes)
+}
+
+fn main() {
+    Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .ask_for_channel()
+        .pane()
+        .action("unload", "Unload a model")
+        .answer::<MyDogConfig>();
+
+    let models = Arc::new(Mutex::new(vec!["qwen3-32b".to_string()]));
+    let shown = Arc::clone(&models);
+    let shepherd = shep_channel::serve();
+    shepherd.on_action(PANE_ACTION, move |params, _name| {
+        pane_answer(params, || build(&shown.lock().unwrap()))
+    });
+    // A row action arrives as {"row": "<key>"}.
+    shepherd.on_action("unload", move |params, _name| {
+        let row = params
+            .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+            .and_then(|p| p["row"].as_str().map(str::to_owned));
+        models.lock().unwrap().retain(|m| Some(m) != row.as_ref());
+        "unloaded".to_string()
+    });
+    // ...the dog's own loop.
+}`;
+
+const paneJson = `{"sections":[
+  {"kind":"fields","id":"host","title":"host","refresh_on":[],
+   "fields":[{"label":"VRAM","value":"20 GiB"}]},
+  {"kind":"table","id":"models","title":"models","refresh_on":[],
+   "columns":["MODEL","STATE"],
+   "rows":[{"key":"qwen3-32b","cells":["qwen3-32b","loaded"]}],
+   "row_actions":[{"action":"unload","label":"Unload","destructive":true}]}
+],"actions":[]}`;
+
 const configSnippet = `use shep_client::dogs::dog_config;
 use shep_client::shep_core::values::{MemSize, UpDuration};
 
@@ -437,7 +485,7 @@ watchdog  adopted  true      stopped`}</CodeBlock>
     <p>
       <code>shep adopt</code> asks <code>--shep-manifest</code> first. A dog
       answers on stdout with one JSON object and exits 0; <code>manifest</code>{" "}
-      (the version, <code>2</code>; <code>1</code> still reads),{" "}
+      (the version, <code>3</code>; <code>1</code> and <code>2</code> still read),{" "}
       <code>name</code>, <code>version</code>{" "}
       and <code>protocol</code> are required, and a field shep doesn't know is
       ignored. The fields are listed in <code>docs/dogs.md</code>.
@@ -478,6 +526,13 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
       is below.
     </p>
     <p>
+      <code>pane</code> says the dog answers <code>shep.pane</code> with a
+      status pane for lookout to draw. It needs <code>channel</code>: without
+      one the manifest reads <code>pane</code> as false and{" "}
+      <code>shep adopt</code> says the dog has none. Nothing asks for a pane
+      yet.
+    </p>
+    <p>
       <code>launch</code> says the dog runs a sheep's command, as{" "}
       <code>&lt;path&gt; launch &lt;sheep&gt; -- &lt;cmd&gt;</code>.{" "}
       <code>shep adopt</code> refuses a dog adopted as <code>sandbox</code>{" "}
@@ -485,19 +540,56 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
     </p>
     <p>
       <code>verb</code> is how shep describes <code>shep &lt;name&gt;</code>:
-      its <code>description</code> is the line the dog gets in the Dogs group
-      of <code>shep --help</code>, and its <code>subcommands</code> are what
-      <code>shep &lt;name&gt; --help</code> prints and what completion offers.
-      A dog that declares subcommands gets shep's page for them and its
-      binary never runs for <code>--help</code>; one that declares none keeps
-      <code>--help</code> as a pass-through. Both read the manifest cache,
-      never the binary, and completion is generated from the registry as it
-      stands, so generate the script again after an adopt. A manifest's text
-      prints as one line: braces, newlines and escapes go. A name a shell
-      would read as code is not completed.
+      its <code>description</code> is the dog's line in the Dogs group of{" "}
+      <code>shep --help</code>, its <code>subcommands</code> are what{" "}
+      <code>shep &lt;name&gt; --help</code> prints and what completion offers,
+      each with an optional <code>usage</code> of the words after its name,
+      and its <code>examples</code> are up to three command lines, each
+      without the <code>$ </code> shep prints. A Rust dog on clap writes none
+      of it by hand: <code>Verb::from_clap(&amp;Command)</code>, behind
+      shep-client's <code>clap</code> feature, reads the about, every visible
+      subcommand's name, about and <code>override_usage</code>, and the{" "}
+      <code>Examples:</code> block <code>render_examples</code> writes to{" "}
+      <code>after_help</code>.{" "}
+      <code>shep adopt</code> warns, and adopts anyway, past 60 columns of
+      description or a fourth example. A dog that declares subcommands gets
+      shep's page for them and its binary never runs for{" "}
+      <code>--help</code>; one that declares none keeps <code>--help</code> as
+      a pass-through. Both read the manifest cache, never the binary, and
+      completion is generated from the registry as it stands, so generate the
+      script again after an adopt. A manifest's text prints as one line:
+      braces, newlines and escapes go. A name a shell would read as code is
+      not completed.
     </p>
     <CodeBlock>{`notice[dog_dependency_missing]: \`otel\` depends on \`log-rotate\`, which is not adopted, so \`otel\` may not work until you run \`shep adopt\` for \`log-rotate\`
-notice[dog_needs_newer_shep]: \`otel\` needs shep 0.20.0 or newer, and this is shep 0.16.1, so \`otel\` may not work until you upgrade shep`}</CodeBlock>
+notice[dog_needs_newer_shep]: \`otel\` needs shep 0.20.0 or newer, and this is shep 0.16.1, so \`otel\` may not work until you upgrade shep
+notice[dog_verb_declaration]: \`otel\` declares more in its manifest \`verb\` than shep's help holds: a description of 71 columns, where shep's help fits 60. The dog is adopted and its help still prints; this is a bug to report to whoever wrote it`}</CodeBlock>
+
+    <h3 id="showing-a-pane">Showing a pane</h3>
+    <p>
+      A dog that declares <code>pane</code> answers <code>shep.pane</code>{" "}
+      with what the operator should read: sections of label and value pairs,
+      tables with a key per row, and the actions that go with them. Lookout
+      draws the answer as written, so every value is a string the dog has
+      already formatted. <code>Probe::pane</code> sets the flag and needs{" "}
+      <code>ask_for_channel</code>: <code>shep adopt</code> reads a pane
+      without a channel as no pane, and says so. <code>pane_answer</code>{" "}
+      writes the reply body, from a pane built afresh on each ask.
+    </p>
+    <CodeBlock label="main.rs">{paneSnippet}</CodeBlock>
+    <p>
+      The body is one JSON object, which a dog in any language can write by
+      hand:
+    </p>
+    <CodeBlock label="the answer">{paneJson}</CodeBlock>
+    <p>
+      A row holds one cell per column, and a section id or a row key may not
+      repeat: <code>Pane::body</code> refuses them, and shep cannot read a body
+      that has them. A row action is triggered with <code>{`{"row": "<key>"}`}</code>{" "}
+      and a pane action with no params. Each name is declared with{" "}
+      <code>Probe::action</code> and answered by its own{" "}
+      <code>on_action</code> handler.
+    </p>
 
     <h2 id="answering-version">Answering <code>--version</code></h2>
     <p>
