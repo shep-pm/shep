@@ -92,8 +92,8 @@ pub struct LookoutArgs {
     /// admits only with [`DOG_TAB`] as its tab.
     pub dog: Option<String>,
     /// Whether lookout opens on the dog catalogue rather than the flock
-    /// table, which [`LookoutScreen::Catalogue`] sets and
-    /// [`crate::lookout::entry`] turns into the `i` key's own message.
+    /// table, which [`LookoutScreen::Catalogue`] sets and the lookout entry
+    /// turns into the `i` key's own message.
     pub catalogue: bool,
 }
 
