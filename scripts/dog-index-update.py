@@ -3,11 +3,11 @@
 
 `.github/workflows/dog-release.yml` runs this after a dog's binaries are on
 its release. The change it makes is the one a human reviews before shep will
-install that version, so it touches one row's `source.version` and
-`source.sha256` and nothing else, and keeps the file byte-for-byte otherwise.
-It drops any `source.permissions` the row carried: they described the version
-this one replaces, and this script reads no manifest, so it has nothing to
-restate them from.
+install that version, so it changes one row's `source.version` and
+`source.sha256`, drops any `source.permissions` that row carried, and keeps
+the file byte-for-byte otherwise. A permissions list describes the version it
+was written for, and this script is handed no manifest, so it has nothing to
+restate one from.
 
 The hashes file is `sha256sum` output over the release's assets, named
 `<package>-<version>-<target>`, plus `.exe` on Windows. The map written is
