@@ -114,6 +114,8 @@ pub(crate) use vet::sha256_hex;
 // `dogs::<name>` path, so the split stays invisible to every caller outside
 // this directory. The lookout config pane calls `ask_schema` and renders
 // `EnableRefusal`; `hook::run_on_remove` calls `dog_env`.
+#[cfg(test)]
+pub(crate) use consent::declared_review;
 #[expect(unused_imports, reason = "lookout's install modal reaches them here")]
 pub(crate) use consent::{Input, Prompt, Review};
 pub(crate) use disable::disable_in_config;
