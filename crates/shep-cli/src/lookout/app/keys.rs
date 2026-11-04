@@ -87,6 +87,10 @@ impl App {
         if matches!(self.body, Body::Secrets(_)) {
             return self.on_secrets_key(key);
         }
+        // The catalogue, the same as the four panes above.
+        if matches!(self.body, Body::Catalogue(_)) {
+            return self.on_catalogue_key(key);
+        }
         // The sheep pane owns the keyboard while it is open, the same as
         // the three full-screen panes above. `Body` holds only one at a
         // time, so this ordering is documentation, not correctness, the

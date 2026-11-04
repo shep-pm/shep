@@ -75,7 +75,13 @@ pub async fn cached_index(
 /// `None` when there is no copy, it was written for another url, or it no
 /// longer parses. For a listing that must never wait on the network.
 pub fn cached_only(paths: &ShepPaths, url: &str) -> Option<Index> {
-    read_cache(&paths.dog_index_cache, url, SystemTime::now()).map(|(index, _age)| index)
+    cached_with_age(paths, url).map(|(index, _age)| index)
+}
+
+/// [`cached_only`] with how long ago the copy was cached, for a caller that
+/// decides from the age whether to fetch.
+pub fn cached_with_age(paths: &ShepPaths, url: &str) -> Option<(Index, Duration)> {
+    read_cache(&paths.dog_index_cache, url, SystemTime::now())
 }
 
 async fn load<F, Fut>(

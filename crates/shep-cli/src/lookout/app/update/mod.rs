@@ -55,6 +55,7 @@ impl App {
             modals: modal::Modals::default(),
             focus: None,
             focus_ask: None,
+            catalogue: Vec::new(),
         }
     }
 
@@ -120,6 +121,7 @@ impl App {
                 value,
             } => self.on_revealed_answer(key, environment, value),
             Msg::SecretWritten { result } => self.on_secret_written(result),
+            Msg::Catalogue { result } => self.on_catalogue(result),
         }
     }
 }

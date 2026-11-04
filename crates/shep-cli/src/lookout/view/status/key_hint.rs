@@ -198,6 +198,16 @@ pub(super) fn secrets_hint(control: Control) -> String {
     }
 }
 
+/// The catalogue's own key hint: the list moves and opens, an entry only
+/// goes back.
+pub(super) const fn catalogue_hint(entry_open: bool) -> &'static str {
+    if entry_open {
+        "esc back   h help   q quit"
+    } else {
+        "esc close   j/k select   g/G first/last   enter open   h help   q quit"
+    }
+}
+
 /// The config pane's own key hint.
 ///
 /// `space cycle`, `e edit` and `d back to default` show only under

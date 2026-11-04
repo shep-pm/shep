@@ -55,7 +55,7 @@ pub fn draw(app: &App, frame: &mut Frame<'_>) {
     super::modal::draw(app, area, frame.buffer_mut());
 }
 
-/// Whichever of the six [`Body`] variants is up, plus the title band and
+/// Whichever of the [`Body`] variants is up, plus the title band and
 /// the status bar around it. Never the keymap overlay: [`draw`] draws that
 /// once, over whatever this left on the screen.
 fn draw_body(app: &App, frame: &mut Frame<'_>) {
@@ -129,6 +129,10 @@ fn draw_body(app: &App, frame: &mut Frame<'_>) {
         }
         Body::Secrets(pane) => {
             super::secrets::draw(app, pane, body, buffer);
+            true
+        }
+        Body::Catalogue(pane) => {
+            super::catalogue::draw(app, pane, body, buffer);
             true
         }
         Body::Sheep(_) => unreachable!("handled above, ahead of the roomy blank row"),
