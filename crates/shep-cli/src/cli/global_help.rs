@@ -52,9 +52,26 @@ pub(crate) fn with_global_footer(command: clap::Command) -> clap::Command {
     };
     each_verb(command, &|verb| {
         let takes_host = crate::remote::takes_host(verb.get_name());
-        footed(verb, &flags, takes_host)
+        footed(with_examples(verb), &flags, takes_host)
     })
     .after_help(after)
+}
+
+/// `verb` with its `Examples` section under its own after-help, in both the
+/// short and the long page.
+fn with_examples(verb: clap::Command) -> clap::Command {
+    let Some(section) = super::examples::section(verb.get_name()) else {
+        return verb;
+    };
+    let short = with_footer(verb.get_after_help(), &section);
+    let long = verb
+        .get_after_long_help()
+        .map(|text| with_footer(Some(text), &section));
+    let verb = verb.after_help(short);
+    match long {
+        Some(long) => verb.after_long_help(long),
+        None => verb,
+    }
 }
 
 /// `command` with `change` applied to each of its direct subcommands.
@@ -298,7 +315,7 @@ mod tests {
             long.lines().count()
         );
         assert!(
-            short.lines().count() < 12,
+            short.lines().count() < 17,
             "{} lines:\n{short}",
             short.lines().count()
         );

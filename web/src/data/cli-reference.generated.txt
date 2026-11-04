@@ -260,6 +260,11 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep start server.js --name api
+  $ shep start Flockfile.toml
+  $ shep start api
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:add@@
 Register a sheep without starting it.
@@ -366,6 +371,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep add worker.py --name worker
+  $ shep add Flockfile.toml
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:serve@@
 Serve a directory over plain HTTP, as a managed sheep.
@@ -440,6 +449,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep serve ./public
+  $ shep serve ./dist --port 3000 --spa
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:stop@@
 Stop one or more sheep
@@ -455,6 +468,11 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep stop api
+  $ shep stop 'api-*'
+  $ shep stop fold:web
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:restart@@
@@ -493,6 +511,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep restart api
+  $ shep restart all
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:reset@@
 Zero the restart counters of one or more sheep.
@@ -511,6 +533,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep reset api
+  $ shep reset all
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:reload@@
@@ -572,6 +598,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep reload api
+  $ shep reload fold:web
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:delete@@
 Delete one or more sheep or dogs, for good
@@ -605,6 +635,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep delete api
+  $ shep delete '/^tmp-/'
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:stock@@
 Set how many instances one app runs
@@ -634,6 +668,9 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep stock api 4
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:flock@@
@@ -676,6 +713,11 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep flock
+  $ shep flock --follow --interval 2
+  $ shep flock --format json
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:dogs@@
 List the dogs, and nothing else
@@ -708,6 +750,11 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep dogs
+  $ shep dogs --available
+  $ shep dogs grant kelpie flock.read
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:dogs grant@@
@@ -785,6 +832,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep enable api
+  $ shep enable kelpie --yes
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:disable@@
 Turn a sheep or a dog off, until `shep enable`
@@ -809,6 +860,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep disable api
+  $ shep disable fold:web
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:install@@
@@ -851,6 +906,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep install
+  $ shep install kelpie --yes
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:upgrade@@
 Upgrade an installed dog, with a way back
@@ -888,6 +947,11 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep upgrade kelpie
+  $ shep upgrade --dogs
+  $ shep upgrade kelpie --rollback
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:adopt@@
@@ -928,6 +992,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep adopt ./shep-kelpie
+  $ shep adopt ./target/release/mydog --name watcher
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:describe@@
 Describe one sheep in detail.
@@ -952,6 +1020,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep describe api
+  $ shep describe 'api-*'
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:trigger@@
@@ -981,6 +1053,11 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep trigger api reindex
+  $ shep trigger api warm-cache /products
+  $ shep trigger kelpie
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:signal@@
@@ -1014,6 +1091,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep signal api SIGHUP
+  $ shep signal 'worker-*' usr1
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whisper@@
 Write one line to matched sheep's stdin.
@@ -1042,6 +1123,9 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep whisper repl 'reload config'
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:fold@@
 List one fold
@@ -1055,6 +1139,9 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep fold web
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:bleats@@
@@ -1097,6 +1184,11 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep bleats api
+  $ shep bleats api --no-follow --lines 100
+  $ shep bleats --err
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:lookout@@
@@ -1153,6 +1245,11 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep lookout
+  $ shep lookout api
+  $ shep lookout api restart --read-only
+
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whistle@@
 Serve the MCP interface on stdin/stdout for an AI agent.
@@ -1175,6 +1272,9 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep whistle
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:reopen@@
 Reopen log files after an external rotator has renamed them
@@ -1190,6 +1290,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep reopen
+  $ shep reopen api
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:flush@@
@@ -1208,6 +1312,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep flush api
+  $ shep flush --daemon
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:barks@@
 Show the alert history: `barks.jsonl`, newest last.
@@ -1224,6 +1332,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep barks
+  $ shep barks --tail 20
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv@@
@@ -1247,6 +1359,11 @@ Commands:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep kv set deploy-id 4821
+  $ shep kv get deploy-id
+  $ shep kv unset deploy-id
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kv get@@
@@ -1332,6 +1449,11 @@ Commands:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep secret set DATABASE_URL --stdin
+  $ shep secret set API_TOKEN --stdin --env staging
+  $ shep secret list
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:secret set@@
@@ -1423,6 +1545,11 @@ Commands:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep host add deploy@build.example.com
+  $ shep host list
+  $ shep host remove amp2
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:host add@@
@@ -1541,6 +1668,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep copy web.restart_delay api.restart_delay
+  $ shep copy web.env api.env --except SESSION_SECRET
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:get@@
 Print a sheep's or a dog's settings as TOML.
@@ -1575,6 +1706,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep get api.max_memory
+  $ shep get api.dogs.kelpie.git
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:set@@
@@ -1619,6 +1754,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep set api.restart_delay 3s
+  $ shep set api.max_memory 512M --dry-run
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:unset@@
 Drop an override, or remove a dog's key
@@ -1654,6 +1793,9 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep unset api.max_memory
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:ping@@
 Check whether the shepherd answers
@@ -1664,6 +1806,9 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep ping
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:kill@@
 Shut the shepherd down
@@ -1673,6 +1818,9 @@ Usage: shep kill [OPTIONS]
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep kill
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:save@@
@@ -1687,6 +1835,9 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep save
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:muster@@
 Assemble the flock from the muster roll
@@ -1698,6 +1849,9 @@ Usage: shep muster [OPTIONS]
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep muster
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:runtime@@
@@ -1728,6 +1882,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep runtime
+  $ shep runtime Flockfile.toml
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:dev@@
 Run one Flockfile's flock in a throwaway session
@@ -1756,6 +1914,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep dev
+  $ shep dev server.js --name api
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:import@@
 Read somebody else's config into shep
@@ -1772,6 +1934,10 @@ Commands:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep import pm2 --dry-run
+  $ shep import env .env --app api --secret DATABASE_URL
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:import pm2@@
@@ -1909,6 +2075,10 @@ On Windows this registers a per-user Scheduled Task with a logon trigger instead
 back at sign-in, not at boot. It runs as you, stores no password and needs no elevation. `--user`
 naming anyone else, and `--init`, are refused there.
 
+Examples:
+  $ shep startup
+  $ shep startup --init systemd --user deploy
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:unstartup@@
 Remove the unit `startup` installed
@@ -1943,6 +2113,9 @@ Options:
 On Windows this removes the logon task. A running shepherd keeps running; `shep kill` stops it.
 `--user` naming anyone else, and `--init`, are refused there.
 
+Examples:
+  $ shep unstartup
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:completions@@
 Print a shell completion script.
@@ -1960,6 +2133,10 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep completions zsh
+  $ shep completions bash
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:init@@
@@ -1981,6 +2158,11 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep init
+  $ shep init Flockfile.yaml
+  $ shep init --all
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:style@@
@@ -2007,6 +2189,10 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep style
+  $ shep style plain
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:welcome@@
 Print the welcome and the quick start
@@ -2020,5 +2206,8 @@ Usage: shep welcome [OPTIONS]
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  $ shep welcome
 
 Global flags: --format, --quiet, --style, --home. See shep help flags
