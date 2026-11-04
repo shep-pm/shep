@@ -132,7 +132,7 @@ async fn build(
     if let Some(progress) = progress {
         progress.tell(Step::Building);
     }
-    let mut tail = String::new();
+    let mut said = Vec::new();
     for flag in flags_for(git_ref) {
         let command: Vec<String> = [
             "cargo",
@@ -163,7 +163,9 @@ async fn build(
                 return Ok(Built { commit, command });
             }
             Ok(ran) => {
-                tail = ran.tail;
+                if !ran.tail.is_empty() {
+                    said.push(format!("with {flag}:\n{}", ran.tail));
+                }
                 let _ = std::fs::remove_dir_all(staging);
             }
             Err(err) => {
@@ -185,7 +187,7 @@ async fn build(
                 "`cargo install` for {package} from {git_ref} of {repo} failed (tried as \
                  {tried}); nothing was adopted"
             ),
-            &tail,
+            &said.join("\n"),
         ),
     ))
 }
