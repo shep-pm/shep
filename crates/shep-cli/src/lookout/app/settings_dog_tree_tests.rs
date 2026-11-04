@@ -148,6 +148,7 @@ fn the_screen_opens_with_every_dog_folded_and_no_probe_asked() {
                 | SettingsRow::Entry { .. }
                 | SettingsRow::AddEntry(_)
                 | SettingsRow::Dog(_)
+                | SettingsRow::BrowseDogs
         )),
         "the folded screen shows one row per dog and nothing under it: {:?}",
         settings.rows()

@@ -1,6 +1,6 @@
 ---
 source: crates/shep-cli/src/lookout/view/settings/mod.rs
-expression: render_text(terminal.backend().buffer())
+expression: screen
 ---
 shep lookout   /home/ada/.shep                                                                            3 in the flock
                                                                                                                         
@@ -37,7 +37,7 @@ shep lookout   /home/ada/.shep                                                  
     sink_timeout      (unset)                                      dogs.toml, it is told                                
     sinks             <set>                                        read-only                                            
   ▸ metrics                                           no       built-in              [version]            not running      
-                                                                                                                        
+  browse dogs  Enter opens the dog index                                                                                
                                                                                                                         
                                                                                                                         
                                                                                                                         

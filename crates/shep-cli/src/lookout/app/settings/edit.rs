@@ -59,7 +59,8 @@ impl Settings {
             | SettingsRow::DogGrant { .. }
             | SettingsRow::DogEnv(_)
             | SettingsRow::DogEnvKey { .. }
-            | SettingsRow::DogEnvNew(_) => None,
+            | SettingsRow::DogEnvNew(_)
+            | SettingsRow::BrowseDogs => None,
         }
     }
 
@@ -121,7 +122,8 @@ impl Settings {
             | SettingsRow::DogEnv(_)
             | SettingsRow::DogEnvKey { .. }
             | SettingsRow::DogEnvNew(_)
-            | SettingsRow::DogField { .. } => None,
+            | SettingsRow::DogField { .. }
+            | SettingsRow::BrowseDogs => None,
         }
     }
 }

@@ -22,6 +22,12 @@ use crate::vocabulary::Reported;
 pub(super) const DOGS_CAPTION: &str =
     "space arms, Enter applies; e opens a dog; a dog needs no reload";
 
+/// The label of the section's last row.
+const BROWSE_LABEL: &str = "browse dogs";
+
+/// What `Enter` does on [`BROWSE_LABEL`]'s row.
+const BROWSE_HINT: &str = "Enter opens the dog index";
+
 /// The floor on the dog header row's NAME column, mirroring
 /// [`super::super::flock::columns::NAME_MIN`]: never shrinks below a name worth
 /// reading.
@@ -145,6 +151,30 @@ fn running_of(app: &App, name: &str) -> Option<String> {
         .into_iter()
         .find(|row| row.info.dog.is_some() && row.info.name == name)
         .map(|row| Reported::of(row.info.status, row.info.handshook).word())
+}
+
+/// The row that ends the section, [`SettingsRow::BrowseDogs`]: its label and
+/// a hint for `Enter`, fitted to `width`, a BODY width.
+///
+/// The label is fitted first and the hint takes what it leaves, so a narrow
+/// terminal cuts the hint and keeps the name.
+///
+/// [`SettingsRow::BrowseDogs`]: super::super::super::app::SettingsRow::BrowseDogs
+pub(super) fn browse_dogs_line(selected: bool, width: u16, palette: Palette) -> Line<'static> {
+    let label_width = u16::try_from(BROWSE_LABEL.chars().count())
+        .unwrap_or(width)
+        .min(width);
+    let label = fit(BROWSE_LABEL, label_width);
+    let room = width.saturating_sub(label_width).saturating_sub(2);
+    let hint = if room == 0 {
+        String::new()
+    } else {
+        format!("  {}", fit(BROWSE_HINT, room).trim_end())
+    };
+    Line::from(vec![
+        Span::raw(format!("{} {}", mark(selected), label)),
+        Span::styled(hint, palette.muted()),
+    ])
 }
 
 /// One dog's header row: the fold glyph and its name, whether the file has it
