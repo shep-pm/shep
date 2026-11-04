@@ -633,7 +633,8 @@ where
             Effect::CopyToClipboard(value) => {
                 let _ = super::term::copy_to_clipboard(&value.0);
             }
-            Effect::None => {}
+            // Nothing opens a modal yet, so nothing is waiting on an answer.
+            Effect::ModalAnswered { .. } | Effect::None => {}
         }
     }
 

@@ -52,6 +52,7 @@ impl App {
             grouping: Grouping::Flat,
             collapsed_folds: HashSet::new(),
             keymap_open: false,
+            modals: modal::Modals::default(),
             focus: None,
             focus_ask: None,
         }

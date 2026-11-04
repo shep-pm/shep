@@ -51,6 +51,12 @@ impl App {
     }
 
     pub(super) fn on_key(&mut self, key: KeyPress) -> Effect {
+        // A modal owns the keyboard before everything else, text mode
+        // included: a question left unanswered behind a filter box would
+        // take its Enter for the filter's.
+        if self.modal().is_some() {
+            return self.on_modal_key(key);
+        }
         // While the box is open every key is text.
         if self.mode == InputMode::Text {
             return self.on_text_key(key);
