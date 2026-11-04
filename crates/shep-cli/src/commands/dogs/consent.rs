@@ -147,6 +147,25 @@ pub(super) fn review(manifest: Option<&Manifest>) -> Result<Review, UnknownRequi
     }
 }
 
+/// A declared review of `entries`, each a permission name, whether it is
+/// required, and its reason, as `review` would list them from a manifest.
+/// For tests outside this directory, which cannot build a [`Listed`].
+#[cfg(test)]
+pub(crate) fn declared_review(entries: &[(&str, bool, &str)]) -> Review {
+    Review::Declared {
+        listed: entries
+            .iter()
+            .map(|&(name, required, reason)| Listed {
+                name: name.to_owned(),
+                required,
+                reason: reason.to_owned(),
+            })
+            .collect(),
+        dropped: Vec::new(),
+        events: Vec::new(),
+    }
+}
+
 /// What the operator is shown and asked before a dog is granted anything.
 ///
 /// Built apart from reading the answer, so the CLI and lookout's modal show

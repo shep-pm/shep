@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::dogs::{Prompt, Review};
+use crate::commands::dogs::{Prompt, Review, declared_review};
 use crate::lookout::app::{KeyPress, Modal, Msg};
 use crate::lookout::view::fixtures;
 use crate::lookout::view::testing::draw_to;
@@ -20,12 +20,18 @@ fn prompt_with(note: Option<&str>) -> Prompt {
         .expect("an undeclared dog is asked")
 }
 
-/// Thirty permission lines in the shape `Prompt::for_review` lists them.
-fn long_listing() -> String {
-    (0..30)
-        .map(|n| format!("  perm-{n:02} (optional): reason number {n}"))
-        .collect::<Vec<_>>()
-        .join("\n")
+/// A dog that declares thirty permissions, as a manifest would list them.
+fn declared_prompt() -> Prompt {
+    let names: Vec<String> = (0..30).map(|n| format!("events:build-{n:02}")).collect();
+    let reasons: Vec<String> = (0..30).map(|n| format!("reason number {n}")).collect();
+    let entries: Vec<(&str, bool, &str)> = names
+        .iter()
+        .zip(&reasons)
+        .enumerate()
+        .map(|(n, (name, reason))| (name.as_str(), n % 2 == 0, reason.as_str()))
+        .collect();
+    Prompt::for_review("metrics", "adopt", &declared_review(&entries), None)
+        .expect("a dog that declares permissions is asked")
 }
 
 fn assert_within(frame: &str, width: usize) {
@@ -87,7 +93,7 @@ fn a_grant_with_a_note_draws_borderless_at_the_narrow_floor() {
 }
 
 fn long_grant(app: &mut App) {
-    app.open_modal(Modal::grant(2, prompt_with(Some(&long_listing()))));
+    app.open_modal(Modal::grant(2, declared_prompt()));
 }
 
 #[test]
@@ -96,23 +102,31 @@ fn a_long_permission_list_scrolls_to_its_question_at_80_columns() {
     long_grant(&mut app);
 
     let top = drawn(&mut app, 80, 24);
-    assert!(top.contains("perm-00"), "{top}");
-    assert!(!top.contains("perm-29"), "{top}");
-    assert!(!top.contains("adopt metrics with full access?"), "{top}");
+    assert!(top.contains("metrics declares these permissions:"), "{top}");
+    assert!(
+        top.contains("events:build-00 (required): reason number 0"),
+        "{top}"
+    );
+    assert!(top.contains("events:build-01 (optional)"), "{top}");
+    assert!(!top.contains("events:build-29"), "{top}");
+    assert!(!top.contains("adopt metrics and grant it these?"), "{top}");
     assert!(top.contains("j/k g/G scroll   enter yes"), "{top}");
 
     app.update(Msg::Key(KeyPress::SelectLast));
     let bottom = drawn(&mut app, 80, 24);
-    assert!(!bottom.contains("perm-00"), "{bottom}");
-    assert!(bottom.contains("perm-29"), "{bottom}");
+    assert!(!bottom.contains("events:build-00"), "{bottom}");
     assert!(
-        bottom.contains("adopt metrics with full access?"),
+        bottom.contains("events:build-29 (optional): reason number 29"),
+        "{bottom}"
+    );
+    assert!(
+        bottom.contains("adopt metrics and grant it these?"),
         "{bottom}"
     );
     assert!(app.modal().is_some());
 
     app.update(Msg::Key(KeyPress::SelectFirst));
-    assert!(drawn(&mut app, 80, 24).contains("perm-00"));
+    assert!(drawn(&mut app, 80, 24).contains("events:build-00"));
     assert_within(&top, 80);
     assert_within(&bottom, 80);
 }
@@ -124,17 +138,22 @@ fn a_long_permission_list_scrolls_one_line_at_a_time_at_the_narrow_floor() {
     let width = crate::lookout::view::MIN_TERM_WIDTH;
 
     let top = drawn(&mut app, width, 10);
-    assert!(top.contains("declares nothing"), "{top}");
+    let flat_top = top.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat_top.contains("declares these permissions:"), "{top}");
     assert!(!top.contains(BOX_CORNER), "{top}");
 
     app.update(Msg::Key(KeyPress::SelectDown));
     let down = drawn(&mut app, width, 10);
-    assert!(!down.contains("declares nothing"), "{down}");
+    assert!(!down.contains("metrics declares"), "{down}");
 
     app.update(Msg::Key(KeyPress::SelectLast));
     let bottom = drawn(&mut app, width, 10);
     let flat = bottom.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(flat.contains("adopt metrics with full access?"), "{bottom}");
+    assert!(flat.contains("events:build-29 (optional)"), "{bottom}");
+    assert!(
+        flat.contains("adopt metrics and grant it these?"),
+        "{bottom}"
+    );
     for frame in [&top, &down, &bottom] {
         assert_within(frame, usize::from(width));
     }
