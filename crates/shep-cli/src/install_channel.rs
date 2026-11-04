@@ -49,6 +49,19 @@ pub(crate) struct Probe {
 }
 
 impl Probe {
+    /// The probe with each root resolved the way the binary's path is, so a
+    /// symlinked or relative root still matches. A root that does not resolve
+    /// is kept as given.
+    fn resolved(self) -> Self {
+        let resolve = |root: PathBuf| root.canonicalize().unwrap_or(root);
+        Self {
+            cargo_home: self.cargo_home.map(resolve),
+            scoop_roots: self.scoop_roots.into_iter().map(resolve).collect(),
+            chocolatey_root: self.chocolatey_root.map(resolve),
+            dpkg_info: self.dpkg_info,
+        }
+    }
+
     /// The probe `var` describes.
     fn from_env(var: &dyn Fn(&str) -> Option<OsString>) -> Self {
         let set = |key: &str| {
@@ -110,7 +123,10 @@ impl Channel {
         let Ok(exe) = std::env::current_exe().and_then(|exe| exe.canonicalize()) else {
             return Self::Archive;
         };
-        Self::of(&exe, &Probe::from_env(&|key| std::env::var_os(key)))
+        Self::of(
+            &exe,
+            &Probe::from_env(&|key| std::env::var_os(key)).resolved(),
+        )
     }
 
     /// The command that upgrades shep through this channel, `None` when none

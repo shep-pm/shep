@@ -236,3 +236,36 @@ fn each_manager_names_its_command_and_deb_and_archive_name_none() {
     assert_eq!(Channel::Deb.command().as_deref(), None);
     assert_eq!(Channel::Archive.command().as_deref(), None);
 }
+
+/// `running()` resolves the binary's path, so the roots it is compared with
+/// have to be resolved too: `~/.cargo` is often a symlink.
+#[cfg(unix)]
+#[test]
+fn a_symlinked_root_matches_the_binary_resolved_through_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("data");
+    std::fs::create_dir_all(real.join("cargo/bin")).unwrap();
+    std::fs::create_dir_all(real.join("scoop/apps/shep")).unwrap();
+    std::fs::create_dir_all(real.join("choco/lib/shep")).unwrap();
+    std::os::unix::fs::symlink(real.join("cargo"), dir.path().join("dot-cargo")).unwrap();
+    std::os::unix::fs::symlink(real.join("scoop"), dir.path().join("scoop-link")).unwrap();
+    std::os::unix::fs::symlink(real.join("choco"), dir.path().join("choco-link")).unwrap();
+    let probe = Probe {
+        cargo_home: Some(dir.path().join("dot-cargo")),
+        scoop_roots: vec![dir.path().join("scoop-link")],
+        chocolatey_root: Some(dir.path().join("choco-link")),
+        ..Probe::default()
+    }
+    .resolved();
+
+    for (exe, channel) in [
+        ("cargo/bin/shep", Channel::Cargo),
+        ("scoop/apps/shep/shep", Channel::Scoop),
+        ("choco/lib/shep/shep", Channel::Chocolatey),
+    ] {
+        let exe = real.join(exe);
+        std::fs::write(&exe, "").unwrap();
+        let exe = exe.canonicalize().unwrap();
+        assert_eq!(Channel::of(&exe, &probe), channel, "{}", exe.display());
+    }
+}
