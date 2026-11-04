@@ -221,7 +221,7 @@ async fn a_host_on_a_newer_protocol_is_refused_naming_the_local_upgrade() {
             "{text}"
         );
         assert!(text.contains("newer wire protocol"), "{text}");
-        assert!(text.contains("cargo install shep"), "{text}");
+        assert!(text.contains("shep upgrade"), "{text}");
         assert!(
             !text.contains("ssh amp2 shep daemon reload"),
             "a reload on a host that is already ahead changes nothing: {text}"
@@ -243,7 +243,7 @@ async fn a_host_ahead_of_this_build_is_one_line_naming_the_upgrade() {
     let message = host_skew(&client, VersionGuard::Enforce)
         .expect_err("a host on another protocol is a failure of its own");
     assert_eq!(message.lines().count(), 1, "{message}");
-    assert!(message.contains("cargo install shep"), "{message}");
+    assert!(message.contains("shep upgrade"), "{message}");
     assert!(
         !message.contains("ssh amp2"),
         "the ssh reload is the fix for the other direction: {message}"
@@ -253,7 +253,7 @@ async fn a_host_ahead_of_this_build_is_one_line_naming_the_upgrade() {
     let notice = host_skew(&client, VersionGuard::Warn)
         .unwrap()
         .expect("a refused protocol is still worth naming to a read verb");
-    assert!(notice.contains("cargo install shep"), "{notice}");
+    assert!(notice.contains("shep upgrade"), "{notice}");
     assert!(!notice.contains("ssh amp2"), "{notice}");
 }
 
@@ -269,8 +269,8 @@ fn a_host_ahead_is_told_the_upgrade_of_the_channel_this_shep_came_from() {
         (Channel::Scoop, "scoop update shep"),
         (Channel::Winget, "winget upgrade shep-pm.shep"),
         (Channel::Chocolatey, "choco upgrade shep"),
-        (Channel::Deb, "cargo install shep"),
-        (Channel::Archive, "cargo install shep"),
+        (Channel::Deb, "shep upgrade"),
+        (Channel::Archive, "shep upgrade"),
     ] {
         assert_eq!(protocol_fix(Some("amp2"), true, channel), command);
     }

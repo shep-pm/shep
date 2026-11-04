@@ -109,13 +109,13 @@ mod tests {
     /// Not an assertion, just a line of output where a wrong number would
     /// otherwise pass in silence.
     ///
-    /// The four integration binaries require `test-support`. Cargo skips a
+    /// The five integration binaries require `test-support`. Cargo skips a
     /// target whose required features are off without a word. A bare
     /// `cargo test -p shep-client` then reports a fraction of this crate's
     /// tests as the whole. This case compiles only when the feature is off.
     #[cfg(not(feature = "test-support"))]
     #[test]
-    fn heads_up_four_integration_binaries_need_test_support_and_are_not_running() {
+    fn heads_up_five_integration_binaries_need_test_support_and_are_not_running() {
         assert!(
             !cfg!(feature = "test-support"),
             "compiled only when the feature is off"

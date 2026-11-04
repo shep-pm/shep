@@ -8,7 +8,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use shep_core::atomic_file;
-use shep_core::dogs::{DogVersion, MANIFEST_FLAG, manifest::Manifest};
+use shep_core::dogs::manifest::{MAX_DESCRIPTION_COLUMNS, MAX_EXAMPLES, Manifest};
+use shep_core::dogs::{DogVersion, MANIFEST_FLAG};
+
+use crate::output::{Streams, width::text_columns};
 
 use super::{AdoptRefusal, DogSchema, ask};
 
@@ -189,6 +192,43 @@ pub(super) fn schema_of(manifest: &Manifest) -> DogSchema {
         .settings
         .clone()
         .map_or(DogSchema::Silent, DogSchema::Published)
+}
+
+/// [`emit_notice`](crate::output::emit_notice) code for a manifest `verb`
+/// declaring more than shep's help can hold; not a failure.
+const DOG_VERB_NOTICE: &str = "dog_verb_declaration";
+
+/// Warns, once, that `name` declares a `verb` past what shep's help draws, and
+/// lets the adopt proceed.
+///
+/// A dog's help is drawn from these fields, so what is past them is a line no
+/// operator ever sees. Whoever wrote the dog is the one to cut it.
+pub(crate) fn warn_of_verb_declaration(streams: &mut Streams<'_>, name: &str, manifest: &Manifest) {
+    let Some(verb) = &manifest.verb else {
+        return;
+    };
+    let mut over = Vec::new();
+    let columns = text_columns(&verb.description);
+    if columns > MAX_DESCRIPTION_COLUMNS {
+        over.push(format!(
+            "a description of {columns} columns, where shep's help fits {MAX_DESCRIPTION_COLUMNS}"
+        ));
+    }
+    if verb.examples.len() > MAX_EXAMPLES {
+        over.push(format!(
+            "{} examples, where shep draws {MAX_EXAMPLES}",
+            verb.examples.len()
+        ));
+    }
+    if over.is_empty() {
+        return;
+    }
+    let message = format!(
+        "`{name}` declares more in its manifest `verb` than shep's help holds: {}. The dog \
+         is adopted and its help still prints; this is a bug to report to whoever wrote it",
+        over.join(" and ")
+    );
+    streams.aside(DOG_VERB_NOTICE, &message);
 }
 
 /// The lowercase hex sha256 of the file at `path`, or `None` when it cannot

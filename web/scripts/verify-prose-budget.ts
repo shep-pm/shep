@@ -180,11 +180,24 @@ export const BUDGETS: Record<string, number> = {
   // required reach the index, and that a binary answering nothing costs the
   // row the list and not the release.
   //
+  // Raised on #1517 for a dog declaring its own help: an author has to know
+  // `verb.examples` and a subcommand's `usage` exist, that an example is
+  // written without the `$ ` shep prints, that `Verb::from_clap` reads a clap
+  // tree into all of it, and that `shep adopt` warns past 60 columns or a
+  // fourth example and adopts anyway. The ceiling sits about 4 words above
+  // the page.
+  //
   // Raised again on #1480 for the manifest's `pane` field: an author has to
   // know it is answered over the channel, and that a manifest declaring it
   // without one has no pane to draw. The two raises land on one page, so the
   // ceiling is the one the merged page measures.
-  "writing-a-dog": 6280,
+  //
+  // Raised on #1490 for "Showing a pane": an author has to know `Probe::pane`
+  // needs the channel, that `pane_answer` writes the reply body from a pane
+  // built on each ask, what the JSON a dog in any language writes holds, and
+  // that every action the pane names is declared in the manifest. The ceiling
+  // sits about 4 words above the page.
+  "writing-a-dog": 6516,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -367,7 +380,11 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again for "Upgrading a dog": what an upgrade follows, the four
   // flags, and which directory a rollback can still reach.
-  dogs: 4900,
+  //
+  // Raised again, to 5029, on #1492 for bare `shep upgrade`: what it lists,
+  // what stops it before the dogs, the Windows rule and the reload step. An
+  // operator running it needs each to know what was and was not changed.
+  dogs: 5029,
   // Raised from 2770 for the "Over --host" section: a lookout over a host
   // leaves panes blank that an operator would otherwise read as broken, so
   // the table naming them is required content.
@@ -537,7 +554,11 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 675 on 2026-10-14 for the `enabled_dogs` half of the reload
   // the page already describes: a successor stops a dog the new file dropped
   // and registers a parked one at rest. Required content, not prose.
-  upgrading: 710,
+  // Raised from 710 on 2026-11-04 for bare `shep upgrade` (#1492): the page
+  // told every operator to upgrade through cargo, and now has to say that the
+  // command does shep, the reload and the dogs through the channel shep came
+  // from, and what a `.deb`, an archive and Windows get instead.
+  upgrading: 780,
   kv: 550,
   // Raised from 440 on 2026-09-21 for the prebuilt-binary download list,
   // which is new content rather than a correction. The page was sitting at
