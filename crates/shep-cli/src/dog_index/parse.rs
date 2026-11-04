@@ -897,8 +897,8 @@ pub(super) mod tests {
 
     #[test]
     fn a_top_level_shep_version_is_read() {
-        let index = parse_index(index_naming_shep(serde_json::json!("0.24.0")).as_bytes())
-            .expect("parses");
+        let index =
+            parse_index(index_naming_shep(serde_json::json!("0.24.0")).as_bytes()).expect("parses");
 
         assert_eq!(index.shep, Some(semver::Version::new(0, 24, 0)));
         assert_eq!(index.dogs.len(), 1);
