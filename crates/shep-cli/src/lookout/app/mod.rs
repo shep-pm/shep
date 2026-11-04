@@ -412,6 +412,13 @@ pub struct App {
     /// probed once at open and reused on every re-read, so `r` never
     /// respawns the dog's binary. Cleared alongside `config_target`.
     dog_target: Option<DogProbe>,
+    /// Which opening of a dog's config pane is the latest.
+    ///
+    /// Raised each time a pane opens over a dashboard or the settings
+    /// screen, never on a re-read. A manifest read and a `shep.pane` pull
+    /// carry the number they were raised under, and one that lands under
+    /// another is for a pane the operator has since left.
+    dog_opening: u64,
     /// Whether `Escape` on a whole-table pane is waiting on its re-read.
     ///
     /// Set by [`Self::reread_before_closing`]. Cleared by its answer, by an

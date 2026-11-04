@@ -7,23 +7,26 @@ impl App {
     /// `Msg::DogDeclaresPane`'s arm: the manifest has been read, and a dog
     /// that declares a pane is asked for it.
     ///
-    /// Dropped when the dog's config pane is not the one open. A pull already
-    /// waiting is not sent a second time.
+    /// Dropped when the dog's config pane is not the one open, or is a later
+    /// opening than the one the read was raised for. A pull already waiting
+    /// is not sent a second time.
     pub(super) fn on_dog_declares_pane(
         &mut self,
         name: &str,
+        opening: u64,
         declared: Option<DeclaredPane>,
     ) -> Effect {
         let Some(declared) = declared else {
             return Effect::None;
         };
-        let Some(pane) = self.dog_pane_mut(name) else {
+        let Some(pane) = self.dog_pane_of(name, opening) else {
             return Effect::None;
         };
         pane.declare_pane(declared);
         if pane.status_mut().is_some_and(DogStatus::begin_pull) {
             Effect::Send(Sent::DogPane {
                 name: name.to_owned(),
+                opening,
             })
         } else {
             Effect::None
@@ -34,22 +37,30 @@ impl App {
     pub(super) fn on_dog_pane_pulled(
         &mut self,
         name: &str,
+        opening: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        self.land_dog_pane(name, read_pulled_pane(name, result));
+        self.land_dog_pane(name, opening, read_pulled_pane(name, result));
         Effect::None
     }
 
     /// Lands a pull's answer on the dog's pane, dropped when the operator has
-    /// left that pane.
-    pub(super) fn land_dog_pane(&mut self, name: &str, answer: Result<Pane, String>) {
-        if let Some(status) = self.dog_pane_mut(name).and_then(ConfigPane::status_mut) {
+    /// left that pane, or has opened it again since the pull was sent.
+    pub(super) fn land_dog_pane(&mut self, name: &str, opening: u64, answer: Result<Pane, String>) {
+        if let Some(status) = self
+            .dog_pane_of(name, opening)
+            .and_then(ConfigPane::status_mut)
+        {
             status.land(answer);
         }
     }
 
-    /// The open config pane, when it is dog `name`'s.
-    fn dog_pane_mut(&mut self, name: &str) -> Option<&mut ConfigPane> {
+    /// The open config pane, when it is dog `name`'s and the `opening` given
+    /// is the latest.
+    fn dog_pane_of(&mut self, name: &str, opening: u64) -> Option<&mut ConfigPane> {
+        if opening != self.dog_opening {
+            return None;
+        }
         self.config_pane_mut().filter(
             |pane| matches!(pane.target(), PaneTarget::Dog { name: open, .. } if open == name),
         )
@@ -93,6 +104,9 @@ mod tests {
     use crate::lookout::app::testing::*;
     use crate::lookout::pane::PaneState;
     use shep_core::protocol::{ActionOutcome, ActionReply};
+
+    /// The first opening of a pane, which every test here opens once.
+    const OPENING: u64 = 1;
 
     /// The row's own dog, adopted from `/opt/paddock`, with the gate open.
     fn adopted_dog_row() -> ProcessInfo {
@@ -149,6 +163,7 @@ mod tests {
         let (mut app, _) = open_dog_pane(adopted_dog_row());
         let effect = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: Some(declared()),
         });
         assert_eq!(effect, Effect::Send(pull_of("paddock")));
@@ -158,6 +173,7 @@ mod tests {
     fn pull_of(name: &str) -> Sent {
         Sent::DogPane {
             name: name.to_string(),
+            opening: OPENING,
         }
     }
 
@@ -197,6 +213,7 @@ mod tests {
             effect,
             Effect::ReadDogPane {
                 name: "paddock".to_string(),
+                opening: OPENING,
                 adopted_path: PathBuf::from("/opt/paddock"),
             }
         );
@@ -279,6 +296,7 @@ mod tests {
         let (mut app, _) = open_dog_pane(adopted_dog_row());
         let effect = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: Some(declared()),
         });
         assert_eq!(effect, Effect::Send(pull_of("paddock")));
@@ -295,6 +313,7 @@ mod tests {
         let (mut app, _) = open_dog_pane(adopted_dog_row());
         let effect = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: None,
         });
         assert_eq!(effect, Effect::None);
@@ -309,6 +328,7 @@ mod tests {
         let mut app = pulling_paddock();
         let again = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: Some(declared()),
         });
         assert_eq!(again, Effect::None);
@@ -437,6 +457,7 @@ mod tests {
         );
         let again = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: Some(declared()),
         });
         assert_eq!(
@@ -458,6 +479,7 @@ mod tests {
         // And a manifest read that lands late asks for nothing.
         let late = app.update(Msg::DogDeclaresPane {
             name: "paddock".to_string(),
+            opening: OPENING,
             declared: Some(declared()),
         });
         assert_eq!(late, Effect::None);
@@ -471,5 +493,127 @@ mod tests {
             result: triggered("kelpie", ActionOutcome::TimedOut),
         });
         assert_eq!(state_of(&app), PaneState::Waiting);
+    }
+
+    /// The pane left and opened again: what was asked of the first is not
+    /// what the second is waiting for.
+    #[test]
+    fn a_read_or_a_pull_from_an_earlier_opening_does_not_land_on_a_later_pane() {
+        let mut app = pulling_paddock();
+        app.update(Msg::Key(KeyPress::Escape));
+        let (_, raised) = reopen(&mut app);
+        assert_eq!(
+            raised,
+            Effect::ReadDogPane {
+                name: "paddock".to_string(),
+                opening: OPENING + 1,
+                adopted_path: PathBuf::from("/opt/paddock"),
+            }
+        );
+
+        // The first opening's manifest read lands on the second pane.
+        let late = app.update(Msg::DogDeclaresPane {
+            name: "paddock".to_string(),
+            opening: OPENING,
+            declared: Some(declared()),
+        });
+        assert_eq!(late, Effect::None);
+        assert!(
+            app.config_pane()
+                .is_some_and(|pane| pane.status().is_none())
+        );
+
+        // The second's own read is sent, and the first's pull answers into it.
+        let own = app.update(Msg::DogDeclaresPane {
+            name: "paddock".to_string(),
+            opening: OPENING + 1,
+            declared: Some(declared()),
+        });
+        let Effect::Send(second) = own else {
+            panic!("the second opening's own read asks");
+        };
+        answer(&mut app, triggered("paddock", ActionOutcome::TimedOut));
+        assert_eq!(state_of(&app), PaneState::Waiting, "still waiting");
+        app.update(Msg::Replied {
+            sent: second,
+            result: triggered("paddock", ActionOutcome::TimedOut),
+        });
+        assert_eq!(
+            state_of(&app),
+            PaneState::Unavailable("paddock did not answer in time".to_string())
+        );
+    }
+
+    /// Opens `paddock`'s pane again on `app`, as [`open_dog_pane`] does.
+    fn reopen(app: &mut App) -> (&mut App, Effect) {
+        let Effect::LoadDogPane { adopted_path, .. } = app.update(Msg::Key(KeyPress::Edit)) else {
+            panic!("`e` on a dog row probes its schema");
+        };
+        app.update(Msg::DogPane {
+            name: "paddock".to_string(),
+            adopted_path,
+            env_keys: Vec::new(),
+            result: Ok(serde_json::json!({
+                "type": "object",
+                "properties": { "ratio": { "type": "number" } },
+            })),
+        });
+        let effect = app.update(Msg::Replied {
+            sent: Sent::DogSection {
+                name: "paddock".to_string(),
+            },
+            result: Ok(Response::DogSection {
+                toml: "ratio = 1.5\n".to_string().into(),
+            }),
+        });
+        (app, effect)
+    }
+
+    /// A re-read is not an opening, so a pull out under the pane still lands.
+    #[test]
+    fn a_re_read_does_not_make_an_opening_of_its_own() {
+        let mut app = pulling_paddock();
+        let again = app.update(Msg::Replied {
+            sent: Sent::DogSection {
+                name: "paddock".to_string(),
+            },
+            result: Ok(Response::DogSection {
+                toml: "ratio = 2.5\n".to_string().into(),
+            }),
+        });
+        assert_eq!(again, Effect::None);
+        answer(&mut app, triggered("paddock", ActionOutcome::TimedOut));
+        assert_eq!(
+            state_of(&app),
+            PaneState::Unavailable("paddock did not answer in time".to_string())
+        );
+    }
+
+    /// A section reply for one dog can land while another's pane is open.
+    #[test]
+    fn a_pane_rebuilt_for_another_dog_takes_no_pull_from_the_open_one() {
+        let pane_of = |name: &str| {
+            ConfigPane::dog(
+                name.to_string(),
+                Some(PathBuf::from("/opt/x")),
+                serde_json::json!({ "type": "object", "properties": {} }),
+                String::new(),
+                Vec::new(),
+            )
+        };
+        let mut open = pane_of("paddock");
+        open.declare_pane(declared());
+
+        let mut other = pane_of("kelpie");
+        other.adopt_status_from(&open);
+        assert!(other.status().is_none(), "kelpie never declared a pane");
+
+        let mut same = pane_of("paddock");
+        same.adopt_status_from(&open);
+        assert_eq!(
+            same.status().map(DogStatus::declared),
+            Some(&declared()),
+            "a re-read of paddock's own keeps it"
+        );
     }
 }

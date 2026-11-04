@@ -185,6 +185,9 @@ pub enum Sent {
     DogPane {
         /// The dog asked.
         name: String,
+        /// The opening of the pane that asked, so a reply that lands on a
+        /// later pane for the same dog is known for a stale one.
+        opening: u64,
     },
     /// One dog's whole section, off the dog pane's own `Enter`.
     ///
@@ -306,7 +309,7 @@ impl Sent {
                 value: value.as_value().clone(),
             },
             Self::DogSection { name } => Request::DogConfig { name: name.clone() },
-            Self::DogPane { name } => Request::Trigger {
+            Self::DogPane { name, .. } => Request::Trigger {
                 selector: SelectorSpec::Name(name.clone()),
                 action: PANE_ACTION.to_owned(),
                 params: None,
@@ -595,6 +598,7 @@ mod tests {
     fn a_dog_pane_pull_is_a_trigger_for_shep_pane_with_no_params() {
         let sent = Sent::DogPane {
             name: "paddock".to_owned(),
+            opening: 1,
         };
         assert_eq!(
             sent.request(),

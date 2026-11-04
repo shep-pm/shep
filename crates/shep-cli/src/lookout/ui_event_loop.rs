@@ -484,7 +484,11 @@ where
             // The cache only, never the binary: this spawns no dog. Off this
             // task because the cache is keyed on a digest of the binary.
             // A read that panicked declares no pane.
-            Effect::ReadDogPane { name, adopted_path } => {
+            Effect::ReadDogPane {
+                name,
+                opening,
+                adopted_path,
+            } => {
                 let home = paths.home.clone();
                 let handle = tokio::task::spawn_blocking(move || {
                     crate::commands::dogs::cached_manifest(&adopted_path, &home)
@@ -497,6 +501,7 @@ where
                 inflight.push(Box::pin(async move {
                     Msg::DogDeclaresPane {
                         name,
+                        opening,
                         declared: handle.await.ok().flatten(),
                     }
                 }));

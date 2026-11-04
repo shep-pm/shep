@@ -8,6 +8,7 @@
 //! and ends, and the last known flock stays on screen.
 
 use core::fmt;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -164,9 +165,11 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
 
     // Requests that may take the whole trigger deadline, in flight beside the
     // stream. Each resolves to the `Msg` its reply belongs in, so a dog that
-    // hangs holds nothing but its own entry. Dropped with the connection: a
-    // reply to a link that is gone has nowhere to arrive.
+    // hangs holds nothing but its own entry. `pending` keeps what each was
+    // sent as, to answer for the ones still out when the connection ends.
     let mut pulls = FuturesUnordered::new();
+    let mut pending: HashMap<u64, Sent> = HashMap::new();
+    let mut next_pull = 0u64;
 
     loop {
         tokio::select! {
@@ -180,7 +183,9 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
                     // A trigger to a dog that hangs waits out its deadline,
                     // up to a minute, so it is polled beside the stream and
                     // the poll rather than awaited here.
-                    pulls.push(reply_to(&flock, sent));
+                    next_pull += 1;
+                    pending.insert(next_pull, sent.clone());
+                    pulls.push(pull_reply(&flock, next_pull, sent));
                 } else {
                     // Awaited inline, holding the other arms for the
                     // request's duration, bounded by the client's own
@@ -192,13 +197,22 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
             }
             // `Some(msg) = ...` for the same reason as above: no request in
             // flight is `Ready(None)`, and that disables this arm.
-            Some(msg) = pulls.next() => {
+            Some((id, msg)) = pulls.next() => {
+                pending.remove(&id);
                 msgs.send(msg).await.map_err(|_| UiGone)?;
             }
             next = events.next_event() => match next {
                 // The subscription ended: the connection is gone. Back to the
-                // ladder.
-                None => return Ok(channels),
+                // ladder, after telling each pull still out that no answer is
+                // coming: its future goes with this scope, and the pane
+                // waiting on it would wait for good.
+                None => {
+                    for (_, sent) in pending.drain() {
+                        let lost = Msg::Replied { sent, result: Err(RequestError::Closed) };
+                        msgs.send(lost).await.map_err(|_| UiGone)?;
+                    }
+                    return Ok(channels);
+                }
                 Some(Ok(event)) => {
                     // `Dropped` is a named variant this binary understands,
                     // so it gets a repair as well as being forwarded.
@@ -223,6 +237,13 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
 async fn reply_to<F: FlockSource>(flock: &F, sent: Sent) -> Msg {
     let result = flock.send(sent.request()).await;
     Msg::Replied { sent, result }
+}
+
+/// `sent` over a connection of its own, as the [`Msg`] its reply belongs in,
+/// with the `id` the loop keeps it under.
+async fn pull_reply<F: FlockSource>(flock: &F, id: u64, sent: Sent) -> (u64, Msg) {
+    let result = flock.pull(sent.request()).await;
+    (id, Msg::Replied { sent, result })
 }
 
 /// One listing, forwarded as a snapshot.
@@ -717,20 +738,27 @@ mod tests {
         }
 
         async fn send(&self, request: Request) -> Result<Response, RequestError> {
-            match request {
-                Request::Trigger { .. } if self.hang_triggers => std::future::pending().await,
-                Request::Trigger { .. } => Ok(Response::Triggered(Vec::new())),
-                _ => {
-                    self.gate.notified().await;
-                    Ok(Response::Described(Vec::new()))
-                }
+            assert!(
+                !matches!(request, Request::Trigger { .. }),
+                "a pull went over the connection the polls share"
+            );
+            self.gate.notified().await;
+            Ok(Response::Described(Vec::new()))
+        }
+
+        async fn pull(&self, request: Request) -> Result<Response, RequestError> {
+            assert!(matches!(request, Request::Trigger { .. }));
+            if self.hang_triggers {
+                std::future::pending().await
             }
+            Ok(Response::Triggered(Vec::new()))
         }
     }
 
     fn dog_pane() -> Sent {
         Sent::DogPane {
             name: "paddock".to_string(),
+            opening: 1,
         }
     }
 
@@ -867,5 +895,43 @@ mod tests {
             matches!(second, Some(Msg::Snapshot { .. })),
             "then the poll that waited: {second:?}"
         );
+    }
+
+    /// A pull's future goes with the connection it was polled on, so the
+    /// link says so for it rather than let its pane wait for good.
+    #[tokio::test(start_paused = true)]
+    async fn a_pull_still_out_when_the_subscription_ends_is_answered_closed() {
+        let (msg_tx, mut msg_rx) = mpsc::channel(64);
+        let (_poll_tx, poll_rx) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(2);
+        let (events_tx, events_rx) = broadcast::channel(4);
+        let task = tokio::spawn(run_connected(
+            ScriptedFlock {
+                gate: Arc::new(tokio::sync::Notify::new()),
+                hang_triggers: true,
+            },
+            BroadcastEvents(events_rx),
+            msg_tx,
+            Channels {
+                polls: poll_rx,
+                requests: request_rx,
+            },
+            Duration::from_secs(3600),
+        ));
+        assert!(matches!(msg_rx.recv().await, Some(Msg::Snapshot { .. })));
+        request_tx.send(dog_pane()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        drop(events_tx);
+
+        let lost = tokio::time::timeout(Duration::from_secs(5), msg_rx.recv()).await;
+        assert!(
+            matches!(
+                lost,
+                Ok(Some(Msg::Replied { ref sent, result: Err(RequestError::Closed) }))
+                    if *sent == dog_pane()
+            ),
+            "{lost:?}"
+        );
+        assert!(task.await.unwrap().is_ok(), "and the ladder gets its turn");
     }
 }

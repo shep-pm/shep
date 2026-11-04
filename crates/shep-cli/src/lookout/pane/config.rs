@@ -456,8 +456,17 @@ impl ConfigPane {
     /// Takes over what `previous` held of the dog's pull, for a pane rebuilt
     /// over a re-read section: the pull is a different read from the section's
     /// and a re-read of one must not discard the other.
+    ///
+    /// Only from a pane of the same dog: a section reply for one dog can land
+    /// while another's pane is open, and its pull is not this one's.
     pub(in crate::lookout) fn adopt_status_from(&mut self, previous: &Self) {
-        self.status.clone_from(&previous.status);
+        let same_dog = matches!(
+            (self.target(), previous.target()),
+            (PaneTarget::Dog { name: a, .. }, PaneTarget::Dog { name: b, .. }) if a == b
+        );
+        if same_dog {
+            self.status.clone_from(&previous.status);
+        }
     }
 
     /// The form.

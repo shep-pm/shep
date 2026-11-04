@@ -88,6 +88,9 @@ impl App {
                     matches!(pane.target(), PaneTarget::Dog { name: open, .. } if open == name)
                 });
                 let adopted = probe.adopted_path.clone();
+                if opening {
+                    self.dog_opening += 1;
+                }
                 let dropped = self.rebuild_dog_pane(probe, toml.as_str());
                 if dropped > 0 {
                     self.notice =
@@ -101,6 +104,7 @@ impl App {
                 {
                     return Effect::ReadDogPane {
                         name: name.to_owned(),
+                        opening: self.dog_opening,
                         adopted_path,
                     };
                 }

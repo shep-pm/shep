@@ -25,7 +25,7 @@ impl App {
             Sent::GrantDog { name, ticket, .. } => self.on_dog_grant_reply(name, ticket, result),
             Sent::SheepConfig { name } => self.on_sheep_config(&name, result),
             Sent::DogSection { name } => self.on_dog_section(&name, result),
-            Sent::DogPane { name } => self.on_dog_pane_pulled(&name, result),
+            Sent::DogPane { name, opening } => self.on_dog_pane_pulled(&name, opening, result),
             Sent::SetDogSection { name, ticket, .. } => {
                 self.on_dog_section_set(&name, ticket, result)
             }
@@ -120,8 +120,12 @@ impl App {
             }
             // A pull nobody took: the pane says so rather than waiting on
             // an answer that cannot come.
-            Sent::DogPane { name } => {
-                self.land_dog_pane(&name, Err(format!("{name}: the pane was not asked for")));
+            Sent::DogPane { name, opening } => {
+                self.land_dog_pane(
+                    &name,
+                    opening,
+                    Err(format!("{name}: the pane was not asked for")),
+                );
                 Effect::None
             }
             Sent::SetDogSection { name, ticket, .. } => {

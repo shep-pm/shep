@@ -374,6 +374,8 @@ pub enum Msg {
     DogDeclaresPane {
         /// The dog.
         name: String,
+        /// The opening the read was raised under.
+        opening: u64,
         /// What the manifest declares of a pane, or [`None`] when it declares
         /// none or no manifest is cached.
         declared: Option<DeclaredPane>,
@@ -634,6 +636,8 @@ pub enum Effect {
     ReadDogPane {
         /// The dog.
         name: String,
+        /// The opening of the pane that asked, echoed back on the answer.
+        opening: u64,
         /// The adopted binary the manifest was cached under.
         adopted_path: PathBuf,
     },
