@@ -5,8 +5,8 @@ use super::super::cell;
 use super::super::flock::fit;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
 use super::key_hint::{
-    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, catalogue_hint, env_armed, hint_for, modal_keys,
-    pane_editor, pane_hint, pane_screen, secrets_armed, secrets_hint, secrets_typing,
+    BLEATS_HINT, CLOSE_DIALOG_HINT, EntryActions, FROZEN_HINT, catalogue_hint, env_armed, hint_for,
+    modal_keys, pane_editor, pane_hint, pane_screen, secrets_armed, secrets_hint, secrets_typing,
     sheep_pane_hint,
 };
 use ratatui::style::Style;
@@ -295,22 +295,20 @@ fn screen_hint(app: &App) -> (String, Style, bool) {
         return (secrets_hint(app.control()), palette.attention(), false);
     }
     if let Body::Catalogue(pane) = app.body() {
-        // `enter install` only where `Enter` installs. The open row is named
-        // by `adopt_as`, which is also what the install adopts it as.
-        let installable = pane
-            .entry
-            .as_ref()
-            .and_then(|name| {
-                app.catalogue_rows()
-                    .iter()
-                    .find(|row| row.dog.adopt_as == *name)
-            })
-            .is_some_and(|row| app.can_install(row));
-        return (
-            catalogue_hint(pane.entry.is_some(), installable).to_string(),
-            palette.attention(),
-            false,
-        );
+        // The open row is named by `adopt_as`, which is also what each
+        // action addresses it by.
+        let actions = pane.entry.as_ref().map(|name| {
+            let row = app
+                .catalogue_rows()
+                .iter()
+                .find(|row| row.dog.adopt_as == *name);
+            EntryActions {
+                install: row.is_some_and(|row| app.can_install(row)),
+                upgrade: row.is_some_and(|row| app.can_upgrade(row)),
+                delete: row.is_some_and(|row| app.can_delete(row)),
+            }
+        });
+        return (catalogue_hint(actions), palette.attention(), false);
     }
     if app.sheep_pane().is_some() {
         // Checked below the bleats pane's own branch, the same as the

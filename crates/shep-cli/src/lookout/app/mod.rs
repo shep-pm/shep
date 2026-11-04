@@ -515,6 +515,8 @@ pub struct App {
     /// The line `shep flock` would print under this flock, from
     /// [`Msg::Hint`]. Cleared when the link is lost.
     hint: Option<String>,
+    /// The tag and dog of the delete question lookout is asking, or `None`.
+    dog_delete: Option<(u64, String)>,
     /// The next modal tag.
     ///
     /// Shared by every modal owner so no two open modals carry the same tag,

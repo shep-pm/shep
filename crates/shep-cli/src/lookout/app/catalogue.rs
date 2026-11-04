@@ -208,6 +208,14 @@ pub(crate) struct CataloguePane {
     pub(crate) direct: bool,
 }
 
+impl CatalogueRow {
+    /// Whether the index is ahead of the installed version: the VERSION cell
+    /// reads `a → b`.
+    pub(crate) fn is_behind(&self) -> bool {
+        self.version.contains('\u{2192}')
+    }
+}
+
 impl CataloguePane {
     /// Selects the dog adopted as `name` among `rows` and opens its entry.
     /// A name no row carries opens nothing: the entry would have no dog.
@@ -332,8 +340,8 @@ impl App {
                 }
             }
             KeyPress::Confirm => {
-                // On the list, `Enter` opens the entry. On an entry shep can
-                // install and has not, it installs.
+                // On the list, `Enter` opens the entry. On an entry it opens
+                // the one action that applies: install, or upgrade.
                 let open = pane.entry.clone();
                 match open {
                     None => {
@@ -343,15 +351,25 @@ impl App {
                             .map(|row| row.dog.adopt_as.clone());
                     }
                     Some(name) => {
-                        let installable = self
-                            .catalogue
-                            .iter()
-                            .find(|row| row.dog.adopt_as == name)
-                            .is_some_and(|row| self.can_install(row));
-                        if installable {
+                        let row = self.catalogue.iter().find(|row| row.dog.adopt_as == name);
+                        if row.is_some_and(|row| self.can_install(row)) {
                             return self.start_install(&name);
                         }
+                        if row.is_some_and(|row| self.can_upgrade(row)) {
+                            return self.start_upgrade(&name);
+                        }
                     }
+                }
+            }
+            KeyPress::ArmDelete => {
+                let deletable = pane.entry.clone().filter(|name| {
+                    self.catalogue
+                        .iter()
+                        .find(|row| &row.dog.adopt_as == name)
+                        .is_some_and(|row| self.can_delete(row))
+                });
+                if let Some(name) = deletable {
+                    return self.ask_delete(&name);
                 }
             }
             KeyPress::SelectUp if pane.entry.is_none() => {
@@ -403,7 +421,6 @@ impl App {
             | KeyPress::WrapToggle
             | KeyPress::MatchNext
             | KeyPress::MatchPrev
-            | KeyPress::ArmDelete
             | KeyPress::NextGroup
             | KeyPress::PrevGroup
             | KeyPress::NextField

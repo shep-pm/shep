@@ -498,7 +498,7 @@ pub enum Msg {
     DogGrant {
         /// The dog the job is for, echoed back.
         name: String,
-        /// What `shep install` would have printed, from the same function.
+        /// What the verb would have printed, from the same function.
         prompt: Prompt,
         /// Where the answer goes, held against the tag of the modal it opens.
         reply: Arc<GrantReply>,
@@ -718,8 +718,8 @@ pub enum Effect {
     /// rows; the answer lands as [`Msg::Catalogue`].
     FetchCatalogue,
     /// Runs `job` through [`run`](crate::commands::dogs::run), the same code
-    /// `shep install` runs, on its own thread with its own current-thread
-    /// runtime.
+    /// `shep install`, `shep upgrade` and `shep delete` run, on its own thread
+    /// with its own current-thread runtime.
     ///
     /// Not `spawn_blocking`: the grant callback blocks on a modal answer, and
     /// the run starts `cargo`, which needs a runtime of its own. Progress and
@@ -727,7 +727,7 @@ pub enum Effect {
     StartDogJob {
         /// Which job.
         job: Job,
-        /// Proof the control gate was open: an install writes `shep.toml`.
+        /// Proof the control gate was open: an install, upgrade or delete writes `shep.toml`.
         authority: WriteAuthority,
     },
     /// Read the one value behind `row`; the answer lands as [`Msg::Revealed`].

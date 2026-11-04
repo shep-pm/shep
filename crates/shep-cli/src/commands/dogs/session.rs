@@ -72,19 +72,11 @@ pub(crate) enum Job {
         adopt_as: String,
     },
     /// `shep upgrade <name>`.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "lookout's upgrade and delete slice names it")
-    )]
     Upgrade {
         /// The adopted dog to move to what its receipt follows.
         name: String,
     },
     /// `shep delete <name>`.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "lookout's upgrade and delete slice names it")
-    )]
     Delete {
         /// The adopted dog to remove.
         name: String,

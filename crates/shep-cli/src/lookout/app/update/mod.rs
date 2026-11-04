@@ -59,6 +59,7 @@ impl App {
             dog_job: DogJob::Idle,
             dog_quit: None,
             hint: None,
+            dog_delete: None,
             next_modal_tag: 0,
         }
     }

@@ -319,6 +319,44 @@ fn the_entry_names_the_install_key_only_where_there_is_an_install() {
     }
 }
 
+/// The entry's hint line names `enter upgrade` only for a row behind the
+/// index and `D delete` only for an installed one, built-in dogs excepted.
+#[test]
+fn the_entry_names_upgrade_and_delete_only_where_they_apply() {
+    for (name, version, state, upgrade, delete) in [
+        ("beta", "1.0.0", DogState::NotInstalled, false, false),
+        ("gamma", "0.3.0", DogState::Installed, false, true),
+        (
+            "alpha",
+            "0.2.1 \u{2192} 0.2.4",
+            DogState::Enabled,
+            true,
+            true,
+        ),
+        ("metrics", "0.3.0", DogState::Enabled, false, false),
+    ] {
+        let mut app = app_on(
+            vec![row(dog(name, cargo("1.0.0"), None), version, state)],
+            false,
+        );
+        app.set_control_for_tests(Control::Allowed);
+        open_first_entry(&mut app);
+
+        let frame = draw_to(&app, 100, HEIGHT);
+        let bar = frame.lines().last().unwrap_or_default();
+        assert_eq!(
+            (bar.contains("enter upgrade"), bar.contains("D delete")),
+            (upgrade, delete),
+            "{name} {state}:\n{frame}"
+        );
+        assert_eq!(
+            flat(&frame).contains("enter upgrades it"),
+            upgrade,
+            "{name} {state}:\n{frame}"
+        );
+    }
+}
+
 #[test]
 fn an_installable_row_shows_no_build_instructions() {
     let app = entry_with(None);

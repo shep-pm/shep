@@ -420,10 +420,14 @@ export const BUDGETS: Record<string, number> = {
   // and what quitting mid-job leaves behind. None of it is described on any
   // other page, and it is required content rather than prose to trim back out.
   //
-  // Raised again, to 3904, on #1495 for "The hint": the status bar's flock
+  // Raised again, to 3948, on #1501 for the upgrade and delete keys: when each
+  // applies, what a new permission does to an upgrade, and that a built-in dog
+  // has no delete.
+  //
+  // Raised again, to 3984, on #1495 for "The hint": the status bar's flock
   // hint, that it matches `shep flock`, and that `shep hints off` silences
   // both. No other page says it of lookout.
-  lookout: 3904,
+  lookout: 3984,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
