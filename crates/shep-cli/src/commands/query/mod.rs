@@ -19,8 +19,8 @@ mod secret_inspection;
 mod terminal_fitting;
 #[cfg(test)]
 mod testing;
+pub(crate) use dog_browsing::{adopt_instruction, install_instruction, render_detail};
 pub use dog_browsing::{available_dogs, dogs};
-pub(crate) use dog_browsing::{install_instruction, render_detail};
 pub use flock_display::{flock, flock_from_roll, flock_local, fold};
 pub(crate) use flock_display::{flock_follow, flock_from, read_roll};
 pub use secret_inspection::describe;

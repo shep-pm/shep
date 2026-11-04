@@ -180,6 +180,14 @@ pub(crate) fn install_instruction(dog: &AvailableDog) -> String {
     install_line(&dog.source, &dog.package).trim().to_owned()
 }
 
+/// The `$ shep adopt ...` line [`render_detail`] prints, as one line with no
+/// indent: what to run once the binary is built by hand.
+pub(crate) fn adopt_instruction(dog: &AvailableDog) -> String {
+    adopt_line(&dog.source, &dog.adopt_as, &dog.package)
+        .trim()
+        .to_owned()
+}
+
 /// The `$ ...` line [`render_detail`] prints for how to build `source`'s
 /// binary. [`DogSourceKind::Manual`] carries prose instead of a command, so
 /// it prints with no `$`, just the two-space indent the command lines share.
