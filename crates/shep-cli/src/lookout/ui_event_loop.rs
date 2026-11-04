@@ -482,10 +482,8 @@ where
                 }));
             }
             // The cache only, never the binary: this spawns no dog. Off this
-            // task for `Effect::LoadDogPane`'s reason, since the cache is
-            // keyed on a digest of the binary and hashing it reads the file.
-            // A read that panicked declares no pane, which opens the pane as
-            // it was before panes.
+            // task because the cache is keyed on a digest of the binary.
+            // A read that panicked declares no pane.
             Effect::ReadDogPane { name, adopted_path } => {
                 let home = paths.home.clone();
                 let handle = tokio::task::spawn_blocking(move || {
