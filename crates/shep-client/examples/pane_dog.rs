@@ -34,6 +34,7 @@ mod dog {
         Probe::new("pane-dog", "0.1.0")
             .ask_for_channel()
             .pane()
+            .action("unload", "Unload a model")
             .answer::<Settings>();
 
         let paths = dogs::resolve_paths(&|key| std::env::var_os(key)).expect("SHEP_HOME");

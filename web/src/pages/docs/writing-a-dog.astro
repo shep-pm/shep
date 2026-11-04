@@ -106,6 +106,40 @@ fn main() {
     // ...the dog's own loop, watching \`stop\`.
 }`;
 
+const paneSnippet = `use shep_client::dogs::{Destructive, PANE_ACTION, Pane, Probe, Row, pane_answer};
+
+fn build() -> Pane {
+    Pane::new()
+        .fields("host", [("VRAM", "20 GiB")])
+        .table(
+            "models",
+            ["MODEL", "STATE"],
+            [Row::new("qwen3-32b", ["qwen3-32b", "loaded"])],
+        )
+        .row_action("unload", "Unload", Destructive::Yes)
+}
+
+fn main() {
+    Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .ask_for_channel()
+        .pane()
+        .action("unload", "Unload a model")
+        .answer::<MyDogConfig>();
+
+    let shepherd = shep_channel::serve();
+    shepherd.on_action(PANE_ACTION, |params, _name| pane_answer(params, build));
+    // ...the dog's own loop.
+}`;
+
+const paneJson = `{"sections":[
+  {"kind":"fields","id":"host","title":"host","refresh_on":[],
+   "fields":[{"label":"VRAM","value":"20 GiB"}]},
+  {"kind":"table","id":"models","title":"models","refresh_on":[],
+   "columns":["MODEL","STATE"],
+   "rows":[{"key":"qwen3-32b","cells":["qwen3-32b","loaded"]}],
+   "row_actions":[{"action":"unload","label":"Unload","destructive":true}]}
+],"actions":[]}`;
+
 const configSnippet = `use shep_client::dogs::dog_config;
 use shep_client::shep_core::values::{MemSize, UpDuration};
 
@@ -516,6 +550,31 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
     <CodeBlock>{`notice[dog_dependency_missing]: \`otel\` depends on \`log-rotate\`, which is not adopted, so \`otel\` may not work until you run \`shep adopt\` for \`log-rotate\`
 notice[dog_needs_newer_shep]: \`otel\` needs shep 0.20.0 or newer, and this is shep 0.16.1, so \`otel\` may not work until you upgrade shep
 notice[dog_verb_declaration]: \`otel\` declares more in its manifest \`verb\` than shep's help holds: a description of 71 columns, where shep's help fits 60. The dog is adopted and its help still prints; this is a bug to report to whoever wrote it`}</CodeBlock>
+
+    <h3 id="showing-a-pane">Showing a pane</h3>
+    <p>
+      A dog that declares <code>pane</code> answers <code>shep.pane</code>{" "}
+      with what the operator should read: sections of label and value pairs,
+      tables with a key per row, and the actions that go with them. Lookout
+      draws the answer as written, so every value is a string the dog has
+      already formatted. <code>Probe::pane</code> sets the flag and needs{" "}
+      <code>ask_for_channel</code>: <code>shep adopt</code> reads a pane
+      without a channel as no pane, and says so. <code>pane_answer</code>{" "}
+      writes the reply body, from a pane built afresh on each ask.
+    </p>
+    <CodeBlock label="main.rs">{paneSnippet}</CodeBlock>
+    <p>
+      The body is one JSON object, which a dog in any language can write by
+      hand:
+    </p>
+    <CodeBlock label="the answer">{paneJson}</CodeBlock>
+    <p>
+      A row holds one cell per column, and a section id or a row key may not
+      repeat: <code>Pane::body</code> refuses them, and shep cannot read a body
+      that has them. A row action is triggered with <code>{`{"row": "<key>"}`}</code>{" "}
+      and a pane action with no params. Each name must also be declared in the
+      manifest's <code>actions</code>, which <code>Probe::action</code> does.
+    </p>
 
     <h2 id="answering-version">Answering <code>--version</code></h2>
     <p>
