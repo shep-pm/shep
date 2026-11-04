@@ -6,7 +6,11 @@
 //! wrote. The index comes from the cache and is never fetched.
 
 use std::io::Write;
+#[cfg(all(test, unix))]
+use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
+#[cfg(all(test, unix))]
+use std::time::Duration;
 
 use shep_core::paths::ShepPaths;
 
@@ -14,11 +18,15 @@ use crate::cli::{Format, InstallArgs};
 use crate::dog_index::{self, Index};
 use crate::exit::ExitCode;
 use crate::fetch;
+#[cfg(all(test, unix))]
+use crate::fetch::RedirectPolicy;
 use crate::output::Streams;
 use crate::style::Presentation;
 
 use super::consent::{Input, Prompt};
 use super::dog_upgrade::{Goal, upgrade_dog};
+#[cfg(all(test, unix))]
+use super::install::{Lookup, Published};
 use super::install::{Reach, install_dog};
 use super::install_depends::Catalog;
 use super::remove::{Removal, remove_dog};
@@ -40,10 +48,6 @@ pub(crate) struct Progress(Arc<dyn Fn(Step) + Send + Sync>);
 
 impl Progress {
     /// A sink that calls `sink` at each step.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "lookout's install modal builds one")
-    )]
     pub(crate) fn new(sink: impl Fn(Step) + Send + Sync + 'static) -> Self {
         Self(Arc::new(sink))
     }
@@ -60,10 +64,6 @@ impl core::fmt::Debug for Progress {
 }
 
 /// What a session does.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "lookout's install modal builds one")
-)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Job {
     /// `shep install <adopt_as>`, asking the grant question.
@@ -72,38 +72,69 @@ pub(crate) enum Job {
         adopt_as: String,
     },
     /// `shep upgrade <name>`.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "lookout's upgrade and delete slice names it")
+    )]
     Upgrade {
         /// The adopted dog to move to what its receipt follows.
         name: String,
     },
     /// `shep delete <name>`.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "lookout's upgrade and delete slice names it")
+    )]
     Delete {
         /// The adopted dog to remove.
         name: String,
     },
 }
 
-/// Runs `job` against the cached index, reporting to `progress` and asking
-/// the grant question through `answer`. Returns the exit code the verb would
-/// have exited with and the text it would have printed.
+impl Job {
+    /// The dog this job is for, by the name it is adopted under.
+    pub(crate) fn name(&self) -> &str {
+        match self {
+            Self::Install { adopt_as } => adopt_as,
+            Self::Upgrade { name } | Self::Delete { name } => name,
+        }
+    }
+}
+
+/// Runs `job` against the cached index for this build's index URL, reporting
+/// to `progress` and asking the grant question through `answer`. Returns the
+/// exit code the verb would have exited with and the text it would have
+/// printed.
 ///
-/// `answer` blocks, so a caller on an async runtime runs this on a blocking
-/// thread. Dropping the session part-way leaves what the verb leaves.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "lookout's install modal calls it")
-)]
+/// `reach` is [`Reach::real`] for a run that means it, and a test's own for
+/// one that stands a stub in for `cargo`. `answer` blocks, so a caller on an
+/// async runtime runs this on a blocking thread. Dropping the session
+/// part-way leaves what the verb leaves.
 pub(crate) async fn run(
     paths: &ShepPaths,
     job: Job,
+    reach: Reach,
     progress: Progress,
     answer: impl FnMut(&Prompt) -> bool + Send + 'static,
 ) -> (ExitCode, String) {
     let reach = Reach {
         progress: Some(progress),
-        ..Reach::real()
+        ..reach
     };
     run_with(paths, &dog_index::index_url(), job, reach, answer).await
+}
+
+/// A [`Reach`] for a test: `cargo` is the stub at `cargo`, crates.io reports
+/// no publisher, and no prebuilt download is ever attempted.
+#[cfg(all(test, unix))]
+pub(crate) fn stub_reach(cargo: &Path) -> Reach {
+    Reach {
+        cargo: Some(cargo.to_path_buf()),
+        lookup: Lookup::Canned(Published::Unreported),
+        assets: RedirectPolicy::loopback("127.0.0.1", &["localhost"]),
+        lock_wait: Duration::from_millis(100),
+        progress: None,
+    }
 }
 
 /// [`run`] against the index cached for `url` and this `reach`.

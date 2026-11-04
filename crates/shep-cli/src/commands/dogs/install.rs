@@ -49,22 +49,22 @@ const LOOKUP_LIMIT: usize = 1 << 20;
 /// What `install` reaches outside the index and `shep.toml`, so a test can
 /// stand a stub in for each.
 #[derive(Debug)]
-pub(super) struct Reach {
+pub(crate) struct Reach {
     /// The `cargo` to run, or `None` when there is none on `PATH`.
-    pub(super) cargo: Option<PathBuf>,
+    pub(crate) cargo: Option<PathBuf>,
     /// Who to ask which repository published a version.
-    pub(super) lookup: Lookup,
+    pub(crate) lookup: Lookup,
     /// Which redirect a prebuilt binary's download may follow.
-    pub(super) assets: RedirectPolicy,
+    pub(crate) assets: RedirectPolicy,
     /// How long to wait for another install of the same dog.
-    pub(super) lock_wait: Duration,
+    pub(crate) lock_wait: Duration,
     /// Who hears each step, or `None` to leave the terminal to the verb.
-    pub(super) progress: Option<Progress>,
+    pub(crate) progress: Option<Progress>,
 }
 
 /// Where `install` learns who published a version.
 #[derive(Debug)]
-pub(super) enum Lookup {
+pub(crate) enum Lookup {
     /// crates.io's API at this base URL, with no trailing slash.
     CratesIo(String),
     /// A fixed answer, so a test of everything after the lookup needs no
@@ -85,7 +85,7 @@ impl Lookup {
 
 impl Reach {
     /// The real `cargo` on this process's `PATH` and the real crates.io.
-    pub(super) fn real() -> Self {
+    pub(crate) fn real() -> Self {
         Self {
             cargo: lookup_on_path(Path::new("cargo"), std::env::var_os("PATH").as_deref()),
             lookup: Lookup::CratesIo(CRATES_IO.to_owned()),
@@ -802,7 +802,7 @@ async fn build(
 
 /// What crates.io says about who published one version.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Published {
+pub(crate) enum Published {
     /// Trusted publishing from this repository.
     From(String),
     /// `trustpub_data` is `null`: published with an API token.

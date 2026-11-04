@@ -1,5 +1,7 @@
 use super::MIN_REDRAW;
-use super::app::{App, Body, Effect, InputMode, Msg, Pasted, RevealedValue, RowKey, Sent};
+use super::app::{
+    App, Body, DogRun, DogRunner, Effect, InputMode, Msg, Pasted, RevealedValue, RowKey, Sent,
+};
 use super::batch_dispatch::{enable_refusal_message, send_batch};
 use super::pane::SheepDogEntry;
 use super::wiring::HEARTBEAT;
@@ -35,6 +37,8 @@ pub async fn run_ui<B: Backend, S, L>(
     // `--home`'s could point a probe at the live daemon's socket instead.
     paths: ShepPaths,
     mut local: L,
+    // Which `cargo` a dog job runs, and which crates.io it asks.
+    dogs: DogRunner,
 ) -> Terminal<B>
 where
     S: Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
@@ -68,11 +72,22 @@ where
     // `Option`, not `Instant::now() - MIN_REDRAW`: subtracting from a fresh
     // `Instant` can panic, and "has never drawn" is what this means.
     let mut last_draw: Option<Instant> = None;
+    // The one dog job running, if any: what its thread reports, and the
+    // handle that ends the run. Both drop when the loop leaves, which is what
+    // cancels a job the operator quit out from under: the cancel resolves, and
+    // the job's grant replies drop with `app`.
+    let mut dog: Option<DogRun> = None;
 
     loop {
         // One gate, read once, so the feed is refreshed before the frame that
         // shows it and never on a frame that is not about to be drawn.
-        let may_draw = last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW);
+        // A modal is drawn past the throttle: it answers nothing until this
+        // loop has told it its reach, which only a draw does, and the loop
+        // only reaches a draw when something wakes it. A question opened just
+        // after one would otherwise sit off screen until the key that answers
+        // it woke the loop, and that key would go to the screen under it.
+        let may_draw =
+            last_draw.is_none_or(|at| at.elapsed() >= MIN_REDRAW) || app.modal().is_some();
         if feed_dirty && may_draw {
             // `feed_row`, not `selected_row`: both feeds pin a sheep, and the
             // selection can move out from under either, so reading the
@@ -187,6 +202,23 @@ where
                     None
                 }
             },
+            // The running dog job's own thread reports here. `None` retires
+            // the arm until the next job, and drops the cancel handle with
+            // the run that ended.
+            dog_msg = async {
+                match dog.as_mut() {
+                    Some(run) => run.msgs.recv().await,
+                    // No job running: this arm must never complete, rather
+                    // than spin the loop above the heartbeat.
+                    None => std::future::pending().await,
+                }
+            } => match dog_msg {
+                Some(msg) => Some(msg),
+                None => {
+                    dog = None;
+                    None
+                }
+            },
             // `FuturesUnordered::next` is cancel-safe: the futures live in
             // the set, not in the future this arm polls, so losing a
             // `select!` race loses no progress. The precondition is not
@@ -211,7 +243,14 @@ where
         dirty = true;
 
         match app.update(msg) {
-            Effect::Quit => break,
+            Effect::Quit => {
+                // Ends the job the operator quit out from under, and drops
+                // the grant replies its callback may be blocked on.
+                if let Some(run) = dog.as_mut() {
+                    run.end();
+                }
+                break;
+            }
             Effect::PollNow => {
                 // `try_send`, not `send`: a full poll channel means a repair
                 // is already queued, and blocking the UI on it would stall the
@@ -659,8 +698,21 @@ where
             Effect::CopyToClipboard(value) => {
                 let _ = super::term::copy_to_clipboard(&value.0);
             }
-            // Nothing opens a modal yet, so nothing is waiting on an answer.
-            Effect::ModalAnswered { .. } | Effect::None => {}
+            // The tag names which question the job asked, so an answer to
+            // one modal cannot answer another.
+            Effect::ModalAnswered { tag, yes } => app.answer_grant(tag, yes),
+            Effect::None => {}
+            // Off this task, on a thread of its own with a current-thread
+            // runtime of its own: the grant callback blocks on a modal answer
+            // and the run starts `cargo`, and the UI task can hold neither.
+            // `_authority` is a proof carried by the effect, not a value this
+            // arm reads.
+            Effect::StartDogJob {
+                job,
+                authority: _authority,
+            } => {
+                dog = Some(dogs.start(&paths, job));
+            }
         }
     }
 
@@ -677,282 +729,4 @@ async fn join_blocking<T, E: ToString>(handle: JoinHandle<Result<T, E>>) -> Resu
 }
 
 #[cfg(test)]
-mod tests {
-
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-    use std::time::{Duration, Instant};
-
-    use ratatui::Terminal;
-
-    use super::super::app::{App, Control, Msg};
-    use tokio::sync::mpsc;
-
-    use super::super::theme::Palette;
-
-    use crate::style::{StyleLevel, StyleSource};
-
-    use super::*;
-    use crate::lookout::app::KeyPress;
-    use futures_util::stream;
-    use ratatui::backend::TestBackend;
-    use shep_core::protocol::ProcessInfo;
-    use shep_core::status::ProcStatus;
-
-    use super::super::testing::*;
-
-    /// The property, not the mechanism: with a write in flight and unable to
-    /// finish, the loop still processes what comes after it.
-    ///
-    /// Held up by taking `shep.toml`'s lock from a second file descriptor:
-    /// `flock(2)` excludes per open file description, not per process. Unix
-    /// only. No `start_paused`: a thread parked on a lock is never idle, so a
-    /// paused clock would never advance the timeout.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn the_loop_keeps_running_while_a_settings_write_is_stuck() {
-        use nix::fcntl::{Flock, FlockArg};
-
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("shep.toml");
-        std::fs::write(&config, "[daemon]\nlog_level = \"info\"\n").unwrap();
-        let socket_default = dir.path().join("run/shep.sock");
-
-        // Held for the whole of `run_ui` below, and released only once it
-        // has returned.
-        let lock_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(dir.path().join("shep.toml.lock"))
-            .unwrap();
-        let held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
-
-        let (msg_tx, msg_rx) = mpsc::channel(16);
-        let (poll_tx, _poll_rx) = mpsc::channel(4);
-        let (request_tx, _request_rx) = mpsc::channel(4);
-
-        // The screen is opened by handing the reducer the read it would
-        // otherwise have asked for, so the four messages below arrive in a
-        // fixed order.
-        let snapshot = crate::commands::settings::load_settings(
-            &config,
-            &socket_default,
-            (StyleLevel::Full, StyleSource::Default),
-        )
-        .unwrap();
-        msg_tx
-            .send(Msg::Settings {
-                result: Ok(snapshot),
-            })
-            .await
-            .unwrap();
-        // Four `j` reach `[daemon] log_level` (under `[daemon]`, after
-        // `boot_first_dogs`, `environment` and `log_json`), `space` arms it,
-        // `Enter` sends it, and `q` is the key that must still be answered.
-        for _ in 0..4 {
-            msg_tx.send(Msg::Key(KeyPress::SelectDown)).await.unwrap();
-        }
-        msg_tx.send(Msg::Key(KeyPress::Cycle)).await.unwrap();
-        msg_tx.send(Msg::Key(KeyPress::Confirm)).await.unwrap();
-        msg_tx.send(Msg::Key(KeyPress::Quit)).await.unwrap();
-        drop(msg_tx);
-
-        let app = App::new(
-            Palette::detect(None, None, None),
-            Control::Allowed,
-            dir.path().display().to_string(),
-            Instant::now(),
-        );
-        let terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
-        let _ = tokio::time::timeout(
-            Duration::from_secs(5),
-            run_ui(
-                app,
-                terminal,
-                stream::empty(),
-                msg_rx,
-                poll_tx,
-                request_tx,
-                test_paths(dir.path()),
-                FakeLocal::default(),
-            ),
-        )
-        .await
-        .expect("the loop answered `q` with a write still in flight");
-
-        // The other half of the same property: the write was not cancelled by
-        // the loop leaving. `spawn_blocking` runs its closure to completion
-        // whatever happens to the handle. The bound is so a lost write reports
-        // rather than hangs, not a claim about speed.
-        const WRITE_ATTEMPTS: usize = 3_000;
-        const WRITE_POLL: Duration = Duration::from_millis(10);
-        drop(held);
-        let mut written = false;
-        for _ in 0..WRITE_ATTEMPTS {
-            if std::fs::read_to_string(&config).unwrap().contains("debug") {
-                written = true;
-                break;
-            }
-            std::thread::sleep(WRITE_POLL);
-        }
-        assert!(written, "the write that was in flight still landed");
-    }
-
-    /// Drives `Effect::LoadSecrets` end to end, the only test that does: the
-    /// others call `App::update` and inspect the returned `Effect` as a value.
-    ///
-    /// `reader-app` is filtered off the dashboard by name before `S` opens the
-    /// pane, but still names `API_KEY` in the muster roll, so readers must
-    /// come from `App::all_rows()` and not `App::rows()`.
-    #[tokio::test]
-    async fn load_secrets_counts_a_reader_the_dashboard_filter_has_hidden() {
-        // Short, not the default `$TMPDIR`: a long `$SHEP_HOME` overflows
-        // `SUN_LEN` for the control socket path this builds, even though
-        // this test never dials it.
-        let dir = tempfile::Builder::new().prefix("s").tempdir().unwrap();
-        let paths = crate::secret_readers::test_support::paths_under(dir.path());
-        shep_core::secrets::set(&paths.secrets, "API_KEY", "production", "hunter2").unwrap();
-
-        let mut reader_app = shep_core::config::AppConfig::minimal("reader-app", "./srv");
-        reader_app
-            .env
-            .insert("A".to_string(), "{{secret:API_KEY}}".to_string());
-        crate::secret_readers::test_support::write_roll(&paths, &[reader_app]);
-
-        let mut app = App::new(
-            Palette::detect(None, None, None),
-            Control::ReadOnly,
-            dir.path().display().to_string(),
-            Instant::now(),
-        );
-        app.update(Msg::Snapshot {
-            rows: vec![
-                ProcessInfo::builder(1, "keeper", ProcStatus::Online).build(),
-                ProcessInfo::builder(2, "reader-app", ProcStatus::Online).build(),
-            ],
-            at: Instant::now(),
-        });
-        app.set_filter_for_tests("keeper");
-        assert!(
-            app.rows().iter().all(|row| row.info.name != "reader-app"),
-            "the filter must actually hide reader-app, or this test proves nothing"
-        );
-
-        let (msg_tx, msg_rx) = mpsc::channel(16);
-        let (poll_tx, _poll_rx) = mpsc::channel(4);
-        let (request_tx, _request_rx) = mpsc::channel(2);
-        msg_tx.send(Msg::Key(KeyPress::Secrets)).await.unwrap();
-        // The sleep, not an immediate `Quit`: `Effect::LoadSecrets` answers
-        // off `spawn_blocking`, and `Msg::Secrets` is dropped once it lands
-        // if `self.body` has already left `Body::Secrets`: quitting before
-        // the read comes back would draw the pane still empty.
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(2000)).await;
-            let _ = msg_tx.send(Msg::Key(KeyPress::Quit)).await;
-        });
-
-        let terminal = Terminal::new(TestBackend::new(160, 48)).unwrap();
-        let terminal = tokio::time::timeout(
-            Duration::from_secs(10),
-            run_ui(
-                app,
-                terminal,
-                stream::empty(),
-                msg_rx,
-                poll_tx,
-                request_tx,
-                paths.clone(),
-                FakeLocal::default(),
-            ),
-        )
-        .await
-        .expect("the loop left within ten seconds");
-
-        let frame = crate::lookout::frames::render_text(terminal.backend().buffer());
-        assert!(
-            frame.contains("API_KEY"),
-            "the seeded key is drawn: {frame}"
-        );
-        let row = frame
-            .lines()
-            .find(|line| line.contains("API_KEY"))
-            .expect("API_KEY's own row");
-        assert!(
-            row.contains("1 (1 online)"),
-            "reader-app must still be counted in READ BY: {row:?}"
-        );
-    }
-
-    /// What `local` was asked while a lookout ran: the cursor leaves the
-    /// sheep and comes back, which asks for its feed and its log size, and
-    /// the first heartbeat asks for a host sample.
-    async fn reads_taken(remote: bool) -> (usize, usize, usize) {
-        let sheep = ProcessInfo::builder(7, "web", ProcStatus::Online)
-            .out_file(Some("/var/log/remote/web-out.log".to_string()))
-            .err_file(Some("/var/log/remote/web-err.log".to_string()))
-            .build();
-        let mut app = crate::lookout::view::fixtures::with_selection(sheep);
-        if remote {
-            app.set_remote_host("build-01");
-        }
-        let local = FakeLocal::default();
-        let (tails, sizes, hosts) = (
-            Arc::clone(&local.tails),
-            Arc::clone(&local.log_sizes),
-            Arc::clone(&local.hosts),
-        );
-
-        let (msg_tx, msg_rx) = mpsc::channel(16);
-        let (poll_tx, _poll_rx) = mpsc::channel(4);
-        let (request_tx, _request_rx) = mpsc::channel(2);
-        // Real time between the keys: the feed and the log size are read
-        // only once `MIN_REDRAW` has passed since the last draw.
-        tokio::spawn(async move {
-            for key in [KeyPress::SelectUp, KeyPress::SelectDown] {
-                tokio::time::sleep(MIN_REDRAW * 3).await;
-                let _ = msg_tx.send(Msg::Key(key)).await;
-            }
-            tokio::time::sleep(MIN_REDRAW * 3).await;
-            let _ = msg_tx.send(Msg::Key(KeyPress::Quit)).await;
-        });
-
-        let terminal = Terminal::new(TestBackend::new(160, 48)).unwrap();
-        let _ = tokio::time::timeout(
-            Duration::from_secs(10),
-            run_ui(
-                app,
-                terminal,
-                stream::empty(),
-                msg_rx,
-                poll_tx,
-                request_tx,
-                shared_test_paths(),
-                local,
-            ),
-        )
-        .await
-        .expect("the loop left within ten seconds");
-        (
-            tails.load(Ordering::Relaxed),
-            sizes.load(Ordering::Relaxed),
-            hosts.load(Ordering::Relaxed),
-        )
-    }
-
-    /// The log paths on a remote row name files on the host. Read here they
-    /// would be this machine's files under the host's name, or nothing, which
-    /// reads as a sheep that wrote nothing.
-    #[tokio::test]
-    async fn a_host_lookout_reads_no_log_file_named_by_a_remote_row() {
-        // The same script on this machine's own shepherd reads all three, or
-        // the zeros below would prove nothing.
-        let (tails, sizes, hosts) = reads_taken(false).await;
-        assert!(
-            tails > 0 && sizes > 0 && hosts > 0,
-            "{tails} {sizes} {hosts}"
-        );
-
-        assert_eq!(reads_taken(true).await, (0, 0, 0));
-    }
-}
+mod tests;

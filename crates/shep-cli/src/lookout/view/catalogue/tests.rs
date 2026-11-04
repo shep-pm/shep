@@ -2,7 +2,7 @@ use super::super::MIN_TERM_WIDTH;
 use super::super::fixtures::{app_with, flock_of, plain};
 use super::super::testing::draw_to;
 use crate::dog_index::{AvailableDog, DogSourceKind, IndexedPermission};
-use crate::lookout::app::{App, CatalogueRead, CatalogueRow, DogState, KeyPress, Msg};
+use crate::lookout::app::{App, CatalogueRead, CatalogueRow, Control, DogState, KeyPress, Msg};
 use std::collections::BTreeMap;
 
 const WIDE: u16 = 80;
@@ -284,6 +284,38 @@ fn a_kind_shep_cannot_install_shows_its_instructions_and_no_install_line() {
             let wanted: String = instructions.split_whitespace().collect();
             assert!(packed.contains(&wanted), "{width}:\n{frame}");
         }
+    }
+}
+
+/// The entry's hint line, in the bar and in the entry itself: `enter` is
+/// named only where `Enter` installs. An installed dog, an instructions-only
+/// one and a closed gate each name nothing.
+#[test]
+fn the_entry_names_the_install_key_only_where_there_is_an_install() {
+    let manual = || DogSourceKind::Manual {
+        instructions: "Download a release from the repo.".to_owned(),
+    };
+    for (name, source, state, named) in [
+        ("beta", cargo("1.0.0"), DogState::NotInstalled, true),
+        ("gamma", cargo("0.3.0"), DogState::Installed, false),
+        ("delta", manual(), DogState::NotInstalled, false),
+    ] {
+        let mut app = app_on(vec![row(dog(name, source, None), "1.0.0", state)], false);
+        app.set_control_for_tests(Control::Allowed);
+        open_first_entry(&mut app);
+
+        let frame = draw_to(&app, WIDE, HEIGHT);
+        let bar = frame.lines().last().unwrap_or_default();
+        assert_eq!(
+            (bar.contains("enter install"), bar.contains("esc back")),
+            (named, true),
+            "{name} {state}:\n{frame}"
+        );
+        assert_eq!(
+            flat(&frame).contains("enter installs it"),
+            named,
+            "{name} {state}:\n{frame}"
+        );
     }
 }
 

@@ -181,6 +181,7 @@ where
         request_tx,
         paths.clone(),
         local,
+        super::app::DogRunner::Real,
     )
     .await;
     link.abort();
@@ -214,7 +215,7 @@ mod tests {
 
     use ratatui::Terminal;
 
-    use super::super::app::{App, Body, Control, Msg, Sent};
+    use super::super::app::{App, Body, Control, DogRunner, Msg, Sent};
     use tokio::sync::mpsc;
 
     use super::super::theme::Palette;
@@ -259,6 +260,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 FakeLocal::default(),
+                DogRunner::Real,
             ),
         )
         .await;
@@ -298,6 +300,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 FakeLocal::default(),
+                DogRunner::Real,
             ),
         )
         .await
@@ -367,6 +370,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                DogRunner::Real,
             ),
         )
         .await
@@ -441,6 +445,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                DogRunner::Real,
             ),
         )
         .await
@@ -493,6 +498,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                DogRunner::Real,
             ),
         )
         .await
@@ -557,6 +563,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                DogRunner::Real,
             ),
         )
         .await
@@ -615,6 +622,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                DogRunner::Real,
             ),
         )
         .await
@@ -689,6 +697,7 @@ mod tests {
                 request_tx,
                 paths.clone(),
                 FakeLocal::default(),
+                DogRunner::Real,
             ),
         )
         .await;

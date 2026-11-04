@@ -199,12 +199,15 @@ pub(super) fn secrets_hint(control: Control) -> String {
 }
 
 /// The catalogue's own key hint: the list moves and opens, an entry only
-/// goes back.
-pub(super) const fn catalogue_hint(entry_open: bool) -> &'static str {
-    if entry_open {
-        "esc back   h help   q quit"
-    } else {
-        "esc close   j/k select   g/G first/last   enter open   h help   q quit"
+/// goes back, and an entry shep can build names `enter` as its install key.
+///
+/// `installable` is [`App::can_install`] for the open row: an installed dog,
+/// an instructions-only one and a closed gate each have no install to name.
+pub(super) const fn catalogue_hint(entry_open: bool, installable: bool) -> &'static str {
+    match (entry_open, installable) {
+        (true, true) => "esc back   enter install   h help   q quit",
+        (true, false) => "esc back   h help   q quit",
+        (false, _) => "esc close   j/k select   g/G first/last   enter open   h help   q quit",
     }
 }
 

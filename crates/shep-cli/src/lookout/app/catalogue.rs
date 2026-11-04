@@ -302,11 +302,26 @@ impl App {
                 }
             }
             KeyPress::Confirm => {
-                if pane.entry.is_none() {
-                    pane.entry = self
-                        .catalogue
-                        .get(pane.selected)
-                        .map(|row| row.dog.adopt_as.clone());
+                // On the list, `Enter` opens the entry. On an entry shep can
+                // install and has not, it installs.
+                let open = pane.entry.clone();
+                match open {
+                    None => {
+                        pane.entry = self
+                            .catalogue
+                            .get(pane.selected)
+                            .map(|row| row.dog.adopt_as.clone());
+                    }
+                    Some(name) => {
+                        let installable = self
+                            .catalogue
+                            .iter()
+                            .find(|row| row.dog.adopt_as == name)
+                            .is_some_and(|row| self.can_install(row));
+                        if installable {
+                            return self.start_install(&name);
+                        }
+                    }
                 }
             }
             KeyPress::SelectUp if pane.entry.is_none() => {
