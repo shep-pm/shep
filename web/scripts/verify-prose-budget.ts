@@ -419,7 +419,11 @@ export const BUDGETS: Record<string, number> = {
   // install key, the grant modal, the status-bar job item, one job at a time,
   // and what quitting mid-job leaves behind. None of it is described on any
   // other page, and it is required content rather than prose to trim back out.
-  lookout: 3870,
+  //
+  // Raised again, to 3948, on #1501 for the upgrade and delete keys: when each
+  // applies, what a new permission does to an upgrade, and that a built-in dog
+  // has no delete.
+  lookout: 3948,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
