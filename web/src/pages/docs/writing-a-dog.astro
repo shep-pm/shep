@@ -485,8 +485,8 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
     </p>
     <p>
       <code>verb</code> is how shep describes <code>shep &lt;name&gt;</code>:
-      its <code>description</code> is the line the dog gets in the Dogs group
-      of <code>shep --help</code>, its <code>subcommands</code> are what{" "}
+      its <code>description</code> is the dog's line in the Dogs group of{" "}
+      <code>shep --help</code>, its <code>subcommands</code> are what{" "}
       <code>shep &lt;name&gt; --help</code> prints and what completion offers,
       each with an optional <code>usage</code> of the words after its name,
       and its <code>examples</code> are up to three command lines, each
@@ -494,7 +494,8 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
       of it by hand: <code>Verb::from_clap(&amp;Command)</code>, behind
       shep-client's <code>clap</code> feature, reads the about, every visible
       subcommand's name, about and <code>override_usage</code>, and the{" "}
-      <code>Examples:</code> block of <code>after_help</code>.{" "}
+      <code>Examples:</code> block <code>render_examples</code> writes to{" "}
+      <code>after_help</code>.{" "}
       <code>shep adopt</code> warns, and adopts anyway, past 60 columns of
       description or a fourth example. A dog that declares subcommands gets
       shep's page for them and its binary never runs for{" "}
