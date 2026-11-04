@@ -437,7 +437,7 @@ watchdog  adopted  true      stopped`}</CodeBlock>
     <p>
       <code>shep adopt</code> asks <code>--shep-manifest</code> first. A dog
       answers on stdout with one JSON object and exits 0; <code>manifest</code>{" "}
-      (the version, <code>2</code>; <code>1</code> still reads),{" "}
+      (the version, <code>3</code>; <code>1</code> and <code>2</code> still read),{" "}
       <code>name</code>, <code>version</code>{" "}
       and <code>protocol</code> are required, and a field shep doesn't know is
       ignored. The fields are listed in <code>docs/dogs.md</code>.
@@ -476,6 +476,13 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
       <code>channel</code>: <code>shep adopt</code> refuses a manifest declaring
       one without it. <a href="#being-asked-about-its-settings">Being asked</a>{" "}
       is below.
+    </p>
+    <p>
+      <code>pane</code> says the dog answers <code>shep.pane</code> with a
+      status pane for lookout to draw. It needs <code>channel</code>: without
+      one the manifest reads <code>pane</code> as false and{" "}
+      <code>shep adopt</code> says the dog has none. Nothing asks for a pane
+      yet.
     </p>
     <p>
       <code>launch</code> says the dog runs a sheep's command, as{" "}
