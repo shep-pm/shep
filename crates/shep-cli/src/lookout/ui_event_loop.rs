@@ -141,6 +141,7 @@ where
                 let area = Rect::new(0, 0, size.width, size.height);
                 app.note_body_rows(super::view::body_rows(area));
                 app.note_body_width(area.width);
+                app.note_modal_reach(super::view::scroll_reach(&app, area));
             }
             let _ = terminal.draw(|frame| super::view::draw(&app, frame));
             dirty = false;
@@ -164,9 +165,9 @@ where
                 // Only while a box is open; elsewhere a paste is nothing, and
                 // the reducer would say so too.
                 Some(Ok(crossterm::event::Event::Paste(text))) => {
-                    (app.mode() == InputMode::Text).then(|| Msg::Paste(Pasted::new(text)))
+                    (app.key_mode() == InputMode::Text).then(|| Msg::Paste(Pasted::new(text)))
                 }
-                Some(Ok(event)) => super::input::map_key(&event, app.mode()).map(Msg::Key),
+                Some(Ok(event)) => super::input::map_key(&event, app.key_mode()).map(Msg::Key),
                 // A key source that has ended, or has started erroring. Both
                 // conditions are permanent, and both retire this arm: one
                 // that keeps completing immediately, above the link and the
@@ -633,7 +634,8 @@ where
             Effect::CopyToClipboard(value) => {
                 let _ = super::term::copy_to_clipboard(&value.0);
             }
-            Effect::None => {}
+            // Nothing opens a modal yet, so nothing is waiting on an answer.
+            Effect::ModalAnswered { .. } | Effect::None => {}
         }
     }
 

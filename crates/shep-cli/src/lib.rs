@@ -28,6 +28,7 @@ mod home;
 mod host;
 mod host_sample;
 mod http;
+mod install_channel;
 mod launch;
 mod lookout;
 mod output;

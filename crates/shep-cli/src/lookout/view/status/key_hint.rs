@@ -1,4 +1,4 @@
-use super::super::super::app::{App, Body, Control, Grouping};
+use super::super::super::app::{App, Body, Control, Grouping, Modal};
 use super::super::super::keyvalue::{Field, KeyValues};
 use super::super::super::pane::ConfigPane;
 use super::super::super::textbox::TextBox;
@@ -162,6 +162,20 @@ pub(super) const BLEATS_HINT: &str = "esc back   j/k line   ctrl-d/u page   G en
 /// the first.
 pub(super) const CLOSE_DIALOG_HINT: &str =
     "the dialog owns the keyboard until it is answered or it expires";
+
+/// The keys an open modal takes, worded for the modal's own last line and for
+/// the status bar, which says the same thing.
+///
+/// `scrolls` is whether its text is taller than its box. Enter is the only
+/// yes, so the question's keys name no `y` or `n`.
+pub(in crate::lookout::view) const fn modal_keys(modal: &Modal, scrolls: bool) -> &'static str {
+    match (modal, scrolls) {
+        (Modal::Output { .. }, false) => "any key closes",
+        (Modal::Output { .. }, true) => "j/k g/G scroll   any other key closes",
+        (_, false) => "enter yes   any other key no",
+        (_, true) => "j/k g/G scroll   enter yes   any other key no",
+    }
+}
 
 /// The secrets pane's own key hint.
 ///

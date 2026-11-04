@@ -28,6 +28,7 @@ pub mod status;
 #[cfg(test)]
 pub mod fixtures;
 mod layout_budget;
+mod modal;
 #[cfg(test)]
 mod over_host;
 mod paint_frame;
@@ -41,4 +42,5 @@ mod testing;
 pub const MIN_TERM_WIDTH: u16 = flock::MIN_WIDTH + flock::GUTTER;
 
 pub use layout_budget::{body_rows, panes_for};
+pub(super) use modal::scroll_reach;
 pub use paint_frame::draw;

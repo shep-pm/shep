@@ -5,8 +5,8 @@ use super::super::cell;
 use super::super::flock::fit;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
 use super::key_hint::{
-    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, env_armed, hint_for, pane_editor, pane_hint,
-    pane_screen, secrets_armed, secrets_hint, secrets_typing, sheep_pane_hint,
+    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, env_armed, hint_for, modal_keys, pane_editor,
+    pane_hint, pane_screen, secrets_armed, secrets_hint, secrets_typing, sheep_pane_hint,
 };
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -84,7 +84,14 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     // butts against the label. The gap rides inside the right span, styled
     // like the label, keeping the line two spans rather than three.
     let left_width = width.saturating_sub(right_len).saturating_sub(1);
-    let (left, left_style) = if let Some(prompt) = app.settings().and_then(Settings::pending) {
+    let (left, left_style) = if let Some(modal) = app.modal() {
+        // First: a modal takes every key ahead of whatever is under it, so
+        // any other hint would name keys that do nothing.
+        (
+            modal_keys(modal, app.modal_scrolls()).to_string(),
+            palette.attention(),
+        )
+    } else if let Some(prompt) = app.settings().and_then(Settings::pending) {
         // The settings screen's armed scalar or dog edit, or its in-flight
         // sentence once sent. Opening clears `self.action`. `on_key` routes
         // to the settings keymap, so no dashboard confirm can arm while it

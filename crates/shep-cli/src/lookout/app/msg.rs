@@ -524,6 +524,17 @@ pub enum Effect {
     SendAll(Vec<Sent>),
     /// Leave.
     Quit,
+    /// The open modal was answered. `tag` is the one its owner gave
+    /// [`Modal`], and the owner acts on `yes`.
+    ///
+    /// Raised for a grant or a confirm only: an output modal closes with
+    /// [`Self::None`].
+    ModalAnswered {
+        /// The owner's tag from the modal.
+        tag: u64,
+        /// Whether the answer was yes.
+        yes: bool,
+    },
     /// Read `shep.toml`'s settings snapshot; the result lands as
     /// [`Msg::Settings`]. Raised by the dashboard's `s`; once the screen is
     /// open, `s` closes it instead.
