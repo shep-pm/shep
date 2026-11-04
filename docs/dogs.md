@@ -1174,15 +1174,17 @@ pane, and says so. `pane_answer` writes the reply body, from a pane built
 afresh on each ask:
 
 ```rust
+use std::sync::{Arc, Mutex};
+
 use shep_client::dogs::{Destructive, PANE_ACTION, Pane, Probe, Row, pane_answer};
 
-fn build() -> Pane {
+fn build(models: &[String]) -> Pane {
     Pane::new()
         .fields("host", [("VRAM", "20 GiB")])
         .table(
             "models",
             ["MODEL", "STATE"],
-            [Row::new("qwen3-32b", ["qwen3-32b", "loaded"])],
+            models.iter().map(|m| Row::new(m, [m.as_str(), "loaded"])),
         )
         .row_action("unload", "Unload", Destructive::Yes)
 }
@@ -1193,8 +1195,20 @@ Probe::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
     .action("unload", "Unload a model")
     .answer::<MyDogConfig>();
 
+let models = Arc::new(Mutex::new(vec!["qwen3-32b".to_string()]));
+let shown = Arc::clone(&models);
 let shepherd = shep_channel::serve();
-shepherd.on_action(PANE_ACTION, |params, _name| pane_answer(params, build));
+shepherd.on_action(PANE_ACTION, move |params, _name| {
+    pane_answer(params, || build(&shown.lock().unwrap()))
+});
+// A row action arrives as {"row": "<key>"}.
+shepherd.on_action("unload", move |params, _name| {
+    let row = params
+        .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+        .and_then(|p| p["row"].as_str().map(str::to_owned));
+    models.lock().unwrap().retain(|m| Some(m) != row.as_ref());
+    "unloaded".to_string()
+});
 ```
 
 The body is one JSON object, which a dog in any language can write by hand:

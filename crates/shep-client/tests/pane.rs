@@ -133,21 +133,14 @@ impl Drop for Shepherd {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn triggering_shep_pane_answers_the_examples_pane() {
-    let shepherd = Shepherd::boot().await;
-    shepherd.ready().await;
-    let client = tokio::time::timeout(WAIT, Client::connect(&shepherd.socket))
-        .await
-        .expect("connect must not hang")
-        .expect("the operator connects");
-
+/// Triggers `action` at the dog as the operator and returns its reply body.
+async fn trigger(client: &Client, action: &str, params: Option<&str>) -> String {
     let response = tokio::time::timeout(
         WAIT,
         client.request(Request::Trigger {
             selector: SelectorSpec::Name("pane-dog".to_owned()),
-            action: PANE_ACTION.to_owned(),
-            params: None,
+            action: action.to_owned(),
+            params: params.map(str::to_owned),
         }),
     )
     .await
@@ -161,7 +154,25 @@ async fn triggering_shep_pane_answers_the_examples_pane() {
     let ActionOutcome::Replied { body } = &rows[0].outcome else {
         panic!("the dog did not reply: {:?}", rows[0].outcome);
     };
-    let pane = Pane::read(body).expect("lookout accepts what the dog answered");
+    body.clone()
+}
+
+async fn connect(shepherd: &Shepherd) -> Client {
+    tokio::time::timeout(WAIT, Client::connect(&shepherd.socket))
+        .await
+        .expect("connect must not hang")
+        .expect("the operator connects")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn triggering_shep_pane_answers_the_examples_pane() {
+    let shepherd = Shepherd::boot().await;
+    shepherd.ready().await;
+    let client = connect(&shepherd).await;
+
+    let body = trigger(&client, PANE_ACTION, None).await;
+
+    let pane = Pane::read(&body).expect("lookout accepts what the dog answered");
     let [Section::Fields(host), Section::Table(models)] = pane.sections.as_slice() else {
         panic!("expected a fields section then a table: {pane:?}");
     };
@@ -171,6 +182,28 @@ async fn triggering_shep_pane_answers_the_examples_pane() {
     assert_eq!(keys, ["qwen3-32b", "llama-3-8b"]);
     assert_eq!(models.row_actions[0].action, "unload");
     assert!(models.row_actions[0].destructive);
+
+    client.close().await.ok();
+    shepherd.shutdown().await;
+}
+
+/// The row action a pane declares reaches a handler, and the next pull shows
+/// what it did.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_row_action_the_pane_declares_is_answered_and_the_next_pane_shows_it() {
+    let shepherd = Shepherd::boot().await;
+    shepherd.ready().await;
+    let client = connect(&shepherd).await;
+
+    let reply = trigger(&client, "unload", Some(r#"{"row":"qwen3-32b"}"#)).await;
+
+    assert_eq!(reply, "unloaded qwen3-32b");
+    let pane = Pane::read(&trigger(&client, PANE_ACTION, None).await).unwrap();
+    let Section::Table(models) = &pane.sections[1] else {
+        panic!("the second section is the table: {pane:?}");
+    };
+    let keys: Vec<&str> = models.rows.iter().map(|row| row.key.as_str()).collect();
+    assert_eq!(keys, ["llama-3-8b"]);
 
     client.close().await.ok();
     shepherd.shutdown().await;
