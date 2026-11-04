@@ -240,9 +240,39 @@ class ApplyTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "manifest"):
                 dog_index_update.manifest_permissions(text)
 
-    def test_a_manifest_with_no_permissions_list_is_refused(self) -> None:
-        for text in (manifest_text(), '{"permissions": "flock.read"}', '{"permissions": {"name": "flock.read"}}'):
+    def test_a_manifest_declaring_nothing_omits_the_key_and_reads_as_none(self) -> None:
+        # Manifest v2 serializes `permissions` with skip_serializing_if =
+        # "Vec::is_empty" (crates/shep-core/src/dogs/manifest.rs), so a dog
+        # with nothing declared prints no `permissions` key at all. That is the
+        # same answer as an empty list, and the row has to carry the empty list:
+        # the entry reads a missing key as "not listed" and an empty one as
+        # "none" (crates/shep-cli/src/lookout/view/catalogue.rs).
+        self.assertEqual(dog_index_update.manifest_permissions(manifest_text()), [])
+        doc = self.apply(
+            index_text(row()),
+            "0.2.0",
+            sums("shep-example", "0.2.0", {LINUX: HASH_A}),
+            permissions=dog_index_update.manifest_permissions(manifest_text()),
+        )
+        self.assertEqual(self.source_of(doc), {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_A}, "permissions": []})
+
+    def test_a_manifest_whose_permissions_is_not_a_list_is_refused(self) -> None:
+        # Absent reads as nothing declared. Present and not a list is the
+        # manifest saying something a row cannot carry.
+        for text in (
+            '{"manifest":2,"name":"example","version":"0.2.0","protocol":7,"permissions":"flock.read"}',
+            '{"manifest":2,"name":"example","version":"0.2.0","protocol":7,"permissions":null}',
+            '{"manifest":2,"name":"example","version":"0.2.0","protocol":7,"permissions":{"name":"flock.read"}}',
+        ):
             with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "permissions"):
+                dog_index_update.manifest_permissions(text)
+
+    def test_a_document_without_the_fields_a_manifest_needs_is_refused(self) -> None:
+        # manifest.rs names these four as what makes an answer a manifest at
+        # all, so a dog printing something else is refused rather than read as
+        # a dog declaring none.
+        for text in ('{"hello":"world"}', '{"name":"example"}', '{"manifest":2,"name":"example"}'):
+            with self.subTest(text=text), self.assertRaisesRegex(dog_index_update.IndexUpdateError, "manifest"):
                 dog_index_update.manifest_permissions(text)
 
     def test_a_manifest_of_any_shape_writes_its_permissions_and_nothing_else(self) -> None:
@@ -399,6 +429,25 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(
                 json.loads(index.read_text())["dogs"][0]["source"]["permissions"],
                 [{"name": "flock.read", "required": True}],
+            )
+
+    def test_a_manifest_declaring_nothing_writes_an_empty_list_and_says_zero(self) -> None:
+        # The common case: a dog that asks for nothing prints no `permissions`
+        # key, and its row says "none" rather than "not listed".
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "dogs.json"
+            index.write_text(index_text(row()))
+            hashes = Path(tmp) / "sums.txt"
+            hashes.write_text(sums("shep-example", "0.2.0", {LINUX: HASH_A}))
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(manifest_text())
+            code, out, err = self.run_main(
+                str(index), "shep-example", "0.2.0", str(hashes), REPOSITORY, str(manifest)
+            )
+            self.assertEqual((code, err), (0, ""))
+            self.assertIn("1 hashes and 0 permissions", out)
+            self.assertEqual(
+                json.loads(index.read_text())["dogs"][0]["source"]["permissions"], []
             )
 
     def test_five_arguments_still_work_and_write_no_permissions(self) -> None:
@@ -578,6 +627,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(guards), 1, "the probe has one manifest check")
         self.assertRegex(guards[0], r"jq -\w*s\b|--slurp", "the check reads only the last document")
         self.assertIn("length == 1", guards[0])
+
+    def test_the_probe_reads_a_manifest_that_declares_no_permissions(self) -> None:
+        # Manifest v2 leaves the `permissions` key out when the list is empty
+        # (crates/shep-core/src/dogs/manifest.rs), so a check that demands the
+        # key calls an ordinary dog a broken one, says so in the job summary,
+        # and leaves its row reading "not listed" instead of "none". The check
+        # is what manifest.rs says makes an answer a manifest: the four fields
+        # it requires, and a permissions that is absent or a list.
+        guards = [line for line in self.step("build", "--shep-manifest").splitlines() if "jq" in line and "type" in line]
+        self.assertEqual(len(guards), 1, "the probe has one manifest check")
+        self.assertIn('has("permissions")', guards[0])
+        for field in ("manifest", "name", "version", "protocol"):
+            self.assertIn(f'"{field}"', guards[0], f"the check does not require {field}")
 
     def test_the_index_job_can_fetch_the_manifest_artifact(self) -> None:
         # `gh run download` needs `actions: read`, and the manifest is optional:

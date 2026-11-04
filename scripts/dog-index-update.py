@@ -15,9 +15,11 @@ drops out rather than keeping a stale hash.
 The manifest, when one is given, is what the release's Linux binary answered
 `--shep-manifest` with. Only its `permissions` are read, and of each only its
 `name` and `required`: the row is a listing, and `shep install` prompts from
-the binary's own manifest. A manifest is optional. Without one the row carries
-no `permissions`, and a list an earlier version left in the row goes out with
-the version it described, because a stale list reads as a claim about this one.
+the binary's own manifest. A manifest that declares nothing prints no
+`permissions` key at all, and writes the empty list that says "none". A
+manifest is optional. Without one the row carries no `permissions`, which says
+"not listed", and a list an earlier version left in the row goes out with the
+version it described, because a stale list reads as a claim about this one.
 
 The row's `repo` must name the repository the release was built from, so a
 release elsewhere cannot approve another dog's row.
@@ -48,6 +50,11 @@ DIGEST = re.compile(r"^[0-9a-f]{64}$")
 # in web/public/dogs.schema.json on purpose, so a `.sha256` or `.sig` sitting
 # beside the binaries on the release is refused instead of becoming a target.
 TARGET = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+){2,}$")
+# What crates/shep-core/src/dogs/manifest.rs says makes an answer a manifest:
+# "output without them is not a manifest, and the asker falls back to the
+# version and schema flags". A document missing one is not a dog that declared
+# nothing, so it is refused rather than read as an empty list.
+MANIFEST_FIELDS = ("manifest", "name", "version", "protocol")
 
 
 def parse_hashes(package: str, version: str, hashes: str) -> dict[str, str]:
@@ -87,6 +94,13 @@ def read_manifest(path: str) -> str:
 def manifest_permissions(text: str) -> list[object]:
     """The `permissions` entries of a manifest, as the manifest printed them.
 
+    A manifest with nothing declared prints no `permissions` key: manifest.rs
+    serializes the field with `skip_serializing_if = "Vec::is_empty"`. That
+    reads as an empty list, which is the list the row has to carry, because a
+    row with no key at all reads as "not listed" and an empty one as "none".
+
+    `MANIFEST_FIELDS` is what manifest.rs says makes an answer a manifest, so a
+    document without them is refused rather than read as a dog declaring none.
     Everything else in the manifest is left where it is: the row lists
     permissions, and a dog's settings schema, verbs and events belong to the
     dog. `validate_permissions` decides which of the entries read here can be
@@ -98,8 +112,11 @@ def manifest_permissions(text: str) -> list[object]:
         raise IndexUpdateError(f"the manifest is not JSON: {err}") from err
     if not isinstance(document, dict):
         raise IndexUpdateError("the manifest is not a JSON object")
+    missing = [field for field in MANIFEST_FIELDS if field not in document]
+    if missing:
+        raise IndexUpdateError(f"the manifest is missing {', '.join(missing)}")
     if "permissions" not in document:
-        raise IndexUpdateError("the manifest declares no permissions list")
+        return []
     permissions = document["permissions"]
     if not isinstance(permissions, list):
         raise IndexUpdateError(f"the manifest's permissions is {type(permissions).__name__}, not a list")

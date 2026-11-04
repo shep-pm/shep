@@ -256,8 +256,8 @@ jobs:
       # binary the runner can exec. Reading it here, in the job whose token
       # cannot write, is what keeps the jobs that hold one from running a file
       # the dog built. A dog that answers nothing, or answers something that is
-      # not a manifest with a permissions list, costs the index row its
-      # permissions and costs the release nothing.
+      # not a manifest, costs the index row its permissions and costs the
+      # release nothing.
       - id: manifest
         name: Read the manifest the built binary prints
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -287,9 +287,13 @@ jobs:
           # the length is what refuses more than one: `jq -e` alone reports the
           # last document only, so a binary printing two objects, the last with
           # a permissions array, would pass here and fail in `index-pr`, after
-          # the release is already published.
-          elif ! jq -es 'length == 1 and (.[0] | type == "object") and (.[0].permissions | type == "array")' candidate.json > /dev/null; then
-            reason="${BIN} answered --shep-manifest with something other than one manifest with a permissions list"
+          # the release is already published. The four fields are what
+          # manifest.rs says makes an answer a manifest at all. `permissions`
+          # may be absent, because manifest.rs leaves the key out when the list
+          # is empty: a dog that asks for nothing has a manifest, and its row
+          # is written with the empty list that reads as "none".
+          elif ! jq -es 'length == 1 and (.[0] | type == "object") and (["manifest", "name", "version", "protocol"] - (.[0] | keys) == []) and ((.[0] | has("permissions") | not) or (.[0].permissions | type == "array"))' candidate.json > /dev/null; then
+            reason="${BIN} answered --shep-manifest with something other than one manifest"
           fi
           if [ -z "$reason" ]; then
             mv candidate.json manifest.json
