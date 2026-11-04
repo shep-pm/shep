@@ -303,6 +303,11 @@ time = { version = "0.3.37", default-features = false }
 # ratatui's widgets.rs applies `#[instability::unstable(...)]` to a braced
 # `pub use { A, B };` re-export, a shape the macro can't handle before 0.3.4.
 instability = { version = "0.3.4", default-features = false }
+# The argument parser `shep` builds its verbs with, at the version shep-cli
+# names. `shep-client`'s `clap` feature reads a dog's own clap tree with it,
+# and each crate names only the features it uses: shep-cli renders help,
+# shep-client reads fields off a tree it never renders.
+clap = { version = "4", default-features = false }
 # The MCP SDK, for `shep whistle` (spec §8, §9): MCP is an evolving
 # protocol, and tracking an SDK beats owning a parser for a wire format
 # still moving.

@@ -80,6 +80,8 @@ mod sheep_settings;
 mod startup;
 mod stop;
 mod validate;
+#[cfg(feature = "clap")]
+mod verb_clap;
 
 pub use error::ShepherdError;
 pub use identity::DogIdentity;
@@ -105,6 +107,8 @@ pub use shep_macros::dog_config;
 pub use startup::{DogAction, HomeError, PRINT_CONFIG_FLAG, UsageError, parse_args, resolve_paths};
 pub use stop::{Interrupted, Stop, StopRequest};
 pub use validate::validate_answer;
+#[cfg(feature = "clap")]
+pub use verb_clap::{FromClap, VerbClapError};
 
 /// That a type's config schema has been through [`dog_config`], so every
 /// field marked `#[shep(secret)]` carries [`SECRET_KEY`] wherever `schemars`
