@@ -22,10 +22,6 @@ mod tests;
 /// The band's label on the list.
 const BAND_LABEL: &str = "CATALOGUE   dogs the index lists";
 
-/// The one line the list says when it has nothing to list and nothing is on
-/// the way.
-const NOTHING: &str = "no index cached, no network";
-
 /// Columns the entry's labels take, gap included.
 const LABEL_WIDTH: u16 = 13;
 
@@ -68,16 +64,6 @@ fn band(label: &str, app: &App, area: Rect, buffer: &mut Buffer) {
     );
 }
 
-/// The caption under the band: how many dogs, and whether a fetch is out.
-fn caption(rows: usize, refreshing: bool) -> String {
-    match (rows, refreshing) {
-        (0, true) => "refreshing".to_owned(),
-        (0, false) => NOTHING.to_owned(),
-        (count, true) => format!("{count} dogs in the index \u{b7} refreshing"),
-        (count, false) => format!("{count} dogs in the index"),
-    }
-}
-
 fn draw_list(
     app: &App,
     pane: &CataloguePane,
@@ -95,10 +81,7 @@ fn draw_list(
     buffer.set_line(
         area.x,
         y,
-        &Line::from(Span::styled(
-            caption(rows.len(), pane.refreshing),
-            palette.muted(),
-        )),
+        &Line::from(Span::styled(app.catalogue_caption(), palette.muted())),
         area.width,
     );
     y += 1;

@@ -280,6 +280,20 @@ impl App {
         }
     }
 
+    /// The line under the band: how many dogs, and whether a fetch is out.
+    ///
+    /// With no rows and no fetch out it is the one line that says there is
+    /// no cache and no network.
+    pub(crate) fn catalogue_caption(&self) -> String {
+        let refreshing = matches!(&self.body, Body::Catalogue(pane) if pane.refreshing);
+        match (self.catalogue.len(), refreshing) {
+            (0, true) => "refreshing".to_owned(),
+            (0, false) => "no index cached, no network".to_owned(),
+            (count, true) => format!("{count} dogs in the index \u{b7} refreshing"),
+            (count, false) => format!("{count} dogs in the index"),
+        }
+    }
+
     /// The catalogue's own key box, in force while `self.body` is
     /// `Body::Catalogue`.
     pub(super) fn on_catalogue_key(&mut self, key: KeyPress) -> Effect {

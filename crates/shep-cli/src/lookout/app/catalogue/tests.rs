@@ -356,3 +356,28 @@ fn over_a_host_the_catalogue_stays_shut() {
     assert!(matches!(app.body(), Body::FlockTable));
     assert!(app.notice().is_some());
 }
+
+#[test]
+fn no_cache_and_no_network_says_so_in_one_line_and_lists_nothing() {
+    let home = Home::new();
+    let (mut app, _t0) = started();
+    app.open_catalogue();
+
+    let read = read_cache(&home.paths, URL, true).unwrap();
+    assert_eq!(
+        app.update(Msg::Catalogue { result: Ok(read) }),
+        Effect::FetchCatalogue
+    );
+    assert_eq!(
+        app.catalogue_caption(),
+        "refreshing",
+        "while the fetch is out"
+    );
+
+    app.update(Msg::Catalogue {
+        result: Err("no route to host".to_owned()),
+    });
+
+    assert!(app.catalogue_rows().is_empty());
+    assert_eq!(app.catalogue_caption(), "no index cached, no network");
+}
