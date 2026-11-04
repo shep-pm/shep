@@ -407,13 +407,33 @@ mod tests {
         }
     }
 
-    /// The issue's third acceptance line, `shep lookout web config dogs`, was
-    /// never a parse: `config` is no group the pane draws, so the tab slot
-    /// refuses it before the third positional is read, on `main` and here.
-    /// Pinned as that same refusal, message included, so the subcommand slot
-    /// added to `lookout` cannot be what changed it.
+    /// The issue's third acceptance line: `shep lookout web dogs kelpie` still
+    /// parses as before, with the sheep, the `dogs` tab and the dog each set,
+    /// and the subcommand slot added to `lookout` taking none of the three.
     #[test]
-    fn web_config_dogs_is_refused_exactly_as_it_was_before() {
+    fn web_dogs_kelpie_parses_with_all_three_slots_set() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "web", "dogs", "kelpie"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("web"));
+        assert_eq!(args.tab.as_deref(), Some("dogs"));
+        assert_eq!(args.dog.as_deref(), Some("kelpie"));
+        assert!(!args.catalogue, "three positionals are not a screen");
+    }
+
+    /// The line this replaced, `shep lookout web config dogs`, was never a
+    /// parse: `config` is no group the pane draws, so the tab slot refuses it
+    /// before the third positional is read, on `main` and here. Kept as that
+    /// same refusal, message included, so the subcommand slot added to
+    /// `lookout` cannot be what changed it.
+    #[test]
+    fn web_config_dogs_is_refused_as_it_always_was() {
         use clap::Parser;
 
         let err = Cli::try_parse_from(["shep", "lookout", "web", "config", "dogs"])
@@ -424,20 +444,6 @@ mod tests {
         for group in shep_core::config::GROUP_ORDER {
             assert!(rendered.contains(group), "{rendered}");
         }
-
-        // The reading that is a parse: the same three slots, with the name in
-        // the third one, untouched by the subcommand slot.
-        let Commands::Lookout(args) =
-            Cli::try_parse_from(["shep", "lookout", "web", "dogs", "config"])
-                .unwrap()
-                .command
-        else {
-            panic!("lookout parses to its own variant")
-        };
-        assert_eq!(args.sheep.as_deref(), Some("web"));
-        assert_eq!(args.tab.as_deref(), Some("dogs"));
-        assert_eq!(args.dog.as_deref(), Some("config"));
-        assert!(!args.catalogue);
     }
 
     /// A dog is a table on the `dogs` tab. On any other tab there is nothing
