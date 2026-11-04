@@ -417,6 +417,7 @@ mod tests {
             repo: "https://github.com/shep-pm/shep-log-rotate".to_owned(),
             license: "MIT".to_owned(),
             category: "logs".to_owned(),
+            permissions: None,
             source: DogSourceKind::Cargo {
                 version: Some("0.2.4".to_owned()),
                 sha256: BTreeMap::new(),

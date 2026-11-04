@@ -63,6 +63,16 @@ export const CATEGORIES = [
 export type DogCategory = typeof CATEGORIES[number]
 
 /**
+ * One permission a `cargo` row says its approved version asks for: the name,
+ * and whether the dog can run without it. The reason the dog gives for asking
+ * stays in its manifest, which is what `shep install` prompts from.
+ */
+export interface DogPermission {
+  name: string;
+  required: boolean;
+}
+
+/**
  * Installable from crates.io. The package name is already the entry's
  * `package`, and a source that could spell it a second way would eventually
  * spell it differently.
@@ -81,6 +91,14 @@ export interface CargoSource {
    * `.exe` on Windows. The release workflow writes these. Needs `version`.
    */
   sha256?: Record<string, string>;
+  /**
+   * Each permission the approved version declares, copied from the dog's
+   * manifest at that version. Absent means the index lists none, which is
+   * every row written before this field; an empty array means this version
+   * declares none. `shep install` prompts from the manifest the binary prints,
+   * not from this list.
+   */
+  permissions?: DogPermission[];
 }
 
 /** Installable with `cargo install --git <url>`, for a dog not on crates.io. */
@@ -245,6 +263,30 @@ function validateHashes(hashes: unknown, label: string): Record<string, string> 
   return result;
 }
 
+/** A `permissions` list: each item a `name` and a `required`, or `undefined` when absent. */
+function validatePermissions(permissions: unknown, label: string): DogPermission[] | undefined {
+  if (permissions === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(permissions)) {
+    fail(label, `a "cargo" source's "permissions" must be a list of { name, required } objects`);
+  }
+  return permissions.map((permission, index): DogPermission => {
+    if (!isRecord(permission)) {
+      fail(label, `"permissions"[${index}] must be an object with a "name" and a "required"`);
+    }
+    const name = permission.name;
+    if (typeof name !== "string" || name.trim() === "") {
+      fail(label, `"permissions"[${index}] needs a non-empty "name"`);
+    }
+    const required = permission.required;
+    if (typeof required !== "boolean") {
+      fail(label, `"permissions"[${index}] needs a "required" that is true or false`);
+    }
+    return { name, required };
+  });
+}
+
 function validateSource(source: unknown, label: string): DogSource {
   if (!isRecord(source)) {
     fail(label, `"source" must be an object`);
@@ -269,10 +311,12 @@ function validateSource(source: unknown, label: string): DogSource {
       if (sha256 !== undefined && version === undefined) {
         fail(label, `a "cargo" source with "sha256" needs a "version" to build the download URL from`);
       }
+      const permissions = validatePermissions(source.permissions, label);
       return {
         kind,
         ...(version === undefined ? {} : { version }),
         ...(sha256 === undefined ? {} : { sha256 }),
+        ...(permissions === undefined ? {} : { permissions }),
       };
     }
     case "cargo-git": {
