@@ -344,7 +344,7 @@ fn screen_hint(app: &App) -> (String, Style, bool) {
     (
         hint_for(app.control(), app.settings().is_some(), app.grouping()),
         palette.attention(),
-        true,
+        app.settings().is_none(),
     )
 }
 

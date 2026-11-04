@@ -783,3 +783,15 @@ fn a_prompt_a_notice_and_the_frozen_line_outrank_the_hint() {
     assert!(bar.contains(FROZEN_HINT), "{bar:?}");
     assert!(!bar.contains("hint:"), "{bar:?}");
 }
+
+#[test]
+fn the_settings_screen_keeps_its_keys_and_carries_no_hint() {
+    let mut app = app_in_settings();
+    let _ = app.update(Msg::Hint {
+        line: Some(A_HINT.to_owned()),
+    });
+
+    let bar = rendered(&status_line(&app, 300));
+
+    assert!(!bar.contains("hint:"), "{bar:?}");
+}
