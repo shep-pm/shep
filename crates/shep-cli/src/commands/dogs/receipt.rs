@@ -286,6 +286,16 @@ pub(crate) struct Installed {
     pub(crate) pinned: Option<String>,
 }
 
+impl Installed {
+    /// Where the dog came from, as a line of help names it: `owner/repo` for
+    /// a GitHub repository, the URL without its scheme for any other.
+    pub(crate) fn source(&self) -> String {
+        let repo = self.repo.trim_end_matches('/').trim_end_matches(".git");
+        let repo = repo.strip_prefix("https://").unwrap_or(repo);
+        repo.strip_prefix("github.com/").unwrap_or(repo).to_owned()
+    }
+}
+
 /// The receipt's shape as written, narrowed to what [`Installed`] keeps.
 #[derive(Deserialize)]
 struct Written {

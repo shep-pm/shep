@@ -12,11 +12,12 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use shep_core::dogs::manifest::{Subcommand, Verb};
+use shep_core::dogs::manifest::{MAX_EXAMPLES, Subcommand, Verb};
 use shep_core::paths::ShepPaths;
 
 use crate::cli::{DogLine, top_level_template};
-use crate::commands::dogs::{cached_manifest, collides_with_a_verb};
+use crate::commands::dogs::{cached_manifest, collides_with_a_verb, installed};
+use crate::dog_index;
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 use crate::{cli, home};
@@ -88,8 +89,8 @@ fn printable(field: &str) -> String {
 
 /// The manifest's `verb` with every string shep prints run through
 /// [`printable`], and the pieces a cleaned string cannot be dropped: a
-/// subcommand whose name is not one word, and a verb that declares nothing
-/// once its description is gone.
+/// subcommand whose name is not one word, an example that cleaned to nothing,
+/// and a verb that declares nothing once its copy is gone.
 fn printable_verb(verb: Verb) -> Option<Verb> {
     let mut cleaned = Verb::new(printable(&verb.description));
     cleaned.subcommands = verb
@@ -100,10 +101,24 @@ fn printable_verb(verb: Verb) -> Option<Verb> {
             if name.is_empty() || name.chars().any(char::is_whitespace) {
                 return None;
             }
-            Some(Subcommand::new(name, printable(&sub.about)))
+            let cleaned = Subcommand::new(name, printable(&sub.about));
+            Some(match sub.usage.map(|usage| printable(&usage)) {
+                Some(usage) if !usage.is_empty() => cleaned.with_usage(usage),
+                _ => cleaned,
+            })
         })
         .collect();
-    if cleaned.description.is_empty() && cleaned.subcommands.is_empty() {
+    cleaned.examples = verb
+        .examples
+        .iter()
+        .map(|example| printable(example))
+        .filter(|example| !example.is_empty())
+        .take(MAX_EXAMPLES)
+        .collect();
+    if cleaned.description.is_empty()
+        && cleaned.subcommands.is_empty()
+        && cleaned.examples.is_empty()
+    {
         return None;
     }
     Some(cleaned)
@@ -198,42 +213,107 @@ fn completion_entry(verb: &AdoptedVerb) -> clap::Command {
     command
 }
 
-/// `shep <dog> --help`, rendered from the manifest.
+/// The page for `shep <dog> --help`, drawn when this invocation asks for it.
 ///
-/// `None` for every other invocation, and for a dog that declares no
-/// subcommands: `--help` reaches those dogs' own binaries, which is what a
-/// dog that writes its own help gets.
+/// `before` is the argv between `shep` and the dog's name, `argv` what follows
+/// the name. `None` for every other invocation: those reach the dog.
 pub(crate) fn describe_dog(
     name: &str,
     path: &Path,
-    home: &Path,
+    paths: &ShepPaths,
+    before: &[OsString],
     argv: &[OsString],
 ) -> Option<ExitCode> {
-    if !matches!(argv, [flag] if flag == "--help" || flag == "-h") {
-        return None;
-    }
-    let verb = cached_manifest(path, home)
-        .and_then(|manifest| manifest.verb)
-        .and_then(printable_verb)?;
-    if verb.subcommands.is_empty() {
+    if !help_asked(before, argv) {
         return None;
     }
     // A failed write is a closed stdout, and there is nothing left to say
     // about it: `shep <dog> --help | head` is the ordinary reason.
-    let _ = dog_help(name, &verb).print_long_help();
+    let _ = dog_page(name, path, paths, &dog_index::index_url()).print_long_help();
     Some(ExitCode::Success)
 }
 
+/// Whether this invocation asks shep for a dog's page: `shep <dog> --help`,
+/// `shep <dog> -h` or `shep help <dog>`, and nothing more.
+///
+/// `shep <dog> help` and `shep <dog> <sub> --help` are the dog's to answer.
+fn help_asked(before: &[OsString], argv: &[OsString]) -> bool {
+    match argv {
+        [flag] => flag == "--help" || flag == "-h",
+        [] => help_verb_precedes(before),
+        _ => false,
+    }
+}
+
+/// Whether the one verb before the dog's name is `help`.
+///
+/// A global flag and its value are skipped, so `--home help help otel` reads
+/// `help` as the verb and not as the home.
+fn help_verb_precedes(before: &[OsString]) -> bool {
+    let mut words = Vec::new();
+    let mut tokens = before.iter();
+    while let Some(token) = tokens.next() {
+        if ["--home", "--host", "--format", "--style"]
+            .iter()
+            .any(|flag| token == flag)
+        {
+            tokens.next();
+        } else if !token.to_string_lossy().starts_with('-') {
+            words.push(token);
+        }
+    }
+    matches!(words.as_slice(), [word] if *word == "help")
+}
+
+/// The help page for the dog `name` adopted at `path`, drawn from its cached
+/// manifest and its receipt and never from the binary.
+fn dog_page(name: &str, path: &Path, paths: &ShepPaths, index_url: &str) -> clap::Command {
+    let manifest = cached_manifest(path, &paths.home);
+    let receipt = installed(paths, name);
+    let version = receipt
+        .as_ref()
+        .and_then(|receipt| receipt.version.clone())
+        .or_else(|| manifest.as_ref().map(|manifest| manifest.version.clone()))
+        .map(|version| printable(&version));
+    let source = receipt.as_ref().map(|receipt| printable(&receipt.source()));
+    let verb = manifest
+        .and_then(|manifest| manifest.verb)
+        .and_then(printable_verb);
+    let who = [Some(name.to_owned()), version, source.map(|s| format!("from {s}"))]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let _ = index_url;
+    match verb {
+        Some(verb) => dog_help(name, &verb, &format!(
+            "{who}. Anything after `shep {name}` goes to the dog."
+        )),
+        None => unreachable!("the stub is the next test"),
+    }
+}
+
 /// The help page for one dog's verb: its description, its declared
-/// subcommands, and the one fact a manifest cannot state, that everything
-/// else after the name goes to the dog.
-fn dog_help(name: &str, verb: &Verb) -> clap::Command {
+/// subcommands with their usage, its examples, and `closing`, the one line a
+/// manifest cannot state.
+fn dog_help(name: &str, verb: &Verb, closing: &str) -> clap::Command {
+    let usage = if verb.subcommands.is_empty() {
+        format!("shep {name} [args]")
+    } else {
+        format!("shep {name} <command> [args]")
+    };
+    let examples = shep_client::dogs::render_examples(&verb.examples);
+    let after = if examples.is_empty() {
+        closing.to_owned()
+    } else {
+        format!("{examples}\n\n{closing}")
+    };
     let command = clap::Command::new(name.to_owned())
         .bin_name(format!("shep {name}"))
+        .override_usage(usage)
         .disable_help_subcommand(true)
-        .after_help(format!(
-            "Anything else after `shep {name}` goes to the dog unchanged."
-        ));
+        .disable_help_flag(true)
+        .after_help(after);
     // A verb can declare subcommands and no description, and clap prints an
     // empty about as a blank line above the usage.
     let command = if verb.description.is_empty() {
@@ -242,14 +322,18 @@ fn dog_help(name: &str, verb: &Verb) -> clap::Command {
         command.about(verb.description.clone())
     };
     verb.subcommands.iter().fold(command, |command, sub| {
-        command.subcommand(clap::Command::new(sub.name.clone()).about(sub.about.clone()))
+        let label = match &sub.usage {
+            Some(usage) => format!("{} {usage}", sub.name),
+            None => sub.name.clone(),
+        };
+        command.subcommand(clap::Command::new(label).about(sub.about.clone()))
     })
 }
 
 /// [`dog_help`] rendered, for the tests that read it rather than print it.
 #[cfg(test)]
 pub(crate) fn dog_help_text(name: &str, verb: &Verb) -> String {
-    dog_help(name, verb).render_long_help().to_string()
+    dog_help(name, verb, "").render_long_help().to_string()
 }
 
 #[cfg(all(test, unix))]

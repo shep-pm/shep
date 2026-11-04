@@ -56,7 +56,7 @@ pub(crate) fn dispatch_adopted_dog(
     // A dog that declared its subcommands gets shep's own help page for them;
     // every other invocation, and every dog that declared nothing, is passed
     // through to the binary as it always was.
-    if let Some(code) = crate::adopted_help::describe_dog(name, &path, &paths.home, dog_argv) {
+    if let Some(code) = crate::adopted_help::describe_dog(name, &path, &paths, &argv[1..index], dog_argv) {
         return Some(code.into());
     }
     Some(run_adopted_dog(&path, &paths.home, name, dog_argv))

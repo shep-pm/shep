@@ -231,30 +231,36 @@ fn completion_scripts_offer_an_adopted_dog_and_its_declared_subcommands() {
 }
 
 #[test]
-fn describe_dog_answers_only_a_bare_help_flag_of_a_declared_dog() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = a_home_with(dir.path(), [("otel", DECLARING_BODY), ("lr", SILENT_BODY)]);
-    let declared = dir.path().join("otel");
-    let silent = dir.path().join("lr");
-
-    for argv in [
-        os(&["status"]),
-        os(&[]),
-        os(&["--help", "status"]),
-        os(&["-hx"]),
+fn shep_answers_only_the_bare_help_forms() {
+    for (before, argv) in [
+        (&[][..], &["--help"][..]),
+        (&[], &["-h"]),
+        (&["help"], &[]),
+        (&["--home", "help", "help"], &[]),
+        (&["--format=json", "help"], &[]),
     ] {
-        assert_eq!(
-            describe_dog("otel", &declared, &paths.home, &argv),
-            None,
-            "{argv:?} is the dog's own to answer"
+        assert!(
+            help_asked(&os(before), &os(argv)),
+            "{before:?} <dog> {argv:?} is shep's page"
         );
     }
 
-    assert_eq!(
-        describe_dog("lr", &silent, &paths.home, &os(&["--help"])),
-        None,
-        "an undeclared dog keeps its own --help"
-    );
+    for (before, argv) in [
+        (&[][..], &["status"][..]),
+        (&[], &[]),
+        (&[], &["help"]),
+        (&[], &["--help", "status"]),
+        (&[], &["status", "--help"]),
+        (&[], &["-hx"]),
+        (&["help"], &["status"]),
+        (&["--home", "help"], &[]),
+        (&["flock"], &[]),
+    ] {
+        assert!(
+            !help_asked(&os(before), &os(argv)),
+            "{before:?} <dog> {argv:?} is the dog's own to answer"
+        );
+    }
 }
 
 #[test]
@@ -270,10 +276,6 @@ fn the_declared_subcommands_are_what_a_dogs_own_help_page_lists() {
         "{help}"
     );
     assert!(help.contains("status  show pipeline status"), "{help}");
-    assert!(
-        help.contains("Anything else after `shep otel` goes to the dog unchanged."),
-        "{help}"
-    );
     assert!(
         !help.contains("\n  help\n"),
         "a dog's verb has no shep subcommands of its own to list: {help}"
@@ -437,9 +439,10 @@ fn a_manifest_carrying_a_placeholder_or_a_line_break_is_listed_as_text() {
 
 /// The other render a manifest reaches: `shep <dog> --help`, built out of
 /// clap's own template. `{options}` in a subcommand's one-liner is a value
-/// here rather than a tag, and the cleaned text is what both paths print.
+/// here rather than a tag, and the cleaned text is what both paths print. The
+/// page lists no options of its own, so a section of them is the injection.
 #[test]
-fn a_dogs_own_help_page_lists_the_cleaned_text_and_one_options_section() {
+fn a_dogs_own_help_page_lists_the_cleaned_text_and_no_options_section() {
     let mut verb = Verb::new("spans {all-args} and\nmore\u{1b}[2J");
     verb.subcommands
         .push(Subcommand::new("status", "show {options}"));
@@ -449,7 +452,7 @@ fn a_dogs_own_help_page_lists_the_cleaned_text_and_one_options_section() {
 
     assert!(help.contains("spans all-args and more"), "{help}");
     assert!(help.contains("status  show options"), "{help}");
-    assert_eq!(help.matches("Options:").count(), 1, "{help}");
+    assert_eq!(help.matches("Options:").count(), 0, "{help}");
 }
 
 /// A `verb` whose copy is nothing but a placeholder, or nothing but an
@@ -677,4 +680,50 @@ fn a_dog_named_help_is_left_out_of_the_listing() {
     .unwrap();
 
     assert_eq!(adopted_verbs(&paths), Vec::<AdoptedVerb>::new());
+}
+
+/// The verb the help standard's own example draws: a usage line on one
+/// subcommand, two examples.
+const KELPIE_BODY: &str = r#"if [ "$1" = --shep-manifest ]; then
+  echo '{"manifest":1,"name":"shep-kelpie","version":"0.9.2","protocol":12,"verb":{"description":"Run agents on a ticket board","subcommands":[{"name":"board","about":"show the board"},{"name":"rule","about":"answer a ruling","usage":"<id> yes|no <note>"}],"examples":["shep kelpie board","shep kelpie rule 42 yes looks good"]}}'
+fi"#;
+
+/// A dog whose manifest declares a version and no `verb`.
+const VERSIONED_BODY: &str = r#"if [ "$1" = --shep-manifest ]; then
+  echo '{"manifest":1,"name":"shep-log-rotate","version":"0.2.5","protocol":12}'
+fi"#;
+
+/// An index URL nothing listens on, for a test that never fetches.
+const INDEX: &str = "https://example.test/dogs.json";
+
+/// The page `shep <name> --help` draws, as the text an operator reads.
+fn page(paths: &ShepPaths, dir: &Path, name: &str) -> String {
+    dog_page(name, &dir.join(name), paths, INDEX)
+        .render_long_help()
+        .to_string()
+}
+
+#[test]
+fn a_dog_with_a_verb_gets_shep_s_page_with_examples() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = a_home_with(dir.path(), [("kelpie", KELPIE_BODY)]);
+
+    assert_eq!(
+        page(&paths, dir.path(), "kelpie"),
+        "\
+Run agents on a ticket board
+
+Usage: shep kelpie <command> [args]
+
+Commands:
+  board                    show the board
+  rule <id> yes|no <note>  answer a ruling
+
+Examples:
+  $ shep kelpie board
+  $ shep kelpie rule 42 yes looks good
+
+kelpie 0.9.2. Anything after `shep kelpie` goes to the dog.
+"
+    );
 }
