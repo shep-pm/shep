@@ -6,7 +6,7 @@
 
 use shep_core::dogs::pane::Pane;
 
-use super::status::{StatusView, Step, Tab, row_count};
+use super::status::{Layout, StatusView, Step, Tab, layout};
 
 /// What a dog's manifest says about its pane: the names a pane is checked
 /// against.
@@ -119,7 +119,7 @@ impl DogStatus {
             Err(reason) => self.state = PaneState::Unavailable(reason),
         }
         if landed || !matches!(self.state, PaneState::Ready(_)) {
-            self.view.settle(self.rows());
+            self.view.settle(&self.layout());
         }
     }
 
@@ -141,17 +141,42 @@ impl DogStatus {
         self.view.cursor()
     }
 
-    /// Moves the status tab's cursor.
+    /// Moves the status tab's cursor, or scrolls the tab when the cursor is
+    /// at an end of the rows or there are none.
     pub(in crate::lookout) fn step(&mut self, step: Step) {
-        let rows = self.rows();
-        self.view.step(step, rows);
+        let layout = self.layout();
+        self.view.step(step, &layout);
     }
 
-    /// How many rows the cursor walks.
-    fn rows(&self) -> usize {
+    /// Tells the status tab how tall the pane's body is, the title included.
+    ///
+    /// The tab spends a line on its strip and one per footer line, and the
+    /// rest is what the window shows.
+    pub(in crate::lookout) fn set_rows(&mut self, rows: usize) {
+        let footer = usize::from(self.failed.is_some())
+            + usize::from(matches!(&self.state, PaneState::Ready(pane) if pane.skipped > 0));
+        let room = if rows == 0 {
+            0
+        } else {
+            rows.saturating_sub(2 + footer).max(1)
+        };
+        let layout = self.layout();
+        self.view.set_room(room, &layout);
+    }
+
+    /// The first body line the status tab draws, when a key scrolled it away
+    /// from the cursor. [`None`] while the window follows the cursor.
+    #[must_use]
+    pub fn scroll(&self) -> Option<usize> {
+        self.view.scroll()
+    }
+
+    /// Where the lines of the pane's body fall. Empty unless the pane is
+    /// ready.
+    fn layout(&self) -> Layout {
         match &self.state {
-            PaneState::Ready(pane) => row_count(pane),
-            PaneState::Waiting | PaneState::Unavailable(_) => 0,
+            PaneState::Ready(pane) => layout(pane),
+            PaneState::Waiting | PaneState::Unavailable(_) => Layout::default(),
         }
     }
 }

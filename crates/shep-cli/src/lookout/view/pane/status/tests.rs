@@ -292,3 +292,106 @@ fn the_cursor_draws_at_the_height_floor() {
         );
     }
 }
+
+fn pairs(count: usize) -> Vec<(String, String)> {
+    (0..count)
+        .map(|n| (format!("field-{n}"), format!("value-{n}")))
+        .collect()
+}
+
+fn press(app: &mut App, key: KeyPress, times: usize) {
+    for _ in 0..times {
+        app.update(Msg::Key(key));
+    }
+}
+
+fn shows(lines: &[String], text: &str) -> bool {
+    lines.iter().any(|line| line.contains(text))
+}
+
+#[test]
+fn a_pane_with_no_rows_scrolls_to_its_last_field_and_back() {
+    let mut app = app_with(&Pane::new().fields("host", pairs(30)));
+    let height = 10;
+    app.note_body_rows(height);
+    let top = drawn(&app, 100, height);
+    assert!(shows(&top, "field-0"), "{top:#?}");
+    assert!(shows(&top, "below"), "{top:#?}");
+
+    press(&mut app, KeyPress::SelectDown, 40);
+    let bottom = drawn(&app, 100, height);
+    assert!(shows(&bottom, "field-29"), "{bottom:#?}");
+    assert!(shows(&bottom, "above"), "{bottom:#?}");
+    assert!(!shows(&bottom, "below"), "{bottom:#?}");
+
+    press(&mut app, KeyPress::SelectUp, 1);
+    let up_one = drawn(&app, 100, height);
+    assert_ne!(up_one, bottom, "one key back moves the window at once");
+
+    press(&mut app, KeyPress::SelectUp, 40);
+    assert_eq!(drawn(&app, 100, height), top);
+}
+
+#[test]
+fn first_and_last_jump_a_pane_with_no_rows_to_its_ends() {
+    let mut app = app_with(&Pane::new().fields("host", pairs(30)));
+    let height = 10;
+    app.note_body_rows(height);
+    press(&mut app, KeyPress::SelectLast, 1);
+    assert!(shows(&drawn(&app, 100, height), "field-29"));
+    press(&mut app, KeyPress::SelectFirst, 1);
+    assert!(shows(&drawn(&app, 100, height), "field-0"));
+}
+
+#[test]
+fn fields_after_the_last_table_row_scroll_into_view() {
+    let rows: Vec<Row> = (0..3)
+        .map(|n| Row::new(format!("k{n}"), [format!("row-{n}")]))
+        .collect();
+    let pane = Pane::new()
+        .table("things", ["NAME"], rows)
+        .fields("host", pairs(30));
+    let mut app = app_with(&pane);
+    let height = 10;
+    app.note_body_rows(height);
+    press(&mut app, KeyPress::SelectLast, 1);
+    press(&mut app, KeyPress::SelectDown, 60);
+    let bottom = drawn(&app, 100, height);
+    assert!(shows(&bottom, "field-29"), "{bottom:#?}");
+
+    press(&mut app, KeyPress::SelectUp, 60);
+    let back = trimmed(drawn(&app, 100, height));
+    assert!(
+        back.iter().any(|l| l.starts_with('\u{25b8}')),
+        "scrolling back reaches the cursor, which then moves: {back:#?}"
+    );
+}
+
+#[test]
+fn fields_before_the_first_table_row_scroll_into_view() {
+    let rows: Vec<Row> = (0..3)
+        .map(|n| Row::new(format!("k{n}"), [format!("row-{n}")]))
+        .collect();
+    let pane = Pane::new()
+        .fields("host", pairs(30))
+        .table("things", ["NAME"], rows);
+    let mut app = app_with(&pane);
+    let height = 10;
+    app.note_body_rows(height);
+    let first = drawn(&app, 100, height);
+    assert!(
+        shows(&first, "row-0"),
+        "the cursor's row is drawn: {first:#?}"
+    );
+
+    press(&mut app, KeyPress::SelectUp, 60);
+    let top = drawn(&app, 100, height);
+    assert!(shows(&top, "field-0"), "{top:#?}");
+
+    press(&mut app, KeyPress::SelectDown, 60);
+    let back = trimmed(drawn(&app, 100, height));
+    assert!(
+        back.iter().any(|l| l.starts_with('\u{25b8}')),
+        "scrolling back reaches the cursor, which then moves: {back:#?}"
+    );
+}

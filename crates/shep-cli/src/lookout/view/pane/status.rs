@@ -10,7 +10,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use shep_core::dogs::pane::{Fields, Pane, Section, Table};
 
-use super::super::super::pane::{ConfigPane, DogStatus, PaneState};
+use super::super::super::pane::{ConfigPane, DogStatus, PaneState, follow_start};
 use super::super::super::theme::Palette;
 use super::super::flock::fit;
 use super::chrome::{tab_strip_line, title_line};
@@ -77,7 +77,7 @@ pub(super) fn status_lines(
     let footer = footer_lines(status, palette, width, remaining.saturating_sub(1));
     remaining -= footer.len();
     let body = body(pane, status, palette, width);
-    lines.extend(window(body, remaining, palette));
+    lines.extend(window(body, remaining, status.scroll(), palette));
     lines.extend(footer);
     lines
 }
@@ -328,9 +328,15 @@ fn column_widths(columns: &[String], rows: &[Vec<String>], room: usize) -> Vec<u
     widths
 }
 
-/// The `budget` lines of `body` around the cursor, with a count of what is
-/// scrolled off where the first or last line would have been.
-fn window(body: Body, budget: usize, palette: Palette) -> Vec<Line<'static>> {
+/// The `budget` lines of `body`, from line `scroll` when a key scrolled the
+/// tab, else around the cursor, with a count of what is scrolled off where the
+/// first or last line would have been.
+fn window(
+    body: Body,
+    budget: usize,
+    scroll: Option<usize>,
+    palette: Palette,
+) -> Vec<Line<'static>> {
     let Body {
         mut lines,
         cursor_line,
@@ -339,15 +345,13 @@ fn window(body: Body, budget: usize, palette: Palette) -> Vec<Line<'static>> {
     if total <= budget {
         return lines;
     }
-    let at = cursor_line.unwrap_or(0);
     if budget < 3 {
+        let at = scroll.unwrap_or_else(|| cursor_line.unwrap_or(0));
         return lines.into_iter().skip(at).take(budget).collect();
     }
-    // The cursor is kept off the last line, so a below-marker never covers it.
-    let mut start = (at + 2).saturating_sub(budget).min(total - budget);
-    if start > 0 && at <= start {
-        start = at.saturating_sub(1);
-    }
+    let start = scroll
+        .map(|at| at.min(total - budget))
+        .unwrap_or_else(|| follow_start(cursor_line, total, budget));
     let end = start + budget;
     let mut shown: Vec<Line<'static>> = lines.drain(start..end).collect();
     if start > 0 {

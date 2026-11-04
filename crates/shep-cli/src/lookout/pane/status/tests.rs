@@ -95,3 +95,39 @@ fn switching_twice_comes_back_to_the_first_tab() {
     status.switch_tab();
     assert_eq!(status.tab(), Tab::Status);
 }
+
+#[test]
+fn the_layout_counts_the_lines_the_view_draws_and_where_each_row_falls() {
+    // blank, host, VRAM, blank, models, header, a, b, blank, leases, header, c
+    let at = layout(&two_tables());
+    assert_eq!(at.total, 12);
+    assert_eq!(at.row_lines, [6, 7, 11]);
+}
+
+#[test]
+fn a_tab_scrolls_past_its_cursor_only_once_it_knows_its_room() {
+    let pane = Pane::new().fields("host", (0..30).map(|n| (format!("f{n}"), format!("v{n}"))));
+    let mut status = status_with(pane);
+    status.step(Step::Down);
+    assert_eq!(
+        status.scroll(),
+        None,
+        "no room is known before the first draw"
+    );
+
+    status.set_rows(10);
+    status.step(Step::Last);
+    assert_eq!(
+        status.scroll(),
+        Some(32 - 8),
+        "the window ends on the last line"
+    );
+    status.step(Step::Up);
+    assert_eq!(status.scroll(), Some(32 - 8 - 1));
+    status.step(Step::First);
+    assert_eq!(
+        status.scroll(),
+        None,
+        "the top is where the window follows from"
+    );
+}
