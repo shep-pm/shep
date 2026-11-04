@@ -52,6 +52,23 @@ pub trait FlockSource: Send + Sync {
     /// Whatever the underlying connection failed the request with.
     fn send(&self, request: Request)
     -> impl Future<Output = Result<Response, RequestError>> + Send;
+
+    /// Sends one request that may hold its answer for the whole trigger
+    /// deadline, on a connection of its own where there is one to open.
+    ///
+    /// The shepherd serves one connection's requests in turn, so a request
+    /// that waits on a dog holds up every later one on the same connection,
+    /// a poll among them. Defaults to [`Self::send`].
+    ///
+    /// # Errors
+    ///
+    /// Whatever the connection failed the request with.
+    fn pull(
+        &self,
+        request: Request,
+    ) -> impl Future<Output = Result<Response, RequestError>> + Send {
+        self.send(request)
+    }
 }
 
 /// One source of bus frames.
@@ -140,6 +157,9 @@ impl From<ConnectError> for LinkError {
 #[derive(Debug)]
 pub struct ClientFlock {
     client: Client,
+    /// The socket [`FlockSource::pull`] dials a connection of its own on, or
+    /// `None` over `--host`, where a pull rides this one.
+    socket: Option<PathBuf>,
     /// This machine's `$SHEP_HOME`, or `None` for a shepherd on another one.
     ///
     /// The manifest cache under that home is what says which dogs want to be
@@ -188,6 +208,22 @@ impl FlockSource for ClientFlock {
         let deadline = deadline_for(&request);
         self.client.request_with_deadline(request, deadline).await
     }
+
+    /// Sends `request` on a connection dialled for it and closed after, so a
+    /// dog that holds its answer holds nothing but this.
+    ///
+    /// A socket that cannot be dialled answers [`RequestError::Closed`], as
+    /// the connection it would have shared does once the shepherd is gone.
+    async fn pull(&self, request: Request) -> Result<Response, RequestError> {
+        let Some(socket) = &self.socket else {
+            return self.send(request).await;
+        };
+        let client = Client::connect(socket)
+            .await
+            .map_err(|_| RequestError::Closed)?;
+        let deadline = deadline_for(&request);
+        client.request_with_deadline(request, deadline).await
+    }
 }
 
 impl EventSource for EventStream {
@@ -224,7 +260,7 @@ impl Shepherd for UnixShepherd {
         // reconnecting one, must not start a shepherd, and a reconnect that
         // did would resurrect one the operator may have just killed.
         let client = Client::connect(&self.socket).await?;
-        subscribed(client, Some(self.home.clone())).await
+        subscribed(client, Some(self.socket.clone()), Some(self.home.clone())).await
     }
 }
 
@@ -266,13 +302,14 @@ impl Shepherd for HostShepherd {
             self.options.clone()
         };
         let client = Client::connect_ssh_with(&self.dest, &options).await?;
-        subscribed(client, None).await
+        subscribed(client, None, None).await
     }
 }
 
 /// Subscribes `client` to [`TOPICS`] and pairs the two halves.
 async fn subscribed(
     client: Client,
+    socket: Option<PathBuf>,
     home: Option<ShepPaths>,
 ) -> Result<(ClientFlock, EventStream), LinkError> {
     let topics = TOPICS.iter().map(|topic| (*topic).to_string()).collect();
@@ -280,7 +317,14 @@ async fn subscribed(
         .subscribe(topics)
         .await
         .map_err(|err| LinkError::Refused(err.to_string()))?;
-    Ok((ClientFlock { client, home }, stream))
+    Ok((
+        ClientFlock {
+            client,
+            socket,
+            home,
+        },
+        stream,
+    ))
 }
 
 /// One reading of the machine this lookout is running on.
@@ -516,7 +560,11 @@ mod tests {
             min_supported: None,
         };
         let (client, _fake) = shep_client::testing::fake_client_with_ack(&addr, ack).await;
-        let flock = ClientFlock { client, home: None };
+        let flock = ClientFlock {
+            client,
+            socket: None,
+            home: None,
+        };
 
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -542,7 +590,11 @@ mod tests {
             min_supported: None,
         };
         let (client, _fake) = shep_client::testing::fake_client_with_ack(&addr, ack).await;
-        let flock = ClientFlock { client, home: None };
+        let flock = ClientFlock {
+            client,
+            socket: None,
+            home: None,
+        };
 
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -568,7 +620,11 @@ mod tests {
             Response::Stopped(Vec::new()),
         )
         .await;
-        let flock = ClientFlock { client, home: None };
+        let flock = ClientFlock {
+            client,
+            socket: None,
+            home: None,
+        };
 
         let answer = flock
             .send(Request::Stop {

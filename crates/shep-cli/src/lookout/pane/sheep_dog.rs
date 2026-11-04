@@ -89,6 +89,7 @@ impl ConfigPane {
             armed_env: None,
             list: None,
             dogs_tab: Box::default(),
+            status: None,
             section: None,
             dog_table: Some(Box::new(SheepDogTable {
                 paths,

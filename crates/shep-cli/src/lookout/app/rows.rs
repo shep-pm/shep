@@ -175,6 +175,20 @@ pub enum Sent {
         /// Which dog was asked about.
         name: String,
     },
+    /// One dog's pane, asked for with the reserved `shep.pane` action as the
+    /// operator. Raised once the dog's manifest is read and declares `pane`.
+    ///
+    /// A `Request::Trigger`, so the pull shares the trigger path and its
+    /// deadline with every later pane action. The only variant the link task
+    /// does not await inline: a dog that hangs holds its reply for the whole
+    /// trigger deadline.
+    DogPane {
+        /// The dog asked.
+        name: String,
+        /// The opening of the pane that asked, so a reply that lands on a
+        /// later pane for the same dog is known for a stale one.
+        opening: u64,
+    },
     /// One dog's whole section, off the dog pane's own `Enter`.
     ///
     /// The whole section rather than one key, because
@@ -295,6 +309,11 @@ impl Sent {
                 value: value.as_value().clone(),
             },
             Self::DogSection { name } => Request::DogConfig { name: name.clone() },
+            Self::DogPane { name, .. } => Request::Trigger {
+                selector: SelectorSpec::Name(name.clone()),
+                action: PANE_ACTION.to_owned(),
+                params: None,
+            },
             Self::SetDogSection { name, toml, .. } => Request::SetDogConfig {
                 name: name.clone(),
                 toml: toml.clone(),
@@ -333,7 +352,8 @@ impl Sent {
             | Self::Dog { .. }
             | Self::GrantDog { .. }
             | Self::SheepConfig { .. }
-            | Self::DogSection { .. } => None,
+            | Self::DogSection { .. }
+            | Self::DogPane { .. } => None,
         }
     }
 }
@@ -572,6 +592,23 @@ mod tests {
         assert!(!info.is_grave());
         assert_eq!(info.text, "restart scheduled for api");
         assert_eq!(info.to_string(), "restart scheduled for api");
+    }
+
+    #[test]
+    fn a_dog_pane_pull_is_a_trigger_for_shep_pane_with_no_params() {
+        let sent = Sent::DogPane {
+            name: "paddock".to_owned(),
+            opening: 1,
+        };
+        assert_eq!(
+            sent.request(),
+            Request::Trigger {
+                selector: SelectorSpec::Name("paddock".to_owned()),
+                action: "shep.pane".to_owned(),
+                params: None,
+            }
+        );
+        assert_eq!(sent.ticket(), None, "a read, not a write");
     }
 
     #[test]

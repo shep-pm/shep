@@ -87,6 +87,7 @@ async fn a_shepherd_that_refuses(
     (
         ClientFlock {
             client,
+            socket: None,
             home: Some(paths),
         },
         envelopes,
@@ -179,6 +180,7 @@ async fn a_dashboard_write_about_a_dog_that_declared_nothing_goes_straight_throu
         fake_client_answering_refusals(&control_address(dir.path()), |_| Ok(Response::Pong)).await;
     let flock = ClientFlock {
         client,
+        socket: None,
         home: Some(paths),
     };
 
@@ -201,7 +203,11 @@ async fn a_watched_host_is_never_asked_from_here() {
     let dir = tempfile::tempdir().unwrap();
     let (client, mut envelopes) =
         fake_client_answering_refusals(&control_address(dir.path()), |_| Ok(Response::Pong)).await;
-    let flock = ClientFlock { client, home: None };
+    let flock = ClientFlock {
+        client,
+        socket: None,
+        home: None,
+    };
 
     assert_eq!(
         flock.send(a_write_to_kelpies_table_on_api()).await,
@@ -213,4 +219,52 @@ async fn a_watched_host_is_never_asked_from_here() {
         "{:?}",
         envelope.body
     );
+}
+
+fn a_pane_pull() -> Request {
+    Request::Trigger {
+        selector: shep_core::protocol::SelectorSpec::Name("kelpie".to_string()),
+        action: "shep.pane".to_string(),
+        params: None,
+    }
+}
+
+/// A pull dials a connection of its own, so one that cannot be dialled is
+/// the pull's failure and nothing the shared connection is asked.
+#[tokio::test]
+async fn a_pull_dials_its_own_connection_and_answers_closed_when_none_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) =
+        fake_client_answering_refusals(&control_address(dir.path()), |_| Ok(Response::Pong)).await;
+    let flock = ClientFlock {
+        client,
+        socket: Some(dir.path().join("nobody-listens.sock")),
+        home: None,
+    };
+
+    assert_eq!(flock.pull(a_pane_pull()).await, Err(RequestError::Closed));
+    assert!(
+        envelopes.try_recv().is_err(),
+        "the shared connection was not used"
+    );
+}
+
+/// Over `--host` there is no socket to dial, so the pull rides the one
+/// connection there is.
+#[tokio::test]
+async fn a_pull_over_a_watched_host_rides_the_shared_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, mut envelopes) =
+        fake_client_answering_refusals(&control_address(dir.path()), |_| Ok(Response::Pong)).await;
+    let flock = ClientFlock {
+        client,
+        socket: None,
+        home: None,
+    };
+
+    assert_eq!(flock.pull(a_pane_pull()).await, Ok(Response::Pong));
+    assert!(matches!(
+        envelopes.recv().await.expect("it went out").body,
+        Request::Trigger { .. }
+    ));
 }

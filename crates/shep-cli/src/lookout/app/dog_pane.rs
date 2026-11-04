@@ -82,10 +82,31 @@ impl App {
         }
         match result {
             Ok(Response::DogSection { toml }) => {
+                // A re-read rebuilds a pane that is already this dog's, and
+                // its manifest was read when it opened.
+                let opening = !self.config_pane().is_some_and(|pane| {
+                    matches!(pane.target(), PaneTarget::Dog { name: open, .. } if open == name)
+                });
+                let adopted = probe.adopted_path.clone();
+                if opening {
+                    self.dog_opening += 1;
+                }
                 let dropped = self.rebuild_dog_pane(probe, toml.as_str());
                 if dropped > 0 {
                     self.notice =
                         Some(Notice::grave(format!("{name}: {}", moved_entries(dropped))));
+                }
+                // Over `--host` the manifest cache is this machine's and the
+                // dog's binary is not here, so no pane is declared.
+                if opening
+                    && self.remote_host.is_none()
+                    && let Some(adopted_path) = adopted
+                {
+                    return Effect::ReadDogPane {
+                        name: name.to_owned(),
+                        opening: self.dog_opening,
+                        adopted_path,
+                    };
                 }
             }
             other => {
@@ -158,6 +179,9 @@ impl App {
         let dropped = self
             .config_pane()
             .map_or(0, |previous| pane.adopt_edits_from(previous));
+        if let Some(previous) = self.config_pane() {
+            pane.adopt_status_from(previous);
+        }
         if let Some(open) = carried_open {
             pane.adopt_open_tables(&open);
         }

@@ -40,6 +40,7 @@ impl App {
             config_target: None,
             config_for: None,
             dog_target: None,
+            dog_opening: 0,
             closing: false,
             config_read_in_flight: false,
             close_dialog: None,
@@ -96,6 +97,11 @@ impl App {
                 env_keys,
                 result,
             } => self.on_dog_pane_answer(name, adopted_path, env_keys, result),
+            Msg::DogDeclaresPane {
+                name,
+                opening,
+                declared,
+            } => self.on_dog_declares_pane(&name, opening, declared),
             Msg::SheepDogNames { sheep, ask, dogs } => {
                 self.on_sheep_dog_names_answer(sheep, ask, dogs)
             }

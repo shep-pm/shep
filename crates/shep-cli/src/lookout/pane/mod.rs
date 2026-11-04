@@ -11,6 +11,7 @@ mod choices;
 mod config;
 #[cfg(test)]
 mod config_tests;
+mod dog_status;
 mod dogs;
 mod edit;
 #[cfg(test)]
@@ -43,6 +44,9 @@ pub(in crate::lookout) use choices::ChoiceRow;
 pub(in crate::lookout) use config::ConfiguredReadiness;
 pub(in crate::lookout) use config::toml_table;
 pub use config::{ConfigPane, ReloadKind};
+#[cfg(test)]
+pub(in crate::lookout) use dog_status::PaneState;
+pub use dog_status::{DeclaredPane, DogStatus};
 pub(in crate::lookout) use dogs::DogToggle;
 pub(crate) use dogs::dog_names;
 pub use dogs::{DogRow, DogTableState, ListedDog, SheepDogEntry, StandardSection};

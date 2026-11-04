@@ -15,9 +15,10 @@ use std::time::{Duration, Instant};
 
 use shep_client::RequestError;
 use shep_core::config::DogTable;
+use shep_core::dogs::pane::{PANE_ACTION, Pane};
 use shep_core::protocol::{
-    BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind, ProcessInfo, Request,
-    Response, SelectorSpec, SheepConfigView, SheepRefusal,
+    ActionOutcome, BusEvent, DogSectionToml, DogSource, EnvValue, Lamb, ProcessEventKind,
+    ProcessInfo, Request, Response, SelectorSpec, SheepConfigView, SheepRefusal,
 };
 use shep_core::secrets::ALL_ENVIRONMENTS;
 use shep_core::status::ProcStatus;
@@ -28,6 +29,7 @@ use super::pane::{
     ConfigPane, DogRow, DogToggle, FieldValue, ListedDog, Lock, PaneEdit, PaneRow, PaneTarget,
     ReloadKind, SectionWrite, SheepDogEntry,
 };
+use super::pane::{DeclaredPane, DogStatus};
 use super::pane_bleats::BleatsPane;
 use super::pane_sheep::SheepPane;
 use super::secrets::{SecretRow, SecretsModel, Source};
@@ -59,6 +61,7 @@ mod dog_pane_entries;
 mod dog_pane_entry_add;
 #[cfg(test)]
 mod dog_pane_entry_removal;
+mod dog_pane_pull;
 mod feed_keys;
 mod focus;
 mod keys;
@@ -409,6 +412,13 @@ pub struct App {
     /// probed once at open and reused on every re-read, so `r` never
     /// respawns the dog's binary. Cleared alongside `config_target`.
     dog_target: Option<DogProbe>,
+    /// Which opening of a dog's config pane is the latest.
+    ///
+    /// Raised each time a pane opens over a dashboard or the settings
+    /// screen, never on a re-read. A manifest read and a `shep.pane` pull
+    /// carry the number they were raised under, and one that lands under
+    /// another is for a pane the operator has since left.
+    dog_opening: u64,
     /// Whether `Escape` on a whole-table pane is waiting on its re-read.
     ///
     /// Set by [`Self::reread_before_closing`]. Cleared by its answer, by an
