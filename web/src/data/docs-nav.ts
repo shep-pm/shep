@@ -1,5 +1,5 @@
 /*
- * The docs book: seven parts, thirty chapters, in reading order.
+ * The docs book: six parts, thirty-one chapters, in reading order.
  *
  * This is the shape of the docs shell itself, and it is the only place a
  * chapter is named, numbered or ordered. DocsLayout derives each page's
@@ -211,6 +211,35 @@ export const docsNav: DocsNavGroup[] = [
         },
       },
       {
+        slug: "dogs",
+        label: "Dogs",
+        plain: "plugins",
+        summary:
+          "The shepherd's own plugins: built-in metrics and alerting, and how to adopt a binary of your own.",
+        built: true,
+        source: "docs/dogs.md",
+        spec: { anchor: "8-dogs-plugins", label: "§8 Dogs" },
+      },
+      {
+        slug: "dog-grants",
+        label: "Dog grants",
+        plain: "plugin permissions",
+        summary:
+          "A list in shep.toml of what a dog may ask of the shepherd, and the refusal it gets outside it.",
+        built: true,
+        source: "docs/dogs.md",
+        spec: { anchor: "8-dogs-plugins", label: "§8 Dogs" },
+      },
+      {
+        slug: "community-dogs",
+        label: "Community dogs",
+        plain: "community plugins",
+        summary:
+          "Dogs other people wrote and adopted with shep adopt, listed for anyone who doesn't want to write their own.",
+        built: true,
+        source: "docs/dogs.md",
+      },
+      {
         slug: "upgrading",
         label: "Upgrading",
         summary:
@@ -300,49 +329,6 @@ export const docsNav: DocsNavGroup[] = [
     ],
   },
   {
-    label: "Dogs",
-    items: [
-      {
-        slug: "dogs",
-        label: "Dogs",
-        plain: "plugins",
-        summary:
-          "The shepherd's own plugins: built-in metrics and alerting, and how to adopt a binary of your own.",
-        built: true,
-        source: "docs/dogs.md",
-        spec: { anchor: "8-dogs-plugins", label: "§8 Dogs" },
-      },
-      {
-        slug: "writing-a-dog",
-        label: "Writing a dog",
-        plain: "writing a plugin",
-        summary:
-          "A dog is an ordinary binary that answers --version and --schema on stdout and speaks the dog protocol on a socket the shepherd hands it.",
-        built: true,
-        source: "docs/dogs.md",
-      },
-      {
-        slug: "dog-grants",
-        label: "Dog grants",
-        plain: "plugin permissions",
-        summary:
-          "A list in shep.toml of what a dog may ask of the shepherd, and the refusal it gets outside it.",
-        built: true,
-        source: "docs/dogs.md",
-        spec: { anchor: "8-dogs-plugins", label: "§8 Dogs" },
-      },
-      {
-        slug: "community-dogs",
-        label: "Community dogs",
-        plain: "community plugins",
-        summary:
-          "Dogs other people wrote and adopted with shep adopt, listed for anyone who doesn't want to write their own.",
-        built: true,
-        source: "docs/dogs.md",
-      },
-    ],
-  },
-  {
     label: "Machine surfaces",
     items: [
       {
@@ -380,6 +366,15 @@ export const docsNav: DocsNavGroup[] = [
           path: "protocol/channel/index.html",
           label: "shep_core::protocol::channel",
         },
+      },
+      {
+        slug: "writing-a-dog",
+        label: "Writing a dog",
+        plain: "writing a plugin",
+        summary:
+          "A dog is an ordinary binary that answers --version and --schema on stdout and speaks the dog protocol on a socket the shepherd hands it.",
+        built: true,
+        source: "docs/dogs.md",
       },
     ],
   },
