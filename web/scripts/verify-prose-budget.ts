@@ -382,7 +382,12 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
   // row.
-  lookout: 3222,
+  //
+  // Raised from 3222 on #1498 for "Installing from the catalogue": the install
+  // key, the grant modal, the status-bar job item, one job at a time, and what
+  // quitting mid-job leaves behind. None of it is described on any other page,
+  // and it is required content rather than prose to trim back out.
+  lookout: 3640,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
