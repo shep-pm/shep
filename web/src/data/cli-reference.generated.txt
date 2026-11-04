@@ -1266,6 +1266,10 @@ Needs a terminal: with stdout redirected it refuses rather than writing escape s
 file.
 
 Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG]
+       shep lookout <COMMAND>
+
+Commands:
+  catalogue  Open on the dog catalogue
 
 Arguments:
   [SHEEP]
@@ -1310,6 +1314,28 @@ Examples:
   $ shep lookout
   $ shep lookout api
   $ shep lookout api restart --read-only
+
+Global flags: --format, --quiet, --style, --host, --home. See shep help flags
+@@VERB:lookout catalogue@@
+Open on the dog catalogue.
+
+The same screen the `i` key opens, reached the same way: lookout sends itself that keypress before
+it draws, so `Esc` leaves to the dashboard and every key the catalogue binds is the key it already
+binds. A sheep, tab or dog named `catalogue` is reached with `--`, the way a name beside any other
+subcommand is: `shep lookout -- web dogs catalogue`.
+
+Usage: shep lookout catalogue [OPTIONS]
+
+Options:
+      --read-only
+          Close the dashboard's action gate. Actions are permitted by default.
+          
+          The same gate `shep lookout --read-only` closes and the same one `shep kv set
+          lookout.allow_control false` closes: `x` (stop), `R` (restart) and `L` (reload) each
+          refuse outright with it closed.
+
+  -h, --help
+          Print help (see a summary with '-h')
 
 Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:whistle@@

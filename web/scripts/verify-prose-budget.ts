@@ -409,7 +409,12 @@ export const BUDGETS: Record<string, number> = {
   //
   // Raised again, to 3251, on #1500 for the greyed rows of index dogs this
   // machine lacks, which no other page names.
-  lookout: 3251,
+  //
+  // Raised from 3251 on 2026-11-04 for "The dog catalogue": the list, the
+  // entry, what an entry says about permissions, the `i` key and the
+  // `shep lookout catalogue` form are all things an operator sees or types,
+  // so the page owes them a section (#1499).
+  lookout: 3702,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

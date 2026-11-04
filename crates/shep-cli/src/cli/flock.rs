@@ -68,11 +68,15 @@ pub struct FoldArgs {
 /// this one is in it.
 const DOG_TAB: &str = "dogs";
 
+/// The name [`LookoutScreen::Catalogue`] is spelled with, in its own
+/// `#[command(name)]` and in the tests that check what `lookout` has.
+const CATALOGUE_SCREEN: &str = "catalogue";
+
 /// Arguments to `shep lookout`.
 ///
-/// [`LookoutSpec`] is the clap surface: the gate flag and the three
-/// positionals, with the help an operator reads. [`LookoutArgs`] is that plus
-/// the one rule clap has no way to state, that a dog's table sits on the
+/// [`LookoutSpec`] is the clap surface: the gate flag, the three positionals,
+/// and the one subcommand, with the help an operator reads. [`LookoutArgs`] is
+/// that plus the one rule clap has no way to state: a dog's table sits on the
 /// `dogs` tab, so a third positional after any other tab is a usage error.
 #[derive(Debug)]
 pub struct LookoutArgs {
@@ -86,10 +90,51 @@ pub struct LookoutArgs {
     /// The dog whose table to open, which [`clap::FromArgMatches::from_arg_matches`]
     /// admits only with [`DOG_TAB`] as its tab.
     pub dog: Option<String>,
+    /// Whether lookout opens on the dog catalogue rather than the flock
+    /// table, which [`LookoutScreen::Catalogue`] sets and the lookout entry
+    /// turns into the `i` key's own message.
+    pub catalogue: bool,
+}
+
+/// Arguments to `shep lookout catalogue`.
+///
+/// The gate flag is the subcommand's own, so the verb that names the screen
+/// also closes it. A `--read-only` typed before `catalogue` is `lookout`'s, and
+/// the word after it is a sheep's name.
+#[derive(Debug, clap::Args)]
+struct CatalogueSpec {
+    /// Close the dashboard's action gate. Actions are permitted by default.
+    ///
+    /// The same gate `shep lookout --read-only` closes and the same one
+    /// `shep kv set lookout.allow_control false` closes: `x` (stop), `R`
+    /// (restart) and `L` (reload) each refuse outright with it closed.
+    #[arg(long)]
+    read_only: bool,
+}
+
+/// A screen `shep lookout` opens straight on, ahead of the flock table.
+#[derive(Debug, clap::Subcommand)]
+enum LookoutScreen {
+    /// Open on the dog catalogue.
+    ///
+    /// The same screen the `i` key opens, reached the same way: lookout sends
+    /// itself that keypress before it draws, so `Esc` leaves to the dashboard
+    /// and every key the catalogue binds is the key it already binds. A sheep,
+    /// tab or dog named `catalogue` is reached with `--`, the way a name beside
+    /// any other subcommand is: `shep lookout -- web dogs catalogue`.
+    #[command(name = CATALOGUE_SCREEN)]
+    Catalogue(CatalogueSpec),
 }
 
 /// The clap surface for `shep lookout`.
+///
+/// `args_conflicts_with_subcommands` is what keeps the three positionals: clap
+/// stops looking for a subcommand once it has read a value, so `shep lookout
+/// web dogs catalogue` still names a dog. The mirror of that is a name: `shep
+/// lookout --read-only catalogue` is a sheep called `catalogue`, gate closed.
+/// `disable_help_subcommand` keeps `help` a name in all three slots.
 #[derive(Debug, clap::Args)]
+#[command(args_conflicts_with_subcommands = true, disable_help_subcommand = true)]
 struct LookoutSpec {
     /// Close the dashboard's action gate. Actions are permitted by default.
     ///
@@ -131,6 +176,9 @@ struct LookoutSpec {
     /// that tab's own, and no other tab has one.
     #[arg(value_name = "DOG")]
     dog: Option<String>,
+    /// Open straight on one screen instead of the flock table
+    #[command(subcommand)]
+    screen: Option<LookoutScreen>,
 }
 
 impl clap::Args for LookoutArgs {
@@ -186,10 +234,15 @@ impl LookoutArgs {
             )));
         }
         Ok(Self {
-            read_only: spec.read_only,
+            read_only: spec.read_only
+                || matches!(
+                    spec.screen,
+                    Some(LookoutScreen::Catalogue(ref args)) if args.read_only
+                ),
             sheep: spec.sheep,
             tab: spec.tab,
             dog: spec.dog,
+            catalogue: matches!(spec.screen, Some(LookoutScreen::Catalogue(_))),
         })
     }
 }
@@ -287,32 +340,41 @@ mod tests {
     fn lookout_takes_up_to_three_positionals() {
         use clap::Parser;
 
+        // The fourth slot is the subcommand: every one of these shapes opens
+        // the flock table, and adding `catalogue` to the verb must not have
+        // moved any of them.
         let focus = |argv: &[&str]| {
             let Commands::Lookout(args) = Cli::try_parse_from(argv).unwrap().command else {
                 panic!("lookout parses to its own variant")
             };
-            (args.sheep, args.tab, args.dog)
+            (args.sheep, args.tab, args.dog, args.catalogue)
         };
 
         assert_eq!(
             focus(&["shep", "lookout"]),
-            (None, None, None),
+            (None, None, None, false),
             "bare lookout is still the dashboard"
         );
         assert_eq!(
             focus(&["shep", "lookout", "web"]),
-            (Some("web".to_string()), None, None)
+            (Some("web".to_string()), None, None, false)
         );
         assert_eq!(
             focus(&["shep", "lookout", "web", "watch"]),
-            (Some("web".to_string()), Some("watch".to_string()), None)
+            (
+                Some("web".to_string()),
+                Some("watch".to_string()),
+                None,
+                false
+            )
         );
         assert_eq!(
             focus(&["shep", "lookout", "web", "dogs", "jobs"]),
             (
                 Some("web".to_string()),
                 Some("dogs".to_string()),
-                Some("jobs".to_string())
+                Some("jobs".to_string()),
+                false
             )
         );
     }
@@ -342,6 +404,45 @@ mod tests {
             let err = Cli::try_parse_from(&argv).expect_err(&format!("{argv:?}"));
             assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue, "{argv:?}");
             assert!(err.to_string().contains("possible values"), "{err}");
+        }
+    }
+
+    /// The issue's third acceptance line: `shep lookout web dogs kelpie` still
+    /// parses as before, with the sheep, the `dogs` tab and the dog each set,
+    /// and the subcommand slot added to `lookout` taking none of the three.
+    #[test]
+    fn web_dogs_kelpie_parses_with_all_three_slots_set() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "web", "dogs", "kelpie"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("web"));
+        assert_eq!(args.tab.as_deref(), Some("dogs"));
+        assert_eq!(args.dog.as_deref(), Some("kelpie"));
+        assert!(!args.catalogue, "three positionals are not a screen");
+    }
+
+    /// The line this replaced, `shep lookout web config dogs`, was never a
+    /// parse: `config` is no group the pane draws, so the tab slot refuses it
+    /// before the third positional is read, on `main` and here. Kept as that
+    /// same refusal, message included, so the subcommand slot added to
+    /// `lookout` cannot be what changed it.
+    #[test]
+    fn web_config_dogs_is_refused_as_it_always_was() {
+        use clap::Parser;
+
+        let err = Cli::try_parse_from(["shep", "lookout", "web", "config", "dogs"])
+            .expect_err("config is no tab the pane draws");
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+        let rendered = err.to_string();
+        assert!(rendered.contains("config"), "{rendered}");
+        for group in shep_core::config::GROUP_ORDER {
+            assert!(rendered.contains(group), "{rendered}");
         }
     }
 
@@ -387,6 +488,191 @@ mod tests {
         assert_eq!(args.sheep.as_deref(), Some("web"));
         assert_eq!(args.tab.as_deref(), Some("dogs"));
         assert_eq!(args.dog.as_deref(), Some("jobs"));
+
+        let Commands::Lookout(args) = Cli::try_parse_from(["shep", "dash", "catalogue"])
+            .unwrap()
+            .command
+        else {
+            panic!("dash carries the subcommand too")
+        };
+        assert!(args.catalogue);
+    }
+
+    /// The gate flag is the subcommand's own and the subcommand takes no
+    /// positional: `shep lookout catalogue` opens the screen with the gate
+    /// open, `shep lookout catalogue --read-only` with it closed, and a flag
+    /// before the verb changes neither.
+    #[test]
+    fn the_catalogue_subcommand_takes_the_gate_flag_and_no_positional() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) = Cli::try_parse_from(["shep", "lookout", "catalogue"])
+            .unwrap()
+            .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert!(args.catalogue);
+        assert!(!args.read_only);
+        assert_eq!(
+            (
+                args.sheep.as_deref(),
+                args.tab.as_deref(),
+                args.dog.as_deref()
+            ),
+            (None, None, None),
+            "a sheep named `catalogue` is reached from the dashboard, not from here"
+        );
+
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "catalogue", "--read-only"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert!(args.catalogue);
+        assert!(args.read_only);
+        assert_eq!(args.sheep, None);
+
+        // A flag on the top level sits outside `lookout`'s own parser, so it is
+        // not one in front of the subcommand and does not push `catalogue` into
+        // the sheep's slot.
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "--host", "amp2", "lookout", "catalogue"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert!(args.catalogue);
+        assert_eq!(args.sheep, None);
+    }
+
+    /// A sheep, tab or dog named `catalogue` is still a name, in every slot and
+    /// with the gate flag in front of it. The subcommand claims the word only
+    /// where clap looks for a subcommand, and `--` ends that search the way
+    /// `shep dogs -- grant` reaches a dog named `grant`.
+    #[test]
+    fn a_name_that_reads_like_the_catalogue_still_names_one() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "web", "dogs", "catalogue"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("web"));
+        assert_eq!(args.tab.as_deref(), Some("dogs"));
+        assert_eq!(args.dog.as_deref(), Some("catalogue"));
+        assert!(
+            !args.catalogue,
+            "the third positional is a dog, not a screen"
+        );
+
+        let Commands::Lookout(args) = Cli::try_parse_from(["shep", "lookout", "--", "catalogue"])
+            .unwrap()
+            .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("catalogue"));
+        assert!(!args.catalogue, "`--` is what makes the name a name again");
+
+        // The gate flag in front of the word is `lookout`'s own and moves it
+        // nowhere: both spellings opened a sheep called `catalogue` with the
+        // gate closed before the subcommand existed, and open it still.
+        for argv in [
+            vec!["shep", "lookout", "--read-only", "catalogue"],
+            vec!["shep", "lookout", "--read-only", "--", "catalogue"],
+        ] {
+            let Commands::Lookout(args) = Cli::try_parse_from(&argv).unwrap().command else {
+                panic!("lookout parses to its own variant")
+            };
+            assert_eq!(args.sheep.as_deref(), Some("catalogue"), "{argv:?}");
+            assert!(args.read_only, "{argv:?}");
+            assert!(!args.catalogue, "{argv:?}");
+        }
+    }
+
+    /// What the parse refuses. The subcommand has no positionals, so a tab or
+    /// a dog after `catalogue` is an unknown argument carrying a `shep lookout`
+    /// usage line; `catalogue` in the tab slot is not a tab the pane draws; and
+    /// `catalogue` as a dog on another tab is the dog-after-tab rule.
+    #[test]
+    fn a_tab_or_dog_after_the_catalogue_is_a_usage_error() {
+        use clap::Parser;
+
+        for argv in [
+            vec!["shep", "lookout", "catalogue", "web"],
+            vec!["shep", "lookout", "catalogue", "web", "dogs"],
+            vec!["shep", "lookout", "catalogue", "web", "dogs", "jobs"],
+        ] {
+            let err = Cli::try_parse_from(&argv).expect_err(&format!("{argv:?}"));
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::UnknownArgument,
+                "{argv:?}"
+            );
+            let rendered = err.to_string();
+            assert!(rendered.contains("shep lookout"), "{rendered}");
+            assert!(rendered.contains(CATALOGUE_SCREEN), "{rendered}");
+        }
+
+        let err = Cli::try_parse_from(["shep", "lookout", "web", "catalogue"])
+            .expect_err("catalogue is no tab the pane draws");
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+
+        let err = Cli::try_parse_from(["shep", "lookout", "web", "watch", "catalogue"])
+            .expect_err("a dog's table is the dogs tab's own");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    /// `lookout` disables clap's implicit `help` subcommand, because adding a
+    /// subcommand to a verb with three positionals would otherwise take
+    /// `help` out of all three: a sheep named `help` used to be opened by
+    /// `shep lookout help`, and still is.
+    #[test]
+    fn a_sheep_or_dog_named_help_stays_a_name() {
+        use clap::Parser;
+
+        let Commands::Lookout(args) = Cli::try_parse_from(["shep", "lookout", "help"])
+            .unwrap()
+            .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("help"));
+        assert!(!args.catalogue);
+
+        let Commands::Lookout(args) =
+            Cli::try_parse_from(["shep", "lookout", "web", "dogs", "help"])
+                .unwrap()
+                .command
+        else {
+            panic!("lookout parses to its own variant")
+        };
+        assert_eq!(args.sheep.as_deref(), Some("web"));
+        assert_eq!(args.dog.as_deref(), Some("help"));
+        assert!(!args.catalogue);
+    }
+
+    /// `CATALOGUE_SCREEN` is the name the subcommand declares with its own
+    /// `#[command(name)]`, so a rename of one and not the other shows up here.
+    /// There is no filter for clap's own `help` subcommand: `lookout` disables
+    /// it, so a `help` showing up here is the bug.
+    #[test]
+    fn the_catalogue_subcommand_is_the_only_one_lookout_has() {
+        use clap::CommandFactory;
+
+        let lookout = Cli::command().find_subcommand("lookout").unwrap().clone();
+        let names: Vec<&str> = lookout
+            .get_subcommands()
+            .map(|sub| sub.get_name())
+            .collect();
+        assert_eq!(names, [CATALOGUE_SCREEN]);
     }
 
     /// `DOG_TAB` is the one group name this module spells out, so it is the
