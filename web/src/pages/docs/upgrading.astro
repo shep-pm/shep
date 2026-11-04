@@ -22,21 +22,32 @@ import Callout from "../../components/docs/Callout.astro";
     <h1>Upgrading</h1>
     <ReferencePills slug="upgrading" />
     <p class="lede">
-      <code>cargo install shep</code> replaces the binary on disk and changes
-      nothing that is already running. <code>shep daemon reload</code> is what
-      moves a live flock onto it.
+      <code>shep upgrade</code> replaces the binary through the channel it
+      came from, offers the reload and upgrades the dogs. The binary on disk
+      changes nothing that is already running.{" "}
+      <code>shep daemon reload</code> is what moves a live flock onto it.
     </p>
 
     <h2 id="replacing-the-binary">Replacing the binary</h2>
     <p>
-      <code>cargo install shep</code> replaces the binary on disk. It does
-      not touch anything already running: the shepherd keeps the code it
-      booted with until you reload it, and each dog keeps its own until you
-      reinstall it separately.
+      <code>shep upgrade</code> lists what is newer and asks once. It runs
+      the channel's own command in the foreground: Homebrew, cargo, Scoop,
+      winget or Chocolatey. A <code>.deb</code> or an archive has no command,
+      so it prints the steps. It then offers the reload (<code>--reload</code>{" "}
+      says yes) and upgrades the dogs. On Windows it prints the commands
+      instead of running them, because the shepherd holds{" "}
+      <code>shep.exe</code>, and the flock restarts on the reload.
+    </p>
+    <div class="terminal">
+      <div><span class="prompt">$</span> shep upgrade</div>
+    </div>
+    <p>
+      By hand, the shepherd keeps the code it booted with until you reload
+      it, and each dog keeps its own until you upgrade it.
     </p>
     <div class="terminal">
       <div><span class="prompt">$</span> cargo install shep</div>
-      <div><span class="prompt">$</span> cargo install shep-log-rotate<span class="muted"> # and every other dog</span></div>
+      <div><span class="prompt">$</span> shep upgrade --dogs<span class="muted"> # every installed dog</span></div>
       <div><span class="prompt">$</span> shep daemon reload</div>
     </div>
 

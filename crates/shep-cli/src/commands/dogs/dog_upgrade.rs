@@ -23,6 +23,7 @@ use super::dog_rollback::rollback;
 use super::install::{Reach, Upgrading, adopt_fetched, fetch_dog, load_index};
 use super::install_depends::Catalog;
 use super::receipt::{self, HeldPin};
+use super::shep_upgrade::bare;
 use super::upgrade::{upgrade_notice, upgrade_one};
 use super::{adopted_source, emit_dog_action, fail_config};
 
@@ -53,11 +54,7 @@ pub async fn upgrade(streams: &mut Streams<'_>, paths: &ShepPaths, args: &Upgrad
         (None, false, false) => Goal::Follow,
     };
     if args.dog.is_none() && !args.all {
-        return streams.fail(
-            ExitCode::Failure,
-            "bare `shep upgrade`, which would upgrade shep itself, is not implemented yet. \
-             `shep upgrade <dog>` upgrades one installed dog and `shep upgrade --dogs` every one",
-        );
+        return bare(streams, paths, args).await;
     }
     // A rollback reads no index: nothing it needs is on the network.
     let (url, rows) = if goal == Goal::Rollback {

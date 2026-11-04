@@ -174,7 +174,8 @@ pub struct InstallArgs {
 #[derive(Debug, clap::Args)]
 pub struct UpgradeArgs {
     /// The installed dog to upgrade. With none and no `--dogs`, `shep upgrade`
-    /// would upgrade shep itself, which it does not do yet.
+    /// upgrades shep through the channel it came from, then every installed dog
+    /// the index has a newer version of.
     #[arg(conflicts_with = "all")]
     pub dog: Option<String>,
     /// Upgrade every installed dog in turn. A dog adopted from a path has no
@@ -201,6 +202,13 @@ pub struct UpgradeArgs {
     /// is still fresh.
     #[arg(long)]
     pub refresh: bool,
+    /// Reload the shepherd onto the new shep without asking. Only a bare `shep
+    /// upgrade` that upgraded shep has a reload to do.
+    #[arg(
+        long,
+        conflicts_with_all = ["dog", "all", "git_ref", "release", "rollback"]
+    )]
+    pub reload: bool,
 }
 
 #[cfg(test)]
@@ -245,5 +253,32 @@ mod tests {
             exec_arg.is_hide_set(),
             "--exec must stay hidden from --help"
         );
+    }
+
+    /// Fails if `--reload` can ride along with anything but a bare `shep
+    /// upgrade`, the only form that upgrades shep and has a shepherd to reload.
+    #[test]
+    fn reload_conflicts_with_a_dog_name_and_with_dogs() {
+        use clap::{Parser, error::ErrorKind};
+
+        for rest in [
+            &["otel"][..],
+            &["--dogs"],
+            &["otel", "--ref", "main"],
+            &["otel", "--release"],
+            &["otel", "--rollback"],
+        ] {
+            let mut argv = vec!["shep", "upgrade", "--reload"];
+            argv.extend_from_slice(rest);
+            let err = Cli::try_parse_from(&argv).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{argv:?}");
+        }
+        let parsed = Cli::try_parse_from(["shep", "upgrade", "--reload"])
+            .unwrap()
+            .command;
+        let Commands::Upgrade(args) = parsed else {
+            panic!("expected upgrade")
+        };
+        assert!(args.reload);
     }
 }
