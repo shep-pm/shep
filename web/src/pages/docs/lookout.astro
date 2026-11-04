@@ -323,6 +323,21 @@ const settingsNarrow = `shep lookout   /home/ada/.shep 2 in the flock
 
 esc/s close   j/k select   g… control enabled`;
 
+const dogInstalling = `shep lookout   /home/ada/.shep                                                                            1 in the flock
+ ██ CATALOGUE   log-rotate                                                                                                  
+                                                                                                                        
+  description  Rotates grown log files and asks the shepherd to reopen them.                                            
+  repo         https://github.com/shep-pm/shep-log-rotate                                                               
+  license      MIT OR Apache-2.0                                                                                        
+  kind         cargo 0.2.4                                                                                              
+  state        not installed · 0.2.4                                                                                    
+  install      enter installs it                                                                                        
+  permissions  not listed                                                                                               
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+installing log-rotate  building with cargo  12s   esc back   enter install   h help   q quit              control enabled`;
+
 ---
 
 <DocsLayout
@@ -891,6 +906,38 @@ esc/s close   j/k select   g… control enabled`;
       <code>not installed</code> (none without a cache), and{" "}
       <code>Enter</code> on one opens its catalogue entry. It ends in a{" "}
       <code>browse dogs</code> row that opens the dog catalogue.
+    </p>
+
+    <h2 id="installing-from-the-catalogue">Installing from the catalogue</h2>
+    <p>
+      <code>i</code> opens the dog catalogue from any screen,{" "}
+      <code>Enter</code> opens the row under the cursor, and <code>Enter</code>{" "}
+      again installs it through the same code <code>shep install</code> runs.
+      Only an entry shep can build and this machine has not installed gets
+      that: the bar names <code>enter install</code> while the entry is open,
+      and an entry with instructions only has no install action.
+    </p>
+    <p>
+      The grant question the CLI prints opens as a modal with the same text,{" "}
+      <code>Enter</code> yes and any other key no. A dog that needs another dog
+      is asked for first, in the CLI's own order, and a no stops the run there
+      exactly as it does at the CLI. While a job runs the bar carries the dog,
+      the step and the time spent:
+    </p>
+    <CodeBlock label="120×14, mid-install">{dogInstalling}</CodeBlock>
+    <p>
+      One job at a time. A second <code>Enter</code> while one is running opens
+      a box saying it waits for that dog and starts nothing. A finished install
+      clears the item, shows <code>installed &lt;name&gt;</code> for a few
+      seconds, and re-reads the rows, so STATE and VERSION are the machine's
+      again; a failed one opens a box with what the installer printed. A bar too
+      narrow for both drops the job item before the key hint.
+    </p>
+    <p>
+      <code>q</code> during a job asks first. A yes ends lookout and kills the{" "}
+      <code>cargo install</code> it started; a no keeps the screen and the job.
+      An install writes its receipt last, so a cancelled one leaves no receipt
+      and the dog stays not installed.
     </p>
 </article>
 </DocsLayout>

@@ -54,11 +54,22 @@ impl App {
         // included: a question left unanswered behind a filter box would
         // take its Enter for the filter's.
         if self.modal().is_some() {
-            return self.on_modal_key(key);
+            let effect = self.on_modal_key(key);
+            if let Effect::ModalAnswered { tag, yes } = effect {
+                return self.on_dog_modal_answer(tag, yes).unwrap_or(effect);
+            }
+            return effect;
         }
         // While the box is open every key is text.
         if self.mode == InputMode::Text {
             return self.on_text_key(key);
+        }
+        // Ahead of every body's own `q`: a running dog job asks first, and
+        // the answer decides whether lookout leaves.
+        if key == KeyPress::Quit
+            && let Some(effect) = self.on_dog_quit()
+        {
+            return effect;
         }
         // The overlay owns the keyboard while it is up, ahead of every pane
         // below. Behind text mode, not in front of it: `h` typed into an

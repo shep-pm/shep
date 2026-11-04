@@ -104,9 +104,14 @@ pub(crate) use entry_drift::{
 };
 pub(crate) use grant::{Change, GrantRefusal, change, record_change};
 pub use install::install;
+// `lookout`'s dog job builds a `Reach` of its own to run a session against.
+pub(crate) use install::Reach;
 pub(crate) use receipt::installed;
 pub use remove::rehome;
 pub(crate) use remove::{Removal, remove_dog};
+#[cfg(all(test, unix))]
+pub(crate) use session::stub_reach;
+pub(crate) use session::{Job, Progress, Step, run};
 pub(crate) use upgrade::{upgrade_grants, upgrade_notice};
 pub use vet::{DogSchema, warn_of_a_dog_a_restart_would_break};
 // `adopted_help` lists the registry's dogs in `--help` and in a completion

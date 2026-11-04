@@ -155,6 +155,10 @@ impl App {
             self.frozen_for = now.saturating_duration_since(at);
         }
         // Against the tick's own `now`, not `self.now`, which stops on
+        // a dead link: a job runs on this machine and is no staler for the
+        // shepherd being gone.
+        self.dog_job.tick(now);
+        // Against the tick's own `now`, not `self.now`, which stops on
         // a dead link: a settings edit describes a local file that is
         // no staler for the shepherd being gone.
         if let Some(settings) = self.settings_mut() {

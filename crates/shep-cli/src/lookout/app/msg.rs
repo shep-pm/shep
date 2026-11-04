@@ -1,6 +1,9 @@
 //! What arrives at the reducer and what leaves it.
 
+use std::sync::Arc;
+
 use super::*;
+use crate::commands::dogs::{Job, Prompt, Step};
 
 /// Whether this lookout may act on a sheep.
 ///
@@ -475,6 +478,33 @@ pub enum Msg {
         /// The rows and whether a fetch is still due, or why the load failed.
         result: Result<Box<CatalogueRead>, String>,
     },
+    /// A dog job reached a step. Always yields [`Effect::None`].
+    DogStep {
+        /// The dog the job is for, echoed back: a late step for a job that
+        /// has ended describes nothing.
+        name: String,
+        /// The step it reached.
+        step: Step,
+    },
+    /// A dog job's session is asking its grant question, and is blocked on
+    /// the answer. Always yields [`Effect::None`].
+    DogGrant {
+        /// The dog the job is for, echoed back.
+        name: String,
+        /// What `shep install` would have printed, from the same function.
+        prompt: Prompt,
+        /// Where the answer goes, held against the tag of the modal it opens.
+        reply: Arc<GrantReply>,
+    },
+    /// A dog job ended.
+    DogJobDone {
+        /// The dog.
+        name: String,
+        /// Whether the verb would have exited successfully.
+        ok: bool,
+        /// Everything the verb printed, capped by the modal that shows it.
+        output: String,
+    },
 }
 
 /// The one gate on writing `shep.toml` from the settings screen.
@@ -680,6 +710,19 @@ pub enum Effect {
     /// Fetch the dog index through its cache and rebuild the catalogue's
     /// rows; the answer lands as [`Msg::Catalogue`].
     FetchCatalogue,
+    /// Runs `job` through [`run`](crate::commands::dogs::run), the same code
+    /// `shep install` runs, on its own thread with its own current-thread
+    /// runtime.
+    ///
+    /// Not `spawn_blocking`: the grant callback blocks on a modal answer, and
+    /// the run starts `cargo`, which needs a runtime of its own. Progress and
+    /// the result land as [`Msg::DogStep`] and [`Msg::DogJobDone`].
+    StartDogJob {
+        /// Which job.
+        job: Job,
+        /// Proof the control gate was open: an install writes `shep.toml`.
+        authority: WriteAuthority,
+    },
     /// Read the one value behind `row`; the answer lands as [`Msg::Revealed`].
     ///
     /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the read

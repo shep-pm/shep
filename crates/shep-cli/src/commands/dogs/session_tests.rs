@@ -227,6 +227,7 @@ async fn run_gives_the_exit_code_and_text_shep_upgrade_gives_for_a_current_dog()
         Job::Upgrade {
             name: "otel".to_owned(),
         },
+        Reach::real(),
         Progress::new(|_| {}),
         |_| true,
     )
@@ -260,6 +261,7 @@ async fn a_delete_gives_the_exit_code_and_text_the_verb_gives() {
         Job::Delete {
             name: "otel".to_owned(),
         },
+        Reach::real(),
         Progress::new(|_| {}),
         |_| true,
     )
@@ -281,7 +283,14 @@ async fn a_missing_cache_fails_with_the_index_message_and_fetches_nothing() {
     let fixture = Fixture::new();
     let progress = Progress::new(|_| {});
 
-    let (code, output) = run(&fixture.paths, install_otel(), progress, |_| true).await;
+    let (code, output) = run(
+        &fixture.paths,
+        install_otel(),
+        Reach::real(),
+        progress,
+        |_| true,
+    )
+    .await;
 
     assert_eq!(code, ExitCode::Failure, "{output}");
     assert!(output.contains("reading the dog index from"), "{output}");

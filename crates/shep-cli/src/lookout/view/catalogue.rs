@@ -241,6 +241,9 @@ fn draw_entry(app: &App, row: &CatalogueRow, area: Rect, buffer: &mut Buffer) {
             vec![format!("{} \u{b7} {}", row.state, row.version)],
         ),
     ];
+    if app.can_install(row) {
+        fields.push(("install", vec!["enter installs it".to_owned()]));
+    }
     if !matches!(
         row.dog.source,
         DogSourceKind::Cargo {

@@ -51,6 +51,7 @@ mod config_pane_edits;
 mod config_pane_keys;
 #[cfg(test)]
 mod disabled_tests;
+mod dog_job;
 mod dog_pane;
 #[cfg(test)]
 mod dog_pane_entries;
@@ -97,6 +98,7 @@ pub(crate) use catalogue::{
 };
 pub use close_dialog::*;
 pub(crate) use config_pane::*;
+pub(crate) use dog_job::{DogJob, DogRun, DogRunner, GrantReply};
 // Re-exported rather than imported (IR-32): every module under `app` opens
 // `use super::super::*` or `use super::*`, and the shared key/value editor is
 // what they all drive.
@@ -496,6 +498,25 @@ pub struct App {
     /// The rows of the latest [`Effect::LoadCatalogue`], kept whether or not
     /// the catalogue is open so another screen can read them.
     catalogue: Vec<CatalogueRow>,
+    /// The one dog job this lookout runs at a time, and what its modals are
+    /// waiting on.
+    ///
+    /// A job is `commands::dogs::session` on its own thread; this is the
+    /// dashboard's half of it. Dropping the `App` drops the job's grant
+    /// replies, which is what releases a callback still waiting for an
+    /// operator who has already quit.
+    dog_job: DogJob,
+    /// The tag of the quit question lookout is asking, or `None`.
+    ///
+    /// Held here rather than inside [`DogJob::Running`] because the answer can
+    /// arrive after the job it was asked about has landed, and a yes to a
+    /// question still on screen must still quit.
+    dog_quit: Option<u64>,
+    /// The next modal tag.
+    ///
+    /// Shared by every modal owner so no two open modals carry the same tag,
+    /// and never reused, the same way [`Self::next_write_ticket`] is.
+    next_modal_tag: u64,
 }
 
 /// What a partly refused walk should say, or `None` when nothing was

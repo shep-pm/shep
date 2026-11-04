@@ -414,7 +414,12 @@ export const BUDGETS: Record<string, number> = {
   // entry, what an entry says about permissions, the `i` key and the
   // `shep lookout catalogue` form are all things an operator sees or types,
   // so the page owes them a section (#1499).
-  lookout: 3702,
+  //
+  // Raised again, to 3870, on #1498 for "Installing from the catalogue": the
+  // install key, the grant modal, the status-bar job item, one job at a time,
+  // and what quitting mid-job leaves behind. None of it is described on any
+  // other page, and it is required content rather than prose to trim back out.
+  lookout: 3870,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has

@@ -84,6 +84,7 @@ mod tests {
                 request_tx,
                 shared_test_paths(),
                 local,
+                super::super::app::DogRunner::Real,
             ),
         )
         .await

@@ -56,6 +56,9 @@ impl App {
             focus: None,
             focus_ask: None,
             catalogue: Vec::new(),
+            dog_job: DogJob::Idle,
+            dog_quit: None,
+            next_modal_tag: 0,
         }
     }
 
@@ -122,6 +125,13 @@ impl App {
             } => self.on_revealed_answer(key, environment, value),
             Msg::SecretWritten { result } => self.on_secret_written(result),
             Msg::Catalogue { result } => self.on_catalogue(result),
+            Msg::DogStep { name, step } => self.on_dog_step(&name, step),
+            Msg::DogGrant {
+                name,
+                prompt,
+                reply,
+            } => self.on_dog_grant(&name, prompt, reply),
+            Msg::DogJobDone { name, ok, output } => self.on_dog_job_done(&name, ok, output),
         }
     }
 }
