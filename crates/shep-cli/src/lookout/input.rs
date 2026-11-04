@@ -84,6 +84,7 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
         KeyCode::Char('L') => Some(KeyPress::Action(ActionVerb::Reload)),
         KeyCode::Char('s') => Some(KeyPress::Settings),
         KeyCode::Char('S') => Some(KeyPress::Secrets),
+        KeyCode::Char('i') => Some(KeyPress::Catalogue),
         KeyCode::Char('v') => Some(KeyPress::Reveal),
         KeyCode::Char('y') => Some(KeyPress::Copy),
         KeyCode::Left => Some(KeyPress::TabPrev),
@@ -302,6 +303,18 @@ mod tests {
             map_key(&key(KeyCode::Char('g')), InputMode::Normal),
             Some(KeyPress::SelectFirst),
             "the frame wanted `g` for secrets; `g` is still SelectFirst"
+        );
+    }
+
+    #[test]
+    fn i_opens_the_catalogue_in_normal_mode_and_types_in_text_mode() {
+        assert_eq!(
+            map_key(&key(KeyCode::Char('i')), InputMode::Normal),
+            Some(KeyPress::Catalogue)
+        );
+        assert_eq!(
+            map_key(&key(KeyCode::Char('i')), InputMode::Text),
+            Some(KeyPress::TextChar('i'))
         );
     }
 
