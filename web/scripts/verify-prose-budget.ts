@@ -173,7 +173,11 @@ export const BUDGETS: Record<string, number> = {
   // the caller needs, and that every result is visible to every holder of
   // them, and that a callee with a dot in its name cannot finish one. The
   // ceiling sits about 4 words above the page.
-  "writing-a-dog": 6157,
+  //
+  // Raised again on #1480 for the manifest's `pane` field: an author has to
+  // know it is answered over the channel, and that a manifest declaring it
+  // without one has no pane to draw.
+  "writing-a-dog": 6200,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -445,7 +449,10 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 2288 on #1431 for the `caller` field of an action message and
   // the pointer to `shep trigger <dog>`: a dog author reading a handler's input
   // has to know both. The ceiling sits about 5 words above the page.
-  "shepherd-channel": 2330,
+  //
+  // Raised again on #1480 for the reserved `shep.pane` action named beside
+  // `shep.validate`.
+  "shepherd-channel": 2345,
   "from-pm2": 1720,
   "boot-order": 1670,
   // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep
