@@ -649,7 +649,7 @@ running; `shep kill` stops it. `--user` naming anyone else, and `--init`, are re
     /// Static only: sheep names, fold names and other daemon-side
     /// identifiers are never completed.
     Completions(CompletionArgs),
-    /// Print the welcome: the sheep, and the five commands worth knowing.
+    /// Print the welcome: the sheep, the quick start, and three dogs to install.
     ///
     /// The same text a fresh `$SHEP_HOME` prints once on its own. Here it is
     /// the command's output rather than a diagnostic, so it goes to stdout.

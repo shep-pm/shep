@@ -61,6 +61,9 @@ mod feed_keys;
 mod focus;
 mod keys;
 mod lambs;
+// The layer is whole and drawn, but nothing opens a modal until the install flow does.
+#[allow(dead_code)]
+mod modal;
 mod msg;
 mod over_host;
 mod pane_dogs;
@@ -95,6 +98,7 @@ pub(crate) use config_pane::*;
 pub(crate) use super::keyvalue::{Grammar, KeyValues, Outcome};
 pub(crate) use super::pane::EnvSubmit;
 pub(crate) use focus::{Focus, FocusAsk};
+pub(crate) use modal::Modal;
 pub use msg::*;
 pub(crate) use over_host::NOT_OVER_HOST;
 pub use rows::*;
@@ -414,6 +418,8 @@ pub struct App {
     /// one. A third mode would also have to answer what a letter means in
     /// it, and the answer is nothing.
     keymap_open: bool,
+    /// The modal layer, which takes every key while a modal is open.
+    modals: modal::Modals,
     /// What `shep lookout <sheep> [tab] [dog]` asked for, held until the
     /// first flock answer can say whether the sheep is there.
     ///
