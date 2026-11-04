@@ -103,6 +103,8 @@ impl App {
     pub(super) fn on_relinked(&mut self) -> Effect {
         if !matches!(self.link, Link::Lost { .. }) {
             self.link = Link::Live;
+            // Events published during the gap were never delivered.
+            self.mark_dog_pane_due();
         }
         Effect::None
     }
