@@ -576,7 +576,9 @@ mod tests {
         assert_eq!(needs["items"]["type"], "string", "{needs}");
         assert_eq!(needs["items"]["pattern"], "^[a-z][a-z0-9-]*$", "{needs}");
 
-        let required = entry_schema["required"].as_array().expect("required is a list");
+        let required = entry_schema["required"]
+            .as_array()
+            .expect("required is a list");
         assert!(!required.iter().any(|key| key == "needs"), "{required:?}");
     }
 

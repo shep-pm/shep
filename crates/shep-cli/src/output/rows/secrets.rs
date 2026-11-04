@@ -502,8 +502,7 @@ mod tests {
         dog.needs = vec![crate::dog_index::Need::Logs, crate::dog_index::Need::Alerts];
 
         let with = serde_json::to_value(AvailableDogRows(vec![dog])).unwrap();
-        let without =
-            serde_json::to_value(AvailableDogRows(vec![sample_available_dog()])).unwrap();
+        let without = serde_json::to_value(AvailableDogRows(vec![sample_available_dog()])).unwrap();
 
         assert_eq!(with, without, "{with}");
         assert!(with[0].get("needs").is_none(), "{with}");
