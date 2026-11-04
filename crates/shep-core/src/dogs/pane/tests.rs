@@ -1,6 +1,7 @@
 use serde_json::Value;
 use serde_json::json;
 
+use super::super::validate::QUOTE_CAP;
 use super::*;
 
 /// The design's own call, and the answer it is meant to produce.
@@ -222,6 +223,32 @@ fn an_unreadable_answer_is_quoted_at_the_validate_cap_on_a_character_boundary() 
             "a".repeat(199)
         )
     );
+}
+
+/// The cap is the answer's own. A fault naming a long row key is quoted at the
+/// cap too, and the answer after it is quoted at the cap on its own, so the
+/// cell counts and the answer both reach the operator.
+#[test]
+fn a_fault_naming_a_long_key_still_quotes_the_answer_at_the_cap() {
+    let key = "k".repeat(QUOTE_CAP + 100);
+    let body = json!({
+        "sections": [{"kind": "table", "id": "models", "title": "models",
+                      "columns": ["MODEL"],
+                      "rows": [{"key": key, "cells": ["a", "b"]}]}]
+    })
+    .to_string();
+
+    let reason = Pane::read(&body).unwrap_err();
+
+    assert!(
+        reason.starts_with(&format!(
+            "section `models` has 1 column but its row `{}...` holds 2 cells: ",
+            "k".repeat(QUOTE_CAP)
+        )),
+        "{reason}"
+    );
+    assert!(reason.contains(&body[..QUOTE_CAP]), "{reason}");
+    assert!(reason.ends_with("..."), "{reason}");
 }
 
 /// A kind this shep does not know is skipped rather than unreadable: a later

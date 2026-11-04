@@ -23,7 +23,7 @@ pub const VALIDATE_ACTION: &str = "shep.validate";
 /// file out of the error line; `shep trigger`'s own table caps at 80 for the
 /// same reason, and this is the wider of the two because a refusal is the
 /// whole answer here rather than one column of a table.
-const QUOTE_CAP: usize = 200;
+pub(super) const QUOTE_CAP: usize = 200;
 
 /// The table a settings write would put in place, and whose holder it is.
 ///
@@ -168,11 +168,13 @@ impl Verdict {
     }
 }
 
-/// The reason given for an answer that is not a verdict.
+/// `body` cut at [`QUOTE_CAP`] on a character boundary, with `...` when the cut
+/// dropped something.
 ///
-/// Shared with [`pane`](super::pane), which quotes an unreadable pane answer
-/// the same way rather than writing its own cap.
-pub(super) fn unreadable(body: &str) -> String {
+/// Shared with [`pane`](super::pane), which quotes a fault's section id, its
+/// row key, and the answer after them each at the cap on its own, so no one of
+/// them eats the room the others have.
+pub(super) fn quoted(body: &str) -> String {
     // Cut on a character boundary rather than a byte index: a dog answering in
     // another script still comes back whole up to the cap, and never as a
     // prefix that is not a string.
@@ -180,12 +182,19 @@ pub(super) fn unreadable(body: &str) -> String {
     while !body.is_char_boundary(cut) {
         cut -= 1;
     }
-    let quoted = if cut < body.len() {
+    if cut < body.len() {
         format!("{}...", &body[..cut])
     } else {
         body.to_string()
-    };
-    format!("the dog answered with something shep cannot read: {quoted}")
+    }
+}
+
+/// The reason given for an answer that is not a verdict.
+pub(super) fn unreadable(body: &str) -> String {
+    format!(
+        "the dog answered with something shep cannot read: {}",
+        quoted(body)
+    )
 }
 
 #[cfg(test)]

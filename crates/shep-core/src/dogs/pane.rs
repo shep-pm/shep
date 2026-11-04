@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::validate::unreadable;
+use super::validate::{quoted, unreadable};
 
 /// The action name lookout sends on a dog's shepherd channel to ask for its
 /// pane.
@@ -165,9 +165,9 @@ impl Pane {
     ///
     /// # Errors
     /// The sentence the operator reads: what is wrong with the answer, then the
-    /// dog's own answer quoted at the cap
-    /// [`shep.validate`](super::validate::Verdict::read) quotes an unreadable
-    /// answer at.
+    /// dog's own answer, each name the dog wrote and the answer itself quoted at
+    /// the cap [`shep.validate`](super::validate::Verdict::read) quotes an
+    /// unreadable answer at.
     pub fn read(body: &str) -> Result<Self, String> {
         let Ok(Value::Object(mut root)) = serde_json::from_str(body) else {
             return Err(unreadable(body));
@@ -223,7 +223,9 @@ impl Pane {
     ///
     /// Lookout keys its state and its actions by section id and row key, so a
     /// repeat of either, and a row with no cell for each column, is refused at
-    /// both ends rather than drawn wrong.
+    /// both ends rather than drawn wrong. Every name the dog wrote is quoted at
+    /// the cap, so a long one cannot push the counts out of the line the
+    /// operator reads.
     fn fault(&self) -> Option<String> {
         for section in &self.sections {
             let Section::Table(table) = section else {
@@ -234,10 +236,10 @@ impl Pane {
                 if row.cells.len() != columns {
                     return Some(format!(
                         "section `{}` has {} column{} but its row `{}` holds {} cell{}",
-                        table.id,
+                        quoted(&table.id),
                         columns,
                         plural(columns),
-                        row.key,
+                        quoted(&row.key),
                         row.cells.len(),
                         plural(row.cells.len())
                     ));
@@ -245,13 +247,14 @@ impl Pane {
             }
             if let Some(key) = repeated(table.rows.iter().map(|row| row.key.as_str())) {
                 return Some(format!(
-                    "section `{}` uses the row key `{key}` twice",
-                    table.id
+                    "section `{}` uses the row key `{}` twice",
+                    quoted(&table.id),
+                    quoted(key)
                 ));
             }
         }
         repeated(self.sections.iter().map(|section| id_of(section).as_str()))
-            .map(|id| format!("two sections share the id `{id}`"))
+            .map(|id| format!("two sections share the id `{}`", quoted(id)))
     }
 }
 
@@ -510,9 +513,10 @@ fn repeated<'a>(values: impl Iterator<Item = &'a str>) -> Option<&'a str> {
 }
 
 /// The reason an answer is refused: `fault` names what is wrong, and the dog's
-/// own answer follows it, quoted as `shep.validate` quotes one.
+/// own answer follows it, quoted at the cap on its own rather than after the
+/// fault, so a long fault cannot eat the room the answer has.
 fn refused(fault: &str, body: &str) -> String {
-    unreadable(&format!("{fault}: {body}"))
+    format!("{fault}: the dog answered {}", quoted(body))
 }
 
 #[cfg(test)]
