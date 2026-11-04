@@ -251,7 +251,8 @@ pub struct TriggerArgs {
     /// name, id, `name:slot`, `all`, `/regex/`, or `fold:<name>`. With no
     /// action, the name of a dog, whose declared actions are listed
     pub selector: String,
-    /// Action name — free-form, defined by the app
+    /// Action name — free-form, defined by the app. A `shep.` name is shep's
+    /// own to send, and is refused
     pub action: Option<String>,
     /// Argument text for the action, passed through to the app verbatim
     pub params: Option<String>,

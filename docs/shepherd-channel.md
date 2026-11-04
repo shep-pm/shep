@@ -265,12 +265,20 @@ running app directly, for whatever your app defines an "action" to mean:
 force a GC, dump internal state, flip a log level, whatever you want a
 running process to be able to do without restarting it.
 
-**The action name is entirely yours. shep never validates it, never keeps
+**The action name is yours. shep never validates it, never keeps
 a registry of known actions, and never inspects `params`.** Whatever the
 operator typed after `shep trigger <selector>` is sent to you verbatim, for
 you to recognize or refuse. There is no way to ask the daemon "what actions
 does this app support" — that documentation lives with your app, not with
 shep.
+
+**One prefix is shep's own.** An action name starting with `shep.` is sent
+only by the shepherd, as the operator: `shep.validate` asks a dog to check a
+settings table before `shep set` lands, and `shep.pane` asks a dog for the
+status pane lookout will draw. `shep trigger` refuses a `shep.` name before
+it sends anything, and a dog triggering another dog is refused one too, so an
+answer to a `shep.` action always came from the shepherd and carries no
+`caller`.
 
 **Reply even to an action name you don't recognize.** This is the one rule
 that actually matters for a good operator experience. From the daemon's

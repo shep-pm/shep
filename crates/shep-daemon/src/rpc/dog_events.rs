@@ -1,9 +1,10 @@
 //! `Request::PublishEvent`: a dog puts one of the event kinds its manifest
 //! declared on the bus, under its own name.
 
-use shep_core::protocol::{BusEvent, Response, RpcError, RpcErrorCode};
+use shep_core::protocol::{BusEvent, Response, RpcError};
 
 use super::context::RpcContext;
+use super::error::forbidden;
 use super::gate::Link;
 
 /// Publishes `BusEvent::Dog { dog, kind, payload }` for the dog on `link`.
@@ -13,9 +14,9 @@ use super::gate::Link;
 /// nothing about the payload.
 ///
 /// # Errors
-/// [`RpcErrorCode::Forbidden`] when `link` is the control socket or a launch
-/// link, when the dog's name has a dot in it, or when the dog did not declare
-/// `kind`.
+/// [`RpcErrorCode::Forbidden`](shep_core::protocol::RpcErrorCode::Forbidden)
+/// when `link` is the control socket or a launch link, when the dog's name has
+/// a dot in it, or when the dog did not declare `kind`.
 pub(super) fn publish_dog_event(
     link: Option<Link<'_>>,
     kind: &str,
@@ -31,13 +32,13 @@ pub(super) fn publish_dog_event(
     // topics inside `events:dog.a.b-2`'s reach too. With no dot in the name,
     // the first segment after `dog.` is always the dog.
     if dog.contains('.') {
-        return Err(forbidden(&format!(
+        return Err(forbidden(format!(
             "dog `{dog}` has a dot in its name, so it may not publish events: its topics \
              would read as another dog's"
         )));
     }
     if !ctx.known_dogs.declares(dog, kind) {
-        return Err(forbidden(&format!(
+        return Err(forbidden(format!(
             "dog `{dog}` did not declare the event kind `{kind}` in its manifest, so it may not publish it"
         )));
     }
@@ -51,12 +52,4 @@ pub(super) fn publish_dog_event(
         .into(),
     );
     Ok(Response::EventPublished)
-}
-
-fn forbidden(message: &str) -> RpcError {
-    RpcError {
-        code: RpcErrorCode::Forbidden,
-        message: message.to_owned(),
-        daemon_version: None,
-    }
 }

@@ -310,7 +310,9 @@ export const BUDGETS: Record<string, number> = {
   // Required content for #1491.
   // Raised from 3509 for the paragraph on `shep hints`: listing the hints,
   // turning one off or on, and the JSON keys. Required content for #1497.
-  output: 3559,
+  // Raised from 3559 for the `upgrade` row in "Hints": when it shows, what it
+  // offers and when it ends. Required content for #1502.
+  output: 3589,
   // Raised from 2980 on 2026-10-13 for the `log_match` rule: a new `on`
   // value, its `stream` key, and the loss and secrets caveats are
   // operator-facing surface, not prose to trim back out.
@@ -494,10 +496,10 @@ export const BUDGETS: Record<string, number> = {
   // has to know both. The ceiling sits about 5 words above the page.
   //
   // Raised again on #1480 for the reserved `shep.pane` action named beside
-  // `shep.validate`, and again for its review: the page now says shep sends
-  // both names itself and refuses no action name, so `shep trigger <dog>
-  // shep.validate` reaches the dog and a dog answers a `shep.` name the same
-  // whoever sent it. The ceiling sits about 8 words above the page.
+  // `shep.validate`, and again for its review: the page said shep sends both
+  // names itself and refuses no action name. #1528 made the `shep.` prefix a
+  // refusal in `shep trigger` and in the shepherd, and the page says that
+  // instead, at the same length.
   "shepherd-channel": 2375,
   "from-pm2": 1720,
   "boot-order": 1670,

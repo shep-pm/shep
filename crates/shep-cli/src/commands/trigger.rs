@@ -10,7 +10,7 @@
 //! a dog's manifest instead, on this machine and without a shepherd.
 
 use shep_client::{Client, TRIGGER_DEADLINE};
-use shep_core::dogs::manifest::Action;
+use shep_core::dogs::{is_reserved_action, manifest::Action};
 use shep_core::paths::ShepPaths;
 use shep_core::protocol::{Request, Response};
 
@@ -27,7 +27,8 @@ use crate::output::{DogActionList, Streams, TriggeredRows, emit, write_outcome};
 ///
 /// `action` and `params` are carried exactly as typed: neither this side nor
 /// the daemon parses them. An `args` with no action is refused: listing is
-/// [`list_actions`].
+/// [`list_actions`]. A [`shep_core::dogs::RESERVED_ACTION_PREFIX`] action is
+/// refused here, before anything goes out: the shepherd sends those itself.
 pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerArgs) -> ExitCode {
     let Some(action) = args.action.clone() else {
         return streams.fail(
@@ -36,6 +37,12 @@ pub async fn trigger(client: &Client, streams: &mut Streams<'_>, args: &TriggerA
              name an action to trigger one on a host",
         );
     };
+    if is_reserved_action(&action) {
+        return streams.fail(
+            ExitCode::Usage,
+            &format!("`{action}` is an action shep sends itself; `shep trigger` cannot send it"),
+        );
+    }
     let selector = match parse_selector_spec(streams, &args.selector) {
         Ok(selector) => selector,
         Err(code) => return code,
@@ -316,6 +323,26 @@ fi"#;
         };
         assert_eq!(code, ExitCode::NotFound);
         assert!(out.is_empty());
+    }
+
+    /// `shep.` names are shep's own to send, and the refusal is local.
+    #[tokio::test]
+    async fn a_reserved_action_is_refused_before_sending() {
+        for action in ["shep.validate", "shep.pane", "shep."] {
+            let (code, out, err, mut envelopes) = run(&args("janitor", action, None)).await;
+            let err = String::from_utf8(err).unwrap();
+            assert_eq!(code, ExitCode::Usage, "{err}");
+            assert!(out.is_empty());
+            assert!(err.contains(action), "the refusal names `{action}`: {err}");
+            assert!(
+                err.contains("shep sends itself"),
+                "the refusal says why: {err}"
+            );
+            assert!(
+                envelopes.try_recv().is_err(),
+                "a reserved action must fail locally, never reach the wire"
+            );
+        }
     }
 
     /// The fake daemon always answers `Pong`; only the captured envelope
