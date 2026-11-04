@@ -24,7 +24,7 @@ use crate::exit::ExitCode;
 use crate::fetch::{self, RedirectPolicy};
 use crate::output::{AvailableDogRows, Streams, emit, write_outcome};
 
-use super::adopt::{Flow, adopt_noting, collides_with_a_verb, lookup_on_path};
+use super::adopt::{Flow, Note, adopt_noting, collides_with_a_verb, lookup_on_path};
 use super::consent::Input;
 use super::install_depends::{Catalog, adopt_in_order, gather};
 use super::install_download::download;
@@ -538,8 +538,8 @@ pub(super) async fn adopt_fetched(
         );
     }
 
-    // One line at the end of the grant listing, above the question.
-    let note = match &landed {
+    // A line at the end of the grant listing, above the question.
+    let provenance = match &landed {
         Landed::Ref { git_ref, commit } => Some(format!(
             "built from {git_ref} at {commit}, which the index has not reviewed"
         )),
@@ -551,6 +551,7 @@ pub(super) async fn adopt_fetched(
             )
         }),
     };
+    let note = provenance.as_deref();
     let adopting = AdoptArgs {
         path: binary,
         name: Some(name.to_owned()),
@@ -569,13 +570,18 @@ pub(super) async fn adopt_fetched(
         },
     };
     let config_before = std::fs::read(&paths.daemon_config).ok();
+    // An upgrade keeps its own review of what is new.
+    let listed = match &upgrading {
+        None => dog.permissions.as_deref(),
+        Some(_) => None,
+    };
     let code = adopt_noting(
         streams,
         paths,
         &adopting,
         input,
         flow,
-        note.as_deref(),
+        Note { text: note, listed },
         said_no,
     )
     .await;
