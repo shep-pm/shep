@@ -580,9 +580,49 @@ this side:
 
 - **The index row is a human's merge.** The workflow opens a branch
   `dog-release/<package>-<version>` on this repository and a pull request
-  that changes `source.version` and `source.sha256` of that one row, through
-  `scripts/dog-index-update.py`. It hashes the assets the release serves, not
-  what each leg built. A first row for a new dog is a pull request by hand.
+  that changes `source.version`, `source.sha256` and `source.permissions` of
+  that one row, through `scripts/dog-index-update.py`. It hashes the assets
+  the release serves, not what each leg built. A first row for a new dog is a
+  pull request by hand.
+- **The permissions come off the built binary.** The
+  `x86_64-unknown-linux-gnu` leg runs the staged binary with
+  `--shep-manifest` and keeps the answer as `manifest.json`, uploaded as its
+  own artifact `manifest-x86_64-unknown-linux-gnu`. A dog declares one
+  manifest for every target, so one leg is enough, and it is the read-only
+  `build` job that runs the binary. `index-pr` downloads the artifact with
+  `gh run download`, which is why that job holds `actions: read` too, and
+  hands the path to the script as a sixth argument. The script copies each
+  permission's `name` and `required`, in the manifest's order, and nothing
+  else the manifest carries.
+- **Reading the manifest is bounded.** The probe runs the staged binary under
+  `timeout -k 5 60`. A dog that ignores `--shep-manifest` and starts its loop
+  never returns, and a probe with no bound would hold `build` to its 60-minute
+  job timeout, cancelling `upload` and `index-pr` with it. A dog that runs on
+  past 60s is killed and treated as a dog that answered nothing.
+- **A manifest is optional.** A binary that does not answer
+  `--shep-manifest`, runs past that bound, or answers something other than one
+  JSON manifest uploads no manifest artifact and says so in the step summary;
+  the release goes on. `jq -s` is what reads the answer so a binary printing
+  two documents fails here rather than in `index-pr`, after the release is out.
+  A row written with no manifest carries no `permissions`, and a list an
+  earlier version left in the row goes out with the version it described. The
+  manifest artifact is named beside the `dist-*` pattern `upload` downloads,
+  never inside it, so it never becomes an asset on the release.
+- **A dog declaring nothing leaves the key out.** Manifest v2 serializes
+  `permissions` with `skip_serializing_if = "Vec::is_empty"`
+  (`crates/shep-core/src/dogs/manifest.rs`), so its answer carries no
+  `permissions` key. That is a manifest and not a broken one: it uploads its
+  artifact, and the script writes the empty list. The two read differently in
+  the entry, where a missing key is "not listed" and an empty list is "none"
+  (`crates/shep-cli/src/lookout/view/catalogue.rs`). What the script refuses is
+  a `permissions` that is there and is not a list, and a document missing the
+  four fields `manifest.rs` requires of a manifest.
+- **A manifest that exists has to download.** `index-pr` asks the run which
+  artifacts it has before fetching, because `gh run download` fails the same
+  way whether the artifact was never uploaded or the download broke. An absent
+  artifact is the dog's answer and the row is written without permissions; a
+  listed one that will not download fails the job, so a broken run never writes
+  a row missing permissions it did read.
 - **Building and uploading are separate jobs.** `build` holds a read-only
   token, since it runs the dog's build scripts and one can prepend to
   `GITHUB_PATH` to swap a tool a later step runs. `upload` runs none of the
