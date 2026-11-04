@@ -1070,14 +1070,14 @@ already visible and unread.
 ## Answering `--shep-manifest`
 
 One flag describes the dog whole: `--shep-manifest`, answered on stdout with
-one JSON object, manifest v2. A v1 manifest still reads, and an `events` list in it is ignored: the field is v2's. `shep adopt` asks it first. `--version` and
+one JSON object, manifest v3. A v1 manifest still reads, and an `events` list in it is ignored: the field is v2's. A v2 manifest reads too, and a `pane` in it is ignored: that field is v3's. `shep adopt` asks it first. `--version` and
 `--schema` stay as they are, for a dog built against an older shep and for an
 older shep adopting this one, and `shep adopt` asks them when a dog answers no
 manifest.
 
 | Field | Meaning |
 | --- | --- |
-| `manifest` | The version, `2`. `1` still reads. |
+| `manifest` | The version, `3`. `1` and `2` still read. |
 | `name`, `version`, `protocol` | Who the dog is, and the wire protocol it speaks. |
 | `channel` | Whether it asks for the shepherd channel. |
 | `settings` | The JSON Schema `--schema` answers, byte for byte. |
@@ -1089,6 +1089,7 @@ manifest.
 | `launch` | Whether the dog runs a sheep's command, as `<path> launch <sheep> -- <cmd>`. A dog adopted as `sandbox` needs it: `shep adopt` refuses one without. |
 | `actions` | The actions the dog answers on its channel, each with `name` and a one-line `description`. `shep trigger <dog>` with no action lists them. |
 | `events` | The event kinds the dog publishes, each with `kind` and a one-line `description`. `Probe::event` declares one, `DogRuntime::publish` sends it. |
+| `pane` | Whether the dog answers `shep.pane` with a status pane lookout draws. Needs `channel`, because that is where the answer is sent: a manifest declaring `pane` without one reads `pane` as false, and `shep adopt` says the dog has no pane. |
 
 `manifest`, `name`, `version` and `protocol` are required; the rest default
 to nothing declared. A reader ignores a field it does not know, so a later

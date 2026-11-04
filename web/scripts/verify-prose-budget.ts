@@ -186,7 +186,12 @@ export const BUDGETS: Record<string, number> = {
   // tree into all of it, and that `shep adopt` warns past 60 columns or a
   // fourth example and adopts anyway. The ceiling sits about 4 words above
   // the page.
-  "writing-a-dog": 6312,
+  //
+  // Raised again on #1480 for the manifest's `pane` field: an author has to
+  // know it is answered over the channel, and that a manifest declaring it
+  // without one has no pane to draw. The two raises land on one page, so the
+  // ceiling is the one the merged page measures.
+  "writing-a-dog": 6357,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
@@ -469,7 +474,13 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 2288 on #1431 for the `caller` field of an action message and
   // the pointer to `shep trigger <dog>`: a dog author reading a handler's input
   // has to know both. The ceiling sits about 5 words above the page.
-  "shepherd-channel": 2330,
+  //
+  // Raised again on #1480 for the reserved `shep.pane` action named beside
+  // `shep.validate`, and again for its review: the page now says shep sends
+  // both names itself and refuses no action name, so `shep trigger <dog>
+  // shep.validate` reaches the dog and a dog answers a `shep.` name the same
+  // whoever sent it. The ceiling sits about 8 words above the page.
+  "shepherd-channel": 2375,
   "from-pm2": 1720,
   "boot-order": 1670,
   // Raised from 1620 for `shep signal --lamb` (#354): the flag, its one-sheep

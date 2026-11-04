@@ -1,4 +1,4 @@
-//! Manifest v2: everything a dog says about itself, answered to
+//! Manifest v3: everything a dog says about itself, answered to
 //! [`MANIFEST_FLAG`](super::MANIFEST_FLAG) as one JSON object on stdout.
 //!
 //! Every type ignores a field it does not know when read, so a manifest a
@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The `manifest` field's value for the format this module describes.
-pub const MANIFEST_VERSION: u32 = 2;
+pub const MANIFEST_VERSION: u32 = 3;
 
 /// What a dog answers [`MANIFEST_FLAG`](super::MANIFEST_FLAG) with.
 ///
@@ -26,7 +26,8 @@ pub struct Manifest {
     /// Reading refuses 0, which no format has. A higher one is read: later
     /// versions add fields and never change what an earlier field means, so
     /// what this shep knows of them stays true. A v1 manifest declares no
-    /// [`events`](Self::events), whatever it prints.
+    /// [`events`](Self::events) and a v2 no [`pane`](Self::pane), whatever
+    /// they print.
     pub manifest: u32,
     /// The dog's registered name.
     pub name: String,
@@ -77,6 +78,22 @@ pub struct Manifest {
     /// none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub events: Vec<DogEvent>,
+    /// Whether the dog answers [`PANE_ACTION`](super::pane::PANE_ACTION) with
+    /// a pane lookout draws. Added in manifest v3; a v2 manifest declares
+    /// none.
+    ///
+    /// It is answered over the channel, so a manifest with no
+    /// [`channel`](Self::channel) declares no pane either, and sets
+    /// [`pane_ignored`](Self::pane_ignored).
+    #[serde(default)]
+    pub pane: bool,
+    /// Whether the dog asked for a pane it cannot have: the wire said `pane`
+    /// and the manifest declared no channel to answer it on.
+    ///
+    /// `shep adopt` says so once. Never written to a manifest: it is what a
+    /// read concluded, not what a dog declared.
+    #[serde(skip)]
+    pub pane_ignored: bool,
 }
 
 impl Manifest {
@@ -99,6 +116,8 @@ impl Manifest {
             serves: Serves::OptedIn,
             actions: Vec::new(),
             events: Vec::new(),
+            pane: false,
+            pane_ignored: false,
         }
     }
 }
@@ -106,8 +125,13 @@ impl Manifest {
 /// The first manifest version that carries [`Manifest::events`].
 const EVENTS_SINCE: u32 = 2;
 
+/// The first manifest version that carries [`Manifest::pane`].
+const PANE_SINCE: u32 = 3;
+
 /// What is read off the wire, before a field is held to the version that
-/// introduced it. The fields are [`Manifest`]'s, in the same order.
+/// introduced it. The fields are [`Manifest`]'s in the same order, except
+/// [`Manifest::pane_ignored`], which a read concludes rather than a dog
+/// writing.
 #[derive(Deserialize)]
 struct Wire {
     #[serde(deserialize_with = "version_from_one")]
@@ -137,6 +161,8 @@ struct Wire {
     actions: Vec<Action>,
     #[serde(default)]
     events: Vec<DogEvent>,
+    #[serde(default)]
+    pane: bool,
 }
 
 impl From<Wire> for Manifest {
@@ -148,6 +174,11 @@ impl From<Wire> for Manifest {
         } else {
             Vec::new()
         };
+        // A pane is answered on the channel, so a manifest without one has no
+        // pane to declare, and `adopt` says which dogs asked for one anyway.
+        let asked = wire.manifest >= PANE_SINCE && wire.pane;
+        let pane = asked && wire.channel;
+        let pane_ignored = asked && !wire.channel;
         Self {
             manifest: wire.manifest,
             name: wire.name,
@@ -164,6 +195,8 @@ impl From<Wire> for Manifest {
             serves: wire.serves,
             actions: wire.actions,
             events,
+            pane,
+            pane_ignored,
         }
     }
 }
