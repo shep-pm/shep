@@ -116,6 +116,7 @@ impl App {
         // key hint for the rest of the session
         // (`view::status::status_line`'s own ordering).
         self.notice = None;
+        self.hint = None;
         Effect::None
     }
 
@@ -232,6 +233,18 @@ impl App {
         }
         self.host_unsupported = sample.is_none();
         self.host = sample;
+        Effect::None
+    }
+
+    /// `Msg::Hint`'s arm: the line `shep flock` would print.
+    ///
+    /// Refused once the link is lost, for `Msg::Host`'s reason: a hint about
+    /// a flock the dashboard can no longer see contradicts the frozen bar.
+    pub(super) fn on_hint(&mut self, line: Option<String>) -> Effect {
+        if matches!(self.link, Link::Lost { .. }) {
+            return Effect::None;
+        }
+        self.hint = line;
         Effect::None
     }
 
@@ -698,5 +711,36 @@ mod tests {
             &live_tail,
             "the tail read after the freeze must not reach the rendered frame"
         );
+    }
+
+    #[test]
+    fn a_hint_message_sets_the_line_and_a_lost_link_clears_it() {
+        let (mut app, _) = started();
+        assert_eq!(app.hint_line(), None);
+
+        let line = "hint: web has restarted 3 times. Try: shep enable bark";
+        let effect = app.update(Msg::Hint {
+            line: Some(line.to_owned()),
+        });
+        assert_eq!(effect, Effect::None);
+        assert_eq!(app.hint_line(), Some(line));
+
+        let _ = app.update(Msg::Hint { line: None });
+        assert_eq!(app.hint_line(), None, "a hint that ended is dropped");
+
+        let _ = app.update(Msg::Hint {
+            line: Some(line.to_owned()),
+        });
+        let _ = app.update(Msg::Frozen {
+            at_local: "2026-08-14 14:32:07".to_string(),
+            why: fixtures::FROZEN_WHY.to_string(),
+        });
+        assert_eq!(app.hint_line(), None, "the freeze drops the line");
+
+        let effect = app.update(Msg::Hint {
+            line: Some(line.to_owned()),
+        });
+        assert_eq!(effect, Effect::None);
+        assert_eq!(app.hint_line(), None, "a lost link takes no new line");
     }
 }

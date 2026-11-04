@@ -229,8 +229,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // overlay.
         (text, palette.attention())
     } else {
-        let (hint, style) = body_hint(app);
-        (with_dog_job(app, &hint, left_width), style)
+        body_hint(app, left_width)
     };
     // `patch`, not a fresh `Style`. `ground` sets only the background, so
     // patching it keeps each span's own foreground. `fit` pads `left` to
@@ -242,21 +241,35 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
     ])
 }
 
-/// The key hint for whatever body is up, and the style it is drawn in.
+/// The key hint for whatever body is up, and the style it is drawn in, with
+/// the running dog job ahead of it and, on the dashboard's own keys only, the
+/// hint after it.
 ///
 /// Reached only when [`status_line`] has no question, editor, notice or
 /// in-flight line to show: while one of those is up the bar says that, and a
 /// hint naming keys the screen is not taking is the asterisk this file's
 /// standing rule forbids.
 #[must_use]
-fn body_hint(app: &App) -> (String, Style) {
+fn body_hint(app: &App, width: u16) -> (String, Style) {
+    let (keys, style, is_dashboard) = screen_hint(app);
+    let text = with_dog_job(app, &keys, width);
+    if is_dashboard {
+        (with_flock_hint(app, text, width), style)
+    } else {
+        (text, style)
+    }
+}
+
+/// The keys of whatever screen is up, their style, and whether they are the
+/// dashboard's own idle keys: the one bar the flock hint may ride.
+fn screen_hint(app: &App) -> (String, Style, bool) {
     let palette = app.palette();
     if app.close_dialog().is_some() {
         // Ahead of the config pane's own hint below: the dialog owns the
         // keyboard while it is up. A bar naming `space cycle` under that
         // screen would be the asterisk this rule forbids.
         // Muted: the dialog's own rows name what each key does.
-        return (CLOSE_DIALOG_HINT.to_string(), palette.muted());
+        return (CLOSE_DIALOG_HINT.to_string(), palette.muted(), false);
     }
     if let Some(pane) = app.config_pane() {
         // The pane owns the keyboard, so neither dashboard hint is true
@@ -266,6 +279,7 @@ fn body_hint(app: &App) -> (String, Style) {
         return (
             pane_hint(app.control(), pane_screen(pane)).to_string(),
             palette.attention(),
+            false,
         );
     }
     if app.bleats_pane().is_some() {
@@ -273,13 +287,13 @@ fn body_hint(app: &App) -> (String, Style) {
         // open. The design's status-bar line
         // (docs/lookout/design-files/README.md:274) names no key for `m`, so
         // it is appended rather than inserted.
-        return (BLEATS_HINT.to_string(), palette.attention());
+        return (BLEATS_HINT.to_string(), palette.attention(), false);
     }
     if matches!(app.body(), Body::Secrets(_)) {
         // The pane owns the keyboard here too, same reasoning as the config
         // pane's own branch above: `x stop`/`R restart`/`L reload`/`F folds`
         // belong to the dashboard underneath and do nothing on this screen.
-        return (secrets_hint(app.control()), palette.attention());
+        return (secrets_hint(app.control()), palette.attention(), false);
     }
     if let Body::Catalogue(pane) = app.body() {
         // `enter install` only where `Enter` installs. The open row is named
@@ -296,6 +310,7 @@ fn body_hint(app: &App) -> (String, Style) {
         return (
             catalogue_hint(pane.entry.is_some(), installable).to_string(),
             palette.attention(),
+            false,
         );
     }
     if app.sheep_pane().is_some() {
@@ -305,6 +320,7 @@ fn body_hint(app: &App) -> (String, Style) {
         return (
             sheep_pane_hint(app.control()).to_string(),
             palette.attention(),
+            false,
         );
     }
     if app.settings().is_none() && !app.filter().is_empty() {
@@ -315,6 +331,7 @@ fn body_hint(app: &App) -> (String, Style) {
         return (
             format!("filter \"{}\"   / edit   esc clear", app.filter()),
             palette.muted(),
+            false,
         );
     }
     if matches!(app.link(), Link::Lost { .. }) {
@@ -322,12 +339,13 @@ fn body_hint(app: &App) -> (String, Style) {
         // the freeze keeps naming its own keys. This line is the flock
         // table's. Every action key `key_hint::hint_for` would name is
         // refused once the link is gone.
-        return (FROZEN_HINT.to_string(), palette.attention());
+        return (FROZEN_HINT.to_string(), palette.attention(), false);
     }
     // Butter: the keys, same rule as the pane's own hint above.
     (
         hint_for(app.control(), app.settings().is_some(), app.grouping()),
         palette.attention(),
+        true,
     )
 }
 
@@ -349,6 +367,21 @@ fn with_dog_job(app: &App, hint: &str, width: u16) -> String {
         joined
     } else {
         hint.to_owned()
+    }
+}
+
+/// Puts the flock hint after `text`, or drops it where both would not fit.
+///
+/// The keys are never cut to make room: they are what the bar is for, and the
+/// hint is the one thing on it that is only advice.
+fn with_flock_hint(app: &App, text: String, width: u16) -> String {
+    let Some(hint) = app.hint_line() else {
+        return text;
+    };
+    let joined = format!("{text}   {hint}");
+    match u16::try_from(joined.chars().count()) {
+        Ok(needed) if needed <= width => joined,
+        _ => text,
     }
 }
 

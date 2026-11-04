@@ -322,6 +322,10 @@ pub trait Local {
     /// log rotated away between the poll and the read is one of the cases that
     /// lands here.
     fn log_sizes(&mut self, out: Option<&Path>, err: Option<&Path>) -> Option<u64>;
+
+    /// The hint `shep flock` would print under `flock`, or `None` when none
+    /// applies or this reader has no `$SHEP_HOME` to read it from.
+    fn hint(&mut self, flock: &[ProcessInfo]) -> Option<String>;
 }
 
 /// The real one: a `sysinfo` handle and the tail reader's memory of each
@@ -336,6 +340,8 @@ pub struct LocalReader {
     /// construction.
     system: System,
     seen: std::collections::BTreeMap<PathBuf, u64>,
+    /// Where [`Local::hint`] reads from. `None` answers no hint.
+    paths: Option<ShepPaths>,
 }
 
 impl LocalReader {
@@ -353,7 +359,15 @@ impl LocalReader {
                 RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
             ),
             seen: std::collections::BTreeMap::new(),
+            paths: None,
         }
+    }
+
+    /// The same reader, answering [`Local::hint`] from `paths`.
+    #[must_use]
+    pub fn with_paths(mut self, paths: ShepPaths) -> Self {
+        self.paths = Some(paths);
+        self
     }
 }
 
@@ -393,6 +407,11 @@ impl Local for LocalReader {
         let err = std::fs::metadata(err?).ok()?.len();
         Some(out.saturating_add(err))
     }
+
+    fn hint(&mut self, flock: &[ProcessInfo]) -> Option<String> {
+        let paths = self.paths.as_ref()?;
+        crate::hints::next(paths, &crate::dog_index::index_url(), flock).map(|shown| shown.line)
+    }
 }
 
 /// What a lookout over `--host` reads in place of this machine: nothing.
@@ -414,6 +433,10 @@ impl Local for NoLocal {
     }
 
     fn log_sizes(&mut self, _out: Option<&Path>, _err: Option<&Path>) -> Option<u64> {
+        None
+    }
+
+    fn hint(&mut self, _flock: &[ProcessInfo]) -> Option<String> {
         None
     }
 }
@@ -726,6 +749,7 @@ cat >/dev/null
             crate::lookout::tail::Tail::default()
         );
         assert_eq!(local.log_sizes(Some(log), Some(log)), None);
+        assert_eq!(local.hint(&[]), None);
     }
 }
 

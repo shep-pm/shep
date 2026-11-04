@@ -283,6 +283,13 @@ pub enum Msg {
         /// What the sampler saw, or `None` on an unsupported platform.
         sample: Option<crate::lookout::source::HostSample>,
     },
+    /// The hint `shep flock` would print under this flock, read from this
+    /// machine every 30 seconds. `None` means no hint applies. Refused once
+    /// the link is lost. Always yields [`Effect::None`].
+    Hint {
+        /// The one line, or `None` when nothing applies.
+        line: Option<String>,
+    },
     /// How big the selected sheep's two log files are on disk, read on the
     /// same cadence as the lamb walk. Always yields [`Effect::None`].
     LogSize {
