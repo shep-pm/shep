@@ -116,6 +116,7 @@ impl App {
         name: &str,
         opening: u64,
         action: &str,
+        label: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
         let now = self.now;
@@ -128,7 +129,7 @@ impl App {
             if let Some(status) = status {
                 status.end_action();
             }
-            return self.start_long_action(name, action, id);
+            return self.start_long_action(name, label, id);
         }
         let Some(status) = status else {
             return Effect::None;

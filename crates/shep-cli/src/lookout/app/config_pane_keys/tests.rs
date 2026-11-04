@@ -535,7 +535,7 @@ fn an_action_that_never_left_frees_the_pane() {
         },
     });
 
-    assert_eq!(said(&app).as_deref(), Some("pause the board was not sent"));
+    assert_eq!(said(&app).as_deref(), Some("pause was not sent"));
     assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
 }
 

@@ -28,10 +28,11 @@ impl App {
             Sent::DogPane { name, opening } => self.on_dog_pane_pulled(&name, opening, result),
             Sent::DogPaneAction {
                 name,
+                action,
                 label,
                 opening,
                 ..
-            } => self.on_dog_pane_action_reply(&name, opening, &label, result),
+            } => self.on_dog_pane_action_reply(&name, opening, &action, &label, result),
             Sent::SetDogSection { name, ticket, .. } => {
                 self.on_dog_section_set(&name, ticket, result)
             }
@@ -133,11 +134,11 @@ impl App {
             ),
             Sent::DogPaneAction {
                 name,
-                label,
+                action,
                 opening,
                 ..
             } => {
-                self.on_dog_pane_action_unsent(&name, opening, &label);
+                self.on_dog_pane_action_unsent(&name, opening, &action);
                 Effect::None
             }
             Sent::SetDogSection { name, ticket, .. } => {
