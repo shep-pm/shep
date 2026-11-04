@@ -19,11 +19,15 @@ impl App {
         let Some(declared) = declared else {
             return Effect::None;
         };
+        let now = self.now;
         let Some(pane) = self.dog_pane_of(name, opening) else {
             return Effect::None;
         };
         pane.declare_pane(declared);
-        if pane.status_mut().is_some_and(DogStatus::begin_pull) {
+        if pane
+            .status_mut()
+            .is_some_and(|status| status.begin_pull(now))
+        {
             Effect::Send(Sent::DogPane {
                 name: name.to_owned(),
                 opening,

@@ -62,6 +62,7 @@ mod dog_pane_entry_add;
 #[cfg(test)]
 mod dog_pane_entry_removal;
 mod dog_pane_pull;
+mod dog_pane_refresh;
 mod feed_keys;
 mod focus;
 mod keys;

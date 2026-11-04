@@ -223,7 +223,7 @@ impl App {
         let status = self.config_pane_mut()?.status_mut()?;
         if matches!(key, KeyPress::NextGroup | KeyPress::PrevGroup) {
             status.switch_tab();
-            return Some(Effect::None);
+            return Some(self.pull_on_return());
         }
         if status.tab() != Tab::Status {
             return None;
