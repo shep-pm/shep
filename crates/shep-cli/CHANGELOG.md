@@ -13,6 +13,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-11-04
+
+### Added
+
+- Read which channel installed this shep from its binary's path
+- The protocol skew fix names the upgrade of the install channel
+- Manifest v3 declares a pane, and the pane wire types live in dogs::pane
+- A modal layer takes keys first and answers yes or no
+- Draw the modal layer and name its keys in the status bar
+- The welcome names three dogs after the quick start
+- The dog index format lists the permissions a version asks for
+- Shep help selectors and shep help exit-codes
+- Shep --help lists every verb with its description
+- A catalogue screen lists the dog index and opens an entry
+- An index row can name the needs its dog meets
+- Every verb's help ends with examples
+- Shep install flags a permission the index row did not list
+- The dog index names the latest shep
+- The settings screen's dogs section ends in a browse dogs row that opens the catalogue
+- Shep flock suggests a dog when a log grows or a sheep keeps restarting
+- The i key opens the dog catalogue
+- Shep hints lists the hints and turns each off and on
+- Shep adopt warns of a verb past what its help can hold
+- Upgrade takes --reload and a channel lists its manual steps
+- Bare shep upgrade upgrades shep through its channel, then the dogs
+
+### Changed
+
+- Build the grant prompt apart from reading its answer
+- The dog index cache reports a copy's age, and origins build from a given index
+- The catalogue caption is app state, so the no-cache message is tested there
+- Dog install, upgrade and delete report progress to a sink and hand their output back
+- Write each verb's examples with the shared writer
+
+### Fixed
+
+- Resolve the probe's roots the way the binary's path is
+- Keep a modal from answering unseen or taking a paste
+- The discord welcome line says what the dog does
+- Keep each verb's long help whole after shortening its about
+- The catalogue list keeps STATE whole in the middle column tier
+- The catalogue view tests' dog fixture sets the new needs field
+- Build the unlisted-permission lines from the manifest adopt reviews
+- Keep cargo's stderr tail from every --ref attempt
+- Shep hints refuses to rewrite a hints.json it cannot parse
+- Session test's UpgradeArgs literal gains reload
+- The reload names the version the channel delivered
+
+
 ### Added
 
 - Adopt says when a dog asked for a pane it cannot have
