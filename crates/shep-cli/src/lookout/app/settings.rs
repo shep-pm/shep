@@ -709,7 +709,12 @@ mod tests {
         let app = fixtures::app_in_settings();
         let rows = app.settings().unwrap().rows();
         assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
-        assert_eq!(rows.iter().filter(|row| **row == SettingsRow::BrowseDogs).count(), 1);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| **row == SettingsRow::BrowseDogs)
+                .count(),
+            1
+        );
         assert!(
             rows.iter().any(|row| matches!(row, SettingsRow::Dog(_))),
             "the fixture has adopted dogs, and the row sits after them"
@@ -721,7 +726,8 @@ mod tests {
         let app = fixtures::app_in_settings_with_a_dog_open();
         let rows = app.settings().unwrap().rows();
         assert!(
-            rows.iter().any(|row| matches!(row, SettingsRow::DogKey { .. })),
+            rows.iter()
+                .any(|row| matches!(row, SettingsRow::DogKey { .. })),
             "the dog is open, so its keys are rows"
         );
         assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));

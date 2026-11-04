@@ -542,6 +542,10 @@ mod tests {
             .position(|line| line.contains("[dogs]"))
             .unwrap_or_else(|| panic!("the section header is drawn: {rows:?}"));
         assert!(rows[header + 2].contains("browse dogs"), "{rows:?}");
-        assert_eq!(rows.len(), header + 3, "nothing else in the section: {rows:?}");
+        assert_eq!(
+            rows.len(),
+            header + 3,
+            "nothing else in the section: {rows:?}"
+        );
     }
 }
