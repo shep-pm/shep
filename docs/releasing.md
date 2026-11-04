@@ -601,14 +601,22 @@ this side:
   past 60s is killed and treated as a dog that answered nothing.
 - **A manifest is optional.** A binary that does not answer
   `--shep-manifest`, runs past that bound, or answers something other than one
-  JSON document with a permissions list uploads no manifest artifact and says
-  so in the step summary; the release goes on. `jq -s` is what reads the answer
-  so a binary printing two documents fails here rather than in `index-pr`,
-  after the release is out. A row written with no manifest carries no
-  `permissions`, and a list an earlier version left in the row goes out with
-  the version it described. The manifest artifact is named beside the
-  `dist-*` pattern `upload` downloads, never inside it, so it never becomes
-  an asset on the release.
+  JSON manifest uploads no manifest artifact and says so in the step summary;
+  the release goes on. `jq -s` is what reads the answer so a binary printing
+  two documents fails here rather than in `index-pr`, after the release is out.
+  A row written with no manifest carries no `permissions`, and a list an
+  earlier version left in the row goes out with the version it described. The
+  manifest artifact is named beside the `dist-*` pattern `upload` downloads,
+  never inside it, so it never becomes an asset on the release.
+- **A dog declaring nothing leaves the key out.** Manifest v2 serializes
+  `permissions` with `skip_serializing_if = "Vec::is_empty"`
+  (`crates/shep-core/src/dogs/manifest.rs`), so its answer carries no
+  `permissions` key. That is a manifest and not a broken one: it uploads its
+  artifact, and the script writes the empty list. The two read differently in
+  the entry, where a missing key is "not listed" and an empty list is "none"
+  (`crates/shep-cli/src/lookout/view/catalogue.rs`). What the script refuses is
+  a `permissions` that is there and is not a list, and a document missing the
+  four fields `manifest.rs` requires of a manifest.
 - **A manifest that exists has to download.** `index-pr` asks the run which
   artifacts it has before fetching, because `gh run download` fails the same
   way whether the artifact was never uploaded or the download broke. An absent

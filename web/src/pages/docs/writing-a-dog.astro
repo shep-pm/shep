@@ -1095,11 +1095,11 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       The <code>permissions</code> come from the binary itself. The workflow
       runs the <code>x86_64-unknown-linux-gnu</code> one with{" "}
       <code>--shep-manifest</code> and writes each permission's name and
-      whether it is required, in the order your manifest declares them.
-      Nothing else in the manifest reaches the index, and a dog declares one
-      manifest for every target. A binary that answers no manifest, or runs on
-      past 60s instead of answering, costs your row the list and costs the
-      release nothing: the run says so in its job summary.
+      whether it is required, in your manifest's order. Nothing else in the
+      manifest reaches the index. A dog that asks for nothing prints no{" "}
+      <code>permissions</code> key, and its row gets the empty list that says
+      so. A binary that answers no manifest, or runs past 60s, costs the row
+      its list and not the release: the run says so in its job summary.
     </p>
     <p>
       The tag must be <code>v&lt;version&gt;</code>, matching{" "}
