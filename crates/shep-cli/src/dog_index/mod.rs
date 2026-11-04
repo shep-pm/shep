@@ -106,6 +106,28 @@ pub struct AvailableDog {
     pub category: String,
     /// How the dog is built.
     pub source: DogSourceKind,
+    /// The permissions the approved version declares, as the index lists
+    /// them: `None` when the row lists none, `Some(vec![])` when the version
+    /// declares none.
+    ///
+    /// What the index claims, not what the binary asks for: `shep install`
+    /// reads the manifest off the binary and prompts from that.
+    pub permissions: Option<Vec<IndexedPermission>>,
+}
+
+/// One permission a `cargo` row says its approved version asks for.
+///
+/// The name and whether the dog can run without it, and nothing else: the
+/// reason a dog gives for asking a permission stays in the manifest, which
+/// is what the grant prompt prints. `Debug` needs no redaction, for
+/// [`AvailableDog`]'s reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct IndexedPermission {
+    /// The permission's name, such as `flock.read` or `events:sheep.`,
+    /// sanitised like every other string the index carries.
+    pub name: String,
+    /// Whether the dog cannot run without it.
+    pub required: bool,
 }
 
 /// How a dog is installed, tagged by `kind` exactly as the index tags it.
@@ -294,7 +316,9 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
-    use crate::dog_index::parse::tests::{SOURCE_KINDS, one_entry_with_description};
+    use crate::dog_index::parse::tests::{
+        CARGO_SOURCE_KEYS, SOURCE_KINDS, one_entry_with_description,
+    };
 
     /// `web/`, three directories above this file, only when it actually
     /// exists.
@@ -453,6 +477,48 @@ mod tests {
             schema_kinds, ours,
             "dogs.schema.json and dog_index.rs disagree about the source kinds"
         );
+    }
+
+    /// The published schema's `cargo` variant: the same keys
+    /// [`parse::validate_source`] reads off one, and a `permissions` item
+    /// shaped the way [`parse::validate_permissions`] requires.
+    ///
+    /// Skips outside the workspace checkout, see
+    /// [`read_workspace_web_file`].
+    #[test]
+    fn the_schema_declares_the_cargo_source_keys() {
+        let Some(schema) = read_workspace_web_file("public/dogs.schema.json") else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&schema).expect("dogs.schema.json is valid json");
+        let cargo = &schema["properties"]["dogs"]["items"]["properties"]["source"]["oneOf"][0];
+
+        let keys: Vec<&str> = cargo["properties"]
+            .as_object()
+            .expect("the cargo variant has properties")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            CARGO_SOURCE_KEYS.to_vec(),
+            "dogs.schema.json and validate_source disagree about a cargo row's keys"
+        );
+
+        let permissions = &cargo["properties"]["permissions"];
+        assert_eq!(permissions["type"], "array", "{permissions}");
+        let item = &permissions["items"];
+        assert_eq!(item["type"], "object", "{item}");
+        assert_eq!(item["additionalProperties"], false, "{item}");
+        let item_keys: Vec<&str> = item["required"]
+            .as_array()
+            .expect("a permission item requires its keys")
+            .iter()
+            .map(|v| v.as_str().expect("each key is a string"))
+            .collect();
+        assert_eq!(item_keys, ["name", "required"], "{item}");
+        assert_eq!(item["properties"]["name"]["type"], "string", "{item}");
+        assert_eq!(item["properties"]["required"]["type"], "boolean", "{item}");
     }
 
     /// It is the one URL an operator never types, so nothing else would

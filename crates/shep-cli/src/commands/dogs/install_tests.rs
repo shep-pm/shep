@@ -153,6 +153,7 @@ pub(super) fn row(source: DogSourceKind) -> AvailableDog {
         repo: REPO.to_owned(),
         license: "MIT".to_owned(),
         category: "metrics".to_owned(),
+        permissions: None,
         source,
     }
 }
