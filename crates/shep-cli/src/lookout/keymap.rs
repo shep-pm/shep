@@ -165,6 +165,7 @@ const fn binding(press: &KeyPress) -> Binding {
         KeyPress::Action(ActionVerb::Stop) => row("x", Group::Doing, "stop"),
         KeyPress::Action(ActionVerb::Restart) => row("R", Group::Doing, "restart"),
         KeyPress::Action(ActionVerb::Reload) => row("L", Group::Doing, "reload"),
+        KeyPress::Catalogue => row("i", Group::Doing, "dog catalogue"),
 
         // `q` draws on the closing line beside `h or ? closes this`, not in
         // a column: `Looking` is at twelve of twelve and this would be its
@@ -223,6 +224,7 @@ const PROBE: &[(KeyCode, KeyModifiers)] = &[
     (KeyCode::Char('x'), KeyModifiers::NONE),
     (KeyCode::Char('R'), KeyModifiers::SHIFT),
     (KeyCode::Char('L'), KeyModifiers::SHIFT),
+    (KeyCode::Char('i'), KeyModifiers::NONE),
     (KeyCode::Char('q'), KeyModifiers::NONE),
 ];
 
@@ -409,12 +411,12 @@ mod tests {
     fn the_rows_are_deduplicated() {
         let rows = rows();
         let captions: Vec<&str> = rows.iter().map(|row| row.keys).collect();
-        assert_eq!(rows.len(), 40, "{captions:?}");
+        assert_eq!(rows.len(), 41, "{captions:?}");
         assert_eq!(
             rows.iter()
                 .filter(|row| Group::DRAWN.contains(&row.group))
                 .count(),
-            39,
+            40,
             "{captions:?}"
         );
         for (index, row) in rows.iter().enumerate() {

@@ -210,13 +210,6 @@ impl App {
     ///
     /// Every way in calls this. Refused over `--host`, since the receipts
     /// and `shep.toml` it reads are this machine's.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "nothing opens the catalogue until its key and verb land"
-        )
-    )]
     pub(crate) fn open_catalogue(&mut self) -> Effect {
         if self.refuse_over_host() {
             return Effect::None;
@@ -343,6 +336,7 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Settings
+            | KeyPress::Catalogue
             | KeyPress::Secrets
             | KeyPress::Reveal
             | KeyPress::Copy

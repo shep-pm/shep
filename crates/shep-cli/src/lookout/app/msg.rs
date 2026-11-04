@@ -69,6 +69,8 @@ pub enum KeyPress {
     TextAbandon,
     /// `s`: opens the settings screen, or closes it from inside.
     Settings,
+    /// `i`: opens the dog catalogue. Ignored on every other screen.
+    Catalogue,
     /// `S`: opens the secrets pane, or closes it from inside.
     ///
     /// Picked rather than found. The design named `g`, which is
