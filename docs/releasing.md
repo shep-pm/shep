@@ -594,14 +594,27 @@ this side:
   hands the path to the script as a sixth argument. The script copies each
   permission's `name` and `required`, in the manifest's order, and nothing
   else the manifest carries.
+- **Reading the manifest is bounded.** The probe runs the staged binary under
+  `timeout -k 5 60`. A dog that ignores `--shep-manifest` and starts its loop
+  never returns, and a probe with no bound would hold `build` to its 60-minute
+  job timeout, cancelling `upload` and `index-pr` with it. A dog that runs on
+  past 60s is killed and treated as a dog that answered nothing.
 - **A manifest is optional.** A binary that does not answer
-  `--shep-manifest`, or answers something that is not a manifest with a
-  permissions list, uploads no manifest artifact and says so in the step
-  summary; the release goes on. A row written with no manifest carries no
+  `--shep-manifest`, runs past that bound, or answers something other than one
+  JSON document with a permissions list uploads no manifest artifact and says
+  so in the step summary; the release goes on. `jq -s` is what reads the answer
+  so a binary printing two documents fails here rather than in `index-pr`,
+  after the release is out. A row written with no manifest carries no
   `permissions`, and a list an earlier version left in the row goes out with
   the version it described. The manifest artifact is named beside the
   `dist-*` pattern `upload` downloads, never inside it, so it never becomes
   an asset on the release.
+- **A manifest that exists has to download.** `index-pr` asks the run which
+  artifacts it has before fetching, because `gh run download` fails the same
+  way whether the artifact was never uploaded or the download broke. An absent
+  artifact is the dog's answer and the row is written without permissions; a
+  listed one that will not download fails the job, so a broken run never writes
+  a row missing permissions it did read.
 - **Building and uploading are separate jobs.** `build` holds a read-only
   token, since it runs the dog's build scripts and one can prepend to
   `GITHUB_PATH` to swap a tool a later step runs. `upload` runs none of the

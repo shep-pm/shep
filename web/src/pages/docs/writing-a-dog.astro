@@ -1097,9 +1097,9 @@ speaks protocol 9, accepts 8 and newer`}</CodeBlock>
       <code>--shep-manifest</code> and writes each permission's name and
       whether it is required, in the order your manifest declares them.
       Nothing else in the manifest reaches the index, and a dog declares one
-      manifest for every target. A binary that answers no manifest costs your
-      row the list and costs the release nothing: the run says so in its job
-      summary and your row carries no <code>permissions</code>.
+      manifest for every target. A binary that answers no manifest, or runs on
+      past 60s instead of answering, costs your row the list and costs the
+      release nothing: the run says so in its job summary.
     </p>
     <p>
       The tag must be <code>v&lt;version&gt;</code>, matching{" "}
