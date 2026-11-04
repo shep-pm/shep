@@ -10,6 +10,7 @@ use core::time::Duration;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use shep_core::config::{NormalizeError, ResolvedApp, normalize_all};
+use shep_core::dogs::is_reserved_action;
 use shep_core::protocol::{
     Envelope, PROTOCOL_VERSION, Reply, Request, Response, RpcError, RpcErrorCode, SheepApplied,
 };
@@ -27,7 +28,7 @@ use super::enrichment::with_vcs;
 use super::enrichment::{
     dog_staleness, handover_refusal, with_dog_contact, with_lambs, with_live_stats,
 };
-use super::error::{invalid_config, no_sheep, rpc_error};
+use super::error::{forbidden, invalid_config, no_sheep, rpc_error};
 use super::gate::{Link, check, check_launch, pin_grants};
 use super::selector_verbs::{
     matching_rows, not_found, selector_call, selector_of, signal_request, trigger,
@@ -267,7 +268,20 @@ async fn run(
             // Named only from a dog's own connection: the shepherd vouches
             // for the name, since the connection is the dog's identity.
             let caller = match link {
-                Some(Link::Dog(dog)) => Some(dog.to_owned()),
+                Some(Link::Dog(dog)) => {
+                    // A dog may not send one of these: a `shep.validate` from
+                    // a dog reads to the callee as the operator's own settings
+                    // ask, and a `shep.pane` as lookout asking.
+                    if is_reserved_action(&action) {
+                        return reply(Err(forbidden(format!(
+                            "dog `{dog}` may not trigger `{action}`: a `shep.` action is one \
+                             shep sends itself, as the operator"
+                        ))));
+                    }
+                    Some(dog.to_owned())
+                }
+                // The control socket acts as the operator, and the operator is
+                // who sends these names.
                 Some(Link::Launch { .. }) | None => None,
             };
             trigger(id, selector, action, params, caller, ctx).await
