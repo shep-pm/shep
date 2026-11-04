@@ -11,6 +11,7 @@
 mod dogs;
 #[cfg(test)]
 mod dogs_grant_tests;
+mod examples;
 mod flock;
 mod global_help;
 mod help;
