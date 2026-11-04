@@ -452,6 +452,42 @@ Dogs
       about.
     </p>
 
+    <h2 id="hints">Hints</h2>
+    <p>
+      <code>shep flock</code> can end with one line suggesting a dog. shep
+      writes the line itself, from a fixed list of two, and shows the first
+      that applies:
+    </p>
+    <ul>
+      <li>
+        <code>logs</code>: a sheep's stdout or stderr file is longer than 100
+        MiB. It offers the dogs in the cached index that handle logs.
+      </li>
+      <li>
+        <code>alerts</code>: a sheep has restarted 3 times or more. The count
+        is the <code>RESTARTS</code> column. It offers the built-in{" "}
+        <code>bark</code> and the dogs in the cached index that send alerts.
+      </li>
+    </ul>
+    <CodeBlock label="shep flock">{`hint: api has restarted 3 times. Try: shep enable bark or shep install discord`}</CodeBlock>
+    <p>
+      A hint ends once one of the dogs it offers is enabled. An offer reads{" "}
+      <code>shep install</code> for a dog that is not installed and{" "}
+      <code>shep enable</code> for one that is installed but off. The line
+      names the first sheep that qualifies by id. Dogs never qualify.
+    </p>
+    <p>
+      A hint reads the dog index cache and never fetches it, so with no cache
+      the <code>logs</code> hint has nothing to offer and stays quiet. To turn
+      one off, list its name in <code>$SHEP_HOME/hints.json</code>:{" "}
+      <code>{`{"off": ["logs"]}`}</code>.
+    </p>
+    <p>
+      Only a table on a terminal gets a hint. <code>--format json</code>,{" "}
+      <code>--quiet</code>, a pipe, <code>--follow</code> and <code>--host</code>{" "}
+      never do.
+    </p>
+
     <h2 id="what-a-pipe-gets">What a pipe gets</h2>
     <p>
       Redirect it and the boxes, colour and faces all go away. This is not a
