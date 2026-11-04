@@ -13,6 +13,7 @@ real repository or any remote.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -40,6 +41,28 @@ HEADER = (
 
 RELEASE_BRANCH = "release-plz-2026-09-06T00-00-00Z"
 
+INDEX_PATH = "web/public/dogs.json"
+
+
+def index_text(shep: str | None, **extra: object) -> str:
+    """The dog index as `scripts/dog-index-update.py` writes it, naming `shep`.
+
+    A row with a non-ASCII description is in it, so a rewrite that escapes it
+    shows as a change to a line the guard has no business touching.
+    """
+    document: dict[str, object] = {"$schema": "./dogs.schema.json", "version": 1}
+    if shep is not None:
+        document["shep"] = shep
+    document.update(extra)
+    document["dogs"] = [
+        {
+            "name": "Bella",
+            "package": "shep-log-rotate",
+            "description": "Rotates grown log files \u2014 and asks the shepherd to reopen them.",
+        }
+    ]
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
 
 class Fixture(unittest.TestCase):
     """A repository with a diamond in it, a release branch under it, and a remote."""
@@ -65,6 +88,7 @@ class Fixture(unittest.TestCase):
 
         self._write_manifests()
         self._write_changelogs()
+        self.write(INDEX_PATH, index_text("0.13.0"))
         self.commit("feat(core): base work", date="2026-09-01T00:00:00")
         self.base_sha = self.head()
         self.git("tag", "shep-v0.13.0")
@@ -711,6 +735,111 @@ class TestReleaseBranchRewrite(Fixture):
         self.assertEqual(self.run_guard(self.tmp / "output.txt").returncode, 0)
         self.assertEqual(self.remote_head("main"), before)
         self.assertEqual(self.remote_file("main", "Cargo.toml").count('version = "0.13.0"'), 4)
+
+
+class TestIndexVersion(Fixture):
+    """The release guard also writes the new version into the dog index.
+
+    release-plz leaves `web/public/dogs.json` alone, so on every release branch
+    the index names the previous shep until the guard moves it, in the commit
+    and the push it already makes.
+    """
+
+    def index_on_branch(self) -> dict[str, object]:
+        return json.loads(self.remote_file(RELEASE_BRANCH, INDEX_PATH))
+
+    def test_the_index_comes_out_naming_the_version_the_branch_carries(self) -> None:
+        output = self.tmp / "output.txt"
+        run = self.run_guard(output)
+        self.assertEqual(run.returncode, 0, run.stderr)
+
+        index = self.index_on_branch()
+        self.assertEqual(index["shep"], self.results(output)["new_version"])
+        self.assertEqual(index["shep"], "0.14.0")
+        keys = list(index)
+        self.assertEqual(keys[keys.index("version") + 1], "shep")
+
+    def test_an_index_with_no_shep_gains_one_after_version(self) -> None:
+        self.amend_release_branch(INDEX_PATH, index_text(None))
+        self.assertEqual(self.run_guard(self.tmp / "output.txt").returncode, 0)
+
+        keys = list(self.index_on_branch())
+        self.assertEqual(keys, ["$schema", "version", "shep", "dogs"])
+
+    def test_an_index_already_naming_it_is_left_alone(self) -> None:
+        """Compared by what it says, not by how it is laid out: a file that
+        already names the version is not reformatted."""
+        compact = '{"$schema":"./dogs.schema.json","version":1,"shep":"0.14.0","dogs":[]}\n'
+        self.amend_release_branch(INDEX_PATH, compact)
+        run = self.run_guard(self.tmp / "output.txt")
+        self.assertEqual(run.returncode, 0, run.stderr)
+
+        self.assertEqual(self.remote_file(RELEASE_BRANCH, INDEX_PATH), compact)
+
+    def test_only_the_shep_line_of_the_index_changes(self) -> None:
+        before = self.remote_file(RELEASE_BRANCH, INDEX_PATH).splitlines()
+        self.assertEqual(self.run_guard(self.tmp / "output.txt").returncode, 0)
+        after = self.remote_file(RELEASE_BRANCH, INDEX_PATH).splitlines()
+
+        self.assertEqual(len(before), len(after))
+        changed = [(old, new) for old, new in zip(before, after) if old != new]
+        self.assertEqual(changed, [('  "shep": "0.13.0",', '  "shep": "0.14.0",')])
+        self.assertIn("files \u2014 and", self.remote_file(RELEASE_BRANCH, INDEX_PATH))
+        self.assertTrue(self.remote_file(RELEASE_BRANCH, INDEX_PATH).endswith("}\n"))
+
+    def test_a_branch_whose_only_gap_is_the_index_is_still_rewritten(self) -> None:
+        self.assertEqual(self.run_guard(self.tmp / "first.txt").returncode, 0)
+        # Version, manifests and changelogs are right now. Put the index back
+        # the way release-plz leaves it, on top of what the guard pushed.
+        self.git("fetch", "-q", "origin", f"+refs/heads/{RELEASE_BRANCH}")
+        self.git("branch", "-f", RELEASE_BRANCH, "FETCH_HEAD")
+        self.amend_release_branch(INDEX_PATH, index_text("0.13.1"))
+        stale_head = self.release_head
+
+        second = self.tmp / "second.txt"
+        run = self.run_guard(second)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        results = self.results(second)
+        self.assertEqual(results["changed"], "true")
+        self.assertEqual(results["new_version"], "0.14.0")
+        self.assertNotEqual(self.remote_head(RELEASE_BRANCH), stale_head)
+        self.assertEqual(results["release_head"], self.remote_head(RELEASE_BRANCH))
+        self.assertEqual(self.index_on_branch()["shep"], "0.14.0")
+
+    def test_a_branch_with_no_index_is_refused(self) -> None:
+        self.git("checkout", "-q", RELEASE_BRANCH)
+        self.git("rm", "-q", INDEX_PATH)
+        self.commit("chore: lose the index", date="2026-09-06T02:00:00")
+        self.git("push", "-q", "origin", f"HEAD:refs/heads/{RELEASE_BRANCH}")
+        self.git("checkout", "-q", "main")
+        before = self.remote_head(RELEASE_BRANCH)
+
+        run = self.run_guard(self.tmp / "output.txt")
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertIn(INDEX_PATH, run.stderr)
+        self.assertEqual(self.remote_head(RELEASE_BRANCH), before)
+
+    def test_an_index_that_is_not_a_json_object_is_refused(self) -> None:
+        for text in ("not json\n", "[]\n"):
+            self.amend_release_branch(INDEX_PATH, text)
+            before = self.remote_head(RELEASE_BRANCH)
+
+            run = self.run_guard(self.tmp / "output.txt")
+            self.assertEqual(run.returncode, 1, text)
+            self.assertIn(INDEX_PATH, run.stderr)
+            self.assertEqual(self.remote_head(RELEASE_BRANCH), before)
+
+    def test_running_it_again_changes_nothing(self) -> None:
+        self.assertEqual(self.run_guard(self.tmp / "first.txt").returncode, 0)
+        after_first = self.remote_head(RELEASE_BRANCH)
+        index = self.remote_file(RELEASE_BRANCH, INDEX_PATH)
+
+        second = self.tmp / "second.txt"
+        run = self.run_guard(second)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(self.results(second)["changed"], "false")
+        self.assertEqual(self.remote_head(RELEASE_BRANCH), after_first)
+        self.assertEqual(self.remote_file(RELEASE_BRANCH, INDEX_PATH), index)
 
 
 class TestFeatureReleaseStands(Fixture):

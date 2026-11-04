@@ -203,6 +203,14 @@ branch and pushes:
   release-plz already wrote for that release, grouped and filtered by
   `release-plz-changelog.toml` the way release-plz would have written it, a
   breaking one marked `**(BREAKING)**`
+- the dog index, `web/public/dogs.json`: its top-level `shep` is set to the
+  version the branch ends up carrying, right after `version`, in the same commit
+  and push. release-plz never touches that file, so on every release branch it
+  names the previous shep until the guard moves it. It goes in the guard because
+  a commit status only attaches to the sha it names, and a second push after the
+  guard would leave the new head without its `release bump` status. A branch
+  whose version and changelogs are right but whose index is stale is rewritten
+  too. A branch with no readable index is refused
 - the pull request title, with only the number in it moved
 - the `release bump` status, on the head it just wrote
 
@@ -222,7 +230,7 @@ patch, it reports 0.7.0. `release-plz.toml` sets
 `features_always_increment_minor` nowhere, so every package sits on
 release-plz's default.
 
-It refuses rather than push when it cannot read the branch, and when the version
+It refuses rather than push when it cannot read the branch or its dog index, and when the version
 it worked out is not one it can actually write: after the rewrite it re-reads
 `[workspace.package]`, the `[workspace.dependencies]` literals and `Cargo.lock`
 with a TOML parser and refuses if any of them still names the old version. A
