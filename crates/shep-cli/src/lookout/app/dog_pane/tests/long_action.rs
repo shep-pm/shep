@@ -11,6 +11,14 @@ fn bar(app: &App) -> String {
 /// `paddock`'s status tab with a `pause` pane action started, and the id
 /// the dog answered with.
 fn running() -> (App, ActionId) {
+    let (app, id, effect) = sent_then(|_| None);
+    assert_eq!(effect, Effect::None);
+    (app, id)
+}
+
+/// The same, where `before` may hand the app an event to handle before the
+/// trigger's reply lands. Also returns the effect of the reply.
+fn sent_then(before: impl FnOnce(&ActionId) -> Option<Msg>) -> (App, ActionId, Effect) {
     let pane = Pane::new()
         .fields("host", [("VRAM", "20 / 24 GiB")])
         .action("pause", "pause the board", Destructive::No);
@@ -21,6 +29,9 @@ fn running() -> (App, ActionId) {
         panic!("p runs the pause action: {effect:?}");
     };
     let (id, body) = ActionId::accept();
+    if let Some(msg) = before(&id) {
+        app.update(msg);
+    }
     let effect = app.update(Msg::Replied {
         sent,
         result: Ok(Response::Triggered(vec![ActionReply {
@@ -29,8 +40,7 @@ fn running() -> (App, ActionId) {
             outcome: ActionOutcome::Replied { body },
         }])),
     });
-    assert_eq!(effect, Effect::None);
-    (app, id)
+    (app, id, effect)
 }
 
 fn done(dog: &str, payload: serde_json::Value) -> Msg {
@@ -192,4 +202,18 @@ fn a_lost_link_or_a_dropped_repair_ends_the_item_as_unknown() {
             "{label}: a late result has nothing to match"
         );
     }
+}
+
+#[test]
+fn a_done_that_beats_the_reply_ends_the_action_when_the_reply_lands() {
+    let (app, _id, effect) = sent_then(|id| {
+        Some(done(
+            "paddock",
+            serde_json::json!({ "id": id.as_str(), "result": null }),
+        ))
+    });
+    assert_eq!(effect, pull());
+    let bar = bar(&app);
+    assert!(bar.contains("pause the board: done"), "{bar}");
+    assert!(!bar.contains("running"), "{bar}");
 }

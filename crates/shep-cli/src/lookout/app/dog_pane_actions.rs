@@ -128,8 +128,7 @@ impl App {
             if let Some(status) = status {
                 status.end_action();
             }
-            self.start_long_action(name, action, id);
-            return Effect::None;
+            return self.start_long_action(name, action, id);
         }
         let Some(status) = status else {
             return Effect::None;

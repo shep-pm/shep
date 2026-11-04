@@ -14,6 +14,13 @@ use crate::terminal_safe::sanitise;
 /// How long a result stays on the bar after it arrives.
 const RESULT_SHOWS: Duration = Duration::from_secs(5);
 
+/// How long a result that named no running action is kept for a reply still
+/// on its way.
+const EARLY_KEPT: Duration = Duration::from_secs(10);
+
+/// The most results kept for a reply still on its way.
+const EARLY_CAP: usize = 16;
+
 /// The most characters of a failure's error the bar shows.
 const ERROR_WIDTH: usize = 80;
 
@@ -34,20 +41,47 @@ pub(super) struct LongActions {
     running: Vec<Running>,
     /// The latest result line and the instant it was shown at.
     result: Option<(String, Instant)>,
+    /// Results that named no running action: the event and the trigger's
+    /// reply travel on two connections, so the event can come first.
+    early: Vec<Early>,
+}
+
+/// A result that arrived before the reply that names its action.
+#[derive(Debug)]
+struct Early {
+    dog: String,
+    id: ActionId,
+    outcome: Result<Value, String>,
+    at: Instant,
 }
 
 impl LongActions {
-    fn start(&mut self, dog: &str, label: &str, id: ActionId, now: Instant) {
+    /// Records an action `dog` answered with `id`. When its result came
+    /// first, the action ends at once and this says so.
+    fn start(&mut self, dog: &str, label: &str, id: ActionId, now: Instant) -> bool {
+        let label = sanitise(label).0;
+        self.forget_stale(now);
+        if let Some(at) = self
+            .early
+            .iter()
+            .position(|seen| seen.dog == dog && seen.id == id)
+        {
+            let seen = self.early.remove(at);
+            self.show(&label, seen.outcome, now);
+            return true;
+        }
         self.running.push(Running {
             dog: dog.to_owned(),
-            label: sanitise(label).0,
+            label,
             id,
             started: now,
         });
+        false
     }
 
     /// Ends the action `dog` published `payload` for, and shows how it went.
-    /// `false` when the payload names no action started here.
+    /// `false` when the payload names no action started here; a well-formed
+    /// one is kept for a reply that has not landed yet.
     fn finish(&mut self, dog: &str, payload: &Value, now: Instant) -> bool {
         let Some((id, outcome)) = ActionDone::read(payload) else {
             return false;
@@ -57,19 +91,39 @@ impl LongActions {
             .iter()
             .position(|item| item.dog == dog && item.id == id)
         else {
+            self.forget_stale(now);
+            if self.early.len() >= EARLY_CAP {
+                self.early.remove(0);
+            }
+            self.early.push(Early {
+                dog: dog.to_owned(),
+                id,
+                outcome,
+                at: now,
+            });
             return false;
         };
         let item = self.running.remove(at);
+        self.show(&item.label, outcome, now);
+        true
+    }
+
+    fn show(&mut self, label: &str, outcome: Result<Value, String>, now: Instant) {
         let text = match outcome {
-            Ok(_) => format!("{}: done", item.label),
-            Err(error) => format!("{}: failed, {}", item.label, one_line(&error)),
+            Ok(_) => format!("{label}: done"),
+            Err(error) => format!("{label}: failed, {}", one_line(&error)),
         };
         self.result = Some((text, now));
-        true
+    }
+
+    fn forget_stale(&mut self, now: Instant) {
+        self.early
+            .retain(|seen| now.saturating_duration_since(seen.at) < EARLY_KEPT);
     }
 
     /// Ends every running action as unknown.
     fn lose_all(&mut self, now: Instant) {
+        self.early.clear();
         if self.running.is_empty() {
             return;
         }
@@ -84,6 +138,7 @@ impl LongActions {
 
     /// Retires a result that has been shown long enough.
     pub(super) fn tick(&mut self, now: Instant) {
+        self.forget_stale(now);
         if self
             .result
             .as_ref()
@@ -128,10 +183,15 @@ fn one_line(error: &str) -> String {
 
 impl App {
     /// A pane action's reply that carries an id: the action is running until
-    /// the dog's `action.done` names it.
-    pub(super) fn start_long_action(&mut self, dog: &str, label: &str, id: ActionId) {
+    /// the dog's `action.done` names it. When that event came first, the
+    /// action is already over and the pane is pulled.
+    pub(super) fn start_long_action(&mut self, dog: &str, label: &str, id: ActionId) -> Effect {
         let now = self.now;
-        self.long_actions.start(dog, label, id, now);
+        if self.long_actions.start(dog, label, id, now) {
+            self.pull_after_action_of(dog)
+        } else {
+            Effect::None
+        }
     }
 
     /// A dog's `action.done` event. `None` when it names no action started
@@ -177,5 +237,17 @@ mod tests {
         let cut = one_line(&long);
         assert_eq!(cut.chars().count(), ERROR_WIDTH);
         assert!(cut.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn a_result_that_came_before_the_reply_ends_the_action_at_once() {
+        let now = Instant::now();
+        let mut actions = LongActions::default();
+        let (id, _body) = ActionId::accept();
+        let payload = serde_json::json!({"id": id.as_str(), "result": null});
+        assert!(!actions.finish("paddock", &payload, now));
+        assert!(actions.start("paddock", "pause", id, now));
+        assert_eq!(actions.result(), Some("pause: done"));
+        assert!(actions.running_line(now).is_none());
     }
 }
