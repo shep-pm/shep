@@ -47,8 +47,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "shep_dog_up",
-          "legendFormat": "{{dog}}",
+          "expr": "shep_dog_up{instance=~\"$instance\"}",
+          "legendFormat": "{{dog}} ({{instance}})",
           "instant": true
         }
       ],
@@ -86,8 +86,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "shep_daemon_up",
-          "legendFormat": "v{{version}}",
+          "expr": "shep_daemon_up{instance=~\"$instance\"}",
+          "legendFormat": "v{{version}} ({{instance}})",
           "instant": true
         }
       ],
@@ -125,7 +125,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "shep_sheep_status == 1",
+          "expr": "shep_sheep_status{instance=~\"$instance\"} == 1",
           "format": "table",
           "instant": true
         }
@@ -154,8 +154,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "shep_sheep_cpu_percent",
-          "legendFormat": "{{sheep}}"
+          "expr": "shep_sheep_cpu_percent{instance=~\"$instance\"}",
+          "legendFormat": "{{sheep}} ({{instance}})"
         }
       ],
       "fieldConfig": {
@@ -178,8 +178,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "shep_sheep_memory_bytes",
-          "legendFormat": "{{sheep}}"
+          "expr": "shep_sheep_memory_bytes{instance=~\"$instance\"}",
+          "legendFormat": "{{sheep}} ({{instance}})"
         }
       ],
       "fieldConfig": {
@@ -202,8 +202,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "increase(shep_sheep_restart_total[1h])",
-          "legendFormat": "{{sheep}}"
+          "expr": "increase(shep_sheep_restart_total{instance=~\"$instance\"}[1h])",
+          "legendFormat": "{{sheep}} ({{instance}})"
         }
       ],
       "fieldConfig": {
@@ -216,7 +216,26 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["shep"],
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Host",
+        "description": "Which hosts' metrics dogs the panels show.",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": { "query": "label_values(shep_daemon_up, instance)", "refId": "instance" },
+        "definition": "label_values(shep_daemon_up, instance)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "options": []
+      }
+    ]
+  },
   "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "",
