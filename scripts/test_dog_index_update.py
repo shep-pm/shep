@@ -95,6 +95,8 @@ class ApplyTests(unittest.TestCase):
         out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertLess(out.index(WINDOWS), out.index(LINUX))  # pc < unknown
 
+    # The script reads no permissions today, so a row keeps what it had. #1485
+    # hands it a manifest and drops a stale list, and replaces this test.
     def test_a_permissions_list_the_row_already_has_is_left_alone(self) -> None:
         old = {"kind": "cargo", "version": "0.1.0", "permissions": [{"name": "flock.read", "required": True}]}
         doc = self.apply(index_text(row(source=old)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
