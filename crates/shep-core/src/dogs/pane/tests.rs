@@ -1,3 +1,4 @@
+use serde_json::Value;
 use serde_json::json;
 
 use super::*;
@@ -20,7 +21,7 @@ fn the_builder_call_answers_the_sections_the_design_draws() {
         .action("pause", "Pause the board", Destructive::No);
 
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&pane.body()).unwrap(),
+        serde_json::from_str::<Value>(&pane.body().unwrap()).unwrap(),
         json!({
             "sections": [
                 {
@@ -53,7 +54,7 @@ fn the_builder_call_answers_the_sections_the_design_draws() {
             ]
         }),
         "{}",
-        pane.body()
+        pane.body().unwrap()
     );
 }
 
@@ -72,7 +73,7 @@ fn a_built_pane_reads_back_through_its_own_body() {
         .row_action("revoke", "Revoke lease", Destructive::Yes)
         .action("pause", "Pause the board", Destructive::No);
 
-    let read = Pane::read(&pane.body()).unwrap();
+    let read = Pane::read(&pane.body().unwrap()).unwrap();
 
     assert_eq!(read, pane);
     assert_eq!(read.skipped, 0);
@@ -98,10 +99,23 @@ fn a_refresh_or_row_action_with_no_section_before_it_adds_nothing() {
     }
 }
 
+/// A row too short or too long for its columns, a repeated section id and a
+/// repeated row key: each is refused, and each names what the dog's author has
+/// to fix rather than only saying the answer is bad.
 #[test]
-fn an_answer_that_is_not_a_pane_is_unreadable() {
-    let short_row = Pane::new()
+fn a_pane_with_a_bad_row_id_or_key_is_refused_by_name() {
+    let short = Pane::new()
         .table("models", ["MODEL", "STATE"], [Row::new("qwen", ["loaded"])])
+        .body();
+    let long = Pane::new()
+        .table(
+            "models",
+            ["MODEL"],
+            [Row::new("qwen", ["qwen3-32b", "loaded"])],
+        )
+        .body();
+    let one_column = Pane::new()
+        .table("models", ["MODEL"], [Row::new("qwen", ["qwen3-32b"])])
         .body();
     let repeated_id = Pane::new()
         .fields("host", [("VRAM", "20 GiB")])
@@ -115,14 +129,78 @@ fn an_answer_that_is_not_a_pane_is_unreadable() {
         )
         .body();
 
+    assert_eq!(
+        short.unwrap_err(),
+        "section `models` has 2 columns but its row `qwen` holds 1 cell"
+    );
+    assert_eq!(
+        long.unwrap_err(),
+        "section `models` has 1 column but its row `qwen` holds 2 cells"
+    );
+    assert!(one_column.is_ok(), "a row with one cell per column");
+    assert_eq!(repeated_id.unwrap_err(), "two sections share the id `host`");
+    assert_eq!(
+        repeated_key.unwrap_err(),
+        "section `models` uses the row key `qwen` twice"
+    );
+}
+
+/// The writer refuses what the reader refuses, in the same words, so a dog
+/// never answers with a pane its own reader would reject. Each answer here is
+/// the JSON a dog written in another script would send.
+#[test]
+fn the_builder_refuses_the_same_answer_the_reader_refuses_in_the_same_words() {
+    let cases = [
+        (
+            Pane::new().table("models", ["MODEL", "STATE"], [Row::new("qwen", ["loaded"])]),
+            json!({"sections": [{"kind": "table", "id": "models", "title": "models",
+                                 "columns": ["MODEL", "STATE"],
+                                 "rows": [{"key": "qwen", "cells": ["loaded"]}]}]}),
+            "section `models` has 2 columns but its row `qwen` holds 1 cell",
+        ),
+        (
+            Pane::new()
+                .fields("host", [("VRAM", "20 GiB")])
+                .fields("host", [("RAM", "41 GiB")]),
+            json!({"sections": [{"kind": "fields", "id": "host", "title": "host", "fields": []},
+                                {"kind": "fields", "id": "host", "title": "host", "fields": []}]}),
+            "two sections share the id `host`",
+        ),
+        (
+            Pane::new().table(
+                "models",
+                ["MODEL"],
+                [Row::new("qwen", ["loaded"]), Row::new("qwen", ["idle"])],
+            ),
+            json!({"sections": [{"kind": "table", "id": "models", "title": "models",
+                                 "columns": ["MODEL"],
+                                 "rows": [{"key": "qwen", "cells": ["loaded"]},
+                                          {"key": "qwen", "cells": ["idle"]}]}]}),
+            "section `models` uses the row key `qwen` twice",
+        ),
+    ];
+
+    for (built, answer, fault) in cases {
+        let answer = answer.to_string();
+        assert_eq!(built.body().unwrap_err(), fault);
+        assert!(Pane::read(&answer).unwrap_err().contains(fault), "{answer}");
+    }
+}
+
+#[test]
+fn an_answer_that_is_not_a_pane_is_unreadable() {
     for body in [
         "not json at all",
         "",
         r#"{"sections": {"host": []}}"#,
         r#"{"sections": [{"id": "host", "fields": []}]}"#,
-        &short_row,
-        &repeated_id,
-        &repeated_key,
+        r#"{"sections": [{"kind": "table", "id": "models", "columns": ["MODEL", "STATE"],
+             "rows": [{"key": "qwen", "cells": ["loaded"]}]}]}"#,
+        r#"{"sections": [{"kind": "fields", "id": "host", "fields": []},
+             {"kind": "fields", "id": "host", "fields": []}]}"#,
+        r#"{"sections": [{"kind": "table", "id": "models", "columns": ["MODEL"],
+             "rows": [{"key": "qwen", "cells": ["loaded"]},
+                      {"key": "qwen", "cells": ["idle"]}]}]}"#,
     ] {
         assert!(Pane::read(body).is_err(), "{body}");
     }

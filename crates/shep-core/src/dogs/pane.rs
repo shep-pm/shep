@@ -142,12 +142,17 @@ impl Pane {
 
     /// The JSON a dog answers [`PANE_ACTION`] with.
     ///
-    /// # Panics
-    /// Never: every field is a string, a bool, or a list of them.
-    #[must_use = "the body is what the dog writes back on its channel"]
-    #[track_caller]
-    pub fn body(&self) -> String {
-        serde_json::to_string(self).expect("a pane holds only strings, bools and lists of them")
+    /// A pane that writes reads back: [`read`](Self::read)'s check on a table's
+    /// rows and on repeated ids and keys runs here first, so a dog cannot send
+    /// an answer its own reader rejects.
+    ///
+    /// # Errors
+    /// The line the dog's author fixes, naming the section or row that is wrong.
+    pub fn body(&self) -> Result<String, String> {
+        if let Some(fault) = self.fault() {
+            return Err(fault);
+        }
+        serde_json::to_string(self).map_err(|e| format!("a pane cannot be written: {e}"))
     }
 
     /// What a dog answered [`PANE_ACTION`] with.
@@ -156,7 +161,7 @@ impl Pane {
     /// [`skipped`](Self::skipped): a later shep adds kinds and an older lookout
     /// still draws the rest. Everything else that is wrong makes the whole
     /// answer unreadable, because lookout keys its state and its actions by
-    /// section id and row key.
+    /// section id and row key. [`body`](Self::body) refuses the same faults.
     ///
     /// # Errors
     /// The sentence the operator reads: what is wrong with the answer, then the
@@ -192,39 +197,61 @@ impl Pane {
                     Ok(section) => read.push(Section::Fields(section)),
                     Err(_) => return Err(refused("a fields section is unreadable", body)),
                 },
-                "table" => {
-                    let table = match serde_json::from_value::<Table>(Value::Object(section)) {
-                        Ok(table) => table,
-                        Err(_) => return Err(refused("a table section is unreadable", body)),
-                    };
-                    let columns = table.columns.len();
-                    if table.rows.iter().any(|row| row.cells.len() != columns) {
-                        return Err(refused("a table row holds no cell for each column", body));
-                    }
-                    if let Some(key) = repeated(table.rows.iter().map(|row| row.key.as_str())) {
-                        return Err(refused(
-                            &format!("a table uses the row key `{key}` twice"),
-                            body,
-                        ));
-                    }
-                    read.push(Section::Table(table));
-                }
+                "table" => match serde_json::from_value::<Table>(Value::Object(section)) {
+                    Ok(table) => read.push(Section::Table(table)),
+                    Err(_) => return Err(refused("a table section is unreadable", body)),
+                },
                 _other => skipped += 1,
             }
-        }
-        if let Some(id) = repeated(read.iter().map(|section| id_of(section).as_str())) {
-            return Err(refused(&format!("two sections share the id `{id}`"), body));
         }
         let actions = match serde_json::from_value::<Vec<PaneAction>>(Value::Array(actions)) {
             Ok(actions) => actions,
             Err(_) => return Err(refused("a pane action is unreadable", body)),
         };
-
-        Ok(Self {
+        let read = Self {
             sections: read,
             actions,
             skipped,
-        })
+        };
+        match read.fault() {
+            Some(fault) => Err(refused(&fault, body)),
+            None => Ok(read),
+        }
+    }
+
+    /// Why this pane cannot be written or read, and `None` when it can.
+    ///
+    /// Lookout keys its state and its actions by section id and row key, so a
+    /// repeat of either, and a row with no cell for each column, is refused at
+    /// both ends rather than drawn wrong.
+    fn fault(&self) -> Option<String> {
+        for section in &self.sections {
+            let Section::Table(table) = section else {
+                continue;
+            };
+            let columns = table.columns.len();
+            for row in &table.rows {
+                if row.cells.len() != columns {
+                    return Some(format!(
+                        "section `{}` has {} column{} but its row `{}` holds {} cell{}",
+                        table.id,
+                        columns,
+                        plural(columns),
+                        row.key,
+                        row.cells.len(),
+                        plural(row.cells.len())
+                    ));
+                }
+            }
+            if let Some(key) = repeated(table.rows.iter().map(|row| row.key.as_str())) {
+                return Some(format!(
+                    "section `{}` uses the row key `{key}` twice",
+                    table.id
+                ));
+            }
+        }
+        repeated(self.sections.iter().map(|section| id_of(section).as_str()))
+            .map(|id| format!("two sections share the id `{id}`"))
     }
 }
 
@@ -462,6 +489,12 @@ fn id_of(section: &Section) -> &String {
         Section::Fields(section) => &section.id,
         Section::Table(section) => &section.id,
     }
+}
+
+/// `""` for one and `"s"` for every other count: the suffix [`Pane::fault`]
+/// appends to `column` and `cell`.
+const fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 /// The first value `values` holds twice, and `None` when each is held once.
