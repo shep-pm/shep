@@ -23,16 +23,7 @@ pub(crate) fn dispatch_adopted_dog(
     argv: &[OsString],
     err: &clap::Error,
 ) -> Option<std::process::ExitCode> {
-    if err.kind() != clap::error::ErrorKind::InvalidSubcommand {
-        return None;
-    }
-    let name = match err.get(clap::error::ContextKind::InvalidSubcommand) {
-        Some(clap::error::ContextValue::String(name)) => name.as_str(),
-        _ => return None,
-    };
-    // clap's error carries the name but not where it sat. Everything after
-    // that position is this dog's own argv.
-    let index = argv.iter().position(|arg| arg.to_str() == Some(name))?;
+    let (name, index) = placed_dog(argv, err)?;
     let global = GlobalArgs {
         host: None,
         home: home_before(&argv[1..index]),
@@ -56,10 +47,28 @@ pub(crate) fn dispatch_adopted_dog(
     // A dog that declared its subcommands gets shep's own help page for them;
     // every other invocation, and every dog that declared nothing, is passed
     // through to the binary as it always was.
-    if let Some(code) = crate::adopted_help::describe_dog(name, &path, &paths.home, dog_argv) {
+    if let Some(code) =
+        crate::adopted_help::describe_dog(name, &path, &paths, &argv[1..index], dog_argv)
+    {
         return Some(code.into());
     }
     Some(run_adopted_dog(&path, &paths.home, name, dog_argv))
+}
+
+/// The token clap could not place and where it sits in `argv`.
+///
+/// clap's error carries the name but not the position. Everything after it is
+/// that dog's own argv, and everything before it is shep's.
+pub(crate) fn placed_dog<'a>(argv: &[OsString], err: &'a clap::Error) -> Option<(&'a str, usize)> {
+    if err.kind() != clap::error::ErrorKind::InvalidSubcommand {
+        return None;
+    }
+    let name = match err.get(clap::error::ContextKind::InvalidSubcommand) {
+        Some(clap::error::ContextValue::String(name)) => name.as_str(),
+        _ => return None,
+    };
+    let index = argv.iter().position(|arg| arg.to_str() == Some(name))?;
+    Some((name, index))
 }
 
 /// Scans `prefix`, the argv tokens before the one clap could not place, for
