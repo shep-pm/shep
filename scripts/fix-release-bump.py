@@ -56,6 +56,7 @@ a human has to look at.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -92,6 +93,10 @@ DEFAULT_GROUP = "Other"
 
 # `## [0.13.1] - 2026-10-13`, as release-plz's own template writes it.
 SECTION_HEADING = re.compile(r"^## \[(?P<version>[^\]]+)\](?: - (?P<date>.*?))?\s*$")
+
+# The dog index `shep dogs --available` reads. Its top-level `shep` names the
+# latest released shep, and a release branch is where that number is earned.
+INDEX_PATH = "web/public/dogs.json"
 
 # The identity a rewritten release branch is committed under. The push carries
 # the release token, so this only decides what GitHub renders as the author.
@@ -792,6 +797,37 @@ def manifest_version(repo: Repo, rev: str) -> tuple[int, int, int] | None:
     return parse_version(manifest_version_text(raw) or "")
 
 
+def rewrite_index(text: str, version: str) -> str | None:
+    """The dog index naming `version` as its latest shep, or None when `text`
+    is not a JSON object.
+
+    An index that already names it comes back untouched, however it is laid
+    out. Otherwise `shep` is set right after `version` and the file is dumped
+    the way `scripts/dog-index-update.py` dumps it, so the only line that moves
+    is the one this writes.
+    """
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(document, dict):
+        return None
+    if document.get("shep") == version:
+        return text
+    written: dict[str, object] = {}
+    placed = False
+    for key, value in document.items():
+        if key == "shep":
+            continue
+        written[key] = value
+        if key == "version":
+            written["shep"] = version
+            placed = True
+    if not placed:
+        written = {"shep": version, **written}
+    return json.dumps(written, indent=2, ensure_ascii=False) + "\n"
+
+
 def newest_date(commits: list[Commit], fallback: str) -> str:
     dates = [commit.date for commit in commits if commit.date]
     return max(dates) if dates else fallback
@@ -999,7 +1035,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"a workspace member {new_version_text} does not contain."
             )
 
-    changed = new_version != head_version or bool(plan) or manifest_new != manifest_text or lock_new != lock_text
+    index_text = repo.show(head_sha, INDEX_PATH)
+    index_new = rewrite_index(index_text, new_version_text) if index_text is not None else None
+    if index_new is None:
+        return refuse(
+            f"{INDEX_PATH} at {head_sha} is missing or is not a JSON object, so the\n"
+            f"latest shep it names cannot be set to {new_version_text}. Refusing rather\n"
+            "than pushing a release the dog index does not name."
+        )
+
+    changed = (
+        new_version != head_version
+        or bool(plan)
+        or manifest_new != manifest_text
+        or lock_new != lock_text
+        or index_new != index_text
+    )
 
     print(f"Range {since}..{args.base_sha}: {len(commits)} commit(s), both legs.")
     proposed = show_version(head_version)
@@ -1012,6 +1063,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{package.changelog}: +{len(added)} entr{'y' if len(added) == 1 else 'ies'}{moved}")
         for entry in added:
             print(f"  + [{entry.group}] {entry.line}")
+    if index_new != index_text:
+        print(f"{INDEX_PATH}: shep -> {new_version_text}")
     if not changed:
         print("The release branch already accounts for every commit in the range.")
 
@@ -1038,7 +1091,7 @@ def main(argv: list[str] | None = None) -> int:
         f"down one leg and never crosses to the other. {len(commits)} commit(s) sit in\n"
         f"{since}..{args.base_sha} under git log --full-history. The version here is\n"
         f"the bump that whole range implies, and the changelog lines added here are the\n"
-        f"ones that walk left out.\n"
+        f"ones that walk left out. {INDEX_PATH} names that version as the latest shep.\n"
     )
 
     with tempfile.TemporaryDirectory() as worktree:
@@ -1048,6 +1101,8 @@ def main(argv: list[str] | None = None) -> int:
                 (Path(worktree) / "Cargo.toml").write_text(manifest_new)
             if lock_new != lock_text:
                 (Path(worktree) / "Cargo.lock").write_text(lock_new)
+            if index_new != index_text:
+                (Path(worktree) / INDEX_PATH).write_text(index_new)
             for package, text, _added, _renamed in plan:
                 (Path(worktree) / package.changelog).write_text(text)
             repo.git("-C", worktree, "add", "-A")

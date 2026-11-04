@@ -43,6 +43,13 @@ import { slugify } from "./slug.ts";
 
 export const SUPPORTED_INDEX_VERSION = 1;
 
+/**
+ * A semver version, as semver.org spells it. The top-level `shep` has to match
+ * it, and `dogs.schema.json` carries the same source text.
+ */
+export const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
 export const CATEGORIES = [
   "logs",
   "metrics",
@@ -463,7 +470,8 @@ export function validate(raw: unknown): Dog[] {
  * have to.
  *
  * @throws {Error} if `raw` is not an object, names an unsupported
- * `version`, or has no `dogs` array.
+ * `version`, names a `shep` that is not a semver string, or has no `dogs`
+ * array. A missing `shep` is fine.
  */
 export function unwrapIndex(raw: unknown): unknown[] {
   if (!isRecord(raw)) {
@@ -475,6 +483,11 @@ export function unwrapIndex(raw: unknown): unknown[] {
   if (raw.version !== SUPPORTED_INDEX_VERSION) {
     throw new Error(
       `dogs.json is version ${JSON.stringify(raw.version) ?? "unspecified"}, but this build only understands version ${SUPPORTED_INDEX_VERSION}.`,
+    );
+  }
+  if (raw.shep !== undefined && (typeof raw.shep !== "string" || !SEMVER_PATTERN.test(raw.shep))) {
+    throw new Error(
+      `dogs.json's "shep" field must be a semver version such as "0.24.0", not ${JSON.stringify(raw.shep)}.`,
     );
   }
   if (!Array.isArray(raw.dogs)) {

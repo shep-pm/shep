@@ -85,10 +85,13 @@ jobs:
       # for a human to read. The middle one does not: release-plz's own walk
       # under-reads a diamond, so scripts/fix-release-bump.py writes what it
       # missed onto the release branch and pushes it, and a release PR that
-      # came out too small comes back correct instead of red. It fails only
-      # when it cannot read the branch, or cannot move the version it is being
-      # asked to report. It writes to the release branch only, so nothing
-      # publishes: a release still waits for a human to merge.
+      # came out too small comes back correct instead of red. The same push
+      # writes the new version into web/public/dogs.json as the index's latest
+      # shep: a commit status only attaches to the sha it names, so a second
+      # push after the guard would leave the new head unverified. It fails only
+      # when it cannot read the branch or its index, or cannot move the version
+      # it is being asked to report. It writes to the release branch only, so
+      # nothing publishes: a release still waits for a human to merge.
       - name: Guard the release PR's version and changelog
         id: guard
         if: ${{ steps.release-plz.outputs.prs_created == 'true' }}
