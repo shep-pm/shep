@@ -823,6 +823,11 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
+Examples:
+  $ shep hints
+  $ shep hints off logs
+  $ shep hints on
+
 Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:hints off@@
 Turn a hint off, or every hint with no name
