@@ -16,6 +16,7 @@ use crate::commands::dog_migration::{
 };
 use crate::commands::rpc::{client_error, unexpected_response};
 use crate::commands::shep_toml::{GrantRecord, ShepToml, ShepTomlError};
+use crate::dog_index::IndexedPermission;
 use crate::exit::ExitCode;
 use crate::output::{DogActionStatus, Streams};
 
@@ -87,7 +88,55 @@ pub(super) async fn adopt_with(
     flow: Flow,
     note: Option<&str>,
 ) -> ExitCode {
-    adopt_noting(streams, paths, args, input, flow, note, &mut false).await
+    adopt_noting(
+        streams,
+        paths,
+        args,
+        input,
+        flow,
+        Note {
+            text: note,
+            listed: None,
+        },
+        &mut false,
+    )
+    .await
+}
+
+/// What ends the grant listing, directly above the question.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Note<'a> {
+    /// A line the caller has to say, such as where the build came from.
+    pub(super) text: Option<&'a str>,
+    /// The permissions the index row lists. Each one the reviewed manifest
+    /// declares beyond these adds a line. `None` when the row listed none or
+    /// the caller has no row to compare with.
+    pub(super) listed: Option<&'a [IndexedPermission]>,
+}
+
+impl Note<'_> {
+    /// The note for `manifest`: [`Note::text`], then one line for each
+    /// declared permission not in [`Note::listed`], by name.
+    pub(super) fn lines(self, manifest: Option<&Manifest>) -> Option<String> {
+        let unlisted = self
+            .listed
+            .zip(manifest)
+            .into_iter()
+            .flat_map(|(listed, manifest)| {
+                manifest
+                    .permissions
+                    .iter()
+                    .filter(|declared| listed.iter().all(|row| row.name != declared.name))
+                    .map(|declared| format!("the index did not list {}", declared.name))
+            });
+        let lines = self
+            .text
+            .map(str::to_owned)
+            .into_iter()
+            .chain(unlisted)
+            .collect::<Vec<_>>();
+        (!lines.is_empty()).then(|| lines.join("\n"))
+    }
 }
 
 /// [`adopt_with`], setting `said_no` when the operator answered no at the
@@ -98,7 +147,7 @@ pub(super) async fn adopt_noting(
     args: &AdoptArgs,
     input: &mut Input,
     flow: Flow,
-    note: Option<&str>,
+    note: Note<'_>,
     said_no: &mut bool,
 ) -> ExitCode {
     let home = user_home(&|key| std::env::var_os(key));
@@ -140,8 +189,18 @@ pub(super) async fn adopt_noting(
         Ok(reviewed) => reviewed,
         Err(refusal) => return refusal.report(streams, &name, "adopted"),
     };
-    let verdict = match ask_before_adopting(streams, paths, &name, &reviewed, note, args.yes, input)
-    {
+    // From the manifest the question is asked of, so a read that failed
+    // earlier cannot leave an unlisted permission unsaid.
+    let note = note.lines(vetted.manifest.as_ref());
+    let verdict = match ask_before_adopting(
+        streams,
+        paths,
+        &name,
+        &reviewed,
+        note.as_deref(),
+        args.yes,
+        input,
+    ) {
         Ok(verdict) => verdict,
         Err(code) => return code,
     };
