@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use clap::CommandFactory as _;
+use clap::{CommandFactory as _, Parser as _};
 use shep_core::dogs::manifest::{Manifest, Subcommand, Verb};
 use shep_core::paths::ShepPaths;
 
@@ -726,4 +726,236 @@ Examples:
 kelpie 0.9.2. Anything after `shep kelpie` goes to the dog.
 "
     );
+}
+
+#[test]
+fn a_dog_without_a_verb_gets_the_stub_not_its_own_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let counter = dir.path().join("runs");
+    let body = format!("echo run >> \"{}\"\n{VERSIONED_BODY}", counter.display());
+    let paths = a_home_with(dir.path(), [("log-rotate", body.as_str())]);
+    let runs = || std::fs::read_to_string(&counter).unwrap().lines().count();
+    assert_eq!(runs(), 1, "the adopt probe is the only spawn so far");
+
+    assert_eq!(
+        page(&paths, dir.path(), "log-rotate"),
+        "\
+log-rotate 0.2.5
+
+This dog declares no help. `shep log-rotate help` asks the dog itself.
+"
+    );
+
+    let home = paths.home.clone().into_os_string();
+    for asked in [["--help"], ["-h"]] {
+        let argv: Vec<OsString> = ["shep".into(), "--home".into(), home.clone()]
+            .into_iter()
+            .chain(["log-rotate".into(), asked[0].into()])
+            .collect();
+        let err = Cli::try_parse_from(&argv).unwrap_err();
+        assert!(
+            crate::adopted::dispatch_adopted_dog(&argv, &err).is_some(),
+            "{argv:?} is answered"
+        );
+    }
+    assert_eq!(runs(), 1, "no help form spawned the dog");
+}
+
+/// An index document with one row, for `package`, described by `description`.
+fn index_row(package: &str, adopt_as: &str, description: &str) -> Vec<u8> {
+    serde_json::json!({
+        "version": 1,
+        "dogs": [{
+            "name": package,
+            "package": package,
+            "adopt_as": adopt_as,
+            "description": description,
+            "repo": format!("https://github.com/shep-pm/{package}"),
+            "license": "MIT",
+            "category": "logs",
+            "source": { "kind": "cargo", "version": "0.2.5" }
+        }]
+    })
+    .to_string()
+    .into_bytes()
+}
+
+/// A loopback port that records whether anything connected to it.
+fn a_listener_that_counts() -> (std::net::TcpListener, String) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/dogs.json", listener.local_addr().unwrap());
+    (listener, url)
+}
+
+#[test]
+fn the_stub_reads_the_index_cache_and_never_fetches() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = a_home_with(dir.path(), [("log-rotate", VERSIONED_BODY)]);
+    let (listener, url) = a_listener_that_counts();
+    let stub = |paths: &ShepPaths| {
+        dog_page("log-rotate", &dir.path().join("log-rotate"), paths, &url)
+            .render_long_help()
+            .to_string()
+    };
+
+    assert!(
+        !stub(&paths).contains("Rotates"),
+        "no cache means no description"
+    );
+
+    crate::dog_index::write_cache(
+        &paths.dog_index_cache,
+        &url,
+        &index_row("shep-log-rotate", "log-rotate", "Rotates logs as they grow"),
+    )
+    .unwrap();
+    // Older than the cache's day: a stale copy is still the answer.
+    std::fs::File::options()
+        .write(true)
+        .open(&paths.dog_index_cache)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(30 * 24 * 60 * 60))
+        .unwrap();
+
+    assert_eq!(
+        stub(&paths),
+        "\
+log-rotate 0.2.5
+Rotates logs as they grow
+
+This dog declares no help. `shep log-rotate help` asks the dog itself.
+"
+    );
+    assert!(
+        matches!(listener.accept(), Err(err) if err.kind() == std::io::ErrorKind::WouldBlock),
+        "nothing connected to the index url"
+    );
+}
+
+#[test]
+fn shep_dash_dash_help_lists_a_dog_with_no_verb_by_its_index_description() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = a_home_with(
+        dir.path(),
+        [("log-rotate", VERSIONED_BODY), ("quiet", SILENT_BODY)],
+    );
+    let (listener, url) = a_listener_that_counts();
+    crate::dog_index::write_cache(
+        &paths.dog_index_cache,
+        &url,
+        &index_row("shep-log-rotate", "log-rotate", "Rotates logs as they grow"),
+    )
+    .unwrap();
+
+    let verbs = adopted_verbs_in(&paths, &url);
+
+    assert_eq!(
+        listed(&verbs),
+        vec![
+            ("log-rotate", Some("Rotates logs as they grow")),
+            ("quiet", None)
+        ],
+        "a dog the index does not describe is its name alone"
+    );
+    assert!(listener.accept().is_err(), "nothing was fetched");
+}
+
+/// The `(before, argv)` split `dispatch_adopted_dog` makes for `tokens`,
+/// parsed by the real command.
+fn split_for(tokens: &[&str]) -> (Vec<OsString>, Vec<OsString>) {
+    let argv = os(tokens);
+    let err = Cli::try_parse_from(&argv).unwrap_err();
+    let (_, index) = crate::adopted::placed_dog(&argv, &err).expect("clap could not place a dog");
+    (argv[1..index].to_vec(), argv[index + 1..].to_vec())
+}
+
+#[test]
+fn shep_help_dog_matches_shep_dog_help() {
+    for tokens in [
+        ["shep", "kelpie", "--help"],
+        ["shep", "kelpie", "-h"],
+        ["shep", "help", "kelpie"],
+    ] {
+        let (before, argv) = split_for(&tokens);
+        assert!(help_asked(&before, &argv), "{tokens:?} is shep's page");
+    }
+
+    let (before, argv) = split_for(&["shep", "--home", "/tmp/help", "help", "kelpie"]);
+    assert!(help_asked(&before, &argv), "a --home is not the help verb");
+}
+
+#[test]
+fn a_dogs_own_help_subcommand_still_reaches_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let seen = dir.path().join("seen");
+    let body = format!(
+        "if [ \"$1\" = --shep-manifest ]; then echo '{{\"manifest\":1,\"name\":\"shep-kelpie\",\"version\":\"0.9.2\",\"protocol\":12}}'; else echo \"$@\" >> \"{}\"; fi",
+        seen.display()
+    );
+    let paths = a_home_with(dir.path(), [("kelpie", body.as_str())]);
+    let home = paths.home.clone().into_os_string();
+
+    for asked in [&["help"][..], &["board", "--help"], &["help", "board"]] {
+        let argv: Vec<OsString> = [
+            "shep".into(),
+            "--home".into(),
+            home.clone(),
+            "kelpie".into(),
+        ]
+        .into_iter()
+        .chain(asked.iter().map(OsString::from))
+        .collect();
+        let err = Cli::try_parse_from(&argv).unwrap_err();
+        assert!(
+            crate::adopted::dispatch_adopted_dog(&argv, &err).is_some(),
+            "{argv:?} is answered"
+        );
+    }
+
+    assert_eq!(
+        std::fs::read_to_string(&seen)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        ["help", "board --help", "help board"],
+        "the dog got each argv as typed"
+    );
+}
+
+#[test]
+fn an_installed_dog_names_the_receipts_version_and_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = a_home_with(dir.path(), [("kelpie", KELPIE_BODY)]);
+    let receipt = paths.dogs_dir.join("kelpie").join("receipt.json");
+    std::fs::create_dir_all(receipt.parent().unwrap()).unwrap();
+    std::fs::write(
+        &receipt,
+        serde_json::json!({
+            "package": "shep-kelpie",
+            "row": { "repo": "https://github.com/shep-pm/shep-kelpie" },
+            "version": "0.9.3",
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let page = page(&paths, dir.path(), "kelpie");
+
+    assert!(
+        page.ends_with(
+            "\nkelpie 0.9.3 from shep-pm/shep-kelpie. Anything after `shep kelpie` goes to the dog.\n"
+        ),
+        "{page}"
+    );
+}
+
+#[test]
+fn a_verb_of_examples_alone_still_gets_a_page() {
+    let mut verb = Verb::new("");
+    verb.examples = vec!["shep otel".to_owned(), "\u{1b}".to_owned()];
+
+    let cleaned = printable_verb(verb).expect("an example is something to print");
+
+    assert_eq!(cleaned.examples, ["shep otel"]);
 }

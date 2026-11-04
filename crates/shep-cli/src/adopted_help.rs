@@ -17,8 +17,8 @@ use shep_core::paths::ShepPaths;
 
 use crate::cli::{DogLine, top_level_template};
 use crate::commands::dogs::{cached_manifest, collides_with_a_verb, installed};
-use crate::dog_index;
 use crate::commands::shep_toml::ShepToml;
+use crate::dog_index::{self, Index};
 use crate::exit::ExitCode;
 use crate::{cli, home};
 
@@ -47,6 +47,14 @@ pub(crate) struct AdoptedVerb {
 /// the token. A name [`printable`] would rewrite is left out too.
 #[must_use]
 pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
+    adopted_verbs_in(paths, &dog_index::index_url())
+}
+
+/// [`adopted_verbs`] with the cached index read for `index_url`.
+///
+/// A dog whose manifest declares no description is described by its row in
+/// that cached index when it has one. The index is never fetched.
+fn adopted_verbs_in(paths: &ShepPaths, index_url: &str) -> Vec<AdoptedVerb> {
     let Ok(config) = ShepToml::read_only(&paths.daemon_config) else {
         return Vec::new();
     };
@@ -73,8 +81,31 @@ pub(crate) fn adopted_verbs(paths: &ShepPaths) -> Vec<AdoptedVerb> {
             }
         })
         .collect();
+    if verbs.iter().any(|verb| verb.description.is_none())
+        && let Some(index) = dog_index::cached_only(paths, index_url)
+    {
+        for verb in verbs.iter_mut().filter(|verb| verb.description.is_none()) {
+            let receipt = installed(paths, &verb.name);
+            let package = receipt.as_ref().map(|receipt| receipt.package.as_str());
+            verb.description = indexed_description(&index, &verb.name, package);
+        }
+    }
     verbs.sort_by(|a, b| a.name.cmp(&b.name));
     verbs
+}
+
+/// What the cached `index` says dog `name` does, or `None` when it has no
+/// row for it or the row says nothing.
+///
+/// The row is the dog's `package` when it was installed, else the one that
+/// expects to be adopted under `name`.
+fn indexed_description(index: &Index, name: &str, package: Option<&str>) -> Option<String> {
+    let row = index
+        .dogs
+        .iter()
+        .find(|dog| package == Some(dog.package.as_str()))
+        .or_else(|| index.dogs.iter().find(|dog| dog.adopt_as == name))?;
+    Some(printable(&row.description)).filter(|description| !description.is_empty())
 }
 
 /// One string from a manifest, fit for a help line or a completion script.
@@ -279,18 +310,42 @@ fn dog_page(name: &str, path: &Path, paths: &ShepPaths, index_url: &str) -> clap
     let verb = manifest
         .and_then(|manifest| manifest.verb)
         .and_then(printable_verb);
-    let who = [Some(name.to_owned()), version, source.map(|s| format!("from {s}"))]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let _ = index_url;
     match verb {
-        Some(verb) => dog_help(name, &verb, &format!(
-            "{who}. Anything after `shep {name}` goes to the dog."
-        )),
-        None => unreachable!("the stub is the next test"),
+        Some(verb) => {
+            let who = [
+                Some(name.to_owned()),
+                version,
+                source.map(|source| format!("from {source}")),
+            ];
+            let who = who.into_iter().flatten().collect::<Vec<_>>().join(" ");
+            dog_help(
+                name,
+                &verb,
+                &format!("{who}. Anything after `shep {name}` goes to the dog."),
+            )
+        }
+        None => {
+            let description = dog_index::cached_only(paths, index_url).and_then(|index| {
+                let package = receipt.as_ref().map(|receipt| receipt.package.as_str());
+                indexed_description(&index, name, package)
+            });
+            stub(name, version.as_deref(), description.as_deref())
+        }
     }
+}
+
+/// The page for a dog that declares no help: who it is, what the index says
+/// it does when there is a cached row, and how to ask the dog itself.
+fn stub(name: &str, version: Option<&str>, description: Option<&str>) -> clap::Command {
+    let who = version.map_or_else(|| name.to_owned(), |version| format!("{name} {version}"));
+    let described = description.map_or_else(String::new, |text| format!("\n{text}"));
+    let text = format!(
+        "{who}{described}\n\nThis dog declares no help. `shep {name} help` asks the dog itself."
+    );
+    clap::Command::new(name.to_owned())
+        .disable_help_flag(true)
+        .help_template("{about}")
+        .about(text)
 }
 
 /// The help page for one dog's verb: its description, its declared

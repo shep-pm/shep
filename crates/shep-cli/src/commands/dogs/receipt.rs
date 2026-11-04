@@ -464,6 +464,26 @@ mod tests {
     }
 
     #[test]
+    fn the_source_is_the_repository_a_help_page_names() {
+        let source = |repo: &str| {
+            Installed {
+                package: "p".to_owned(),
+                repo: repo.to_owned(),
+                version: None,
+                pinned: None,
+            }
+            .source()
+        };
+
+        assert_eq!(
+            source("https://github.com/shep-pm/shep-kelpie"),
+            "shep-pm/shep-kelpie"
+        );
+        assert_eq!(source("https://github.com/someone/dog.git/"), "someone/dog");
+        assert_eq!(source("https://gitlab.com/a/b"), "gitlab.com/a/b");
+    }
+
+    #[test]
     fn a_receipt_the_writer_made_reads_back_with_the_manifest_version() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShepPaths::resolve(&|_| None, dir.path());
