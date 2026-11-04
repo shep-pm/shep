@@ -107,7 +107,11 @@ fn a_log_file_past_the_threshold_offers_the_dogs_that_need_logs() {
         &paths,
         &[("log-rotate", &["logs"]), ("discord", &["alerts"])],
     );
-    let flock = [with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1))];
+    let flock = [with_out(
+        1,
+        "api",
+        log_of(dir.path(), "out.log", 100 * MIB + 1),
+    )];
 
     let shown = next(&paths, URL, &flock).unwrap();
 
@@ -185,7 +189,11 @@ fn an_enabled_dog_for_logs_ends_the_logs_hint() {
     let paths = paths_in(dir.path());
     cache_index(&paths, &[("log-rotate", &["logs"])]);
     enable(&paths, &["log-rotate"]);
-    let flock = [with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1))];
+    let flock = [with_out(
+        1,
+        "api",
+        log_of(dir.path(), "out.log", 100 * MIB + 1),
+    )];
 
     assert_eq!(next(&paths, URL, &flock), None);
 }
@@ -255,9 +263,17 @@ fn a_row_with_no_known_need_is_never_offered() {
     let paths = paths_in(dir.path());
     cache_index(
         &paths,
-        &[("deploy", &[]), ("future", &["telepathy"]), ("log-rotate", &["logs"])],
+        &[
+            ("deploy", &[]),
+            ("future", &["telepathy"]),
+            ("log-rotate", &["logs"]),
+        ],
     );
-    let flock = [with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1))];
+    let flock = [with_out(
+        1,
+        "api",
+        log_of(dir.path(), "out.log", 100 * MIB + 1),
+    )];
 
     let shown = next(&paths, URL, &flock).unwrap();
 
@@ -273,7 +289,11 @@ fn an_installed_but_disabled_dog_is_offered_as_enable_not_install() {
     let paths = paths_in(dir.path());
     cache_index(&paths, &[("log-rotate", &["logs"])]);
     install(&paths, "log-rotate");
-    let flock = [with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1))];
+    let flock = [with_out(
+        1,
+        "api",
+        log_of(dir.path(), "out.log", 100 * MIB + 1),
+    )];
 
     let shown = next(&paths, URL, &flock).unwrap();
 
@@ -288,7 +308,10 @@ fn an_installed_but_disabled_dog_is_offered_as_enable_not_install() {
 fn the_logs_hint_comes_before_the_alerts_hint_and_only_one_shows() {
     let dir = tempfile::tempdir().unwrap();
     let paths = paths_in(dir.path());
-    cache_index(&paths, &[("log-rotate", &["logs"]), ("discord", &["alerts"])]);
+    cache_index(
+        &paths,
+        &[("log-rotate", &["logs"]), ("discord", &["alerts"])],
+    );
     let flock = [
         with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1)),
         restarted(2, "worker", 9),
@@ -328,8 +351,15 @@ fn the_thresholds_are_a_hundred_mebibytes_and_three_restarts() {
 fn the_hint_lines_are_pinned_and_hold_no_dash() {
     let dir = tempfile::tempdir().unwrap();
     let paths = paths_in(dir.path());
-    cache_index(&paths, &[("log-rotate", &["logs"]), ("discord", &["alerts"])]);
-    let logs = [with_out(1, "api", log_of(dir.path(), "out.log", 100 * MIB + 1))];
+    cache_index(
+        &paths,
+        &[("log-rotate", &["logs"]), ("discord", &["alerts"])],
+    );
+    let logs = [with_out(
+        1,
+        "api",
+        log_of(dir.path(), "out.log", 100 * MIB + 1),
+    )];
 
     let lines = [
         line(next(&paths, URL, &logs)),
@@ -377,7 +407,10 @@ fn a_hint_never_fetches_the_index() {
 }
 
 /// A shepherd at `paths.socket` listing `flock`. The receiver must be held.
-async fn shepherd_listing(paths: &ShepPaths, flock: Vec<ProcessInfo>) -> UnboundedReceiver<Envelope> {
+async fn shepherd_listing(
+    paths: &ShepPaths,
+    flock: Vec<ProcessInfo>,
+) -> UnboundedReceiver<Envelope> {
     let ack = HelloAck {
         daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
         protocol: PROTOCOL_VERSION,
@@ -427,11 +460,18 @@ async fn no_hint_prints_under_json_with_quiet_on_a_pipe_or_while_following() {
     let paths = paths_in(dir.path());
     let _held = shepherd_listing(&paths, vec![restarted(1, "api", 3)]).await;
     // The same setup prints on a terminal, so each silence below is the gate.
-    assert!(!printed(&paths, Format::Table, false, false, true).await.is_empty());
+    assert!(
+        !printed(&paths, Format::Table, false, false, true)
+            .await
+            .is_empty()
+    );
 
     assert_eq!(printed(&paths, Format::Json, false, false, true).await, "");
     assert_eq!(printed(&paths, Format::Table, true, false, true).await, "");
-    assert_eq!(printed(&paths, Format::Table, false, false, false).await, "");
+    assert_eq!(
+        printed(&paths, Format::Table, false, false, false).await,
+        ""
+    );
     assert_eq!(printed(&paths, Format::Table, false, true, true).await, "");
 }
 

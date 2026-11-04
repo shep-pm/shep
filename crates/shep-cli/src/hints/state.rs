@@ -31,7 +31,9 @@ impl Off {
 
     /// Whether `hint` is turned off.
     pub(super) fn contains(&self, hint: Hint) -> bool {
-        self.off.iter().any(|name| Hint::from_name(name) == Some(hint))
+        self.off
+            .iter()
+            .any(|name| Hint::from_name(name) == Some(hint))
     }
 }
 

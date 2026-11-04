@@ -171,11 +171,7 @@ fn show(
             commands.join(" or ")
         ),
     };
-    Some(Shown {
-        hint,
-        line,
-        offers,
-    })
+    Some(Shown { hint, line, offers })
 }
 
 /// Whether `sheep` is what `hint` is about.
