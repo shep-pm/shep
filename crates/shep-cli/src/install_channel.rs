@@ -178,21 +178,22 @@ impl Components {
     }
 }
 
-/// Whether dpkg's `shep.list`, or a multiarch `shep:<arch>.list`, names
-/// [`DEB_BINARY`].
+/// Whether `name` is dpkg's `shep.list`, or a multiarch `shep:<arch>.list`.
+fn is_shep_list(name: &str) -> bool {
+    name == "shep.list"
+        || name
+            .strip_prefix("shep:")
+            .and_then(|rest| rest.strip_suffix(".list"))
+            .is_some_and(|arch| !arch.is_empty())
+}
+
+/// Whether a shep package list in `info` names [`DEB_BINARY`].
 fn dpkg_names_shep(info: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(info) else {
         return false;
     };
     entries.flatten().any(|entry| {
-        let name = entry.file_name();
-        let is_shep = name.to_str().is_some_and(|name| {
-            name == "shep.list"
-                || name
-                    .strip_prefix("shep:")
-                    .is_some_and(|arch| arch.strip_suffix(".list").is_some_and(|a| !a.is_empty()))
-        });
-        is_shep
+        entry.file_name().to_str().is_some_and(is_shep_list)
             && std::fs::read_to_string(entry.path())
                 .is_ok_and(|list| list.lines().any(|line| line.trim() == DEB_BINARY))
     })

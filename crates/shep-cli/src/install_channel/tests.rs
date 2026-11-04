@@ -150,12 +150,30 @@ fn usr_bin_shep_named_by_dpkg_is_deb_and_unnamed_is_archive() {
 
 #[test]
 fn dpkg_lists_for_shep_and_for_shep_with_an_arch_are_both_read() {
-    let exe = Path::new("/usr/bin/shep");
-    let (_arch, arch) = dpkg_info_with("shep:amd64.list", "/usr/bin/shep\n");
-    let (_other, other) = dpkg_info_with("shepherd:amd64.list", "/usr/bin/shep\n");
+    // Names are checked as text: Windows cannot create a file called
+    // `shep:amd64.list`, so only the unix half below touches the disk.
+    for name in ["shep.list", "shep:amd64.list", "shep:arm64.list"] {
+        assert!(is_shep_list(name), "{name}");
+    }
+    for name in [
+        "shepherd.list",
+        "shepherd:amd64.list",
+        "shep:.list",
+        "shep.md5sums",
+        "xshep.list",
+    ] {
+        assert!(!is_shep_list(name), "{name}");
+    }
 
-    assert_eq!(Channel::of(exe, &arch), Channel::Deb);
-    assert_eq!(Channel::of(exe, &other), Channel::Archive);
+    #[cfg(unix)]
+    {
+        let exe = Path::new("/usr/bin/shep");
+        let (_arch, arch) = dpkg_info_with("shep:amd64.list", "/usr/bin/shep\n");
+        let (_other, other) = dpkg_info_with("shepherd:amd64.list", "/usr/bin/shep\n");
+
+        assert_eq!(Channel::of(exe, &arch), Channel::Deb);
+        assert_eq!(Channel::of(exe, &other), Channel::Archive);
+    }
 }
 
 #[test]
