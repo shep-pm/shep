@@ -538,8 +538,8 @@ pub(super) async fn adopt_fetched(
         );
     }
 
-    // One line at the end of the grant listing, above the question.
-    let note = match &landed {
+    // Lines at the end of the grant listing, above the question.
+    let provenance = match &landed {
         Landed::Ref { git_ref, commit } => Some(format!(
             "built from {git_ref} at {commit}, which the index has not reviewed"
         )),
@@ -551,6 +551,27 @@ pub(super) async fn adopt_fetched(
             )
         }),
     };
+    // An upgrade keeps its own review of what is new. A fetch that read no
+    // manifest asks once more, as `adopt` will, before saying nothing.
+    let unlisted = match (&upgrading, &dog.permissions) {
+        (None, Some(_)) => {
+            let read = match &manifest {
+                Some(manifest) => Some(manifest.clone()),
+                None => match read_manifest(&binary, &paths.home, name, VERSION_BUDGET) {
+                    Ok(ManifestRead::Read(manifest)) => Some(manifest),
+                    Ok(ManifestRead::Absent | ManifestRead::Unreadable) | Err(_) => None,
+                },
+            };
+            read.map_or_else(Vec::new, |manifest| unlisted_by_index(&dog, &manifest))
+        }
+        _ => Vec::new(),
+    };
+    let note = provenance
+        .into_iter()
+        .chain(unlisted)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let note = (!note.is_empty()).then_some(note);
     let adopting = AdoptArgs {
         path: binary,
         name: Some(name.to_owned()),
@@ -584,6 +605,20 @@ pub(super) async fn adopt_fetched(
         kept.commit();
     }
     code
+}
+
+/// One line for each permission `manifest` declares that `dog`'s index row
+/// did not list, by name. A row that listed none says nothing to compare.
+fn unlisted_by_index(dog: &AvailableDog, manifest: &Manifest) -> Vec<String> {
+    let Some(listed) = &dog.permissions else {
+        return Vec::new();
+    };
+    manifest
+        .permissions
+        .iter()
+        .filter(|declared| listed.iter().all(|row| row.name != declared.name))
+        .map(|declared| format!("the index did not list {}", declared.name))
+        .collect()
 }
 
 /// Takes the lock that keeps a second install or upgrade of `name` out,

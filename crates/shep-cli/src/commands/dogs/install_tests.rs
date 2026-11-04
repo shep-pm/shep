@@ -17,7 +17,7 @@ use super::install_depends::Catalog;
 use super::test_support::streams;
 use crate::cli::InstallArgs;
 use crate::commands::shep_toml::ShepToml;
-use crate::dog_index::{AvailableDog, DogSourceKind};
+use crate::dog_index::{AvailableDog, DogSourceKind, IndexedPermission};
 use crate::exit::ExitCode;
 use crate::fetch::RedirectPolicy;
 
@@ -363,6 +363,130 @@ async fn a_token_publish_is_still_said_once_when_yes_asks_nothing() {
     assert_eq!(code, ExitCode::Success, "{err}");
     assert_eq!(err.matches("API token").count(), 1, "{err}");
     assert!(!err.contains("[y/N]"), "{err}");
+}
+
+/// What the binary declares: `flock.read` required and `events:sheep.` optional.
+const DECLARES_AN_EXTRA: &str = r#"{"manifest":1,"name":"otel","version":"0.2.4","protocol":12,"permissions":[{"name":"flock.read","required":true,"reason":"reads the flock to report on it"},{"name":"events:sheep.","required":false,"reason":"hears when a sheep changes"}]}"#;
+
+const NOT_LISTED: &str = "the index did not list events:sheep.";
+
+fn lists(names: &[(&str, bool)]) -> AvailableDog {
+    let mut dog = cargo_row();
+    dog.permissions = Some(
+        names
+            .iter()
+            .map(|&(name, required)| IndexedPermission {
+                name: name.to_owned(),
+                required,
+            })
+            .collect(),
+    );
+    dog
+}
+
+#[tokio::test]
+async fn a_permission_the_index_did_not_list_puts_one_line_directly_above_the_grant_question() {
+    let fixture = Fixture::new();
+    fixture.builds_manifest(DECLARES_AN_EXTRA);
+    let reach = fixture.reach(from_the_row());
+
+    let (code, _out, err) = run(
+        &fixture,
+        &lists(&[("flock.read", true)]),
+        &args(false, false),
+        &reach,
+        typing(Some("n\n")),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    let lines: Vec<_> = err.lines().collect();
+    let question = lines
+        .iter()
+        .position(|line| line.contains("[y/N]"))
+        .unwrap_or_else(|| panic!("no question was asked:\n{err}"));
+    assert_eq!(lines[question - 1].trim(), NOT_LISTED, "{err}");
+    assert_eq!(err.matches("the index did not list").count(), 1, "{err}");
+}
+
+#[tokio::test]
+async fn a_row_that_lists_no_permissions_flags_nothing() {
+    let fixture = Fixture::new();
+    fixture.builds_manifest(DECLARES_AN_EXTRA);
+    let reach = fixture.reach(from_the_row());
+    let row = cargo_row();
+    assert_eq!(row.permissions, None);
+
+    let (code, _out, err) = run(&fixture, &row, &args(true, false), &reach, typing(None)).await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(!err.contains("the index did not list"), "{err}");
+}
+
+#[tokio::test]
+async fn a_row_listing_everything_the_binary_declares_flags_nothing() {
+    let fixture = Fixture::new();
+    fixture.builds_manifest(DECLARES_AN_EXTRA);
+    let reach = fixture.reach(from_the_row());
+
+    // `flock.read` is listed as optional, though the binary requires it.
+    let (code, _out, err) = run(
+        &fixture,
+        &lists(&[("events:sheep.", false), ("flock.read", false)]),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(!err.contains("the index did not list"), "{err}");
+}
+
+#[tokio::test]
+async fn an_unlisted_permission_is_still_said_once_when_yes_asks_nothing() {
+    let fixture = Fixture::new();
+    fixture.builds_manifest(DECLARES_AN_EXTRA);
+    let reach = fixture.reach(from_the_row());
+
+    let (code, _out, err) = run(
+        &fixture,
+        &lists(&[("flock.read", true)]),
+        &args(true, false),
+        &reach,
+        typing(None),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert_eq!(err.matches(NOT_LISTED).count(), 1, "{err}");
+    assert!(!err.contains("[y/N]"), "{err}");
+}
+
+#[tokio::test]
+async fn an_unlisted_permission_and_a_token_publish_are_both_said() {
+    let fixture = Fixture::new();
+    fixture.builds_manifest(DECLARES_AN_EXTRA);
+    let reach = fixture.reach(Published::ByToken);
+
+    let (code, _out, err) = run(
+        &fixture,
+        &lists(&[("flock.read", true)]),
+        &args(false, false),
+        &reach,
+        typing(Some("n\n")),
+    )
+    .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert_eq!(err.matches("API token").count(), 1, "{err}");
+    let lines: Vec<_> = err.lines().collect();
+    let question = lines
+        .iter()
+        .position(|line| line.contains("[y/N]"))
+        .unwrap_or_else(|| panic!("no question was asked:\n{err}"));
+    assert_eq!(lines[question - 1].trim(), NOT_LISTED, "{err}");
+    assert!(lines[question - 2].contains("API token"), "{err}");
 }
 
 #[tokio::test]
