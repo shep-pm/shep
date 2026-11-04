@@ -36,6 +36,19 @@ impl Off {
             .unwrap_or_default()
     }
 
+    /// What `home`'s `hints.json` turns off, for a caller about to rewrite it.
+    ///
+    /// A missing file turns nothing off. One that cannot be read or parsed
+    /// is an error, so a rewrite never discards what the operator wrote.
+    fn read_to_change(home: &Path) -> Result<Self, String> {
+        let bytes = match std::fs::read(home.join(FILE)) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(err) => return Err(err.to_string()),
+        };
+        serde_json::from_slice(&bytes).map_err(|err| err.to_string())
+    }
+
     /// Whether `hint` is turned off.
     pub(super) fn contains(&self, hint: Hint) -> bool {
         self.off
@@ -185,7 +198,16 @@ fn change(streams: &mut Streams<'_>, paths: &ShepPaths, name: Option<&str>, on: 
             }
         },
     };
-    let mut off = Off::read(&paths.home);
+    let mut off = match Off::read_to_change(&paths.home) {
+        Ok(off) => off,
+        Err(err) => {
+            let message = format!(
+                "cannot use {}: {err}. Fix or remove it, then try again",
+                paths.home.join(FILE).display()
+            );
+            return streams.fail(ExitCode::InvalidConfig, &message);
+        }
+    };
     let changed: Vec<&str> = targets
         .into_iter()
         .filter(|hint| {
@@ -306,6 +328,24 @@ mod tests {
 
         assert_eq!(ran.code, ExitCode::Success, "{}", ran.err);
         assert!(off_list(&paths).is_empty());
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_is_refused_and_left_as_it_is() {
+        for broken in [r#"{"off": ["logs",]}"#, r#"{"off": "logs"}"#] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = paths_in(dir.path());
+            std::fs::write(paths.home.join(FILE), broken).unwrap();
+
+            let ran = turn_off(&paths, Some("alerts"));
+
+            assert_eq!(ran.code, ExitCode::InvalidConfig, "{broken}");
+            assert!(ran.err.contains("hints.json"), "{}", ran.err);
+            assert_eq!(
+                std::fs::read_to_string(paths.home.join(FILE)).unwrap(),
+                broken
+            );
+        }
     }
 
     #[test]
