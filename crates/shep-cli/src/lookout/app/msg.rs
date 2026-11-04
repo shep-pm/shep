@@ -710,7 +710,7 @@ pub enum Effect {
     /// Fetch the dog index through its cache and rebuild the catalogue's
     /// rows; the answer lands as [`Msg::Catalogue`].
     FetchCatalogue,
-    /// Runs `job` through [`crate::commands::dogs::session`], the same code
+    /// Runs `job` through [`run`](crate::commands::dogs::run), the same code
     /// `shep install` runs, on its own thread with its own current-thread
     /// runtime.
     ///
