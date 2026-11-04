@@ -95,6 +95,7 @@ mod tests {
             license: "MIT".to_owned(),
             category: "logs".to_owned(),
             permissions: None,
+            needs: Vec::new(),
             source: DogSourceKind::Cargo {
                 version: version.map(str::to_owned),
                 sha256: hashes

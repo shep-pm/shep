@@ -96,6 +96,10 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
         return None;
     }
     let (source, permissions) = validate_source(entry.get("source")?, sanitised)?;
+    let needs = match entry.get("needs") {
+        None => Vec::new(),
+        Some(needs) => validate_needs(needs)?,
+    };
     Some(AvailableDog {
         name,
         package,
@@ -106,7 +110,25 @@ fn validate_entry(entry: &Value, sanitised: &mut bool) -> Option<AvailableDog> {
         category,
         source,
         permissions,
+        needs,
     })
+}
+
+/// A `needs` list as the needs shep knows, each once, in the order listed, or
+/// `None` when it is not an array of strings.
+///
+/// A name that is no [`Need`] is dropped rather than refused.
+fn validate_needs(needs: &Value) -> Option<Vec<Need>> {
+    let mut known = Vec::new();
+    for name in needs.as_array()? {
+        let need = Need::from_name(name.as_str()?);
+        if let Some(need) = need
+            && !known.contains(&need)
+        {
+            known.push(need);
+        }
+    }
+    Some(known)
 }
 
 /// One entry's `source`, and the permissions beside it, or `None` for an
@@ -795,6 +817,69 @@ pub(super) mod tests {
 
         assert_eq!(index.skipped, 0);
         assert_eq!(index.dogs[0].permissions, None);
+    }
+
+    fn entry_with_needs(needs: serde_json::Value) -> String {
+        let mut entry = valid_entry();
+        entry["needs"] = needs;
+        wrap_index(vec![entry])
+    }
+
+    #[test]
+    fn a_row_naming_known_needs_keeps_them_in_order() {
+        let index = parse_index(entry_with_needs(serde_json::json!(["alerts", "logs"])).as_bytes())
+            .expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(index.dogs[0].needs, [Need::Alerts, Need::Logs]);
+    }
+
+    /// The index can name a need before this build shows it.
+    #[test]
+    fn a_need_shep_does_not_know_is_ignored_and_the_row_still_lists() {
+        let needs = serde_json::json!(["metrics", "logs", "Logs"]);
+        let index = parse_index(entry_with_needs(needs).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert_eq!(index.dogs.len(), 1);
+        assert_eq!(index.dogs[0].needs, [Need::Logs]);
+    }
+
+    #[test]
+    fn a_row_with_no_needs_field_has_no_needs() {
+        let index = parse_index(wrap_index(vec![valid_entry()]).as_bytes()).expect("parses");
+
+        assert_eq!(index.skipped, 0);
+        assert!(index.dogs[0].needs.is_empty());
+    }
+
+    #[test]
+    fn a_repeated_need_is_kept_once() {
+        let needs = serde_json::json!(["logs", "alerts", "logs", "alerts"]);
+        let index = parse_index(entry_with_needs(needs).as_bytes()).expect("parses");
+
+        assert_eq!(index.dogs[0].needs, [Need::Logs, Need::Alerts]);
+    }
+
+    #[test]
+    fn a_needs_field_that_is_not_a_list_of_strings_skips_only_its_entry() {
+        for bad in [
+            serde_json::json!("logs"),
+            serde_json::json!({ "logs": true }),
+            serde_json::json!(null),
+            serde_json::json!(["logs", 7]),
+            serde_json::json!([["logs"]]),
+        ] {
+            let mut broken = valid_entry();
+            broken["needs"] = bad.clone();
+            let mut other = valid_entry();
+            other["package"] = serde_json::Value::String("shep-watchdog".to_string());
+            let index = parse_index(wrap_index(vec![broken, other]).as_bytes()).expect("parses");
+
+            assert_eq!(index.skipped, 1, "{bad} was accepted");
+            assert_eq!(index.dogs.len(), 1, "{bad} took its neighbour with it");
+            assert_eq!(index.dogs[0].package, "shep-watchdog");
+        }
     }
 
     /// A shep from before the hashes read the new document by ignoring

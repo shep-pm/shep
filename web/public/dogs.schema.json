@@ -137,6 +137,15 @@
                 }
               }
             ]
+          },
+          "needs": {
+            "type": "array",
+            "description": "The needs this dog meets, by name. shep knows \"logs\" and \"alerts\"; a name it does not know is ignored, so a row can name a need before shep shows it. Absent means the row names none.",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
           }
         }
       }

@@ -13,7 +13,10 @@
       "source": {
         "kind": "cargo",
         "version": "0.2.4"
-      }
+      },
+      "needs": [
+        "logs"
+      ]
     },
     {
       "name": "Moon",
@@ -39,7 +42,10 @@
       "source": {
         "kind": "cargo",
         "version": "0.3.4"
-      }
+      },
+      "needs": [
+        "alerts"
+      ]
     }
   ]
 }
