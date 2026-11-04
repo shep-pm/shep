@@ -127,10 +127,13 @@ pub(crate) struct Origins<'a> {
 impl<'a> Origins<'a> {
     /// Reads the cached index for `index_url`, which may be absent.
     pub(crate) fn read(paths: &'a ShepPaths, index_url: &str) -> Self {
-        Self {
-            paths,
-            index: dog_index::cached_only(paths, index_url),
-        }
+        Self::over(paths, dog_index::cached_only(paths, index_url))
+    }
+
+    /// Answers from `index`, already in hand, so a caller that has read it
+    /// does not read it twice.
+    pub(crate) const fn over(paths: &'a ShepPaths, index: Option<Index>) -> Self {
+        Self { paths, index }
     }
 
     /// `name`'s origin: built-in when `adopted_path` is `None`, installed
