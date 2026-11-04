@@ -253,6 +253,10 @@ impl App {
         self.config_for = None;
         self.dog_target = None;
         self.closing = false;
+        // A question asked on the pane's behalf has no pane to answer for.
+        if let Some((tag, _)) = self.pane_action.take() {
+            self.retire_modal(tag);
+        }
         // A listing still out belongs to this pane. Retired here, not on a
         // refresh, so a pane reopened on the same sheep does not take it.
         self.sheep_dogs_ask += 1;

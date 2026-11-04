@@ -179,14 +179,32 @@ pub enum Sent {
     /// operator. Raised once the dog's manifest is read and declares `pane`.
     ///
     /// A `Request::Trigger`, so the pull shares the trigger path and its
-    /// deadline with every later pane action. The only variant the link task
-    /// does not await inline: a dog that hangs holds its reply for the whole
-    /// trigger deadline.
+    /// deadline with every pane action. The link task does not await it
+    /// inline, nor [`Sent::DogPaneAction`]: a dog that hangs holds its reply
+    /// for the whole trigger deadline.
     DogPane {
         /// The dog asked.
         name: String,
         /// The opening of the pane that asked, so a reply that lands on a
         /// later pane for the same dog is known for a stale one.
+        opening: u64,
+    },
+    /// One of a dog's pane actions, triggered as the operator from its status
+    /// tab.
+    ///
+    /// A `Request::Trigger` like [`Self::DogPane`], and polled beside the
+    /// stream for the same reason. [`Self::request`] sends `{"row": "<key>"}`
+    /// as the params of a row action and none for a pane action.
+    DogPaneAction {
+        /// The dog.
+        name: String,
+        /// The manifest action to trigger.
+        action: String,
+        /// The key of the row a row action runs on, or [`None`] for a pane
+        /// action.
+        row: Option<String>,
+        /// Which opening of the dog's pane raised it, so a reply that lands
+        /// on a later opening is dropped.
         opening: u64,
     },
     /// One dog's whole section, off the dog pane's own `Enter`.
@@ -314,6 +332,15 @@ impl Sent {
                 action: PANE_ACTION.to_owned(),
                 params: None,
             },
+            Self::DogPaneAction {
+                name, action, row, ..
+            } => Request::Trigger {
+                selector: SelectorSpec::Name(name.clone()),
+                action: action.clone(),
+                params: row
+                    .as_ref()
+                    .map(|key| serde_json::json!({ "row": key }).to_string()),
+            },
             Self::SetDogSection { name, toml, .. } => Request::SetDogConfig {
                 name: name.clone(),
                 toml: toml.clone(),
@@ -353,7 +380,8 @@ impl Sent {
             | Self::GrantDog { .. }
             | Self::SheepConfig { .. }
             | Self::DogSection { .. }
-            | Self::DogPane { .. } => None,
+            | Self::DogPane { .. }
+            | Self::DogPaneAction { .. } => None,
         }
     }
 }
@@ -609,6 +637,39 @@ mod tests {
             }
         );
         assert_eq!(sent.ticket(), None, "a read, not a write");
+    }
+
+    #[test]
+    fn a_row_action_is_a_trigger_carrying_the_row_key_and_a_pane_action_carries_none() {
+        let row = Sent::DogPaneAction {
+            name: "paddock".to_owned(),
+            action: "revoke".to_owned(),
+            row: Some("qwen3-32b".to_owned()),
+            opening: 1,
+        };
+        assert_eq!(
+            row.request(),
+            Request::Trigger {
+                selector: SelectorSpec::Name("paddock".to_owned()),
+                action: "revoke".to_owned(),
+                params: Some(r#"{"row":"qwen3-32b"}"#.to_owned()),
+            }
+        );
+        let pane = Sent::DogPaneAction {
+            name: "kelpie".to_owned(),
+            action: "pause".to_owned(),
+            row: None,
+            opening: 1,
+        };
+        assert_eq!(
+            pane.request(),
+            Request::Trigger {
+                selector: SelectorSpec::Name("kelpie".to_owned()),
+                action: "pause".to_owned(),
+                params: None,
+            }
+        );
+        assert_eq!(row.ticket(), None);
     }
 
     #[test]

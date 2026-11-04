@@ -5,14 +5,31 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 
 use super::app::{ActionVerb, InputMode, KeyPress};
+use super::pane::RESERVED;
 use super::textbox::TextEdit;
+
+/// [`map_key`], except that while a modal is open a pressed key lookout binds
+/// nothing to is [`KeyPress::Escape`], so it answers the question with a no
+/// rather than being dropped and leaving the question up.
+#[must_use]
+pub fn map_key_for(event: &Event, mode: InputMode, modal_open: bool) -> Option<KeyPress> {
+    let mapped = map_key(event, mode);
+    match event {
+        // A key lookout binds nothing to still answers a question: as a no.
+        Event::Key(key) if modal_open && mapped.is_none() && key.kind == KeyEventKind::Press => {
+            Some(KeyPress::Escape)
+        }
+        _other => mapped,
+    }
+}
 
 /// The [`KeyPress`] this event means under `mode`, or `None` for a key
 /// lookout does not bind there.
 ///
 /// Only `KeyEventKind::Press` counts: a repeat or release would fire the
-/// action again. `Ctrl-C` binds in either mode, since raw mode delivers it
-/// as an ordinary key event. `Ctrl-D`/`Ctrl-U` page only in `Normal`.
+/// action again. `Ctrl-C` binds in every mode, since raw mode delivers it
+/// as an ordinary key event. `Ctrl-D`/`Ctrl-U` page only in `Normal`. In
+/// `Pane` a plain letter, but a [`RESERVED`] one, is a [`KeyPress::TextChar`].
 #[must_use]
 pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
     let Event::Key(key) = event else {
@@ -64,6 +81,14 @@ pub fn map_key(event: &Event, mode: InputMode) -> Option<KeyPress> {
             KeyCode::BackTab => Some(KeyPress::PrevField),
             _ => None,
         };
+    }
+    if mode == InputMode::Pane
+        && let KeyCode::Char(letter) = key.code
+        && letter.is_ascii_alphabetic()
+        && !RESERVED.contains(&letter)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+    {
+        return Some(KeyPress::TextChar(letter));
     }
     match key.code {
         KeyCode::Char('q') => Some(KeyPress::Quit),
@@ -731,6 +756,79 @@ mod tests {
         assert_eq!(
             map_key(&key(KeyCode::Char('K')), InputMode::Normal),
             Some(KeyPress::StepUp)
+        );
+    }
+
+    fn in_pane(code: KeyCode) -> Option<KeyPress> {
+        map_key(&key(code), InputMode::Pane)
+    }
+
+    /// A dog's status tab hands its action letters to the dog.
+    #[test]
+    fn a_plain_letter_is_text_in_pane_mode() {
+        for letter in ['r', 'p', 'e', 'R', 'x', 'z'] {
+            assert_eq!(
+                in_pane(KeyCode::Char(letter)),
+                Some(KeyPress::TextChar(letter)),
+                "{letter}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_reserved_letters_and_the_navigation_keys_keep_their_meaning_in_pane_mode() {
+        assert_eq!(in_pane(KeyCode::Char('q')), Some(KeyPress::Quit));
+        assert_eq!(in_pane(KeyCode::Char('j')), Some(KeyPress::SelectDown));
+        assert_eq!(in_pane(KeyCode::Char('k')), Some(KeyPress::SelectUp));
+        assert_eq!(in_pane(KeyCode::Char('g')), Some(KeyPress::SelectFirst));
+        assert_eq!(in_pane(KeyCode::Char('G')), Some(KeyPress::SelectLast));
+        assert_eq!(in_pane(KeyCode::Down), Some(KeyPress::SelectDown));
+        assert_eq!(in_pane(KeyCode::Up), Some(KeyPress::SelectUp));
+        assert_eq!(in_pane(KeyCode::Home), Some(KeyPress::SelectFirst));
+        assert_eq!(in_pane(KeyCode::End), Some(KeyPress::SelectLast));
+        assert_eq!(in_pane(KeyCode::Tab), Some(KeyPress::NextGroup));
+        assert_eq!(in_pane(KeyCode::BackTab), Some(KeyPress::PrevGroup));
+        assert_eq!(in_pane(KeyCode::Esc), Some(KeyPress::Escape));
+        assert_eq!(in_pane(KeyCode::Enter), Some(KeyPress::Confirm));
+        assert_eq!(in_pane(KeyCode::Char('?')), Some(KeyPress::Help));
+        let ctrl_c = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert_eq!(map_key(&ctrl_c, InputMode::Pane), Some(KeyPress::Quit));
+    }
+
+    /// A control chord is not a letter, so it never runs a dog's action.
+    #[test]
+    fn a_control_letter_is_not_an_action_letter_in_pane_mode() {
+        let ctrl_r = Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+        assert_eq!(map_key(&ctrl_r, InputMode::Pane), None);
+    }
+
+    /// A question left up by a key nothing is bound to would be answered by
+    /// the Enter after it, so an unbound key answers it with a no.
+    #[test]
+    fn an_unbound_key_answers_an_open_question_with_a_no() {
+        let p = key(KeyCode::Char('p'));
+        assert_eq!(
+            map_key_for(&p, InputMode::Normal, true),
+            Some(KeyPress::Escape)
+        );
+        assert_eq!(map_key_for(&p, InputMode::Normal, false), None);
+        assert_eq!(
+            map_key_for(&key(KeyCode::Enter), InputMode::Normal, true),
+            Some(KeyPress::Confirm),
+            "a bound key keeps its meaning"
+        );
+        let release = Event::Key(KeyEvent {
+            kind: KeyEventKind::Release,
+            ..KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)
+        });
+        assert_eq!(
+            map_key_for(&release, InputMode::Normal, true),
+            None,
+            "a release is not a key press"
+        );
+        assert_eq!(
+            map_key_for(&Event::Resize(80, 24), InputMode::Normal, true),
+            None
         );
     }
 }

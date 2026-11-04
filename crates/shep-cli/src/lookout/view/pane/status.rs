@@ -10,7 +10,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use shep_core::dogs::pane::{Fields, Pane, Section, Table};
 
-use super::super::super::pane::{ConfigPane, DogStatus, PaneState, follow_start};
+use super::super::super::pane::{ConfigPane, DogStatus, PaneKey, PaneState, follow_start};
 use super::super::super::theme::Palette;
 use super::super::flock::fit;
 use super::chrome::{tab_strip_line, title_line};
@@ -39,6 +39,9 @@ const MORE: &str = "  \u{2026}";
 
 /// [`MORE`]'s width in columns.
 const MORE_COLUMNS: usize = 3;
+
+/// The gap between two entries of the actions line.
+const ACTION_GAP: usize = 2;
 
 /// The cursor mark, in the first column of its row.
 const MARK: &str = "\u{25b8} ";
@@ -82,24 +85,42 @@ pub(super) fn status_lines(
     lines
 }
 
-/// The lines under the body: why the newest pull failed while an older pane
-/// is still held, the events a section names that the dog does not declare,
-/// and how many sections this lookout could not draw.
+/// How much a footer line matters when the box has room for fewer than all of
+/// them: the lower, the likelier it stays.
+type Rank = u8;
+
+/// What the footer holds, most to least important: the actions line, the last
+/// result, a failed pull, an action the manifest lacks, skipped sections.
+const ACTIONS: Rank = 0;
+const SAID: Rank = 1;
+const FAILED: Rank = 2;
+const UNDECLARED: Rank = 3;
+const SKIPPED: Rank = 4;
+
+/// The lines under the body, in the order the operator reads them: why the
+/// newest pull failed while an older pane is still held, the events a section
+/// names that the dog does not declare, how many sections this lookout could
+/// not draw, the actions the manifest lacks, the last result of an action,
+/// and the keys that run the pane's actions.
+///
+/// With room for fewer than all of them, the least important go first.
 fn footer_lines(
     status: &DogStatus,
     palette: Palette,
     width: u16,
     room: usize,
 ) -> Vec<Line<'static>> {
-    let mut texts = Vec::new();
+    let mut texts: Vec<(Rank, String, Style)> = Vec::new();
     if let Some(reason) = status.failed() {
         texts.push((
+            FAILED,
             format!("could not refresh: {}", sanitise(reason).0),
             palette.attention(),
         ));
     }
     for kind in status.undeclared_kinds() {
         texts.push((
+            UNDECLARED,
             format!("{} is not an event this dog declares", sanitise(kind).0),
             palette.muted(),
         ));
@@ -112,18 +133,64 @@ fn footer_lines(
             n => (n.to_string(), "sections"),
         };
         texts.push((
+            SKIPPED,
             format!("{count} {noun} could not be drawn: this lookout does not know its kind"),
             palette.muted(),
         ));
     }
-    texts
-        .into_iter()
-        .take(room)
-        .map(|(text, style)| {
-            let text = clipped(&text, width.saturating_sub(TITLE_INDENT as u16));
-            Line::from(Span::styled(format!("  {text}"), style))
+    for action in status.undeclared() {
+        texts.push((
+            UNDECLARED,
+            format!("{} is not in the manifest", sanitise(&action).0),
+            palette.attention(),
+        ));
+    }
+    if let Some(said) = status.said() {
+        texts.push((SAID, said.to_owned(), Style::default()));
+    }
+    let columns = usize::from(width).saturating_sub(TITLE_INDENT);
+    if let Some(line) = actions_text(&status.keys(), columns) {
+        texts.push((ACTIONS, line, palette.muted()));
+    }
+    let mut keep: Vec<usize> = (0..texts.len()).collect();
+    keep.sort_by_key(|at| texts[*at].0);
+    keep.truncate(room);
+    keep.sort_unstable();
+    keep.into_iter()
+        .map(|at| {
+            let (_, text, style) = &texts[at];
+            let text = clipped(text, width.saturating_sub(TITLE_INDENT as u16));
+            Line::from(Span::styled(format!("  {text}"), *style))
         })
         .collect()
+}
+
+/// The keys that run the pane's actions as `r revoke lease (row)` and
+/// `p pause the board`, in declared order, in `columns` columns or fewer. An
+/// entry that does not fit, and every one after it, gives way to a `…`.
+fn actions_text(keys: &[PaneKey], columns: usize) -> Option<String> {
+    let entries: Vec<String> = keys
+        .iter()
+        .filter_map(|key| {
+            let letter = key.letter?;
+            let label = sanitise(&key.action.label).0;
+            let row = if key.rows.is_some() { " (row)" } else { "" };
+            Some(format!("{letter} {label}{row}"))
+        })
+        .collect();
+    let (first, rest) = entries.split_first()?;
+    let mut line = cut(first, columns);
+    for (at, entry) in rest.iter().enumerate() {
+        let more = rest.len() - at - 1;
+        let reserve = if more > 0 { MORE_COLUMNS } else { 0 };
+        if text_columns(&line) + ACTION_GAP + text_columns(entry) + reserve > columns {
+            line.push_str(MORE);
+            return Some(line);
+        }
+        line.push_str(&" ".repeat(ACTION_GAP));
+        line.push_str(entry);
+    }
+    Some(line)
 }
 
 /// Every line under the tab strip, led by a blank one.

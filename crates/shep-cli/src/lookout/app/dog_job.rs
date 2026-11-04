@@ -443,7 +443,8 @@ impl App {
         if self.dog_job.holds(tag) {
             return Some(Effect::ModalAnswered { tag, yes });
         }
-        self.on_delete_answer(tag, yes)
+        self.on_pane_action_answer(tag, yes)
+            .or_else(|| self.on_delete_answer(tag, yes))
     }
 
     /// Drops every grant reply the running job holds, which is what releases a
@@ -468,7 +469,7 @@ impl App {
 
     /// The next modal tag. Tags only have to be unique among the modals open
     /// at once, and a job's own answers drop with it.
-    fn mint_tag(&mut self) -> u64 {
+    pub(super) fn mint_tag(&mut self) -> u64 {
         self.next_modal_tag += 1;
         self.next_modal_tag
     }

@@ -122,6 +122,21 @@ impl App {
         self.modals.queue.push_back(modal);
     }
 
+    /// Drops the modal `tag` asked, open or waiting, because its question no
+    /// longer has anything to act on.
+    pub(super) fn retire_modal(&mut self, tag: u64) {
+        if self
+            .modals
+            .queue
+            .front()
+            .is_some_and(|modal| modal.tag() == tag)
+        {
+            self.close_modal();
+        } else {
+            self.modals.queue.retain(|modal| modal.tag() != tag);
+        }
+    }
+
     /// The modal that has the keyboard, or `None`.
     pub(crate) fn modal(&self) -> Option<&Modal> {
         self.modals.queue.front()

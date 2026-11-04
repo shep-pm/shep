@@ -233,6 +233,9 @@ impl App {
             KeyPress::SelectDown => status.step(Step::Down),
             KeyPress::SelectFirst => status.step(Step::First),
             KeyPress::SelectLast => status.step(Step::Last),
+            // A dog's action letter. `r` is one when an action's label gives
+            // it, and the pane pulls again on its own after one.
+            KeyPress::TextChar(letter) => return Some(self.on_pane_action_key(letter)),
             KeyPress::Quit
             | KeyPress::Escape
             | KeyPress::Refresh
@@ -245,138 +248,4 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    use shep_core::dogs::pane::{Pane, Row};
-
-    use crate::lookout::pane::Tab;
-    use crate::lookout::view::fixtures;
-
-    fn models() -> Pane {
-        let rows = ["a", "b", "c"].map(|key| Row::new(key, [key]));
-        Pane::new().table("models", ["MODEL"], rows)
-    }
-
-    fn tab_of(app: &App) -> Tab {
-        app.config_pane()
-            .and_then(ConfigPane::status)
-            .map(crate::lookout::pane::DogStatus::tab)
-            .expect("the dog declares a pane")
-    }
-
-    fn cursor_of(app: &App) -> Option<usize> {
-        app.config_pane()
-            .and_then(ConfigPane::status)
-            .and_then(crate::lookout::pane::DogStatus::cursor)
-    }
-
-    /// Whether the config pane holds an armed env delete.
-    fn armed(app: &App) -> Option<String> {
-        app.config_pane()
-            .expect("the pane is open")
-            .armed_env()
-            .map(|armed| armed.key.clone())
-    }
-
-    /// `D` on a row that names no key to remove is inert, and inert here means
-    /// silent: the gate's "read-only" sentence answers a write the operator
-    /// actually asked for, and no `D` on a field row ever did.
-    #[test]
-    fn d_on_a_field_row_arms_nothing_and_says_nothing() {
-        let mut app = fixtures::app_in_sheep_pane_read_only();
-        assert!(
-            app.config_pane()
-                .expect("the pane is open")
-                .cursor_env_key_name()
-                .is_none(),
-            "sanity: the cursor is on a field"
-        );
-
-        let effect = app.update(Msg::Key(KeyPress::ArmDelete));
-
-        assert!(matches!(effect, Effect::None));
-        assert!(armed(&app).is_none(), "nothing armed");
-        assert!(app.notice().is_none(), "and nothing said");
-    }
-
-    /// The same key on a row that does name a key still refuses through the
-    /// gate, with the reason the gate gives.
-    #[test]
-    fn d_on_an_env_row_refuses_through_the_gate_with_its_reason() {
-        let mut app = fixtures::app_in_sheep_pane_read_only();
-        fixtures::select_env_key(&mut app, "DB_HOST");
-
-        let _ = app.update(Msg::Key(KeyPress::ArmDelete));
-
-        assert!(armed(&app).is_none(), "the gate closed the arm");
-        let notice = app.notice().map(ToString::to_string);
-        assert!(
-            notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("read-only")),
-            "and named the gate: {notice:?}"
-        );
-    }
-
-    #[test]
-    fn tab_switches_a_pane_dog_between_status_and_settings() {
-        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
-        assert_eq!(tab_of(&app), Tab::Status, "a pane dog opens on status");
-
-        let effect = app.update(Msg::Key(KeyPress::NextGroup));
-        assert!(matches!(effect, Effect::None));
-        assert_eq!(tab_of(&app), Tab::Settings);
-
-        app.update(Msg::Key(KeyPress::PrevGroup));
-        assert_eq!(tab_of(&app), Tab::Status, "shift-tab goes back");
-        app.update(Msg::Key(KeyPress::PrevGroup));
-        assert_eq!(tab_of(&app), Tab::Settings, "and either key switches");
-    }
-
-    #[test]
-    fn tab_does_nothing_for_a_dog_without_a_pane() {
-        let mut app = fixtures::app_in_dog_pane();
-        let before = format!("{:?}", app.config_pane());
-
-        for key in [KeyPress::NextGroup, KeyPress::PrevGroup] {
-            let effect = app.update(Msg::Key(key));
-            assert!(matches!(effect, Effect::None));
-        }
-
-        assert!(
-            app.config_pane()
-                .is_some_and(|pane| pane.status().is_none())
-        );
-        assert_eq!(format!("{:?}", app.config_pane()), before);
-    }
-
-    #[test]
-    fn the_select_keys_move_the_status_cursor_and_not_the_settings_form() {
-        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
-        let form_cursor = app.config_pane().and_then(ConfigPane::cursor);
-
-        app.update(Msg::Key(KeyPress::SelectDown));
-        assert_eq!(cursor_of(&app), Some(1));
-        app.update(Msg::Key(KeyPress::SelectLast));
-        assert_eq!(cursor_of(&app), Some(2));
-        app.update(Msg::Key(KeyPress::SelectUp));
-        assert_eq!(cursor_of(&app), Some(1));
-        app.update(Msg::Key(KeyPress::SelectFirst));
-        assert_eq!(cursor_of(&app), Some(0));
-
-        assert_eq!(app.config_pane().and_then(ConfigPane::cursor), form_cursor);
-    }
-
-    #[test]
-    fn the_settings_tab_keeps_its_own_keys() {
-        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
-        app.update(Msg::Key(KeyPress::NextGroup));
-        app.update(Msg::Key(KeyPress::SelectDown));
-        assert_eq!(
-            cursor_of(&app),
-            Some(0),
-            "j on settings leaves the status cursor"
-        );
-    }
-}
+mod tests;

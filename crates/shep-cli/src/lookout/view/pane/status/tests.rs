@@ -1,4 +1,4 @@
-use shep_core::dogs::pane::{Pane, Row};
+use shep_core::dogs::pane::{Destructive, Pane, Row};
 
 use super::super::draw::pane_lines;
 use super::super::fixtures::text_of;
@@ -408,5 +408,117 @@ fn fields_before_the_first_table_row_scroll_into_view() {
     assert!(
         back.iter().any(|l| l.starts_with('\u{25b8}')),
         "scrolling back reaches the cursor, which then moves: {back:#?}"
+    );
+}
+
+/// Two leases with a row action each and a pane action.
+fn leases() -> Pane {
+    Pane::new()
+        .table(
+            "leases",
+            ["LEASE"],
+            ["qwen3-32b", "strata-7b"].map(|key| Row::new(key, [key])),
+        )
+        .row_action("revoke", "revoke lease", Destructive::Yes)
+        .row_action("renew", "renew lease", Destructive::No)
+        .action("pause", "pause the board", Destructive::No)
+}
+
+fn app_declaring(pane: &Pane, actions: &[&str]) -> App {
+    fixtures::app_in_pane_dog_with_actions(actions, Some(fixtures::pane_reply(pane)))
+}
+
+#[test]
+fn the_footer_shows_each_letter_with_its_label_and_marks_row_actions() {
+    let pane = Pane::new()
+        .table("leases", ["LEASE"], [Row::new("qwen3-32b", ["qwen3-32b"])])
+        .row_action("revoke", "revoke lease", Destructive::Yes)
+        .action("pause", "pause the board", Destructive::No);
+    let app = app_declaring(&pane, &["revoke", "pause"]);
+
+    for width in [80, 100] {
+        let lines = trimmed(drawn(&app, width, 0));
+        assert_eq!(
+            lines.last().map(String::as_str),
+            Some("  r revoke lease (row)  p pause the board"),
+            "width {width}: {lines:#?}"
+        );
+    }
+}
+
+#[test]
+fn the_footer_drops_the_actions_that_do_not_fit_and_says_so_at_the_narrow_floor() {
+    let app = app_declaring(&leases(), &["revoke", "renew", "pause"]);
+
+    let lines = drawn(&app, MIN_TERM_WIDTH, 0);
+
+    let footer = lines.last().expect("the pane draws").trim_end().to_owned();
+    assert_eq!(footer, "  r revoke lease (row)  \u{2026}");
+    for width in MIN_TERM_WIDTH..=120 {
+        for line in drawn(&app, width, 0) {
+            assert!(
+                visible_width(&line) <= usize::from(width),
+                "width {width}: {line:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_action_the_manifest_lacks_is_named_and_gets_no_letter() {
+    let app = app_declaring(&leases(), &["renew", "pause"]);
+
+    let lines = trimmed(drawn(&app, 100, 0));
+
+    assert!(
+        lines.contains(&"  revoke is not in the manifest".to_owned()),
+        "{lines:#?}"
+    );
+    assert_eq!(
+        lines.last().map(String::as_str),
+        Some("  r renew lease (row)  p pause the board"),
+        "{lines:#?}"
+    );
+}
+
+#[test]
+fn the_last_result_shows_above_the_actions() {
+    let mut app = app_declaring(&leases(), &["revoke", "renew", "pause"]);
+    app.update(Msg::Key(KeyPress::TextChar('p')));
+    app.update(Msg::Replied {
+        sent: crate::lookout::app::Sent::DogPaneAction {
+            name: "paddock".to_owned(),
+            action: "pause".to_owned(),
+            row: None,
+            opening: 1,
+        },
+        result: Ok(shep_core::protocol::Response::Triggered(vec![
+            shep_core::protocol::ActionReply {
+                id: 92,
+                name: "paddock".to_owned(),
+                outcome: ActionOutcome::Replied {
+                    body: "paused".to_owned(),
+                },
+            },
+        ])),
+    });
+
+    let lines = trimmed(drawn(&app, 100, 0));
+
+    let at = lines.len() - 2;
+    assert_eq!(lines[at], "  paused", "{lines:#?}");
+}
+
+#[test]
+fn a_short_box_keeps_the_actions_line_and_drops_the_older_notes() {
+    let app = app_declaring(&leases(), &["renew", "pause"]);
+
+    let lines = trimmed(drawn(&app, 100, 4));
+
+    assert_eq!(lines.len(), 4, "{lines:#?}");
+    assert_eq!(
+        lines.last().map(String::as_str),
+        Some("  r renew lease (row)  p pause the board"),
+        "{lines:#?}"
     );
 }

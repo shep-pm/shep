@@ -44,24 +44,36 @@ impl App {
         opening: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        self.land_dog_pane(name, opening, read_pulled_pane(name, result));
-        Effect::None
+        self.land_dog_pane(name, opening, read_pulled_pane(name, result))
     }
 
     /// Lands a pull's answer on the dog's pane, dropped when the operator has
     /// left that pane, or has opened it again since the pull was sent.
-    pub(super) fn land_dog_pane(&mut self, name: &str, opening: u64, answer: Result<Pane, String>) {
-        if let Some(status) = self
+    ///
+    /// Sends the pull an action queued behind this one, if there is one.
+    pub(super) fn land_dog_pane(
+        &mut self,
+        name: &str,
+        opening: u64,
+        answer: Result<Pane, String>,
+    ) -> Effect {
+        let again = self
             .dog_pane_of(name, opening)
             .and_then(ConfigPane::status_mut)
-        {
-            status.land(answer);
+            .is_some_and(|status| status.land(answer));
+        if again {
+            Effect::Send(Sent::DogPane {
+                name: name.to_owned(),
+                opening,
+            })
+        } else {
+            Effect::None
         }
     }
 
     /// The open config pane, when it is dog `name`'s and the `opening` given
     /// is the latest.
-    fn dog_pane_of(&mut self, name: &str, opening: u64) -> Option<&mut ConfigPane> {
+    pub(super) fn dog_pane_of(&mut self, name: &str, opening: u64) -> Option<&mut ConfigPane> {
         if opening != self.dog_opening {
             return None;
         }
@@ -78,14 +90,25 @@ impl App {
 /// dog's own words are quoted in one, and nothing it writes may drive the
 /// terminal or break the line.
 fn read_pulled_pane(name: &str, result: Result<Response, RequestError>) -> Result<Pane, String> {
-    let reason = match result {
+    replied_body(name, result)
+        .and_then(|body| Pane::read(&body))
+        .map_err(|line| crate::terminal_safe::sanitise(&line).0)
+}
+
+/// The body dog `name` replied to a trigger with, or the one line that says
+/// why there is none.
+pub(super) fn replied_body(
+    name: &str,
+    result: Result<Response, RequestError>,
+) -> Result<String, String> {
+    match result {
         Ok(Response::Triggered(rows)) => {
             let row = rows
                 .into_iter()
                 .find(|row| row.name == name)
                 .ok_or_else(|| format!("{name} gave no answer"))?;
             match row.outcome {
-                ActionOutcome::Replied { body } => Pane::read(&body),
+                ActionOutcome::Replied { body } => Ok(body),
                 ActionOutcome::TimedOut => Err(format!("{name} did not answer in time")),
                 ActionOutcome::NoChannel => Err(format!("{name} has no shepherd channel")),
                 ActionOutcome::DogNoChannel => {
@@ -98,8 +121,7 @@ fn read_pulled_pane(name: &str, result: Result<Response, RequestError>) -> Resul
             }
         }
         other => Err(failed_reply(other)),
-    };
-    reason.map_err(|line| crate::terminal_safe::sanitise(&line).0)
+    }
 }
 
 #[cfg(test)]

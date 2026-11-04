@@ -763,7 +763,28 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       Until the dog answers the tab reads <code>asking &lt;dog&gt;</code>. A dog
       that does not answer in time, or answers something lookout cannot read,
       leaves one line saying which, quoting the dog's reply, and the settings
-      tab works as it always did. No actions are drawn yet.
+      tab works as it always did.
+    </p>
+
+    <h3 id="a-dogs-actions">A dog's actions</h3>
+    <p>
+      The foot lists each action with a letter, its label, and{" "}
+      <code>(row)</code> when it runs on the row under the cursor:{" "}
+      <code>r revoke lease (row)  p pause the board</code>. The letter is the
+      first one of the label no earlier action took, else the first free one
+      from <code>a</code> to <code>z</code>; <code>q j k g G</code> are never
+      given out. An action that takes <code>r</code> wins over refresh here.
+    </p>
+    <p>
+      A row action with no row under the cursor says <code>no row selected</code>.
+      An action missing from the dog's manifest gets no letter, and the foot
+      says <code>&lt;action&gt; is not in the manifest</code>. A destructive
+      one asks first, <code>Run revoke lease on qwen3-32b?</code>, naming the
+      row by its key: <code>Enter</code> runs it, any other key cancels.
+    </p>
+    <p class="fine">
+      A reply, refusal or timeout shows as the foot's last result; the pane is
+      read again. <code>--read-only</code> runs no action.
     </p>
 
     <h2 id="editing-text">Editing text</h2>

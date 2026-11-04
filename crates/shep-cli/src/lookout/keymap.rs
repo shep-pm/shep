@@ -240,7 +240,7 @@ fn rows_from(probe: &[(KeyCode, KeyModifiers)]) -> Vec<Binding> {
             // needs both to reach `binding`, or whichever mode lost the
             // race drops out of the overlay silently. `Backspace` has no
             // `Normal` mapping, which is why `or_else` reads as correct.
-            for mode in [InputMode::Normal, InputMode::Text] {
+            for mode in [InputMode::Normal, InputMode::Text, InputMode::Pane] {
                 let Some(press) = map_key(&event, mode) else {
                     continue;
                 };
@@ -316,7 +316,7 @@ mod tests {
             .collect();
 
         for (code, modifiers) in every_key() {
-            for mode in [InputMode::Normal, InputMode::Text] {
+            for mode in [InputMode::Normal, InputMode::Text, InputMode::Pane] {
                 let Some(press) = map_key(&Event::Key(KeyEvent::new(code, modifiers)), mode) else {
                     continue;
                 };

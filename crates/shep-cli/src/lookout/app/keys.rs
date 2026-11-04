@@ -373,21 +373,26 @@ impl App {
         &self.filter
     }
 
-    /// Which keymap is currently in force.
+    /// Which keymap is currently in force: [`InputMode::Pane`] while a dog's
+    /// status tab is open and nothing sits over it, else the mode a box set.
     #[must_use]
     pub fn mode(&self) -> InputMode {
-        self.mode
-    }
-
-    /// The mode keys are read in: [`InputMode::Normal`] while a modal is
-    /// open, even over a text box, so its scroll keys and Enter arrive as the
-    /// select and confirm keys rather than as typing.
-    #[must_use]
-    pub fn key_mode(&self) -> InputMode {
-        if self.modal().is_some() {
-            InputMode::Normal
+        if self.mode == InputMode::Normal && self.on_status_tab() {
+            InputMode::Pane
         } else {
             self.mode
+        }
+    }
+
+    /// The mode keys are read in: [`InputMode::Normal`] while a modal or the
+    /// keymap overlay is open, even over a text box, so its scroll keys and
+    /// Enter arrive as the select and confirm keys rather than as typing.
+    #[must_use]
+    pub fn key_mode(&self) -> InputMode {
+        if self.modal().is_some() || self.keymap_open {
+            InputMode::Normal
+        } else {
+            self.mode()
         }
     }
 

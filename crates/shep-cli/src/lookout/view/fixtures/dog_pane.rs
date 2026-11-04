@@ -475,11 +475,20 @@ pub fn pane_reply(pane: &Pane) -> ActionOutcome {
 /// Opened the way the event loop opens one: `e`, the schema, the section, the
 /// manifest, then the reply to the pull.
 pub fn app_in_pane_dog(outcome: Option<ActionOutcome>) -> App {
-    app_in_pane_dog_declaring(&["lease.changed"], outcome)
+    app_in_pane_dog_with(&["revoke"], &["lease.changed"], outcome)
 }
 
 /// [`app_in_pane_dog`] whose manifest declares the event kinds `events`.
 pub fn app_in_pane_dog_declaring(events: &[&str], outcome: Option<ActionOutcome>) -> App {
+    app_in_pane_dog_with(&["revoke"], events, outcome)
+}
+
+/// [`app_in_pane_dog`] whose manifest declares the actions `actions`.
+pub fn app_in_pane_dog_with_actions(actions: &[&str], outcome: Option<ActionOutcome>) -> App {
+    app_in_pane_dog_with(actions, &["lease.changed"], outcome)
+}
+
+fn app_in_pane_dog_with(actions: &[&str], events: &[&str], outcome: Option<ActionOutcome>) -> App {
     let paddock = ProcessInfo::builder(92, "paddock", ProcStatus::Online)
         .pid(Some(92_000))
         .dog(Some(DogSource::Adopted {
@@ -517,7 +526,7 @@ pub fn app_in_pane_dog_declaring(events: &[&str], outcome: Option<ActionOutcome>
         name: "paddock".to_string(),
         opening,
         declared: Some(DeclaredPane {
-            actions: vec!["revoke".to_string()],
+            actions: actions.iter().map(|name| (*name).to_string()).collect(),
             events: events.iter().map(|kind| (*kind).to_string()).collect(),
         }),
     });
