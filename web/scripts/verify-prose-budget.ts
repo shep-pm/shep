@@ -518,8 +518,8 @@ export const BUDGETS: Record<string, number> = {
   // now completes adopted dogs and the subcommands their manifests declare,
   // and generating it before an adopt leaves it stale.
   // Raised from 520 on 2026-11-03 for one sentence: the first-run greeting
-  // now ends with three dogs to install.
-  "getting-started": 527,
+  // now ends with three dogs to install and the line to show it again.
+  "getting-started": 534,
   serve: 480,
   hosts: 500,
   // Raised from 380 on 2026-10-21 for the global `--host` flag, which is new

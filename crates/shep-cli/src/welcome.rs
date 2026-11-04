@@ -45,7 +45,7 @@ Getting started
 const DOGS: &str = "\
 Dogs add what shep leaves out
   shep install log-rotate rotate logs as they grow
-  shep install discord    hear when a sheep crashes
+  shep install discord    watch and drive a flock from Discord
   shep install deploy     ship from a git branch
 ";
 
@@ -149,7 +149,7 @@ Getting started
 
 Dogs add what shep leaves out
   shep install log-rotate rotate logs as they grow
-  shep install discord    hear when a sheep crashes
+  shep install discord    watch and drive a flock from Discord
   shep install deploy     ship from a git branch
 
   shep welcome            show this again
