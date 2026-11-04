@@ -169,7 +169,10 @@ impl Verdict {
 }
 
 /// The reason given for an answer that is not a verdict.
-fn unreadable(body: &str) -> String {
+///
+/// Shared with [`pane`](super::pane), which quotes an unreadable pane answer
+/// the same way rather than writing its own cap.
+pub(super) fn unreadable(body: &str) -> String {
     // Cut on a character boundary rather than a byte index: a dog answering in
     // another script still comes back whole up to the cap, and never as a
     // prefix that is not a string.
