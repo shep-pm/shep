@@ -1314,9 +1314,7 @@ Open on the dog catalogue.
 
 The same screen the `i` key opens, reached the same way: lookout sends itself that keypress before
 it draws, so `Esc` leaves to the dashboard and every key the catalogue binds is the key it already
-binds.
-
-A sheep, tab or dog named `catalogue` is reached with `--`, the way a name beside any other
+binds. A sheep, tab or dog named `catalogue` is reached with `--`, the way a name beside any other
 subcommand is: `shep lookout -- web dogs catalogue`.
 
 Usage: shep lookout catalogue [OPTIONS]

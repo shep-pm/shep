@@ -120,22 +120,19 @@ enum LookoutScreen {
     ///
     /// The same screen the `i` key opens, reached the same way: lookout sends
     /// itself that keypress before it draws, so `Esc` leaves to the dashboard
-    /// and every key the catalogue binds is the key it already binds.
-    ///
-    /// A sheep, tab or dog named `catalogue` is reached with `--`, the way a
-    /// name beside any other subcommand is: `shep lookout -- web dogs
-    /// catalogue`.
+    /// and every key the catalogue binds is the key it already binds. A sheep,
+    /// tab or dog named `catalogue` is reached with `--`, the way a name beside
+    /// any other subcommand is: `shep lookout -- web dogs catalogue`.
     Catalogue(CatalogueSpec),
 }
 
 /// The clap surface for `shep lookout`.
 ///
-/// `args_conflicts_with_subcommands` is what keeps the three positionals
-/// working: clap stops looking for a subcommand once it has read a value or a
-/// flag, so `shep lookout web dogs catalogue` still names a dog. It costs the
-/// other half, a `catalogue` landing in a positional slot after a flag, which
-/// [`LookoutArgs::finish`] reads back as the screen. `disable_help_subcommand`
-/// keeps `shep lookout help` a sheep's name rather than clap's help.
+/// `args_conflicts_with_subcommands` is what keeps the three positionals: clap
+/// stops looking for a subcommand once it has read a value, so `shep lookout
+/// web dogs catalogue` still names a dog. Its cost is the mirror, a `catalogue`
+/// after a flag, which [`LookoutArgs::finish`] reads back as the screen.
+/// `disable_help_subcommand` keeps `shep lookout help` a sheep's name.
 #[derive(Debug, clap::Args)]
 #[command(args_conflicts_with_subcommands = true, disable_help_subcommand = true)]
 struct LookoutSpec {
@@ -237,14 +234,10 @@ impl LookoutArgs {
                 "{dog} names a dog's table, and {tab} has none: the third positional needs `dogs` as its tab"
             )));
         }
-        // `args_conflicts_with_subcommands` is what keeps `shep lookout web
-        // dogs catalogue` naming a dog, and its mirror is the cost: a flag in
-        // front of `catalogue` makes clap read the subcommand's name as a
-        // sheep's, so `shep lookout --read-only catalogue` would open the
-        // dashboard hunting for a sheep called `catalogue`. With the gate flag
-        // the only thing beside it, `catalogue` is the screen whichever side the
-        // flag sat on. The name is still reachable, with `--` ending clap's
-        // looking: `shep lookout -- catalogue`.
+        // `args_conflicts_with_subcommands` keeps `shep lookout web dogs
+        // catalogue` naming a dog, and its mirror is the cost: a flag in front
+        // of `catalogue` puts the word in the sheep's slot. The rule below reads
+        // that spelling back as the screen, and `--` keeps the name reachable.
         let catalogue_by_name = spec.screen.is_none()
             && spec.read_only
             && spec.sheep.as_deref() == Some(CATALOGUE_SCREEN)
@@ -419,10 +412,9 @@ mod tests {
             vec!["shep", "lookout", "web", "Dogs"],
             vec!["shep", "lookout", "web", ""],
             // The issue's third acceptance line, `shep lookout web config dogs`,
-            // which was never a parse and is still not one: `config` is no
-            // group the pane draws, so the tab slot refuses it before the third
-            // positional is ever read. Pinned here so the subcommand slot added
-            // to `lookout` cannot be what changed it.
+            // was never a parse: `config` is no group the pane draws, so the tab
+            // slot refuses it before the third positional is read. Pinned so the
+            // subcommand slot added to `lookout` cannot be what changed that.
             vec!["shep", "lookout", "web", "config", "dogs"],
         ] {
             let err = Cli::try_parse_from(&argv).expect_err(&format!("{argv:?}"));
@@ -566,10 +558,9 @@ mod tests {
         assert!(!args.catalogue, "`--` is what makes the name a name again");
 
         // The one spelling the parse cannot tell apart: the gate flag in front
-        // of `--` in front of the name. The flag is the only thing beside the
-        // name, so it reads as the screen. Nothing on the lookout page promises
-        // this one, and a sheep called `catalogue` is one keystroke away on the
-        // dashboard.
+        // of `--` in front of the name. The flag is the only thing beside it, so
+        // it reads as the screen. Nothing on the lookout page promises this one,
+        // and a sheep called `catalogue` is a keystroke away on the dashboard.
         let Commands::Lookout(args) =
             Cli::try_parse_from(["shep", "lookout", "--read-only", "--", "catalogue"])
                 .unwrap()
