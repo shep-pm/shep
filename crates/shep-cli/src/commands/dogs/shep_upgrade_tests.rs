@@ -529,6 +529,33 @@ async fn the_reload_is_asked_for_unless_reload_is_given() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn the_reload_names_the_version_the_channel_delivered_and_not_the_index_latest() {
+    let scene = Scene::new();
+    scene.manager(0);
+    scene.shep_reporting("0.25.0");
+    let _requests = scene.shepherd().await;
+
+    let (code, out, err) = scene
+        .upgrade(
+            &scene.host(Channel::Homebrew),
+            "0.26.0",
+            &[],
+            false,
+            typed(true, "y\nn\n"),
+        )
+        .await;
+
+    assert_eq!(code, ExitCode::Success, "{err}");
+    assert!(
+        err.contains("Reload the shepherd onto 0.25.0 now? [Y/n]"),
+        "{err}"
+    );
+    assert!(!err.contains("0.26.0"), "{err}");
+    assert!(out.contains("moves it onto 0.25.0"), "{out}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn no_terminal_and_no_reload_skips_the_reload_and_prints_the_command() {
     let scene = Scene::new();
     scene.manager(0);

@@ -286,8 +286,8 @@ async fn upgrade_shep(
         return Ok(ExitCode::Success);
     };
     run_manager(streams, host, &command).await?;
-    let new_shep = installed_shep(streams, host, &command).await?;
-    Ok(reload(streams, input, up, latest, &new_shep).await)
+    let (new_shep, installed) = installed_shep(streams, host, &command).await?;
+    Ok(reload(streams, input, up, &installed, &new_shep).await)
 }
 
 /// The by-hand steps of a channel with no command.
@@ -331,13 +331,13 @@ async fn run_manager(
     }
 }
 
-/// The `shep` on `PATH` after the manager ran, once it reports a version
-/// newer than this one.
+/// The `shep` on `PATH` after the manager ran, with the version it reports,
+/// once that is newer than this one.
 async fn installed_shep(
     streams: &mut Streams<'_>,
     host: &Host,
     command: &str,
-) -> Result<PathBuf, ExitCode> {
+) -> Result<(PathBuf, Version), ExitCode> {
     let Some(found) = lookup_on_path(Path::new("shep"), host.path_var.as_deref()) else {
         return Err(streams.fail(
             ExitCode::Failure,
@@ -358,7 +358,7 @@ async fn installed_shep(
                 .find_map(|word| Version::parse(word).ok())
         });
     match reported {
-        Some(version) if version > host.running => Ok(found),
+        Some(version) if version > host.running => Ok((found, version)),
         Some(version) => Err(streams.fail(
             ExitCode::Failure,
             &format!(
@@ -376,13 +376,14 @@ async fn installed_shep(
     }
 }
 
-/// Reloads the shepherd onto `new_shep` when one answers and the operator
-/// agrees. A failed reload is the exit code but does not stop the dogs.
+/// Reloads the shepherd onto `new_shep`, which reports `installed`, when one
+/// answers and the operator agrees. A failed reload is the exit code but does
+/// not stop the dogs.
 async fn reload(
     streams: &mut Streams<'_>,
     input: &mut Input,
     up: &Upgrade<'_>,
-    latest: &Version,
+    installed: &Version,
     new_shep: &Path,
 ) -> ExitCode {
     if Client::connect(&up.paths.socket).await.is_err() {
@@ -391,7 +392,10 @@ async fn reload(
     let go = if up.reload {
         true
     } else if input.is_terminal() {
-        let _ = write!(streams.err, "Reload the shepherd onto {latest} now? [Y/n] ");
+        let _ = write!(
+            streams.err,
+            "Reload the shepherd onto {installed} now? [Y/n] "
+        );
         let _ = streams.err.flush();
         yes_by_default(input).unwrap_or(false)
     } else {
@@ -400,7 +404,7 @@ async fn reload(
     if !go {
         let _ = writeln!(
             streams.out,
-            "The shepherd still runs the old shep. `{RELOAD_COMMAND}` moves it onto {latest}."
+            "The shepherd still runs the old shep. `{RELOAD_COMMAND}` moves it onto {installed}."
         );
         return ExitCode::Success;
     }
