@@ -1,4 +1,4 @@
-use super::app::{App, Control, Focus};
+use super::app::{App, Control, Focus, KeyPress, Msg};
 use super::source::{
     ClientFlock, HostShepherd, Local, LocalReader, NoLocal, Shepherd, UnixShepherd,
 };
@@ -153,6 +153,11 @@ where
     };
 
     let (msg_tx, msg_rx) = mpsc::channel(1024);
+    for msg in opening_messages(args) {
+        // Queued before the link task takes the sender, so the catalogue
+        // keypress is the first thing the reducer reads.
+        let _ = msg_tx.try_send(msg);
+    }
     let (poll_tx, poll_rx) = mpsc::channel(8);
     // Capacity 2: one action plus one lamb fetch is the most that can be
     // outstanding, because the reducer refuses a second action while one is in
@@ -187,6 +192,20 @@ where
     ExitCode::Success
 }
 
+/// The messages lookout sends itself before the operator presses a key.
+///
+/// `shep lookout catalogue` is the `i` key, queued ahead of the flock
+/// listing: the same message into the same reducer, so the catalogue opens by
+/// the same path, `Esc` leaves to the dashboard, and every key the pane binds
+/// is the key it already binds. Over `--host` the pane refuses it with its own
+/// notice, exactly as it refuses the key.
+fn opening_messages(args: &LookoutArgs) -> Vec<Msg> {
+    match args.catalogue {
+        true => vec![Msg::Key(KeyPress::Catalogue)],
+        false => Vec::new(),
+    }
+}
+
 /// Whether this lookout may act, from `--read-only` or from the KV store.
 ///
 /// Control is on by default. `--read-only` closes it outright; short of
@@ -214,7 +233,7 @@ mod tests {
 
     use ratatui::Terminal;
 
-    use super::super::app::{App, Body, Control, Msg, Sent};
+    use super::super::app::{App, Body, Control, Effect, Msg, Sent};
     use tokio::sync::mpsc;
 
     use super::super::theme::Palette;
@@ -331,6 +350,134 @@ mod tests {
         assert_eq!(
             resolve_control(false, &dir.path().join("missing.json")),
             Control::Allowed
+        );
+    }
+
+    /// `shep lookout catalogue` as the entry sees it: one message, the `i`
+    /// key, and the catalogue as the body once the reducer has handled it.
+    #[test]
+    fn the_catalogue_flag_opens_with_the_i_key_as_its_first_message() {
+        let args = LookoutArgs {
+            read_only: false,
+            sheep: None,
+            tab: None,
+            dog: None,
+            catalogue: true,
+        };
+        let mut opening = opening_messages(&args);
+        assert_eq!(opening.len(), 1, "one message, and nothing else");
+        assert!(
+            matches!(opening[0], Msg::Key(KeyPress::Catalogue)),
+            "it is the key the dashboard's `i` sends"
+        );
+
+        let mut app = read_only_app();
+        assert!(
+            matches!(app.body(), Body::FlockTable),
+            "lookout still starts on the dashboard"
+        );
+        assert_eq!(
+            app.update(opening.remove(0)),
+            Effect::LoadCatalogue { fetch: true },
+            "the open raises the load the key raises"
+        );
+        assert!(matches!(app.body(), Body::Catalogue(_)));
+
+        assert!(
+            opening_messages(&LookoutArgs {
+                catalogue: false,
+                ..args
+            })
+            .is_empty(),
+            "every other way in sends itself nothing"
+        );
+    }
+
+    /// The other half: the queued keypress reaches the reducer through the
+    /// running loop, so the first screen is the catalogue rather than the
+    /// dashboard, and the rows are the cached index.
+    ///
+    /// Not `start_paused`: the redraw gate reads real `std::time::Instant`,
+    /// and this test needs the draw after the open, not only the first one.
+    #[tokio::test]
+    async fn the_catalogue_flag_draws_the_catalogue_before_any_key_is_pressed() {
+        // A home with a fresh index cache, so the load the open raises answers
+        // from disk and nothing here reaches the network.
+        let dir = tempfile::Builder::new()
+            .prefix("shep-lookout-catalogue")
+            .tempdir()
+            .unwrap();
+        let paths = test_paths(dir.path());
+        let index = serde_json::json!({
+            "version": 1,
+            "dogs": [{
+                "name": "ledger",
+                "package": "shep-ledger",
+                "adopt_as": "ledger",
+                "description": "Counts what each sheep costs.",
+                "repo": "https://github.com/shep-pm/shep-ledger",
+                "license": "MIT OR Apache-2.0",
+                "category": "metrics",
+                "source": { "kind": "cargo", "version": "0.1.0" }
+            }]
+        });
+        crate::dog_index::write_cache(
+            &paths.dog_index_cache,
+            &crate::dog_index::index_url(),
+            index.to_string().as_bytes(),
+        )
+        .unwrap();
+
+        let (msg_tx, msg_rx) = mpsc::channel(16);
+        for msg in opening_messages(&LookoutArgs {
+            read_only: false,
+            sheep: None,
+            tab: None,
+            dog: None,
+            catalogue: true,
+        }) {
+            msg_tx.send(msg).await.unwrap();
+        }
+        let (poll_tx, _poll_rx) = mpsc::channel(1);
+        let (request_tx, _request_rx) = mpsc::channel(2);
+
+        // The nudge, not the quit, is what gets the second draw: `may_draw` is
+        // read once per loop iteration.
+        let nudge = msg_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(MIN_REDRAW * 3).await;
+            let _ = nudge.send(Msg::Resize).await;
+            tokio::time::sleep(MIN_REDRAW).await;
+            let _ = nudge.send(Msg::Key(KeyPress::Quit)).await;
+        });
+        drop(msg_tx);
+
+        let app = read_only_app();
+        let terminal = Terminal::new(TestBackend::new(120, 24)).unwrap();
+        let terminal = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_ui(
+                app,
+                terminal,
+                stream::empty(),
+                msg_rx,
+                poll_tx,
+                request_tx,
+                paths,
+                FakeLocal::default(),
+            ),
+        )
+        .await
+        .expect("the loop left on `q` within ten seconds");
+
+        let frame = crate::lookout::frames::render_text(terminal.backend().buffer());
+        assert!(
+            frame.contains("CATALOGUE   dogs the index lists"),
+            "the screen opened on the catalogue: {frame}"
+        );
+        assert!(
+            frame.contains("ledger") && frame.contains("metrics"),
+            "and on the cached index, not an empty list: {frame}"
         );
     }
 
