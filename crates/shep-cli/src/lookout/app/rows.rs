@@ -200,6 +200,9 @@ pub enum Sent {
         name: String,
         /// The manifest action to trigger.
         action: String,
+        /// The action as the pane labelled it, which is how the operator
+        /// knows it.
+        label: String,
         /// The key of the row a row action runs on, or [`None`] for a pane
         /// action.
         row: Option<String>,
@@ -644,6 +647,7 @@ mod tests {
         let row = Sent::DogPaneAction {
             name: "paddock".to_owned(),
             action: "revoke".to_owned(),
+            label: "revoke lease".to_owned(),
             row: Some("qwen3-32b".to_owned()),
             opening: 1,
         };
@@ -658,6 +662,7 @@ mod tests {
         let pane = Sent::DogPaneAction {
             name: "kelpie".to_owned(),
             action: "pause".to_owned(),
+            label: "pause the board".to_owned(),
             row: None,
             opening: 1,
         };

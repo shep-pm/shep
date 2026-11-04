@@ -254,6 +254,7 @@ pub(super) fn moved_entries(dropped: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    mod long_action;
     mod refresh;
 
     use super::*;

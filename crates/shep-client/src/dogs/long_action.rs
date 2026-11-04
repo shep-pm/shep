@@ -68,9 +68,22 @@ impl ActionId {
         Self(format!("{start:x}-{:x}-{count}", std::process::id()))
     }
 
-    /// The id a reply body carries, `None` for a body that is not one or
-    /// whose id is empty.
-    fn from_reply(body: &str) -> Option<Self> {
+    /// The id a trigger's reply body carries, `None` for a body that is not
+    /// an object with a non-empty text `id`.
+    ///
+    /// A caller that gets `None` has a plain answer, not a long action.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use shep_client::dogs::ActionId;
+    ///
+    /// let (id, body) = ActionId::accept();
+    /// assert_eq!(ActionId::from_reply(&body), Some(id));
+    /// assert_eq!(ActionId::from_reply("swept 3 files"), None);
+    /// ```
+    #[must_use]
+    pub fn from_reply(body: &str) -> Option<Self> {
         let value: Value = serde_json::from_str(body).ok()?;
         let id = value.get("id")?.as_str().filter(|id| !id.is_empty())?;
         Some(Self(id.to_owned()))
@@ -90,6 +103,38 @@ pub struct ActionDone {
     pub id: ActionId,
     /// What the work produced.
     pub result: Value,
+}
+
+impl ActionDone {
+    /// The id and outcome a [`DONE_KIND`] event's payload carries, `None`
+    /// for a payload that is not what the callee's `finish_action` writes.
+    ///
+    /// The outcome is the payload's `error` when it has one, else its
+    /// `result`. A payload with an empty id, a non-text `error` or neither
+    /// field is `None`, so a callee's slip is not read as success.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use serde_json::json;
+    /// use shep_client::dogs::ActionDone;
+    ///
+    /// let payload = json!({ "id": "abc", "error": "disk full" });
+    /// let (id, outcome) = ActionDone::read(&payload).unwrap();
+    /// assert_eq!(id.as_str(), "abc");
+    /// assert_eq!(outcome, Err("disk full".to_owned()));
+    /// assert!(ActionDone::read(&json!({ "id": "abc" })).is_none());
+    /// ```
+    #[must_use]
+    pub fn read(payload: &Value) -> Option<(ActionId, Result<Value, String>)> {
+        let id = payload.get("id")?.as_str().filter(|id| !id.is_empty())?;
+        let outcome = match payload.get("error") {
+            Some(Value::String(error)) => Err(error.clone()),
+            Some(_) => return None,
+            None => Ok(payload.get("result")?.clone()),
+        };
+        Some((ActionId(id.to_owned()), outcome))
+    }
 }
 
 /// Why [`DogRuntime::trigger_and_wait`] returned no result.
@@ -388,6 +433,41 @@ mod tests {
     fn a_reply_that_is_not_an_id_is_not_taken_for_one() {
         for body in ["swept", "{}", r#"{"id":7}"#, r#"{"id":""}"#, ""] {
             assert_eq!(ActionId::from_reply(body), None, "{body:?}");
+        }
+    }
+
+    #[test]
+    fn from_reply_refuses_an_empty_id_a_non_object_and_a_body_with_no_id() {
+        let (id, body) = ActionId::accept();
+        assert_eq!(ActionId::from_reply(&body), Some(id));
+        for body in [r#"{"id":""}"#, "[]", r#""abc""#, r#"{"name":"abc"}"#] {
+            assert_eq!(ActionId::from_reply(body), None, "{body:?}");
+        }
+    }
+
+    #[test]
+    fn done_read_reads_both_payload_shapes_done_payload_writes() {
+        let id = ActionId("abc".to_owned());
+        for outcome in [
+            Ok(json!({ "built": 3 })),
+            Ok(Value::Null),
+            Err("disk full".to_owned()),
+        ] {
+            let payload = done_payload(&id, outcome.clone());
+            assert_eq!(ActionDone::read(&payload), Some((id.clone(), outcome)));
+        }
+    }
+
+    #[test]
+    fn done_read_refuses_a_payload_with_neither_result_nor_error() {
+        for payload in [
+            json!({ "id": "abc" }),
+            json!({ "id": "abc", "error": 7 }),
+            json!({ "result": 1 }),
+            json!({ "id": "", "result": 1 }),
+            json!("abc"),
+        ] {
+            assert_eq!(ActionDone::read(&payload), None, "{payload}");
         }
     }
 

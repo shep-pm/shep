@@ -155,13 +155,28 @@ fn press(app: &mut App, letter: char) -> Effect {
     app.update(Msg::Key(KeyPress::TextChar(letter)))
 }
 
-fn sent_action(action: &str, row: Option<&str>) -> Effect {
-    Effect::Send(Sent::DogPaneAction {
+/// The label `leases()` gives each action.
+fn label_of(action: &str) -> &'static str {
+    match action {
+        "revoke" => "revoke lease",
+        "renew" => "renew lease",
+        "pause" => "pause the board",
+        _drain => "drain the board",
+    }
+}
+
+fn sent_of(action: &str, row: Option<&str>) -> Sent {
+    Sent::DogPaneAction {
         name: "paddock".to_owned(),
         action: action.to_owned(),
+        label: label_of(action).to_owned(),
         row: row.map(str::to_owned),
         opening: 1,
-    })
+    }
+}
+
+fn sent_action(action: &str, row: Option<&str>) -> Effect {
+    Effect::Send(sent_of(action, row))
 }
 
 fn said(app: &App) -> Option<String> {
@@ -303,6 +318,7 @@ fn replied_to_opening(
         sent: Sent::DogPaneAction {
             name: "paddock".to_owned(),
             action: "renew".to_owned(),
+            label: "renew lease".to_owned(),
             row: Some("qwen3-32b".to_owned()),
             opening,
         },
@@ -513,6 +529,7 @@ fn an_action_that_never_left_frees_the_pane() {
         sent: Sent::DogPaneAction {
             name: "paddock".to_owned(),
             action: "pause".to_owned(),
+            label: "pause the board".to_owned(),
             row: None,
             opening: 1,
         },
@@ -520,4 +537,54 @@ fn an_action_that_never_left_frees_the_pane() {
 
     assert_eq!(said(&app).as_deref(), Some("pause was not sent"));
     assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
+}
+
+fn bar(app: &App) -> String {
+    fixtures::rendered(&crate::lookout::view::status::status_line(app, 200))
+}
+
+fn accepted() -> (shep_client::dogs::ActionId, Result<Response, RequestError>) {
+    let (id, body) = shep_client::dogs::ActionId::accept();
+    (id, plain(&body))
+}
+
+#[test]
+fn a_reply_carrying_an_id_records_a_running_action_and_the_bar_shows_it() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    press(&mut app, 'p');
+    let (_, reply) = accepted();
+
+    let effect = app.update(Msg::Replied {
+        sent: sent_of("pause", None),
+        result: reply,
+    });
+
+    assert_eq!(
+        effect,
+        Effect::None,
+        "the pane is pulled when the result lands"
+    );
+    assert!(
+        bar(&app).starts_with("paddock: pause the board running  0s"),
+        "{:?}",
+        bar(&app)
+    );
+    assert_eq!(said(&app), None, "an id is not a plain answer to show");
+    assert_eq!(
+        press(&mut app, 'e'),
+        sent_action("renew", Some("qwen3-32b")),
+        "the pane is free for another action meanwhile"
+    );
+}
+
+#[test]
+fn a_reply_that_is_not_an_id_stays_a_plain_answer() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    press(&mut app, 'p');
+
+    for body in ["{\"id\": 7}", "{\"note\": \"x\"}", "[1]"] {
+        replied(&mut app, plain(body));
+        assert_eq!(said(&app).as_deref(), Some(body));
+    }
+    assert!(!bar(&app).contains("running"), "{:?}", bar(&app));
 }

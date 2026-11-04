@@ -693,6 +693,96 @@ fn the_dog_job_item_draws_with_name_step_and_time_and_goes_before_the_hint() {
     assert!(bar.contains(&hint), "the whole hint survives: {bar:?}");
 }
 
+/// An app whose dogs have each been handed an id for a pane action, started
+/// at `t0`: `(dog, label)` per action.
+fn app_running(t0: Instant, actions: &[(&str, &str)]) -> App {
+    let mut app = App::new(
+        Palette::detect(None, None, None),
+        Control::Allowed,
+        "/home/ada/.shep".to_string(),
+        t0,
+    );
+    for (dog, label) in actions {
+        let body = shep_client::dogs::ActionId::accept().1;
+        let _ = app.update(Msg::Replied {
+            sent: crate::lookout::app::Sent::DogPaneAction {
+                name: (*dog).to_owned(),
+                action: "act".to_owned(),
+                label: (*label).to_owned(),
+                row: None,
+                opening: 1,
+            },
+            result: Ok(shep_core::protocol::Response::Triggered(vec![
+                shep_core::protocol::ActionReply {
+                    id: 1,
+                    name: (*dog).to_owned(),
+                    outcome: shep_core::protocol::ActionOutcome::Replied { body },
+                },
+            ])),
+        });
+    }
+    app
+}
+
+/// The bar's long-action item: the dog, the label and the time spent, a
+/// count after the first when several run, and on a bar too narrow for it
+/// beside the keys, the item goes and the key hint stays whole.
+#[test]
+fn the_long_action_item_draws_with_dog_label_time_and_count_and_goes_before_the_hint() {
+    let t0 = Instant::now();
+    let mut app = app_running(t0, &[("paddock", "pause the board")]);
+    let _ = app.update(Msg::Tick {
+        now: t0 + Duration::from_secs(12),
+    });
+
+    let wide = rendered(&status_line(&app, 200));
+    assert!(
+        wide.starts_with("paddock: pause the board running  12s   "),
+        "{wide:?}"
+    );
+
+    let several = app_running(
+        t0,
+        &[
+            ("paddock", "pause the board"),
+            ("otel", "flush"),
+            ("bark", "ping"),
+        ],
+    );
+    let wide = rendered(&status_line(&several, 200));
+    assert!(
+        wide.starts_with("paddock: pause the board running  0s  +2 more   "),
+        "{wide:?}"
+    );
+
+    let hint = hint_for(app.control(), app.settings().is_some(), app.grouping());
+    let label = u16::try_from(CONTROL_ENABLED_LABEL.chars().count()).unwrap();
+    let fits = u16::try_from(hint.chars().count()).expect("the hint has a width") + label + 1;
+    let bar = rendered(&status_line(&app, fits));
+    assert!(!bar.contains("running"), "{bar:?}");
+    assert!(bar.contains(&hint), "the whole hint survives: {bar:?}");
+}
+
+/// A result is read once, so a bar too narrow for it beside the keys shows
+/// it in their place until it retires.
+#[test]
+fn a_long_action_result_stands_in_for_the_hint_on_a_narrow_bar() {
+    let t0 = Instant::now();
+    let mut app = app_running(t0, &[("paddock", "pause the board")]);
+    assert_eq!(app.update(Msg::Retrying { attempt: 1 }), Effect::None);
+
+    let wide = rendered(&status_line(&app, 200));
+    assert!(
+        wide.starts_with("pause the board: result unknown   "),
+        "{wide:?}"
+    );
+    let narrow = rendered(&status_line(&app, 60));
+    assert!(
+        narrow.starts_with("pause the board: result unknown"),
+        "{narrow:?}"
+    );
+}
+
 const A_HINT: &str = "hint: web has restarted 3 times. Try: shep enable bark";
 
 fn app_with_hint(control: Control) -> App {

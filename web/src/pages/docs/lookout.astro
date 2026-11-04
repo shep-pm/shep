@@ -677,18 +677,17 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       is the one screen it will not open over.
     </p>
     <p>
-      The line under the three destructive keys says whether they can act at
-      all. With the gate open it reads <code>control enabled</code>, with{" "}
+      The line under the three destructive keys says whether they can act. With
+      the gate open it reads <code>control enabled</code>, with{" "}
       <code>--read-only</code> it reads <code>read-only</code>, and once the
       link is down it says so instead, because <code>x</code>,{" "}
       <code>R</code> and <code>L</code> then refuse for a reason the gate
-      doesn't name. The overlay itself still opens on a frozen dashboard,
-      which is where a key list is wanted most.
+      doesn't name. The overlay still opens on a frozen dashboard, where a key
+      list is wanted most.
     </p>
     <p class="fine">
       It drops columns as the terminal narrows, and under 13 rows it refuses
-      and names the height it needs, since half a key list is worse than a
-      sentence saying it does not fit.
+      and names the height it needs.
     </p>
 
     <h2 id="the-dog-catalogue">The dog catalogue</h2>
@@ -696,8 +695,7 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       <code>i</code> opens the community dog index as a screen,
       <code>shep lookout catalogue</code> opens lookout straight on it, and the
       <code>browse dogs</code> row at the foot of settings' dogs section opens
-      it from there. All three reach the same screen the same way, and
-      <code>Esc</code> leaves it back to the flock table.
+      it from there. <code>Esc</code> leaves it back to the flock table.
     </p>
     <p>
       The list is one row per dog the index lists, under a
@@ -715,10 +713,10 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
     <p>
       What is listed is the cache at <code>$SHEP_HOME/cache/dogs.json</code>,
       and the line under the band says how many dogs it holds and whether a
-      fetch is out. Opening on a copy older than 24 hours, or on none, sends the
-      fetch to the background and redraws when it lands. A fetch that fails with
-      a copy on disk leaves that copy listed; no cache and no network leaves one
-      line saying <code>no index cached, no network</code>.
+      fetch is out. A copy older than 24 hours, or none, sends the fetch to the
+      background and redraws when it lands. A failed fetch leaves the copy on
+      disk listed; no cache and no network leaves{" "}
+      <code>no index cached, no network</code>.
     </p>
     <p class="fine">
       The catalogue reads this machine's receipts and <code>shep.toml</code>, so
@@ -731,10 +729,10 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
     <h2 id="a-dogs-status-tab">A dog's status tab</h2>
     <p>
       A dog that declares a pane opens its config on a <code>status</code> tab,
-      and the settings form is the second. <code>Tab</code> and{" "}
-      <code>Shift-Tab</code> switch between them, and the strip under the title
-      brackets the open one: <code>[status]  settings</code>. A dog with no pane
-      keeps the settings form alone, with no strip.
+      with the settings form second. <code>Tab</code> and{" "}
+      <code>Shift-Tab</code> switch, and the strip under the title brackets the
+      open one: <code>[status]  settings</code>. A dog with no pane keeps the
+      settings form alone.
     </p>
     <p>
       The dog answers what to show and lookout draws it. A{" "}
@@ -746,13 +744,12 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       section with nothing in it says <code>none</code>.
     </p>
     <p>
-      Every value is drawn as the dog wrote it, with control characters
-      removed and a long one cut with <code>…</code>. A table too wide for the
-      terminal drops its right-most columns, and the header ends in{" "}
-      <code>…</code> when it has. One taller than the box scrolls with the
-      cursor, and <code>j</code> or <code>k</code> past the last or first row
-      scrolls a line, so every section can be read. A section of a kind this lookout does not know is skipped, and the
-      foot says how many.
+      Values are drawn as the dog wrote them, minus control characters, and a
+      long one is cut with <code>…</code>. A table too wide drops its right-most
+      columns, and the header ends in <code>…</code>. One taller than the box
+      scrolls with the cursor, and <code>j</code> or <code>k</code> past the
+      last or first row scrolls a line. A section of a kind lookout does not
+      know is skipped, and the foot says how many.
     </p>
     <p>
       The tab updates itself when the dog publishes an event one of its
@@ -761,9 +758,8 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
     </p>
     <p class="fine">
       Until the dog answers the tab reads <code>asking &lt;dog&gt;</code>. A dog
-      that does not answer in time, or answers something lookout cannot read,
-      leaves one line saying which, quoting the dog's reply, and the settings
-      tab works as it always did.
+      that times out, or answers something unreadable, leaves one line saying
+      which, quoting its reply; the settings tab works as before.
     </p>
 
     <h3 id="a-dogs-actions">A dog's actions</h3>
@@ -785,6 +781,14 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
     <p class="fine">
       A reply, refusal or timeout shows as the foot's last result; the pane is
       read again. <code>--read-only</code> runs no action.
+    </p>
+    <p>
+      A dog that answers with an action id is doing long work. The status bar
+      shows <code>paddock: pause the board running  12s</code>, with{" "}
+      <code>+2 more</code> when several run, even after the pane closes. The
+      result shows for five seconds, <code>pause the board: done</code> or{" "}
+      <code>pause the board: failed, &lt;error&gt;</code>, and the pane is read
+      again. A lost link ends it as <code>result unknown</code>.
     </p>
 
     <h2 id="editing-text">Editing text</h2>

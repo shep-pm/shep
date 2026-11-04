@@ -58,6 +58,7 @@ impl App {
             focus_ask: None,
             catalogue: Vec::new(),
             dog_job: DogJob::Idle,
+            long_actions: Default::default(),
             dog_quit: None,
             hint: None,
             dog_delete: None,

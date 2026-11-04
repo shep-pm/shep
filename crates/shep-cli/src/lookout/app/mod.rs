@@ -68,6 +68,7 @@ mod feed_keys;
 mod focus;
 mod keys;
 mod lambs;
+mod long_actions;
 // The layer is whole and drawn, but nothing opens a modal until the install flow does.
 #[allow(dead_code)]
 mod modal;
@@ -518,6 +519,9 @@ pub struct App {
     /// replies, which is what releases a callback still waiting for an
     /// operator who has already quit.
     dog_job: DogJob,
+    /// The pane actions a dog answered with an id and has not yet reported
+    /// done, and the last result.
+    long_actions: long_actions::LongActions,
     /// The tag of the quit question lookout is asking, or `None`.
     ///
     /// Held here rather than inside [`DogJob::Running`] because the answer can

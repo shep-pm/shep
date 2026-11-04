@@ -4,6 +4,7 @@
 use super::dog_pane_pull::replied_body;
 use super::*;
 use crate::terminal_safe::sanitise;
+use shep_client::dogs::ActionId;
 
 impl App {
     /// A letter pressed on the status tab: runs the action it names, if any.
@@ -63,6 +64,7 @@ impl App {
         let sent = Sent::DogPaneAction {
             name,
             action: key.action.action,
+            label: key.action.label,
             row,
             opening: self.dog_opening,
         };
@@ -102,28 +104,38 @@ impl App {
         Effect::Send(sent)
     }
 
-    /// An action's reply: a plain answer is shown in the footer and the pane
-    /// is pulled again, and a refusal or a timeout is shown and nothing else.
+    /// An action's reply: an id starts a long action, a plain answer is shown
+    /// in the footer and the pane is pulled again, and a refusal or a timeout
+    /// is shown and nothing else.
     ///
-    /// Dropped when the operator has left the dog's pane, or has opened it
-    /// again since the action was sent. A pull already out is followed by
-    /// another when it lands.
+    /// An id is kept with the pane closed, since the result event comes
+    /// either way. Anything else is dropped once the operator has left the
+    /// pane or reopened it. A pull already out is followed by another.
     pub(super) fn on_dog_pane_action_reply(
         &mut self,
         name: &str,
         opening: u64,
         action: &str,
+        label: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
         let now = self.now;
-        let Some(status) = self
+        let replied = replied_body(name, result);
+        let id = replied.as_deref().ok().and_then(ActionId::from_reply);
+        let status = self
             .dog_pane_of(name, opening)
-            .and_then(ConfigPane::status_mut)
-        else {
+            .and_then(ConfigPane::status_mut);
+        if let Some(id) = id {
+            if let Some(status) = status {
+                status.end_action();
+            }
+            return self.start_long_action(name, label, id);
+        }
+        let Some(status) = status else {
             return Effect::None;
         };
         status.end_action();
-        match replied_body(name, result) {
+        match replied {
             Ok(body) => {
                 let body = body.trim();
                 status.say(

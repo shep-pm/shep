@@ -210,7 +210,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         )
     } else if let Some(notice) = app.notice() {
         (
-            notice.to_string(),
+            with_long_actions(app, notice.to_string(), left_width, false),
             if notice.is_grave() {
                 palette.refusal()
             } else {
@@ -252,6 +252,7 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
 fn body_hint(app: &App, width: u16) -> (String, Style) {
     let (keys, style, is_dashboard) = screen_hint(app);
     let text = with_dog_job(app, &keys, width);
+    let text = with_long_actions(app, text, width, true);
     if is_dashboard {
         (with_flock_hint(app, text, width), style)
     } else {
@@ -364,6 +365,30 @@ fn with_dog_job(app: &App, hint: &str, width: u16) -> String {
         joined
     } else {
         hint.to_owned()
+    }
+}
+
+/// Puts the long-action items ahead of `text`.
+///
+/// The running item is dropped where both would not fit, for the dog job's
+/// reason: the keys are what the screen needs. With `result_wins`, a result
+/// is kept and stands in for `text` while it shows, since a failure's error
+/// is read once. A notice is not given up that way.
+fn with_long_actions(app: &App, text: String, width: u16, result_wins: bool) -> String {
+    let fits = |line: &str| u16::try_from(line.chars().count()).is_ok_and(|needed| needed <= width);
+    let result = app.long_action_result();
+    let running = app.long_actions_running();
+    let items: Vec<&str> = result.into_iter().chain(running.as_deref()).collect();
+    if items.is_empty() {
+        return text;
+    }
+    let joined = format!("{}   {text}", items.join("   "));
+    if fits(&joined) {
+        joined
+    } else if let Some(result) = result.filter(|_| result_wins) {
+        result.to_owned()
+    } else {
+        text
     }
 }
 
