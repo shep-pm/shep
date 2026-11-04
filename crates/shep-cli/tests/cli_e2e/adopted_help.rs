@@ -22,6 +22,20 @@ fn silent_dog(dir: &TempDir, marker: &Path) -> PathBuf {
     write_script(dir, "shep-lr.sh", &body)
 }
 
+/// The lines under `heading` in a `--help` listing, the heading first.
+#[cfg(unix)]
+fn group_under<'a>(help: &'a str, heading: &str) -> Vec<&'a str> {
+    help.lines()
+        .skip_while(|line| *line != heading)
+        .take_while(|line| !line.is_empty())
+        .collect()
+}
+
+#[cfg(unix)]
+fn dogs_group(help: &str) -> Vec<&str> {
+    group_under(help, "Dogs and agents")
+}
+
 #[cfg(unix)]
 fn adopt(home: &Path, binary: &Path, name: &str) -> Output {
     Command::cargo_bin("shep")
@@ -63,19 +77,25 @@ fn shep_help_lists_an_adopted_dog_with_its_description() {
     let help = run(home.path(), &["--help"]);
     assert_success(&help);
     let help = String::from_utf8(help.stdout).unwrap();
-    let group = help
-        .lines()
-        .position(|line| line.starts_with("Dogs and agents"))
-        .expect("`--help` still has a Dogs group");
+    let group = dogs_group(&help);
+    assert!(group.len() > 1, "`--help` still has a Dogs group: {help}");
 
-    assert_eq!(
-        help.lines().skip(group).take(2).collect::<Vec<_>>(),
-        vec![
-            "Dogs and agents  dogs install upgrade adopt whistle",
-            "                 otel  exports traces to an OTLP collector",
-        ],
-        "the dog joins the group it belongs to: {help}"
+    let about = "exports traces to an OTLP collector";
+    let dog = group.last().unwrap();
+    let verb = group
+        .iter()
+        .find(|line| line.starts_with("  dogs "))
+        .unwrap();
+    assert!(
+        dog.starts_with("  otel "),
+        "the dog is under the group's verbs: {help}"
     );
+    assert_eq!(
+        dog.find(about),
+        verb.find("List the dogs"),
+        "the dog's about starts where the verbs' do: {help}"
+    );
+    assert!(dog.ends_with(about), "{dog}");
     assert!(!marker.exists(), "`--help` must never run the dog it lists");
 }
 
@@ -92,7 +112,7 @@ fn shep_help_lists_an_undeclared_dog_with_no_description() {
 
     let help = String::from_utf8(run(home.path(), &["--help"]).stdout).unwrap();
     assert!(
-        help.lines().any(|line| line == "                 lr"),
+        help.lines().any(|line| line == "  lr"),
         "an undeclared dog is listed bare:\n{help}"
     );
 }
@@ -181,19 +201,13 @@ fn a_manifest_cannot_put_a_word_in_the_verb_listing() {
     assert_success(&adopt(home.path(), &binary, "otel"));
 
     let help = String::from_utf8(run(home.path(), &["--help"]).stdout).unwrap();
-    let groups = help
-        .lines()
-        .filter(|line| {
-            line.starts_with("Run things")
-                || line.starts_with("See what's up")
-                || line.starts_with("The shepherd")
-        })
-        .collect::<Vec<_>>();
-    for line in groups {
-        assert!(
-            !line.contains("status") && !line.contains("drain"),
-            "{line}"
-        );
+    for heading in ["Run things", "See what's up", "The shepherd"] {
+        let lines = group_under(&help, heading);
+        assert!(lines.len() > 1, "`{heading}` is listed: {help}");
+        for line in lines {
+            let name = line.split_whitespace().next().unwrap_or("");
+            assert!(name != "status" && name != "drain", "{line}");
+        }
     }
 
     // `shep status` is not a verb: it reaches clap's unknown-verb error.
@@ -235,13 +249,20 @@ fn a_manifest_carrying_a_placeholder_or_a_line_break_is_listed_as_text() {
     let listed = String::from_utf8(run(home.path(), &["--help"]).stdout).unwrap();
     let at = plain
         .lines()
-        .position(|line| line.starts_with("Dogs and agents"))
+        .position(|line| line == "Dogs and agents")
         .expect("`--help` still has a Dogs group");
+    let end = at + dogs_group(&plain).len();
+    let column = plain
+        .lines()
+        .find(|line| line.starts_with("  dogs "))
+        .and_then(|line| line.find("List the dogs"))
+        .expect("the dogs verb is listed with its about");
+    let dog_line = format!("  {:<1$}spans all-args and more[2J", "otel", column - 2);
     let expected: Vec<&str> = plain
         .lines()
-        .take(at + 1)
-        .chain(["                 otel  spans all-args and more[2J"])
-        .chain(plain.lines().skip(at + 1))
+        .take(end)
+        .chain([dog_line.as_str()])
+        .chain(plain.lines().skip(end))
         .collect();
 
     assert_eq!(listed.lines().collect::<Vec<_>>(), expected, "{listed}");

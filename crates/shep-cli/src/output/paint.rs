@@ -42,8 +42,8 @@ pub(crate) fn style_for(role: Role, deep: bool) -> Style {
 /// Headings and `Usage:` are butter and bold, flags and verbs meadow,
 /// placeholders sky. Every other slot, the error ones included, stays plain:
 /// [`crate::entry`] renders usage errors plain regardless. `deep` is
-/// [`style_for`]'s. [`crate::cli::dress_help_template`] paints the
-/// hand-written verb listing with these same styles.
+/// [`style_for`]'s. [`crate::cli::top_level_template`] paints the
+/// grouped verb listing with these same styles.
 #[must_use]
 pub(crate) fn help_styles(deep: bool) -> clap::builder::Styles {
     let heading = style_for(Role::Butter, deep).bold();
