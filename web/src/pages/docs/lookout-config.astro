@@ -39,7 +39,7 @@ const settingsFresh = `shep lookout   /home/ada/.shep                           
     sh                sh                              shep.toml    the next command reads it
     + add an entry
   hosts               none                            the default  the next command reads it
-  ... 2 below
+  ... 3 below
 
 
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled`;
@@ -68,6 +68,7 @@ const settingsConfirm = `shep lookout   /home/ada/.shep                         
   space arms, Enter applies; e opens a dog; a dog needs no reload
   ▸ bark                                                                                                          no       built-in              1.0.0             not running
   ▸ metrics                                                                                                       yes      built-in              1.0.0             not running
+  browse dogs  Enter opens the dog index
 
   set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels
 
@@ -99,7 +100,7 @@ const settingsDogs = `shep lookout   /home/ada/.shep                            
   ▸ otel                                              no       adopted               -                 online
   ▸ ledger                                            yes      adopted               -                 not running
   ▸ bark                                              yes      built-in              1.0.0             silent
-
+  browse dogs  Enter opens the dog index
 
 
 
@@ -140,7 +141,7 @@ const settingsDogOpen = `shep lookout   /home/ada/.shep                         
     sink_timeout      (unset)                                      dogs.toml, it is told
     sinks             <set>                                        read-only
   ▸ metrics                                           no       built-in              1.0.0             not running
-
+  browse dogs  Enter opens the dog index
 
 
 
@@ -398,6 +399,11 @@ esc close   j/k select   g/G first/last   r refresh   space cycle   e edit   d b
         closes it again
       </li>
     </ul>
+    <p>
+      The dogs section ends in a <code>browse dogs</code> row, even with no
+      dog adopted. <code>Enter</code> on it opens the dog catalogue, and{" "}
+      <code>Esc</code> there returns to the flock view.
+    </p>
     <p class="fine">
       Any movement key, <code>r</code> or <code>s</code> cancels an armed
       candidate instead of acting on it, the same rule the dashboard's
