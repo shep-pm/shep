@@ -286,6 +286,37 @@ pub(crate) struct Installed {
     pub(crate) pinned: Option<String>,
 }
 
+impl Installed {
+    /// Where the dog came from, as a line of help names it: `owner/repo` for
+    /// a GitHub repository, else the address without its scheme or user.
+    pub(crate) fn source(&self) -> String {
+        let repo = self
+            .repo
+            .trim()
+            .trim_end_matches('/')
+            .trim_end_matches(".git");
+        let repo = match repo.split_once("://") {
+            Some((scheme, rest))
+                if scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)) =>
+            {
+                rest.rsplit_once('@')
+                    .map_or(rest, |(_, host)| host)
+                    .to_owned()
+            }
+            // `git@host:owner/repo`, the scp form.
+            _ => match repo.split_once(':') {
+                Some((host, path)) if !host.contains('/') => {
+                    format!("{}/{path}", host.rsplit_once('@').map_or(host, |(_, h)| h))
+                }
+                _ => repo.to_owned(),
+            },
+        };
+        repo.strip_prefix("github.com/").unwrap_or(&repo).to_owned()
+    }
+}
+
 /// The receipt's shape as written, narrowed to what [`Installed`] keeps.
 #[derive(Deserialize)]
 struct Written {
@@ -451,6 +482,30 @@ mod tests {
             r#"{{"manifest":1,"name":"log-rotate","version":"{version}","protocol":12}}"#
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn the_source_is_the_repository_a_help_page_names() {
+        let source = |repo: &str| {
+            Installed {
+                package: "p".to_owned(),
+                repo: repo.to_owned(),
+                version: None,
+                pinned: None,
+            }
+            .source()
+        };
+
+        assert_eq!(
+            source("https://github.com/shep-pm/shep-kelpie"),
+            "shep-pm/shep-kelpie"
+        );
+        assert_eq!(source("https://github.com/someone/dog.git/"), "someone/dog");
+        assert_eq!(source("https://gitlab.com/a/b"), "gitlab.com/a/b");
+        assert_eq!(source("http://git.example/a/b"), "git.example/a/b");
+        assert_eq!(source("ssh://git@git.example/a/b.git"), "git.example/a/b");
+        assert_eq!(source("git@github.com:o/r.git"), "o/r");
+        assert_eq!(source("git@git.example:o/r"), "git.example/o/r");
     }
 
     #[test]
