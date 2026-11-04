@@ -450,7 +450,7 @@ impl PaneAction {
 /// happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Destructive {
-    /// Lookout asks "Run <label> on <row key>?" before triggering it.
+    /// Lookout asks "Run `<label>` on `<row key>`?" before triggering it.
     Yes,
     /// Lookout triggers it on its key.
     No,
