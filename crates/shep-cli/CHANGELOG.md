@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bare shep upgrade upgrades shep through its channel, then the dogs
 - Shep draws a dog's --help page with its examples and usage
 - Shep draws a stub for a dog that declares no help, and answers shep help <dog>
+- Shep knows which channel installed it, and the skew warning names that channel's command
+- Add a modal layer that asks yes or no, shows long output and takes keys first
+- The dog index names the latest shep, written by the release pull request
+- Suggest a dog under shep flock when a log grows or a sheep keeps restarting
+- Manifest v3 declares a pane, and the pane's wire types live in shep_core::dogs::pane
+- A dog's verb declares examples and usage, and a clap dog builds them
 
 ### Changed
 
@@ -64,10 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The reload names the version the channel delivered
 - A help page names the running binary's version and a source only its receipt backs
 
-
 ### Added
 
 - Adopt says when a dog asked for a pane it cannot have
+
 
 ## [0.24.0] - 2026-11-03
 
