@@ -504,11 +504,12 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
       <code>Examples:</code> block <code>render_examples</code> writes to{" "}
       <code>after_help</code>.{" "}
       <code>shep adopt</code> warns, and adopts anyway, past 60 columns of
-      description or a fourth example. A dog that declares subcommands gets
-      shep's page for them and its binary never runs for{" "}
-      <code>--help</code>; one that declares none keeps <code>--help</code> as
-      a pass-through. Both read the manifest cache, never the binary, and
-      completion is generated from the registry as it stands, so generate the
+      description or a fourth example. Every adopted dog gets shep's page for{" "}
+      <code>shep &lt;name&gt; --help</code>, <code>-h</code> and{" "}
+      <code>shep help &lt;name&gt;</code>; <code>shep &lt;name&gt; help</code>{" "}
+      still reaches the dog. No <code>verb</code> gets a stub: name, version,
+      cached index description. Neither fetches the index or
+      runs the binary, and completion is generated from the registry as it stands, so generate the
       script again after an adopt. A manifest's text prints as one line:
       braces, newlines and escapes go. A name a shell would read as code is
       not completed.
