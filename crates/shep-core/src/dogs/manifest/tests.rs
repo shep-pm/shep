@@ -15,7 +15,8 @@ const FIXTURE: &str = r#"{
   ],
   "verb": {
     "description": "Export metrics",
-    "subcommands": [{"name": "status", "about": "Show the exporter"}]
+    "subcommands": [{"name": "status", "about": "Show the exporter", "usage": "<job> [watch]"}],
+    "examples": ["shep otel status", "shep otel status --full"]
   },
   "depends": {
     "dogs": [{"name": "metrics", "version": ">=0.2"}],
@@ -37,8 +38,10 @@ fn fixture() -> Manifest {
     manifest.settings = Some(serde_json::json!({"type": "object"}));
     manifest.defaults = Some("interval = \"1h\"\n".to_string());
     manifest.permissions = vec![Permission::new("flock.read", true, "lists the flock")];
-    let mut verb = Verb::new("Export metrics");
-    verb.subcommands = vec![Subcommand::new("status", "Show the exporter")];
+    let mut verb =
+        Verb::new("Export metrics").with_examples(["shep otel status", "shep otel status --full"]);
+    verb.subcommands =
+        vec![Subcommand::new("status", "Show the exporter").with_usage("<job> [watch]")];
     manifest.verb = Some(verb);
     manifest.depends.dogs = vec![DogDependency::new("metrics", ">=0.2")];
     manifest.depends.shep = Some("0.9.0".to_string());
@@ -81,6 +84,43 @@ fn a_field_this_shep_does_not_know_is_ignored_at_every_level() {
     let manifest: Manifest = serde_json::from_value(value).unwrap();
 
     assert_eq!(manifest, fixture());
+}
+
+/// The fixture carries both, so a rename fails there; this is where they read.
+#[test]
+fn a_verb_round_trips_its_examples_and_usage() {
+    let manifest: Manifest = serde_json::from_str(FIXTURE).unwrap();
+    let verb = manifest.verb.clone().unwrap();
+
+    assert_eq!(
+        verb.examples,
+        ["shep otel status", "shep otel status --full"]
+    );
+    assert_eq!(verb.subcommands[0].usage.as_deref(), Some("<job> [watch]"));
+
+    let again = serde_json::to_string(&manifest).unwrap();
+    assert_eq!(serde_json::from_str::<Manifest>(&again).unwrap(), manifest);
+}
+
+#[test]
+fn a_verb_without_examples_reads_as_none() {
+    let manifest: Manifest = serde_json::from_str(
+        r#"{"manifest": 2, "name": "shep-otel", "version": "0.1.3", "protocol": 11,
+            "verb": {"description": "Export metrics",
+                     "subcommands": [{"name": "status", "about": "Show the exporter"}]}}"#,
+    )
+    .unwrap();
+
+    let verb = manifest.verb.unwrap();
+    assert!(verb.examples.is_empty());
+    assert_eq!(verb.subcommands[0].usage, None);
+    assert_eq!(
+        serde_json::to_value(&verb).unwrap(),
+        serde_json::json!({
+            "description": "Export metrics",
+            "subcommands": [{"name": "status", "about": "Show the exporter"}],
+        })
+    );
 }
 
 #[test]

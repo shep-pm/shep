@@ -299,6 +299,14 @@ impl Permission {
     }
 }
 
+/// The most example command lines a [`Verb`] declares, and the most shep
+/// draws on a dog's help page.
+pub const MAX_EXAMPLES: usize = 3;
+
+/// The most columns a [`Verb`]'s `description` fits, which is what
+/// `shep --help` has room for. `shep adopt` warns past it and adopts anyway.
+pub const MAX_DESCRIPTION_COLUMNS: usize = 60;
+
 /// How a dog's verb, `shep <name>`, is described.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -308,14 +316,28 @@ pub struct Verb {
     /// The dog's subcommands, for completion.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subcommands: Vec<Subcommand>,
+    /// Command lines a dog's help page shows as examples, each written
+    /// without the `$ ` prefix shep prints. At most [`MAX_EXAMPLES`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<String>,
 }
 
 impl Verb {
-    /// A verb described by `description`, with no subcommands.
+    /// A verb described by `description`, with no subcommands or examples.
     pub fn new(description: impl Into<String>) -> Self {
         Self {
             description: description.into(),
             subcommands: Vec::new(),
+            examples: Vec::new(),
+        }
+    }
+
+    /// Declares `examples` as the dog's example command lines.
+    #[must_use]
+    pub fn with_examples(self, examples: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            examples: examples.into_iter().map(Into::into).collect(),
+            ..self
         }
     }
 }
@@ -328,14 +350,28 @@ pub struct Subcommand {
     pub name: String,
     /// The one line completion shows beside it.
     pub about: String,
+    /// The words shep prints after the subcommand's name in its usage line,
+    /// such as `<job> [watch]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<String>,
 }
 
 impl Subcommand {
-    /// A subcommand `name`, described by `about`.
+    /// A subcommand `name`, described by `about`, with no usage line.
     pub fn new(name: impl Into<String>, about: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             about: about.into(),
+            usage: None,
+        }
+    }
+
+    /// Declares `usage` as the words shep prints after the name.
+    #[must_use]
+    pub fn with_usage(self, usage: impl Into<String>) -> Self {
+        Self {
+            usage: Some(usage.into()),
+            ..self
         }
     }
 }

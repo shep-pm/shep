@@ -238,8 +238,25 @@ $ shep upgrade --dogs`}</CodeBlock>
       returns a ref install to the version the index approves, and{" "}
       <code>--dogs</code> upgrades every installed dog in turn, skipping a
       dog with no receipt. With <code>--format json</code> it answers one
-      document whose <code>data</code> lists each dog's row. Bare{" "}
-      <code>shep upgrade</code> is reserved for shep itself and exits 1.
+      document whose <code>data</code> lists each dog's row.
+    </p>
+    <p>
+      Bare <code>shep upgrade</code> does shep, then the dogs. It lists shep
+      with the command of the channel it came from and each installed dog the
+      index has a newer version of, and asks once. Enter or <code>y</code>
+      goes on; anything else changes nothing. The channel's manager runs in
+      the foreground, so its prompts and <code>sudo</code> work, and a failure
+      stops the run before the dogs. A <code>.deb</code> or an archive prints
+      its steps instead. On Windows no manager runs, because the shepherd
+      holds <code>shep.exe</code>: it prints the command and{" "}
+      <code>shep daemon reload</code>, and the flock restarts.
+    </p>
+    <p>
+      When a shepherd answers it then asks to reload onto the new shep.{" "}
+      <code>--reload</code> skips the question, and with no terminal and no{" "}
+      <code>--reload</code> the reload is skipped and its command printed. Bare{" "}
+      <code>shep upgrade</code> refuses <code>--format json</code>; use{" "}
+      <code>shep upgrade --dogs --format json</code>.
     </p>
     <p>
       An upgrade installs into a new directory, points the adopted path

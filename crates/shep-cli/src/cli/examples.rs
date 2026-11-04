@@ -1,8 +1,10 @@
 //! The examples every verb's help ends with.
 //!
-//! One table, [`EXAMPLES`], holds the command lines; [`section`] is the one
-//! place that spells the heading and the `$ ` prefix, so every page reads the
-//! same. [`super::global_help::with_global_footer`] applies it to each verb.
+//! One table, [`EXAMPLES`], holds the command lines; [`section`] hands them to
+//! `shep_client::dogs::render_examples`, the writer a clap dog writes its own
+//! block with and the block `Verb::from_clap` reads, so shep's pages and a
+//! dog's spell the same heading and the same `$ ` prefix.
+//! [`super::global_help::with_global_footer`] applies it to each verb.
 
 /// Each verb's command lines, one to three, each written without `$ `.
 ///
@@ -187,13 +189,13 @@ pub(super) const EXAMPLES: &[(&str, &[&str])] = &[
 /// The `Examples` section for `verb`, or `None` when the table holds none.
 pub(super) fn section(verb: &str) -> Option<String> {
     let (_, lines) = EXAMPLES.iter().find(|(name, _)| *name == verb)?;
-    let body: Vec<String> = lines.iter().map(|line| format!("  $ {line}")).collect();
-    Some(format!("Examples:\n{}", body.join("\n")))
+    Some(shep_client::dogs::render_examples(*lines))
 }
 
 #[cfg(test)]
 mod tests {
     use clap::{CommandFactory, Parser};
+    use shep_client::dogs::{FromClap as _, Verb};
 
     use super::*;
     use crate::cli::{Cli, with_global_footer};
@@ -299,6 +301,18 @@ mod tests {
     fn no_example_has_an_em_dash() {
         for (verb, line) in every_line() {
             assert!(!line.contains('\u{2014}'), "`{verb}`: {line:?}");
+        }
+    }
+
+    /// The block shep writes is the block a dog reads: `section` and
+    /// `Verb::from_clap` are one grammar, tested from both ends.
+    #[test]
+    fn every_verb_block_reads_back_as_a_manifest_verb() {
+        for verb in visible_verbs() {
+            let section = section(&verb).expect("a visible verb has a table entry");
+            let command = clap::Command::new(&verb).after_help(section);
+            let declared = Verb::from_clap(&command).expect("the block reads back");
+            assert_eq!(declared.examples, lines_of(&verb), "{verb}");
         }
     }
 
