@@ -150,7 +150,9 @@ $ shep --host amp2 lookout`;
 
 const openCmds = `$ shep lookout api
 $ shep lookout api watch
-$ shep lookout api dogs jobs`;
+$ shep lookout api dogs jobs
+$ shep lookout catalogue
+$ shep lookout -- api dogs catalogue`;
 
 const overHost: { pane: string; works: boolean; note: string }[] = [
   { pane: "Flock table, lambs, config pane", works: true, note: "" },
@@ -158,6 +160,11 @@ const overHost: { pane: string; works: boolean; note: string }[] = [
   { pane: "Bleats feed, log size", works: false, note: "Reads log files." },
   { pane: "Host strip", works: false, note: "Samples this machine." },
   { pane: "Settings, secrets, dogs", works: false, note: "Read this machine's files." },
+  {
+    pane: "Dog catalogue",
+    works: false,
+    note: "Reads this machine's receipts and shep.toml.",
+  },
 ];
 
 const feedExcerpt = ` ██ BLEATS api  … 525 earlier lines not shown, and 3.8M before them never read
@@ -395,6 +402,18 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       same. All three work under <code>--read-only</code>. Over
       <code>--host</code> the dog's table is the one that cannot: its listing
       reads this machine's files, which the table below counts.
+    </p>
+    <p>
+      The one subcommand opens a screen instead of a row.
+      <code>shep lookout catalogue</code> is the dog catalogue under
+      <a href="/docs/lookout#the-dog-catalogue">its own heading</a>, and a tab
+      or a dog typed after it is a usage error before the screen opens. A sheep,
+      tab or dog actually named <code>catalogue</code> keeps its name the way a
+      name beside any other subcommand does: <code>--</code> ends the search for
+      a verb, so <code>shep lookout -- api dogs catalogue</code> opens that
+      dog's table. A <code>--read-only</code> typed before the word is lookout's
+      own and moves it nowhere, so <code>shep lookout --read-only catalogue</code>
+      is still that sheep, gate closed.
     </p>
 
     <h2 id="over-host">Over --host</h2>
@@ -670,6 +689,43 @@ installing log-rotate  building with cargo  12s   esc back   enter install   h h
       It drops columns as the terminal narrows, and under 13 rows it refuses
       and names the height it needs, since half a key list is worse than a
       sentence saying it does not fit.
+    </p>
+
+    <h2 id="the-dog-catalogue">The dog catalogue</h2>
+    <p>
+      <code>i</code> opens the community dog index as a screen,
+      <code>shep lookout catalogue</code> opens lookout straight on it, and the
+      <code>browse dogs</code> row at the foot of settings' dogs section opens
+      it from there. All three reach the same screen the same way, and
+      <code>Esc</code> leaves it back to the flock table.
+    </p>
+    <p>
+      The list is one row per dog the index lists, under a
+      <code>CATALOGUE</code> band: NAME, CATEGORY, VERSION and STATE, where
+      STATE is <code>not installed</code>, <code>installed</code> or{" "}
+      <code>enabled</code>. <code>Enter</code> opens the dog under the cursor as
+      an entry: description, repo, license, kind, state, and the permissions the
+      index lists for that approved version, each marked <code>required</code>{" "}
+      or <code>optional</code>. A row whose kind shep cannot build shows the{" "}
+      <code>build</code> and <code>adopt</code> instructions{" "}
+      <code>shep dogs --available</code> prints instead. A row listing no
+      permissions reads <code>not listed</code>, and one listing an empty set
+      reads <code>none</code>.
+    </p>
+    <p>
+      What is listed is the cache at <code>$SHEP_HOME/cache/dogs.json</code>,
+      and the line under the band says how many dogs it holds and whether a
+      fetch is out. Opening on a copy older than 24 hours, or on none, sends the
+      fetch to the background and redraws when it lands. A fetch that fails with
+      a copy on disk leaves that copy listed; no cache and no network leaves one
+      line saying <code>no index cached, no network</code>.
+    </p>
+    <p class="fine">
+      The catalogue reads this machine's receipts and <code>shep.toml</code>, so
+      <code>--host</code> refuses it with a notice, and <code>i</code> does
+      nothing while another screen owns the keyboard. It lists and describes:
+      installing, upgrading and deleting a dog are{" "}
+      <a href="/docs/dogs">the CLI's verbs</a>.
     </p>
 
     <h2 id="editing-text">Editing text</h2>
