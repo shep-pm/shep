@@ -160,6 +160,7 @@ fn sent_action(action: &str, row: Option<&str>) -> Effect {
         name: "paddock".to_owned(),
         action: action.to_owned(),
         row: row.map(str::to_owned),
+        opening: 1,
     })
 }
 
@@ -189,6 +190,7 @@ fn a_row_action_runs_on_the_row_under_the_cursor_and_a_pane_action_on_the_pane()
         press(&mut app, 'e'),
         sent_action("renew", Some("strata-7b"))
     );
+    replied(&mut app, plain("renewed"));
     assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
 }
 
@@ -289,13 +291,35 @@ fn triggered(outcome: ActionOutcome) -> Result<Response, RequestError> {
 }
 
 fn replied(app: &mut App, result: Result<Response, RequestError>) -> Effect {
+    replied_to_opening(app, 1, result)
+}
+
+fn replied_to_opening(
+    app: &mut App,
+    opening: u64,
+    result: Result<Response, RequestError>,
+) -> Effect {
     app.update(Msg::Replied {
         sent: Sent::DogPaneAction {
             name: "paddock".to_owned(),
             action: "renew".to_owned(),
             row: Some("qwen3-32b".to_owned()),
+            opening,
         },
         result,
+    })
+}
+
+fn plain(body: &str) -> Result<Response, RequestError> {
+    triggered(ActionOutcome::Replied {
+        body: body.to_owned(),
+    })
+}
+
+fn pull() -> Effect {
+    Effect::Send(Sent::DogPane {
+        name: "paddock".to_owned(),
+        opening: 1,
     })
 }
 
@@ -403,4 +427,97 @@ fn r_and_h_keep_refresh_and_help_when_no_action_takes_them() {
     );
     press(&mut app, 'h');
     assert!(app.keymap_open());
+}
+
+#[test]
+fn closing_the_pane_retires_a_question_it_asked() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    press(&mut app, 'r');
+    asked(&mut app);
+
+    app.close_pane();
+
+    assert!(app.modal().is_none(), "the question went with the pane");
+    assert!(!matches!(
+        app.update(Msg::Key(KeyPress::Confirm)),
+        Effect::Send(_)
+    ));
+}
+
+#[test]
+fn a_reply_from_an_earlier_opening_of_the_pane_is_dropped() {
+    let mut app = app_over(&leases(), &ACTIONS);
+
+    let effect = replied_to_opening(&mut app, 0, plain("lease renewed"));
+
+    assert_eq!(effect, Effect::None);
+    assert_eq!(said(&app), None, "the open pane never heard of it");
+}
+
+#[test]
+fn an_action_answered_while_a_pull_is_out_pulls_again_when_that_pull_lands() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    assert_eq!(
+        replied(&mut app, plain("one")),
+        pull(),
+        "the first pull is out"
+    );
+
+    let queued = replied(&mut app, plain("two"));
+    assert_eq!(queued, Effect::None, "one pull at a time");
+    assert_eq!(said(&app).as_deref(), Some("two"));
+
+    let landed = app.update(Msg::Replied {
+        sent: Sent::DogPane {
+            name: "paddock".to_owned(),
+            opening: 1,
+        },
+        result: plain(&leases().body().unwrap()),
+    });
+    assert_eq!(
+        landed,
+        pull(),
+        "the pull that may predate the action is redone"
+    );
+
+    let again = app.update(Msg::Replied {
+        sent: Sent::DogPane {
+            name: "paddock".to_owned(),
+            opening: 1,
+        },
+        result: plain(&leases().body().unwrap()),
+    });
+    assert_eq!(again, Effect::None, "and only once");
+}
+
+#[test]
+fn one_action_runs_at_a_time_on_a_pane() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
+
+    assert_eq!(press(&mut app, 'p'), Effect::None, "the first is still out");
+    assert_eq!(said(&app).as_deref(), Some("an action is still running"));
+    assert_eq!(press(&mut app, 'd'), Effect::None);
+    assert!(app.modal().is_none(), "and no question is asked either");
+
+    replied(&mut app, plain("paused"));
+    assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
+}
+
+#[test]
+fn an_action_that_never_left_frees_the_pane() {
+    let mut app = app_over(&leases(), &ACTIONS);
+    press(&mut app, 'p');
+
+    app.update(Msg::Unsent {
+        sent: Sent::DogPaneAction {
+            name: "paddock".to_owned(),
+            action: "pause".to_owned(),
+            row: None,
+            opening: 1,
+        },
+    });
+
+    assert_eq!(said(&app).as_deref(), Some("pause was not sent"));
+    assert_eq!(press(&mut app, 'p'), sent_action("pause", None));
 }

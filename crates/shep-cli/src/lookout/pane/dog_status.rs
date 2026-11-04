@@ -44,6 +44,11 @@ pub struct DogStatus {
     failed: Option<String>,
     /// Whether a pull is out and has not landed.
     pulling: bool,
+    /// Whether another pull is wanted as soon as the one out lands, because
+    /// an action finished while it was in flight.
+    pull_again: bool,
+    /// Whether a pane action is out and has not been answered.
+    acting: bool,
     /// The open tab and the status tab's cursor.
     view: StatusView,
     /// What the newest action key or action reply said, for the footer.
@@ -59,6 +64,8 @@ impl DogStatus {
             state: PaneState::Waiting,
             failed: None,
             pulling: false,
+            pull_again: false,
+            acting: false,
             view: StatusView::default(),
             said: None,
         }
@@ -97,11 +104,40 @@ impl DogStatus {
         !core::mem::replace(&mut self.pulling, true)
     }
 
+    /// Asks for a pull after an action: says whether to send it now. While a
+    /// pull is out it is queued instead, because that pull may have read the
+    /// dog before the action ran, and [`Self::land`] says when to send it.
+    #[must_use]
+    pub(in crate::lookout) fn pull_after_action(&mut self) -> bool {
+        if self.begin_pull() {
+            return true;
+        }
+        self.pull_again = true;
+        false
+    }
+
+    /// Whether a pane action is out and has not been answered.
+    #[must_use]
+    pub(in crate::lookout) fn acting(&self) -> bool {
+        self.acting
+    }
+
+    /// Marks an action as out.
+    pub(in crate::lookout) fn begin_action(&mut self) {
+        self.acting = true;
+    }
+
+    /// Marks the action out as answered.
+    pub(in crate::lookout) fn end_action(&mut self) {
+        self.acting = false;
+    }
+
     /// Takes a pull's answer: a read pane, or the reason it came to nothing.
+    /// Says whether a queued pull is now out and must be sent.
     ///
     /// A failure after a good pane keeps that pane and notes the reason beside
     /// it; a failure with none held is [`PaneState::Unavailable`].
-    pub(in crate::lookout) fn land(&mut self, answer: Result<Pane, String>) {
+    pub(in crate::lookout) fn land(&mut self, answer: Result<Pane, String>) -> bool {
         self.pulling = false;
         let landed = answer.is_ok();
         match answer {
@@ -117,6 +153,9 @@ impl DogStatus {
         if landed || !matches!(self.state, PaneState::Ready(_)) {
             self.view.settle(&self.layout());
         }
+        let again = core::mem::take(&mut self.pull_again);
+        self.pulling = again;
+        again
     }
 
     /// The open tab.

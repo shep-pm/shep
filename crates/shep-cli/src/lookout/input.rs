@@ -8,6 +8,21 @@ use super::app::{ActionVerb, InputMode, KeyPress};
 use super::pane::RESERVED;
 use super::textbox::TextEdit;
 
+/// [`map_key`], except that while a modal is open a pressed key lookout binds
+/// nothing to is [`KeyPress::Escape`], so it answers the question with a no
+/// rather than being dropped and leaving the question up.
+#[must_use]
+pub fn map_key_for(event: &Event, mode: InputMode, modal_open: bool) -> Option<KeyPress> {
+    let mapped = map_key(event, mode);
+    match event {
+        // A key lookout binds nothing to still answers a question: as a no.
+        Event::Key(key) if modal_open && mapped.is_none() && key.kind == KeyEventKind::Press => {
+            Some(KeyPress::Escape)
+        }
+        _other => mapped,
+    }
+}
+
 /// The [`KeyPress`] this event means under `mode`, or `None` for a key
 /// lookout does not bind there.
 ///
@@ -785,5 +800,35 @@ mod tests {
     fn a_control_letter_is_not_an_action_letter_in_pane_mode() {
         let ctrl_r = Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
         assert_eq!(map_key(&ctrl_r, InputMode::Pane), None);
+    }
+
+    /// A question left up by a key nothing is bound to would be answered by
+    /// the Enter after it, so an unbound key answers it with a no.
+    #[test]
+    fn an_unbound_key_answers_an_open_question_with_a_no() {
+        let p = key(KeyCode::Char('p'));
+        assert_eq!(
+            map_key_for(&p, InputMode::Normal, true),
+            Some(KeyPress::Escape)
+        );
+        assert_eq!(map_key_for(&p, InputMode::Normal, false), None);
+        assert_eq!(
+            map_key_for(&key(KeyCode::Enter), InputMode::Normal, true),
+            Some(KeyPress::Confirm),
+            "a bound key keeps its meaning"
+        );
+        let release = Event::Key(KeyEvent {
+            kind: KeyEventKind::Release,
+            ..KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)
+        });
+        assert_eq!(
+            map_key_for(&release, InputMode::Normal, true),
+            None,
+            "a release is not a key press"
+        );
+        assert_eq!(
+            map_key_for(&Event::Resize(80, 24), InputMode::Normal, true),
+            None
+        );
     }
 }

@@ -203,6 +203,9 @@ pub enum Sent {
         /// The key of the row a row action runs on, or [`None`] for a pane
         /// action.
         row: Option<String>,
+        /// Which opening of the dog's pane raised it, so a reply that lands
+        /// on a later opening is dropped.
+        opening: u64,
     },
     /// One dog's whole section, off the dog pane's own `Enter`.
     ///
@@ -329,7 +332,9 @@ impl Sent {
                 action: PANE_ACTION.to_owned(),
                 params: None,
             },
-            Self::DogPaneAction { name, action, row } => Request::Trigger {
+            Self::DogPaneAction {
+                name, action, row, ..
+            } => Request::Trigger {
                 selector: SelectorSpec::Name(name.clone()),
                 action: action.clone(),
                 params: row
@@ -640,6 +645,7 @@ mod tests {
             name: "paddock".to_owned(),
             action: "revoke".to_owned(),
             row: Some("qwen3-32b".to_owned()),
+            opening: 1,
         };
         assert_eq!(
             row.request(),
@@ -653,6 +659,7 @@ mod tests {
             name: "kelpie".to_owned(),
             action: "pause".to_owned(),
             row: None,
+            opening: 1,
         };
         assert_eq!(
             pane.request(),

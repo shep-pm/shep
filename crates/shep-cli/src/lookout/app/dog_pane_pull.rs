@@ -40,18 +40,30 @@ impl App {
         opening: u64,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        self.land_dog_pane(name, opening, read_pulled_pane(name, result));
-        Effect::None
+        self.land_dog_pane(name, opening, read_pulled_pane(name, result))
     }
 
     /// Lands a pull's answer on the dog's pane, dropped when the operator has
     /// left that pane, or has opened it again since the pull was sent.
-    pub(super) fn land_dog_pane(&mut self, name: &str, opening: u64, answer: Result<Pane, String>) {
-        if let Some(status) = self
+    ///
+    /// Sends the pull an action queued behind this one, if there is one.
+    pub(super) fn land_dog_pane(
+        &mut self,
+        name: &str,
+        opening: u64,
+        answer: Result<Pane, String>,
+    ) -> Effect {
+        let again = self
             .dog_pane_of(name, opening)
             .and_then(ConfigPane::status_mut)
-        {
-            status.land(answer);
+            .is_some_and(|status| status.land(answer));
+        if again {
+            Effect::Send(Sent::DogPane {
+                name: name.to_owned(),
+                opening,
+            })
+        } else {
+            Effect::None
         }
     }
 

@@ -9,8 +9,9 @@ impl App {
     /// A letter pressed on the status tab: runs the action it names, if any.
     ///
     /// A row action needs the cursor on a row of its own table. A read-only
-    /// lookout refuses every action. A destructive one asks first and its
-    /// yes sends it, see [`Self::on_pane_action_answer`].
+    /// lookout refuses every action, and so does a pane with one still out. A
+    /// destructive one asks first and its yes sends it, see
+    /// [`Self::on_pane_action_answer`].
     pub(super) fn on_pane_action_key(&mut self, letter: char) -> Effect {
         let Some(pane) = self.config_pane() else {
             return Effect::None;
@@ -44,7 +45,12 @@ impl App {
                 }
             }
         };
+        let acting = status.acting();
         if self.authorize_write().is_none() {
+            return Effect::None;
+        }
+        if acting {
+            self.say_on_dog_pane(&name, "an action is still running");
             return Effect::None;
         }
         let question = key.action.destructive.then(|| {
@@ -58,9 +64,10 @@ impl App {
             name,
             action: key.action.action,
             row,
+            opening: self.dog_opening,
         };
         let Some(question) = question else {
-            return Effect::Send(sent);
+            return self.send_pane_action(sent);
         };
         let tag = self.mint_tag();
         self.pane_action = Some((tag, sent));
@@ -77,29 +84,44 @@ impl App {
             return None;
         }
         Some(if yes {
-            Effect::Send(sent)
+            self.send_pane_action(sent)
         } else {
             Effect::None
         })
     }
 
+    /// Marks `sent`'s pane as having an action out and sends it.
+    fn send_pane_action(&mut self, sent: Sent) -> Effect {
+        if let Sent::DogPaneAction { name, opening, .. } = &sent
+            && let Some(status) = self
+                .dog_pane_of(name, *opening)
+                .and_then(ConfigPane::status_mut)
+        {
+            status.begin_action();
+        }
+        Effect::Send(sent)
+    }
+
     /// An action's reply: a plain answer is shown in the footer and the pane
     /// is pulled again, and a refusal or a timeout is shown and nothing else.
     ///
-    /// Dropped when the operator has left the dog's pane.
+    /// Dropped when the operator has left the dog's pane, or has opened it
+    /// again since the action was sent. A pull already out is followed by
+    /// another when it lands.
     pub(super) fn on_dog_pane_action_reply(
         &mut self,
         name: &str,
+        opening: u64,
         action: &str,
         result: Result<Response, RequestError>,
     ) -> Effect {
-        let opening = self.dog_opening;
         let Some(status) = self
             .dog_pane_of(name, opening)
             .and_then(ConfigPane::status_mut)
         else {
             return Effect::None;
         };
+        status.end_action();
         match replied_body(name, result) {
             Ok(body) => {
                 let body = body.trim();
@@ -111,7 +133,7 @@ impl App {
                     }
                     .as_str(),
                 );
-                if status.begin_pull() {
+                if status.pull_after_action() {
                     Effect::Send(Sent::DogPane {
                         name: name.to_owned(),
                         opening,
@@ -125,6 +147,19 @@ impl App {
                 Effect::None
             }
         }
+    }
+
+    /// An action that never left: the footer says so and the pane is free to
+    /// run another.
+    pub(super) fn on_dog_pane_action_unsent(&mut self, name: &str, opening: u64, action: &str) {
+        let Some(status) = self
+            .dog_pane_of(name, opening)
+            .and_then(ConfigPane::status_mut)
+        else {
+            return;
+        };
+        status.end_action();
+        status.say(&format!("{action} was not sent"));
     }
 
     /// Puts `text` in the footer of dog `name`'s open status tab, or in the

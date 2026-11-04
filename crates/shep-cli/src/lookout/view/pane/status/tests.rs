@@ -475,6 +475,7 @@ fn the_last_result_shows_above_the_actions() {
             name: "paddock".to_owned(),
             action: "pause".to_owned(),
             row: None,
+            opening: 1,
         },
         result: Ok(shep_core::protocol::Response::Triggered(vec![
             shep_core::protocol::ActionReply {
