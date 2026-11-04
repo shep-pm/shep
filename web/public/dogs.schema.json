@@ -85,6 +85,26 @@
                       "type": "string",
                       "pattern": "^[0-9a-f]{64}$"
                     }
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "description": "Each permission the approved version declares, copied from the dog's manifest at that version. Absent means the index lists none, which is every row written before this field; an empty array means this version declares none. shep install prompts from the manifest the binary prints, not from this list.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["name", "required"],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The permission's name, such as \"flock.read\" or \"events:sheep.\"."
+                        },
+                        "required": {
+                          "type": "boolean",
+                          "description": "Whether the dog cannot run without it."
+                        }
+                      }
+                    }
                   }
                 },
                 "dependentRequired": { "sha256": ["version"] }

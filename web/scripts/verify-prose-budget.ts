@@ -539,7 +539,11 @@ export const BUDGETS: Record<string, number> = {
   // ref is read, where it lands and that the index has not reviewed it.
   // Raised from 600 for the lede, which says `--ref` also installs a cargo row
   // with no approved version.
-  "community-dogs": 610,
+  // Raised from 610 on #1478 for the third `cargo` field: a contributor
+  // writing a row has to be told the index can list what that version
+  // declares, and that a release clears the list. Required content for the
+  // page that documents the index, not prose to trim out.
+  "community-dogs": 632,
   terminology: 210,
   "pm2-verbs": 40,
   // Raised from 330 for the adopt and enable prompt: what the operator is

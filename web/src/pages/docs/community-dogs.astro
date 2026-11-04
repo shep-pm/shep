@@ -220,15 +220,17 @@ function adoptLine(dog: Dog): string {
       surprise you in CI.
     </p>
     <p>
-      A <code>cargo</code> source takes two optional fields.{" "}
+      A <code>cargo</code> source takes three optional fields.{" "}
       <code>version</code> is the one exact version the index approves;
       without it the row is listed but cannot be installed.{" "}
       <code>sha256</code> maps each target triple to the hash of its
-      prebuilt binary and needs <code>version</code>. The download URL is
+      prebuilt binary and needs <code>version</code>.{" "}
+      <code>permissions</code> lists what that version declares, each one a
+      name and whether the dog can run without it. The download URL is
       built, never written:{" "}
       <code>&lt;repo&gt;/releases/download/v&lt;version&gt;/&lt;package&gt;-&lt;version&gt;-&lt;target&gt;</code>,
-      plus <code>.exe</code> on Windows. The release workflow writes the
-      hashes.
+      plus <code>.exe</code> on Windows. A release writes the hashes and
+      clears <code>permissions</code>: add the list again afterward.
     </p>
   </article>
 </DocsLayout>
