@@ -11,20 +11,21 @@ use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 
 use super::super::super::app::App;
-use super::super::super::pane::{ConfigPane, PaneTarget};
+use super::super::super::pane::{ConfigPane, PaneTarget, Tab};
 use super::super::super::theme::Palette;
 use super::super::flock::fit;
 use super::super::overlay;
 use super::body::body_lines;
 use super::chrome::{
-    column_header_line, hairline_line, has_groups, legend_line, tab_row_line, title_band_line,
-    title_line,
+    column_header_line, hairline_line, has_groups, legend_line, tab_row_line, tab_strip_line,
+    title_band_line, title_line,
 };
 use super::close::draw_close_dialog;
 use super::field_row::push_wrapped_blurb;
 use super::layout::{body_width, lands_fits_beside_panel, line_columns, panel_width};
 use super::list::list_lines;
 use super::panel::panel_lines;
+use super::status::status_lines;
 
 /// The pane's lines when its fields carry groups (every sheep): the butter
 /// title band naming the target once, the tab row, a hairline, the menu or
@@ -237,6 +238,11 @@ pub fn pane_lines(
     if let Some(list) = focus.list() {
         return list_lines(focus, list, palette, width, budget);
     }
+    if let Some(status) = pane.status()
+        && status.tab() == Tab::Status
+    {
+        return status_lines(pane, status, palette, width, budget);
+    }
     if has_groups(pane) {
         if let Some(panel_w) = panel_width(width) {
             return grouped_pane_with_panel_lines(pane, palette, width, panel_w, budget);
@@ -271,6 +277,14 @@ pub(super) fn ungrouped_pane_lines_with_panel(
     // is a committed file with 40 properties, but a dog answers `--schema`
     // for itself) leaves the title as the whole pane.
     let mut body_budget = budget - 1;
+    // A pane dog's tab strip sits under the title, ahead of what the footer and
+    // the blurb reserve, so the settings tab shows where the status tab is.
+    if body_budget > 1
+        && let Some(strip) = tab_strip_line(pane, palette, width)
+    {
+        lines.push(strip);
+        body_budget -= 1;
+    }
     // The one line a dog pane has that a sheep pane does not: shep does not
     // know what a dog's field costs, so every row's COST cell is empty.
     // Reserved before the blurb, which is the line to lose: the blurb

@@ -428,13 +428,6 @@ impl ConfigPane {
     /// The dog's `shep.pane` pull, or [`None`] for a dog that declares no
     /// pane and for any other target.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the status tab draws the pull, and has not landed"
-        )
-    )]
     pub fn status(&self) -> Option<&DogStatus> {
         self.status.as_deref()
     }

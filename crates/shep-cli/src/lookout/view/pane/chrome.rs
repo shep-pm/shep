@@ -9,12 +9,16 @@
 use ratatui::text::{Line, Span};
 use shep_core::config::GROUP_ORDER;
 
-use super::super::super::pane::{ConfigPane, PaneEdit, PaneTarget};
+use super::super::super::pane::{ConfigPane, PaneEdit, PaneTarget, Tab};
 use super::super::super::theme::Palette;
 use super::super::cell;
 use super::super::flock::fit;
 use super::layout::{body_width, mask_secret, widths};
+use crate::output::width::text_columns;
 use crate::vocabulary::Role;
+
+/// What the strip's right edge says the tab key does.
+const TAB_HINT: &str = "tab \u{21c6}";
 
 /// The pane's own title: which sheep or dog is being edited.
 ///
@@ -28,6 +32,36 @@ pub(super) fn title_line(pane: &ConfigPane, palette: Palette, width: u16) -> Lin
         format!("  {}", fit(&heading(pane), body_width(width))),
         palette.muted(),
     ))
+}
+
+/// The tab strip of a dog that declares a pane, `[status]  settings` with the
+/// open tab bracketed and `tab ⇆` at the right edge. [`None`] for a dog with no
+/// pane, which has no tabs to switch.
+///
+/// The hint is the first thing to go when the line is too narrow for it.
+pub(super) fn tab_strip_line(
+    pane: &ConfigPane,
+    palette: Palette,
+    width: u16,
+) -> Option<Line<'static>> {
+    let open = pane.status()?.tab();
+    let tabs = match open {
+        Tab::Status => "[status]  settings",
+        Tab::Settings => "status  [settings]",
+    };
+    let room = usize::from(body_width(width));
+    let left = format!("  {tabs}");
+    let used = text_columns(&left);
+    let mut spans = vec![Span::styled(
+        fit(&left, body_width(width)).trim_end().to_owned(),
+        palette.muted(),
+    )];
+    let hint = text_columns(TAB_HINT);
+    if used + 1 + hint <= room {
+        spans.push(Span::raw(" ".repeat(room - used - hint)));
+        spans.push(Span::styled(TAB_HINT, palette.muted()));
+    }
+    Some(Line::from(spans))
 }
 
 /// What [`title_line`] and [`title_band_line`] name: the target, and which
@@ -389,5 +423,43 @@ mod tests {
         let band = fixtures::config_pane_title_band_for_tests(&app, 160);
         assert!(band.contains("2 edits"), "{band}");
         assert!(!band.contains("pending"), "{band}");
+    }
+
+    fn strip_text(app: &crate::lookout::app::App, width: u16) -> Option<String> {
+        let pane = app.config_pane().expect("the pane is open");
+        tab_strip_line(pane, fixtures::plain(), width).map(|line| text_of(&[line]).remove(0))
+    }
+
+    #[test]
+    fn the_tab_strip_brackets_the_open_tab_and_keeps_its_hint_at_the_right() {
+        let mut app = fixtures::app_in_pane_dog(None);
+        let strip = strip_text(&app, 60).expect("a pane dog has tabs");
+        assert!(strip.starts_with("  [status]  settings "), "{strip:?}");
+        assert!(strip.ends_with("tab \u{21c6}"), "{strip:?}");
+        assert_eq!(crate::output::width::visible_width(&strip), 58);
+
+        app.update(Msg::Key(KeyPress::NextGroup));
+        let strip = strip_text(&app, 60).expect("and still on settings");
+        assert!(strip.starts_with("  status  [settings] "), "{strip:?}");
+    }
+
+    #[test]
+    fn the_tab_strip_drops_its_hint_before_it_cuts_a_tab() {
+        let app = fixtures::app_in_pane_dog(None);
+        let strip = strip_text(&app, 24).expect("a pane dog has tabs");
+        assert_eq!(strip, "  [status]  settings");
+    }
+
+    #[test]
+    fn a_dog_without_a_pane_shows_no_tab_strip() {
+        let app = fixtures::app_in_dog_pane();
+        assert_eq!(strip_text(&app, 120), None);
+        let lines = super::super::fixtures::config_pane_lines_for_tests(&app, 120, 0);
+        assert!(
+            !text_of(&lines)
+                .iter()
+                .any(|line| line.contains("tab \u{21c6}")),
+            "the settings pane is today's"
+        );
     }
 }

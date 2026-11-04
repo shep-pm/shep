@@ -142,6 +142,9 @@ impl App {
             // `view::pane::pane_lines` draws before any row.
             let body = usize::from(rows.saturating_sub(1));
             pane.set_rows(body);
+            if let Some(status) = pane.status_mut() {
+                status.set_rows(usize::from(rows));
+            }
             if let Some(list) = pane.list_mut() {
                 list.set_rows(body);
             }

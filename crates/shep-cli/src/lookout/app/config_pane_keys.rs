@@ -7,6 +7,7 @@
 //! [`crate::lookout::app::pane_list`] and [`crate::lookout::app::pane_dogs`].
 
 use super::*;
+use crate::lookout::pane::{Step, Tab};
 
 impl App {
     /// The config pane's own keymap, in force for as long as
@@ -31,6 +32,9 @@ impl App {
         }
         if self.config_pane().is_some_and(|pane| pane.list().is_some()) {
             return self.on_list_key(key);
+        }
+        if let Some(effect) = self.on_pane_dog_key(key) {
+            return effect;
         }
         if let Some(effect) = self.on_dogs_tab_key(key) {
             return effect;
@@ -207,11 +211,65 @@ impl App {
     }
 }
 
+impl App {
+    /// A pane dog's tab keys, and its status tab's keymap.
+    ///
+    /// `tab` and `shift-tab` switch tabs. On the status tab the select keys
+    /// move its cursor and a key that only means something on the settings
+    /// form does nothing, so it cannot edit a field the operator cannot see.
+    /// [`None`] for a dog with no pane, for the settings tab's own keys, and
+    /// for the keys both tabs share.
+    fn on_pane_dog_key(&mut self, key: KeyPress) -> Option<Effect> {
+        let status = self.config_pane_mut()?.status_mut()?;
+        if matches!(key, KeyPress::NextGroup | KeyPress::PrevGroup) {
+            status.switch_tab();
+            return Some(Effect::None);
+        }
+        if status.tab() != Tab::Status {
+            return None;
+        }
+        match key {
+            KeyPress::SelectUp => status.step(Step::Up),
+            KeyPress::SelectDown => status.step(Step::Down),
+            KeyPress::SelectFirst => status.step(Step::First),
+            KeyPress::SelectLast => status.step(Step::Last),
+            KeyPress::Quit
+            | KeyPress::Escape
+            | KeyPress::Refresh
+            | KeyPress::Help
+            | KeyPress::Continue => return None,
+            _other => {}
+        }
+        Some(Effect::None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use shep_core::dogs::pane::{Pane, Row};
+
+    use crate::lookout::pane::Tab;
     use crate::lookout::view::fixtures;
+
+    fn models() -> Pane {
+        let rows = ["a", "b", "c"].map(|key| Row::new(key, [key]));
+        Pane::new().table("models", ["MODEL"], rows)
+    }
+
+    fn tab_of(app: &App) -> Tab {
+        app.config_pane()
+            .and_then(ConfigPane::status)
+            .map(crate::lookout::pane::DogStatus::tab)
+            .expect("the dog declares a pane")
+    }
+
+    fn cursor_of(app: &App) -> Option<usize> {
+        app.config_pane()
+            .and_then(ConfigPane::status)
+            .and_then(crate::lookout::pane::DogStatus::cursor)
+    }
 
     /// Whether the config pane holds an armed env delete.
     fn armed(app: &App) -> Option<String> {
@@ -258,6 +316,67 @@ mod tests {
                 .as_deref()
                 .is_some_and(|notice| notice.contains("read-only")),
             "and named the gate: {notice:?}"
+        );
+    }
+
+    #[test]
+    fn tab_switches_a_pane_dog_between_status_and_settings() {
+        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
+        assert_eq!(tab_of(&app), Tab::Status, "a pane dog opens on status");
+
+        let effect = app.update(Msg::Key(KeyPress::NextGroup));
+        assert!(matches!(effect, Effect::None));
+        assert_eq!(tab_of(&app), Tab::Settings);
+
+        app.update(Msg::Key(KeyPress::PrevGroup));
+        assert_eq!(tab_of(&app), Tab::Status, "shift-tab goes back");
+        app.update(Msg::Key(KeyPress::PrevGroup));
+        assert_eq!(tab_of(&app), Tab::Settings, "and either key switches");
+    }
+
+    #[test]
+    fn tab_does_nothing_for_a_dog_without_a_pane() {
+        let mut app = fixtures::app_in_dog_pane();
+        let before = format!("{:?}", app.config_pane());
+
+        for key in [KeyPress::NextGroup, KeyPress::PrevGroup] {
+            let effect = app.update(Msg::Key(key));
+            assert!(matches!(effect, Effect::None));
+        }
+
+        assert!(
+            app.config_pane()
+                .is_some_and(|pane| pane.status().is_none())
+        );
+        assert_eq!(format!("{:?}", app.config_pane()), before);
+    }
+
+    #[test]
+    fn the_select_keys_move_the_status_cursor_and_not_the_settings_form() {
+        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
+        let form_cursor = app.config_pane().and_then(ConfigPane::cursor);
+
+        app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(cursor_of(&app), Some(1));
+        app.update(Msg::Key(KeyPress::SelectLast));
+        assert_eq!(cursor_of(&app), Some(2));
+        app.update(Msg::Key(KeyPress::SelectUp));
+        assert_eq!(cursor_of(&app), Some(1));
+        app.update(Msg::Key(KeyPress::SelectFirst));
+        assert_eq!(cursor_of(&app), Some(0));
+
+        assert_eq!(app.config_pane().and_then(ConfigPane::cursor), form_cursor);
+    }
+
+    #[test]
+    fn the_settings_tab_keeps_its_own_keys() {
+        let mut app = fixtures::app_in_pane_dog(Some(fixtures::pane_reply(&models())));
+        app.update(Msg::Key(KeyPress::NextGroup));
+        app.update(Msg::Key(KeyPress::SelectDown));
+        assert_eq!(
+            cursor_of(&app),
+            Some(0),
+            "j on settings leaves the status cursor"
         );
     }
 }
