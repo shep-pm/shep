@@ -13,10 +13,10 @@ use super::*;
 use crate::cli::Format;
 use crate::output::Streams;
 
-const URL: &str = "https://example.test/dogs.json";
+pub(super) const URL: &str = "https://example.test/dogs.json";
 const MIB: u64 = 1024 * 1024;
 
-fn paths_in(dir: &Path) -> ShepPaths {
+pub(super) fn paths_in(dir: &Path) -> ShepPaths {
     let paths = ShepPaths::resolve(&|_| None, dir);
     std::fs::create_dir_all(&paths.run).unwrap();
     paths
@@ -46,7 +46,7 @@ fn restarted(id: u32, name: &str, restarts: u32) -> ProcessInfo {
 }
 
 /// Caches an index whose rows are `(adopt_as, needs)`.
-fn cache_index(paths: &ShepPaths, rows: &[(&str, &[&str])]) {
+pub(super) fn cache_index(paths: &ShepPaths, rows: &[(&str, &[&str])]) {
     let dogs: Vec<_> = rows
         .iter()
         .map(|(adopt_as, needs)| {
@@ -77,7 +77,7 @@ fn enable(paths: &ShepPaths, names: &[&str]) {
     .unwrap();
 }
 
-fn install(paths: &ShepPaths, name: &str) {
+pub(super) fn install(paths: &ShepPaths, name: &str) {
     let dir = paths.dogs_dir.join(name);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
@@ -87,7 +87,7 @@ fn install(paths: &ShepPaths, name: &str) {
     .unwrap();
 }
 
-fn off(paths: &ShepPaths, names: &[&str]) {
+pub(super) fn off(paths: &ShepPaths, names: &[&str]) {
     std::fs::write(
         paths.home.join("hints.json"),
         serde_json::json!({ "off": names }).to_string(),

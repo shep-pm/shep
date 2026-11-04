@@ -59,7 +59,7 @@ fi
 # array has grown and nobody re-ran this script.
 VERBS=(
   start add serve stop restart reset reload delete stock flock dogs "dogs grant"
-  "dogs revoke" enable disable
+  "dogs revoke" hints "hints off" "hints on" enable disable
   install upgrade adopt describe trigger signal whisper fold bleats lookout "lookout catalogue" whistle
   reopen flush barks kv "kv get" "kv set" "kv unset" secret "secret set"
   "secret get" "secret unset" "secret list" host "host add" "host remove"

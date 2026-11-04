@@ -64,8 +64,8 @@ pub use sheep::{
 pub use sheep::ResetMode;
 pub use store::{SecretArgs, SecretCommand};
 pub use system::{
-    CompletionArgs, DaemonArgs, DaemonCmd, DevArgs, DialStdioArgs, InitArgs, RuntimeArgs,
-    StartupArgs, StyleArgs,
+    CompletionArgs, DaemonArgs, DaemonCmd, DevArgs, DialStdioArgs, HintsArgs, HintsCommand,
+    InitArgs, RuntimeArgs, StartupArgs, StyleArgs,
 };
 pub use verbs::Commands;
 
