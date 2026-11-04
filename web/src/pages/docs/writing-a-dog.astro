@@ -486,18 +486,28 @@ notice[dog_defaults_unreadable]: otel shipped a manifest whose \`defaults\` is n
     <p>
       <code>verb</code> is how shep describes <code>shep &lt;name&gt;</code>:
       its <code>description</code> is the line the dog gets in the Dogs group
-      of <code>shep --help</code>, and its <code>subcommands</code> are what
-      <code>shep &lt;name&gt; --help</code> prints and what completion offers.
-      A dog that declares subcommands gets shep's page for them and its
-      binary never runs for <code>--help</code>; one that declares none keeps
-      <code>--help</code> as a pass-through. Both read the manifest cache,
-      never the binary, and completion is generated from the registry as it
-      stands, so generate the script again after an adopt. A manifest's text
-      prints as one line: braces, newlines and escapes go. A name a shell
-      would read as code is not completed.
+      of <code>shep --help</code>, its <code>subcommands</code> are what{" "}
+      <code>shep &lt;name&gt; --help</code> prints and what completion offers,
+      each with an optional <code>usage</code> of the words after its name,
+      and its <code>examples</code> are up to three command lines, each
+      without the <code>$ </code> shep prints. A Rust dog on clap writes none
+      of it by hand: <code>Verb::from_clap(&amp;Command)</code>, behind
+      shep-client's <code>clap</code> feature, reads the about, every visible
+      subcommand's name, about and <code>override_usage</code>, and the{" "}
+      <code>Examples:</code> block of <code>after_help</code>.{" "}
+      <code>shep adopt</code> warns, and adopts anyway, past 60 columns of
+      description or a fourth example. A dog that declares subcommands gets
+      shep's page for them and its binary never runs for{" "}
+      <code>--help</code>; one that declares none keeps <code>--help</code> as
+      a pass-through. Both read the manifest cache, never the binary, and
+      completion is generated from the registry as it stands, so generate the
+      script again after an adopt. A manifest's text prints as one line:
+      braces, newlines and escapes go. A name a shell would read as code is
+      not completed.
     </p>
     <CodeBlock>{`notice[dog_dependency_missing]: \`otel\` depends on \`log-rotate\`, which is not adopted, so \`otel\` may not work until you run \`shep adopt\` for \`log-rotate\`
-notice[dog_needs_newer_shep]: \`otel\` needs shep 0.20.0 or newer, and this is shep 0.16.1, so \`otel\` may not work until you upgrade shep`}</CodeBlock>
+notice[dog_needs_newer_shep]: \`otel\` needs shep 0.20.0 or newer, and this is shep 0.16.1, so \`otel\` may not work until you upgrade shep
+notice[dog_verb_declaration]: \`otel\` declares more in its manifest \`verb\` than shep's help holds: a description of 71 columns, where shep's help fits 60. The dog is adopted and its help still prints; this is a bug to report to whoever wrote it`}</CodeBlock>
 
     <h2 id="answering-version">Answering <code>--version</code></h2>
     <p>

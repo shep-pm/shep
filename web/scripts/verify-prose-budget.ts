@@ -179,7 +179,14 @@ export const BUDGETS: Record<string, number> = {
   // them off the built Linux binary, that only the name and whether it is
   // required reach the index, and that a binary answering nothing costs the
   // row the list and not the release.
-  "writing-a-dog": 6235,
+  //
+  // Raised on #1517 for a dog declaring its own help: an author has to know
+  // `verb.examples` and a subcommand's `usage` exist, that an example is
+  // written without the `$ ` shep prints, that `Verb::from_clap` reads a clap
+  // tree into all of it, and that `shep adopt` warns past 60 columns or a
+  // fourth example and adopts anyway. The ceiling sits about 4 words above
+  // the page.
+  "writing-a-dog": 6312,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new

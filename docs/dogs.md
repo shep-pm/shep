@@ -1083,7 +1083,7 @@ manifest.
 | `settings` | The JSON Schema `--schema` answers, byte for byte. |
 | `defaults` | TOML text for the dog's own section. `shep adopt` writes it as that section in `dogs.toml` when the dog has none. |
 | `permissions` | Each with `name`, `required` and `reason`. |
-| `verb` | `description`, and `subcommands` each with `name` and `about`. |
+| `verb` | `description`, `subcommands` each with `name`, `about` and an optional `usage` (the words after the name), and up to three `examples`, each written without `$ `. |
 | `depends` | `dogs`, each with `name` and a version range `version`; `shep`, the oldest shep supported. |
 | `validate` | Whether the dog validates a proposed settings table over its channel, through `shep.validate`. Needs `channel`: `shep adopt` refuses a manifest declaring it without. |
 | `launch` | Whether the dog runs a sheep's command, as `<path> launch <sheep> -- <cmd>`. A dog adopted as `sandbox` needs it: `shep adopt` refuses one without. |
@@ -1113,6 +1113,13 @@ dependency's own version is not checked.
 screen or a completion script must not spawn a dog. `shep completions` builds
 its script from the registry as it stands at generation time, so adopting a
 dog means generating the script again.
+
+`shep adopt` warns, and adopts anyway, when a `verb.description` runs past 60
+columns or `verb.examples` holds more than three: what is past them is a line
+no operator sees. A Rust dog built on clap declares none of `verb` by hand.
+`Verb::from_clap(&Command)`, behind `shep-client`'s `clap` feature, reads the
+command's about, every visible subcommand's name, about and `override_usage`,
+and the `Examples:` block of its `after_help`.
 
 What shep prints of a manifest is one line of text. A placeholder brace, a
 line break or an escape in a `verb.description` or a subcommand's `about`
