@@ -26,11 +26,13 @@ use crate::exit::ExitCode;
 /// The topics lookout subscribes to.
 ///
 /// `process.*` is what the flock table is made of; `daemon.*` carries
-/// `BusEvent::Dropped` and `BusEvent::DaemonShutdown`.
+/// `BusEvent::Dropped` and `BusEvent::DaemonShutdown`; `dog.*` carries the
+/// events a dog publishes, which refresh an open dog's status tab. The
+/// operator's link is not held to grants, so it needs none.
 ///
 /// Not `log.*`: the bleats feed reads log files from disk ([`super::tail`]),
 /// and a lag on that bus already costs an immediate `ListFlock`.
-pub const TOPICS: &[&str] = &["process.*", "daemon.*"];
+pub const TOPICS: &[&str] = &["process.*", "daemon.*", "dog.*"];
 
 /// Reading the flock. `&self`, so [`super::link::run_connected`] can hold it
 /// across the same `select!` that holds an [`EventSource`] mutably.
@@ -488,6 +490,11 @@ impl Local for NoLocal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_subscription_asks_for_dog_events_beside_the_flock_and_the_daemon() {
+        assert_eq!(TOPICS, ["process.*", "daemon.*", "dog.*"]);
+    }
 
     /// 2 ms: a memory-only sample runs ~8 µs on this machine and a
     /// process-table walk ~8 ms. Timed rather than asserted on the
