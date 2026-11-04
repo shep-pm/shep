@@ -4,8 +4,9 @@
 //! description, every visible subcommand becomes a [`Subcommand`], and the
 //! `Examples:` block of the command's `after_help` becomes the examples.
 //! [`render_examples`] writes that block, so a dog and shep hold one grammar
-//! for it rather than two. A dog that builds its verb by hand, or is written
-//! in another language, declares the JSON itself.
+//! for it rather than two, and a block ends at the first line that is not an
+//! example. A dog that builds its verb by hand, or is written in another
+//! language, declares the JSON itself.
 
 use shep_core::dogs::manifest::{MAX_EXAMPLES, Subcommand, Verb};
 
@@ -63,24 +64,12 @@ pub fn render_examples(examples: impl IntoIterator<Item = impl AsRef<str>>) -> S
 pub trait FromClap: Sized {
     /// The verb `command` describes.
     ///
-    /// The description is the command's about. Each subcommand clap lists is
-    /// a [`Subcommand`] with its name, its about, and the usage the command
-    /// overrides, which is the words shep prints after the name. A hidden
-    /// subcommand is left out.
-    ///
-    /// The examples are the block `after_help` carries under `Examples:`, in
-    /// the shape [`render_examples`] writes it: one command line to a line,
-    /// each starting `$ `.
-    ///
-    /// ```text
-    /// Examples:
-    ///   $ shep kelpie board
-    /// ```
-    ///
-    /// shep stores each without the prefix. A block ends at the first line
-    /// that is not an example. Write the block with [`render_examples`] and
-    /// this reads it back unchanged; a block written by hand is read the same
-    /// way as long as it holds that shape.
+    /// The description is the command's about. Each subcommand clap lists, a
+    /// hidden one aside, is a [`Subcommand`] with its name, its about and the
+    /// usage it overrides, which is the words shep prints after the name. The
+    /// examples are the `Examples:` block of `after_help`, in the shape
+    /// [`render_examples`] writes it: one command line to a line, each
+    /// starting `$ ` and stored without the prefix.
     ///
     /// # Example
     ///
