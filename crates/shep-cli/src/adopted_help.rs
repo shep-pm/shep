@@ -15,24 +15,11 @@ use std::path::Path;
 use shep_core::dogs::manifest::{Subcommand, Verb};
 use shep_core::paths::ShepPaths;
 
-use crate::cli::HELP_TEMPLATE;
+use crate::cli::{DogLine, top_level_template};
 use crate::commands::dogs::{cached_manifest, collides_with_a_verb};
 use crate::commands::shep_toml::ShepToml;
 use crate::exit::ExitCode;
 use crate::{cli, home};
-
-/// The `HELP_TEMPLATE` group line adopted dogs join, and the heading
-/// `cli::help`'s `HELP_GROUPS` files `dogs`, `adopt` and `whistle` under.
-const DOG_GROUP_HEADING: &str = "Dogs and agents";
-
-/// The column every group line's verbs start at, in `HELP_TEMPLATE`: the
-/// longest heading plus two spaces.
-///
-/// A literal rather than a computed one because the template is hand-written
-/// copy and this is its layout, not data derived from it.
-/// `the_dog_lines_line_up_under_the_group_verbs` pins it against the real
-/// template.
-const VERB_COLUMN: usize = 17;
 
 /// One adopted dog, as `--help` and a completion script need it.
 ///
@@ -152,52 +139,18 @@ pub(crate) fn paths_from_argv(argv: &[OsString]) -> Option<ShepPaths> {
     home::resolve_paths(&global).ok()
 }
 
-/// Render `verbs` into the Dogs group of `command`'s help template, painted
-/// at `deep`'s colour depth.
-///
-/// # Panics
-///
-/// Panics, naming the heading, when there are dogs and `HELP_TEMPLATE` has
-/// lost `Dogs and agents`.
-#[track_caller]
+/// Render `verbs` into the Dogs group of `command`'s `--help` listing,
+/// painted at `deep`'s colour depth.
 pub(crate) fn list_in_help(command: &mut clap::Command, verbs: &[AdoptedVerb], deep: bool) {
-    let mut lines: Vec<String> = HELP_TEMPLATE.lines().map(str::to_string).collect();
-    if !verbs.is_empty() {
-        let at = lines
-            .iter()
-            .position(|line| line.starts_with(DOG_GROUP_HEADING))
-            .expect("HELP_TEMPLATE has a Dogs group");
-        lines.splice(at + 1..at + 1, dog_lines(verbs));
-    }
-    let template = crate::cli::dress_help_template(&lines.join("\n"), deep);
-    *command = std::mem::take(command).help_template(template);
-}
-
-/// The lines the dogs get under the group heading: each name in the column
-/// every group's verbs sit in, each description two columns past the longest
-/// name. A dog with no description gets its name and nothing else.
-///
-/// Columns, not bytes: `café` is five bytes and four columns, `日本語` is
-/// nine and six, and this is a table an operator reads.
-fn dog_lines(verbs: &[AdoptedVerb]) -> Vec<String> {
-    let widest = verbs
+    let dogs: Vec<DogLine<'_>> = verbs
         .iter()
-        .map(|verb| crate::output::width::text_columns(&verb.name))
-        .max();
-    verbs
-        .iter()
-        .map(|verb| {
-            let mut line = " ".repeat(VERB_COLUMN);
-            line.push_str(&verb.name);
-            if let Some(description) = &verb.description {
-                let name_columns = crate::output::width::text_columns(&verb.name);
-                let pad = widest.unwrap_or(0) + 2 - name_columns;
-                line.push_str(&" ".repeat(pad));
-                line.push_str(description);
-            }
-            line
+        .map(|verb| DogLine {
+            name: &verb.name,
+            about: verb.description.as_deref(),
         })
-        .collect()
+        .collect();
+    let template = top_level_template(command, &dogs, deep);
+    *command = std::mem::take(command).help_template(template);
 }
 
 /// Whether `name` is a word a shell takes as a bare word.

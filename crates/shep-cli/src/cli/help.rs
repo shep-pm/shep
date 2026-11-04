@@ -1,20 +1,21 @@
 //! What `shep --help` and `shep --version` render.
 //!
-//! The grouped verb listing in [`HELP_TEMPLATE`] is hand-written, because
-//! clap has no subcommand grouping of its own. `HELP_GROUPS` is the same
-//! listing as data, and the tests below are what stop the two drifting from
-//! each other or from the real command tree.
+//! clap has no subcommand grouping, so the grouped listing is rendered here
+//! from [`HELP_GROUPS`], the verbs' own abouts and [`TOPICS`], and spliced
+//! into [`HELP_TEMPLATE`]. The tests below stop `HELP_GROUPS` drifting from
+//! the real command tree.
 
 use std::sync::LazyLock;
 
 use shep_core::protocol::{MIN_SUPPORTED, PROTOCOL_VERSION};
 
-/// The verb groups [`HELP_TEMPLATE`] renders, checked against the command tree.
+use super::topics::TOPICS;
+use crate::output::width::text_columns;
+
+/// The verb groups the listing renders, checked against the command tree.
 ///
-/// clap has no subcommand grouping, so the section is hand-written. This
-/// table keeps it honest: `every_visible_verb_appears_in_exactly_one_help_group`
-/// fails on a verb filed nowhere. The template is what ships.
-#[cfg(test)]
+/// `every_visible_verb_appears_in_exactly_one_help_group` fails on a verb
+/// filed nowhere.
 const HELP_GROUPS: &[(&str, &[&str])] = &[
     (
         "Run things",
@@ -48,11 +49,20 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
     ("Help", &["welcome", "init", "help", "completions", "style"]),
 ];
 
+/// The group adopted dogs are listed in.
+const DOG_GROUP_HEADING: &str = "Dogs and agents";
+
+/// What `help` is about: clap generates the verb, so it declares none.
+const HELP_VERB_ABOUT: &str = "Show a verb's or a topic's help";
+
+/// The marker [`top_level_template`] swaps for the grouped listing.
+const LISTING_MARKER: &str = "{subcommands}";
+
 /// `--help`'s shape.
 ///
-/// `{options}`, not `{all-args}`: the latter re-emits clap's alphabetical
-/// `Commands:` list under the grouped one. `pub(crate)` because
-/// [`crate::adopted_help`] renders adopted dogs into a copy of the Dogs group.
+/// `{subcommands}` is clap's own alphabetical list until
+/// [`top_level_template`] swaps it for the grouped one. There is no
+/// `{options}`: the global flags are the footer line `after_help` carries.
 pub(crate) const HELP_TEMPLATE: &str = "\
 {about}
 
@@ -64,41 +74,125 @@ Getting started
   shep bleats server      follow its output
   shep startup            bring it back after a reboot
 
-Run things       start add serve stop restart reset reload delete stock enable disable
-See what's up    flock describe bleats lookout fold barks
-Survive reboots  save muster startup unstartup
-Talk to a sheep  trigger signal whisper
-The shepherd     ping kill reopen flush kv get set unset copy secret host
-Dogs and agents  dogs install upgrade adopt whistle
-Foreground runs  runtime dev
-Coming from pm2  import
-Help             welcome init help completions style
+{subcommands}{after-help}";
 
-Aliases          flock: list, ls   bleats: logs   lookout: dash   stock: scale   whisper: sendline
-Upgrading        cargo install shep replaces the binary, not the running shepherd: shep daemon reload
-
-Global flags     valid on every verb; shep help flags has the long text
-  --format <FORMAT>  table or json
-  -q, --quiet        suppress non-essential output
-  --style <STYLE>    full, plain or bare
-  --host <DEST>      reach another host's shepherd over ssh
-  --home <HOME>      talk to a different shepherd
-
-Options
-{options}{after-help}";
-
-/// `template` with the palette applied to its hand-written listing, which
-/// clap's own styles cannot reach.
-///
-/// Group headings and labels get the headings' style and the verbs the
-/// literals', as in [`crate::output::paint::help_styles`]. Only escape codes
-/// are added, so clap strips them with the rest when colour is off and the
-/// plain text stays `template`'s, adopted dogs included.
-pub(crate) fn dress_help_template(template: &str, deep: bool) -> String {
-    dress(template, &Dress::new(deep))
+/// A dog the listing shows in its group, beside the verbs.
+pub(crate) struct DogLine<'a> {
+    /// The name the operator types.
+    pub(crate) name: &'a str,
+    /// What it does. `None` lists the name alone.
+    pub(crate) about: Option<&'a str>,
 }
 
-/// The two styles [`dress`] paints with.
+/// One line of the listing: the names a thing answers to, then what it does.
+struct Row {
+    names: Vec<String>,
+    about: Option<String>,
+}
+
+impl Row {
+    fn verb(command: &clap::Command, name: &str) -> Self {
+        let found = command.find_subcommand(name);
+        let mut names = vec![name.to_owned()];
+        names.extend(
+            found
+                .into_iter()
+                .flat_map(clap::Command::get_visible_aliases)
+                .map(str::to_owned),
+        );
+        let about = match found {
+            Some(verb) => verb.get_about().map(ToString::to_string),
+            None if name == "help" => Some(HELP_VERB_ABOUT.to_owned()),
+            None => None,
+        };
+        Self { names, about }
+    }
+
+    /// The names as written: `flock, list, ls`.
+    fn label(&self) -> String {
+        self.names.join(", ")
+    }
+}
+
+/// The grouped verbs, then the help topics, as the text replacing
+/// [`LISTING_MARKER`], painted with `dress`.
+///
+/// Every line's about starts in one column, the widest name plus two. A name
+/// with no about does not widen it.
+fn listing(command: &clap::Command, dogs: &[DogLine<'_>], dress: &Dress) -> String {
+    let mut sections: Vec<(&str, Vec<Row>)> = HELP_GROUPS
+        .iter()
+        .map(|(heading, verbs)| {
+            let mut rows: Vec<Row> = verbs.iter().map(|v| Row::verb(command, v)).collect();
+            if *heading == DOG_GROUP_HEADING {
+                rows.extend(dogs.iter().map(|dog| Row {
+                    names: vec![dog.name.to_owned()],
+                    about: dog.about.map(str::to_owned),
+                }));
+            }
+            (*heading, rows)
+        })
+        .collect();
+    sections.push((
+        "Help topics",
+        TOPICS
+            .iter()
+            .map(|topic| Row {
+                names: vec![topic.name.to_owned()],
+                about: Some(topic.about.to_owned()),
+            })
+            .collect(),
+    ));
+
+    let widest = sections
+        .iter()
+        .flat_map(|(_, rows)| rows)
+        .filter(|row| row.about.is_some())
+        .map(|row| text_columns(&row.label()))
+        .max()
+        .unwrap_or(0);
+    sections
+        .iter()
+        .map(|(heading, rows)| {
+            let lines = rows.iter().map(|row| {
+                let names: Vec<String> = row
+                    .names
+                    .iter()
+                    .map(|name| dress.paint(dress.verb, name))
+                    .collect();
+                let mut line = format!("  {}", names.join(", "));
+                if let Some(about) = &row.about {
+                    let pad = widest + 2 - text_columns(&row.label());
+                    line.push_str(&" ".repeat(pad));
+                    line.push_str(about);
+                }
+                line
+            });
+            let mut section = vec![dress.paint(dress.heading, heading)];
+            section.extend(lines);
+            section.join("\n")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// [`HELP_TEMPLATE`] with the listing of `command`'s verbs and `dogs` in
+/// place, painted at `deep`'s colour depth.
+///
+/// Only escape codes are added to the plain text, so clap strips them with the
+/// rest when colour is off.
+pub(crate) fn top_level_template(
+    command: &clap::Command,
+    dogs: &[DogLine<'_>],
+    deep: bool,
+) -> String {
+    let dress = Dress::new(deep);
+    let head = dress_head(HELP_TEMPLATE, &dress);
+    head.replace(LISTING_MARKER, &listing(command, dogs, &dress))
+}
+
+/// The two styles the listing is painted with, as in
+/// [`crate::output::paint::help_styles`]: headings, and the verbs' literals.
 struct Dress {
     heading: anstyle::Style,
     verb: anstyle::Style,
@@ -116,45 +210,19 @@ impl Dress {
     fn paint(&self, style: anstyle::Style, text: &str) -> String {
         format!("{style}{text}{style:#}")
     }
-
-    /// Every word of `text` as a verb, keeping the spaces and any trailing
-    /// `:` or `,` plain.
-    fn verbs(&self, text: &str) -> String {
-        text.split(' ')
-            .map(|piece| {
-                let word = piece.trim_end_matches([':', ',']);
-                if word.is_empty() {
-                    return piece.to_string();
-                }
-                format!("{}{}", self.paint(self.verb, word), &piece[word.len()..])
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    /// `line` split at the first run of two spaces: a heading, then the rest.
-    fn labelled(&self, line: &str, rest: impl Fn(&str) -> String) -> String {
-        match line.split_once("  ") {
-            Some((label, tail)) => {
-                format!("{}  {}", self.paint(self.heading, label), rest(tail))
-            }
-            None => self.paint(self.heading, line),
-        }
-    }
 }
 
-/// Where [`dress`] is in the template.
+/// Where [`dress_head`] is in the template.
 #[derive(Clone, Copy)]
 enum Block {
     Prose,
     Examples,
-    Groups,
-    Flags,
 }
 
-fn dress(template: &str, dress: &Dress) -> String {
+/// `template` with the Getting started heading and its example verbs painted.
+fn dress_head(template: &str, dress: &Dress) -> String {
     let mut block = Block::Prose;
-    let lines: Vec<String> = template
+    template
         .lines()
         .map(|line| match (block, line) {
             (Block::Prose, "Getting started") => {
@@ -162,10 +230,6 @@ fn dress(template: &str, dress: &Dress) -> String {
                 dress.paint(dress.heading, line)
             }
             (Block::Examples, "") => {
-                block = Block::Groups;
-                String::new()
-            }
-            (Block::Groups, "") => {
                 block = Block::Prose;
                 String::new()
             }
@@ -181,52 +245,10 @@ fn dress(template: &str, dress: &Dress) -> String {
                 }
                 None => line.to_string(),
             },
-            // A dog line: the name sits under the verbs, its description is prose.
-            (Block::Groups, _) if line.starts_with(' ') => {
-                let name = line.trim_start();
-                let indent = &line[..line.len() - name.len()];
-                match name.split_once("  ") {
-                    Some((name, description)) => {
-                        format!("{indent}{}  {description}", dress.paint(dress.verb, name))
-                    }
-                    None => format!("{indent}{}", dress.paint(dress.verb, name)),
-                }
-            }
-            (Block::Groups, _) => dress.labelled(line, |verbs| dress.verbs(verbs)),
-            (Block::Prose, _) if line.starts_with("Aliases  ") => {
-                dress.labelled(line, |rest| dress.verbs(rest))
-            }
-            (Block::Prose, _) if line.starts_with("Upgrading  ") => {
-                dress.labelled(line, str::to_string)
-            }
-            (Block::Prose, "Options") => dress.paint(dress.heading, line),
-            (Block::Prose, _) if line.starts_with("Global flags  ") => {
-                block = Block::Flags;
-                dress.labelled(line, str::to_string)
-            }
-            (Block::Flags, "") => {
-                block = Block::Prose;
-                String::new()
-            }
-            // `-q, --quiet` and `--home <HOME>` end at the run of two spaces.
-            (Block::Flags, _) => {
-                let flag = line.trim_start();
-                let indent = &line[..line.len() - flag.len()];
-                match flag.split_once("  ") {
-                    Some((flag, description)) => {
-                        format!("{indent}{}  {description}", dress.paint(dress.verb, flag))
-                    }
-                    None => line.to_string(),
-                }
-            }
             _ => line.to_string(),
         })
-        .collect();
-    let mut dressed = lines.join("\n");
-    if template.ends_with('\n') {
-        dressed.push('\n');
-    }
-    dressed
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `shep --version`'s extra line: the protocol this build speaks and accepts.
@@ -360,22 +382,19 @@ mod tests {
         )
     }
 
-    /// The grouped verb listing [`HELP_TEMPLATE`] renders, verbatim: the
-    /// lines from `Run things` through the last `HELP_GROUPS` heading,
-    /// stopping short of the blank line before `Aliases`.
-    fn help_template_group_block() -> &'static str {
-        let start = HELP_TEMPLATE
-            .find("Run things")
-            .expect("HELP_TEMPLATE opens its group listing with `Run things`");
-        let tail = &HELP_TEMPLATE[start..];
-        let end = tail
-            .find("\n\nAliases")
-            .expect("the group listing ends before the blank line above `Aliases`");
-        &tail[..end]
+    /// The README's block: each `HELP_GROUPS` heading padded to one column,
+    /// then its verbs on one line.
+    fn readme_group_block() -> String {
+        let width = HELP_GROUPS.iter().map(|(h, _)| h.len()).max().unwrap_or(0) + 2;
+        HELP_GROUPS
+            .iter()
+            .map(|(heading, verbs)| format!("{heading:<width$}{}", verbs.join(" ")))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Fails when the README's grouped verb listing, under "Everything else",
-    /// drifts from what `shep --help` renders.
+    /// drifts from `HELP_GROUPS`, which `shep --help` renders.
     ///
     /// The generator does not touch that prose, so nothing else reads it
     /// back. Skips outside the workspace checkout; see [`read_workspace_readme`].
@@ -396,10 +415,111 @@ mod tests {
 
         assert_eq!(
             readme_block,
-            help_template_group_block(),
-            "README.md's verb grouping has drifted from HELP_TEMPLATE's; \
-             copy the `Run things` .. `Help` lines from help.rs into README.md's \
+            readme_group_block(),
+            "README.md's verb grouping has drifted from HELP_GROUPS; \
+             copy the headings and verbs from help.rs into README.md's \
              \"Everything else\" block"
+        );
+    }
+
+    /// `shep --help` as an operator sees it with no dogs adopted.
+    fn top_level_help() -> String {
+        use clap::CommandFactory;
+        let mut command = crate::cli::with_global_footer(Cli::command());
+        crate::adopted_help::list_in_help(&mut command, &[], false);
+        command.render_long_help().to_string()
+    }
+
+    /// Every visible verb, with its about and the names it answers to.
+    fn visible_verbs() -> Vec<(String, Vec<String>, String)> {
+        use clap::CommandFactory;
+        Cli::command()
+            .get_subcommands()
+            .filter(|s| !s.is_hide_set())
+            .map(|s| {
+                (
+                    s.get_name().to_string(),
+                    s.get_visible_aliases().map(str::to_string).collect(),
+                    s.get_about().map(ToString::to_string).unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_verb_line_carries_its_about() {
+        let help = top_level_help();
+        for (name, _, about) in visible_verbs() {
+            if name == "help" {
+                continue;
+            }
+            assert!(!about.is_empty(), "`{name}` has no about");
+            let line = help
+                .lines()
+                .find(|line| {
+                    line.strip_prefix("  ")
+                        .and_then(|rest| rest.split([' ', ',']).next())
+                        == Some(name.as_str())
+                })
+                .unwrap_or_else(|| panic!("`{name}` has no line in:\n{help}"));
+            assert!(
+                line.ends_with(&about),
+                "`{name}` is listed without its about {about:?}: {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_verb_about_fits_sixty_columns() {
+        use crate::output::width::text_columns;
+        let too_long: Vec<String> = visible_verbs()
+            .into_iter()
+            .filter(|(_, _, about)| text_columns(about) > 60)
+            .map(|(name, _, about)| format!("{name} ({}): {about}", text_columns(&about)))
+            .collect();
+        assert!(
+            too_long.is_empty(),
+            "abouts over 60 columns:\n{}",
+            too_long.join("\n")
+        );
+    }
+
+    #[test]
+    fn aliases_sit_on_their_verbs_line() {
+        let help = top_level_help();
+        let mut seen = 0;
+        for (name, aliases, _) in visible_verbs() {
+            if aliases.is_empty() {
+                continue;
+            }
+            seen += 1;
+            let names = format!("{name}, {}", aliases.join(", "));
+            assert!(
+                help.lines()
+                    .any(|line| line.starts_with(&format!("  {names}  "))),
+                "`{names}` is not on one line:\n{help}"
+            );
+        }
+        assert!(seen > 0, "no verb has an alias, so this checked nothing");
+        assert!(
+            !help.contains("Aliases"),
+            "the Aliases line is back:\n{help}"
+        );
+        assert!(
+            !help.contains("Upgrading"),
+            "the Upgrading line is back:\n{help}"
+        );
+    }
+
+    #[test]
+    fn the_top_level_has_no_options_block() {
+        let help = top_level_help();
+        assert!(!help.contains("Options"), "{help}");
+        assert!(!help.contains("--help"), "{help}");
+        assert!(
+            help.lines().any(|line| line
+                == "Global flags: --format, --quiet, --style, --host, --home, -h, -V. See shep help flags"),
+            "{help}"
         );
     }
 
@@ -549,88 +669,10 @@ mod tests {
         }
     }
 
-    /// Every visible alias is named in `--help`, and only real ones are.
-    ///
-    /// The grouped listing replaces clap's `[aliases: ...]` column. Derived
-    /// from clap, so a new `visible_alias` fails here until the line says so.
-    #[test]
-    fn the_help_template_names_every_visible_alias() {
-        use clap::CommandFactory;
-        let command = Cli::command();
-        let mut expected: Vec<String> = command
-            .get_subcommands()
-            .filter(|s| !s.is_hide_set())
-            .filter_map(|s| {
-                let aliases: Vec<&str> = s.get_visible_aliases().collect();
-                (!aliases.is_empty()).then(|| format!("{}: {}", s.get_name(), aliases.join(", ")))
-            })
-            .collect();
-        expected.sort();
-
-        let line = HELP_TEMPLATE
-            .lines()
-            .find(|l| l.starts_with("Aliases"))
-            .expect("HELP_TEMPLATE has an Aliases line");
-
-        for entry in &expected {
-            assert!(
-                line.contains(entry.as_str()),
-                "`--help`'s Aliases line does not name `{entry}`: {line}"
-            );
-        }
-
-        // And nothing invented: every `verb: ` on the line is a real one.
-        for token in line.trim_start_matches("Aliases").split_whitespace() {
-            if let Some(verb) = token.strip_suffix(':') {
-                assert!(
-                    expected.iter().any(|e| e.starts_with(&format!("{verb}:"))),
-                    "`--help` names aliases for `{verb}`, which has none"
-                );
-            }
-        }
-    }
-
-    /// `daemon reload` is hidden along with `daemon`, since `daemon` itself
-    /// is `#[command(hide = true)]` -- it is the internal re-exec path, not
-    /// a verb an operator picks off a menu. The version-skew refusal (Task
-    /// 5) names `shep daemon reload` as the fix, so `--help` must name it
-    /// too or an operator who goes looking for it finds nothing.
-    #[test]
-    fn the_help_template_names_the_upgrade_path() {
-        let line = HELP_TEMPLATE
-            .lines()
-            .find(|l| l.starts_with("Upgrading"))
-            .expect("HELP_TEMPLATE has an Upgrading line");
-        assert_eq!(
-            line,
-            "Upgrading        cargo install shep replaces the binary, not the running shepherd: shep daemon reload"
-        );
-    }
-
-    /// `HELP_TEMPLATE` is a literal and `HELP_GROUPS` is structured data, so
-    /// the two can disagree. They may not: the template is what users read
-    /// and the table is what the drift test above checks.
-    #[test]
-    fn the_help_template_and_the_group_table_agree() {
-        for (heading, verbs) in HELP_GROUPS {
-            let line = HELP_TEMPLATE
-                .lines()
-                .find(|l| l.starts_with(heading))
-                .unwrap_or_else(|| panic!("`{heading}` is missing from HELP_TEMPLATE"));
-            for verb in *verbs {
-                assert!(
-                    line.split_whitespace().any(|w| w == *verb),
-                    "`{verb}` is filed under `{heading}` but is not on that line: {line}"
-                );
-            }
-        }
-    }
-
     /// The five commands that get someone to a reboot-surviving process.
     #[test]
     fn the_help_opens_with_a_worked_example() {
-        use clap::CommandFactory;
-        let help = Cli::command().render_long_help().to_string();
+        let help = top_level_help();
         assert!(
             help.contains("Getting started"),
             "no getting-started block:\n{help}"
@@ -645,8 +687,7 @@ mod tests {
     /// anyone read.
     #[test]
     fn home_is_the_last_global_option_a_reader_meets() {
-        use clap::CommandFactory;
-        let help = Cli::command().render_long_help().to_string();
+        let help = top_level_help();
         let home = help.find("--home").expect("--home is still documented");
         let format = help.find("--format").expect("--format is documented");
         let quiet = help.find("--quiet").expect("--quiet is documented");
@@ -662,8 +703,7 @@ mod tests {
     /// command after writing the comment.
     #[test]
     fn the_top_level_help_carries_no_implementation_notes() {
-        use clap::CommandFactory;
-        let help = Cli::command().render_long_help().to_string();
+        let help = top_level_help();
         for leak in [
             "bin_name",
             "Phase 15",
@@ -691,8 +731,7 @@ mod tests {
     /// than the doc comment that produced it.
     #[test]
     fn the_top_level_help_has_no_dashes_or_doc_link_syntax() {
-        use clap::CommandFactory;
-        let help = Cli::command().render_long_help().to_string();
+        let help = top_level_help();
         assert!(
             !help.contains('\u{2014}'),
             "an em dash reached --help, which this project's copy rules forbid:\n{help}"
@@ -708,14 +747,14 @@ mod tests {
         );
     }
 
-    /// The listing clap cannot style is dressed by hand: every group heading
-    /// and verb, the example verbs, and the Aliases and Upgrading labels.
+    /// The listing clap cannot style is painted by hand: every group heading
+    /// and verb, the example verbs, and the topics.
     #[test]
-    fn the_hand_written_listing_is_painted_in_the_palette() {
+    fn the_grouped_listing_is_painted_in_the_palette() {
         use clap::CommandFactory;
         let command = Cli::command()
             .styles(crate::output::paint::help_styles(true))
-            .help_template(dress_help_template(HELP_TEMPLATE, true));
+            .help_template(top_level_template(&Cli::command(), &[], true));
         let ansi = command.clone().render_long_help().ansi().to_string();
         let heading = |text: &str| format!("\x1b[1m\x1b[38;5;221m{text}\x1b[0m");
         let verb = |text: &str| format!("\x1b[38;5;29m{text}\x1b[0m");
@@ -726,32 +765,36 @@ mod tests {
             verb("restart"),
             heading("See what's up"),
             heading("Help"),
-            heading("Aliases"),
-            format!("{}: {}, {}", verb("flock"), verb("list"), verb("ls")),
-            heading("Upgrading"),
+            heading("Help topics"),
+            verb("selectors"),
+            format!("{}, {}, {}", verb("flock"), verb("list"), verb("ls")),
         ] {
             assert!(ansi.contains(&expected), "missing {expected:?} in {ansi:?}");
         }
     }
 
     #[test]
-    fn dressing_the_listing_leaves_its_plain_text_alone() {
+    fn colour_off_strips_every_escape_the_listing_adds() {
         use clap::CommandFactory;
-        let today = Cli::command().render_long_help().to_string();
-        let mut dressed = Cli::command().help_template(dress_help_template(HELP_TEMPLATE, true));
-        assert_eq!(dressed.render_long_help().to_string(), today);
+        let plain = Cli::command()
+            .help_template(top_level_template(&Cli::command(), &[], true))
+            .render_long_help()
+            .to_string();
+        assert!(!plain.contains('\x1b'), "{plain:?}");
+        assert!(plain.contains("\n  start  "), "{plain}");
     }
 
     #[test]
-    fn dressing_paints_an_adopted_dogs_name_and_not_its_description() {
-        let template = format!("{HELP_TEMPLATE}\n").replace(
-            "Dogs and agents  dogs install upgrade adopt whistle",
-            "Dogs and agents  dogs install upgrade adopt whistle\n                 otel  exports traces",
-        );
-        let dressed = dress(&template, &Dress::new(true));
-        assert!(
-            dressed.contains("                 \x1b[38;5;29motel\x1b[0m  exports traces"),
-            "got {dressed:?}"
-        );
+    fn painting_an_adopted_dogs_name_leaves_its_description_plain() {
+        use clap::CommandFactory;
+        let dog = DogLine {
+            name: "otel",
+            about: Some("exports traces"),
+        };
+        let template = top_level_template(&Cli::command(), &[dog], true);
+        let name = "\x1b[38;5;29motel\x1b[0m";
+        let at = template.find(name).expect("the dog's name is painted");
+        let rest = template[at + name.len()..].trim_start_matches(' ');
+        assert!(rest.starts_with("exports traces"), "got {rest:?}");
     }
 }

@@ -1,4 +1,4 @@
-# Comment blocks over IR-47's line limits, measured at 88f75aba0.
+# Comment blocks over IR-47's line limits, measured at 335511c62.
 # Limits: `///` 6 body lines after the summary (12 when the block has an
 # `# Errors` section), `//!` 10 lines, `//` 4 in a row. Fenced code and an
 # `# Example` section never count; a line that is only its marker does.
@@ -29,7 +29,7 @@
 
 10 crates/shep-cli/src/cli/logs.rs /// How many existing lines of each stream to print before following
 
-8 crates/shep-cli/src/cli/mod.rs /// Reach another host's shepherd over ssh
+7 crates/shep-cli/src/cli/mod.rs /// Reach another host's shepherd over ssh
 
 41 crates/shep-cli/src/cli/sheep.rs /// Selectors, script paths, Flockfiles, or `-` to read Flockfile JSON
 8 crates/shep-cli/src/cli/sheep.rs /// Interpreter to run the script with, overriding both shep.toml's
@@ -39,26 +39,26 @@
 21 crates/shep-cli/src/cli/verbs.rs /// Serve a directory over plain HTTP, as a managed sheep.
 28 crates/shep-cli/src/cli/verbs.rs /// Restart one or more sheep.
 55 crates/shep-cli/src/cli/verbs.rs /// Reload one or more sheep, one instance at a time.
-22 crates/shep-cli/src/cli/verbs.rs /// Delete one or more sheep, or one or more dogs, from the flock, for
-15 crates/shep-cli/src/cli/verbs.rs /// Set how many instances one app runs — the stocking rate.
+21 crates/shep-cli/src/cli/verbs.rs /// Delete one or more sheep or dogs, for good
+15 crates/shep-cli/src/cli/verbs.rs /// Set how many instances one app runs
 12 crates/shep-cli/src/cli/verbs.rs /// List the flock.
-13 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog back on. A sheep named here has its disabled
-12 crates/shep-cli/src/cli/verbs.rs /// Stop a sheep and refuse to start it again until `shep enable`, or turn
-18 crates/shep-cli/src/cli/verbs.rs /// Vet a binary shep has never seen and register it as a dog: writes
+15 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog back on
+13 crates/shep-cli/src/cli/verbs.rs /// Turn a sheep or a dog off, until `shep enable`
+19 crates/shep-cli/src/cli/verbs.rs /// Vet a binary and register it as a dog
 11 crates/shep-cli/src/cli/verbs.rs /// Describe one sheep in detail.
-11 crates/shep-cli/src/cli/verbs.rs /// Send a named action to matched sheep and report what each app
+10 crates/shep-cli/src/cli/verbs.rs /// Send a named action to matched sheep
 14 crates/shep-cli/src/cli/verbs.rs /// Send a unix signal to matched sheep.
 13 crates/shep-cli/src/cli/verbs.rs /// Write one line to matched sheep's stdin.
 11 crates/shep-cli/src/cli/verbs.rs /// Watch the flock on a live dashboard.
 16 crates/shep-cli/src/cli/verbs.rs /// Serve the MCP interface on stdin/stdout for an AI agent.
-8 crates/shep-cli/src/cli/verbs.rs /// Read and write the key/value store: `shep kv get`, `shep kv set`, `shep kv unset`.
-22 crates/shep-cli/src/cli/verbs.rs /// Change one setting of a sheep or a dog: `shep set <address> <value>`.
-18 crates/shep-cli/src/cli/verbs.rs /// Drop an override, or remove a dog's key, so what was there before applies.
+9 crates/shep-cli/src/cli/verbs.rs /// Read and write the key/value store
+22 crates/shep-cli/src/cli/verbs.rs /// Change one setting of a sheep or a dog
+19 crates/shep-cli/src/cli/verbs.rs /// Drop an override, or remove a dog's key
 16 crates/shep-cli/src/cli/verbs.rs /// Store the values a Flockfile refers to and never carries.
-41 crates/shep-cli/src/cli/verbs.rs /// Copy one setting, one dog's table, or a sheep's env from one sheep onto
+42 crates/shep-cli/src/cli/verbs.rs /// Copy settings from one sheep onto another
 23 crates/shep-cli/src/cli/verbs.rs /// Print a sheep's or a dog's settings as TOML.
-20 crates/shep-cli/src/cli/verbs.rs /// Boot a shepherd in this process, run one Flockfile's flock in the
-12 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in an isolated, throwaway foreground
+20 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in the foreground
+14 crates/shep-cli/src/cli/verbs.rs /// Run one Flockfile's flock in a throwaway session
 23 crates/shep-cli/src/cli/verbs.rs /// Install an init unit so the shepherd starts at boot.
 
 12 crates/shep-cli/src/whistle/facts.rs /// Every list-shaped tool's payload: rows under a named field.

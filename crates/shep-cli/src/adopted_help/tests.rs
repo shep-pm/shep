@@ -12,6 +12,9 @@ use crate::commands::dogs::read_manifest;
 use crate::commands::shep_toml::ShepToml;
 use crate::home::resolve_paths;
 
+/// The heading `shep --help` files `dogs`, `adopt` and `whistle` under.
+const DOGS_HEADING: &str = "Dogs and agents";
+
 /// Generous: the question is the answer, not the clock.
 const BUDGET: Duration = Duration::from_secs(10);
 
@@ -124,6 +127,21 @@ fn a_dog_named_like_a_verb_is_left_out_of_the_listing() {
     assert_eq!(adopted_verbs(&paths), Vec::<AdoptedVerb>::new());
 }
 
+/// `shep --help` as `list_in_help` renders it for `verbs`.
+fn help_with(verbs: &[AdoptedVerb]) -> String {
+    let mut command = Cli::command();
+    list_in_help(&mut command, verbs, true);
+    command.render_long_help().to_string()
+}
+
+/// The lines of the Dogs group, heading first, up to the blank line.
+fn dogs_group(help: &str) -> Vec<&str> {
+    help.lines()
+        .skip_while(|line| *line != DOGS_HEADING)
+        .take_while(|line| !line.is_empty())
+        .collect()
+}
+
 #[test]
 fn the_dogs_join_the_dogs_group_of_the_rendered_help() {
     let dir = tempfile::tempdir().unwrap();
@@ -131,74 +149,67 @@ fn the_dogs_join_the_dogs_group_of_the_rendered_help() {
         dir.path(),
         [("otel", DECLARING_BODY), ("log-rotate", SILENT_BODY)],
     );
-    let verbs = adopted_verbs(&paths);
+    let help = help_with(&adopted_verbs(&paths));
 
-    let mut command = Cli::command();
-    list_in_help(&mut command, &verbs, true);
-    let help = command.render_long_help().to_string();
-
-    let group = help
-        .lines()
-        .position(|line| line.starts_with(DOG_GROUP_HEADING))
-        .expect("the Dogs group is still there");
+    let group = dogs_group(&help);
+    let names: Vec<&str> = group
+        .iter()
+        .skip(1)
+        .map(|line| line.split_whitespace().next().unwrap())
+        .collect();
     assert_eq!(
-        help.lines().skip(group).take(3).collect::<Vec<_>>(),
-        vec![
-            "Dogs and agents  dogs install upgrade adopt whistle",
-            "                 log-rotate",
-            "                 otel        exports traces to an OTLP collector",
+        names,
+        [
+            "dogs",
+            "install",
+            "upgrade",
+            "adopt",
+            "whistle",
+            "log-rotate",
+            "otel"
         ],
-        "the dogs sit under the group's own verbs, each with what it declared"
+        "the dogs sit under the group's own verbs, in name order"
+    );
+    assert_eq!(
+        group[6], "  log-rotate",
+        "a dog with no description is its name alone"
+    );
+    assert!(
+        group[7].ends_with("  exports traces to an OTLP collector"),
+        "{}",
+        group[7]
     );
 }
 
 #[test]
-fn a_home_with_no_adopted_dogs_renders_the_help_template_unchanged() {
+fn a_home_with_no_adopted_dogs_lists_only_the_groups_own_verbs() {
     let dir = tempfile::tempdir().unwrap();
     let paths = a_home_with(dir.path(), []);
     assert!(adopted_verbs(&paths).is_empty());
 
-    let mut command = Cli::command();
-    list_in_help(&mut command, &[], true);
-
-    assert_eq!(
-        command.render_long_help().to_string(),
-        Cli::command().render_long_help().to_string(),
-    );
+    assert_eq!(dogs_group(&help_with(&[])).len(), 1 + 5);
 }
 
-/// The layout `dog_lines` assumes is `HELP_TEMPLATE`'s own: a group's verbs
-/// start at [`VERB_COLUMN`], and a dog line that does not start there is a
-/// listing that reads as a stray line.
+/// A dog's description starts in the column the group's verbs' abouts do.
 #[test]
-fn the_dog_lines_line_up_under_the_group_verbs() {
-    let group = HELP_TEMPLATE
-        .lines()
-        .find(|line| line.starts_with(DOG_GROUP_HEADING))
-        .expect("HELP_TEMPLATE has a Dogs group");
-    assert_eq!(&group[VERB_COLUMN..VERB_COLUMN + 4], "dogs", "{group}");
+fn a_dog_lines_up_with_the_verbs_in_its_group() {
+    let help = help_with(&[AdoptedVerb {
+        name: "otel".to_string(),
+        description: Some("exports traces".to_string()),
+        subcommands: Vec::new(),
+    }]);
+    let group = dogs_group(&help);
+    let column = |line: &str, about: &str| {
+        crate::output::width::text_columns(&line[..line.find(about).unwrap()])
+    };
 
-    let lines = dog_lines(&[
-        AdoptedVerb {
-            name: "log-rotate".to_string(),
-            description: None,
-            subcommands: Vec::new(),
-        },
-        AdoptedVerb {
-            name: "otel".to_string(),
-            description: Some("exports traces".to_string()),
-            subcommands: Vec::new(),
-        },
-    ]);
-    for line in &lines {
-        assert_eq!(
-            &line[..VERB_COLUMN],
-            " ".repeat(VERB_COLUMN).as_str(),
-            "{line}"
-        );
-    }
-    assert_eq!(lines[0].trim_start(), "log-rotate");
-    assert_eq!(lines[1].trim_start(), "otel        exports traces");
+    let verb = group.iter().find(|l| l.starts_with("  dogs ")).unwrap();
+    let dog = group.iter().find(|l| l.starts_with("  otel ")).unwrap();
+    assert_eq!(
+        column(dog, "exports traces"),
+        column(verb, "List the dogs"),
+        "{group:#?}"
+    );
 }
 
 #[test]
@@ -399,25 +410,27 @@ fn a_manifest_carrying_a_placeholder_or_a_line_break_is_listed_as_text() {
         "a subcommand name that is two words is not a subcommand"
     );
 
-    let mut command = Cli::command();
-    list_in_help(&mut command, &verbs, true);
-    let listed = command.render_long_help().to_string();
-    let plain = Cli::command().render_long_help().to_string();
-    let at = plain
+    let listed = help_with(&verbs);
+    let plain = help_with(&[]);
+    let at = plain.lines().position(|line| line == DOGS_HEADING).unwrap();
+    let end = at + dogs_group(&plain).len();
+    let column = plain
         .lines()
-        .position(|line| line.starts_with(DOG_GROUP_HEADING))
-        .unwrap();
+        .find(|line| line.starts_with("  dogs "))
+        .and_then(|line| line.find("List the dogs"))
+        .expect("the dogs verb is listed with its about");
+    let dog_line = format!("  {:<1$}spans all-args and more[2J", "otel", column - 2);
     let expected: Vec<&str> = plain
         .lines()
-        .take(at + 1)
-        .chain(["                 otel  spans all-args and more[2J"])
-        .chain(plain.lines().skip(at + 1))
+        .take(end)
+        .chain([dog_line.as_str()])
+        .chain(plain.lines().skip(end))
         .collect();
 
     assert_eq!(listed.lines().collect::<Vec<_>>(), expected, "{listed}");
     assert_eq!(
-        listed.matches("Options:").count(),
-        plain.matches("Options:").count(),
+        listed.matches("Options").count(),
+        plain.matches("Options").count(),
         "the spliced line rendered no extra section"
     );
 }

@@ -42,10 +42,19 @@ pub(crate) fn with_global_footer(command: clap::Command) -> clap::Command {
         .iter()
         .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
         .collect();
+    let root_footer = footer(
+        &[flags.clone(), vec!["-h".to_owned(), "-V".to_owned()]].concat(),
+        true,
+    );
+    let after = match command.get_after_help() {
+        Some(text) => format!("{root_footer}\n{text}"),
+        None => root_footer,
+    };
     each_verb(command, &|verb| {
         let takes_host = crate::remote::takes_host(verb.get_name());
         footed(verb, &flags, takes_host)
     })
+    .after_help(after)
 }
 
 /// `command` with `change` applied to each of its direct subcommands.
@@ -315,29 +324,28 @@ mod tests {
         }
     }
 
-    /// The top level lists the globals under a heading, one line each, and
-    /// the template and `GlobalArgs` agree on which they are.
+    /// The top level names the globals on one footer line, with `-h` and `-V`,
+    /// and the footer and `GlobalArgs` agree on which they are.
     #[test]
-    fn the_top_level_help_lists_each_global_flag_on_one_line_under_a_heading() {
+    fn the_top_level_help_names_each_global_flag_on_its_footer_line() {
         let help = with_global_footer(Cli::command())
             .render_long_help()
             .to_string();
-        let block: Vec<&str> = help
+        let footer: Vec<&str> = help
             .lines()
-            .skip_while(|line| !line.starts_with("Global flags"))
-            .skip(1)
-            .take_while(|line| line.starts_with("  "))
+            .filter(|line| line.starts_with("Global flags:"))
             .collect();
+        assert_eq!(footer.len(), 1, "{help}");
         for (id, _) in long_texts() {
-            let lines = block
-                .iter()
-                .filter(|line| line.contains(&format!("--{id}")))
-                .count();
             assert_eq!(
-                lines, 1,
-                "--{id} wants one line under `Global flags`:\n{help}"
+                footer[0].matches(&format!("--{id}")).count(),
+                1,
+                "--{id} wants one mention on the footer line:\n{help}"
             );
         }
-        assert_eq!(block.len(), 5, "got {block:?}");
+        assert!(
+            footer[0].contains(", -h, -V. See shep help flags"),
+            "{help}"
+        );
     }
 }

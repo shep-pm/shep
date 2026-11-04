@@ -33,10 +33,8 @@ use shep_core::destination::Destination;
 
 use help::version_text;
 
-// `crate::adopted_help` renders the registry's dogs into a copy of this
-// template; the template itself is what ships and stays hand-written.
 pub(crate) use global_help::with_global_footer;
-pub(crate) use help::{HELP_TEMPLATE, dress_help_template};
+pub(crate) use help::{DogLine, HELP_TEMPLATE, top_level_template};
 
 pub use dogs::{
     AdoptArgs, DisableArgs, DogArgs, DogsArgs, DogsCommand, EnableArgs, InstallArgs, UpgradeArgs,

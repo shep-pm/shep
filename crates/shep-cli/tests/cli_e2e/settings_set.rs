@@ -319,7 +319,9 @@ fn shep_set_writes_a_sheeps_field_a_dog_table_key_and_a_dogs_own_key() {
     assert!(
         help_text
             .lines()
-            .any(|line| line.starts_with("The shepherd") && line.contains(" set ")),
+            .skip_while(|line| *line != "The shepherd")
+            .take_while(|line| !line.is_empty())
+            .any(|line| line.starts_with("  set ")),
         "{help_text}"
     );
 

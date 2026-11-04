@@ -42,8 +42,8 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     }
     // `try_parse_from`, not `parse_from`: the latter exits inside clap, so
     // bare `shep` and `shep help` could not carry a status line. The command
-    // is built here because adopted dogs join the hand-written `--help`
-    // listing, and clap bakes that render into its `--help` error.
+    // is built here because adopted dogs join the `--help` listing, and
+    // clap bakes that render into its `--help` error.
     let deep = style::deep_colour_terminal(
         std::env::var_os("TERM").as_deref(),
         std::env::var_os("COLORTERM").as_deref(),
@@ -70,8 +70,8 @@ pub(crate) fn run_argv(argv: Vec<OsString>) -> std::process::ExitCode {
     } else {
         Vec::new()
     };
-    // The hand-written verb listing is template text clap's styles cannot
-    // reach, so it is painted as the template is set.
+    // The verb listing is template text clap's styles cannot reach, so it
+    // is painted as the template is set.
     adopted_help::list_in_help(&mut command, &dogs, deep);
     let parsed = command
         .try_get_matches_from(argv.clone())
