@@ -1258,11 +1258,11 @@ The values on screen stay exactly as they were, and it does not exit — you do.
 Needs a terminal: with stdout redirected it refuses rather than writing escape sequences into a
 file.
 
-Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG] [COMMAND]
+Usage: shep lookout [OPTIONS] [SHEEP] [TAB] [DOG]
+       shep lookout <COMMAND>
 
 Commands:
   catalogue  Open on the dog catalogue
-  help       Print this message or the help of the given subcommand(s)
 
 Arguments:
   [SHEEP]
@@ -1315,6 +1315,9 @@ Open on the dog catalogue.
 The same screen the `i` key opens, reached the same way: lookout sends itself that keypress before
 it draws, so `Esc` leaves to the dashboard and every key the catalogue binds is the key it already
 binds.
+
+A sheep, tab or dog named `catalogue` is reached with `--`, the way a name beside any other
+subcommand is: `shep lookout -- web dogs catalogue`.
 
 Usage: shep lookout catalogue [OPTIONS]
 

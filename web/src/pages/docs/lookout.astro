@@ -151,7 +151,8 @@ $ shep --host amp2 lookout`;
 const openCmds = `$ shep lookout api
 $ shep lookout api watch
 $ shep lookout api dogs jobs
-$ shep lookout catalogue`;
+$ shep lookout catalogue
+$ shep lookout -- api dogs catalogue`;
 
 const overHost: { pane: string; works: boolean; note: string }[] = [
   { pane: "Flock table, lambs, config pane", works: true, note: "" },
@@ -390,10 +391,12 @@ esc/s close   j/k select   g… control enabled`;
     <p>
       The one subcommand opens a screen instead of a row.
       <code>shep lookout catalogue</code> is the dog catalogue under
-      <a href="/docs/lookout#the-dog-catalogue">its own heading</a>, and a
-      sheep, tab or dog typed beside it is a usage error before the screen
-      opens. A sheep actually named <code>catalogue</code> is reached from the
-      dashboard, not from here.
+      <a href="/docs/lookout#the-dog-catalogue">its own heading</a>, and a tab
+      or a dog typed after it is a usage error before the screen opens. A sheep,
+      tab or dog actually named <code>catalogue</code> keeps its name the way a
+      name beside any other subcommand does: <code>--</code> ends the search for
+      a verb, so <code>shep lookout -- api dogs catalogue</code> opens that
+      dog's table.
     </p>
 
     <h2 id="over-host">Over --host</h2>
