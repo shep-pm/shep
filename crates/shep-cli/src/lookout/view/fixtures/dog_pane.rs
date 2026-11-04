@@ -475,6 +475,11 @@ pub fn pane_reply(pane: &Pane) -> ActionOutcome {
 /// Opened the way the event loop opens one: `e`, the schema, the section, the
 /// manifest, then the reply to the pull.
 pub fn app_in_pane_dog(outcome: Option<ActionOutcome>) -> App {
+    app_in_pane_dog_declaring(&["revoke"], outcome)
+}
+
+/// [`app_in_pane_dog`] for a manifest whose `actions` are `actions`.
+pub fn app_in_pane_dog_declaring(actions: &[&str], outcome: Option<ActionOutcome>) -> App {
     let paddock = ProcessInfo::builder(92, "paddock", ProcStatus::Online)
         .pid(Some(92_000))
         .dog(Some(DogSource::Adopted {
@@ -512,7 +517,7 @@ pub fn app_in_pane_dog(outcome: Option<ActionOutcome>) -> App {
         name: "paddock".to_string(),
         opening,
         declared: Some(DeclaredPane {
-            actions: vec!["revoke".to_string()],
+            actions: actions.iter().map(|name| (*name).to_string()).collect(),
             events: vec!["lease.changed".to_string()],
         }),
     });

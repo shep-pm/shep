@@ -55,6 +55,7 @@ mod config_pane_keys;
 mod disabled_tests;
 mod dog_job;
 mod dog_pane;
+mod dog_pane_actions;
 #[cfg(test)]
 mod dog_pane_entries;
 #[cfg(test)]
@@ -527,6 +528,9 @@ pub struct App {
     hint: Option<String>,
     /// The tag and dog of the delete question lookout is asking, or `None`.
     dog_delete: Option<(u64, String)>,
+    /// The tag and trigger of the pane action question lookout is asking, or
+    /// `None`. A yes sends the trigger.
+    pane_action: Option<(u64, Sent)>,
     /// The next modal tag.
     ///
     /// Shared by every modal owner so no two open modals carry the same tag,

@@ -26,6 +26,9 @@ impl App {
             Sent::SheepConfig { name } => self.on_sheep_config(&name, result),
             Sent::DogSection { name } => self.on_dog_section(&name, result),
             Sent::DogPane { name, opening } => self.on_dog_pane_pulled(&name, opening, result),
+            Sent::DogPaneAction { name, action, .. } => {
+                self.on_dog_pane_action_reply(&name, &action, result)
+            }
             Sent::SetDogSection { name, ticket, .. } => {
                 self.on_dog_section_set(&name, ticket, result)
             }
@@ -126,6 +129,10 @@ impl App {
                     opening,
                     Err(format!("{name}: the pane was not asked for")),
                 );
+                Effect::None
+            }
+            Sent::DogPaneAction { name, action, .. } => {
+                self.say_on_dog_pane(&name, &format!("{action} was not sent"));
                 Effect::None
             }
             Sent::SetDogSection { name, ticket, .. } => {

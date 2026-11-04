@@ -6,7 +6,7 @@
 
 use shep_core::dogs::pane::Pane;
 
-use super::status::{Layout, StatusView, Step, Tab, layout};
+use super::status::{Layout, PaneKey, StatusView, Step, Tab, keyed, layout, row_at};
 
 /// What a dog's manifest says about its pane: the names a pane is checked
 /// against.
@@ -46,6 +46,8 @@ pub struct DogStatus {
     pulling: bool,
     /// The open tab and the status tab's cursor.
     view: StatusView,
+    /// What the newest action key or action reply said, for the footer.
+    said: Option<String>,
 }
 
 impl DogStatus {
@@ -58,6 +60,7 @@ impl DogStatus {
             failed: None,
             pulling: false,
             view: StatusView::default(),
+            said: None,
         }
     }
 
@@ -69,13 +72,6 @@ impl DogStatus {
 
     /// What the dog's manifest declares.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the pane's actions and refresh read it, and have not landed"
-        )
-    )]
     pub fn declared(&self) -> &DeclaredPane {
         &self.declared
     }
@@ -153,8 +149,7 @@ impl DogStatus {
     /// The tab spends a line on its strip and one per footer line, and the
     /// rest is what the window shows.
     pub(in crate::lookout) fn set_rows(&mut self, rows: usize) {
-        let footer = usize::from(self.failed.is_some())
-            + usize::from(matches!(&self.state, PaneState::Ready(pane) if pane.skipped > 0));
+        let footer = self.footer_len();
         let room = if rows == 0 {
             0
         } else {
@@ -162,6 +157,54 @@ impl DogStatus {
         };
         let layout = self.layout();
         self.view.set_room(room, &layout);
+    }
+
+    /// The pane's actions with their letters, in declared order. Empty unless
+    /// the pane is ready.
+    pub(in crate::lookout) fn keys(&self) -> Vec<PaneKey> {
+        match &self.state {
+            PaneState::Ready(pane) => keyed(pane, &self.declared.actions),
+            PaneState::Waiting | PaneState::Unavailable(_) => Vec::new(),
+        }
+    }
+
+    /// The names of the pane's actions the manifest does not declare.
+    pub(in crate::lookout) fn undeclared(&self) -> impl Iterator<Item = String> {
+        self.keys()
+            .into_iter()
+            .map(|key| key.action.action)
+            .filter(|name| !self.declared.actions.contains(name))
+    }
+
+    /// The key of the row the cursor is on. [`None`] while the pane holds no
+    /// row.
+    pub(in crate::lookout) fn row_key(&self) -> Option<&str> {
+        let PaneState::Ready(pane) = &self.state else {
+            return None;
+        };
+        row_at(pane, self.view.cursor()?).map(|row| row.key.as_str())
+    }
+
+    /// Sets the footer's last result, `text` with the terminal's controls
+    /// removed.
+    pub(in crate::lookout) fn say(&mut self, text: &str) {
+        self.said = Some(crate::terminal_safe::sanitise(text).0);
+    }
+
+    /// The footer's last result: what the newest action key or action reply
+    /// said.
+    #[must_use]
+    pub fn said(&self) -> Option<&str> {
+        self.said.as_deref()
+    }
+
+    /// How many lines the status tab's footer holds.
+    pub(in crate::lookout) fn footer_len(&self) -> usize {
+        usize::from(self.failed.is_some())
+            + usize::from(matches!(&self.state, PaneState::Ready(pane) if pane.skipped > 0))
+            + self.undeclared().count()
+            + usize::from(self.said.is_some())
+            + usize::from(self.keys().iter().any(|key| key.letter.is_some()))
     }
 
     /// The first body line the status tab draws, when a key scrolled it away

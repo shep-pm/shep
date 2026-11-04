@@ -179,7 +179,7 @@ pub async fn run_connected<F: FlockSource, E: EventSource>(
             // all been dropped is `Ready(None)` forever, and a `_` pattern
             // would spin this loop. A pattern that fails disables the branch.
             Some(sent) = channels.requests.recv() => {
-                if matches!(sent, Sent::DogPane { .. }) {
+                if matches!(sent, Sent::DogPane { .. } | Sent::DogPaneAction { .. }) {
                     // A trigger to a dog that hangs waits out its deadline,
                     // up to a minute, so it is polled beside the stream and
                     // the poll rather than awaited here.

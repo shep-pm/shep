@@ -61,6 +61,7 @@ impl App {
             dog_quit: None,
             hint: None,
             dog_delete: None,
+            pane_action: None,
             next_modal_tag: 0,
         }
     }

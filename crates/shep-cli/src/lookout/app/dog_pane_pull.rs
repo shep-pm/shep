@@ -57,7 +57,7 @@ impl App {
 
     /// The open config pane, when it is dog `name`'s and the `opening` given
     /// is the latest.
-    fn dog_pane_of(&mut self, name: &str, opening: u64) -> Option<&mut ConfigPane> {
+    pub(super) fn dog_pane_of(&mut self, name: &str, opening: u64) -> Option<&mut ConfigPane> {
         if opening != self.dog_opening {
             return None;
         }
@@ -74,14 +74,25 @@ impl App {
 /// dog's own words are quoted in one, and nothing it writes may drive the
 /// terminal or break the line.
 fn read_pulled_pane(name: &str, result: Result<Response, RequestError>) -> Result<Pane, String> {
-    let reason = match result {
+    replied_body(name, result)
+        .and_then(|body| Pane::read(&body))
+        .map_err(|line| crate::terminal_safe::sanitise(&line).0)
+}
+
+/// The body dog `name` replied to a trigger with, or the one line that says
+/// why there is none.
+pub(super) fn replied_body(
+    name: &str,
+    result: Result<Response, RequestError>,
+) -> Result<String, String> {
+    match result {
         Ok(Response::Triggered(rows)) => {
             let row = rows
                 .into_iter()
                 .find(|row| row.name == name)
                 .ok_or_else(|| format!("{name} gave no answer"))?;
             match row.outcome {
-                ActionOutcome::Replied { body } => Pane::read(&body),
+                ActionOutcome::Replied { body } => Ok(body),
                 ActionOutcome::TimedOut => Err(format!("{name} did not answer in time")),
                 ActionOutcome::NoChannel => Err(format!("{name} has no shepherd channel")),
                 ActionOutcome::DogNoChannel => {
@@ -94,8 +105,7 @@ fn read_pulled_pane(name: &str, result: Result<Response, RequestError>) -> Resul
             }
         }
         other => Err(failed_reply(other)),
-    };
-    reason.map_err(|line| crate::terminal_safe::sanitise(&line).0)
+    }
 }
 
 #[cfg(test)]
