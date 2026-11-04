@@ -239,10 +239,7 @@ if (
     <CodeBlock label={`$ shep help flags`}>{cliReference.globalFlagsHelp}</CodeBlock>
 
     <h2 id="help-topics">Help topics</h2>
-    <p>
-      Prose several verbs share, printed once. A verb's page points at the
-      topic it uses.
-    </p>
+    <p>Shared prose, printed once.</p>
     {
       cliReference.helpTopics.map((topic) => (
         <CodeBlock label={`$ shep help ${topic.name}`}>{topic.text}</CodeBlock>
