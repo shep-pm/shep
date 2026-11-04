@@ -302,7 +302,7 @@ mod tests {
         let ran = turn_off(&paths, None);
 
         assert_eq!(ran.code, ExitCode::Success, "{}", ran.err);
-        assert_eq!(off_list(&paths), ["logs", "alerts"]);
+        assert_eq!(off_list(&paths), ["logs", "alerts", "upgrade"]);
     }
 
     #[test]
@@ -352,11 +352,11 @@ mod tests {
     fn a_name_this_build_does_not_know_survives_a_change() {
         let dir = tempfile::tempdir().unwrap();
         let paths = paths_in(dir.path());
-        off(&paths, &["upgrade"]);
+        off(&paths, &["nonesuch"]);
 
         turn_off(&paths, Some("logs"));
 
-        assert_eq!(off_list(&paths), ["upgrade", "logs"]);
+        assert_eq!(off_list(&paths), ["nonesuch", "logs"]);
     }
 
     #[test]
@@ -368,7 +368,7 @@ mod tests {
 
         assert_eq!(ran.code, ExitCode::Usage);
         assert!(ran.err.contains("nonesuch"), "{}", ran.err);
-        assert!(ran.err.contains("logs, alerts"), "{}", ran.err);
+        assert!(ran.err.contains("logs, alerts, upgrade"), "{}", ran.err);
         assert!(!paths.home.join(FILE).exists());
     }
 
@@ -403,9 +403,10 @@ mod tests {
         assert_eq!(
             ran.out,
             "\
-HINT    STATE  FOR IT
-logs    on     log-rotate (not installed)
-alerts  off    discord (installed), bark (built-in)
+HINT     STATE  FOR IT
+logs     on     log-rotate (not installed)
+alerts   off    discord (installed), bark (built-in)
+upgrade  on     -
 "
         );
     }
@@ -420,9 +421,10 @@ alerts  off    discord (installed), bark (built-in)
         assert_eq!(
             ran.out,
             "\
-HINT    STATE  FOR IT
-logs    on     -
-alerts  on     bark (built-in)
+HINT     STATE  FOR IT
+logs     on     -
+alerts   on     bark (built-in)
+upgrade  on     -
 "
         );
     }
@@ -443,6 +445,7 @@ alerts  on     bark (built-in)
             serde_json::json!([
                 { "hint": "logs", "state": "off", "for_it": ["log-rotate (not installed)"] },
                 { "hint": "alerts", "state": "on", "for_it": ["bark (built-in)"] },
+                { "hint": "upgrade", "state": "on", "for_it": [] },
             ])
         );
     }
