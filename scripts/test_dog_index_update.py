@@ -95,12 +95,15 @@ class ApplyTests(unittest.TestCase):
         out = dog_index_update.apply(index_text(row()), "shep-example", "0.2.0", hashes, REPOSITORY)
         self.assertLess(out.index(WINDOWS), out.index(LINUX))  # pc < unknown
 
-    # The script reads no permissions today, so a row keeps what it had. #1485
-    # hands it a manifest and drops a stale list, and replaces this test.
-    def test_a_permissions_list_the_row_already_has_is_left_alone(self) -> None:
+    # A list written for 0.1.0 would read as 0.2.0's, and this script is handed
+    # no manifest to restate it from. #1485 hands it one and writes the new list.
+    def test_a_permissions_list_from_the_version_being_replaced_is_dropped(self) -> None:
         old = {"kind": "cargo", "version": "0.1.0", "permissions": [{"name": "flock.read", "required": True}]}
         doc = self.apply(index_text(row(source=old)), "0.2.0", sums("shep-example", "0.2.0", {LINUX: HASH_A}))
-        self.assertEqual(self.source_of(doc)["permissions"], [{"name": "flock.read", "required": True}])
+        self.assertEqual(
+            self.source_of(doc),
+            {"kind": "cargo", "version": "0.2.0", "sha256": {LINUX: HASH_A}},
+        )
 
     def test_other_rows_and_the_wrapper_are_untouched(self) -> None:
         other = row(package="shep-other")

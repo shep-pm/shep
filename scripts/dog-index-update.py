@@ -5,6 +5,9 @@
 its release. The change it makes is the one a human reviews before shep will
 install that version, so it touches one row's `source.version` and
 `source.sha256` and nothing else, and keeps the file byte-for-byte otherwise.
+It drops any `source.permissions` the row carried: they described the version
+this one replaces, and this script reads no manifest, so it has nothing to
+restate them from.
 
 The hashes file is `sha256sum` output over the release's assets, named
 `<package>-<version>-<target>`, plus `.exe` on Windows. The map written is
@@ -79,6 +82,10 @@ def apply(index: str, package: str, version: str, hashes: str, repository: str) 
 
     `repository` is the `owner/name` the release was built from; the row's
     `repo` has to name it, so a release elsewhere cannot approve this row.
+    A `permissions` list the row carried goes out with the version it
+    described: this script is handed no manifest, so it cannot say the new
+    version declares the same permissions, and a stale list reads as a claim
+    about this one.
     """
     if not version.strip():
         raise IndexUpdateError("version is empty")
@@ -98,6 +105,7 @@ def apply(index: str, package: str, version: str, hashes: str, repository: str) 
         raise IndexUpdateError(f"{package!r} is a {source['kind']!r} row, and only a cargo row takes hashes")
     source["version"] = version
     source["sha256"] = digests
+    source.pop("permissions", None)
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
