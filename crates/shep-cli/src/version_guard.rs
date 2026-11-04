@@ -163,13 +163,13 @@ pub(crate) fn version_skew_command(host: Option<&str>) -> String {
 ///
 /// A host behind this build is fixed there, over ssh. A host ahead of it is
 /// fixed here, since reloading one that already runs the newer install
-/// changes nothing. That upgrade is the `channel`'s own command, or
-/// `cargo install shep` for a channel with none, as [`VERSION_SKEW_CAUSE`] has it.
+/// changes nothing. That upgrade is the `channel`'s own command, or `shep
+/// upgrade` for a channel with none, which prints the steps to take by hand.
 fn protocol_fix(host: Option<&str>, host_ahead: bool, channel: Channel) -> String {
     if host_ahead {
         channel
             .command()
-            .unwrap_or_else(|| "cargo install shep".to_owned())
+            .unwrap_or_else(|| "shep upgrade".to_owned())
     } else {
         version_skew_command(host)
     }

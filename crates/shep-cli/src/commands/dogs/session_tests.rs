@@ -218,6 +218,7 @@ async fn run_gives_the_exit_code_and_text_shep_upgrade_gives_for_a_current_dog()
             release: false,
             rollback: false,
             refresh: false,
+            reload: false,
         },
     )
     .await;
