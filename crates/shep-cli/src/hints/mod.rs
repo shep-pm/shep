@@ -1,7 +1,7 @@
-//! Hints: one line under `shep flock` suggesting a dog.
+//! Hints: one line under `shep flock` suggesting a dog, or a newer shep.
 //!
-//! A hint reads the cached dog index, `shep.toml`, the listing it is handed
-//! and file lengths, and nothing else: it never fetches and never asks the
+//! A hint reads the cached dog index, `shep.toml`, the listing it is handed,
+//! file lengths and this build's version, and nothing else: it never fetches and never asks the
 //! shepherd. shep words every line itself, from the fixed list in [`Hint`].
 
 use shep_client::Client;
@@ -40,17 +40,20 @@ pub(crate) enum Hint {
     Logs,
     /// A sheep keeps restarting.
     Alerts,
+    /// The cached index names a newer shep than this one.
+    Upgrade,
 }
 
 impl Hint {
     /// Every hint, in the order one is picked.
-    pub(crate) const ALL: [Self; 2] = [Self::Logs, Self::Alerts];
+    pub(crate) const ALL: [Self; 3] = [Self::Logs, Self::Alerts, Self::Upgrade];
 
     /// The name `hints.json` spells this hint as.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Logs => "logs",
             Self::Alerts => "alerts",
+            Self::Upgrade => "upgrade",
         }
     }
 
@@ -59,11 +62,13 @@ impl Hint {
         Self::ALL.into_iter().find(|hint| hint.name() == name)
     }
 
-    /// The need an index row must hold to be offered for this hint.
-    const fn need(self) -> Need {
+    /// The need an index row must hold to be offered for this hint, or
+    /// `None` for a hint that offers no dog.
+    const fn need(self) -> Option<Need> {
         match self {
-            Self::Logs => Need::Logs,
-            Self::Alerts => Need::Alerts,
+            Self::Logs => Some(Need::Logs),
+            Self::Alerts => Some(Need::Alerts),
+            Self::Upgrade => None,
         }
     }
 }
@@ -135,6 +140,9 @@ fn show(
     enabled: &[String],
     flock: &[ProcessInfo],
 ) -> Option<Shown> {
+    if hint == Hint::Upgrade {
+        return show_upgrade(index);
+    }
     let sheep = flock
         .iter()
         .filter(|info| info.dog.is_none() && applies(hint, info))
@@ -160,8 +168,20 @@ fn show(
             sheep.restarts,
             commands.join(" or ")
         ),
+        Hint::Upgrade => return None,
     };
     Some(Shown { hint, line, offers })
+}
+
+/// The upgrade hint, when the cached index names a shep newer than this one.
+fn show_upgrade(index: Option<&dog_index::Index>) -> Option<Shown> {
+    let out = index?.shep.as_ref()?;
+    let this: semver::Version = env!("CARGO_PKG_VERSION").parse().ok()?;
+    (*out > this).then(|| Shown {
+        hint: Hint::Upgrade,
+        line: format!("hint: shep {out} is out and this is {this}. Try: shep upgrade"),
+        offers: Vec::new(),
+    })
 }
 
 /// `names` as offers, each with how far along its dog is.
@@ -190,18 +210,22 @@ fn applies(hint: Hint, sheep: &ProcessInfo) -> bool {
             .filter_map(|path| std::fs::metadata(path).ok())
             .any(|meta| meta.len() > LOG_FILE_HINT_BYTES),
         Hint::Alerts => sheep.restarts >= RESTART_HINT_COUNT,
+        Hint::Upgrade => false,
     }
 }
 
-/// The names `hint` suggests: `bark` for alerts, then every index row that
-/// holds the hint's need.
+/// The dog names `hint` suggests: `bark` for alerts, then every index row that
+/// holds the hint's need. Empty for a hint that offers no dog.
 fn offered_names(hint: Hint, index: Option<&dog_index::Index>) -> Vec<String> {
     let mut names = Vec::new();
     if hint == Hint::Alerts {
         names.push(BARK.to_owned());
     }
+    let Some(need) = hint.need() else {
+        return names;
+    };
     for row in index.map_or(&[][..], |index| &index.dogs[..]) {
-        if row.needs.contains(&hint.need()) && !names.contains(&row.adopt_as) {
+        if row.needs.contains(&need) && !names.contains(&row.adopt_as) {
             names.push(row.adopt_as.clone());
         }
     }
