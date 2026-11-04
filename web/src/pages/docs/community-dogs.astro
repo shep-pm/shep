@@ -185,15 +185,16 @@ function adoptLine(dog: Dog): string {
 
     <h2 id="installing-one">What install does</h2>
     <p>
-      <code>shep install &lt;name&gt;</code> downloads the prebuilt binary
-      when the index hashes one for your target, and refuses it unless the
-      sha256 matches. With none, or with <code>--cargo</code>, it builds the
-      approved version with <code>cargo install --locked</code> after asking
-      crates.io who published it; another repository refuses. That needs{" "}
-      <code>cargo</code>. It lands in{" "}
-      <code>$SHEP_HOME/dogs/&lt;name&gt;/&lt;version&gt;/</code>. Then it asks
-      the grant question <code>shep adopt</code> asks and enables the dog; a
-      no leaves it disabled, and <code>--no-enable</code> skips the enable. <code>receipt.json</code> records what was approved and the
+      <code>shep install &lt;name&gt;</code> downloads the prebuilt binary the
+      index hashes for your target, and refuses a sha256 mismatch. Without one,
+      or with <code>--cargo</code>, it builds the approved version with{" "}
+      <code>cargo install --locked</code> after asking crates.io who
+      published it; another repository refuses.
+      It lands in <code>$SHEP_HOME/dogs/&lt;name&gt;/&lt;version&gt;/</code>.
+      It asks the grant question <code>shep adopt</code> asks, flagging a
+      permission the index row did not list, and enables the dog; a no leaves it disabled, and{" "}
+      <code>--no-enable</code> skips the enable. <code>receipt.json</code>
+      records what was approved and the
       URL or command. Other rows print instructions.
       With no name, <code>shep install</code> lists the index.
     </p>
