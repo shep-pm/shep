@@ -36,19 +36,29 @@ impl App {
                         settings.view.clone(),
                         settings.folded.clone(),
                         settings.dog_trees.clone(),
+                        settings.available.clone(),
                     )
                 });
                 let mut settings = Settings::new(snapshot);
                 if !opening {
-                    if let Some((view, folded, trees)) = kept {
+                    if let Some((view, folded, trees, available)) = kept {
                         settings.view = view;
                         settings.folded = folded;
                         settings.dog_trees = trees;
+                        settings.available = available;
                     }
                     let len = settings.rows().len();
                     settings.view.clamp(len);
                 }
+                // The rows the app already holds, and then a read of the cache
+                // for any newer ones. The cache only, never a fetch: the dogs
+                // list is not the catalogue.
+                settings.set_available(&self.catalogue);
                 self.body = Body::Settings(settings);
+                // The cache is this machine's, so it is not read over `--host`.
+                if self.remote_host.is_none() {
+                    return Effect::LoadCatalogue { fetch: false };
+                }
             }
             Err(message) => {
                 self.notice = Some(Notice::grave(message));

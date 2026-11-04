@@ -127,8 +127,8 @@ fn the_screen_opens_with_every_dog_folded_and_no_probe_asked() {
         app.update(Msg::Settings {
             result: Ok(fixtures::settings_snapshot()),
         }),
-        Effect::None,
-        "and asks no dog's binary to publish a schema"
+        Effect::LoadCatalogue { fetch: false },
+        "and asks no dog's binary to publish a schema, only the cached index"
     );
 
     let settings = app.settings().expect("the settings screen is open");

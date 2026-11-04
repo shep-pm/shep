@@ -203,6 +203,22 @@ pub(crate) struct CataloguePane {
     pub(crate) entry: Option<String>,
     /// Whether a fetch is out and has not answered.
     pub(crate) refreshing: bool,
+    /// Whether the entry was opened from another screen's row, so `Esc` closes
+    /// the catalogue at once rather than stepping back to the list first.
+    pub(crate) direct: bool,
+}
+
+impl CataloguePane {
+    /// Selects the dog adopted as `name` among `rows` and opens its entry.
+    /// A name no row carries opens nothing: the entry would have no dog.
+    pub(crate) fn open_entry(&mut self, name: &str, rows: &[CatalogueRow]) {
+        let Some(at) = rows.iter().position(|row| row.dog.adopt_as == name) else {
+            return;
+        };
+        self.selected = at;
+        self.entry = Some(name.to_owned());
+        self.direct = true;
+    }
 }
 
 impl App {
@@ -218,8 +234,19 @@ impl App {
             selected: 0,
             entry: None,
             refreshing: false,
+            direct: false,
         });
         Effect::LoadCatalogue { fetch: true }
+    }
+
+    /// [`Self::open_catalogue`] with the dog `name` selected and its entry
+    /// open, for a screen that lists the dog.
+    pub(crate) fn open_catalogue_entry(&mut self, name: &str) -> Effect {
+        let effect = self.open_catalogue();
+        if let Body::Catalogue(pane) = &mut self.body {
+            pane.open_entry(name, &self.catalogue);
+        }
+        effect
     }
 
     /// The rows of the latest load, whether or not the screen is open, for
@@ -266,6 +293,9 @@ impl App {
             pane.refreshing = refreshing;
         }
         self.catalogue = rows;
+        if let Body::Settings(settings) = &mut self.body {
+            settings.set_available(&self.catalogue);
+        }
         if refreshing {
             Effect::FetchCatalogue
         } else {
@@ -297,7 +327,7 @@ impl App {
         match key {
             KeyPress::Quit => return Effect::Quit,
             KeyPress::Escape => {
-                if pane.entry.take().is_none() {
+                if pane.direct || pane.entry.take().is_none() {
                     self.body = Body::FlockTable;
                 }
             }

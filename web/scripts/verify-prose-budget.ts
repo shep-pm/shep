@@ -405,11 +405,14 @@ export const BUDGETS: Record<string, number> = {
   // Raised again, to 3222, on #1494 for the sentence naming the `browse dogs`
   // row.
   //
+  // Raised again, to 3251, on #1500 for the greyed rows of index dogs this
+  // machine lacks, which no other page names.
+  //
   // Raised from 3222 on #1498 for "Installing from the catalogue": the install
   // key, the grant modal, the status-bar job item, one job at a time, and what
   // quitting mid-job leaves behind. None of it is described on any other page,
   // and it is required content rather than prose to trim back out.
-  lookout: 3640,
+  lookout: 3499,
   "first-flockfile": 2360,
   // Raised from 2080 on 2026-10-13 for the rotation paragraph: a provider's
   // push now reaches a running dog, which an operator rotating a secret has
@@ -560,7 +563,10 @@ export const BUDGETS: Record<string, number> = {
   // told every operator to upgrade through cargo, and now has to say that the
   // command does shep, the reload and the dogs through the channel shep came
   // from, and what a `.deb`, an archive and Windows get instead.
-  upgrading: 780,
+  // Raised from 780 on 2026-11-04 for the page that leads with `shep upgrade`
+  // (#1496): the channel table, the reload question, the Windows case and the
+  // by-hand steps for a `.deb` or an archive. Required content, not prose.
+  upgrading: 945,
   kv: 550,
   // Raised from 440 on 2026-09-21 for the prebuilt-binary download list,
   // which is new content rather than a correction. The page was sitting at

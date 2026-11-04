@@ -22,31 +22,65 @@ import Callout from "../../components/docs/Callout.astro";
     <h1>Upgrading</h1>
     <ReferencePills slug="upgrading" />
     <p class="lede">
-      <code>shep upgrade</code> replaces the binary through the channel it
-      came from, offers the reload and upgrades the dogs. The binary on disk
-      changes nothing that is already running.{" "}
+      <code>shep upgrade</code> replaces the binary through the channel shep
+      came from, reloads the shepherd, then upgrades the dogs. The binary on
+      disk changes nothing that is already running.{" "}
       <code>shep daemon reload</code> is what moves a live flock onto it.
     </p>
 
     <h2 id="replacing-the-binary">Replacing the binary</h2>
-    <p>
-      <code>shep upgrade</code> lists what is newer and asks once. It runs
-      the channel's own command in the foreground: Homebrew, cargo, Scoop,
-      winget or Chocolatey. A <code>.deb</code> or an archive has no command,
-      so it prints the steps. It then offers the reload (<code>--reload</code>{" "}
-      says yes) and upgrades the dogs. On Windows it prints the commands
-      instead of running them, because the shepherd holds{" "}
-      <code>shep.exe</code>, and the flock restarts on the reload.
-    </p>
     <div class="terminal">
       <div><span class="prompt">$</span> shep upgrade</div>
     </div>
     <p>
-      By hand, the shepherd keeps the code it booted with until you reload
-      it, and each dog keeps its own until you upgrade it.
+      shep lists what is newer, asks once, and runs the channel's own command
+      in the foreground. Which command depends on how shep was installed:
+    </p>
+    <table>
+      <thead>
+        <tr><th>Install channel</th><th>Command shep runs</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Homebrew</td><td data-label="Command shep runs"><code>brew upgrade shep</code></td></tr>
+        <tr><td>cargo</td><td data-label="Command shep runs"><code>cargo install --locked shep</code></td></tr>
+        <tr><td>Scoop</td><td data-label="Command shep runs"><code>scoop update shep</code></td></tr>
+        <tr><td>winget</td><td data-label="Command shep runs"><code>winget upgrade shep-pm.shep</code></td></tr>
+        <tr><td>Chocolatey</td><td data-label="Command shep runs"><code>choco upgrade shep</code></td></tr>
+        <tr><td>A <code>.deb</code> or an archive</td><td data-label="Command shep runs">none: shep prints the steps</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="the-reload-question">The reload question</h3>
+    <p>
+      Once the new shep is on <code>PATH</code>, a shepherd that is running
+      gets one question on a terminal:{" "}
+      <code>Reload the shepherd onto 0.25.0 now? [Y/n]</code>. Enter says yes.{" "}
+      <code>--reload</code> answers it in advance. With no terminal to ask,
+      shep reloads nothing and prints <code>shep daemon reload</code> for you
+      to run. The dogs are upgraded either way.
+    </p>
+
+    <h3 id="on-windows">On Windows</h3>
+    <p>
+      The shepherd holds <code>shep.exe</code>, so shep does not run the
+      command. It prints it, with <code>shep daemon reload</code> to run
+      after. Windows cannot hand the flock over, so the flock restarts on
+      that reload.
+    </p>
+
+    <h3 id="replacing-by-hand">Replacing the binary by hand</h3>
+    <p>
+      A channel shep cannot run gets steps instead. For a <code>.deb</code>,
+      download it from the latest release, check it against{" "}
+      <code>SHA256SUMS</code> and install it with{" "}
+      <code>sudo dpkg -i shep_*.deb</code>. For an archive, download the one
+      for your target, check it the same way and put the shep inside it where
+      the old one is. By hand, the shepherd keeps the code it booted with
+      until you reload it, and each dog keeps its own until you upgrade it.
     </p>
     <div class="terminal">
-      <div><span class="prompt">$</span> cargo install shep</div>
+      <div><span class="prompt">$</span> shep upgrade<span class="muted"> # or, step by step:</span></div>
+      <div><span class="prompt">$</span> cargo install --locked shep</div>
       <div><span class="prompt">$</span> shep upgrade --dogs<span class="muted"> # every installed dog</span></div>
       <div><span class="prompt">$</span> shep daemon reload</div>
     </div>
@@ -106,12 +140,13 @@ import Callout from "../../components/docs/Callout.astro";
 
     <h2 id="version-skew">Version skew</h2>
     <Callout variant="careful">
-      Skip <code>shep daemon reload</code> and the new binary answers{" "}
+      Skip the reload that <code>shep upgrade</code> offers (or{" "}
+      <code>shep daemon reload</code> by hand) and the new binary answers{" "}
       <code>shep --version</code> while the running shepherd is still the
       old one. <code>flock</code>, <code>describe</code> and{" "}
       <code>bleats</code> only warn. <code>kill</code> and{" "}
-      <code>ping</code> always work. Every other verb refuses and names this
-      command.
+      <code>ping</code> always work. Every other verb refuses and names{" "}
+      <code>shep daemon reload</code>.
     </Callout>
     <p class="fine">
       Over <code>--host</code> the check is the protocol, not the version: an

@@ -23,6 +23,19 @@ impl App {
         })
     }
 
+    /// The index dog under the cursor when it is an
+    /// [`SettingsRow::AvailableDog`] and no edit is in flight, by the name it
+    /// is adopted as.
+    fn available_dog_under_cursor(&self) -> Option<String> {
+        let settings = self
+            .settings()
+            .filter(|settings| settings.pending.is_none())?;
+        let SettingsRow::AvailableDog(index) = settings.cursor()? else {
+            return None;
+        };
+        Some(settings.available().get(index)?.dog.adopt_as.clone())
+    }
+
     /// The settings screen's own keymap, in force while [`Self::settings`] is
     /// `Some`. Everything not named here is ignored, an action key included.
     pub(in crate::lookout::app) fn on_settings_key(&mut self, key: KeyPress) -> Effect {
@@ -59,7 +72,9 @@ impl App {
                 KeyPress::Cycle => return self.cycle_setting(),
                 KeyPress::Remove => return self.remove_setting(),
                 KeyPress::Confirm => {
-                    return if self.on_browse_dogs() {
+                    return if let Some(name) = self.available_dog_under_cursor() {
+                        self.open_catalogue_entry(&name)
+                    } else if self.on_browse_dogs() {
                         self.open_catalogue()
                     } else {
                         self.confirm_setting()
@@ -272,6 +287,30 @@ mod tests {
         );
         assert!(matches!(app.body(), Body::Catalogue(_)));
         assert!(app.settings().is_none());
+    }
+
+    #[test]
+    fn enter_on_an_available_dog_opens_the_catalogue_on_its_entry() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        fixtures::select_setting(&mut app, "available.tail-grep");
+        assert_eq!(
+            app.update(Msg::Key(KeyPress::Confirm)),
+            Effect::LoadCatalogue { fetch: true }
+        );
+        let pane = app.body().catalogue_pane().expect("the catalogue is open");
+        assert_eq!(pane.entry.as_deref(), Some("tail-grep"));
+        let selected = &app.catalogue_rows()[pane.selected];
+        assert_eq!(selected.dog.adopt_as, "tail-grep");
+        assert!(app.settings().is_none());
+    }
+
+    #[test]
+    fn escape_from_an_available_dogs_entry_ends_on_the_dashboard() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        fixtures::select_setting(&mut app, "available.otel");
+        let _ = app.update(Msg::Key(KeyPress::Confirm));
+        let _ = app.update(Msg::Key(KeyPress::Escape));
+        assert!(matches!(app.body(), Body::FlockTable), "one Escape");
     }
 
     /// The way out is the one the `i` key's catalogue has.

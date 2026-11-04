@@ -76,6 +76,11 @@ pub enum SettingsRow {
         /// Which row of its tree.
         row: usize,
     },
+    /// One index dog this machine lacks, by its place in
+    /// [`Settings::available`]: after every dog and its rows, before
+    /// [`Self::BrowseDogs`]. `Enter` opens its catalogue entry, and it is never
+    /// edited, cycled or folded.
+    AvailableDog(usize),
     /// The last row of the dogs section, after every dog and its rows. It is
     /// there with no dog adopted, `Enter` opens the catalogue on it, and it is
     /// never edited, cycled or folded.
@@ -325,6 +330,10 @@ pub struct Settings {
     /// re-read can reorder or drop a dog, and an index that survived would
     /// name a different one.
     pub(super) dog_trees: BTreeMap<String, DogTree>,
+    /// The index dogs this machine lacks, in the catalogue's order. Read off
+    /// the rows the app already keeps by [`Self::set_available`], never
+    /// fetched here.
+    pub(super) available: Vec<CatalogueRow>,
 }
 
 /// The settings screen's own in-flight edit.
@@ -767,6 +776,98 @@ mod tests {
         let settings = app.settings().unwrap();
         assert!(settings.snapshot().dogs.is_empty());
         assert_eq!(settings.rows().last(), Some(&SettingsRow::BrowseDogs));
+    }
+
+    #[test]
+    fn a_cached_index_lists_its_uninstalled_dogs_after_the_adopted_ones_before_browse() {
+        let app = fixtures::app_in_settings_with_an_index();
+        let settings = app.settings().unwrap();
+        assert_eq!(settings.snapshot().dogs.len(), 1, "one dog is adopted");
+        let rows = settings.rows();
+        let tail = &rows[rows.len() - 4..];
+        assert_eq!(
+            tail,
+            [
+                SettingsRow::Dog(0),
+                SettingsRow::AvailableDog(0),
+                SettingsRow::AvailableDog(1),
+                SettingsRow::BrowseDogs,
+            ],
+            "the adopted dog, the two it lacks, then browse: {rows:?}"
+        );
+        let names: Vec<&str> = settings
+            .available()
+            .iter()
+            .map(|row| row.dog.name.as_str())
+            .collect();
+        assert_eq!(names, ["otel", "tail-grep"], "rotate is installed");
+    }
+
+    #[test]
+    fn with_no_cache_there_are_no_available_dog_rows_and_nothing_else_moves() {
+        let bare = fixtures::app_in_settings_without_dogs();
+        let before = bare.settings().unwrap().rows();
+
+        let mut app = fixtures::app_in_settings_without_dogs();
+        let effect = app.update(Msg::Catalogue {
+            result: Ok(Box::new(CatalogueRead {
+                rows: Vec::new(),
+                refreshing: false,
+            })),
+        });
+        assert_eq!(effect, Effect::None);
+        let settings = app.settings().unwrap();
+        assert_eq!(settings.rows(), before);
+        assert!(
+            !settings
+                .rows()
+                .iter()
+                .any(|row| matches!(row, SettingsRow::AvailableDog(_)))
+        );
+        assert!(app.notice().is_none(), "no cache is not worth a message");
+    }
+
+    #[test]
+    fn the_snapshot_landing_asks_for_the_cache_and_never_the_network() {
+        let mut app = fixtures::app_in_settings();
+        let effect = app.update(Msg::Settings {
+            result: Ok(fixtures::settings_snapshot()),
+        });
+        assert_eq!(effect, Effect::LoadCatalogue { fetch: false });
+        assert_ne!(effect, Effect::FetchCatalogue);
+    }
+
+    #[test]
+    fn a_reload_keeps_the_available_dogs_and_the_cursor_on_one() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        fixtures::select_setting(&mut app, "available.tail-grep");
+        let snapshot = app.settings().unwrap().snapshot().clone();
+        let _ = app.update(Msg::Settings {
+            result: Ok(snapshot),
+        });
+        let settings = app.settings().unwrap();
+        assert_eq!(settings.available().len(), 2);
+        assert_eq!(settings.cursor(), Some(SettingsRow::AvailableDog(1)));
+    }
+
+    #[test]
+    fn a_dog_the_dogs_list_already_has_is_not_listed_twice() {
+        let mut app = fixtures::app_in_settings_with_an_index();
+        let snapshot = crate::commands::settings::SettingsSnapshot {
+            dogs: vec![crate::commands::settings::DogView::built_in("otel", false)],
+            ..app.settings().unwrap().snapshot().clone()
+        };
+        let _ = app.update(Msg::Settings {
+            result: Ok(snapshot),
+        });
+        let names: Vec<&str> = app
+            .settings()
+            .unwrap()
+            .available()
+            .iter()
+            .map(|row| row.dog.name.as_str())
+            .collect();
+        assert_eq!(names, ["tail-grep"]);
     }
 
     #[test]
