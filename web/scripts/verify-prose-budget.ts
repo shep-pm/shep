@@ -290,7 +290,9 @@ export const BUDGETS: Record<string, number> = {
   // Raised from 3320 for the "Hints" section: when each hint shows, that one
   // shows at a time, and that JSON, `--quiet` and a pipe never get one.
   // Required content for #1491.
-  output: 3509,
+  // Raised from 3509 for the paragraph on `shep hints`: listing the hints,
+  // turning one off or on, and the JSON keys. Required content for #1497.
+  output: 3559,
   // Raised from 2980 on 2026-10-13 for the `log_match` rule: a new `on`
   // value, its `stream` key, and the loss and secrets caveats are
   // operator-facing surface, not prose to trim back out.

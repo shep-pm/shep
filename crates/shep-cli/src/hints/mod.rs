@@ -19,6 +19,8 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use state::run;
+
 /// A log file longer than this many bytes (100 MiB) brings up [`Hint::Logs`].
 pub(crate) const LOG_FILE_HINT_BYTES: u64 = 100 * 1024 * 1024;
 
@@ -141,19 +143,7 @@ fn show(
     if names.iter().any(|name| enabled.contains(name)) {
         return None;
     }
-    let offers: Vec<Offer> = names
-        .into_iter()
-        .map(|name| {
-            let state = if name == BARK {
-                OfferState::BuiltIn
-            } else if dogs::installed(paths, &name).is_some() {
-                OfferState::Installed
-            } else {
-                OfferState::NotInstalled
-            };
-            Offer { name, state }
-        })
-        .collect();
+    let offers = offers_of(paths, names);
     if offers.is_empty() {
         return None;
     }
@@ -172,6 +162,23 @@ fn show(
         ),
     };
     Some(Shown { hint, line, offers })
+}
+
+/// `names` as offers, each with how far along its dog is.
+fn offers_of(paths: &ShepPaths, names: Vec<String>) -> Vec<Offer> {
+    names
+        .into_iter()
+        .map(|name| {
+            let state = if name == BARK {
+                OfferState::BuiltIn
+            } else if dogs::installed(paths, &name).is_some() {
+                OfferState::Installed
+            } else {
+                OfferState::NotInstalled
+            };
+            Offer { name, state }
+        })
+        .collect()
 }
 
 /// Whether `sheep` is what `hint` is about.

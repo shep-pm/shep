@@ -26,7 +26,9 @@ const HELP_GROUPS: &[(&str, &[&str])] = &[
     ),
     (
         "See what's up",
-        &["flock", "describe", "bleats", "lookout", "fold", "barks"],
+        &[
+            "flock", "describe", "bleats", "lookout", "fold", "barks", "hints",
+        ],
     ),
     (
         "Survive reboots",
