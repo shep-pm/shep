@@ -15,6 +15,7 @@ use crate::exit::ExitCode;
 use crate::fetch::{self, RedirectPolicy};
 use crate::output::Streams;
 
+use super::session::{Progress, Step};
 use super::vet::sha256_hex;
 
 /// The budget for the whole download, both requests together.
@@ -33,9 +34,13 @@ pub(super) async fn download(
     policy: &RedirectPolicy,
     prebuilt: &Prebuilt,
     binary: &Path,
+    progress: Option<&Progress>,
 ) -> Result<(), ExitCode> {
     let url = fetch::url_for_message(&prebuilt.url);
     streams.aside("install", &format!("downloading {url} for {BUILD_TARGET}"));
+    if let Some(progress) = progress {
+        progress.tell(Step::Downloading);
+    }
     let bytes = fetch::get_asset(&prebuilt.url, policy, DOWNLOAD_LIMIT, DOWNLOAD_TIMEOUT)
         .await
         .map_err(|err| {

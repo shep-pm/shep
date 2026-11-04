@@ -26,7 +26,7 @@ shep lookout   /home/ada/.shep                                                  
   space arms, Enter applies; e opens a dog; a dog needs no reload                                                       
   ▸ bark                                              no       built-in              1.0.0             not running      
   ▸ metrics                                           yes      built-in              1.0.0             not running      
-                                                                                                                        
+  browse dogs  Enter opens the dog index                                                                                
                                                                                                                         
                                                                                                                         
                                                                                                                         

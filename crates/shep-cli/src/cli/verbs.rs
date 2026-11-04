@@ -8,10 +8,10 @@
 
 use super::{
     AdoptArgs, BarksArgs, BleatsArgs, CompletionArgs, CopyArgs, DaemonArgs, DevArgs, DialStdioArgs,
-    DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HostArgs,
-    ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs, SecretArgs,
-    SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs, StyleArgs,
-    TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
+    DisableArgs, DogArgs, DogsArgs, EnableArgs, FlockArgs, FlushArgs, FoldArgs, GetArgs, HintsArgs,
+    HostArgs, ImportArgs, InitArgs, InstallArgs, KvArgs, LookoutArgs, ReopenArgs, RuntimeArgs,
+    SecretArgs, SelectorArgs, ServeArgs, SetArgs, SignalArgs, StartArgs, StartupArgs, StockArgs,
+    StyleArgs, TriggerArgs, UnsetArgs, UpgradeArgs, WhisperArgs,
 };
 
 /// Every verb the binary understands.
@@ -217,6 +217,14 @@ pub enum Commands {
     /// when the cached index holds a newer one; the index is never fetched for it.
     /// `grant` and `revoke` change one permission of a dog.
     Dogs(DogsArgs),
+    /// List the hints, and turn each off or on
+    ///
+    /// A hint is the one line `shep flock` prints under its listing when a
+    /// log has grown large or a sheep keeps restarting, suggesting a dog. Each
+    /// is on until turned off, and the choice is kept in `hints.json` under
+    /// `$SHEP_HOME`. `shep hints off` and `shep hints on` take a hint's name,
+    /// or turn every hint off or on with none. Needs no shepherd.
+    Hints(HintsArgs),
     /// Turn a sheep or a dog back on
     ///
     /// A sheep named here has its disabled mark cleared and is started; a dog
@@ -696,7 +704,7 @@ running; `shep kill` stops it. `--user` naming anyone else, and `--init`, are re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::Cli;
+    use crate::cli::{Cli, HintsCommand};
 
     #[test]
     fn list_and_ls_both_reach_flock() {
@@ -707,6 +715,29 @@ mod tests {
                 Commands::Flock(_)
             ));
         }
+    }
+
+    #[test]
+    fn hints_parses_with_no_action_off_and_on() {
+        use clap::Parser;
+        let hints = |argv: &[&str]| match Cli::try_parse_from(argv).unwrap().command {
+            Commands::Hints(args) => args.command,
+            other => panic!("{argv:?} parsed as {other:?}"),
+        };
+
+        assert!(hints(&["shep", "hints"]).is_none());
+        assert!(matches!(
+            hints(&["shep", "hints", "off"]),
+            Some(HintsCommand::Off { hint: None })
+        ));
+        assert!(matches!(
+            hints(&["shep", "hints", "off", "logs"]),
+            Some(HintsCommand::Off { hint: Some(name) }) if name == "logs"
+        ));
+        assert!(matches!(
+            hints(&["shep", "hints", "on", "alerts"]),
+            Some(HintsCommand::On { hint: Some(name) }) if name == "alerts"
+        ));
     }
 
     #[test]

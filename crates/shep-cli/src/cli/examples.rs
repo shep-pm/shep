@@ -144,6 +144,10 @@ pub(super) const EXAMPLES: &[(&str, &[&str])] = &[
             "shep dogs grant kelpie flock.read",
         ],
     ),
+    (
+        "hints",
+        &["shep hints", "shep hints off logs", "shep hints on"],
+    ),
     ("install", &["shep install", "shep install kelpie --yes"]),
     (
         "upgrade",

@@ -446,7 +446,7 @@ impl Scene {
                 "The same rows at 45 columns. The env keys keep their <set> marker and lose the apply cost and SOURCE, as the dog's other rows do."
             }
             Self::SettingsShort => {
-                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does."
+                "The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last row, `browse dogs`, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does."
             }
             Self::Bleats => {
                 "The full-screen bleats pane, pinned to api, with a stream, a minimum level and a regex all stacked: only out, only warn and above, only a line mentioning retrying or jitter. The filter row states the composition and counts one surviving line out of sixteen, and that one line is also the longest in the fixture, so wrapping is on and its full text runs onto a second row instead of an ellipsis."
