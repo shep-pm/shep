@@ -31,6 +31,7 @@ fn dog(
         category: "logs".to_owned(),
         source,
         permissions,
+        needs: Vec::new(),
     }
 }
 
