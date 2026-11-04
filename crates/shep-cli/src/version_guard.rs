@@ -13,6 +13,7 @@ use shep_client::Client;
 use shep_core::protocol::PROTOCOL_VERSION;
 
 use crate::client::unreachable_message;
+use crate::install_channel::Channel;
 use crate::remote::Link;
 use crate::{cli, commands, exit, output};
 
@@ -147,10 +148,6 @@ const PROTOCOL_NOTICE: &str = "Read verbs go ahead, but verbs that change the fl
 /// guard itself refused would be a dead end.
 pub(crate) const VERSION_SKEW_REMEDY: &str = RECOVERY_VERBS[1];
 
-/// The command that replaces this machine's shep, spelled as the help's
-/// Upgrading line and [`VERSION_SKEW_CAUSE`] spell it.
-const UPGRADE_COMMAND: &str = "cargo install shep";
-
 /// The command that fixes a skew, spelled for where the shepherd is.
 ///
 /// With a `host` it runs over ssh: the bare [`VERSION_SKEW_REMEDY`] would
@@ -162,16 +159,17 @@ pub(crate) fn version_skew_command(host: Option<&str>) -> String {
     }
 }
 
-/// The command that fixes a protocol gap, spelled for the side of the gap it
-/// runs on.
+/// The command that fixes a protocol gap, spelled for the side it runs on.
 ///
-/// Which side is behind decides it. A host behind this build is fixed there,
-/// over ssh. A host ahead of it is fixed here: reloading a host that already
-/// runs the newer install changes nothing, and installing this build there
-/// takes that host down with it.
-fn protocol_fix(host: Option<&str>, host_ahead: bool) -> String {
+/// A host behind this build is fixed there, over ssh. A host ahead of it is
+/// fixed here, since reloading one that already runs the newer install
+/// changes nothing. That upgrade is the `channel`'s own command, or
+/// `cargo install shep` for a channel with none, as [`VERSION_SKEW_CAUSE`] has it.
+fn protocol_fix(host: Option<&str>, host_ahead: bool, channel: Channel) -> String {
     if host_ahead {
-        UPGRADE_COMMAND.to_owned()
+        channel
+            .command()
+            .unwrap_or_else(|| "cargo install shep".to_owned())
     } else {
         version_skew_command(host)
     }
@@ -265,7 +263,7 @@ fn skew_of(client: &Client) -> Skew {
             // behind this build is reloaded, a host ahead of it is not.
             let ahead = ack.protocol > PROTOCOL_VERSION;
             let summary = protocol_skew_summary(running, ack.protocol, host);
-            let command = protocol_fix(host, ahead);
+            let command = protocol_fix(host, ahead, Channel::running());
             return Skew {
                 notice: Some(notice_line(&summary, PROTOCOL_NOTICE, &command)),
                 refusal: Some(Refusal {
