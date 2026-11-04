@@ -10,10 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-11-04
+
+### Added
+
+- Manifest v3 declares a pane, and the pane wire types live in dogs::pane
+- A dog's verb declares its examples and each subcommand's usage
+- Manifest v3 declares a pane, and the pane's wire types live in shep_core::dogs::pane
+- A dog's verb declares examples and usage, and a clap dog builds them
+
+### Fixed
+
+- Keep the pane writer from writing what its reader refuses
+- Quote a pane answer at the cap on its own, not after the fault
+
 ### Added
 
 - Declare a dog's pane in manifest v3
 - Add the pane wire types, its builder, and the reserved shep.pane action in dogs::pane
+
 
 ## [0.24.0] - 2026-11-03
 

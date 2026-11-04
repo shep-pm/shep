@@ -10,9 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-11-04
+
+### Added
+
+- Manifest v3 declares a pane, and the pane wire types live in dogs::pane
+- Verb::from_clap reads a dog's clap tree into its manifest verb
+- Render_examples writes the Examples block from_clap reads
+- A dog declares a pane with Probe::pane and answers shep.pane with pane_answer
+- Manifest v3 declares a pane, and the pane's wire types live in shep_core::dogs::pane
+- A dog's verb declares examples and usage, and a clap dog builds them
+
+### Fixed
+
+- Re-export Fields with the rest of the pane types
+- The pane example and its docs answer the unload they declare
+
 ### Added
 
 - Re-export the pane builder and its wire types from shep-core
+
 
 ## [0.24.0] - 2026-11-03
 
