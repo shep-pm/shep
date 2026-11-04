@@ -126,11 +126,13 @@ mod tests {
     fn answered(app: &mut App) {
         app.update(Msg::Replied {
             sent: pull(),
-            result: Ok(Response::Triggered(vec![shep_core::protocol::ActionReply {
-                id: 92,
-                name: "paddock".to_string(),
-                outcome: paddock_pane(),
-            }])),
+            result: Ok(Response::Triggered(vec![
+                shep_core::protocol::ActionReply {
+                    id: 92,
+                    name: "paddock".to_string(),
+                    outcome: paddock_pane(),
+                },
+            ])),
         });
     }
 
@@ -200,7 +202,10 @@ mod tests {
     #[test]
     fn leaving_the_status_tab_drops_a_pending_pull_and_returning_pulls_once() {
         let mut app = status_tab();
-        assert_eq!(app.update(published("paddock", "lease.changed")), Effect::Send(pull()));
+        assert_eq!(
+            app.update(published("paddock", "lease.changed")),
+            Effect::Send(pull())
+        );
         answered(&mut app);
         let held = app.update(published("paddock", "lease.changed"));
         assert_eq!(held, Effect::None, "a second too soon, so it waits");

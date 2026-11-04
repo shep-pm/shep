@@ -196,6 +196,21 @@ fn a_pane_with_one_skipped_section_draws_the_rest_and_says_so() {
 }
 
 #[test]
+fn a_section_naming_an_event_the_dog_does_not_declare_says_so_once() {
+    let pane = Pane::new()
+        .fields("host", [("VRAM", "20 GiB")])
+        .refresh_on(["ghost.kind", "lease.changed"])
+        .fields("load", [("GPU", "40%")])
+        .refresh_on(["ghost.kind"]);
+    let lines = trimmed(drawn(&app_with(&pane), 100, 0));
+    let said: Vec<_> = lines
+        .iter()
+        .filter(|l| l.contains("is not an event this dog declares"))
+        .collect();
+    assert_eq!(said, ["  ghost.kind is not an event this dog declares"]);
+}
+
+#[test]
 fn several_skipped_sections_are_counted() {
     let body = serde_json::json!({
         "sections": [{ "kind": "a" }, { "kind": "b" }],

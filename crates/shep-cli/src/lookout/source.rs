@@ -25,13 +25,11 @@ use crate::exit::ExitCode;
 
 /// The topics lookout subscribes to.
 ///
-/// `process.*` is what the flock table is made of; `daemon.*` carries
-/// `BusEvent::Dropped` and `BusEvent::DaemonShutdown`; `dog.*` carries the
-/// events a dog publishes, which refresh an open dog's status tab. The
-/// operator's link is not held to grants, so it needs none.
-///
-/// Not `log.*`: the bleats feed reads log files from disk ([`super::tail`]),
-/// and a lag on that bus already costs an immediate `ListFlock`.
+/// `process.*` makes the flock table; `daemon.*` carries `BusEvent::Dropped`
+/// and `BusEvent::DaemonShutdown`; `dog.*` carries the events that refresh an
+/// open status tab, and the operator's link needs no grant for it.
+/// Not `log.*`: the bleats feed reads log files ([`super::tail`]), and a lag
+/// on that bus already costs an immediate `ListFlock`.
 pub const TOPICS: &[&str] = &["process.*", "daemon.*", "dog.*"];
 
 /// Reading the flock. `&self`, so [`super::link::run_connected`] can hold it

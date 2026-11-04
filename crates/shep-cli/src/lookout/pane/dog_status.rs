@@ -115,7 +115,10 @@ impl DogStatus {
     /// the manifest declares.
     #[must_use]
     pub(in crate::lookout) fn refreshes_on(&self, kind: &str) -> bool {
-        self.declared.events.iter().any(|declared| declared == kind)
+        self.declared()
+            .events
+            .iter()
+            .any(|declared| declared == kind)
             && self.named_kinds().contains(&kind)
     }
 
@@ -125,7 +128,7 @@ impl DogStatus {
     pub(in crate::lookout) fn undeclared_kinds(&self) -> Vec<&str> {
         let mut kinds: Vec<&str> = Vec::new();
         for kind in self.named_kinds() {
-            let declared = self.declared.events.iter().any(|event| event == kind);
+            let declared = self.declared().events.iter().any(|event| event == kind);
             if !declared && !kinds.contains(&kind) {
                 kinds.push(kind);
             }
@@ -229,6 +232,7 @@ impl DogStatus {
     /// rest is what the window shows.
     pub(in crate::lookout) fn set_rows(&mut self, rows: usize) {
         let footer = usize::from(self.failed.is_some())
+            + self.undeclared_kinds().len()
             + usize::from(matches!(&self.state, PaneState::Ready(pane) if pane.skipped > 0));
         let room = if rows == 0 {
             0
