@@ -30,5 +30,5 @@ shep lookout   /home/ada/.shep                                                  
       PADDOCK_KEY     <set>                                        its next start reads it                              
       RUST_LOG        <set>                                        its next start reads it                              
 >     + new                                                                                                             
-  ... 3 below                                                                                                           
+  ... 4 below                                                                                                           
 esc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit               control enabled

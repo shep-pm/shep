@@ -922,7 +922,7 @@ The settings screen on a fresh $SHEP_HOME: shep.toml holds only [interpreters], 
     sh                sh                              shep.toml    the next command reads it                            [0m
 [0m[38;5;245m    + add an entry                                                                                                      [0m
   hosts               none                            the default  the next command reads it                            [0m
-[0m[38;5;245m  ... 2 below[0m                                                                                                           [0m
+[0m[38;5;245m  ... 3 below[0m                                                                                                           [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
@@ -955,7 +955,7 @@ The settings screen with some keys declared. `shep.toml` and `the default` sit s
 [0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
   ▸ bark                                              no       built-in              1.0.0             not running      [0m
   ▸ metrics                                           yes      built-in              1.0.0             not running      [0m
-                                                                                                                        [0m
+  browse dogs[0m[38;5;245m  Enter opens the dog index[0m                                                                                [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -990,9 +990,9 @@ A [daemon] confirm armed on log_level, naming the variable and the flag it canno
 [0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                                                                                   [0m
   ▸ bark                                                                                                          no       built-in              1.0.0             not running      [0m
   ▸ metrics                                                                                                       yes      built-in              1.0.0             not running      [0m
+  browse dogs[0m[38;5;245m  Enter opens the dog index[0m                                                                                                                                            [0m
                                                                                                                                                                                     [0m
 [0m[38;5;221m  set daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other key cancels   [0m
-                                                                                                                                                                                    [0m
                                                                                                                                                                                     [0m
                                                                                                                                                                                     [0m
 [0m[38;5;221m[48;5;235mset daemon.log_level to info? needs shep daemon reload, and will not apply if the shepherd was booted with SHEP_LOG_LEVEL or --log-level  enter confirms, any other…[0m[38;5;245m[48;5;235m control enabled[0m
@@ -1025,9 +1025,9 @@ The socket editor open mid-path. The status bar names the field being typed, not
 [0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
   ▸ bark                                              no       built-in              1.0.0             not running      [0m
   ▸ metrics                                           yes      built-in              1.0.0             not running      [0m
+  browse dogs[0m[38;5;245m  Enter opens the dog index[0m                                                                                [0m
                                                                                                                         [0m
 [0m[38;5;221m  editing daemon.socket: /home/ada/.shep/run/s▏   enter applies   esc cancels                                           [0m
-                                                                                                                        [0m
                                                                                                                         [0m
                                                                                                                         [0m
 [0m[38;5;221m[48;5;235mediting daemon.socket  /home/ada/.shep/run/s▏   enter applies   esc cancels                             [0m[38;5;245m[48;5;235m control enabled[0m
@@ -1061,7 +1061,7 @@ Every dog on its own folded row, showing the drift those rows exist to reveal: o
   ▸ otel                                              no       adopted               -                 online           [0m
   ▸ ledger                                            yes      adopted               -                 not running      [0m
   ▸ bark                                              yes      built-in              1.0.0             silent           [0m
-                                                                                                                        [0m
+  browse dogs[0m[38;5;245m  Enter opens the dog index[0m                                                                                [0m
                                                                                                                         [0m
                                                                                                                         [0m
                                                                                                                         [0m
@@ -1096,7 +1096,7 @@ The same screen at 45 columns. Both kinds of row have dropped a column rather th
   ▸ otel           no       online           [0m
   ▸ ledger         yes      not running      [0m
   ▸ bark           yes      silent           [0m
-                                             [0m
+  browse dogs[0m[38;5;245m  Enter opens the dog index[0m     [0m
                                              [0m
                                              [0m
                                              [0m
@@ -1134,7 +1134,7 @@ An adopted dog open, with the cursor on its env row. Each key reads <set> and ne
       PADDOCK_KEY     <set>                                        its next start reads it                              [0m
       RUST_LOG        <set>                                        its next start reads it                              [0m
 >     + new                                                                                                             [0m
-[0m[38;5;245m  ... 3 below[0m                                                                                                           [0m
+[0m[38;5;245m  ... 4 below[0m                                                                                                           [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
@@ -1169,16 +1169,15 @@ The same rows at 45 columns. The env keys keep their <set> marker and lose the a
       PADDOCK_KEY     <set>                  [0m
       RUST_LOG        <set>                  [0m
 >     + new                                  [0m
-[0m[38;5;245m  ... 3 below[0m                                [0m
+[0m[38;5;245m  ... 4 below[0m                                [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g…[0m[38;5;245m[48;5;235m control enabled[0m
 
 
 === settings_short  (120x14) ===
-The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last dog, so the view has scrolled to reach it and `... 12 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does.
+The same screen at 14 rows, which is fewer than it has to draw. The cursor is on the last row, `browse dogs`, so the view has scrolled to reach it and `... 13 above` says how much is off the top. The scroll is counted in LINES rather than in rows: the blank line and the dogs caption above the first dog row cost the same height a row does.
 
 [0m[7m[38;5;29mshep lookout   /home/ada/.shep                                                                            2 in the flock[0m
-[0m[38;5;245m  ... 12 above[0m                                                                                                          [0m
-    level             full                            shep.toml    the next command reads it                            [0m
+[0m[38;5;245m  ... 13 above[0m                                                                                                          [0m
   ▾ interpreters      1 entry                         shep.toml    the next command reads it                            [0m
     py                python3                         shep.toml    the next command reads it                            [0m
 [0m[38;5;245m    + add an entry                                                                                                      [0m
@@ -1188,7 +1187,8 @@ The same screen at 14 rows, which is fewer than it has to draw. The cursor is on
 [0m[38;5;245m  space arms, Enter applies; e opens a dog; a dog needs no reload                                                       [0m
   ▸ otel                                              no       adopted               -                 online           [0m
   ▸ ledger                                            yes      adopted               -                 not running      [0m
-> ▸ bark                                              yes      built-in              1.0.0             silent           [0m
+  ▸ bark                                              yes      built-in              1.0.0             silent           [0m
+> browse dogs[0m[38;5;245m  Enter opens the dog index[0m                                                                                [0m
 [0m[38;5;221m[48;5;235mesc/s close   j/k select   g/G first/last   r refresh   space cycle   enter apply   q quit              [0m[38;5;245m[48;5;235m control enabled[0m
 
 
