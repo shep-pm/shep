@@ -230,8 +230,8 @@ function adoptLine(dog: Dog): string {
       name and whether the dog can run without it. The download URL is
       built, never written:{" "}
       <code>&lt;repo&gt;/releases/download/v&lt;version&gt;/&lt;package&gt;-&lt;version&gt;-&lt;target&gt;</code>,
-      plus <code>.exe</code> on Windows. A release writes the hashes and
-      clears <code>permissions</code>: add the list again afterward.
+      plus <code>.exe</code> on Windows. A release writes the hashes and the
+      permissions its binary declares, or none.
     </p>
     <p>
       Any row may list <code>needs</code>, the needs its dog meets. shep

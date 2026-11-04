@@ -174,10 +174,17 @@ export const BUDGETS: Record<string, number> = {
   // them, and that a callee with a dot in its name cannot finish one. The
   // ceiling sits about 4 words above the page.
   //
+  // Raised on #1485 for the release workflow writing the row's permissions:
+  // an author whose dog declares permissions has to know the workflow reads
+  // them off the built Linux binary, that only the name and whether it is
+  // required reach the index, and that a binary answering nothing costs the
+  // row the list and not the release.
+  //
   // Raised again on #1480 for the manifest's `pane` field: an author has to
   // know it is answered over the channel, and that a manifest declaring it
-  // without one has no pane to draw.
-  "writing-a-dog": 6200,
+  // without one has no pane to draw. The two raises land on one page, so the
+  // ceiling is the one the merged page measures.
+  "writing-a-dog": 6280,
   // Raised from 3380 on 2026-10-24 for "Dropping one override": `shep unset`
   // is a new verb that undoes `shep set`, and the page's only other way to
   // put a setting back was a whole-file `--reset`, so the section is new
