@@ -1,6 +1,6 @@
 //! Arguments for the verbs that run or configure shep itself rather than
 //! a sheep: `startup`, `unstartup`, `daemon`, `runtime`, `dev`, `init`,
-//! `completions` and `style`.
+//! `completions`, `style` and `hints`.
 //!
 //! Nothing here takes a selector, because none of these verbs picks out
 //! something the flock already has. The three value parsers at the bottom
@@ -37,6 +37,31 @@ pub struct CompletionArgs {
     /// Shell to generate a completion script for
     #[arg(value_enum)]
     pub shell: clap_complete::aot::Shell,
+}
+
+/// Arguments to `shep hints`.
+#[derive(Debug, clap::Args)]
+pub struct HintsArgs {
+    /// Turn hints off or on. Omit to list them.
+    #[command(subcommand)]
+    pub command: Option<HintsCommand>,
+}
+
+/// `shep hints`'s subcommands.
+#[derive(Debug, clap::Subcommand)]
+pub enum HintsCommand {
+    /// Turn a hint off, or every hint with no name
+    Off {
+        /// The hint to turn off, as `shep hints` lists it
+        #[arg(value_name = "HINT")]
+        hint: Option<String>,
+    },
+    /// Turn a hint back on, or every hint with no name
+    On {
+        /// The hint to turn on, as `shep hints` lists it
+        #[arg(value_name = "HINT")]
+        hint: Option<String>,
+    },
 }
 
 /// Arguments to `shep style`.

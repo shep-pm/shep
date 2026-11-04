@@ -204,7 +204,7 @@ A dog is a plugin process the shepherd supervises alongside your flock.
 
 ```text
 Run things       start add serve stop restart reset reload delete stock enable disable
-See what's up    flock describe bleats lookout fold barks
+See what's up    flock describe bleats lookout fold barks hints
 Survive reboots  save muster startup unstartup
 Talk to a sheep  trigger signal whisper
 The shepherd     ping kill reopen flush kv get set unset copy secret host
