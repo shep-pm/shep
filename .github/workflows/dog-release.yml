@@ -270,10 +270,26 @@ jobs:
           set -euo pipefail
           asset="dist/${PACKAGE}-${VERSION}-${TARGET}"
           reason=''
-          if ! "./$asset" --shep-manifest > candidate.json 2> stderr.txt; then
-            reason="${BIN} did not answer --shep-manifest"
-          elif ! jq -e '.permissions | type == "array"' candidate.json > /dev/null; then
-            reason="${BIN} answered --shep-manifest with something that is not a manifest with a permissions list"
+          # `timeout`, and not a bare run: a dog that ignores `--shep-manifest`
+          # and starts its loop never returns, and an unbounded probe holds this
+          # job to its 60-minute timeout, cancelling `upload` and `index-pr`
+          # with it. A manifest that never arrives stays a missing manifest.
+          # `-k 5` kills a dog that walks past SIGTERM.
+          status=0
+          timeout -k 5 60 "./$asset" --shep-manifest > candidate.json 2> stderr.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$status" = 124 ]; then
+              reason="${BIN} ran on past 60s after --shep-manifest and was killed: it looks like a dog that starts its loop instead of answering"
+            else
+              reason="${BIN} did not answer --shep-manifest (exit ${status})"
+            fi
+          # `-s` slurps every document the binary printed into one array, and
+          # the length is what refuses more than one: `jq -e` alone reports the
+          # last document only, so a binary printing two objects, the last with
+          # a permissions array, would pass here and fail in `index-pr`, after
+          # the release is already published.
+          elif ! jq -es 'length == 1 and (.[0] | type == "object") and (.[0].permissions | type == "array")' candidate.json > /dev/null; then
+            reason="${BIN} answered --shep-manifest with something other than one manifest with a permissions list"
           fi
           if [ -z "$reason" ]; then
             mv candidate.json manifest.json
@@ -416,8 +432,7 @@ jobs:
           cat sums.txt
       # The manifest the Linux leg read, if it read one. `gh run download`
       # rather than `actions/download-artifact`, which this repository pins by
-      # commit nowhere yet. A leg whose binary answered nothing uploaded no such
-      # artifact, so the file is the test for whether there is a manifest.
+      # commit nowhere yet.
       - id: manifest
         name: Fetch the manifest the Linux leg handed over
         env:
@@ -425,13 +440,29 @@ jobs:
         run: |
           set -euo pipefail
           artifact='manifest-x86_64-unknown-linux-gnu'
-          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --dir manifests --pattern "$artifact" || true
-          if test -f "manifests/${artifact}/manifest.json"; then
-            echo "manifest=manifests/${artifact}/manifest.json" >> "$GITHUB_OUTPUT"
-          else
-            echo "No manifest artifact, so the row will list no permissions."
+          # `build` uploads the manifest only when the leg read one, so the
+          # run's own artifact list is what tells "the dog answered nothing"
+          # from "the download broke": `gh run download` fails the same way
+          # either way. Reading a broken download as no manifest would drop the
+          # row's permissions and blame the dog for it, after the release is
+          # already out.
+          names="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '.artifacts[].name')"
+          if ! grep -q -x "$artifact" <<< "$names"; then
+            echo "The Linux leg handed over no manifest, so the row will list no permissions."
+            exit 0
           fi
+          if ! gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --dir manifests --pattern "$artifact"; then
+            echo "::error::this run has ${artifact} and it would not download. The index row is not written."
+            exit 1
+          fi
+          if ! test -f "manifests/${artifact}/manifest.json"; then
+            echo "::error::${artifact} downloaded with no manifest.json inside it. The index row is not written."
+            exit 1
+          fi
+          echo "manifest=manifests/${artifact}/manifest.json" >> "$GITHUB_OUTPUT"
       - name: Write the row
         env:
           PACKAGE: ${{ inputs.package }}

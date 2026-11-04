@@ -526,6 +526,12 @@ class WorkflowTests(unittest.TestCase):
         body = lines[start : following[0] if following else len(lines)]
         return "\n".join(re.sub(r"(?<!\S)#.*", "", line) for line in body)
 
+    def step(self, job_name: str, needle: str) -> str:
+        """The one step of a job that mentions `needle`."""
+        found = [s for s in re.split(r"^      - ", self.job(job_name), flags=re.M)[1:] if needle in s]
+        self.assertEqual(len(found), 1, f"{job_name} has {len(found)} steps mentioning {needle!r}")
+        return found[0]
+
     def test_the_upload_job_downloads_no_artifact_holding_a_manifest(self) -> None:
         # `dist-*` is the pattern that decides what reaches the release. The
         # manifest artifact is named beside it, not inside it.
@@ -545,20 +551,62 @@ class WorkflowTests(unittest.TestCase):
             [name for name in ("resolve", "upload", "index-pr") if "--shep-manifest" in self.job(name)],
             [],
         )
-        build = self.job("build")
-        steps = re.split(r"^      - ", build, flags=re.M)[1:]
-        reading = [step for step in steps if "--shep-manifest" in step]
-        self.assertEqual(len(reading), 1, "the manifest is read by one step")
-        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", reading[0])
+        reading = self.step("build", "--shep-manifest")
+        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", reading)
+
+    def test_the_probe_bounds_a_dog_that_never_exits(self) -> None:
+        # A dog that ignores --shep-manifest and starts its loop never returns.
+        # Run bare, the probe holds the build job to its 60-minute timeout, and
+        # `upload` and `index-pr` need that job: no assets and no index pull
+        # request. A manifest that never arrives has to stay a missing manifest.
+        reading = self.step("build", "--shep-manifest")
+        bound = re.search(r"\btimeout\b(?:\s+-\S+)*\s+(\d+)", reading)
+        self.assertIsNotNone(bound, "the probe runs the dog's binary with no time limit")
+        seconds = int(bound.group(1))
+        self.assertLess(seconds, 600, "the probe is a probe, not a build")
+        for line in reading.splitlines():
+            if "--shep-manifest" in line and "$asset" in line:
+                self.assertIn("timeout", line, f"an unbounded probe: {line.strip()}")
+
+    def test_the_probe_refuses_more_than_one_json_document(self) -> None:
+        # `jq -e` reports the last document it read, so a binary printing two
+        # objects, the last one holding a permissions array, would pass the
+        # build and fail the index job's json.loads after the release is
+        # already published. The check has to see every document at once.
+        reading = self.step("build", "--shep-manifest")
+        guards = [line for line in reading.splitlines() if "jq" in line and "type" in line]
+        self.assertEqual(len(guards), 1, "the probe has one manifest check")
+        self.assertRegex(guards[0], r"jq -\w*s\b|--slurp", "the check reads only the last document")
+        self.assertIn("length == 1", guards[0])
 
     def test_the_index_job_can_fetch_the_manifest_artifact(self) -> None:
         # `gh run download` needs `actions: read`, and the manifest is optional:
         # a leg that printed nothing leaves the job with five arguments.
         index_pr = self.job("index-pr")
         self.assertIn("actions: read", index_pr)
-        self.assertIn("gh run download", index_pr)
         self.assertIn("manifest-x86_64-unknown-linux-gnu", index_pr)
         self.assertIn("dog-index-update.py", index_pr)
+
+    def test_a_manifest_that_will_not_download_fails_the_index_job(self) -> None:
+        # `gh run download` fails the same way whether the artifact was never
+        # uploaded or the download broke. Only the run's own artifact list tells
+        # them apart, and reading a broken download as "no manifest" would drop
+        # the row's permissions and say the dog answered nothing, after the
+        # release is out.
+        fetch = self.step("index-pr", "gh run download")
+        self.assertNotIn("|| true", fetch)
+        self.assertIn("/artifacts", fetch)
+        self.assertLess(fetch.index("/artifacts"), fetch.index("gh run download"))
+        self.assertIn("exit 1", fetch)
+
+    def test_a_run_that_handed_over_no_manifest_still_writes_the_row(self) -> None:
+        # The artifact is absent whenever the leg read nothing, and that is the
+        # dog's answer, not a failure: the row is still written, minus the
+        # permissions.
+        fetch = self.step("index-pr", "gh run download")
+        self.assertLess(fetch.index("exit 0"), fetch.index("gh run download"))
+        write = self.step("index-pr", "dog-index-update.py")
+        self.assertIn("MANIFEST", write)
 
 
 if __name__ == "__main__":
