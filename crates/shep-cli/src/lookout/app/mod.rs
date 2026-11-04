@@ -44,6 +44,7 @@ use settings_confirm::confirm_text;
 
 mod action;
 mod bleats;
+mod catalogue;
 mod close_dialog;
 mod config_pane;
 mod config_pane_edits;
@@ -90,6 +91,12 @@ mod testing;
 mod update;
 
 pub use action::*;
+#[cfg(test)]
+pub(crate) use catalogue::DogState;
+pub(crate) use catalogue::{
+    CataloguePane, CatalogueRead, CatalogueRow, fetch as catalogue_fetch,
+    read_cache as catalogue_read_cache,
+};
 pub use close_dialog::*;
 pub(crate) use config_pane::*;
 // Re-exported rather than imported (IR-32): every module under `app` opens
@@ -128,6 +135,9 @@ pub(crate) enum Body {
     Secrets(SecretsPane),
     /// One sheep given the whole screen, opened by [`KeyPress::Confirm`].
     Sheep(Box<SheepPane>),
+    /// The dog index as a list and an entry, opened by
+    /// [`App::open_catalogue`].
+    Catalogue(CataloguePane),
 }
 
 /// The body's own pane accessors, so a call site need not match on it.
@@ -145,7 +155,8 @@ impl Body {
             | Body::Settings(_)
             | Body::Bleats(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -157,7 +168,8 @@ impl Body {
             | Body::Settings(_)
             | Body::Bleats(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -170,7 +182,8 @@ impl Body {
             | Body::ConfigPane(_)
             | Body::Bleats(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -182,7 +195,8 @@ impl Body {
             | Body::ConfigPane(_)
             | Body::Bleats(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -195,7 +209,8 @@ impl Body {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
-            | Body::Secrets(_) => None,
+            | Body::Secrets(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -207,7 +222,8 @@ impl Body {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
-            | Body::Secrets(_) => None,
+            | Body::Secrets(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -220,7 +236,8 @@ impl Body {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -232,7 +249,8 @@ impl Body {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Secrets(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }
     }
 
@@ -248,6 +266,48 @@ impl Body {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
+        }
+    }
+
+    /// The open catalogue pane, or `None` on any other variant.
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "nothing opens the catalogue until its key and verb land"
+        )
+    )]
+    pub(crate) fn catalogue_pane(&self) -> Option<&CataloguePane> {
+        match self {
+            Body::Catalogue(pane) => Some(pane),
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
+            | Body::Sheep(_) => None,
+        }
+    }
+
+    /// [`Self::catalogue_pane`]'s mutable twin.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "nothing opens the catalogue until its key and verb land"
+        )
+    )]
+    pub(super) fn catalogue_pane_mut(&mut self) -> Option<&mut CataloguePane> {
+        match self {
+            Body::Catalogue(pane) => Some(pane),
+            Body::FlockTable
+            | Body::Settings(_)
+            | Body::ConfigPane(_)
+            | Body::Bleats(_)
+            | Body::Secrets(_)
             | Body::Sheep(_) => None,
         }
     }
@@ -435,6 +495,9 @@ pub struct App {
     /// Retired with the pane, and by [`Self::ask_for_sheep_config`] the moment
     /// an ask for another sheep replaces the read this one was waiting on.
     focus_ask: Option<FocusAsk>,
+    /// The rows of the latest [`Effect::LoadCatalogue`], kept whether or not
+    /// the catalogue is open so another screen can read them.
+    catalogue: Vec<CatalogueRow>,
 }
 
 /// What a partly refused walk should say, or `None` when nothing was
@@ -497,6 +560,12 @@ mod tests {
         if body.secrets_pane_mut().is_some() {
             answered.push("secrets_pane_mut");
         }
+        if body.catalogue_pane().is_some() {
+            answered.push("catalogue_pane");
+        }
+        if body.catalogue_pane_mut().is_some() {
+            answered.push("catalogue_pane_mut");
+        }
         answered
     }
 
@@ -536,6 +605,12 @@ mod tests {
         assert_eq!(
             answered(&mut app_in_sheep_pane().body),
             ["sheep_pane", "sheep_pane_mut"]
+        );
+        let mut app = fixtures::full_app();
+        app.open_catalogue();
+        assert_eq!(
+            answered(&mut app.body),
+            ["catalogue_pane", "catalogue_pane_mut"]
         );
     }
 

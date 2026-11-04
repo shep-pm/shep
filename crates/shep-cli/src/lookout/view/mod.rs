@@ -7,6 +7,7 @@
 
 pub mod bleats;
 pub mod bleats_full;
+mod catalogue;
 pub mod cell;
 pub mod detail;
 mod feed_ink;

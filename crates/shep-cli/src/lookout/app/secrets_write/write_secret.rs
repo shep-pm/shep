@@ -35,7 +35,8 @@ impl App {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }) else {
             return Effect::None;
         };
@@ -147,7 +148,8 @@ impl App {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
-            | Body::Sheep(_) => None,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => None,
         }) else {
             self.reopen_secret_editor(editor);
             return Effect::None;
@@ -216,7 +218,8 @@ impl App {
             | Body::Settings(_)
             | Body::ConfigPane(_)
             | Body::Bleats(_)
-            | Body::Sheep(_) => false,
+            | Body::Sheep(_)
+            | Body::Catalogue(_) => false,
         }
     }
 

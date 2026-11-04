@@ -5,8 +5,9 @@ use super::super::cell;
 use super::super::flock::fit;
 use super::action_gate::{CONTROL_ENABLED_LABEL, READ_ONLY_LABEL, confirm_prompt, in_flight_text};
 use super::key_hint::{
-    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, env_armed, hint_for, modal_keys, pane_editor,
-    pane_hint, pane_screen, secrets_armed, secrets_hint, secrets_typing, sheep_pane_hint,
+    BLEATS_HINT, CLOSE_DIALOG_HINT, FROZEN_HINT, catalogue_hint, env_armed, hint_for, modal_keys,
+    pane_editor, pane_hint, pane_screen, secrets_armed, secrets_hint, secrets_typing,
+    sheep_pane_hint,
 };
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -253,6 +254,11 @@ pub fn status_line(app: &App, width: u16) -> Line<'static> {
         // pane's own branch above: `x stop`/`R restart`/`L reload`/`F folds`
         // belong to the dashboard underneath and do nothing on this screen.
         (secrets_hint(app.control()), palette.attention())
+    } else if let Body::Catalogue(pane) = app.body() {
+        (
+            catalogue_hint(pane.entry.is_some()).to_string(),
+            palette.attention(),
+        )
     } else if app.sheep_pane().is_some() {
         // Checked below the bleats pane's own branch, the same as the
         // config pane's above it: the full-screen panes cannot be open at

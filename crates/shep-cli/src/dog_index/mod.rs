@@ -24,7 +24,9 @@ mod prebuilt;
 
 #[cfg(test)]
 pub(crate) use cache::write_cache;
-pub use cache::{LoadedIndex, Origin, cached_index, cached_only, describe_age};
+pub use cache::{
+    LoadedIndex, MAX_AGE, Origin, cached_index, cached_only, cached_with_age, describe_age,
+};
 pub use parse::parse_index;
 pub use prebuilt::{BUILD_TARGET, Prebuilt};
 
@@ -52,7 +54,7 @@ const UNKNOWN_CATEGORY_FALLBACK: &str = "other";
 /// to `web/src/data/dogs.ts` and `web/public/dogs.schema.json`. This list is
 /// compiled in while the index is served live, so an installed binary can be
 /// older than the index it reads: see [`UNKNOWN_CATEGORY_FALLBACK`].
-const CATEGORIES: [&str; 7] = [
+pub(crate) const CATEGORIES: [&str; 7] = [
     "logs",
     "metrics",
     "alerts",

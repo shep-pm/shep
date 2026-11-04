@@ -465,6 +465,14 @@ pub enum Msg {
         /// say out loud rather than report as a success.
         result: Result<bool, String>,
     },
+    /// An [`Effect::LoadCatalogue`] or an [`Effect::FetchCatalogue`] has
+    /// answered.
+    ///
+    /// Kept whichever screen is open. An `Err` leaves the rows as they were.
+    Catalogue {
+        /// The rows and whether a fetch is still due, or why the load failed.
+        result: Result<Box<CatalogueRead>, String>,
+    },
 }
 
 /// The one gate on writing `shep.toml` from the settings screen.
@@ -656,6 +664,20 @@ pub enum Effect {
     /// Runs on `spawn_blocking` for [`Self::WriteSetting`]'s reason: the
     /// store's own lock acquires with no deadline.
     LoadSecrets,
+    /// Read the cached dog index and build the catalogue's rows; the answer
+    /// lands as [`Msg::Catalogue`].
+    ///
+    /// Runs on `spawn_blocking` as [`Self::LoadSettings`] does. It reads the
+    /// cache only. With `fetch` set the answer says whether a fetch is due,
+    /// and the reducer raises [`Self::FetchCatalogue`] for it. With `fetch`
+    /// unset nothing ever touches the network.
+    LoadCatalogue {
+        /// Whether a missing or stale cache is to be fetched.
+        fetch: bool,
+    },
+    /// Fetch the dog index through its cache and rebuild the catalogue's
+    /// rows; the answer lands as [`Msg::Catalogue`].
+    FetchCatalogue,
     /// Read the one value behind `row`; the answer lands as [`Msg::Revealed`].
     ///
     /// Runs on `spawn_blocking` for [`Self::LoadSettings`]'s reason: the read
