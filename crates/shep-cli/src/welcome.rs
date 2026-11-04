@@ -27,18 +27,30 @@ const ART: &str = "      ,-~-.     ,-~-.     ,-~-.
 /// The four commands that get someone from nothing to a process that
 /// survives a reboot.
 ///
-/// Deliberately absent: `--home`, `fold`, a link, and anything about dogs or
-/// the whistle. Those are `shep --help`'s job. A welcome that lists
-/// everything teaches nothing.
+/// The welcome holds this and [`DOGS`] and nothing else. `--home`, `fold`
+/// and the whistle are `shep --help`'s job: a welcome that lists everything
+/// teaches nothing.
 const QUICK_START: &str = "\
 Getting started
   shep start server.js    start it and keep it alive
   shep flock              see what's running
   shep bleats server      follow its output
   shep startup            bring it back after a reboot
-
-  shep welcome            show this again
 ";
+
+/// Three dogs to install at once, as fixed text.
+///
+/// Never read from the index: a first run may have no cache. A test holds
+/// each name equal to an `adopt_as` the index carries.
+const DOGS: &str = "\
+Dogs add what shep leaves out
+  shep install log-rotate rotate logs as they grow
+  shep install discord    hear when a sheep crashes
+  shep install deploy     ship from a git branch
+";
+
+/// The line that closes the welcome.
+const CLOSING: &str = "  shep welcome            show this again\n";
 
 /// Renders the welcome for one flock.
 ///
@@ -51,7 +63,7 @@ pub(crate) fn render(home: &Path) -> String {
         .replace("{version}", env!("CARGO_PKG_VERSION"))
         .replace("{home}", &home);
     format!(
-        "{art}\nSet up {home}. Logs, pids and the shepherd's socket live here.\n\n{QUICK_START}"
+        "{art}\nSet up {home}. Logs, pids and the shepherd's socket live here.\n\n{QUICK_START}\n{DOGS}\n{CLOSING}"
     )
 }
 
@@ -134,6 +146,11 @@ Getting started
   shep flock              see what's running
   shep bleats server      follow its output
   shep startup            bring it back after a reboot
+
+Dogs add what shep leaves out
+  shep install log-rotate rotate logs as they grow
+  shep install discord    hear when a sheep crashes
+  shep install deploy     ship from a git branch
 
   shep welcome            show this again
 ",
@@ -264,6 +281,37 @@ Getting started
                 line.chars().count() <= 80,
                 "line is {} columns: {line:?}",
                 line.chars().count()
+            );
+        }
+    }
+
+    /// The welcome's dogs are fixed text, so the index is the only thing
+    /// that can notice one is renamed or dropped.
+    #[test]
+    fn every_dog_the_welcome_names_is_in_the_index_under_that_adopt_as() {
+        let index = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../web/public/dogs.json"
+        ));
+        if !index.is_file() {
+            return;
+        }
+        let bytes = std::fs::read(index).unwrap_or_else(|err| {
+            panic!("web/public/dogs.json exists in the workspace but could not be read: {err}")
+        });
+        let index = crate::dog_index::parse_index(&bytes).expect("dogs.json parses");
+
+        let rendered = render(Path::new("/home/ada/.shep"));
+        let named: Vec<&str> = rendered
+            .lines()
+            .filter_map(|line| line.trim_start().strip_prefix("shep install "))
+            .filter_map(|rest| rest.split_whitespace().next())
+            .collect();
+        assert_eq!(named.len(), 3, "the welcome names three dogs:\n{rendered}");
+        for name in named {
+            assert!(
+                index.dogs.iter().any(|dog| dog.adopt_as == name),
+                "no index row carries adopt_as {name:?}"
             );
         }
     }
