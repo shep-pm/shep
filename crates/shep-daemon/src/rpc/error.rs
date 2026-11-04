@@ -38,6 +38,18 @@ pub(super) fn no_sheep(name: &str) -> RpcError {
     }
 }
 
+/// A `Forbidden` refusal carrying `message`'s text
+///
+/// For a refusal about who asked rather than what was asked: a caller that
+/// cannot send this request at all, whatever its selector matches.
+pub(super) fn forbidden(message: impl core::fmt::Display) -> RpcError {
+    RpcError {
+        code: RpcErrorCode::Forbidden,
+        message: message.to_string(),
+        daemon_version: None,
+    }
+}
+
 pub(super) fn rpc_error(err: &SupervisorError) -> RpcError {
     match err {
         SupervisorError::NotFound => not_found(),

@@ -1093,8 +1093,9 @@ opens when the app's Flockfile sets `channel = true`. `wait_ready` and `shutdown
 imply the same channel, so either one of the three is enough; a sheep with none of them answers a
 `no_channel` row instead of a reply, naming the same fields.
 
-`action` and any `params` are free-form and unvalidated here — sent to the app verbatim, on its own
-shepherd-channel wire, for the app itself to recognize or refuse.
+`action` and any `params` are free-form and unvalidated here — sent to the app verbatim, for the app
+itself to recognize or refuse. A `shep.` action name is refused: shep sends those itself, as the
+operator.
 
 Usage: shep trigger [OPTIONS] <SELECTOR> [ACTION] [PARAMS]
 
@@ -1104,7 +1105,8 @@ Arguments:
           dog, whose declared actions are listed
 
   [ACTION]
-          Action name — free-form, defined by the app
+          Action name — free-form, defined by the app. A `shep.` name is shep's own to send, and is
+          refused
 
   [PARAMS]
           Argument text for the action, passed through to the app verbatim

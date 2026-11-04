@@ -1,6 +1,7 @@
 //! The contract between shep and a dog: the flag names, the grammar of the
-//! `shep-` key lines, the schema's secret marker key, and the [`validate`]
-//! trigger a dog answers before shep writes its settings.
+//! `shep-` key lines, the schema's secret marker key, the [`validate`] trigger
+//! a dog answers before shep writes its settings, and the
+//! [`RESERVED_ACTION_PREFIX`] no one but the shepherd may send.
 //!
 //! Shared by `shep-cli`'s `adopt` (the asker) and `shep_client::dogs::probe`
 //! (the answerer), so the two agree by construction rather than by copying
@@ -25,6 +26,22 @@ pub const SCHEMA_FLAG: &str = "--schema";
 /// non-zero, prints nothing or prints something that is not a manifest has
 /// none, and is asked [`VERSION_FLAG`] and [`SCHEMA_FLAG`] instead.
 pub const MANIFEST_FLAG: &str = "--shep-manifest";
+
+/// The prefix of an action name only the shepherd sends.
+///
+/// [`VALIDATE_ACTION`](validate::VALIDATE_ACTION) and
+/// [`PANE_ACTION`](pane::PANE_ACTION) carry it. An action name is otherwise
+/// the app's own, and shep sends this prefix itself, as the operator.
+pub const RESERVED_ACTION_PREFIX: &str = "shep.";
+
+/// Whether `action` names an action only the shepherd sends.
+///
+/// The prefix is exact and case-sensitive, like every other name in this
+/// contract: `Shep.validate` and `reap.shep.ping` are the app's own.
+#[must_use]
+pub fn is_reserved_action(action: &str) -> bool {
+    action.starts_with(RESERVED_ACTION_PREFIX)
+}
 
 /// The key a `--version` answer states its protocol under.
 ///
@@ -143,6 +160,27 @@ pub fn parse_version_answer(text: &str) -> Option<DogVersion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_and_pane_are_reserved_actions() {
+        assert!(is_reserved_action(validate::VALIDATE_ACTION));
+        assert!(is_reserved_action(pane::PANE_ACTION));
+    }
+
+    #[test]
+    fn only_the_exact_prefix_is_reserved() {
+        assert!(is_reserved_action("shep."));
+        assert!(!is_reserved_action(""));
+        assert!(!is_reserved_action("shep"));
+        assert!(
+            !is_reserved_action("Shep.validate"),
+            "the prefix is case-sensitive"
+        );
+        assert!(
+            !is_reserved_action("reap.shep.ping"),
+            "the prefix is a prefix"
+        );
+    }
 
     #[test]
     fn no_output_is_no_answer() {
