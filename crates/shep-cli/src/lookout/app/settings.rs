@@ -717,7 +717,7 @@ mod tests {
         );
         assert!(
             rows.iter().any(|row| matches!(row, SettingsRow::Dog(_))),
-            "the fixture has adopted dogs, and the row sits after them"
+            "the fixture has dogs, and the row sits after them"
         );
     }
 
@@ -729,6 +729,34 @@ mod tests {
             rows.iter()
                 .any(|row| matches!(row, SettingsRow::DogKey { .. })),
             "the dog is open, so its keys are rows"
+        );
+        assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
+    }
+
+    #[test]
+    fn the_browse_dogs_row_follows_adopted_dogs_and_an_open_adopted_dogs_env_rows() {
+        let mut app = fixtures::app_in_settings_with_dog_drift();
+        let settings = app.settings().unwrap();
+        assert!(
+            settings
+                .snapshot()
+                .dogs
+                .iter()
+                .all(|dog| dog.adopted_path.is_some()),
+            "the fixture's dogs are all adopted"
+        );
+        assert_eq!(settings.rows().last(), Some(&SettingsRow::BrowseDogs));
+
+        fixtures::open_adopted_dog_row(
+            &mut app,
+            "otel",
+            std::path::Path::new("/usr/local/bin/shep-otel"),
+        );
+        let rows = app.settings().unwrap().rows();
+        assert!(
+            rows.iter()
+                .any(|row| matches!(row, SettingsRow::DogEnvNew(_))),
+            "an open adopted dog carries env rows a built-in has not: {rows:?}"
         );
         assert_eq!(rows.last(), Some(&SettingsRow::BrowseDogs));
     }
