@@ -178,9 +178,9 @@ pub enum Commands {
     Delete(SelectorArgs),
     /// Set how many instances one app runs
     ///
-    /// This is the stocking rate. An absolute count, not a change: `shep stock web 4` means web has four
-    /// instances afterwards, whatever it had before. There is no +N/-N form —
-    /// run it twice and get the same flock.
+    /// The stocking rate. An absolute count, not a change: `shep stock web 4`
+    /// means web has four instances afterwards, whatever it had before. There
+    /// is no +N/-N form — run it twice and get the same flock.
     ///
     /// Stocking up fills the lowest free instance slots; stocking down releases
     /// the highest, so stocking out and back returns the same slot numbers, the
@@ -211,31 +211,35 @@ pub enum Commands {
     Flock(FlockArgs),
     /// List the dogs, and nothing else
     ///
-    /// `--available` lists the community index of dogs you could adopt
-    /// instead of this shepherd's own. The listing shows each dog's SOURCE
-    /// (`built-in`, `installed`, `installed, community` or `adopted`) and
-    /// VERSION, with `→ <new>` when the cached index holds a newer one, never
-    /// fetched for it. `grant` and `revoke` change one permission of a dog.
+    /// `--available` lists the community index of dogs you could adopt instead of the
+    /// ones this shepherd is running. The listing shows each dog's SOURCE (`built-in`,
+    /// `installed`, `installed, community` or `adopted`) and VERSION, with `→ <new>`
+    /// when the cached index holds a newer one; the index is never fetched for it.
+    /// `grant` and `revoke` change one permission of a dog.
     Dogs(DogsArgs),
     /// Turn a sheep or a dog back on
     ///
     /// A sheep named here has its disabled mark cleared and is started; a dog
     /// is written into `[daemon] enabled_dogs` in `shep.toml` and started now
     /// if a shepherd is running.
+    ///
     /// A sheep needs a running shepherd, and takes a name, a `fold:`, a
     /// `/regex/` or `all`. A sweep reaches only disabled sheep and never a
     /// dog, so `shep enable all` undoes a batch of disables. An id or
     /// `name:slot` is refused, since the mark belongs to the whole app. A
     /// sheep that is not disabled is left alone and the verb says so. A dog
     /// is named, and writes the config either way and exits 0 with no
-    /// shepherd running. A name that is neither a sheep nor a dog exits 3
-    /// and lists the dogs, or 5 with no shepherd running.
+    /// shepherd running -- it comes up with the next one. `shep muster` is
+    /// the only verb that autostarts a shepherd; this is not it. A name that
+    /// is neither a sheep nor a dog exits 3 and lists the dogs, or 5 with no
+    /// shepherd running.
     Enable(EnableArgs),
     /// Turn a sheep or a dog off, until `shep enable`
     ///
     /// A sheep is stopped and refused a start. A dog is removed from `[daemon]
     /// enabled_dogs` and stopped now if a shepherd is running, and `shep flock`
     /// still lists it, disabled.
+    ///
     /// A sheep needs a running shepherd, and takes a name, a `fold:`, a
     /// `/regex/` or `all`; a sweep never reaches a dog. An id or `name:slot`
     /// is refused, since the mark belongs to the whole app. While it is set,
@@ -265,10 +269,12 @@ pub enum Commands {
     ///
     /// Writes `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in
     /// `shep.toml`, and starts it now if a shepherd is running.
+    ///
     /// A binary whose `--version` answer carries `shep-channel: true` is
     /// also written to `[daemon] channel_dogs`, and runs with the shepherd
     /// channel: `shep trigger` reaches it, and a stop is a message rather
     /// than a signal. The dog asks; there is no flag for it.
+    ///
     /// The path can be given as-is, with a leading `~/`, or as a bare name
     /// already on `$PATH` (`cargo install` puts one there). Refuses, before
     /// touching the config at all, a path that resolves to nothing that
@@ -303,11 +309,11 @@ pub enum Commands {
     Describe(SelectorArgs),
     /// Send a named action to matched sheep
     ///
-    /// Reports what each app answers. Reaches an app over its shepherd channel — the fd-3 pipe the daemon
-    /// opens when the app's Flockfile sets `channel = true`. `wait_ready`
-    /// and `shutdown_with_message` both imply the same channel, so either
-    /// one of the three is enough; a sheep with none of them answers a
-    /// `no_channel` row instead of a reply, naming the same fields.
+    /// Reports what each app answers. Reaches an app over its shepherd channel —
+    /// the fd-3 pipe the daemon opens when the app's Flockfile sets `channel =
+    /// true`. `wait_ready` and `shutdown_with_message` both imply the same
+    /// channel, so either one of the three is enough; a sheep with none of them
+    /// answers a `no_channel` row instead of a reply, naming the same fields.
     ///
     /// `action` and any `params` are free-form and unvalidated here — sent
     /// to the app verbatim, on its own shepherd-channel wire, for the app
@@ -399,9 +405,10 @@ pub enum Commands {
     Barks(BarksArgs),
     /// Read and write the key/value store
     ///
-    /// The verbs are `shep kv get`, `shep kv set` and `shep kv unset`. Reads and writes `$SHEP_HOME/kv.json` directly and never connects to the
-    /// shepherd: the store is for ad-hoc notes and dog settings, and it has to
-    /// work while nothing is running, exactly as `shep enable` does.
+    /// The verbs are `shep kv get`, `shep kv set` and `shep kv unset`. Reads and
+    /// writes `$SHEP_HOME/kv.json` directly and never connects to the shepherd:
+    /// the store is for ad-hoc notes and dog settings, and it has to work while
+    /// nothing is running, exactly as `shep enable` does.
     ///
     /// Keys are flat: letters, digits, `.`, `_` and `-`, up to 128 bytes, not
     /// starting with a dot. A dot is part of the name. `bark.cooldown` is one
@@ -433,14 +440,15 @@ pub enum Commands {
     Set(SetArgs),
     /// Drop an override, or remove a dog's key
     ///
-    /// What was there before then applies. The address is `shep set`'s, and `<dog>.defaults[.<key>]` is refused as it is
-    /// there. On a sheep's field it drops the override you set, so the
-    /// Flockfile's value returns in `shep get` and the running config. A field with
-    /// no override is refused: it already holds the Flockfile's value. On a key of
-    /// a dog's settings, whether its table on a sheep or its section of
-    /// `dogs.toml`, it removes the key, so the dog's own default applies. A sheep's
-    /// whole `dogs.<dog>` table can be removed too; a whole `dogs.toml` section,
-    /// `env`, `name`, `instances` and the whole `dogs` map are refused.
+    /// What was there before then applies. The address is `shep set`'s, and
+    /// `<dog>.defaults[.<key>]` is refused as it is there. On a sheep's field it
+    /// drops the override you set, so the Flockfile's value returns in `shep
+    /// get` and the running config. A field with no override is refused: it
+    /// already holds the Flockfile's value. On a key of a dog's settings,
+    /// whether its table on a sheep or its section of `dogs.toml`, it removes
+    /// the key, so the dog's own default applies. A sheep's whole `dogs.<dog>`
+    /// table can be removed too; a whole `dogs.toml` section, `env`, `name`,
+    /// `instances` and the whole `dogs` map are refused.
     ///
     /// The flow and the flags are `shep set`'s: the change list prints first,
     /// `--yes` skips the question, `--dry-run` writes nothing, and
@@ -479,7 +487,9 @@ pub enum Commands {
     /// Copy settings from one sheep onto another
     ///
     /// Copies one setting, one dog's table, or a sheep's env.
+    ///
     /// Each side is an address: a sheep name, then a path in its config.
+    ///
     /// `shep copy web.restart_delay api.restart_delay` copies one field.
     /// `shep copy web.dogs.kelpie api.dogs.kelpie` copies a dog's whole table.
     /// `shep copy web.dogs.kelpie.rulings api.dogs.kelpie.rulings` copies one
@@ -588,12 +598,17 @@ pub enum Commands {
     ///
     /// The session is isolated: `$SHEP_DEV_HOME` (default `~/.shep-dev`),
     /// forced `watch = true` on every app, and a full stop-and-delete teardown
-    /// when it ends. **`--home` and `$SHEP_HOME` are ignored.** Isolation is the whole
+    /// when it ends.
+    ///
+    /// **`--home` and `$SHEP_HOME` are ignored.** Isolation is the whole
     /// feature: an operator who exports `$SHEP_HOME` for their real flock
     /// gets a stderr notice rather than a `dev` session that shares it and
-    /// silently forces `watch = true` onto production apps. Ends the moment
-    /// the flock empties or this process is signalled, whichever comes first,
-    /// and leaves nothing running and no shepherd behind.
+    /// silently forces `watch = true` onto production apps.
+    ///
+    /// Ends the moment the flock empties or this process is signalled —
+    /// whichever comes first — and either way leaves nothing running and no
+    /// shepherd behind. A `shep dev` that leaked a supervisor would stop
+    /// being trusted.
     Dev(DevArgs),
     /// Read somebody else's config into shep
     ///

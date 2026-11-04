@@ -609,9 +609,8 @@ Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:stock@@
 Set how many instances one app runs
 
-This is the stocking rate. An absolute count, not a change: `shep stock web 4` means web has four
-instances afterwards, whatever it had before. There is no +N/-N form — run it twice and get the same
-flock.
+The stocking rate. An absolute count, not a change: `shep stock web 4` means web has four instances
+afterwards, whatever it had before. There is no +N/-N form — run it twice and get the same flock.
 
 Stocking up fills the lowest free instance slots; stocking down releases the highest, so stocking
 out and back returns the same slot numbers, the same SHEP_INSTANCE values and the same log files it
@@ -681,10 +680,10 @@ Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 @@VERB:dogs@@
 List the dogs, and nothing else
 
-`--available` lists the community index of dogs you could adopt instead of this shepherd's own. The
-listing shows each dog's SOURCE (`built-in`, `installed`, `installed, community` or `adopted`) and
-VERSION, with `→ <new>` when the cached index holds a newer one, never fetched for it. `grant` and
-`revoke` change one permission of a dog.
+`--available` lists the community index of dogs you could adopt instead of the ones this shepherd is
+running. The listing shows each dog's SOURCE (`built-in`, `installed`, `installed, community` or
+`adopted`) and VERSION, with `→ <new>` when the cached index holds a newer one; the index is never
+fetched for it. `grant` and `revoke` change one permission of a dog.
 
 Usage: shep dogs [OPTIONS] [FILTER]
        shep dogs <COMMAND>
@@ -761,12 +760,15 @@ Global flags: --format, --quiet, --style, --home. See shep help flags
 Turn a sheep or a dog back on
 
 A sheep named here has its disabled mark cleared and is started; a dog is written into `[daemon]
-enabled_dogs` in `shep.toml` and started now if a shepherd is running. A sheep needs a running
-shepherd, and takes a name, a `fold:`, a `/regex/` or `all`. A sweep reaches only disabled sheep and
-never a dog, so `shep enable all` undoes a batch of disables. An id or `name:slot` is refused, since
-the mark belongs to the whole app. A sheep that is not disabled is left alone and the verb says so.
-A dog is named, and writes the config either way and exits 0 with no shepherd running. A name that
-is neither a sheep nor a dog exits 3 and lists the dogs, or 5 with no shepherd running.
+enabled_dogs` in `shep.toml` and started now if a shepherd is running.
+
+A sheep needs a running shepherd, and takes a name, a `fold:`, a `/regex/` or `all`. A sweep reaches
+only disabled sheep and never a dog, so `shep enable all` undoes a batch of disables. An id or
+`name:slot` is refused, since the mark belongs to the whole app. A sheep that is not disabled is
+left alone and the verb says so. A dog is named, and writes the config either way and exits 0 with
+no shepherd running -- it comes up with the next one. `shep muster` is the only verb that autostarts
+a shepherd; this is not it. A name that is neither a sheep nor a dog exits 3 and lists the dogs, or
+5 with no shepherd running.
 
 Usage: shep enable [OPTIONS] <NAME>
 
@@ -788,13 +790,14 @@ Global flags: --format, --quiet, --style, --host, --home. See shep help flags
 Turn a sheep or a dog off, until `shep enable`
 
 A sheep is stopped and refused a start. A dog is removed from `[daemon] enabled_dogs` and stopped
-now if a shepherd is running, and `shep flock` still lists it, disabled. A sheep needs a running
-shepherd, and takes a name, a `fold:`, a `/regex/` or `all`; a sweep never reaches a dog. An id or
-`name:slot` is refused, since the mark belongs to the whole app. While it is set, `start`, `restart`
-and `stock` refuse the sheep by name and exit 2 naming `shep enable`, and `all`, a fold or a regex
-pass it by. Naming it still reaches `stop`, `delete`, `describe` and `signal`. A dog's own
-configuration in `dogs.toml` survives a disable/enable cycle; `shep delete` forgets the adoption as
-well.
+now if a shepherd is running, and `shep flock` still lists it, disabled.
+
+A sheep needs a running shepherd, and takes a name, a `fold:`, a `/regex/` or `all`; a sweep never
+reaches a dog. An id or `name:slot` is refused, since the mark belongs to the whole app. While it is
+set, `start`, `restart` and `stock` refuse the sheep by name and exit 2 naming `shep enable`, and
+`all`, a fold or a regex pass it by. Naming it still reaches `stop`, `delete`, `describe` and
+`signal`. A dog's own configuration in `dogs.toml` survives a disable/enable cycle; `shep delete`
+forgets the adoption as well.
 
 Usage: shep disable [OPTIONS] <NAME>
 
@@ -891,16 +894,19 @@ Global flags: --format, --quiet, --style, --home. See shep help flags
 Vet a binary and register it as a dog
 
 Writes `[daemon] adopted_dogs` and `[daemon] enabled_dogs` in `shep.toml`, and starts it now if a
-shepherd is running. A binary whose `--version` answer carries `shep-channel: true` is also written
-to `[daemon] channel_dogs`, and runs with the shepherd channel: `shep trigger` reaches it, and a
-stop is a message rather than a signal. The dog asks; there is no flag for it. The path can be given
-as-is, with a leading `~/`, or as a bare name already on `$PATH` (`cargo install` puts one there).
-Refuses, before touching the config at all, a path that resolves to nothing that exists, is not a
-file, has no execute bit set, or that this kernel will not exec — and refuses a name that already
-names a built-in verb or alias, since such a dog could never be reached. An adopted dog runs at the
-shepherd's own trust level, with no sandboxing beyond it. Once adopted, `shep <name> [args...]` runs
-it directly, passing `args` through untouched — a second invocation mode from the one the shepherd
-itself uses to supervise it.
+shepherd is running.
+
+A binary whose `--version` answer carries `shep-channel: true` is also written to `[daemon]
+channel_dogs`, and runs with the shepherd channel: `shep trigger` reaches it, and a stop is a
+message rather than a signal. The dog asks; there is no flag for it.
+
+The path can be given as-is, with a leading `~/`, or as a bare name already on `$PATH` (`cargo
+install` puts one there). Refuses, before touching the config at all, a path that resolves to
+nothing that exists, is not a file, has no execute bit set, or that this kernel will not exec — and
+refuses a name that already names a built-in verb or alias, since such a dog could never be reached.
+An adopted dog runs at the shepherd's own trust level, with no sandboxing beyond it. Once adopted,
+`shep <name> [args...]` runs it directly, passing `args` through untouched — a second invocation
+mode from the one the shepherd itself uses to supervise it.
 
 Usage: shep adopt [OPTIONS] <PATH>
 
@@ -1475,9 +1481,12 @@ Global flags: --format, --quiet, --style, --home. See shep help flags
 @@VERB:copy@@
 Copy settings from one sheep onto another
 
-Copies one setting, one dog's table, or a sheep's env. Each side is an address: a sheep name, then a
-path in its config. `shep copy web.restart_delay api.restart_delay` copies one field. `shep copy
-web.dogs.kelpie api.dogs.kelpie` copies a dog's whole table. `shep copy web.dogs.kelpie.rulings
+Copies one setting, one dog's table, or a sheep's env.
+
+Each side is an address: a sheep name, then a path in its config.
+
+`shep copy web.restart_delay api.restart_delay` copies one field. `shep copy web.dogs.kelpie
+api.dogs.kelpie` copies a dog's whole table. `shep copy web.dogs.kelpie.rulings
 api.dogs.kelpie.rulings` copies one key or sub-table inside it. `shep copy web.env api.env` copies
 every env key.
 
@@ -1724,11 +1733,15 @@ Global flags: --format, --quiet, --style, --home. See shep help flags
 Run one Flockfile's flock in a throwaway session
 
 The session is isolated: `$SHEP_DEV_HOME` (default `~/.shep-dev`), forced `watch = true` on every
-app, and a full stop-and-delete teardown when it ends. **`--home` and `$SHEP_HOME` are ignored.**
-Isolation is the whole feature: an operator who exports `$SHEP_HOME` for their real flock gets a
-stderr notice rather than a `dev` session that shares it and silently forces `watch = true` onto
-production apps. Ends the moment the flock empties or this process is signalled, whichever comes
-first, and leaves nothing running and no shepherd behind.
+app, and a full stop-and-delete teardown when it ends.
+
+**`--home` and `$SHEP_HOME` are ignored.** Isolation is the whole feature: an operator who exports
+`$SHEP_HOME` for their real flock gets a stderr notice rather than a `dev` session that shares it
+and silently forces `watch = true` onto production apps.
+
+Ends the moment the flock empties or this process is signalled — whichever comes first — and either
+way leaves nothing running and no shepherd behind. A `shep dev` that leaked a supervisor would stop
+being trusted.
 
 Usage: shep dev [OPTIONS] [TARGET]
 
