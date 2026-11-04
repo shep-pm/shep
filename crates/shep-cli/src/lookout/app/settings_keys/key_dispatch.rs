@@ -109,6 +109,7 @@ impl App {
                 | KeyPress::StepDown
                 | KeyPress::FoldView
                 | KeyPress::Secrets
+                | KeyPress::Catalogue
                 | KeyPress::Reveal
                 | KeyPress::Copy
                 | KeyPress::TabPrev

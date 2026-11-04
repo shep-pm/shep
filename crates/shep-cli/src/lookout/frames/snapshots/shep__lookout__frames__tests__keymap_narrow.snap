@@ -20,6 +20,7 @@ DOING
 x            stop                                                                                   
 R            restart                                                                                
 L            reload                                                                                 
+i            dog catalogue                                                                          
                                                                                                     
                                                                                                     
                                                                                                     
@@ -29,8 +30,7 @@ L            reload
                                                                                                     
                                                                                                     
                                                                                                     
-                                                                                                    
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled          
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ control enabled                    
  colour is decoration only: every coloured cell says the same thing in words. NO_COLOR loses nothin…
  h or ?  closes this  ·  q  ctrl-c  quits lookout                                                   
                                                                                                     

@@ -20,7 +20,7 @@ CHANGING                        DOING
 any char     types into a box   x            stop                     
 ⌫/del ↵ esc  erase, file, drop  R            restart                  
 e            the config pane    L            reload                   
-space        cycle a value                                            
+space        cycle a value      i            dog catalogue            
 d            restore default                                          
 u            undo the edit                                            
 s            shepherd settings                                        
@@ -30,7 +30,7 @@ c            leave it running
 ctrl-w/u/k   cut word, to ends                                        
 ctrl-r       unmask a secret                                          
                                                                       
- the three above each arm a confirm  ·  ↵ confirms  ·  10s to answer …
+ x R L each arm a confirm  ·  ↵ confirms  ·  10s to answer  ·  █ cont…
  colour is decoration only: every coloured cell says the same thing i…
  h or ?  closes this  ·  q  ctrl-c  quits lookout                     
                                                                       

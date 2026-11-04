@@ -336,6 +336,7 @@ impl App {
             | KeyPress::TextApply
             | KeyPress::TextAbandon
             | KeyPress::Settings
+            | KeyPress::Catalogue
             | KeyPress::Secrets
             | KeyPress::Reveal
             | KeyPress::Copy
